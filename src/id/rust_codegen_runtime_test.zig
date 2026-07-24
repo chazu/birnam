@@ -85,3 +85,21 @@ test "Rust Codegen writes a compiled dylib through Rust TCC" {
     defer artifact.close();
     try std.testing.expect((try artifact.stat()).size > 0);
 }
+
+test "Rust Codegen publishes and clears a diagnostic" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const bad_source = api.mkString("[", 1);
+    const failed = api.send(codegen, api.intern("eval:"), &.{bad_source}, 1);
+    try std.testing.expect(failed == api.nilObj);
+    const diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    try std.testing.expect(diagnostic != api.nilObj);
+    var length: usize = 0;
+    const bytes = api.stringBytes(diagnostic, &length);
+    try std.testing.expect(std.mem.indexOf(u8, bytes[0..length], "could not lower") != null);
+
+    const good_source = api.mkString("7", 1);
+    const value = api.send(codegen, api.intern("eval:"), &.{good_source}, 1);
+    try std.testing.expect(api.isSmallInt(value) != 0);
+    try std.testing.expect(api.send(codegen, api.intern("lastError"), &.{}, 0) == api.nilObj);
+}
