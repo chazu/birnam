@@ -259,3 +259,6 @@ accepted benchmark crossings and no new exception.
 Commit `793d228` extends that regression across mapped-code and facts replay
 inside the recovery guard; R6 remains green at 21/21 with the same comparator
 allowance.
+
+The mixed-stack callback-owner assertions landed at `3b558ca`; R6 remains
+green at 21/21 and the comparator allowance is unchanged.

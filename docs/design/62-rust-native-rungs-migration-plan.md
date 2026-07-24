@@ -2013,6 +2013,13 @@ single recovery transaction (preflight, mapped code, and facts) and confirms
 that none reaches code loading or Store mutation. The 21/21 focused target and
 full R6 comparator passed unchanged.
 
+The mixed-stack callback checkpoint at `3b558ca` adds explicit Rust Codegen
+coverage while Zig Codegen owns the Rust Store callback slots. A replacement
+observer or authorizer is rejected with the frozen
+`methodMutationObserverAlreadySet` / `methodMutationAuthorizerAlreadySet`
+errors, proving the single-owner law before candidate activation. The focused
+21/21 target and complete R6 gate passed with no new benchmark exception.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
