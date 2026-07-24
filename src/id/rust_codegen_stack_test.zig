@@ -175,10 +175,11 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(directory);
     const selector = api.intern("rustOnlyRollbackAnswer");
+    const removed_selector = api.intern("rustOnlyRollbackRemoved");
 
     const base_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_only_rollback_base.dylib", .{directory});
     defer std.testing.allocator.free(base_path);
-    const base_text = "[Module named: #rustOnlyRollbackBase requires: #[]]; [Reflect defineMethod: #rustOnlyRollbackAnswer on: Integer as: [:self | 81]]";
+    const base_text = "[Module named: #rustOnlyRollbackBase requires: #[]]; [Reflect defineMethod: #rustOnlyRollbackAnswer on: Integer as: [:self | 81]]; [Reflect defineMethod: #rustOnlyRollbackRemoved on: Integer as: [:self | 91]]";
     const base_source = api.mkString(base_text.ptr, base_text.len);
     const base_output = api.mkString(base_path.ptr, base_path.len);
     try std.testing.expect(api.send(
@@ -196,10 +197,11 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     try std.testing.expectEqual(base_unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{base_token}, 1));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
     try std.testing.expectEqual(@as(i64, 81), api.smallIntValue(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
+    try std.testing.expectEqual(@as(i64, 91), api.smallIntValue(api.send(api.mkSmallInt(3), removed_selector, &.{}, 0)));
 
     const successor_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_only_rollback_successor.dylib", .{directory});
     defer std.testing.allocator.free(successor_path);
-    const successor_text = "[Module named: #rustOnlyRollbackSuccessor requires: #[]]; [Reflect defineMethod: #rustOnlyRollbackAnswer on: Integer as: [:self | 82]]";
+    const successor_text = "[Module named: #rustOnlyRollbackSuccessor requires: #[]]; [Reflect defineMethod: #rustOnlyRollbackAnswer on: Integer as: [:self | 82]]; [Reflect removeMethod: #rustOnlyRollbackRemoved on: Integer]";
     const successor_source = api.mkString(successor_text.ptr, successor_text.len);
     const successor_output = api.mkString(successor_path.ptr, successor_path.len);
     try std.testing.expect(api.send(
@@ -217,6 +219,10 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{successor_token}, 1));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
     try std.testing.expectEqual(@as(i64, 82), api.smallIntValue(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
+    try std.testing.expectEqual(
+        null,
+        api.send(store, api.intern("rawCurrentValue:attr:"), &.{ api.vtableOf(api.mkSmallInt(3)), removed_selector }, 2),
+    );
 
     // The active successor's block capture must survive collection until the
     // rollback path restores the predecessor's exact Store method carrier.
@@ -230,4 +236,5 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     try std.testing.expectEqual(@as(i64, 81), api.smallIntValue(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
     try std.testing.expectEqual(api.intern("active"), api.send(store, api.intern("currentValue:attr:"), &.{ base_unit, api.intern("state") }, 2));
     try std.testing.expectEqual(api.intern("rolledBack"), api.send(store, api.intern("currentValue:attr:"), &.{ successor_unit, api.intern("state") }, 2));
+    try std.testing.expectEqual(@as(i64, 91), api.smallIntValue(api.send(api.mkSmallInt(3), removed_selector, &.{}, 0)));
 }
