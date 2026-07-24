@@ -145,12 +145,14 @@ struct CandidateState {
     rollback: usize,
     prepared: usize,
     active: bool,
+    predecessor: usize,
 }
 
 struct PreparedState {
     token: usize,
     unit: usize,
     rollback: bool,
+    prior: usize,
 }
 
 #[derive(Clone)]
@@ -233,6 +235,9 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
                 mark(candidate.unit as Oop);
                 mark(candidate.name as Oop);
                 mark(candidate.source as Oop);
+                if candidate.predecessor != 0 {
+                    mark(candidate.predecessor as Oop);
+                }
                 for operation in &candidate.operations {
                     mark(operation.target as Oop);
                     mark(operation.vtable as Oop);
@@ -2315,6 +2320,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             rollback: 0,
             prepared: 0,
             active: false,
+            predecessor: 0,
         });
         return values[1];
     }
@@ -2704,12 +2710,13 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen prepareActivation: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen prepareActivation: expects one unit");
+    if values.len() != 1 && values.len() != 2 {
+        abort("RustCodegen prepareActivation: expects unit or unit and prior");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
+    let prior = values.get(1).copied().unwrap_or(api.nilObj);
     let (validate, prepare, prepared, active, mut operations) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
@@ -2741,6 +2748,26 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
     if active {
         note_error(b"RustCodegen candidate is already active");
         return api.nilObj;
+    }
+    if prior == values[0] {
+        note_error(b"RustCodegen candidate prior is itself");
+        return api.nilObj;
+    }
+    if prior != api.nilObj {
+        let prior_active = CANDIDATES
+            .lock()
+            .ok()
+            .and_then(|candidates| {
+                candidates
+                    .iter()
+                    .find(|candidate| candidate.unit == prior as usize)
+                    .map(|candidate| candidate.active)
+            })
+            .unwrap_or(false);
+        if !prior_active {
+            note_error(b"RustCodegen candidate prior is not active");
+            return api.nilObj;
+        }
     }
     // SAFETY: hook addresses were checked and retained by the mapping boundary.
     let validate: Method = unsafe { core::mem::transmute(validate) };
@@ -2810,6 +2837,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             token: token as usize,
             unit: values[0] as usize,
             rollback: false,
+            prior: prior as usize,
         });
         return token;
     }
@@ -2831,7 +2859,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
     let api = unsafe { api(runtime) };
     clear_error();
     let token = values[0] as usize;
-    let unit = {
+    let (unit, prior) = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
             return api.nilObj;
@@ -2840,7 +2868,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             note_error(b"RustCodegen prepared token is invalid");
             return api.nilObj;
         };
-        state.unit
+        (state.unit, state.prior)
     };
     let activate = {
         let Ok(candidates) = CANDIDATES.lock() else {
@@ -2892,6 +2920,17 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         operation.post_present = !current.is_null();
     }
     let active = unsafe { intern(api, b"active\0") };
+    if prior != 0 {
+        let prior_state = unsafe { intern(api, b"superseded\0") };
+        if !(unsafe {
+            assert_candidate_fact(api, runtime, unit as Oop, b"supersedes\0", prior as Oop)
+        }) || !(unsafe {
+            assert_candidate_fact(api, runtime, prior as Oop, b"state\0", prior_state)
+        }) {
+            note_error(b"RustCodegen candidate Store is unavailable");
+            return api.nilObj;
+        }
+    }
     if !(unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", active) }) {
         note_error(b"RustCodegen candidate Store is unavailable");
         return api.nilObj;
@@ -2905,14 +2944,23 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             api.trueObj,
         )
     };
-    if let Ok(mut candidates) = CANDIDATES.lock()
-        && let Some(candidate) = candidates
-            .iter_mut()
-            .find(|candidate| candidate.unit == unit)
-    {
-        candidate.active = true;
-        candidate.prepared = 0;
-        candidate.operations = operations;
+    if let Ok(mut candidates) = CANDIDATES.lock() {
+        let index = candidates
+            .iter()
+            .position(|candidate| candidate.unit == unit);
+        if let Some(index) = index {
+            candidates[index].active = true;
+            candidates[index].prepared = 0;
+            candidates[index].operations = operations;
+            candidates[index].predecessor = prior;
+            if prior != 0
+                && let Some(previous) = candidates
+                    .iter_mut()
+                    .find(|previous| previous.unit == prior)
+            {
+                previous.active = false;
+            }
+        }
     }
     if let Ok(mut prepared) = PREPARED.lock() {
         prepared.retain(|state| state.token != token);
@@ -3149,6 +3197,7 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
             token: token as usize,
             unit: values[0] as usize,
             rollback: true,
+            prior: candidate.predecessor,
         });
         return token;
     }
@@ -3170,7 +3219,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
     let api = unsafe { api(runtime) };
     clear_error();
     let token = values[0] as usize;
-    let (unit, rollback) = {
+    let (unit, rollback, prior) = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
             return api.nilObj;
@@ -3179,7 +3228,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             note_error(b"RustCodegen prepared token is invalid");
             return api.nilObj;
         };
-        (state.unit, state.rollback)
+        (state.unit, state.rollback, state.prior)
     };
     if !rollback {
         note_error(b"RustCodegen prepared token is invalid");
@@ -3232,6 +3281,13 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
     }
     MOP_MUTATION_IN_PROGRESS.store(false, Ordering::Release);
     let rolled_back = unsafe { intern(api, b"rolledBack\0") };
+    if prior != 0 {
+        let active = unsafe { intern(api, b"active\0") };
+        if !(unsafe { assert_candidate_fact(api, runtime, prior as Oop, b"state\0", active) }) {
+            note_error(b"RustCodegen candidate Store is unavailable");
+            return api.nilObj;
+        }
+    }
     if !(unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", rolled_back) }) {
         note_error(b"RustCodegen candidate Store is unavailable");
         return api.nilObj;
@@ -3245,13 +3301,21 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             api.falseObj,
         )
     };
-    if let Ok(mut candidates) = CANDIDATES.lock()
-        && let Some(candidate) = candidates
-            .iter_mut()
-            .find(|candidate| candidate.unit == unit)
-    {
-        candidate.active = false;
-        candidate.prepared = 0;
+    if let Ok(mut candidates) = CANDIDATES.lock() {
+        let index = candidates
+            .iter()
+            .position(|candidate| candidate.unit == unit);
+        if let Some(index) = index {
+            candidates[index].active = false;
+            candidates[index].prepared = 0;
+            if prior != 0
+                && let Some(previous) = candidates
+                    .iter_mut()
+                    .find(|candidate| candidate.unit == prior)
+            {
+                previous.active = true;
+            }
+        }
     }
     if let Ok(mut prepared) = PREPARED.lock() {
         prepared.retain(|state| state.token != token);
