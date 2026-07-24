@@ -51,6 +51,11 @@ cat "$functional"
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
+focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 42/42 tests passed$' "$functional" || true)
+[ "$focused_test_summary_count" -eq 1 ] || {
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 42/42 passing tests" >&2
+  exit 1
+}
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
 [ "$rust_codegen_success_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
