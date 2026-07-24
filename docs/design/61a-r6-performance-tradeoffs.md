@@ -146,3 +146,8 @@ The complete R6 acceptance script then passed at `89c6283`: 20/20 focused Rust
 tests, the known `sortedModules` fixture exception in optimized verification,
 and the existing two benchmark crossings (`query.aggregate` and
 `compile.stage1-stdlib`).
+
+The follow-up regression at `5faf0b3` exercises a facts record containing a
+heap reference and proves that replay fails before the Store observes a
+mutation. The complete R6 script passed again at that checkpoint with the
+same 20/20 target and the same two accepted crossings.

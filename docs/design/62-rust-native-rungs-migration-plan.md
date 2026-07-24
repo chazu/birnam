@@ -1890,6 +1890,11 @@ The complete R6 acceptance script also passed at `89c6283`, including the
 only the two existing benchmark crossings (`query.aggregate` and
 `compile.stage1-stdlib`).
 
+The fail-closed heap-reference regression landed at `5faf0b3`: a rejected
+facts record is checked for the stable diagnostic and an unchanged Store
+before the scalar replay runs. R6 passed again at that checkpoint with the
+same 20/20 focused target and benchmark exceptions.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
