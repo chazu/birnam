@@ -4,8 +4,8 @@
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5 is
-> next.
+> complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5.1
+> through N5.3 are complete; N5.4 is in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1273,11 +1273,28 @@ Represent the complete Birnam grammar in Rust over the accepted PEG API. Freeze
 grammar and selector spellings in one shared source description only if doing
 so adds no generated bootstrap prerequisite.
 
+#### N5.1/N5.2 execution record — complete, 2026-07-23
+
+`birnam-lang` is a separate `cdylib` with the explicit
+`libbirnam_id_lang_rust.dylib` identity. It builds the complete current grammar
+through the PEG message surface, exports `Lang`, `LangVt`, and
+`BirnamGrammar`, and preserves `parse:`, `grammar`, and `furthestFail`. The
+unchanged six-test Lang suite passes with Rust PEG and Rust Lang, and strict
+Clippy plus the crate unit test pass.
+
 ### N5.3 — Prove protocol and corpus parity
 
 Compare exact CST, failure position, and diagnostics across the source corpus
 and adversarial malformed inputs. Run the Rust parser with Rust PEG and with the
 retained Zig PEG oracle to distinguish parser from matcher failures.
+
+#### N5.3 execution record — complete, 2026-07-23
+
+The frozen CST corpus digest remains `0df93b8aea32fe0d` with Rust Lang plus Rust
+PEG, matching the retained Zig-Lang shape. The malformed corpus preserves
+syntax-error kind, furthest offset, line/column message, and error value
+identity. The existing Rust-PEG/Zig-Lang run remains available to isolate PEG
+from grammar regressions.
 
 ### N5.4 — Switch and observe
 
@@ -1288,6 +1305,15 @@ the Codegen migration.
 
 A Birnam grammar/compiler remains optional and additive. It cannot replace this
 phase's cold parser.
+
+#### N5.4 execution record — in progress, 2026-07-23
+
+`-Dlang=rust` now selects Rust Lang canonically while installing explicit Rust
+and Zig names; `-Dlang=zig` restores the Zig canonical path. The selection gate
+checks both canonical/explicit identities, runs a relocated REPL expression on
+both implementations, and rejects unknown values. The full optimized verify
+gate still has an older relocated `docgen` recursion in the Rust-floor host
+path, so the observation window remains open before N6 begins.
 
 ## 12. Phase N6 — Rust code generator and cold-compiler cutover
 
