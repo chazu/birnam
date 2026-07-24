@@ -2946,7 +2946,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             intern(api, b"aarch64-macos\0")
         }),
         (b"runtimeAbi\0".as_slice(), unsafe {
-            intern(api, ARTIFACT_ABI)
+            intern_bytes(api, ARTIFACT_ABI)
         }),
         (b"candidateAbi\0".as_slice(), unsafe { (api.mkSmallInt)(3) }),
         (b"requires\0".as_slice(), requires),
