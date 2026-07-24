@@ -1978,6 +1978,11 @@ transaction words at `570d3e3`, rather than relying on the host byte order.
 Cargo tests/clippy, the focused 20/20 target, and the full R6 gate all passed;
 the accepted benchmark crossings remain unchanged.
 
+The heap fixture at `8fe6b6c` now also covers a `NullOop` slot in a materialized
+object, alongside forward Oop relocation, raw words, and elided code slots.
+The focused Rust target remains 20/20 and R6 passed again with the same two
+accepted crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

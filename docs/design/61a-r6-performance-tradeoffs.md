@@ -231,3 +231,8 @@ The replay path now honors v4's explicit little-endian encoding for basis and
 transaction words at `570d3e3`, rather than relying on the host byte order.
 Cargo tests/clippy, the focused 20/20 target, and the full R6 gate all passed;
 the accepted benchmark crossings remain unchanged.
+
+The heap fixture at `8fe6b6c` now also covers a `NullOop` slot in a materialized
+object, alongside forward Oop relocation, raw words, and elided code slots.
+The focused Rust target remains 20/20 and R6 passed again with the same two
+accepted crossings.
