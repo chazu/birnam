@@ -496,6 +496,7 @@ extern void* birnam_nil(void);
 extern void* birnam_true(void);
 extern void* birnam_false(void);
 extern void* birnam_global(const char* name);
+extern void* birnam_global_set(const char* name, void* value);
 extern void* birnam_proto(void* parent);
 extern void* birnam_blockVt(void);
 extern void* birnam_method(void* vt, void* selector, void* method);
@@ -741,12 +742,27 @@ impl Emitter {
     /// any nested block definitions. Runtime error propagation and persistent
     /// top-level global writes remain N6.3 orchestration concerns.
     pub fn emit_program(&mut self, program: &Program<'_>) -> Result<(), EmitError> {
+        self.emit_program_mode(program, false)
+    }
+
+    /// Emit a top-level program whose `let` bindings update the shared global
+    /// environment after their local value is computed. Nested block locals
+    /// remain lexical and never persist.
+    pub fn emit_program_persisting(&mut self, program: &Program<'_>) -> Result<(), EmitError> {
+        self.emit_program_mode(program, true)
+    }
+
+    fn emit_program_mode(
+        &mut self,
+        program: &Program<'_>,
+        persist_top_level: bool,
+    ) -> Result<(), EmitError> {
         let saved_bytes = std::mem::take(&mut self.bytes);
         let saved_bound_names = std::mem::take(&mut self.bound_names);
         let saved_function_defs_len = self.function_defs.len();
         self.bytes = Vec::new();
         self.bound_names = Vec::new();
-        let body_result = self.emit_block_body(&program.body);
+        let body_result = self.emit_block_body(&program.body, persist_top_level);
         let body = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
         self.bound_names = saved_bound_names;
@@ -845,7 +861,7 @@ impl Emitter {
             self.bytes.extend_from_slice(index.to_string().as_bytes());
             self.bytes.extend_from_slice(b"];\n");
         }
-        let body_result = self.emit_block_body(&block.body);
+        let body_result = self.emit_block_body(&block.body, false);
         let body = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
         self.bound_names = saved_bound_names;
@@ -908,7 +924,11 @@ impl Emitter {
         Ok(())
     }
 
-    fn emit_block_body(&mut self, body: &[Statement<'_>]) -> Result<(), EmitError> {
+    fn emit_block_body(
+        &mut self,
+        body: &[Statement<'_>],
+        persist_top_level: bool,
+    ) -> Result<(), EmitError> {
         if body.is_empty() {
             self.bytes.extend_from_slice(b"return birnam_nil();\n");
             return Ok(());
@@ -922,6 +942,13 @@ impl Emitter {
                     self.bytes.extend_from_slice(b" = ");
                     self.emit_expr_at_depth(value, 1)?;
                     self.bytes.extend_from_slice(b";\n");
+                    if persist_top_level {
+                        self.bytes.extend_from_slice(b"birnam_global_set(\"");
+                        self.push_c_string_body(name);
+                        self.bytes.extend_from_slice(b"\", b_");
+                        self.bytes.extend_from_slice(name);
+                        self.bytes.extend_from_slice(b");\n");
+                    }
                     self.bound_names.push(name.to_vec());
                     if last {
                         self.bytes.extend_from_slice(b"return b_");
@@ -1476,6 +1503,13 @@ mod tests {
         let mut emitter = Emitter::new();
         emitter.emit_program(&lowered).unwrap();
         assert_eq!(emitter.finish(), b"void* b_x = MKV(1L);\nreturn b_x;\n");
+
+        let mut emitter = Emitter::new();
+        emitter.emit_program_persisting(&lowered).unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"void* b_x = MKV(1L);\nbirnam_global_set(\"x\", b_x);\nreturn b_x;\n"
+        );
     }
 
     #[test]

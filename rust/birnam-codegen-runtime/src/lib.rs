@@ -26,6 +26,7 @@ const CHILD_COUNT_SELECTOR: &[u8] = b"childCount\0";
 const CHILD_AT_SELECTOR: &[u8] = b"childAt:\0";
 const EMIT_SELECTOR: &[u8] = b"emit:\0";
 const EVAL_SELECTOR: &[u8] = b"eval:\0";
+const EVAL_PERSISTING_SELECTOR: &[u8] = b"evalPersisting:\0";
 const NEW_SELECTOR: &[u8] = b"new\0";
 const COMPILE_SELECTOR: &[u8] = b"compile:\0";
 const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
@@ -36,6 +37,7 @@ const DISPOSABLE_SELECTOR: &[u8] = b"disposable\0";
 const SYMBOL_SELECTOR: &[u8] = b"symbol:\0";
 const ADD_SYMBOL_SELECTOR: &[u8] = b"addSymbol:value:\0";
 const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
+const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const MAX_CST_DEPTH: usize = 4096;
@@ -108,9 +110,32 @@ pub unsafe extern "C" fn birnam_global(name: *const c_char) -> Oop {
     unsafe { send(api, globals, GLOBAL_AT_SELECTOR, &[key]) }
 }
 
-unsafe fn bind_global_shim(api: &IdApi, unit: Oop) -> bool {
+#[unsafe(no_mangle)]
+/// Store a generated top-level `let` through the live `Globals` singleton.
+///
+/// # Safety
+///
+/// `name` must be a readable NUL-terminated C string for the duration of the
+/// call, and `value` must be a live Oop owned by the current generated call.
+pub unsafe extern "C" fn birnam_global_set(name: *const c_char, value: Oop) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let globals = runtime.globals as Oop;
+    if globals.is_null() || name.is_null() {
+        return api.nilObj;
+    }
+    let key = unsafe { (api.intern)(name) };
+    unsafe { send(api, globals, GLOBAL_AT_PUT_SELECTOR, &[key, value]) }
+}
+
+unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     let name = unsafe { (api.mkString)(b"birnam_global".as_ptr(), 13) };
     let address = unsafe { (api.mkSmallInt)(birnam_global as *const () as usize as i64) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let name = unsafe { (api.mkString)(b"birnam_global_set".as_ptr(), 17) };
+    let address = unsafe { (api.mkSmallInt)(birnam_global_set as *const () as usize as i64) };
     unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
 }
 
@@ -201,7 +226,12 @@ unsafe fn cst_tree(api: &IdApi, node: Oop, depth: usize) -> Option<OwnedCst> {
     ))
 }
 
-unsafe fn emit_source(api: &IdApi, source_object: Oop, artifact: bool) -> Option<Vec<u8>> {
+unsafe fn emit_source(
+    api: &IdApi,
+    source_object: Oop,
+    artifact: bool,
+    persist_top_level: bool,
+) -> Option<Vec<u8>> {
     let source = unsafe { string_bytes(api, source_object) }?;
     let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
@@ -212,7 +242,11 @@ unsafe fn emit_source(api: &IdApi, source_object: Oop, artifact: bool) -> Option
     let tree = unsafe { cst_tree(api, cst, 0) }?;
     let program = lower_program(&tree, &source).ok()?;
     let mut emitter = Emitter::new();
-    emitter.emit_program(&program).ok()?;
+    if persist_top_level {
+        emitter.emit_program_persisting(&program).ok()?;
+    } else {
+        emitter.emit_program(&program).ok()?;
+    }
     let (function_defs, body) = emitter.finish_parts();
     let mut unit = TranslationUnit::new(artifact);
     unit.push_function(&function_defs);
@@ -233,7 +267,7 @@ unsafe extern "C" fn rust_codegen_emit(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(output) = (unsafe { emit_source(api, values[0], false) }) else {
+    let Some(output) = (unsafe { emit_source(api, values[0], false, false) }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -254,7 +288,7 @@ unsafe extern "C" fn rust_codegen_eval(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(source) = (unsafe { emit_source(api, values[0], false) }) else {
+    let Some(source) = (unsafe { emit_source(api, values[0], false, false) }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -270,7 +304,7 @@ unsafe extern "C" fn rust_codegen_eval(
     }
     let c_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shim(api, unit) }
+        || !unsafe { bind_global_shims(api, unit) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
     {
@@ -323,6 +357,60 @@ unsafe extern "C" fn rust_codegen_eval(
     result
 }
 
+unsafe extern "C" fn rust_codegen_eval_persisting(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen evalPersisting: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen evalPersisting: expects one source argument");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let Some(source) = (unsafe { emit_source(api, values[0], false, true) }) else {
+        note_error(b"RustCodegen could not lower the source");
+        return api.nilObj;
+    };
+    let tcc = runtime.tcc as Oop;
+    if tcc.is_null() {
+        note_error(b"RustCodegen Tcc is unavailable");
+        return api.nilObj;
+    }
+    let unit = unsafe { send0(api, tcc, NEW_SELECTOR) };
+    if unit.is_null() || unit == api.nilObj {
+        note_error(b"RustCodegen could not create a Tcc unit");
+        return api.nilObj;
+    }
+    let c_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
+        || !unsafe { bind_global_shims(api, unit) }
+        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
+        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+    {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustCodegen generated C failed to compile");
+        return api.nilObj;
+    }
+    let entry_name = unsafe { (api.mkString)(b"__ev".as_ptr(), 4) };
+    let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
+    if unsafe { (api.isSmallInt)(symbol) } == 0 {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustCodegen could not resolve generated entry point");
+        return api.nilObj;
+    }
+    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+    // SAFETY: `symbol:` returns the generated Method-ABI entry point and the
+    // unit remains relocated but uninstalled for this direct invocation.
+    let entry: Method = unsafe { core::mem::transmute(address) };
+    let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+    unsafe { dispose_unit(api, unit) };
+    let _ = self_object;
+    result
+}
+
 unsafe extern "C" fn rust_codegen_compile_output(
     _self_object: Oop,
     pointer: *const Oop,
@@ -336,7 +424,7 @@ unsafe extern "C" fn rust_codegen_compile_output(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(source) = (unsafe { emit_source(api, values[0], true) }) else {
+    let Some(source) = (unsafe { emit_source(api, values[0], true, false) }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -426,6 +514,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, EVAL_SELECTOR),
             rust_codegen_eval,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, EVAL_PERSISTING_SELECTOR),
+            rust_codegen_eval_persisting,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

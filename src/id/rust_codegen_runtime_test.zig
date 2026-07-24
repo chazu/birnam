@@ -139,4 +139,13 @@ test "Rust Codegen resolves a global through Rust Store" {
     const result = api.send(codegen, api.intern("eval:"), &.{source}, 1);
     try std.testing.expect(api.isSmallInt(result) != 0);
     try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(result));
+
+    const persisted_source = "let rust_codegen_persisted := 43";
+    const persisted = api.mkString(persisted_source.ptr, persisted_source.len);
+    const persisted_result = api.send(codegen, api.intern("evalPersisting:"), &.{persisted}, 1);
+    try std.testing.expect(api.isSmallInt(persisted_result) != 0);
+    const persisted_name = api.mkString("rust_codegen_persisted", 22);
+    const persisted_read = api.send(codegen, api.intern("eval:"), &.{persisted_name}, 1);
+    try std.testing.expect(api.isSmallInt(persisted_read) != 0);
+    try std.testing.expectEqual(@as(i64, 43), api.smallIntValue(persisted_read));
 }

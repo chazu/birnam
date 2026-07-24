@@ -1477,6 +1477,15 @@ artifact-cleanup, and diagnostic checks remain green. This closes the global
 read portion of N6.3; full Error-object propagation, source-path metadata,
 candidate lifecycle, and image recovery remain open.
 
+Persistent top-level bindings now use the same singleton as reads. The pure
+emitter has an explicit persisting mode that emits `birnam_global_set` only for
+top-level `let` statements; block-local bindings remain lexical. The opt-in
+runtime exposes `evalPersisting:`, binds the setter through TCC's pre-relocation
+symbol window, and the installed gate persists `rust_codegen_persisted := 43`
+then reads it back through ordinary `eval:`. This closes the global write
+portion of N6.3 without introducing a second environment or changing the
+non-persisting evaluator.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
