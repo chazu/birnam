@@ -198,6 +198,93 @@ test "Rust Codegen maps a verified v4 code unit during image recovery" {
     );
 }
 
+test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/facts.image", .{directory});
+    defer std.testing.allocator.free(image_path);
+
+    var facts: std.ArrayList(u8) = .{};
+    defer facts.deinit(std.testing.allocator);
+    var u32_bytes: [4]u8 = undefined;
+    var u64_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &u64_bytes, 7, .little);
+    try facts.appendSlice(std.testing.allocator, &u64_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try facts.appendSlice(std.testing.allocator, &u32_bytes);
+    try facts.append(std.testing.allocator, 0);
+    std.mem.writeInt(u64, &u64_bytes, 7, .little);
+    try facts.appendSlice(std.testing.allocator, &u64_bytes);
+    try facts.append(std.testing.allocator, 5);
+    std.mem.writeInt(u32, &u32_bytes, 10, .little);
+    try facts.appendSlice(std.testing.allocator, &u32_bytes);
+    try facts.appendSlice(std.testing.allocator, "factEntity");
+    try facts.append(std.testing.allocator, 5);
+    std.mem.writeInt(u32, &u32_bytes, 8, .little);
+    try facts.appendSlice(std.testing.allocator, &u32_bytes);
+    try facts.appendSlice(std.testing.allocator, "factAttr");
+    try facts.append(std.testing.allocator, 3);
+    std.mem.writeInt(i64, &u64_bytes, 42, .little);
+    try facts.appendSlice(std.testing.allocator, &u64_bytes);
+
+    var image: std.ArrayList(u8) = .{};
+    defer image.deinit(std.testing.allocator);
+    try image.appendSlice(std.testing.allocator, "BIRNAMIM");
+    std.mem.writeInt(u32, &u32_bytes, 4, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 0x0102_0304, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 0, .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 5, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 64, .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    try image.appendNTimes(std.testing.allocator, 0, 64);
+    std.mem.writeInt(u32, &u32_bytes, 2, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, facts.items.len, .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    try image.appendSlice(std.testing.allocator, facts.items);
+    try tmp.dir.writeFile(.{ .sub_path = "facts.image", .data = image.items });
+
+    const image_object = api.mkString(image_path.ptr, image_path.len);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1),
+    );
+    const pre_gate_diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var pre_gate_len: usize = 0;
+    const pre_gate_bytes = api.stringBytes(pre_gate_diagnostic, &pre_gate_len);
+    try std.testing.expect(
+        std.mem.indexOf(u8, pre_gate_bytes[0..pre_gate_len], "image recovery") != null,
+    );
+
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    const replayed = api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1);
+    try std.testing.expect(api.isSmallInt(replayed) != 0);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(replayed));
+    const entity = api.intern("factEntity");
+    const attribute = api.intern("factAttr");
+    const value = api.send(store, api.intern("currentValue:attr:"), &.{ entity, attribute }, 2);
+    try std.testing.expect(api.isSmallInt(value) != 0);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(value));
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
+    );
+}
+
 test "Rust Codegen evaluates a scalar program through Rust TCC" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

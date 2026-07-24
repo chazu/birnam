@@ -12,7 +12,7 @@ use birnam_artifact::candidate::{
 };
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
-use birnam_image::Image;
+use birnam_image::{Facts, Field, Image, RecordKind};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::{CStr, OsStr, OsString};
@@ -67,6 +67,7 @@ const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const PREFLIGHT_IMAGE_SELECTOR: &[u8] = b"preflightImage:\0";
 const MAP_IMAGE_CODE_SELECTOR: &[u8] = b"mapImageCode:\0";
+const REPLAY_IMAGE_FACTS_SELECTOR: &[u8] = b"replayImageFacts:\0";
 const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
@@ -2080,6 +2081,142 @@ unsafe extern "C" fn rust_codegen_map_image_code(
     let result = unsafe { rust_codegen_load(self_object, &staged_object, 1) };
     let _ = fs::remove_file(staged_path_ref);
     result
+}
+
+unsafe fn materialize_image_field(api: &IdApi, field: Field<'_>) -> Result<Oop, ()> {
+    match field {
+        Field::Nil => Ok(api.nilObj),
+        Field::True => Ok(api.trueObj),
+        Field::False => Ok(api.falseObj),
+        Field::Integer(value) => Ok(unsafe { (api.mkSmallInt)(value) }),
+        Field::FloatBits(bits) => Ok(unsafe { (api.mkFloat)(f64::from_bits(bits)) }),
+        Field::Symbol(bytes) => Ok(unsafe { intern_bytes(api, bytes) }),
+        Field::String(bytes) => Ok(unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }),
+        Field::NullOop => Ok(ptr::null_mut()),
+        Field::ExportRef(bytes) => {
+            let mut terminated = Vec::with_capacity(bytes.len() + 1);
+            terminated.extend_from_slice(bytes);
+            terminated.push(0);
+            let value = unsafe { (api.import)(terminated.as_ptr().cast()) };
+            if value.is_null() { Err(()) } else { Ok(value) }
+        }
+        Field::HeapRef(_) => Err(()),
+    }
+}
+
+/// Replay v4 facts through the Rust Store image ABI after all values have been
+/// decoded successfully. Heap references are rejected until the later heap
+/// materializer can provide a complete relocation table; this prevents a
+/// partial Store mutation from masquerading as successful recovery.
+unsafe extern "C" fn rust_codegen_replay_image_facts(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen replayImageFacts: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen replayImageFacts: expects one image path");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen image facts replay requires image recovery");
+        return api.nilObj;
+    }
+    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen image path was not a String");
+        return api.nilObj;
+    };
+    let path = Path::new(OsStr::from_bytes(&path_bytes));
+    let Ok(bytes) = fs::read(path) else {
+        note_error(b"RustCodegen image facts could not read the image");
+        return api.nilObj;
+    };
+    let Ok(image) = Image::parse(&bytes) else {
+        note_error(b"RustCodegen image facts framing is invalid");
+        return api.nilObj;
+    };
+    if image.validate_facts().is_err() {
+        note_error(b"RustCodegen image facts framing is invalid");
+        return api.nilObj;
+    }
+
+    let mut pending = Vec::new();
+    let mut max_basis = 0i64;
+    let mut records = image.records();
+    loop {
+        let record = match records.next_record() {
+            Ok(Some(record)) => record,
+            Ok(None) => break,
+            Err(_) => {
+                note_error(b"RustCodegen image facts framing is invalid");
+                return api.nilObj;
+            }
+        };
+        if record.kind != RecordKind::Facts {
+            continue;
+        }
+        let Ok(mut facts) = Facts::parse(record.payload) else {
+            note_error(b"RustCodegen image facts framing is invalid");
+            return api.nilObj;
+        };
+        max_basis = max_basis.max(i64::from_ne_bytes(facts.basis.to_ne_bytes()));
+        loop {
+            let Ok(next) = facts.next_fact() else {
+                note_error(b"RustCodegen image facts framing is invalid");
+                return api.nilObj;
+            };
+            let Some(fact) = next else { break };
+            let Ok(entity) = (unsafe { materialize_image_field(api, fact.entity) }) else {
+                note_error(b"RustCodegen image facts require materialized heap references");
+                return api.nilObj;
+            };
+            let Ok(attribute) = (unsafe { materialize_image_field(api, fact.attribute) }) else {
+                note_error(b"RustCodegen image facts require materialized heap references");
+                return api.nilObj;
+            };
+            let Ok(value) = (unsafe { materialize_image_field(api, fact.value) }) else {
+                note_error(b"RustCodegen image facts require materialized heap references");
+                return api.nilObj;
+            };
+            pending.push((entity, attribute, value, fact.tx, fact.op));
+        }
+    }
+    let store = runtime.store as Oop;
+    if store.is_null() || store == api.nilObj {
+        note_error(b"RustCodegen image facts Store is unavailable");
+        return api.nilObj;
+    }
+    if unsafe { send0(api, store, b"imageLoadBegin\0") } == api.nilObj {
+        note_error(b"RustCodegen image facts Store load could not begin");
+        return api.nilObj;
+    }
+    for (entity, attribute, value, tx, op) in pending.iter().copied() {
+        let arguments = [
+            entity,
+            attribute,
+            value,
+            unsafe { (api.mkSmallInt)(i64::from_ne_bytes(tx.to_ne_bytes())) },
+            unsafe { (api.mkSmallInt)(i64::from(op)) },
+        ];
+        if unsafe { send(api, store, b"imageAddFact:attr:value:tx:op:\0", &arguments) }
+            == api.nilObj
+        {
+            note_error(b"RustCodegen image facts Store append failed");
+            return api.nilObj;
+        }
+    }
+    let end_arguments = [unsafe { (api.mkSmallInt)(max_basis) }, api.falseObj];
+    if unsafe { send(api, store, b"imageLoadEnd:raw:\0", &end_arguments) } == api.nilObj {
+        note_error(b"RustCodegen image facts Store load could not finish");
+        return api.nilObj;
+    }
+    let _ = unsafe { send0(api, store, b"backfillMirror\0") };
+    unsafe { (api.mkSmallInt)(pending.len() as i64) }
 }
 
 unsafe extern "C" fn rust_codegen_replay_methods(
@@ -4925,6 +5062,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, MAP_IMAGE_CODE_SELECTOR),
             rust_codegen_map_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, REPLAY_IMAGE_FACTS_SELECTOR),
+            rust_codegen_replay_image_facts,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
