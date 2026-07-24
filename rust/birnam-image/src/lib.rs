@@ -12,6 +12,7 @@ pub const HEADER_LEN: usize = 28;
 pub const RECORD_HEADER_LEN: usize = 12;
 pub const AUTHORITY_DIGEST_LEN: usize = 64;
 pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
+pub const FIELD_LENGTH_PREFIX: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -23,6 +24,7 @@ pub enum Error {
     AbiMismatch,
     InvalidRecordKind,
     InvalidPayloadLength,
+    InvalidFieldTag,
     RecordTooLarge,
 }
 
@@ -130,6 +132,110 @@ impl<'a> Code<'a> {
                 .map_err(|_| Error::InvalidPayloadLength)?,
             unit: &payload[CODE_PREFIX_LEN..],
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FieldTag {
+    Nil = 0,
+    True = 1,
+    False = 2,
+    Integer = 3,
+    FloatBits = 4,
+    Symbol = 5,
+    String = 6,
+    HeapRef = 7,
+    NullOop = 8,
+    ExportRef = 9,
+}
+
+impl FieldTag {
+    fn parse(raw: u8) -> Result<Self, Error> {
+        match raw {
+            0 => Ok(Self::Nil),
+            1 => Ok(Self::True),
+            2 => Ok(Self::False),
+            3 => Ok(Self::Integer),
+            4 => Ok(Self::FloatBits),
+            5 => Ok(Self::Symbol),
+            6 => Ok(Self::String),
+            7 => Ok(Self::HeapRef),
+            8 => Ok(Self::NullOop),
+            9 => Ok(Self::ExportRef),
+            _ => Err(Error::InvalidFieldTag),
+        }
+    }
+}
+
+/// One borrowed v4 heap/fact field. Float values retain their serialized bits
+/// so NaN payloads and signed zero remain lossless until a runtime materializer
+/// deliberately chooses a representation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field<'a> {
+    Nil,
+    True,
+    False,
+    Integer(i64),
+    FloatBits(u64),
+    Symbol(&'a [u8]),
+    String(&'a [u8]),
+    HeapRef(u32),
+    NullOop,
+    ExportRef(&'a [u8]),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Fields<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> Fields<'a> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    pub fn next_field(&mut self) -> Result<Option<Field<'a>>, Error> {
+        if self.offset == self.bytes.len() {
+            return Ok(None);
+        }
+        let tag = FieldTag::parse(self.bytes[self.offset])?;
+        self.offset += 1;
+        let field = match tag {
+            FieldTag::Nil => Field::Nil,
+            FieldTag::True => Field::True,
+            FieldTag::False => Field::False,
+            FieldTag::NullOop => Field::NullOop,
+            FieldTag::Integer => Field::Integer(i64::from_le_bytes(self.take_fixed()?)),
+            FieldTag::FloatBits => Field::FloatBits(u64::from_le_bytes(self.take_fixed()?)),
+            FieldTag::HeapRef => Field::HeapRef(u32::from_le_bytes(self.take_fixed()?)),
+            FieldTag::Symbol => Field::Symbol(self.take_bytes()?),
+            FieldTag::String => Field::String(self.take_bytes()?),
+            FieldTag::ExportRef => Field::ExportRef(self.take_bytes()?),
+        };
+        Ok(Some(field))
+    }
+
+    fn take_fixed<const N: usize>(&mut self) -> Result<[u8; N], Error> {
+        let end = self.offset.checked_add(N).ok_or(Error::RecordTooLarge)?;
+        let bytes = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or(Error::InvalidPayloadLength)?;
+        self.offset = end;
+        Ok(bytes.try_into().expect("fixed-width field slice"))
+    }
+
+    fn take_bytes(&mut self) -> Result<&'a [u8], Error> {
+        let len = u32::from_le_bytes(self.take_fixed()?) as usize;
+        let end = self.offset.checked_add(len).ok_or(Error::RecordTooLarge)?;
+        let bytes = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or(Error::InvalidPayloadLength)?;
+        self.offset = end;
+        Ok(bytes)
     }
 }
 
@@ -286,6 +392,69 @@ mod tests {
         assert_eq!(code.unit, b"dylib");
         assert_eq!(
             Code::parse(&payload[..CODE_PREFIX_LEN - 1]),
+            Err(Error::InvalidPayloadLength)
+        );
+    }
+
+    #[test]
+    fn fields_decode_without_copying_or_materializing_values() {
+        let mut bytes = vec![
+            FieldTag::Nil as u8,
+            FieldTag::True as u8,
+            FieldTag::False as u8,
+            FieldTag::NullOop as u8,
+            FieldTag::Integer as u8,
+        ];
+        bytes.extend_from_slice(&(-41i64).to_le_bytes());
+        bytes.push(FieldTag::FloatBits as u8);
+        bytes.extend_from_slice(&0x8000_0000_0000_0000u64.to_le_bytes());
+        bytes.push(FieldTag::HeapRef as u8);
+        bytes.extend_from_slice(&17u32.to_le_bytes());
+        for (tag, value) in [
+            (FieldTag::Symbol, b"selector".as_slice()),
+            (FieldTag::String, b"text".as_slice()),
+            (FieldTag::ExportRef, b"StringVt".as_slice()),
+        ] {
+            bytes.push(tag as u8);
+            bytes.extend_from_slice(&(value.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(value);
+        }
+
+        let mut fields = Fields::new(&bytes);
+        assert_eq!(fields.next_field().unwrap(), Some(Field::Nil));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::True));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::False));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::NullOop));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::Integer(-41)));
+        assert_eq!(
+            fields.next_field().unwrap(),
+            Some(Field::FloatBits(0x8000_0000_0000_0000))
+        );
+        assert_eq!(fields.next_field().unwrap(), Some(Field::HeapRef(17)));
+        assert_eq!(
+            fields.next_field().unwrap(),
+            Some(Field::Symbol(b"selector"))
+        );
+        assert_eq!(fields.next_field().unwrap(), Some(Field::String(b"text")));
+        assert_eq!(
+            fields.next_field().unwrap(),
+            Some(Field::ExportRef(b"StringVt"))
+        );
+        assert_eq!(fields.next_field().unwrap(), None);
+    }
+
+    #[test]
+    fn fields_fail_closed_on_unknown_tags_and_truncated_lengths() {
+        assert_eq!(
+            Fields::new(&[0xff]).next_field(),
+            Err(Error::InvalidFieldTag)
+        );
+        assert_eq!(
+            Fields::new(&[FieldTag::Integer as u8, 0, 0]).next_field(),
+            Err(Error::InvalidPayloadLength)
+        );
+        assert_eq!(
+            Fields::new(&[FieldTag::String as u8, 4, 0, 0, 0, b'x']).next_field(),
             Err(Error::InvalidPayloadLength)
         );
     }
