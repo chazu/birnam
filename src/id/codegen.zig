@@ -4455,6 +4455,39 @@ pub fn emitProgramForTesting(src: Oop, artifact: bool) ?std.ArrayList(u8) {
     return emitProgram(src, false, artifact, true);
 }
 
+/// Test-only projection of the candidate compiler's generated translation unit.
+/// This keeps candidate root slots and candidate-mode method installation in the
+/// frozen N6.1 corpus without exposing candidate compilation as production API.
+pub fn emitCandidateProgramForTesting(src: Oop, name: Oop) ?std.ArrayList(u8) {
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var scan = scanCandidateSource(src) orelse return null;
+    defer scan.deinit();
+    if (scan.name != name or scan.ops.items.len == 0) return null;
+
+    var program: std.ArrayList(u8) = .{};
+    defer program.deinit(ca);
+    for (scan.ops.items) |op| {
+        program.appendSlice(ca, oopBytes(op.source)) catch @panic("codegen: oom");
+        program.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+    }
+    const program_oop = g_api.mkString(program.items.ptr, program.items.len);
+    candidate_artifact_mode = true;
+    defer candidate_artifact_mode = false;
+    return emitProgram(program_oop, false, true, true);
+}
+
+/// Test-only projection of the compacted image dispatch translation unit. The
+/// image path resolves top-level lets from the durable global namespace and
+/// suppresses source-operation recording in method trampolines.
+pub fn emitImageProgramForTesting(src: Oop) ?std.ArrayList(u8) {
+    artifact_record_ops = false;
+    defer artifact_record_ops = true;
+    image_dispatch_program = true;
+    defer image_dispatch_program = false;
+    return emitProgram(src, false, true, true);
+}
+
 fn runProgram(src: Oop, persist: bool) Oop {
     var buf = emitProgram(src, persist, false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);

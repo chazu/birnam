@@ -1349,15 +1349,17 @@ both missing and newly introduced direct bindings. The generated-C parity corpus
 now covers literals, sends, blocks, globals, module metadata, embedded files,
 method definition/removal, and both JIT and installable-artifact translation
 units. Its exact digest is
-`0f7f691dd27a587726981e6b71b11b6b1e6c71c817a1735a4cd7e13089a68bba`.
+`594469bfe072d00b71ea6d2b5ead6e571d1afec7ce417a7794419844050682b2`.
 
 The existing candidate lifecycle and image replay suites remain the behavioral
 authority for those generated-C paths. The committed
 `src/id/fixtures/codegen-authority-v1.json` manifest now freezes the 16
 Codegen-owned dynamic exports, and `test-codegen-authority` audits the installed
 dylib against it (excluding only compiler-emitted UBSan handlers). `test-codegen`
-(51 tests) and `test-rust-peg-codegen-parity` pass in ReleaseSafe. Remaining
-N6.1 work is to add candidate/image goldens without normalizing semantic bytes.
+(51 tests) and `test-rust-peg-codegen-parity` pass in ReleaseSafe. The parity
+projection now includes candidate-root and compacted-image translation units in
+addition to JIT and installable-artifact units. Remaining N6.1 work is to pin
+the descriptor/header projection without normalizing semantic bytes.
 
 ### N6.2 — Port deterministic source emission
 

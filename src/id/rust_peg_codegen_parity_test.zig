@@ -79,6 +79,29 @@ fn emitDigest(api: *idapi.IdApi) ![std.crypto.hash.sha2.Sha256.digest_length]u8 
             hash.update(&.{0});
         }
     }
+    const candidate_source =
+        "[Module named: #parityCandidate requires: #[]]; " ++
+        "[Reflect defineMethod: #parityCandidateMethod on: Integer as: [:self | [self + 1]]]";
+    var candidate = codegen.emitCandidateProgramForTesting(
+        api.mkString(candidate_source.ptr, candidate_source.len),
+        api.intern("parityCandidate"),
+    ) orelse return error.CandidateEmitFailed;
+    defer candidate.deinit(std.heap.c_allocator);
+    hash.update("candidate");
+    hash.update(&.{0});
+    hash.update(candidate.items);
+    hash.update(&.{0});
+
+    const image_source =
+        "let imageProbe := 7; " ++
+        "[Reflect defineMethod: #parityImageMethod on: Integer as: [:self | imageProbe]]";
+    var image = codegen.emitImageProgramForTesting(api.mkString(image_source.ptr, image_source.len)) orelse
+        return error.ImageEmitFailed;
+    defer image.deinit(std.heap.c_allocator);
+    hash.update("image");
+    hash.update(&.{0});
+    hash.update(image.items);
+    hash.update(&.{0});
     var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
     hash.final(&digest);
     return digest;
