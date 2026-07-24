@@ -178,15 +178,47 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var system_selector_count: usize = 0;
     var saw_print = false;
     var saw_println = false;
+    var saw_read_file = false;
+    var saw_write_file = false;
     while (api.vtableSelectorAt(system_vt, system_selector_count)) |selector| : (system_selector_count += 1) {
         const name = std.mem.span(api.symbolName(selector));
         saw_print = saw_print or std.mem.eql(u8, name, "print:");
         saw_println = saw_println or std.mem.eql(u8, name, "println:");
+        saw_read_file = saw_read_file or std.mem.eql(u8, name, "readFile:");
+        saw_write_file = saw_write_file or std.mem.eql(u8, name, "writeFile:contents:");
     }
     try std.testing.expect(saw_print);
     try std.testing.expect(saw_println);
+    try std.testing.expect(saw_read_file);
+    try std.testing.expect(saw_write_file);
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "readFile:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
+
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const temporary_directory = try temporary.dir.realpathAlloc(std.heap.c_allocator, ".");
+    defer std.heap.c_allocator.free(temporary_directory);
+    const temporary_path = try std.fs.path.join(
+        std.heap.c_allocator,
+        &.{ temporary_directory, "rust-prelude.txt" },
+    );
+    defer std.heap.c_allocator.free(temporary_path);
+    const temporary_path_object = api.mkString(temporary_path.ptr, temporary_path.len);
+    const temporary_contents = api.mkString("Rust prelude I/O", 16);
+    try std.testing.expectEqual(
+        system,
+        send(api, system, "writeFile:contents:", &.{ temporary_path_object, temporary_contents }),
+    );
+    const loaded_contents = send(api, system, "readFile:", &.{temporary_path_object});
+    var loaded_contents_len: usize = 0;
+    const loaded_contents_bytes = api.stringBytes(loaded_contents, &loaded_contents_len);
+    try std.testing.expectEqualStrings("Rust prelude I/O", loaded_contents_bytes[0..loaded_contents_len]);
+    const missing_path_bytes = "/definitely/missing/birnam-rust-prelude";
+    const missing_path = api.mkString(missing_path_bytes.ptr, missing_path_bytes.len);
+    const missing_file_error = send(api, system, "readFile:", &.{missing_path});
+    try std.testing.expectEqual(api.intern("ioError"), send(api, missing_file_error, "kind", &.{}));
 
     const error_factory = api.import("Error");
     const error_vt = api.import("ErrorVt");

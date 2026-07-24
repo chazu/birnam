@@ -11,8 +11,10 @@ use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
-use std::io::{self, Write};
 use std::ffi::CStr;
+use std::fs::{self, File};
+use std::io::{self, Read, Write};
+use std::path::Path;
 use std::sync::OnceLock;
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
@@ -953,6 +955,71 @@ fn write_system_output(bytes: &[u8], newline: bool) {
     }
 }
 
+fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
+    std::str::from_utf8(bytes).ok().map(Path::new)
+}
+
+unsafe extern "C" fn system_read_file(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    const MAX_FILE_BYTES: u64 = 1 << 30;
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(path_object) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(path_bytes) = (unsafe { string_bytes(api, path_object) }) else {
+        return api.nilObj;
+    };
+    let Some(path) = path_from_bytes(path_bytes) else {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
+    };
+    let Ok(file) = File::open(path) else {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
+    };
+    let mut bytes = Vec::new();
+    if file
+        .take(MAX_FILE_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() > MAX_FILE_BYTES as usize
+    {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
+    }
+    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+}
+
+unsafe extern "C" fn system_write_file(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(values) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
+        return api.nilObj;
+    };
+    let Some(contents) = (unsafe { string_bytes(api, values[1]) }) else {
+        return api.nilObj;
+    };
+    let Some(path) = path_from_bytes(path_bytes) else {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not write file") };
+    };
+    if fs::write(path, contents).is_err() {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not write file") };
+    }
+    self_object
+}
+
 unsafe fn system_output(
     self_object: Oop,
     args: *const Oop,
@@ -996,11 +1063,15 @@ unsafe fn install_system_protocol(api: &IdApi) {
     };
     let print = unsafe { intern(api, b"print:\0") };
     let println = unsafe { intern(api, b"println:\0") };
+    let read_file = unsafe { intern(api, b"readFile:\0") };
+    let write_file = unsafe { intern(api, b"writeFile:contents:\0") };
     // SAFETY: the System vtable and callback addresses are process-lifetime
     // values. The singleton is retained by the exported family.
     unsafe {
         (api.method)(system_vt, print, system_print);
         (api.method)(system_vt, println, system_println);
+        (api.method)(system_vt, read_file, system_read_file);
+        (api.method)(system_vt, write_file, system_write_file);
     }
     let _ = system_object;
 }
