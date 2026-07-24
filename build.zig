@@ -1575,6 +1575,11 @@ pub fn build(b: *std.Build) void {
             });
             b.getInstallStep().dependOn(&install_zig_prelude.step);
             bootstrap_install.dependOn(&install_zig_prelude.step);
+            const install_zig_prelude_selected = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_prelude.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_prelude_selected.step);
+            bootstrap_install.dependOn(&install_zig_prelude_selected.step);
             const install_rust_prelude = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_prelude.dylib",
