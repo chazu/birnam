@@ -1973,6 +1973,11 @@ focused Rust Codegen target remains 20/20 and the complete R6 gate passed
 again with the documented fixture exception and the same two accepted
 crossings.
 
+The replay path now honors v4's explicit little-endian encoding for basis and
+transaction words at `570d3e3`, rather than relying on the host byte order.
+Cargo tests/clippy, the focused 20/20 target, and the full R6 gate all passed;
+the accepted benchmark crossings remain unchanged.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

@@ -226,3 +226,8 @@ Store ABI's abort boundary while keeping malformed images fail-closed. The
 focused Rust Codegen target remains 20/20 and the complete R6 gate passed
 again with the documented fixture exception and the same two accepted
 crossings.
+
+The replay path now honors v4's explicit little-endian encoding for basis and
+transaction words at `570d3e3`, rather than relying on the host byte order.
+Cargo tests/clippy, the focused 20/20 target, and the full R6 gate all passed;
+the accepted benchmark crossings remain unchanged.
