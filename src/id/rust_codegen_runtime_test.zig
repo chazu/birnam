@@ -388,6 +388,30 @@ test "Rust Codegen retains registered module sources across collection" {
         ),
     );
 
+    // Duplicate names among untouched entries are invalid too; checking only
+    // the replacement target would let a malformed generation digest through.
+    const other_name = api.intern("rustOtherModule");
+    const other_text = "[Module named: #rustOtherModule requires: #[]]; 9";
+    const other_source = api.mkString(other_text.ptr, other_text.len);
+    const other_revision = api.send(codegen, api.intern("sourceRevisionOf:"), &.{other_source}, 1);
+    var other_entry = api.send(vector, api.intern("new"), &.{}, 0);
+    other_entry = api.send(other_entry, api.intern("add:"), &.{other_name}, 1);
+    other_entry = api.send(other_entry, api.intern("add:"), &.{other_revision}, 1);
+    other_entry = api.send(other_entry, api.intern("add:"), &.{api.nilObj}, 1);
+    var duplicate_map = api.send(vector, api.intern("new"), &.{}, 0);
+    duplicate_map = api.send(duplicate_map, api.intern("add:"), &.{entry}, 1);
+    duplicate_map = api.send(duplicate_map, api.intern("add:"), &.{other_entry}, 1);
+    duplicate_map = api.send(duplicate_map, api.intern("add:"), &.{other_entry}, 1);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            codegen,
+            api.intern("successorGenerationProjection:replacing:with:unit:"),
+            &.{ duplicate_map, name, revision, successor_unit },
+            4,
+        ),
+    );
+
     const mismatch_name = api.intern("rustOtherModule");
     try std.testing.expectEqual(
         api.nilObj,

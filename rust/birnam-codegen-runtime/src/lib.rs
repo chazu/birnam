@@ -960,6 +960,7 @@ unsafe fn generation_digest(api: &IdApi, source_map: Oop) -> Option<[u8; 64]> {
     let count = unsafe { vector_length(api, source_map, vector_vt) }?;
     let mut digest_input = b"birnam.dispatch-generation.v1\0".to_vec();
     digest_input.extend_from_slice(&(count as u64).to_be_bytes());
+    let mut names = Vec::with_capacity(count);
     for index in 0..count {
         let entry = unsafe { vector_item(api, source_map, index) };
         if unsafe { vector_length(api, entry, vector_vt) } != Some(3) {
@@ -973,6 +974,10 @@ unsafe fn generation_digest(api: &IdApi, source_map: Oop) -> Option<[u8; 64]> {
         if unsafe { symbol_bytes(api, vector_item(api, revision, 1)) }? != name {
             return None;
         }
+        if names.iter().any(|existing| existing == &name) {
+            return None;
+        }
+        names.push(name.clone());
         let digest = unsafe { string_bytes(api, vector_item(api, revision, 6)) }?;
         digest_input.extend_from_slice(&(name.len() as u64).to_be_bytes());
         digest_input.extend_from_slice(&name);
