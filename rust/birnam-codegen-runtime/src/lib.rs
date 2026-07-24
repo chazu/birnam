@@ -1978,23 +1978,36 @@ unsafe extern "C" fn rust_codegen_replay_methods(
         note_error(b"RustCodegen image method source ordering failed");
         return api.nilObj;
     };
-    let mut replayed = 0usize;
+    // Preflight every indexed operation before executing the first one. This
+    // prevents a malformed later source from leaving an earlier method replay
+    // applied to the live dispatch dictionary.
+    let mut replay_sources = Vec::new();
     for source in sources {
         let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
         else {
             note_error(b"RustCodegen image method source is not indexable");
             return api.nilObj;
         };
-        for operation in metadata.operations {
-            let operation_source =
-                unsafe { (api.mkString)(operation.source.as_ptr(), operation.source.len()) };
-            let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[operation_source]) };
-            if result == api.nilObj && LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
-                note_error(b"RustCodegen image method replay failed");
-                return api.nilObj;
-            }
-            replayed += 1;
+        replay_sources.extend(
+            metadata
+                .operations
+                .into_iter()
+                .map(|operation| operation.source),
+        );
+    }
+    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let mut replayed = 0usize;
+    for source in replay_sources {
+        clear_error();
+        let operation_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[operation_source]) };
+        if result == api.nilObj
+            || (!error_vt.is_null() && unsafe { (api.vtableOf)(result) } == error_vt)
+        {
+            note_error(b"RustCodegen image method replay failed");
+            return api.nilObj;
         }
+        replayed += 1;
     }
     unsafe { (api.mkSmallInt)(replayed as i64) }
 }
