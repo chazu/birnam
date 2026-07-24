@@ -2048,7 +2048,9 @@ stack. The focused Rust Codegen boundary advances to 24/24. This remains a
 transitional seam: the generated candidate calls the legacy Zig Codegen's
 callback-owner symbols while that owner is present, so no duplicate dynamic
 `birnam_*` export is introduced. Full Rust Reflect/callback ownership remains
-an open N6.5/N6.6 cutover item.
+an open N6.5/N6.6 cutover item. The complete R6 gate passed at this checkpoint
+with 24/24 focused tests, the documented fixture quarantine, and the existing
+benchmark allowance.
 
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface

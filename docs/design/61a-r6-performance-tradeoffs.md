@@ -289,5 +289,5 @@ and passes inspect/map/prepare/commit activation through the existing mixed
 stack. The focused Rust Codegen boundary advances to 24/24. This does not add a
 second dynamic callback owner: candidate validation and prepare-mode symbols
 remain supplied by the legacy Zig Codegen while that mixed stack is active.
-The complete R6 gate must still pass with the same two accepted benchmark
-crossings before this slice is considered closed.
+The complete R6 gate passed at this checkpoint with 24/24 focused tests, the
+documented fixture quarantine, and the same two accepted benchmark crossings.
