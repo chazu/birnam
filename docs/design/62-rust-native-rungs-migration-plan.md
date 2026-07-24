@@ -2056,7 +2056,9 @@ The Rust host-capability loader landed at `8c1765d`: the opt-in
 `loadHostCapability:` entrypoint brackets the existing artifact loader with the
 frozen host-capability authorization mode and has an installed artifact test.
 The focused Rust Codegen boundary advances to 25/25. The default `load:` path
-and dynamic symbol ownership remain unchanged.
+and dynamic symbol ownership remain unchanged. The complete R6 acceptance run
+passed at this checkpoint with 25/25 focused tests, the documented fixture
+quarantine, and the existing benchmark allowance.
 
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface

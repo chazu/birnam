@@ -297,3 +297,5 @@ The Rust host-capability loader landed at `8c1765d`: the opt-in
 frozen host-capability authorization mode and has an installed artifact test.
 The R6 focused boundary advances to 25/25; this is orchestration coverage only
 and does not change the default `load:` path or the accepted benchmark snapshot.
+The complete R6 acceptance run passed at this checkpoint with 25/25 focused
+tests, the documented fixture quarantine, and the same two accepted crossings.
