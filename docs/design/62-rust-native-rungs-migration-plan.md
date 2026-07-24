@@ -1650,6 +1650,14 @@ pass. This is only the inert candidate boundary; candidate compilation,
 mapping, Store publication, rollback, and image composition remain unported
 N6.5/N6.6 work.
 
+The Rust Codegen runtime now has a pure candidate-manifest parity seam as well:
+its static revision scan retains declarative operations, and a test compares
+candidate name, source/non-method/method/revision digests, dependencies, target
+and selector names, operation kind, and selector arity against the manifest.
+This helper is not yet a loader or publication path; it exists to make the
+later `inspectCandidate:into:` boundary compare two independently parsed
+representations before any mapping or Store mutation.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
