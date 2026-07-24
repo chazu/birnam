@@ -761,6 +761,23 @@ test "Rust Codegen retains registered module sources across collection" {
         api.nilObj,
         api.send(codegen, api.intern("replayMethods"), &.{}, 0),
     );
+    const replay_alien_source = api.mkString("7", 1);
+    const replay_alien_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ api.intern("__aliens__"), api.intern("__alien_7") },
+        2,
+    );
+    _ = api.send(replay_alien_cell, api.intern("set:"), &.{replay_alien_source}, 1);
+    const derived_global_name = api.intern("rustDerivedGlobal");
+    const derived_global_source = api.mkString("43", 2);
+    const derived_global_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ api.intern("__globalsrc__"), derived_global_name },
+        2,
+    );
+    _ = api.send(derived_global_cell, api.intern("set:"), &.{derived_global_source}, 1);
     try std.testing.expectEqual(
         api.trueObj,
         api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
@@ -782,13 +799,16 @@ test "Rust Codegen retains registered module sources across collection" {
         api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
     );
     try std.testing.expectEqual(
-        @as(i64, 0),
+        @as(i64, 1),
         api.smallIntValue(api.send(codegen, api.intern("replayAliens"), &.{}, 0)),
     );
     try std.testing.expectEqual(
-        @as(i64, 0),
+        @as(i64, 1),
         api.smallIntValue(api.send(codegen, api.intern("deriveImageGlobals"), &.{}, 0)),
     );
+    const derived_global = api.send(globals, api.intern("at:"), &.{derived_global_name}, 1);
+    try std.testing.expect(api.isSmallInt(derived_global) != 0);
+    try std.testing.expectEqual(@as(i64, 43), api.smallIntValue(derived_global));
     try std.testing.expectEqual(
         @as(i64, 0),
         api.smallIntValue(api.send(codegen, api.intern("deriveImageMethodTargets"), &.{}, 0)),
