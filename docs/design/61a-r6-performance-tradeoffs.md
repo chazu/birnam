@@ -174,3 +174,9 @@ String, and nil values through Rust Store while retaining the heap-reference
 fail-closed assertion. R6 passed again at that checkpoint with 20/20 focused
 tests, the same fixture exception, and no change to the accepted benchmark
 snapshot.
+
+Export-reference recovery coverage landed at `20444bb`: the same scalar image
+fixture now resolves an `ExportRef("Store")` through the frozen import/export
+surface and verifies the live Store identity. R6 passed again at that
+checkpoint with 20/20 focused tests, the documented fixture exception, and the
+same two accepted benchmark crossings.
