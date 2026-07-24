@@ -1983,6 +1983,11 @@ object, alongside forward Oop relocation, raw words, and elided code slots.
 The focused Rust target remains 20/20 and R6 passed again with the same two
 accepted crossings.
 
+Rust image replay now rebuilds the relational rule cache at `bf54131` when the
+`db` surface is present, matching the Zig loader after facts and the MOP mirror
+are restored. The focused target and full R6 gate passed with no benchmark
+change.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

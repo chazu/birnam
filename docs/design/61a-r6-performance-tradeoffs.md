@@ -236,3 +236,8 @@ The heap fixture at `8fe6b6c` now also covers a `NullOop` slot in a materialized
 object, alongside forward Oop relocation, raw words, and elided code slots.
 The focused Rust target remains 20/20 and R6 passed again with the same two
 accepted crossings.
+
+Rust image replay now rebuilds the relational rule cache at `bf54131` when the
+`db` surface is present, matching the Zig loader after facts and the MOP mirror
+are restored. The focused target and full R6 gate passed with no benchmark
+change.
