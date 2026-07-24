@@ -16,6 +16,7 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::OnceLock;
+use std::{env, str};
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
 
@@ -1020,6 +1021,33 @@ unsafe extern "C" fn system_write_file(
     self_object
 }
 
+unsafe extern "C" fn system_get_env(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(name_object) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(name_bytes) = (unsafe { string_bytes(api, name_object) }) else {
+        return api.nilObj;
+    };
+    let Ok(name) = str::from_utf8(name_bytes) else {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not read environment") };
+    };
+    match env::var(name) {
+        Ok(value) => unsafe { (api.mkString)(value.as_ptr(), value.len()) },
+        Err(env::VarError::NotPresent) => api.nilObj,
+        Err(env::VarError::NotUnicode(_)) => unsafe {
+            numeric_error(api, b"ioError\0", b"could not read environment")
+        },
+    }
+}
+
 unsafe fn system_output(
     self_object: Oop,
     args: *const Oop,
@@ -1065,6 +1093,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
     let println = unsafe { intern(api, b"println:\0") };
     let read_file = unsafe { intern(api, b"readFile:\0") };
     let write_file = unsafe { intern(api, b"writeFile:contents:\0") };
+    let get_env = unsafe { intern(api, b"getEnv:\0") };
     // SAFETY: the System vtable and callback addresses are process-lifetime
     // values. The singleton is retained by the exported family.
     unsafe {
@@ -1072,6 +1101,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
         (api.method)(system_vt, println, system_println);
         (api.method)(system_vt, read_file, system_read_file);
         (api.method)(system_vt, write_file, system_write_file);
+        (api.method)(system_vt, get_env, system_get_env);
     }
     let _ = system_object;
 }

@@ -180,21 +180,43 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var saw_println = false;
     var saw_read_file = false;
     var saw_write_file = false;
+    var saw_get_env = false;
     while (api.vtableSelectorAt(system_vt, system_selector_count)) |selector| : (system_selector_count += 1) {
         const name = std.mem.span(api.symbolName(selector));
         saw_print = saw_print or std.mem.eql(u8, name, "print:");
         saw_println = saw_println or std.mem.eql(u8, name, "println:");
         saw_read_file = saw_read_file or std.mem.eql(u8, name, "readFile:");
         saw_write_file = saw_write_file or std.mem.eql(u8, name, "writeFile:contents:");
+        saw_get_env = saw_get_env or std.mem.eql(u8, name, "getEnv:");
     }
     try std.testing.expect(saw_print);
     try std.testing.expect(saw_println);
     try std.testing.expect(saw_read_file);
     try std.testing.expect(saw_write_file);
+    try std.testing.expect(saw_get_env);
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "readFile:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "getEnv:", &.{api.trueObj}));
+
+    const rust_prelude_env_name = "BIRNAM_RUST_PRELUDE_DYLIB";
+    const rust_prelude_env = send(
+        api,
+        system,
+        "getEnv:",
+        &.{api.mkString(rust_prelude_env_name.ptr, rust_prelude_env_name.len)},
+    );
+    try std.testing.expect(rust_prelude_env != api.nilObj);
+    var rust_prelude_env_len: usize = 0;
+    const rust_prelude_env_bytes = api.stringBytes(rust_prelude_env, &rust_prelude_env_len);
+    try std.testing.expect(rust_prelude_env_len > 0);
+    try std.testing.expect(rust_prelude_env_bytes[0] != 0);
+    const missing_env_name = "BIRNAM_RUST_PRELUDE_MISSING";
+    try std.testing.expectEqual(
+        api.nilObj,
+        send(api, system, "getEnv:", &.{api.mkString(missing_env_name.ptr, missing_env_name.len)}),
+    );
 
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
