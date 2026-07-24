@@ -363,12 +363,29 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try heap_payload.appendSlice(std.testing.allocator, &u64_bytes);
     var materialized_heap_image: std.ArrayList(u8) = .{};
     defer materialized_heap_image.deinit(std.testing.allocator);
+    var first_heap_record: std.ArrayList(u8) = .{};
+    defer first_heap_record.deinit(std.testing.allocator);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try first_heap_record.appendSlice(std.testing.allocator, &u32_bytes);
+    // The first object is 23 bytes after the record count: VectorNode's
+    // length/name/word-count header followed by one HeapRef field.
+    try first_heap_record.appendSlice(std.testing.allocator, heap_payload.items[4..27]);
+    var second_heap_record: std.ArrayList(u8) = .{};
+    defer second_heap_record.deinit(std.testing.allocator);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try second_heap_record.appendSlice(std.testing.allocator, &u32_bytes);
+    try second_heap_record.appendSlice(std.testing.allocator, heap_payload.items[27..]);
     try materialized_heap_image.appendSlice(std.testing.allocator, image.items[0..104]);
     std.mem.writeInt(u32, &u32_bytes, 3, .little);
     try materialized_heap_image.appendSlice(std.testing.allocator, &u32_bytes);
-    std.mem.writeInt(u64, &u64_bytes, heap_payload.items.len, .little);
+    std.mem.writeInt(u64, &u64_bytes, first_heap_record.items.len, .little);
     try materialized_heap_image.appendSlice(std.testing.allocator, &u64_bytes);
-    try materialized_heap_image.appendSlice(std.testing.allocator, heap_payload.items);
+    try materialized_heap_image.appendSlice(std.testing.allocator, first_heap_record.items);
+    std.mem.writeInt(u32, &u32_bytes, 3, .little);
+    try materialized_heap_image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, second_heap_record.items.len, .little);
+    try materialized_heap_image.appendSlice(std.testing.allocator, &u64_bytes);
+    try materialized_heap_image.appendSlice(std.testing.allocator, second_heap_record.items);
     std.mem.writeInt(u32, &u32_bytes, 2, .little);
     try materialized_heap_image.appendSlice(std.testing.allocator, &u32_bytes);
     std.mem.writeInt(u64, &u64_bytes, heap_facts.items.len, .little);
