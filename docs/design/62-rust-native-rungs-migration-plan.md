@@ -1736,6 +1736,15 @@ candidate drifted and disable rollback. The installed gate covers both healthy
 single-candidate and all-candidate reconciliation; persisted generation
 reconciliation remains later work.
 
+The first Rust image-source handoff is now executable. `generationSources`
+topologically orders the retained module sources by their declarative
+requirements, rejects cycles or malformed revisions, and remains deterministic
+within a generation. `generationMethodSources` extracts only install operations
+in that same order, while `currentGenerationDigest` reports the process-local
+published successor digest when an explicit plan has committed. These methods
+are read-only source composition; image replay, alien derivation, and durable
+generation authority remain N6.6 work.
+
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
 `candidateContentPath:` materializes and verifies the immutable checksum path
