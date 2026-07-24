@@ -524,11 +524,13 @@ retained the same digest-pinned pair and two accepted crossings. This is a
 functional coverage update only, not a new performance exception.
 
 After the Rust image framing preflight entered the opt-in Codegen boundary at
-`f7a1de7`, the acceptance pin advanced to 18/18 Rust Codegen tests. The new
-case validates a v4 authority envelope and rejects a bad magic without loading,
-swizzling, or mutating Store state; it leaves mapped-unit composition and
-materialization for N6.6. The gate continues to accept only the same exact
-benchmark snapshot and two recorded crossings.
+`f7a1de7`, the acceptance pin advanced to 18/18 Rust Codegen tests. The complete
+acceptance script passed again at `73b15c4`: the new case validates a v4
+authority envelope and rejects a bad magic without loading, swizzling, or
+mutating Store state; the optimized closure retains only the exact quarantined
+fixture signature, and the comparator retains the same exact benchmark
+snapshot and two recorded crossings. Mapped-unit composition and
+materialization remain N6.6 work.
 
 ### N0.6 — Generalize installed native-source resources
 
