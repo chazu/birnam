@@ -151,3 +151,8 @@ The follow-up regression at `5faf0b3` exercises a facts record containing a
 heap reference and proves that replay fails before the Store observes a
 mutation. The complete R6 script passed again at that checkpoint with the
 same 20/20 target and the same two accepted crossings.
+
+The source-journal recovery coverage landed at `2586925`: the Rust boundary
+replays a recorded alien source and re-derives an unbound scalar global during
+image recovery. R6 passed again at that checkpoint with 20/20 focused tests,
+the documented fixture exception, and only the same two accepted crossings.

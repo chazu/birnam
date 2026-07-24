@@ -1895,6 +1895,12 @@ facts record is checked for the stable diagnostic and an unchanged Store
 before the scalar replay runs. R6 passed again at that checkpoint with the
 same 20/20 focused target and benchmark exceptions.
 
+The source-journal recovery test landed at `2586925`: Rust replay now has
+executable coverage for a recorded alien source and for deriving an unbound
+scalar global from `__globalsrc__` during image recovery. The complete R6 gate
+passed again at that checkpoint with the same 20/20 target, fixture exception,
+and two benchmark crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
