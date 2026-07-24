@@ -2065,6 +2065,12 @@ ordinary module introduction after the initial generation is sealed, while
 `loadHostCapability:` remains the explicit host-safe exception and image
 recovery remains guarded separately. The focused 25/25 boundary remains green.
 
+The follow-up full R6 acceptance run passed after this hardening: 25/25 Rust
+Codegen tests, the complete cross-layer verify/install/native-rung matrix, and
+the optimized benchmark comparator are green. The only accepted snapshot
+crossings remain `query.aggregate` (+5.8%) and `compile.stage1-stdlib`
+(+11.9%); regressions are 2, missing 0, and unusable 0.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

@@ -305,3 +305,9 @@ ordinary module introduction after the initial generation is sealed, while
 `loadHostCapability:` remains the explicit host-safe exception and image
 recovery remains guarded separately. The focused 25/25 boundary remains green;
 this closes a lifecycle-policy gap without changing the benchmark snapshot.
+
+The follow-up full acceptance run after `776ccb3` passed: 25/25 Rust Codegen
+tests, the complete cross-layer verify/install/native-rung matrix, and the
+optimized benchmark comparator all remained green. The only accepted snapshot
+crossings are still `query.aggregate` (+5.8%) and `compile.stage1-stdlib`
+(+11.9%); regressions are 2, missing 0, and unusable 0.
