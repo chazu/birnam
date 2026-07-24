@@ -107,6 +107,13 @@ test "Rust Codegen writes a compiled dylib through Rust TCC" {
         return error.ArtifactAbiMissing;
     const abi: [*:0]const u8 = @ptrCast(abi_symbol);
     try std.testing.expectEqualStrings("birnam-artifact-generation-v1", std.mem.span(abi));
+    const source_symbol = api.dlsym(handle, "__birnam_artifact_source") orelse
+        return error.ArtifactSourceMissing;
+    const source_len_symbol = api.dlsym(handle, "__birnam_artifact_source_len") orelse
+        return error.ArtifactSourceLengthMissing;
+    const source_len: *const usize = @ptrCast(@alignCast(source_len_symbol));
+    const embedded_source: [*]const u8 = @ptrCast(source_symbol);
+    try std.testing.expectEqualStrings("7", embedded_source[0..source_len.*]);
     _ = api.dlsym(handle, "__birnam_artifact_descriptor") orelse
         return error.ArtifactDescriptorMissing;
     const loaded = api.send(codegen, api.intern("load:"), &.{output}, 1);

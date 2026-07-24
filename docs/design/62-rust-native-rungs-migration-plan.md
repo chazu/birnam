@@ -1460,10 +1460,11 @@ The first artifact metadata slice is now present. Rust compile output prepends
 the frozen `birnam-artifact-generation-v1` ABI marker and a pointer-free
 `BIRNAM-ARTIFACT-DESCRIPTOR-V1` record with module identity, aarch64-macos
 target, empty dependency lists, the activate/source/reflection capabilities,
-and deterministic SHA-256 source/revision digests. The installed runtime test
-opens the resulting dylib and verifies both descriptor symbols before any
-initializer or entry point is invoked. Embedded source, dependency derivation,
-runtime initialization, and loader acceptance remain N6.4 work.
+and deterministic SHA-256 source/revision digests. It also exports the original
+source bytes plus a length symbol for source fallback. The installed runtime
+test opens the resulting dylib and verifies the ABI, embedded source, and
+descriptor symbols before any initializer or entry point is invoked. Dependency
+derivation, runtime initialization, and loader acceptance remain N6.4 work.
 
 The opt-in runtime now also exposes `RustCodegen load:` for that artifact
 boundary. It opens with lazy/global resolution, validates the ABI marker before

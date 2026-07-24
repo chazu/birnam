@@ -279,7 +279,19 @@ fn artifact_source(source: &[u8], generated: &[u8]) -> Vec<u8> {
     let mut output = Vec::new();
     output.extend_from_slice(b"const char __birnam_artifact_abi[] = \"");
     output.extend_from_slice(ARTIFACT_ABI);
-    output.extend_from_slice(b"\";\nconst unsigned char __birnam_artifact_descriptor[] = {");
+    output.extend_from_slice(b"\";\nconst unsigned char __birnam_artifact_source[] = {");
+    for (index, byte) in source.iter().enumerate() {
+        if index != 0 {
+            output.push(b',');
+        }
+        output.extend_from_slice(byte.to_string().as_bytes());
+    }
+    if source.is_empty() {
+        output.push(b'0');
+    }
+    output.extend_from_slice(b"};\nconst unsigned long __birnam_artifact_source_len = ");
+    output.extend_from_slice(source.len().to_string().as_bytes());
+    output.extend_from_slice(b"UL;\nconst unsigned char __birnam_artifact_descriptor[] = {");
     for (index, byte) in descriptor.iter().enumerate() {
         if index != 0 {
             output.push(b',');
