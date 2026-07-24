@@ -322,3 +322,7 @@ remain unchanged.
 The complete R6 gate passed after `24510d2`: the focused Rust Codegen target was
 25/25 and the Rust-only callback target passed, with all cross-layer gates green
 and the same two accepted benchmark crossings.
+
+The callback matrix now also covers Rust Codegen against the Zig Store oracle at
+`98bb180`. Both Rust Store and Zig Store callback targets pass after collection;
+the complete R6 gate remains green with no benchmark change.

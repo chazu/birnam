@@ -2084,6 +2084,12 @@ The complete R6 gate passed after `24510d2`: the focused Rust Codegen target was
 25/25 and the Rust-only callback target passed, with all cross-layer gates green
 and the same two accepted benchmark crossings.
 
+The callback matrix now also covers Rust Codegen against the Zig Store oracle at
+`98bb180`. Both Rust Store and Zig Store callback targets pass after collection;
+the complete R6 gate remains green with no benchmark change. Candidate
+activation reentry, provider lifetime across retained candidate state, and
+actual Store rollback selection remain the next N6.5 hardening slices.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
