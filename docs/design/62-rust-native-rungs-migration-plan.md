@@ -1773,6 +1773,12 @@ intentionally a source-backed image compiler: mapped-unit reuse, replay of
 durable image facts, global/method derivation, and explicit rebuild policy
 remain subsequent N6.6 slices.
 
+The first pure image-codec slice is now present in `birnam-image`. It validates
+the v4 magic/version/endian/architecture/ABI header and iterates borrowed
+little-endian record envelopes with checked lengths and known record kinds.
+It performs no IdApi allocation or heap/Store interpretation; heap, fact, and
+code payload codecs remain later slices built on this framing boundary.
+
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
 `candidateContentPath:` materializes and verifies the immutable checksum path
