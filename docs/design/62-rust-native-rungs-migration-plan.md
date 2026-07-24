@@ -1391,6 +1391,19 @@ artifact-only `__birnam_unit_init` fixup in separate JIT/artifact modes. Exact
 unit text is pinned for both modes; workspace formatting, tests, and Clippy
 remain clean.
 
+The next N6.2 slices now lower the literal and send portions of the Rust PEG
+CST through a pure `CstNode` protocol. Source-preserved integer and float
+spans, Birnam string escapes, singleton identifiers, symbols, globals, binary
+and unary messages, keyword selector concatenation, and same-category
+left-folded chains all lower into the emitter IR. Keyword selectors use an
+owned `Cow` only when their source pieces are non-contiguous; literal and
+single-selector paths remain borrowed. Wrapper descent and expression lowering
+have explicit 4096-node bounds, and invalid spans/shapes fail with typed
+errors. The crate still has no `IdApi`, loader, allocator, or runtime
+dependency. Eight deterministic Codegen tests, workspace tests, formatting,
+and Clippy pass; the Rust implementation remains unselected by production
+builds until the later orchestration and runtime-boundary gates are complete.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
