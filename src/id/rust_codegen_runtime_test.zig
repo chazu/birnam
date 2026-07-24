@@ -380,11 +380,32 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
         .data = materialized_heap_image.items,
     });
 
+    const malformed_heap_image_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/malformed-heap-facts.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(malformed_heap_image_path);
+    var malformed_heap_image: std.ArrayList(u8) = .{};
+    defer malformed_heap_image.deinit(std.testing.allocator);
+    try malformed_heap_image.appendSlice(std.testing.allocator, materialized_heap_image.items);
+    // Keep the record framing valid but claim one additional heap object. The
+    // Rust materializer must reject the missing object before Store mutation.
+    std.mem.writeInt(u32, malformed_heap_image.items[116..120], 3, .little);
+    try tmp.dir.writeFile(.{
+        .sub_path = "malformed-heap-facts.image",
+        .data = malformed_heap_image.items,
+    });
+
     const image_object = api.mkString(image_path.ptr, image_path.len);
     const heap_image_object = api.mkString(heap_image_path.ptr, heap_image_path.len);
     const materialized_heap_image_object = api.mkString(
         materialized_heap_image_path.ptr,
         materialized_heap_image_path.len,
+    );
+    const malformed_heap_image_object = api.mkString(
+        malformed_heap_image_path.ptr,
+        malformed_heap_image_path.len,
     );
     try std.testing.expectEqual(
         api.nilObj,
@@ -408,6 +429,35 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     const heap_diagnostic_bytes = api.stringBytes(heap_diagnostic, &heap_diagnostic_len);
     try std.testing.expect(
         std.mem.indexOf(u8, heap_diagnostic_bytes[0..heap_diagnostic_len], "heap references") != null,
+    );
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            store,
+            api.intern("currentValue:attr:"),
+            &.{ api.intern("heapEntity"), api.intern("heapAttr") },
+            2,
+        ),
+    );
+    const malformed_heap_rejected = api.send(
+        codegen,
+        api.intern("replayImageFacts:"),
+        &.{malformed_heap_image_object},
+        1,
+    );
+    try std.testing.expectEqual(api.nilObj, malformed_heap_rejected);
+    const malformed_heap_diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var malformed_heap_diagnostic_len: usize = 0;
+    const malformed_heap_diagnostic_bytes = api.stringBytes(
+        malformed_heap_diagnostic,
+        &malformed_heap_diagnostic_len,
+    );
+    try std.testing.expect(
+        std.mem.indexOf(
+            u8,
+            malformed_heap_diagnostic_bytes[0..malformed_heap_diagnostic_len],
+            "heap materialization",
+        ) != null,
     );
     try std.testing.expectEqual(
         api.nilObj,
