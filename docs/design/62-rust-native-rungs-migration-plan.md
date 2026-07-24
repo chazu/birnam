@@ -1750,7 +1750,10 @@ image replay boundary: it is accepted only during `beginImageDispatchRecovery`,
 replays each indexed define/remove operation in dependency order, and fails
 closed on malformed source or compilation failure. Alien replay, global/method
 target derivation, mapped-unit composition, and full durable generation
-projection/evolution authority remain N6.6 work.
+projection/evolution authority remain N6.6 work. Rust `replayAliens` now adds
+the corresponding recovery-gated journal boundary: it reads ordered
+`__alien_<n>` Store facts, re-evaluates valid String sources, and continues past
+individual failed wraps without publishing a partial success as a hard error.
 
 `compileImageCode:` now consumes the ordered Rust generation-source handoff and
 emits one TCC-backed dylib at the requested output path. It is intentionally a
