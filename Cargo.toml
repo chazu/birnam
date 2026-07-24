@@ -8,6 +8,7 @@ members = [
     "rust/birnam-image",
     "rust/birnam-lang",
     "rust/birnam-peg",
+    "rust/birnam-prelude",
     "rust/birnam-store",
     "rust/birnam-tcc",
 ]

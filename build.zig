@@ -712,6 +712,35 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_codegen_zig_store_step.dependOn(&run_rust_codegen_zig_store_test.step);
     test_step.dependOn(&run_rust_codegen_zig_store_test.step);
+
+    const rust_prelude_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_prelude_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_prelude_tests = b.addTest(.{ .root_module = rust_prelude_test_mod });
+    const run_rust_prelude_tests = b.addRunArtifact(rust_prelude_tests);
+    const rust_prelude_floor_path = if (selected_floor == .zig)
+        b.getInstallPath(.lib, "libbirnam_id_zig.dylib")
+    else
+        b.getInstallPath(.lib, "libbirnam_id.dylib");
+    run_rust_prelude_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_prelude_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_prelude_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_PRELUDE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_prelude_rust.dylib"),
+    );
+    run_rust_prelude_tests.step.dependOn(bootstrap_install);
+    const test_rust_prelude_step = b.step(
+        "test-rust-prelude",
+        "Exercise the opt-in Rust N7.1 integer prelude rung",
+    );
+    test_rust_prelude_step.dependOn(&run_rust_prelude_tests.step);
+    test_step.dependOn(&run_rust_prelude_tests.step);
+
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(
             b.path(b.fmt(
@@ -1540,6 +1569,23 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_lang_selected.step);
                 bootstrap_install.dependOn(&install_zig_lang_selected.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_prelude")) {
+            const install_zig_prelude = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_prelude_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_prelude.step);
+            bootstrap_install.dependOn(&install_zig_prelude.step);
+            const install_rust_prelude = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_prelude.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_prelude_rust.dylib",
+            );
+            install_rust_prelude.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_prelude.step);
+            bootstrap_install.dependOn(&install_rust_prelude.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
