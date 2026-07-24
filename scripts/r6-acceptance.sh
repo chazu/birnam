@@ -21,7 +21,7 @@ python3 scripts/check-native-rung-baseline.py
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
 # canonical/rollback selection checks, optimized native-rung harness, and the
-# explicit Rust Codegen runtime boundary. The full optimized verify below
+# explicit Rust Codegen runtime and Rust-only Store callback boundaries. The full optimized verify below
 # remains the cross-layer acceptance gate; the focused set keeps failures
 # attributable to the latest replacement rung.
 latest_tests=(
@@ -31,6 +31,7 @@ latest_tests=(
   test-lang-selection
   test-native-rung-harness
   test-rust-codegen-runtime
+  test-rust-codegen-stack
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT

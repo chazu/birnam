@@ -311,3 +311,14 @@ tests, the complete cross-layer verify/install/native-rung matrix, and the
 optimized benchmark comparator all remained green. The only accepted snapshot
 crossings are still `query.aggregate` (+5.8%) and `compile.stage1-stdlib`
 (+11.9%); regressions are 2, missing 0, and unusable 0.
+
+The Rust-only callback-owner slice landed at `24510d2`. A separate process now
+loads Rust Codegen and Rust Store without a Zig Codegen export, enters running,
+survives a collection, proves running-phase authorizer denial, and completes a
+quiescent Store mutation through the Rust observer. R6's focused acceptance now
+includes this target; the 25/25 Rust Codegen runtime pin and benchmark allowance
+remain unchanged.
+
+The complete R6 gate passed after `24510d2`: the focused Rust Codegen target was
+25/25 and the Rust-only callback target passed, with all cross-layer gates green
+and the same two accepted benchmark crossings.
