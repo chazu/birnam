@@ -250,6 +250,10 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     const code_heap_vt = api.proto(api.object_vt);
     api.setLayout(code_heap_vt, &code_heap_layout, code_heap_layout.len, idapi.slot_raw);
     _ = api.exportObj("RustCodegenCodeHeapVt", code_heap_vt);
+    const null_heap_layout = [_]u8{idapi.slot_oop};
+    const null_heap_vt = api.proto(api.object_vt);
+    api.setLayout(null_heap_vt, &null_heap_layout, null_heap_layout.len, idapi.slot_raw);
+    _ = api.exportObj("RustCodegenNullHeapVt", null_heap_vt);
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
@@ -363,6 +367,17 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
         7,
         &code_heap_ref,
     );
+    var null_heap_ref: [4]u8 = undefined;
+    std.mem.writeInt(u32, &null_heap_ref, 3, .little);
+    try appendImageFact(
+        &heap_facts,
+        std.testing.allocator,
+        18,
+        "nullHeap",
+        7,
+        &null_heap_ref,
+    );
+    std.mem.writeInt(u32, heap_facts.items[8..12], 4, .little);
     var heap_image: std.ArrayList(u8) = .{};
     defer heap_image.deinit(std.testing.allocator);
     try heap_image.appendSlice(std.testing.allocator, image.items[0..116]);
@@ -411,7 +426,7 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     std.mem.writeInt(u32, &u32_bytes, 1, .little);
     try second_heap_record.appendSlice(std.testing.allocator, &u32_bytes);
     try second_heap_record.appendSlice(std.testing.allocator, heap_payload.items[27..]);
-    std.mem.writeInt(u32, second_heap_record.items[0..4], 2, .little);
+    std.mem.writeInt(u32, second_heap_record.items[0..4], 3, .little);
     std.mem.writeInt(u32, &u32_bytes, 21, .little);
     try second_heap_record.appendSlice(std.testing.allocator, &u32_bytes);
     try second_heap_record.appendSlice(std.testing.allocator, "RustCodegenCodeHeapVt");
@@ -421,6 +436,13 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try second_heap_record.append(std.testing.allocator, 0);
     std.mem.writeInt(u64, &u64_bytes, 0xfeed_face_cafe_beef, .little);
     try second_heap_record.appendSlice(std.testing.allocator, &u64_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 21, .little);
+    try second_heap_record.appendSlice(std.testing.allocator, &u32_bytes);
+    try second_heap_record.appendSlice(std.testing.allocator, "RustCodegenNullHeapVt");
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try second_heap_record.appendSlice(std.testing.allocator, &u32_bytes);
+    // NullOop is a raw null pointer, distinct from the nil singleton.
+    try second_heap_record.append(std.testing.allocator, 8);
     try materialized_heap_image.appendSlice(std.testing.allocator, image.items[0..104]);
     std.mem.writeInt(u32, &u32_bytes, 3, .little);
     try materialized_heap_image.appendSlice(std.testing.allocator, &u32_bytes);
@@ -603,7 +625,7 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
         1,
     );
     try std.testing.expect(api.isSmallInt(materialized_replayed) != 0);
-    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(materialized_replayed));
+    try std.testing.expectEqual(@as(i64, 4), api.smallIntValue(materialized_replayed));
     const heap_entity = api.send(
         store,
         api.intern("currentValue:attr:"),
@@ -636,6 +658,16 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     const code_slots: [*]usize = @ptrCast(@alignCast(code_heap.?));
     try std.testing.expectEqual(@as(usize, 0), code_slots[1]);
     try std.testing.expectEqual(@as(usize, 0xfeed_face_cafe_beef), code_slots[2]);
+    const null_heap = api.send(
+        store,
+        api.intern("currentValue:attr:"),
+        &.{ api.intern("factEntity"), api.intern("nullHeap") },
+        2,
+    );
+    try std.testing.expect(null_heap != api.nilObj and null_heap != null);
+    try std.testing.expectEqual(null_heap_vt, api.vtableOf(null_heap));
+    const null_slots: [*]idapi.Oop = @ptrCast(@alignCast(null_heap.?));
+    try std.testing.expectEqual(@as(idapi.Oop, null), null_slots[0]);
     try std.testing.expectEqual(
         api.trueObj,
         api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
