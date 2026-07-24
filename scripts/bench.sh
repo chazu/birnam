@@ -5,6 +5,7 @@
 #   scripts/bench.sh --floor=rust             # dev run, Rust floor
 #   scripts/bench.sh --release --floor=zig    # tracked Zig-floor run
 #   BENCH_QUICK=1 scripts/bench.sh # the fast dev loop (fewer reps everywhere)
+#   BENCH_TCC=rust scripts/bench.sh --floor=rust # observe Rust TCC with Rust floor
 #
 # Builds ReleaseSafe (the only tracked optimize mode), runs the birnam suites
 # (micro / parse / relational / gc / image) plus the whole-process macro cases
@@ -29,6 +30,11 @@ for arg in "$@"; do
   esac
 done
 QUICK=${BENCH_QUICK:-}
+TCC=${BENCH_TCC:-zig}
+case "$TCC" in
+  zig|rust) ;;
+  *) echo "usage: BENCH_TCC=zig|rust $0 [--release] [--floor=zig|rust]" >&2; exit 2 ;;
+esac
 
 # A quick run must never become the kept-forever snapshot.
 if [ $MODE = release ] && [ -n "$QUICK" ]; then
@@ -83,7 +89,11 @@ export BIRNAM_LIB_DIR="$PREFIX/lib"
 export BIRNAM_ID_DYLIB="$FLOOR_DYLIB"
 export BIRNAM_ID_FLOOR_IDENTITY="$FLOOR_IDENTITY"
 export BIRNAM_ID_FLOOR_SHA256="$FLOOR_DIGEST"
+if [ "$TCC" = rust ]; then
+  export BIRNAM_TCC_DYLIB="$PREFIX/lib/libbirnam_id_tcc_rust.dylib"
+fi
 echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
+echo "==> selected TCC $TCC"
 
 # ---------------------------------------------------------------------------
 # birnam suites — each process writes its own JSON via BENCH_OUT.

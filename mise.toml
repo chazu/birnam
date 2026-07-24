@@ -192,6 +192,10 @@ run = "./scripts/bench.sh --floor=zig"
 description = "Run the full Rust-floor benchmark suite in an isolated ReleaseSafe prefix"
 run = "./scripts/bench.sh --floor=rust"
 
+[tasks.bench-rust-tcc]
+description = "Observe the full Rust-floor suite with the explicit Rust TCC rung"
+run = "BENCH_TCC=rust ./scripts/bench.sh --floor=rust"
+
 [tasks.bench-release]
 description = "Tracked Zig-floor benchmark snapshot with commit and dylib digest"
 run = "./scripts/bench.sh --release --floor=zig"

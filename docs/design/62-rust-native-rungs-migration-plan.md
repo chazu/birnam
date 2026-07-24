@@ -1239,6 +1239,12 @@ platform skips on both floors. It covers mapped compiled code, image save/load,
 compiled-unit replay, and the existing image composition paths without changing
 the canonical Zig TCC selection.
 
+The benchmark driver now accepts `BENCH_TCC=rust` as an observation-only
+override. A quick ReleaseSafe Rust-floor run through the explicit Rust TCC
+completed the full suite; `compile.stage1-stdlib` measured 40,682 µs median
+(2 reps), below the accepted R6 Rust-floor snapshot's 44,564 µs. Because this
+was a quick, non-guarded run, it is not a replacement acceptance snapshot.
+
 ## 11. Phase N5 — Rust language-parser rung
 
 Port `lang.zig` as an independent dynamic rung used by the cold compiler, not as
