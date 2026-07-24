@@ -19,6 +19,9 @@ pub struct Emitter {
 #[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
     SmallInt(i64),
+    /// A source-preserved integer literal. The parser's spelling is retained
+    /// so generated C does not drift through a Rust integer formatter.
+    SmallIntLiteral(&'a [u8]),
     /// A source-preserved floating-point literal (for example `3.5` or
     /// `-0.25`). Keeping the lexical bytes avoids changing C spelling through
     /// an intermediate Rust `f64` formatter.
@@ -46,6 +49,64 @@ pub enum EmitError {
 }
 
 const MAX_EXPR_DEPTH: usize = 4096;
+const MAX_CST_WRAPPER_DEPTH: usize = 4096;
+
+/// The small read-only surface needed by the emitter's CST adapter. The
+/// production Rust PEG object wrapper can implement this without exposing its
+/// allocation or IdApi details to this crate.
+pub trait CstNode {
+    fn rule(&self) -> &[u8];
+    fn start(&self) -> usize;
+    fn end(&self) -> usize;
+    fn child_count(&self) -> usize;
+    fn child(&self, index: usize) -> Option<&Self>;
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum LowerError {
+    DepthLimit,
+    InvalidSpan,
+    MissingChild,
+    InvalidSymbol,
+    UnsupportedRule,
+}
+
+/// Lower the literal subset of a CST node into the pure emitter IR.
+///
+/// `expr`, `primary`, and `message` wrappers are transparent when they have a
+/// single child, matching the Zig emitter's `skip` operation. Sends, blocks,
+/// collections, and logic variables deliberately remain unsupported until the
+/// corresponding CST-shape slices are frozen.
+pub fn lower_literal<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a>, LowerError> {
+    let mut current = node;
+    for _ in 0..MAX_CST_WRAPPER_DEPTH {
+        let rule = current.rule();
+        if matches!(rule, b"expr" | b"primary" | b"message") && current.child_count() == 1 {
+            current = current.child(0).ok_or(LowerError::MissingChild)?;
+        } else {
+            let span = source
+                .get(current.start()..current.end())
+                .ok_or(LowerError::InvalidSpan)?;
+            return match rule {
+                b"number" => Ok(Expr::SmallIntLiteral(span)),
+                b"float" => Ok(Expr::Float(span)),
+                b"string" => Ok(Expr::StringLiteral(span)),
+                b"symbol" => span
+                    .strip_prefix(b"#")
+                    .map(Expr::Symbol)
+                    .ok_or(LowerError::InvalidSymbol),
+                b"ident" => match span {
+                    b"nil" => Ok(Expr::Nil),
+                    b"true" => Ok(Expr::True),
+                    b"false" => Ok(Expr::False),
+                    _ => Ok(Expr::Global(span)),
+                },
+                _ => Err(LowerError::UnsupportedRule),
+            };
+        }
+    }
+    Err(LowerError::DepthLimit)
+}
 
 const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
 #define MKV(x) (birnam_mkSmallInt((long)(x)))
@@ -175,6 +236,12 @@ impl Emitter {
         self.bytes.extend_from_slice(b"L)");
     }
 
+    pub fn emit_small_int_literal(&mut self, literal: &[u8]) {
+        self.bytes.extend_from_slice(b"MKV(");
+        self.bytes.extend_from_slice(literal);
+        self.bytes.extend_from_slice(b"L)");
+    }
+
     pub fn emit_string(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(b"birnam_mkString(\"");
         self.push_c_string_body(bytes);
@@ -273,6 +340,7 @@ impl Emitter {
         }
         match expr {
             Expr::SmallInt(value) => self.emit_small_int(*value),
+            Expr::SmallIntLiteral(literal) => self.emit_small_int_literal(literal),
             Expr::Float(literal) => self.emit_float(literal),
             Expr::String(bytes) => self.emit_string(bytes),
             Expr::StringLiteral(source) => self.emit_string_literal(source),
@@ -313,7 +381,45 @@ impl Emitter {
 
 #[cfg(test)]
 mod tests {
-    use super::{EmitError, Emitter, Expr, TranslationUnit};
+    use super::{CstNode, EmitError, Emitter, Expr, LowerError, TranslationUnit, lower_literal};
+
+    struct TestNode {
+        rule: &'static [u8],
+        start: usize,
+        end: usize,
+        children: Vec<TestNode>,
+    }
+
+    impl CstNode for TestNode {
+        fn rule(&self) -> &[u8] {
+            self.rule
+        }
+
+        fn start(&self) -> usize {
+            self.start
+        }
+
+        fn end(&self) -> usize {
+            self.end
+        }
+
+        fn child_count(&self) -> usize {
+            self.children.len()
+        }
+
+        fn child(&self, index: usize) -> Option<&Self> {
+            self.children.get(index)
+        }
+    }
+
+    fn node(rule: &'static [u8], start: usize, end: usize, children: Vec<TestNode>) -> TestNode {
+        TestNode {
+            rule,
+            start,
+            end,
+            children,
+        }
+    }
 
     #[test]
     fn escapes_like_zig_codegen() {
@@ -387,6 +493,60 @@ mod tests {
             String::from_utf8(emitter.finish()).unwrap(),
             "birnam_nil(); birnam_false()"
         );
+    }
+
+    #[test]
+    fn lowers_cst_literals_without_runtime_or_allocator_access() {
+        let integer = node(b"number", 0, 3, vec![]);
+        assert_eq!(
+            lower_literal(&integer, b"-42"),
+            Ok(Expr::SmallIntLiteral(b"-42"))
+        );
+
+        let wrapped = node(
+            b"expr",
+            0,
+            3,
+            vec![node(b"primary", 0, 3, vec![node(b"float", 0, 3, vec![])])],
+        );
+        assert_eq!(lower_literal(&wrapped, b"3.5"), Ok(Expr::Float(b"3.5")));
+
+        let string = node(b"string", 0, 7, vec![]);
+        assert_eq!(
+            lower_literal(&string, br#""a\n\c""#),
+            Ok(Expr::StringLiteral(br#""a\n\c""#))
+        );
+
+        let symbol = node(b"symbol", 0, 4, vec![]);
+        assert_eq!(lower_literal(&symbol, b"#at:"), Ok(Expr::Symbol(b"at:")));
+
+        for (name, expected) in [
+            (b"nil".as_slice(), Expr::Nil),
+            (b"true".as_slice(), Expr::True),
+            (b"false".as_slice(), Expr::False),
+        ] {
+            let literal = node(b"ident", 0, name.len(), vec![]);
+            assert_eq!(lower_literal(&literal, name), Ok(expected));
+        }
+
+        let global = node(b"ident", 0, 7, vec![]);
+        assert_eq!(
+            lower_literal(&global, b"Integer"),
+            Ok(Expr::Global(b"Integer"))
+        );
+
+        let invalid = node(b"number", 1, 4, vec![]);
+        assert_eq!(lower_literal(&invalid, b"42"), Err(LowerError::InvalidSpan));
+
+        let unsupported = node(b"send", 0, 3, vec![]);
+        assert_eq!(
+            lower_literal(&unsupported, b"foo"),
+            Err(LowerError::UnsupportedRule)
+        );
+
+        let mut emitter = Emitter::new();
+        emitter.emit_expr(&Expr::SmallIntLiteral(b"-42")).unwrap();
+        assert_eq!(emitter.finish(), b"MKV(-42L)");
     }
 
     #[test]
