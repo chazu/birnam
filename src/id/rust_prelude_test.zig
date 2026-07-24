@@ -137,6 +137,23 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const true_rendered_bytes = api.stringBytes(true_rendered, &true_rendered_len);
     try std.testing.expectEqualStrings("true", true_rendered_bytes[0..true_rendered_len]);
 
+    const system = api.import("System");
+    try std.testing.expect(system != null);
+    const system_vt = api.import("SystemVt");
+    try std.testing.expect(system_vt != null);
+    var system_selector_count: usize = 0;
+    var saw_print = false;
+    var saw_println = false;
+    while (api.vtableSelectorAt(system_vt, system_selector_count)) |selector| : (system_selector_count += 1) {
+        const name = std.mem.span(api.symbolName(selector));
+        saw_print = saw_print or std.mem.eql(u8, name, "print:");
+        saw_println = saw_println or std.mem.eql(u8, name, "println:");
+    }
+    try std.testing.expect(saw_print);
+    try std.testing.expect(saw_println);
+    try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{api.trueObj}));
+
     loop_true = api.trueObj;
     loop_nil = api.nilObj;
     condition_calls = 0;

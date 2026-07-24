@@ -736,7 +736,7 @@ pub fn build(b: *std.Build) void {
     run_rust_prelude_tests.step.dependOn(bootstrap_install);
     const test_rust_prelude_step = b.step(
         "test-rust-prelude",
-        "Exercise the opt-in Rust N7.1 numeric prelude rung",
+        "Exercise the opt-in Rust N7.1 primitive-prelude rung",
     );
     test_rust_prelude_step.dependOn(&run_rust_prelude_tests.step);
     test_step.dependOn(&run_rust_prelude_tests.step);

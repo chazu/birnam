@@ -1,6 +1,6 @@
 //! Rust primitive-prelude rung.
 //!
-//! This N7.1 slice owns the primitive numeric protocol through the frozen IdApi
+//! This N7.1 slice owns the primitive protocol through the frozen IdApi
 //! boundary. It is deliberately a separate cdylib: the Zig prelude remains the
 //! oracle until the complete numeric, Boolean, Block, and System parity gates
 //! pass.
@@ -10,6 +10,7 @@
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
+use std::io::{self, Write};
 use std::sync::OnceLock;
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
@@ -723,6 +724,83 @@ unsafe extern "C" fn block_while_false(
     unsafe { block_loop(self_object, args, count, false) }
 }
 
+unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&[u8]> {
+    if value.is_null() || unsafe { (api.vtableOf)(value) } != api.string_vt {
+        return None;
+    }
+    let mut length = 0usize;
+    let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+    if length == 0 {
+        return Some(&[]);
+    }
+    if bytes.is_null() {
+        return None;
+    }
+    // SAFETY: stringBytes returns the floor-owned String payload for the
+    // duration of this callback; the write completes before the borrow ends.
+    Some(unsafe { core::slice::from_raw_parts(bytes, length) })
+}
+
+fn write_system_output(bytes: &[u8], newline: bool) {
+    let mut stdout = io::stdout().lock();
+    let _ = stdout.write_all(bytes);
+    if newline {
+        let _ = stdout.write_all(b"\n");
+    }
+}
+
+unsafe fn system_output(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+    newline: bool,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(bytes) = (unsafe { string_bytes(api, value) }) else {
+        return api.nilObj;
+    };
+    write_system_output(bytes, newline);
+    self_object
+}
+
+unsafe extern "C" fn system_print(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { system_output(self_object, args, count, false) }
+}
+
+unsafe extern "C" fn system_println(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { system_output(self_object, args, count, true) }
+}
+
+unsafe fn install_system_protocol(api: &IdApi) {
+    let (system_vt, system_object) = if unsafe { (api.isExported)(c"System".as_ptr()) } != 0 {
+        // SAFETY: an exported System family is process-owned and remains live
+        // across reloads; extend its vtable instead of minting a duplicate.
+        unsafe { ((api.import)(c"SystemVt".as_ptr()), (api.import)(c"System".as_ptr())) }
+    } else {
+        let system_vt = unsafe { (api.proto)(api.object_vt) };
+        let system_object = unsafe { (api.alloc)(system_vt, 0) };
+        unsafe { (api.setOwner)(system_vt, system_object) };
+        unsafe { (api.exportObj)(c"SystemVt".as_ptr(), system_vt) };
+        unsafe { (api.exportObj)(c"System".as_ptr(), system_object) };
+        (system_vt, system_object)
+    };
+    let print = unsafe { intern(api, b"print:\0") };
+    let println = unsafe { intern(api, b"println:\0") };
+    // SAFETY: the System vtable and callback addresses are process-lifetime
+    // values. The singleton is retained by the exported family.
+    unsafe {
+        (api.method)(system_vt, print, system_print);
+        (api.method)(system_vt, println, system_println);
+    }
+    let _ = system_object;
+}
+
 unsafe fn install_block_protocol(api: &IdApi) {
     let (block_vt, block_proto) = if unsafe { (api.isExported)(c"Block".as_ptr()) } != 0 {
         let block_vt = unsafe { (api.import)(c"BlockVt".as_ptr()) };
@@ -819,6 +897,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         unsafe { (api.method)(boolean_vt, symbol, *method) };
     }
     unsafe { install_block_protocol(api) };
+    unsafe { install_system_protocol(api) };
 }
 
 /// Identifies this opt-in N7.1 Rust prelude numeric/Boolean slice.
