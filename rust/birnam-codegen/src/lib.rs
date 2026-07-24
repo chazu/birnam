@@ -139,8 +139,82 @@ fn lower_expr_at_depth<'a, N: CstNode>(
     match node.rule() {
         b"number" | b"float" | b"string" | b"symbol" | b"ident" => lower_literal(node, source),
         b"send" => lower_send(node, source, depth + 1),
+        b"vectorLit" => lower_vector(node, source, depth + 1),
+        b"mapLit" => lower_map(node, source, depth + 1),
+        b"logicVar" => lower_logic_var(node, source),
         _ => Err(LowerError::UnsupportedRule),
     }
+}
+
+fn lower_vector<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Expr<'a>, LowerError> {
+    let mut result = Expr::Send {
+        receiver: Box::new(Expr::Global(b"Vector")),
+        selector: Cow::Borrowed(b"new"),
+        args: Vec::new(),
+    };
+    for index in 0..node.child_count() {
+        let element = lower_expr_at_depth(
+            node.child(index).ok_or(LowerError::MissingChild)?,
+            source,
+            depth,
+        )?;
+        result = Expr::Send {
+            receiver: Box::new(result),
+            selector: Cow::Borrowed(b"add:"),
+            args: vec![element],
+        };
+    }
+    Ok(result)
+}
+
+fn lower_map<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+    depth: usize,
+) -> Result<Expr<'a>, LowerError> {
+    let mut result = Expr::Send {
+        receiver: Box::new(Expr::Global(b"Map")),
+        selector: Cow::Borrowed(b"new"),
+        args: Vec::new(),
+    };
+    for index in 0..node.child_count() {
+        let entry = node.child(index).ok_or(LowerError::MissingChild)?;
+        if entry.rule() != b"mapEntry" || entry.child_count() != 2 {
+            return Err(LowerError::InvalidShape);
+        }
+        let key = lower_expr_at_depth(
+            entry.child(0).ok_or(LowerError::MissingChild)?,
+            source,
+            depth,
+        )?;
+        let value = lower_expr_at_depth(
+            entry.child(1).ok_or(LowerError::MissingChild)?,
+            source,
+            depth,
+        )?;
+        result = Expr::Send {
+            receiver: Box::new(result),
+            selector: Cow::Borrowed(b"at:put:"),
+            args: vec![key, value],
+        };
+    }
+    Ok(result)
+}
+
+fn lower_logic_var<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a>, LowerError> {
+    if node.child_count() != 1 {
+        return Err(LowerError::InvalidShape);
+    }
+    let name = span(node.child(0).ok_or(LowerError::MissingChild)?, source)?;
+    Ok(Expr::Send {
+        receiver: Box::new(Expr::Global(b"LogicVar")),
+        selector: Cow::Borrowed(b"named:"),
+        args: vec![Expr::Symbol(name)],
+    })
 }
 
 fn lower_send<'a, N: CstNode>(
@@ -434,6 +508,10 @@ impl Emitter {
         self.push(receiver);
         self.bytes.extend_from_slice(b", ");
         self.emit_symbol(selector);
+        if args.is_empty() {
+            self.bytes.extend_from_slice(b", 0, 0L)");
+            return;
+        }
         self.bytes.extend_from_slice(b", (void*[]){");
         for (index, arg) in args.iter().enumerate() {
             if index != 0 {
@@ -475,6 +553,10 @@ impl Emitter {
                 self.emit_expr_at_depth(receiver, depth + 1)?;
                 self.bytes.extend_from_slice(b", ");
                 self.emit_symbol(selector.as_ref());
+                if args.is_empty() {
+                    self.bytes.extend_from_slice(b", 0, 0L)");
+                    return Ok(());
+                }
                 self.bytes.extend_from_slice(b", (void*[]){");
                 for (index, arg) in args.iter().enumerate() {
                     if index != 0 {
@@ -817,6 +899,68 @@ mod tests {
         assert_eq!(
             emitter.finish(),
             b"birnam_send(birnam_send(MKV(1L), birnam_intern(\"+\"), (void*[]){MKV(2L)}, 1L), birnam_intern(\"+\"), (void*[]){MKV(3L)}, 1L)"
+        );
+    }
+
+    #[test]
+    fn lowers_collections_and_logic_variables_to_the_zig_send_shapes() {
+        let vector_source = b"#[1 2]";
+        let vector = node(
+            b"vectorLit",
+            0,
+            vector_source.len(),
+            vec![
+                node(b"expr", 2, 3, vec![node(b"number", 2, 3, vec![])]),
+                node(b"expr", 4, 5, vec![node(b"number", 4, 5, vec![])]),
+            ],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&vector, vector_source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(birnam_send(birnam_send(birnam_global(\"Vector\"), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"add:\"), (void*[]){MKV(1L)}, 1L), birnam_intern(\"add:\"), (void*[]){MKV(2L)}, 1L)"
+        );
+
+        let map_source = b"{#a -> 1}";
+        let map = node(
+            b"mapLit",
+            0,
+            map_source.len(),
+            vec![node(
+                b"mapEntry",
+                1,
+                8,
+                vec![
+                    node(b"expr", 1, 3, vec![node(b"symbol", 1, 3, vec![])]),
+                    node(b"expr", 7, 8, vec![node(b"number", 7, 8, vec![])]),
+                ],
+            )],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&map, map_source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(birnam_send(birnam_global(\"Map\"), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"at:put:\"), (void*[]){birnam_intern(\"a\"), MKV(1L)}, 2L)"
+        );
+
+        let logic_source = b"?p";
+        let logic = node(
+            b"logicVar",
+            0,
+            logic_source.len(),
+            vec![node(b"ident", 1, 2, vec![])],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&logic, logic_source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(birnam_global(\"LogicVar\"), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"p\")}, 1L)"
         );
     }
 
