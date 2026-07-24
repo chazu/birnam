@@ -20,7 +20,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
@@ -127,6 +127,7 @@ static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
+static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
 
 const PHASE_BOOTSTRAPPING: u8 = 0;
 const PHASE_RUNNING: u8 = 1;
@@ -288,6 +289,12 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
                 }
             }
         }
+    }
+    let generation = ACTIVE_GENERATION.load(Ordering::Acquire);
+    if generation != 0 {
+        // SAFETY: the generation is a projection object retained for the
+        // process lifetime once an explicit publication commits.
+        unsafe { mark(generation as Oop) };
     }
 }
 
@@ -2899,6 +2906,11 @@ unsafe fn parse_publication_plan(
     ))
 }
 
+fn publication_plan_is_current(plan: PublicationPlanState) -> bool {
+    let current = ACTIVE_GENERATION.load(Ordering::Acquire);
+    current == 0 || current == plan.expected_generation
+}
+
 unsafe extern "C" fn rust_codegen_prepare_activation(
     _self_object: Oop,
     pointer: *const Oop,
@@ -2954,6 +2966,10 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             PublicationPlanState::default(),
         )
     };
+    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+        note_error(b"RustCodegen publication plan is stale");
+        return api.nilObj;
+    }
     if validate == 0 || prepare == 0 {
         note_error(b"RustCodegen candidate is not mapped");
         return api.nilObj;
@@ -3107,6 +3123,20 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         note_error(b"RustCodegen publication commit requires quiescence");
         return api.nilObj;
     }
+    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+        if let Ok(mut candidates) = CANDIDATES.lock()
+            && let Some(candidate) = candidates
+                .iter_mut()
+                .find(|candidate| candidate.unit == unit)
+        {
+            candidate.prepared = 0;
+        }
+        if let Ok(mut prepared) = PREPARED.lock() {
+            prepared.retain(|state| state.token != token);
+        }
+        note_error(b"RustCodegen publication commit is stale");
+        return api.nilObj;
+    }
     let activate = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
@@ -3218,6 +3248,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             note_error(b"RustCodegen publication event Store is unavailable");
             return api.nilObj;
         }
+        ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
     }
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
@@ -3434,6 +3465,10 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
     } else {
         (predecessor, PublicationPlanState::default())
     };
+    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+        note_error(b"RustCodegen rollback publication plan is stale");
+        return api.nilObj;
+    }
     if !active {
         note_error(b"RustCodegen candidate is not active");
         return api.nilObj;
@@ -3554,6 +3589,20 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         note_error(b"RustCodegen publication rollback requires quiescence");
         return api.nilObj;
     }
+    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+        if let Ok(mut candidates) = CANDIDATES.lock()
+            && let Some(candidate) = candidates
+                .iter_mut()
+                .find(|candidate| candidate.unit == unit)
+        {
+            candidate.prepared = 0;
+        }
+        if let Ok(mut prepared) = PREPARED.lock() {
+            prepared.retain(|state| state.token != token);
+        }
+        note_error(b"RustCodegen publication rollback is stale");
+        return api.nilObj;
+    }
     let operations = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
@@ -3658,6 +3707,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             note_error(b"RustCodegen publication event Store is unavailable");
             return api.nilObj;
         }
+        ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
     }
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
