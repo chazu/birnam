@@ -86,6 +86,50 @@ pub trait CstNode {
     fn child(&self, index: usize) -> Option<&Self>;
 }
 
+/// An owned CST projection used at the runtime boundary. The core emitter does
+/// not know about IdApi or Oop objects; the Rust PEG adapter materializes its
+/// transient nodes into this byte-owned tree before lowering.
+#[derive(Debug, PartialEq, Eq)]
+pub struct OwnedCst {
+    rule: Vec<u8>,
+    start: usize,
+    end: usize,
+    children: Vec<OwnedCst>,
+}
+
+impl OwnedCst {
+    pub fn new(rule: &[u8], start: usize, end: usize, children: Vec<OwnedCst>) -> Self {
+        Self {
+            rule: rule.to_vec(),
+            start,
+            end,
+            children,
+        }
+    }
+}
+
+impl CstNode for OwnedCst {
+    fn rule(&self) -> &[u8] {
+        &self.rule
+    }
+
+    fn start(&self) -> usize {
+        self.start
+    }
+
+    fn end(&self) -> usize {
+        self.end
+    }
+
+    fn child_count(&self) -> usize {
+        self.children.len()
+    }
+
+    fn child(&self, index: usize) -> Option<&Self> {
+        self.children.get(index)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum LowerError {
     DepthLimit,
@@ -912,8 +956,8 @@ mod tests {
     use std::borrow::Cow;
 
     use super::{
-        Block, CstNode, EmitError, Emitter, Expr, LowerError, Program, Statement, TranslationUnit,
-        lower_expr, lower_literal, lower_program,
+        Block, CstNode, EmitError, Emitter, Expr, LowerError, OwnedCst, Program, Statement,
+        TranslationUnit, lower_expr, lower_literal, lower_program,
     };
 
     struct TestNode {
@@ -1034,6 +1078,11 @@ mod tests {
         assert_eq!(
             lower_literal(&integer, b"-42"),
             Ok(Expr::SmallIntLiteral(b"-42"))
+        );
+        let owned = OwnedCst::new(b"number", 0, 2, Vec::new());
+        assert_eq!(
+            lower_literal(&owned, b"17"),
+            Ok(Expr::SmallIntLiteral(b"17"))
         );
 
         let wrapped = node(
