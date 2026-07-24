@@ -54,6 +54,49 @@ test "Rust Codegen emits through Rust PEG and the live IdApi boundary" {
     try std.testing.expect(std.mem.indexOf(u8, block, "birnam_intern(\"value:\")") != null);
 }
 
+test "Rust Codegen preflights v4 image framing without loading it" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const valid_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/valid.image", .{directory});
+    defer std.testing.allocator.free(valid_path);
+    var bytes: [28 + 12 + 64]u8 = undefined;
+    @memcpy(bytes[0..8], "BIRNAMIM");
+    std.mem.writeInt(u32, bytes[8..12], 4, .little);
+    std.mem.writeInt(u32, bytes[12..16], 0x0102_0304, .little);
+    std.mem.writeInt(u32, bytes[16..20], 1, .little);
+    std.mem.writeInt(u64, bytes[20..28], 0, .little);
+    std.mem.writeInt(u32, bytes[28..32], 5, .little);
+    std.mem.writeInt(u64, bytes[32..40], 64, .little);
+    @memset(bytes[40..], 0);
+    try tmp.dir.writeFile(.{ .sub_path = "valid.image", .data = &bytes });
+
+    const valid = api.mkString(valid_path.ptr, valid_path.len);
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("preflightImage:"), &.{valid}, 1),
+    );
+
+    bytes[0] = 'X';
+    try tmp.dir.writeFile(.{ .sub_path = "invalid.image", .data = &bytes });
+    const invalid_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/invalid.image", .{directory});
+    defer std.testing.allocator.free(invalid_path);
+    const invalid = api.mkString(invalid_path.ptr, invalid_path.len);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("preflightImage:"), &.{invalid}, 1),
+    );
+    const diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var diagnostic_len: usize = 0;
+    const diagnostic_bytes = api.stringBytes(diagnostic, &diagnostic_len);
+    try std.testing.expect(
+        std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "framing") != null,
+    );
+}
+
 test "Rust Codegen evaluates a scalar program through Rust TCC" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

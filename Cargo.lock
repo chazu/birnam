@@ -24,6 +24,7 @@ dependencies = [
  "birnam-abi",
  "birnam-artifact",
  "birnam-codegen",
+ "birnam-image",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ use birnam_artifact::candidate::{
 };
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
+use birnam_image::Image;
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::{CStr, OsStr, OsString};
@@ -64,6 +65,7 @@ const GENERATION_SOURCES_SELECTOR: &[u8] = b"generationSources\0";
 const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
+const PREFLIGHT_IMAGE_SELECTOR: &[u8] = b"preflightImage:\0";
 const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
@@ -119,6 +121,7 @@ const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
 const ARTIFACT_DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
 const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_IMAGE_PREFLIGHT_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -1955,6 +1958,50 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
     let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
     let arguments = [source_object, values[0]];
     unsafe { rust_codegen_compile_output(self_object, arguments.as_ptr(), arguments.len()) }
+}
+
+/// Validate a portable v4 image without changing the live runtime.
+///
+/// This is deliberately a framing boundary: the pure image crate checks the
+/// header, record envelopes, single authority, and authority/code binding, but
+/// this method does not map code, materialize heap objects, swizzle references,
+/// or import Store facts. Those operations remain owned by the image loader
+/// until their N6.6 authority and recovery gates are complete.
+unsafe extern "C" fn rust_codegen_preflight_image(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen preflightImage: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen preflightImage: expects one image path");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen image path was not a String");
+        return api.nilObj;
+    };
+    let path = Path::new(OsStr::from_bytes(&path_bytes));
+    let Ok(metadata) = fs::metadata(path) else {
+        note_error(b"RustCodegen image preflight could not stat the image");
+        return api.nilObj;
+    };
+    if metadata.len() > MAX_IMAGE_PREFLIGHT_BYTES {
+        note_error(b"RustCodegen image preflight image is too large");
+        return api.nilObj;
+    }
+    let Ok(bytes) = fs::read(path) else {
+        note_error(b"RustCodegen image preflight could not read the image");
+        return api.nilObj;
+    };
+    if Image::parse(&bytes).is_err() {
+        note_error(b"RustCodegen image preflight framing is invalid");
+        return api.nilObj;
+    }
+    api.trueObj
 }
 
 unsafe extern "C" fn rust_codegen_replay_methods(
@@ -4790,6 +4837,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_IMAGE_CODE_SELECTOR),
             rust_codegen_compile_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PREFLIGHT_IMAGE_SELECTOR),
+            rust_codegen_preflight_image,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
