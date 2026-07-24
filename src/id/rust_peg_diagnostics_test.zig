@@ -31,6 +31,19 @@ fn bringPeg(api: *idapi.IdApi) !void {
     }
 }
 
+fn bringLang(api: *idapi.IdApi) !void {
+    if (std.posix.getenv("BIRNAM_RUST_LANG_DYLIB")) |path| {
+        const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+        defer std.heap.c_allocator.free(path_z);
+        const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustLangDlopenFailed;
+        const raw_init = api.dlsym(handle, "module_init") orelse return error.RustLangModuleInitMissing;
+        const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+        _ = init(api, null);
+    } else {
+        lang.bringUp(api);
+    }
+}
+
 fn send0(api: *idapi.IdApi, receiver: Oop, selector: [*:0]const u8) Oop {
     return api.send(receiver, api.intern(selector), &.{}, 0);
 }
@@ -59,7 +72,7 @@ test "Rust PEG preserves language syntax-error diagnostics" {
     const api = floor.api();
     try bringPeg(api);
     err_mod.bringUp(api);
-    lang.bringUp(api);
+    try bringLang(api);
 
     const lang_obj = api.import("Lang") orelse return error.LangNotExported;
     for (malformed) |source| {

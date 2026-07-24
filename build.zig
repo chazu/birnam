@@ -33,6 +33,12 @@ pub fn build(b: *std.Build) void {
         "tcc",
         "TCC implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
+    const LangImpl = enum { zig, rust };
+    const selected_lang = b.option(
+        LangImpl,
+        "lang",
+        "Language parser implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .rust;
     const RungImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
@@ -156,6 +162,17 @@ pub fn build(b: *std.Build) void {
     );
     test_tcc_selection_step.dependOn(&tcc_selection_smoke.step);
     test_step.dependOn(&tcc_selection_smoke.step);
+
+    const lang_selection_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/lang-selection-smoke.sh",
+    });
+    const test_lang_selection_step = b.step(
+        "test-lang-selection",
+        "Verify canonical Rust-Lang selection, Zig rollback, and fail-closed choices",
+    );
+    test_lang_selection_step.dependOn(&lang_selection_smoke.step);
+    test_step.dependOn(&lang_selection_smoke.step);
 
     // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
     // only to this test module; runtime, install, and artifact-selection code do
@@ -720,6 +737,34 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_cst_parity_step.dependOn(&run_rust_peg_cst_parity.step);
     test_step.dependOn(&run_rust_peg_cst_parity.step);
 
+    const rust_lang_parity_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_cst_parity_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_lang_parity_tests = b.addTest(.{ .root_module = rust_lang_parity_mod });
+    rust_lang_parity_tests.linkLibC();
+    const run_rust_lang_parity = b.addRunArtifact(rust_lang_parity_tests);
+    run_rust_lang_parity.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_lang_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_lang_parity.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_lang_parity.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_lang_parity.setEnvironmentVariable(
+        "BIRNAM_RUST_LANG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_lang_rust.dylib"),
+    );
+    run_rust_lang_parity.setEnvironmentVariable("BIRNAM_RUST_PEG_CST_DIGEST", "0df93b8aea32fe0d");
+    run_rust_lang_parity.step.dependOn(bootstrap_install);
+    const test_rust_lang_parity_step = b.step(
+        "test-rust-lang-parity",
+        "Compare Rust Lang plus Rust PEG CST shape with the frozen Zig Lang corpus",
+    );
+    test_rust_lang_parity_step.dependOn(&run_rust_lang_parity.step);
+    test_step.dependOn(&run_rust_lang_parity.step);
+
     const rust_peg_diagnostics_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_diagnostics_test.zig"),
         .target = target,
@@ -742,6 +787,33 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_peg_diagnostics_step.dependOn(&run_rust_peg_diagnostics.step);
     test_step.dependOn(&run_rust_peg_diagnostics.step);
+
+    const rust_lang_diagnostics_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_peg_diagnostics_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_lang_diagnostics_tests = b.addTest(.{ .root_module = rust_lang_diagnostics_mod });
+    rust_lang_diagnostics_tests.linkLibC();
+    const run_rust_lang_diagnostics = b.addRunArtifact(rust_lang_diagnostics_tests);
+    run_rust_lang_diagnostics.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_lang_diagnostics.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_lang_diagnostics.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_lang_diagnostics.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_lang_diagnostics.setEnvironmentVariable(
+        "BIRNAM_RUST_LANG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_lang_rust.dylib"),
+    );
+    run_rust_lang_diagnostics.step.dependOn(bootstrap_install);
+    const test_rust_lang_diagnostics_step = b.step(
+        "test-rust-lang-diagnostics",
+        "Check syntax-error kind, furthest offset, and message through Rust Lang and PEG",
+    );
+    test_rust_lang_diagnostics_step.dependOn(&run_rust_lang_diagnostics.step);
+    test_step.dependOn(&run_rust_lang_diagnostics.step);
 
     const rust_peg_codegen_parity_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_peg_codegen_parity_test.zig"),
@@ -1328,11 +1400,25 @@ pub fn build(b: *std.Build) void {
             install_rust_lang.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_lang.step);
             bootstrap_install.dependOn(&install_rust_lang.step);
-            const install_zig_lang_selected = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_lang.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_lang_selected.step);
-            bootstrap_install.dependOn(&install_zig_lang_selected.step);
+            if (selected_lang == .rust) {
+                const install_rust_lang_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_lang.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_lang.dylib",
+                );
+                install_rust_lang_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_lang_selected.step);
+                bootstrap_install.dependOn(&install_rust_lang_selected.step);
+            } else {
+                const install_zig_lang_selected = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_lang.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_lang_selected.step);
+                bootstrap_install.dependOn(&install_zig_lang_selected.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
