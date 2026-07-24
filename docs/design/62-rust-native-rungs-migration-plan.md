@@ -1555,6 +1555,12 @@ Zig Codegen loader. Rust accepts the older Zig descriptor framing by deriving
 the payload length from the mandatory magic/header when Zig's optional length
 symbol is absent; both directions return `7` through the frozen Method ABI.
 
+The opt-in Rust boundary now exposes `moduleMetadataOf:` as well. It returns
+the same five-field metadata projection used by project indexing for a literal
+`Module named:requires:` declaration, including deterministic source/revision
+digests, and answers `nil` for legacy source without that declaration. It is
+analysis-only: no source is evaluated and no Store facts are changed.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
