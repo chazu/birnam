@@ -95,6 +95,7 @@ const ENTER_RUNNING_SELECTOR: &[u8] = b"enterRunning\0";
 const BEGIN_QUIESCENCE_SELECTOR: &[u8] = b"beginQuiescence\0";
 const END_QUIESCENCE_SELECTOR: &[u8] = b"endQuiescence\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
+const LOAD_HOST_CAPABILITY_SELECTOR: &[u8] = b"loadHostCapability:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
 const RELOCATE_SELECTOR: &[u8] = b"relocate\0";
@@ -148,6 +149,7 @@ static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static HOST_CAPABILITY_LOADING: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
@@ -3772,6 +3774,7 @@ unsafe extern "C" fn rust_codegen_authorize_method_mutation() -> Oop {
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     if MOP_MUTATION_IN_PROGRESS.load(Ordering::Acquire)
+        || HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
         || matches!(
             RUNTIME_PHASE.load(Ordering::Acquire),
             PHASE_BOOTSTRAPPING | PHASE_QUIESCENT | PHASE_IMAGE_RECOVERY
@@ -5366,6 +5369,22 @@ unsafe extern "C" fn rust_codegen_load(
     unsafe { entry(api.nilObj, ptr::null(), 0) }
 }
 
+unsafe extern "C" fn rust_codegen_load_host_capability(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    struct HostCapabilityGuard;
+    impl Drop for HostCapabilityGuard {
+        fn drop(&mut self) {
+            HOST_CAPABILITY_LOADING.store(false, Ordering::Release);
+        }
+    }
+    HOST_CAPABILITY_LOADING.store(true, Ordering::Release);
+    let _guard = HostCapabilityGuard;
+    unsafe { rust_codegen_load(self_object, pointer, count) }
+}
+
 unsafe extern "C" fn rust_codegen_last_error(
     _self_object: Oop,
     _pointer: *const Oop,
@@ -5666,6 +5685,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, LOAD_SELECTOR),
             rust_codegen_load,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, LOAD_HOST_CAPABILITY_SELECTOR),
+            rust_codegen_load_host_capability,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

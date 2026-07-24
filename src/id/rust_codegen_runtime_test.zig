@@ -1774,6 +1774,28 @@ test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(zig_loaded_rust));
 }
 
+test "Rust Codegen loads a host capability through its explicit entrypoint" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const old_codegen = api.import("Codegen") orelse return error.MissingCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_host_capability.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source_text = "[Reflect defineMethod: #rustHostCapabilityAnswer on: Integer as: [:self | 321]]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(path.ptr, path.len);
+    try std.testing.expectEqual(output, api.send(old_codegen, api.intern("compile:output:"), &.{ source, output }, 2));
+    const loaded = api.send(rust_codegen, api.intern("loadHostCapability:"), &.{output}, 1);
+    try std.testing.expect(loaded != api.nilObj);
+    try std.testing.expectEqual(
+        @as(i64, 321),
+        api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustHostCapabilityAnswer"), &.{}, 0)),
+    );
+}
+
 test "Rust Codegen disables rollback after external method drift" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
