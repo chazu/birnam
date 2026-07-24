@@ -1904,7 +1904,13 @@ and two benchmark crossings.
 The malformed-alien continuation regression landed at `90d5181`: replay skips
 one invalid recorded source without losing the valid neighboring replay. R6
 passed again with 20/20 focused tests, the documented fixture exception, and
-only the two accepted benchmark crossings.
+only the two accepted benchmark crossings. Commit `bc56a67` hardens the
+best-effort boundary by clearing the stale diagnostic after a partial success;
+malformed entries are skipped, the valid replay count is preserved, and
+`lastError` is clear. The complete R6 script passed again at that checkpoint
+with 20/20 focused tests, the same fixture exception, and exactly the two
+accepted crossings (`query.aggregate +5.8%` and
+`compile.stage1-stdlib +11.9%`).
 
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
