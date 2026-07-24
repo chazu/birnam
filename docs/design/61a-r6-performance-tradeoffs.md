@@ -201,3 +201,9 @@ focused-output pin was corrected at `b20ccb5` to match the aggregate Zig build
 report while retaining the exact 20-test boundary. The complete acceptance
 script passed again with the documented fixture exception and only the two
 accepted benchmark crossings.
+
+Malformed heap framing coverage landed at `b0c9245`: a validly framed Heap
+record that claims a missing object now fails during Rust heap materialization,
+before the Store load begins, and the pre-existing Store value remains absent.
+The complete R6 script passed again at that checkpoint with 20/20 focused Rust
+tests, the documented fixture exception, and the same two accepted crossings.

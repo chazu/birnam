@@ -1948,6 +1948,12 @@ output check was aligned with the aggregate Zig build at `b20ccb5`; the
 complete acceptance script passed with the 20-test Rust Codegen boundary, the
 documented fixture exception, and only the two accepted benchmark crossings.
 
+Malformed heap framing coverage landed at `b0c9245`: the Rust materializer now
+has a regression proving that a Heap record whose object count exceeds its
+payload fails closed before `imageLoadBegin` or any Store mutation. The focused
+Rust Codegen target remains 20/20, and the complete R6 gate passed again with
+the documented fixture exception and the same two accepted crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
