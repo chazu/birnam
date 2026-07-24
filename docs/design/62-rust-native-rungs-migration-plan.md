@@ -2140,6 +2140,11 @@ prepared and discarded; its token cannot later commit, while the candidate
 remains mapped and publishes no Store state. The full gate passed with 4/4 for
 both Rust Store and Zig Store and no new benchmark exception.
 
+The Rust-only drift hardening landed at `4f5a46c`: after the external method
+replacement marks an active candidate `drifted` and disables rollback, an
+explicit `prepareRollback:` is rejected as well. Both 4/4 callback variants
+and the full R6 gate remain green with no new benchmark exception.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
