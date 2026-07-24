@@ -1561,6 +1561,13 @@ the same five-field metadata projection used by project indexing for a literal
 digests, and answers `nil` for legacy source without that declaration. It is
 analysis-only: no source is evaluated and no Store facts are changed.
 
+`sourceRevisionOf:` now exposes the corresponding seven-field revision value
+(`name`, requirements, authored source, and three deterministic digest slots)
+for the same literal module shape, with `nil` for legacy source. The digest
+partition is intentionally conservative at this rung (all slots use the
+source digest); method/non-method partitioning remains part of candidate
+projection hardening before N6.5 activation.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
