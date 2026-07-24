@@ -377,7 +377,7 @@ test "Rust Codegen retains registered module sources across collection" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
     const name = api.intern("rustRegisteredModule");
-    const source_text = "[Module named: #rustRegisteredModule requires: #[]]; 7";
+    const source_text = "[Module named: #rustRegisteredModule requires: #[]]; [Reflect defineMethod: #rustRegisteredAnswer on: Integer as: [:self | 321]]; 7";
     const source = api.mkString(source_text.ptr, source_text.len);
     try std.testing.expectEqual(
         source,
@@ -415,7 +415,36 @@ test "Rust Codegen retains registered module sources across collection" {
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(ordered_sources, api.intern("size"), &.{}, 0)));
     try std.testing.expectEqual(source, api.send(ordered_sources, api.intern("at:"), &.{api.mkSmallInt(0)}, 1));
     const method_sources = api.send(codegen, api.intern("generationMethodSources"), &.{}, 0);
-    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(api.send(method_sources, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(method_sources, api.intern("size"), &.{}, 0)));
+    const globals = api.import("Globals") orelse return error.MissingGlobals;
+    try std.testing.expectEqual(
+        api.import("Reflect") orelse return error.MissingReflect,
+        api.send(globals, api.intern("at:put:"), &.{ api.intern("Reflect"), api.import("Reflect") orelse return error.MissingReflect }, 2),
+    );
+    try std.testing.expectEqual(
+        api.import("Integer") orelse return error.MissingInteger,
+        api.send(globals, api.intern("at:put:"), &.{ api.intern("Integer"), api.import("Integer") orelse return error.MissingInteger }, 2),
+    );
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("replayMethods"), &.{}, 0),
+    );
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    try std.testing.expectEqual(
+        @as(i64, 1),
+        api.smallIntValue(api.send(codegen, api.intern("replayMethods"), &.{}, 0)),
+    );
+    try std.testing.expectEqual(
+        @as(i64, 321),
+        api.smallIntValue(api.send(api.mkSmallInt(7), api.intern("rustRegisteredAnswer"), &.{}, 0)),
+    );
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
+    );
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
     var image_tmp = std.testing.tmpDir(.{});
     defer image_tmp.cleanup();
