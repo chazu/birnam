@@ -27,6 +27,12 @@ pub fn build(b: *std.Build) void {
         "peg",
         "PEG matcher installed as canonical libbirnam_id_peg.dylib (zig or rust)",
     ) orelse .zig;
+    const TccImpl = enum { zig, rust };
+    const selected_tcc = b.option(
+        TccImpl,
+        "tcc",
+        "TCC implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .rust;
     const RungImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
@@ -1232,7 +1238,9 @@ pub fn build(b: *std.Build) void {
                 bootstrap_install.dependOn(&install_zig_peg.step);
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_tcc")) {
-            const install_zig_tcc = b.addInstallArtifact(lib, .{});
+            const install_zig_tcc = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_tcc_zig.dylib",
+            });
             b.getInstallStep().dependOn(&install_zig_tcc.step);
             bootstrap_install.dependOn(&install_zig_tcc.step);
             const install_rust_tcc = b.addInstallFileWithDir(
@@ -1246,6 +1254,25 @@ pub fn build(b: *std.Build) void {
             install_rust_tcc.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_tcc.step);
             bootstrap_install.dependOn(&install_rust_tcc.step);
+            if (selected_tcc == .rust) {
+                const install_rust_tcc_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_tcc.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_tcc.dylib",
+                );
+                install_rust_tcc_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_tcc_selected.step);
+                bootstrap_install.dependOn(&install_rust_tcc_selected.step);
+            } else {
+                const install_zig_tcc_selected = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_tcc.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_tcc_selected.step);
+                bootstrap_install.dependOn(&install_zig_tcc_selected.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
