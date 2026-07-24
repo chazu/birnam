@@ -1,10 +1,10 @@
 # 62 — Rust Native-Rung Migration Plan
 
-> **Status:** Plan of record, 2026-07-23; stabilized after three adversarial
+> **Status:** Plan of record, 2026-07-24; stabilized after three adversarial
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5.1
+> complete; N3.5.1 through N3.5.4 and N4.1 through N4.4 are complete; N5.1
 > through N5.4 and N6.1 are complete; N6.2 is in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
@@ -1167,6 +1167,17 @@ five-second fail-safe threshold. The accepted R6 performance comparator still
 governs repository-level PEG/compile/eval tradeoffs; this slice adds no
 unrecorded regression allowance and keeps the Zig PEG oracle available for a
 paired rerun.
+
+#### N3.5.4 execution record — complete, 2026-07-24
+
+The canonical PEG selection now defaults to Rust at `734cb2c`. The explicit
+`-Dpeg=zig` path and installed Zig PEG oracle remain available for rollback and
+paired characterization. A Rust-selected `zig build verify -Doptimize=ReleaseSafe`
+passed before the switch, and the complete R6 acceptance gate passed after it:
+all focused tests remained green (including Rust Codegen 20/20), the relocated
+install and native-rung harnesses passed, and the benchmark comparator retained
+exactly the two previously accepted crossings (`query.aggregate` +5.8% and
+`compile.stage1-stdlib` +11.9%). No new exception was added.
 
 ## 10. Phase N4 — libtcc and generated runtime shim
 

@@ -241,3 +241,11 @@ Rust image replay now rebuilds the relational rule cache at `bf54131` when the
 `db` surface is present, matching the Zig loader after facts and the MOP mirror
 are restored. The focused target and full R6 gate passed with no benchmark
 change.
+
+The Rust PEG default switch landed at `734cb2c`: canonical
+`libbirnam_id_peg.dylib` now selects Rust, while the Zig matcher remains
+available through `-Dpeg=zig` and the installed oracle filename. Rust-selected
+ReleaseSafe verify and the complete R6 acceptance gate passed after the switch.
+The benchmark comparator retained exactly the two accepted crossings:
+`query.aggregate` +5.8% and `compile.stage1-stdlib` +11.9%; no additional
+exception was accepted.
