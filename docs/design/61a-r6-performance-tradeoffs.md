@@ -326,3 +326,11 @@ and the same two accepted benchmark crossings.
 The callback matrix now also covers Rust Codegen against the Zig Store oracle at
 `98bb180`. Both Rust Store and Zig Store callback targets pass after collection;
 the complete R6 gate remains green with no benchmark change.
+
+The candidate-retention boundary landed at `c68f78a`: the Rust Codegen
+candidate lifecycle fixture now collects after successor activation and before
+rollback preparation, then proves the retained candidate is still mapped and
+that rollback restores the predecessor dispatch carrier. The focused 25/25
+Rust Codegen target, Rust Store and Zig Store callback variants, and complete
+R6 acceptance all passed; the only accepted benchmark crossings remain
+`query.aggregate` (+5.8%) and `compile.stage1-stdlib` (+11.9%).

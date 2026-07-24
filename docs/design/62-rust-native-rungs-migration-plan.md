@@ -2090,6 +2090,15 @@ the complete R6 gate remains green with no benchmark change. Candidate
 activation reentry, provider lifetime across retained candidate state, and
 actual Store rollback selection remain the next N6.5 hardening slices.
 
+The retained-candidate rollback boundary landed at `c68f78a`. The existing
+Rust Codegen lifecycle fixture now forces a collection after successor
+activation and before rollback preparation, proving the candidate registry
+provider keeps the successor mapped and that rollback restores the predecessor
+dispatch carrier. The complete gate passed again with the focused 25/25
+runtime target plus both Rust Store and Zig Store callback-owner variants.
+Candidate activation reentry and the remaining full N6.5 callback/rollback
+matrix are still open; no new benchmark exception was accepted.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
