@@ -1207,6 +1207,12 @@ runtime export with `dlsym`.
 The remaining N4.3 evidence is the existing full Codegen/Alien matrix through
 the Rust TCC selection and a separate-process load of an emitted artifact.
 
+The complete unchanged 50-test Codegen suite now runs with both the explicit
+Rust PEG and Rust TCC dylibs and passes on the Rust floor. The Zig TCC oracle's
+runtime symbols are hidden from test executables, preventing a host-export
+collision from masking the selected Rust callback provider. The separate
+process artifact-load check remains before N4.3 closes.
+
 ### N4.4 — Switch and observe
 
 Require generated-C execution, callback reentry, compiled dylibs in another

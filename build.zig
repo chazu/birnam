@@ -912,10 +912,14 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_PEG_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
     );
+    run_rust_peg_codegen_full.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
     run_rust_peg_codegen_full.step.dependOn(bootstrap_install);
     const test_rust_peg_codegen_full_step = b.step(
         "test-rust-peg-codegen-full",
-        "Run the complete unchanged Zig codegen suite through the explicit Rust PEG matcher",
+        "Run the complete unchanged Zig codegen suite through explicit Rust PEG and TCC rungs",
     );
     test_rust_peg_codegen_full_step.dependOn(&run_rust_peg_codegen_full.step);
     test_step.dependOn(&run_rust_peg_codegen_full.step);

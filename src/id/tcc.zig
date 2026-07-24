@@ -246,7 +246,7 @@ fn rtCstr(o: Oop) callconv(.c) [*:0]const u8 {
     return @ptrCast(buf);
 }
 fn rtFreeCstr(p: [*:0]const u8) callconv(.c) void {
-    std.c.free(@constCast(@ptrCast(p)));
+    std.c.free(@ptrCast(@constCast(p)));
 }
 
 // The shims are ALSO real dynamic symbols of the runtime (docs/40 §3a, slice 1):
@@ -256,28 +256,30 @@ fn rtFreeCstr(p: [*:0]const u8) callconv(.c) void {
 // relocatable. The JIT path keeps patching the same addresses through
 // `bindRuntime`'s pre-relocate symbol window.
 comptime {
-    @export(&rtSend, .{ .name = "birnam_send" });
-    @export(&rtIntern, .{ .name = "birnam_intern" });
-    @export(&rtMkSmallInt, .{ .name = "birnam_mkSmallInt" });
-    @export(&rtSmallIntValue, .{ .name = "birnam_smallIntValue" });
-    @export(&rtMkFloat, .{ .name = "birnam_mkFloat" });
-    @export(&rtFloatValue, .{ .name = "birnam_floatValue" });
-    @export(&rtMkWord, .{ .name = "birnam_mkWord" });
-    @export(&rtWordValue, .{ .name = "birnam_wordValue" });
-    @export(&rtUintValue, .{ .name = "birnam_uintValue" });
-    @export(&rtMkString, .{ .name = "birnam_mkString" });
-    @export(&rtNil, .{ .name = "birnam_nil" });
-    @export(&rtTrue, .{ .name = "birnam_true" });
-    @export(&rtFalse, .{ .name = "birnam_false" });
-    @export(&rtObjectVt, .{ .name = "birnam_objectVt" });
-    @export(&rtBlockVt, .{ .name = "birnam_blockVt" });
-    @export(&rtProto, .{ .name = "birnam_proto" });
-    @export(&rtEnsurePrivateVtable, .{ .name = "birnam_ensurePrivateVtable" });
-    @export(&rtMethod, .{ .name = "birnam_method" });
-    @export(&rtAlloc, .{ .name = "birnam_alloc" });
-    @export(&rtCstr, .{ .name = "birnam_cstr" });
-    @export(&rtFreeCstr, .{ .name = "birnam_free_cstr" });
-    @export(&rtLayoutAllOops, .{ .name = "birnam_layoutAllOops" });
+    if (!@import("builtin").is_test) {
+        @export(&rtSend, .{ .name = "birnam_send" });
+        @export(&rtIntern, .{ .name = "birnam_intern" });
+        @export(&rtMkSmallInt, .{ .name = "birnam_mkSmallInt" });
+        @export(&rtSmallIntValue, .{ .name = "birnam_smallIntValue" });
+        @export(&rtMkFloat, .{ .name = "birnam_mkFloat" });
+        @export(&rtFloatValue, .{ .name = "birnam_floatValue" });
+        @export(&rtMkWord, .{ .name = "birnam_mkWord" });
+        @export(&rtWordValue, .{ .name = "birnam_wordValue" });
+        @export(&rtUintValue, .{ .name = "birnam_uintValue" });
+        @export(&rtMkString, .{ .name = "birnam_mkString" });
+        @export(&rtNil, .{ .name = "birnam_nil" });
+        @export(&rtTrue, .{ .name = "birnam_true" });
+        @export(&rtFalse, .{ .name = "birnam_false" });
+        @export(&rtObjectVt, .{ .name = "birnam_objectVt" });
+        @export(&rtBlockVt, .{ .name = "birnam_blockVt" });
+        @export(&rtProto, .{ .name = "birnam_proto" });
+        @export(&rtEnsurePrivateVtable, .{ .name = "birnam_ensurePrivateVtable" });
+        @export(&rtMethod, .{ .name = "birnam_method" });
+        @export(&rtAlloc, .{ .name = "birnam_alloc" });
+        @export(&rtCstr, .{ .name = "birnam_cstr" });
+        @export(&rtFreeCstr, .{ .name = "birnam_free_cstr" });
+        @export(&rtLayoutAllOops, .{ .name = "birnam_layoutAllOops" });
+    }
 }
 
 const RuntimeSym = struct { name: [*:0]const u8, addr: *const anyopaque };

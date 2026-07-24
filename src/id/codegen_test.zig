@@ -35,6 +35,19 @@ fn bringPeg(api: *idapi.IdApi) !void {
     }
 }
 
+fn bringTcc(api: *idapi.IdApi) !void {
+    if (std.posix.getenv("BIRNAM_RUST_TCC_DYLIB")) |path| {
+        const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+        defer std.heap.c_allocator.free(path_z);
+        const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustTccDlopenFailed;
+        const raw_init = api.dlsym(handle, "module_init") orelse return error.RustTccModuleInitMissing;
+        const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+        _ = init(api, null);
+    } else {
+        tcc.bringUp(api);
+    }
+}
+
 fn setup() *idapi.IdApi {
     const api = floor.api();
     gapi = api;
@@ -42,7 +55,7 @@ fn setup() *idapi.IdApi {
     store.bringUp(api); // codegen resolves globals through the store
     bringPeg(api) catch @panic("PEG codegen test backend failed to load");
     lang.bringUp(api);
-    tcc.bringUp(api);
+    bringTcc(api) catch @panic("TCC codegen test backend failed to load");
     codegen.bringUp(api);
     // The prelude provides the SmallInt protocol. Arithmetic `[a + b]` compiles to
     // a real send now (not inlined C math), so it dispatches here — without the
