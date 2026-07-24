@@ -19,9 +19,20 @@ pub struct Emitter {
 #[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
     SmallInt(i64),
+    /// A source-preserved floating-point literal (for example `3.5` or
+    /// `-0.25`). Keeping the lexical bytes avoids changing C spelling through
+    /// an intermediate Rust `f64` formatter.
+    Float(&'a [u8]),
     String(&'a [u8]),
+    /// A Birnam string literal including its source quotes and escapes. The
+    /// known Birnam escapes are decoded before the C string is emitted; an
+    /// unknown escape keeps its backslash, matching the Zig emitter.
+    StringLiteral(&'a [u8]),
     Symbol(&'a [u8]),
     Global(&'a [u8]),
+    Nil,
+    True,
+    False,
     Send {
         receiver: Box<Expr<'a>>,
         selector: &'a [u8],
@@ -173,6 +184,55 @@ impl Emitter {
         self.bytes.extend_from_slice(b"L)");
     }
 
+    pub fn emit_float(&mut self, literal: &[u8]) {
+        self.bytes.extend_from_slice(b"birnam_mkFloat(");
+        self.bytes.extend_from_slice(literal);
+        self.bytes.extend_from_slice(b")");
+    }
+
+    pub fn emit_string_literal(&mut self, source: &[u8]) {
+        let inner = if source.len() >= 2 {
+            &source[1..source.len() - 1]
+        } else {
+            source
+        };
+        let mut decoded = Vec::with_capacity(inner.len());
+        let mut index = 0;
+        while index < inner.len() {
+            if inner[index] == b'\\' && index + 1 < inner.len() {
+                let escape = match inner[index + 1] {
+                    b'"' => Some(b'"'),
+                    b'\\' => Some(b'\\'),
+                    b'n' => Some(b'\n'),
+                    b't' => Some(b'\t'),
+                    b'r' => Some(b'\r'),
+                    b'0' => Some(0),
+                    _ => None,
+                };
+                if let Some(byte) = escape {
+                    decoded.push(byte);
+                    index += 2;
+                    continue;
+                }
+            }
+            decoded.push(inner[index]);
+            index += 1;
+        }
+        self.emit_string(&decoded);
+    }
+
+    pub fn emit_nil(&mut self) {
+        self.bytes.extend_from_slice(b"birnam_nil()");
+    }
+
+    pub fn emit_true(&mut self) {
+        self.bytes.extend_from_slice(b"birnam_true()");
+    }
+
+    pub fn emit_false(&mut self) {
+        self.bytes.extend_from_slice(b"birnam_false()");
+    }
+
     pub fn emit_symbol(&mut self, name: &[u8]) {
         self.bytes.extend_from_slice(b"birnam_intern(\"");
         self.push_c_string_body(name);
@@ -213,9 +273,14 @@ impl Emitter {
         }
         match expr {
             Expr::SmallInt(value) => self.emit_small_int(*value),
+            Expr::Float(literal) => self.emit_float(literal),
             Expr::String(bytes) => self.emit_string(bytes),
+            Expr::StringLiteral(source) => self.emit_string_literal(source),
             Expr::Symbol(name) => self.emit_symbol(name),
             Expr::Global(name) => self.emit_global(name),
+            Expr::Nil => self.emit_nil(),
+            Expr::True => self.emit_true(),
+            Expr::False => self.emit_false(),
             Expr::Send {
                 receiver,
                 selector,
@@ -298,6 +363,30 @@ mod tests {
         }
         let mut emitter = Emitter::new();
         assert_eq!(emitter.emit_expr(&deep), Err(EmitError::DepthLimit));
+    }
+
+    #[test]
+    fn emits_float_singletons_and_source_string_escapes_like_zig() {
+        let expression = Expr::Send {
+            receiver: Box::new(Expr::Float(b"-0.25")),
+            selector: b"ifTrue:ifFalse:",
+            args: vec![Expr::True, Expr::StringLiteral(br#""a\n\c""#)],
+        };
+        let mut emitter = Emitter::new();
+        emitter.emit_expr(&expression).unwrap();
+        assert_eq!(
+            String::from_utf8(emitter.finish()).unwrap(),
+            "birnam_send(birnam_mkFloat(-0.25), birnam_intern(\"ifTrue:ifFalse:\"), (void*[]){birnam_true(), birnam_mkString(\"a\\n\\\\c\", 4L)}, 2L)"
+        );
+
+        let mut emitter = Emitter::new();
+        emitter.emit_expr(&Expr::Nil).unwrap();
+        emitter.push(b"; ");
+        emitter.emit_expr(&Expr::False).unwrap();
+        assert_eq!(
+            String::from_utf8(emitter.finish()).unwrap(),
+            "birnam_nil(); birnam_false()"
+        );
     }
 
     #[test]
