@@ -859,6 +859,33 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_stress_step.dependOn(&run_rust_peg_stress.step);
     test_step.dependOn(&run_rust_peg_stress.step);
 
+    const rust_lang_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/lang_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_lang_tests = b.addTest(.{ .root_module = rust_lang_mod });
+    rust_lang_tests.linkLibC();
+    const run_rust_lang = b.addRunArtifact(rust_lang_tests);
+    run_rust_lang.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_lang.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_lang.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_lang.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_lang.setEnvironmentVariable(
+        "BIRNAM_RUST_LANG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_lang_rust.dylib"),
+    );
+    run_rust_lang.step.dependOn(bootstrap_install);
+    const test_rust_lang_step = b.step(
+        "test-rust-lang",
+        "Run the unchanged language grammar suite through Rust PEG and Rust Lang",
+    );
+    test_rust_lang_step.dependOn(&run_rust_lang.step);
+    test_step.dependOn(&run_rust_lang.step);
+
     const rust_peg_installed_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/rust-peg-installed-smoke.sh",
@@ -1284,6 +1311,28 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_tcc_selected.step);
                 bootstrap_install.dependOn(&install_zig_tcc_selected.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_lang")) {
+            const install_zig_lang = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_lang_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_lang.step);
+            bootstrap_install.dependOn(&install_zig_lang.step);
+            const install_rust_lang = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_lang.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_lang_rust.dylib",
+            );
+            install_rust_lang.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_lang.step);
+            bootstrap_install.dependOn(&install_rust_lang.step);
+            const install_zig_lang_selected = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_lang.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_lang_selected.step);
+            bootstrap_install.dependOn(&install_zig_lang_selected.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);

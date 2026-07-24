@@ -21,6 +21,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-lang"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-peg"
 version = "0.0.0"
 dependencies = [

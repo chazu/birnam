@@ -58,7 +58,8 @@ required_dylibs=(
   libbirnam_id_artifact_zig.dylib
   libbirnam_store.dylib libbirnam_id_peg.dylib libbirnam_id_peg_rust.dylib
   libbirnam_id_tcc.dylib libbirnam_id_tcc_rust.dylib libbirnam_id_tcc_zig.dylib
-  libbirnam_id_lang.dylib libbirnam_id_tcc.dylib libbirnam_id_codegen.dylib
+  libbirnam_id_lang.dylib libbirnam_id_lang_rust.dylib libbirnam_id_lang_zig.dylib
+  libbirnam_id_tcc.dylib libbirnam_id_codegen.dylib
   libbirnam_id_prelude.dylib libbirnam_id_collection.dylib
   libbirnam_id_error.dylib libbirnam_id_isolate.dylib
   libbirnam_id_relational.dylib libbirnam_id_alien.dylib
