@@ -1742,8 +1742,12 @@ requirements, rejects cycles or malformed revisions, and remains deterministic
 within a generation. `generationMethodSources` extracts only install operations
 in that same order, while `currentGenerationDigest` reports the process-local
 published successor digest when an explicit plan has committed. These methods
-are read-only source composition; image replay, alien derivation, and durable
-generation authority remain N6.6 work.
+are read-only source composition. Rust `replayMethods` now provides the first
+image replay boundary: it is accepted only during `beginImageDispatchRecovery`,
+replays each indexed define/remove operation in dependency order, and fails
+closed on malformed source or compilation failure. Alien replay, global/method
+target derivation, mapped-unit composition, and durable generation authority
+remain N6.6 work.
 
 `compileImageCode:` now consumes the ordered Rust generation-source handoff and
 emits one TCC-backed dylib at the requested output path. It is intentionally a
