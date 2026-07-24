@@ -75,9 +75,9 @@ impl Emitter {
     }
 
     pub fn emit_small_int(&mut self, value: i64) {
-        self.bytes.extend_from_slice(b"birnam_mkSmallInt(");
+        self.bytes.extend_from_slice(b"MKV(");
         self.bytes.extend_from_slice(value.to_string().as_bytes());
-        self.bytes.extend_from_slice(b")");
+        self.bytes.extend_from_slice(b"L)");
     }
 
     pub fn emit_string(&mut self, bytes: &[u8]) {
@@ -180,10 +180,10 @@ mod tests {
         emitter.push(b"; ");
         emitter.emit_global(b"Integer");
         emitter.push(b"; ");
-        emitter.emit_send(b"birnam_mkSmallInt(1)", b"+", &[b"birnam_mkSmallInt(2)"]);
+        emitter.emit_send(b"MKV(1L)", b"+", &[b"MKV(2L)"]);
         assert_eq!(
             String::from_utf8(emitter.finish()).unwrap(),
-            "birnam_mkSmallInt(42); birnam_global(\"Integer\"); birnam_send(birnam_mkSmallInt(1), birnam_intern(\"+\"), (void*[]){birnam_mkSmallInt(2)}, 1L)"
+            "MKV(42L); birnam_global(\"Integer\"); birnam_send(MKV(1L), birnam_intern(\"+\"), (void*[]){MKV(2L)}, 1L)"
         );
     }
 

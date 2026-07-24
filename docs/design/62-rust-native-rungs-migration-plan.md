@@ -1381,8 +1381,9 @@ cannot silently become a second runtime authority. Two unit tests pin the
 escaping and compositional output shape; `cargo test --workspace --locked
 --offline` passes. The emitter now also accepts a pure expression IR with an
 explicit 4096-node depth bound; deep input returns a typed error instead of
-recursing without a limit. Clippy is clean, and the crate is not selected by
-the production build yet.
+recursing without a limit. Integer emission now matches the Zig oracle's
+`MKV(<literal>L)` spelling exactly. Clippy is clean, and the crate is not
+selected by the production build yet.
 
 ### N6.3 — Port eval and compile orchestration
 
