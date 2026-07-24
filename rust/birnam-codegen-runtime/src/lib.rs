@@ -64,7 +64,9 @@ const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
 const CANDIDATE_CONTENT_PATH_SELECTOR: &[u8] = b"candidateContentPath:\0";
 const PREPARE_ACTIVATION_SELECTOR: &[u8] = b"prepareActivation:\0";
+const PREPARE_ACTIVATION_PLAN_SELECTOR: &[u8] = b"prepareActivation:plan:\0";
 const PREPARE_ROLLBACK_SELECTOR: &[u8] = b"prepareRollback:\0";
+const PREPARE_ROLLBACK_PLAN_SELECTOR: &[u8] = b"prepareRollback:plan:\0";
 const COMMIT_PREPARED_SELECTOR: &[u8] = b"commitPrepared:\0";
 const COMMIT_PREPARED_ROLLBACK_SELECTOR: &[u8] = b"commitPreparedRollback:\0";
 const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
@@ -164,6 +166,16 @@ struct PreparedState {
     unit: usize,
     rollback: bool,
     prior: usize,
+    plan: PublicationPlanState,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PublicationPlanState {
+    event: usize,
+    basis: usize,
+    expected_generation: usize,
+    successor_generation: usize,
+    enforce_lifecycle: bool,
 }
 
 #[derive(Clone)]
@@ -257,10 +269,24 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
         }
     }
     if let Ok(prepared) = PREPARED.lock() {
-        for token in prepared.iter().map(|prepared| prepared.token) {
+        for state in prepared.iter() {
             // SAFETY: prepared tokens are Object instances retained by this
             // process-local lifecycle registry until consumed or discarded.
-            unsafe { mark(token as Oop) };
+            unsafe {
+                mark(state.token as Oop);
+                if state.plan.event != 0 {
+                    mark(state.plan.event as Oop);
+                }
+                if state.plan.basis != 0 {
+                    mark(state.plan.basis as Oop);
+                }
+                if state.plan.expected_generation != 0 {
+                    mark(state.plan.expected_generation as Oop);
+                }
+                if state.plan.successor_generation != 0 {
+                    mark(state.plan.successor_generation as Oop);
+                }
+            }
         }
     }
 }
@@ -2816,6 +2842,63 @@ unsafe extern "C" fn rust_codegen_candidate_content_path(
     unsafe { (api.mkString)(path.as_ptr(), path.len()) }
 }
 
+unsafe fn parse_publication_plan(
+    api: &IdApi,
+    unit: Oop,
+    name: Oop,
+    plan: Oop,
+    action: &[u8],
+) -> Option<(usize, PublicationPlanState)> {
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    if vector_vt.is_null() || unsafe { (api.vtableOf)(plan) } != vector_vt {
+        note_error(b"RustCodegen publication plan is not a Vector");
+        return None;
+    }
+    if unsafe { vector_length(api, plan, vector_vt) } != Some(8) {
+        note_error(b"RustCodegen publication plan has the wrong shape");
+        return None;
+    }
+    let action_object = unsafe { intern(api, action) };
+    if unsafe { vector_item(api, plan, 0) } != action_object
+        || unsafe { vector_item(api, plan, 1) } != unit
+        || unsafe { vector_item(api, plan, 2) } != name
+    {
+        note_error(b"RustCodegen publication plan identity mismatches");
+        return None;
+    }
+    let prior = unsafe { vector_item(api, plan, 3) };
+    let event = unsafe { vector_item(api, plan, 4) };
+    let basis = unsafe { vector_item(api, plan, 5) };
+    let expected_generation = unsafe { vector_item(api, plan, 6) };
+    let successor_generation = unsafe { vector_item(api, plan, 7) };
+    if event.is_null()
+        || event == api.nilObj
+        || basis.is_null()
+        || basis == api.nilObj
+        || expected_generation.is_null()
+        || expected_generation == api.nilObj
+        || successor_generation.is_null()
+        || successor_generation == api.nilObj
+    {
+        note_error(b"RustCodegen publication plan is incomplete");
+        return None;
+    }
+    Some((
+        if prior == api.nilObj {
+            0
+        } else {
+            prior as usize
+        },
+        PublicationPlanState {
+            event: event as usize,
+            basis: basis as usize,
+            expected_generation: expected_generation as usize,
+            successor_generation: successor_generation as usize,
+            enforce_lifecycle: true,
+        },
+    ))
+}
+
 unsafe extern "C" fn rust_codegen_prepare_activation(
     _self_object: Oop,
     pointer: *const Oop,
@@ -2829,8 +2912,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let prior = values.get(1).copied().unwrap_or(api.nilObj);
-    let (validate, prepare, prepared, active, mut operations) = {
+    let (name, validate, prepare, prepared, active, mut operations) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -2843,11 +2925,33 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             return api.nilObj;
         };
         (
+            candidate.name as Oop,
             candidate.validate,
             candidate.prepare,
             candidate.prepared,
             candidate.active,
             candidate.operations.clone(),
+        )
+    };
+    let (prior, plan) = if let Some(raw_plan) = values.get(1).copied()
+        && unsafe { (api.vtableOf)(raw_plan) }
+            == unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) }
+    {
+        let Some((prior, plan)) =
+            (unsafe { parse_publication_plan(api, values[0], name, raw_plan, b"activate\0") })
+        else {
+            return api.nilObj;
+        };
+        (prior, plan)
+    } else {
+        (
+            values
+                .get(1)
+                .copied()
+                .filter(|value| *value != api.nilObj)
+                .map(|value| value as usize)
+                .unwrap_or(0),
+            PublicationPlanState::default(),
         )
     };
     if validate == 0 || prepare == 0 {
@@ -2862,18 +2966,18 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
         note_error(b"RustCodegen candidate is already active");
         return api.nilObj;
     }
-    if prior == values[0] {
+    if prior == values[0] as usize {
         note_error(b"RustCodegen candidate prior is itself");
         return api.nilObj;
     }
-    if prior != api.nilObj {
+    if prior != 0 {
         let prior_active = CANDIDATES
             .lock()
             .ok()
             .and_then(|candidates| {
                 candidates
                     .iter()
-                    .find(|candidate| candidate.unit == prior as usize)
+                    .find(|candidate| candidate.unit == prior)
                     .map(|candidate| candidate.active)
             })
             .unwrap_or(false);
@@ -2950,7 +3054,8 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             token: token as usize,
             unit: values[0] as usize,
             rollback: false,
-            prior: prior as usize,
+            prior,
+            plan,
         });
         return token;
     }
@@ -2972,7 +3077,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
     let api = unsafe { api(runtime) };
     clear_error();
     let token = values[0] as usize;
-    let (unit, prior) = {
+    let (unit, prior, plan) = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
             return api.nilObj;
@@ -2981,8 +3086,27 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             note_error(b"RustCodegen prepared token is invalid");
             return api.nilObj;
         };
-        (state.unit, state.prior)
+        (state.unit, state.prior, state.plan)
     };
+    if plan.enforce_lifecycle
+        && !matches!(
+            RUNTIME_PHASE.load(Ordering::Acquire),
+            PHASE_BOOTSTRAPPING | PHASE_QUIESCENT
+        )
+    {
+        if let Ok(mut candidates) = CANDIDATES.lock()
+            && let Some(candidate) = candidates
+                .iter_mut()
+                .find(|candidate| candidate.unit == unit)
+        {
+            candidate.prepared = 0;
+        }
+        if let Ok(mut prepared) = PREPARED.lock() {
+            prepared.retain(|state| state.token != token);
+        }
+        note_error(b"RustCodegen publication commit requires quiescence");
+        return api.nilObj;
+    }
     let activate = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
@@ -3057,6 +3181,44 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             api.trueObj,
         )
     };
+    if plan.enforce_lifecycle {
+        let action = unsafe { intern(api, b"activate\0") };
+        if !(unsafe {
+            assert_candidate_fact(api, runtime, plan.event as Oop, b"unit\0", unit as Oop)
+        }) || !(unsafe {
+            assert_candidate_fact(api, runtime, plan.event as Oop, b"action\0", action)
+        }) || !(unsafe {
+            assert_candidate_fact(
+                api,
+                runtime,
+                plan.event as Oop,
+                b"basis\0",
+                plan.basis as Oop,
+            )
+        }) || (prior != 0
+            && !(unsafe {
+                assert_candidate_fact(
+                    api,
+                    runtime,
+                    plan.event as Oop,
+                    b"priorUnit\0",
+                    prior as Oop,
+                )
+            }))
+            || !(unsafe {
+                assert_candidate_fact(
+                    api,
+                    runtime,
+                    unit as Oop,
+                    b"activationEvent\0",
+                    plan.event as Oop,
+                )
+            })
+        {
+            note_error(b"RustCodegen publication event Store is unavailable");
+            return api.nilObj;
+        }
+    }
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
             .iter()
@@ -3232,13 +3394,13 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen prepareRollback: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen prepareRollback: expects one unit");
+    if values.len() != 1 && values.len() != 2 {
+        abort("RustCodegen prepareRollback: expects unit or unit and plan");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let (prepared, active, operations) = {
+    let (name, prepared, active, predecessor, operations) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -3251,10 +3413,26 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
             return api.nilObj;
         };
         (
+            candidate.name as Oop,
             candidate.prepared,
             candidate.active,
+            candidate.predecessor,
             candidate.operations.clone(),
         )
+    };
+    let (prior, plan) = if let Some(raw_plan) = values.get(1).copied() {
+        let Some((prior, plan)) =
+            (unsafe { parse_publication_plan(api, values[0], name, raw_plan, b"rollback\0") })
+        else {
+            return api.nilObj;
+        };
+        if prior != predecessor {
+            note_error(b"RustCodegen rollback publication prior mismatches predecessor");
+            return api.nilObj;
+        }
+        (prior, plan)
+    } else {
+        (predecessor, PublicationPlanState::default())
     };
     if !active {
         note_error(b"RustCodegen candidate is not active");
@@ -3319,7 +3497,8 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
             token: token as usize,
             unit: values[0] as usize,
             rollback: true,
-            prior: candidate.predecessor,
+            prior,
+            plan,
         });
         return token;
     }
@@ -3341,7 +3520,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
     let api = unsafe { api(runtime) };
     clear_error();
     let token = values[0] as usize;
-    let (unit, rollback, prior) = {
+    let (unit, rollback, prior, plan) = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
             return api.nilObj;
@@ -3350,10 +3529,29 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             note_error(b"RustCodegen prepared token is invalid");
             return api.nilObj;
         };
-        (state.unit, state.rollback, state.prior)
+        (state.unit, state.rollback, state.prior, state.plan)
     };
     if !rollback {
         note_error(b"RustCodegen prepared token is invalid");
+        return api.nilObj;
+    }
+    if plan.enforce_lifecycle
+        && !matches!(
+            RUNTIME_PHASE.load(Ordering::Acquire),
+            PHASE_BOOTSTRAPPING | PHASE_QUIESCENT
+        )
+    {
+        if let Ok(mut candidates) = CANDIDATES.lock()
+            && let Some(candidate) = candidates
+                .iter_mut()
+                .find(|candidate| candidate.unit == unit)
+        {
+            candidate.prepared = 0;
+        }
+        if let Ok(mut prepared) = PREPARED.lock() {
+            prepared.retain(|state| state.token != token);
+        }
+        note_error(b"RustCodegen publication rollback requires quiescence");
         return api.nilObj;
     }
     let operations = {
@@ -3423,6 +3621,44 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             api.falseObj,
         )
     };
+    if plan.enforce_lifecycle {
+        let action = unsafe { intern(api, b"rollback\0") };
+        if !(unsafe {
+            assert_candidate_fact(api, runtime, plan.event as Oop, b"unit\0", unit as Oop)
+        }) || !(unsafe {
+            assert_candidate_fact(api, runtime, plan.event as Oop, b"action\0", action)
+        }) || !(unsafe {
+            assert_candidate_fact(
+                api,
+                runtime,
+                plan.event as Oop,
+                b"basis\0",
+                plan.basis as Oop,
+            )
+        }) || (prior != 0
+            && !(unsafe {
+                assert_candidate_fact(
+                    api,
+                    runtime,
+                    plan.event as Oop,
+                    b"priorUnit\0",
+                    prior as Oop,
+                )
+            }))
+            || !(unsafe {
+                assert_candidate_fact(
+                    api,
+                    runtime,
+                    unit as Oop,
+                    b"activationEvent\0",
+                    plan.event as Oop,
+                )
+            })
+        {
+            note_error(b"RustCodegen publication event Store is unavailable");
+            return api.nilObj;
+        }
+    }
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
             .iter()
@@ -3723,7 +3959,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, PREPARE_ACTIVATION_PLAN_SELECTOR),
+            rust_codegen_prepare_activation,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, PREPARE_ROLLBACK_SELECTOR),
+            rust_codegen_prepare_rollback,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PREPARE_ROLLBACK_PLAN_SELECTOR),
             rust_codegen_prepare_rollback,
         );
         (api.method)(

@@ -578,7 +578,26 @@ test "Rust Codegen inspects and maps a Zig candidate" {
         2,
     ));
     try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("mapCandidate:"), &.{successor_unit}, 1));
-    const successor_token = api.send(rust_codegen, api.intern("prepareActivation:"), &.{ successor_unit, unit }, 2);
+    const vector = api.import("Vector") orelse return error.MissingVector;
+    const object = api.import("Object") orelse return error.MissingObject;
+    var successor_plan = api.send(vector, api.intern("new"), &.{}, 0);
+    const successor_event = api.send(object, api.intern("clone"), &.{}, 0);
+    const successor_basis = api.send(object, api.intern("clone"), &.{}, 0);
+    const expected_generation = api.send(object, api.intern("clone"), &.{}, 0);
+    const successor_generation = api.send(object, api.intern("clone"), &.{}, 0);
+    for ([_]idapi.Oop{
+        api.intern("activate"),
+        successor_unit,
+        api.intern("rustCandidateSuccessor"),
+        unit,
+        successor_event,
+        successor_basis,
+        expected_generation,
+        successor_generation,
+    }) |value| {
+        successor_plan = api.send(successor_plan, api.intern("add:"), &.{value}, 1);
+    }
+    const successor_token = api.send(rust_codegen, api.intern("prepareActivation:plan:"), &.{ successor_unit, successor_plan }, 2);
     try std.testing.expect(successor_token != api.nilObj);
     try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{successor_token}, 1));
     try std.testing.expectEqual(
@@ -591,7 +610,22 @@ test "Rust Codegen inspects and maps a Zig candidate" {
     );
     try std.testing.expectEqual(@as(i64, 456), api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustCandidateAnswer"), &.{}, 0)));
 
-    const successor_rollback_token = api.send(rust_codegen, api.intern("prepareRollback:"), &.{successor_unit}, 1);
+    var rollback_plan = api.send(vector, api.intern("new"), &.{}, 0);
+    const rollback_event = api.send(object, api.intern("clone"), &.{}, 0);
+    const rollback_basis = api.send(object, api.intern("clone"), &.{}, 0);
+    for ([_]idapi.Oop{
+        api.intern("rollback"),
+        successor_unit,
+        api.intern("rustCandidateSuccessor"),
+        unit,
+        rollback_event,
+        rollback_basis,
+        successor_generation,
+        expected_generation,
+    }) |value| {
+        rollback_plan = api.send(rollback_plan, api.intern("add:"), &.{value}, 1);
+    }
+    const successor_rollback_token = api.send(rust_codegen, api.intern("prepareRollback:plan:"), &.{ successor_unit, rollback_plan }, 2);
     try std.testing.expect(successor_rollback_token != api.nilObj);
     try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("commitPreparedRollback:"), &.{successor_rollback_token}, 1));
     try std.testing.expectEqual(
