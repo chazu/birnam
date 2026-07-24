@@ -509,12 +509,19 @@ Codegen/Image suites and the baseline gate pass.
 
 The R6 acceptance script was rerun after the Rust source-registration and
 revision-metadata slices (`aafb835`, documented by `5c155af`). The native-rung
-baseline, all six focused replacement gates (including the 15-test Rust
+baseline, all six focused replacement gates (including the 17-test Rust
 Codegen runtime suite), and the full optimized closure passed. Full verify
 still reports only the exact quarantined `run-tests.birnam`/`sortedModules`
 fixture crash; the fixed-hash comparator reports no missing or unusable cases
 and exactly the accepted `query.aggregate +5.8%` and
 `compile.stage1-stdlib +11.9%` crossings.
+
+After the artifact dependency-loader gate landed at `13ec3d3`, the same R6
+script passed at `3d55d58`. Its focused Rust Codegen target passed 17/17,
+including dependency rejection before artifact initialization; the optimized
+closure retained the exact quarantined fixture signature, and the comparator
+retained the same digest-pinned pair and two accepted crossings. This is a
+functional coverage update only, not a new performance exception.
 
 ### N0.6 — Generalize installed native-source resources
 
