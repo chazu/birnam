@@ -1422,6 +1422,13 @@ post-order and failed nested emission rolls back their definitions. Ten
 Codegen tests and Clippy pass; runtime orchestration and actual dylib
 selection remain intentionally deferred to N6.3+.
 
+The CST root/body seam is now explicit: `program` lowers to an ordered
+statement IR, and `Emitter::emit_program` emits local bindings and the final
+body value transactionally while preserving nested block definitions. It does
+not yet perform persistent global writes or runtime error publication; those
+remain deliberately gated under N6.3 orchestration. Eleven Codegen tests and
+the full workspace suite pass for the current pure crate.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
