@@ -6,7 +6,10 @@
 //! Codegen core, and returns deterministic generated C without invoking TCC.
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
-use birnam_artifact::candidate::{Manifest as CandidateManifest, Operation as CandidateOperation};
+use birnam_artifact::candidate::{
+    Manifest as CandidateManifest, Operation as CandidateOperation, inspect as inspect_candidate,
+    inspect_manifest,
+};
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
@@ -23,6 +26,7 @@ const RUST_CODEGEN_VT_NAME: &[u8] = b"RustCodegenVt\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
+const STORE_NAME: &[u8] = b"Store\0";
 const VECTOR_NAME: &[u8] = b"Vector\0";
 const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
 const PEG_CST_VT_NAME: &[u8] = b"PegCstVt\0";
@@ -52,6 +56,7 @@ const SEAL_INITIAL_GENERATION_SELECTOR: &[u8] = b"sealInitialGeneration\0";
 const INITIAL_GENERATION_PROJECTION_SELECTOR: &[u8] = b"initialGenerationProjection\0";
 const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
     b"successorGenerationProjection:replacing:with:unit:\0";
+const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -63,6 +68,7 @@ const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
 const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
+const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
 const MAX_CST_DEPTH: usize = 4096;
 const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
@@ -76,6 +82,7 @@ struct Runtime {
     rust_codegen: usize,
     tcc: usize,
     globals: usize,
+    store: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -84,7 +91,22 @@ static LIVE_UNITS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static MODULE_SOURCES: Mutex<Vec<(usize, usize)>> = Mutex::new(Vec::new());
 static INITIAL_GENERATION_SEALED: Mutex<bool> = Mutex::new(false);
 static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
+
+#[allow(dead_code)]
+struct CandidateState {
+    unit: usize,
+    name: usize,
+    source: usize,
+    author_path: Vec<u8>,
+    checksum: [u8; 64],
+    source_digest: [u8; 64],
+    non_method_digest: [u8; 64],
+    method_digest: [u8; 64],
+    revision_digest: [u8; 64],
+    manifest: Vec<u8>,
+}
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Codegen: {message}");
@@ -143,6 +165,17 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
         unsafe {
             mark(name as Oop);
             mark(source as Oop);
+        }
+    }
+    if let Ok(candidates) = CANDIDATES.lock() {
+        for candidate in candidates.iter() {
+            // SAFETY: candidate units and metadata are retained by this
+            // process-local registry until explicit lifecycle cleanup exists.
+            unsafe {
+                mark(candidate.unit as Oop);
+                mark(candidate.name as Oop);
+                mark(candidate.source as Oop);
+            }
         }
     }
 }
@@ -1848,6 +1881,275 @@ unsafe fn rust_codegen_compile_output_impl(
     }
 }
 
+fn fixed_macho_name(bytes: &[u8]) -> Option<&[u8]> {
+    let end = bytes.iter().position(|byte| *byte == 0)?;
+    Some(&bytes[..end])
+}
+
+/// Apply the frozen candidate Mach-O policy before any `dlopen` or initializer
+/// can run. This mirrors the Zig Codegen check byte-for-byte at the contract
+/// level: thin arm64 dylib, no init sections, and only libSystem as a load
+/// dependency.
+fn candidate_macho_safe(bytes: &[u8]) -> bool {
+    if bytes.len() < 32
+        || u32::from_le_bytes(bytes[0..4].try_into().unwrap()) != 0xfeedfacf
+        || u32::from_le_bytes(bytes[4..8].try_into().unwrap()) != 0x0100000c
+        || u32::from_le_bytes(bytes[12..16].try_into().unwrap()) != 6
+    {
+        return false;
+    }
+    let ncmds = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    let sizeofcmds = u32::from_le_bytes(bytes[20..24].try_into().unwrap()) as usize;
+    let Some(commands_end) = 32usize.checked_add(sizeofcmds) else {
+        return false;
+    };
+    if commands_end > bytes.len() {
+        return false;
+    }
+    let mut offset = 32usize;
+    for _ in 0..ncmds {
+        let command_end = offset.checked_add(8).and_then(|end| {
+            let command_size = u32::from_le_bytes(bytes[offset + 4..end].try_into().ok()?) as usize;
+            (command_size >= 8).then_some((command_size, offset.checked_add(command_size)?))
+        });
+        let Some((command_size, next)) = command_end else {
+            return false;
+        };
+        if next > commands_end {
+            return false;
+        }
+        let command = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        if command == 0x19 {
+            if command_size < 72 {
+                return false;
+            }
+            let nsects =
+                u32::from_le_bytes(bytes[offset + 64..offset + 68].try_into().unwrap()) as usize;
+            let Some(sections_end) = nsects
+                .checked_mul(80)
+                .and_then(|size| 72usize.checked_add(size))
+            else {
+                return false;
+            };
+            if sections_end > command_size {
+                return false;
+            }
+            let mut section = offset + 72;
+            for _ in 0..nsects {
+                let name = fixed_macho_name(&bytes[section..section + 16]);
+                if matches!(name, Some(b"__mod_init_func" | b"__init_offsets")) {
+                    return false;
+                }
+                section += 80;
+            }
+        } else if matches!(
+            command,
+            0xc | 0x18 | 0x8000_0018 | 0x1f | 0x8000_001f | 0x20 | 0x23 | 0x8000_0023
+        ) {
+            if command_size < 24 {
+                return false;
+            }
+            let name_offset =
+                u32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap()) as usize;
+            if name_offset >= command_size {
+                return false;
+            }
+            let name = fixed_macho_name(&bytes[offset + name_offset..next]);
+            if command != 0xc || name != Some(b"/usr/lib/libSystem.B.dylib") {
+                return false;
+            }
+        }
+        offset = next;
+    }
+    offset == commands_end
+}
+
+unsafe fn assert_candidate_fact(
+    api: &IdApi,
+    runtime: &Runtime,
+    unit: Oop,
+    attribute: &[u8],
+    value: Oop,
+) -> bool {
+    let store = runtime.store as Oop;
+    if store.is_null() {
+        return false;
+    }
+    let attribute = unsafe { intern(api, attribute) };
+    unsafe { send(api, store, STORE_ASSERT_SELECTOR, &[unit, attribute, value]) != api.nilObj }
+}
+
+unsafe fn candidate_manifest_vector(api: &IdApi, metadata: &RevisionMetadata) -> Oop {
+    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    if vector.is_null() {
+        return api.nilObj;
+    }
+    let mut values = unsafe { send0(api, vector, NEW_SELECTOR) };
+    for requirement in &metadata.requires {
+        let requirement = unsafe { (api.intern)(requirement.as_ptr().cast()) };
+        values = unsafe { send(api, values, b"add:\0", &[requirement]) };
+    }
+    values
+}
+
+unsafe extern "C" fn rust_codegen_inspect_candidate(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen inspectCandidate:into: received invalid arguments"));
+    if values.len() != 2 {
+        abort("RustCodegen inspectCandidate:into: expects path and unit");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let Some(path) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen candidate path was not a String");
+        return api.nilObj;
+    };
+    if path.is_empty() || path.contains(&0) {
+        note_error(b"RustCodegen candidate path is invalid");
+        return api.nilObj;
+    }
+    if values[1].is_null() || values[1] == api.nilObj {
+        note_error(b"RustCodegen candidate unit is invalid");
+        return api.nilObj;
+    }
+    let mut sidecar_path = path.clone();
+    sidecar_path.extend_from_slice(b".candidate");
+    let sidecar = match fs::read(Path::new(OsStr::from_bytes(&sidecar_path))) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            note_error(b"RustCodegen candidate manifest is unavailable");
+            return api.nilObj;
+        }
+    };
+    let envelope = match inspect_candidate(&sidecar) {
+        Ok(envelope) => envelope,
+        Err(_) => {
+            note_error(b"RustCodegen candidate manifest is invalid");
+            return api.nilObj;
+        }
+    };
+    let artifact = match fs::read(Path::new(OsStr::from_bytes(&path))) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            note_error(b"RustCodegen candidate artifact is unavailable");
+            return api.nilObj;
+        }
+    };
+    if !candidate_macho_safe(&artifact) {
+        note_error(b"RustCodegen candidate artifact is unsafe");
+        return api.nilObj;
+    }
+    let checksum = sha256_hex(&artifact);
+    if envelope.artifact_digest != checksum {
+        note_error(b"RustCodegen candidate artifact checksum mismatches");
+        return api.nilObj;
+    }
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let source_object = unsafe { (api.mkString)(envelope.source.as_ptr(), envelope.source.len()) };
+    let Some((source, metadata)) = (unsafe { parse_revision_metadata(api, source_object) }) else {
+        note_error(b"RustCodegen candidate source is not indexable");
+        return api.nilObj;
+    };
+    let Ok(manifest) = inspect_manifest(envelope.manifest) else {
+        note_error(b"RustCodegen candidate manifest is invalid");
+        return api.nilObj;
+    };
+    if !candidate_manifest_matches(manifest, &source, &metadata) {
+        note_error(b"RustCodegen candidate metadata mismatches source");
+        return api.nilObj;
+    }
+    let name = unsafe { (api.intern)(metadata.name.as_ptr().cast()) };
+    if let Ok(candidates) = CANDIDATES.lock()
+        && let Some(existing) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[1] as usize)
+    {
+        if existing.checksum == checksum {
+            return values[1];
+        }
+        note_error(b"RustCodegen candidate unit is already staged");
+        return api.nilObj;
+    }
+    let digest = sha256_hex(&source);
+    let non_method = unsafe {
+        (api.mkString)(
+            metadata.non_method_digest.as_ptr(),
+            metadata.non_method_digest.len(),
+        )
+    };
+    let method = unsafe {
+        (api.mkString)(
+            metadata.method_digest.as_ptr(),
+            metadata.method_digest.len(),
+        )
+    };
+    let revision = unsafe {
+        (api.mkString)(
+            metadata.revision_digest.as_ptr(),
+            metadata.revision_digest.len(),
+        )
+    };
+    let source_hash = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let checksum_object = unsafe { (api.mkString)(checksum.as_ptr(), checksum.len()) };
+    let requires = unsafe { candidate_manifest_vector(api, &metadata) };
+    let facts = [
+        (b"unitName\0".as_slice(), name),
+        (b"kind\0".as_slice(), unsafe {
+            intern(api, b"candidateArtifact\0")
+        }),
+        (b"sourceHash\0".as_slice(), source_hash),
+        (b"authoredSource\0".as_slice(), source_object),
+        (b"nonMethodDigest\0".as_slice(), non_method),
+        (b"methodDigest\0".as_slice(), method),
+        (b"revisionDigest\0".as_slice(), revision),
+        (b"artifactChecksum\0".as_slice(), checksum_object),
+        (b"platform\0".as_slice(), unsafe {
+            intern(api, b"aarch64-macos\0")
+        }),
+        (b"runtimeAbi\0".as_slice(), unsafe {
+            intern(api, ARTIFACT_ABI)
+        }),
+        (b"candidateAbi\0".as_slice(), unsafe { (api.mkSmallInt)(3) }),
+        (b"requires\0".as_slice(), requires),
+        (b"mapped\0".as_slice(), api.falseObj),
+    ];
+    for (attribute, value) in facts {
+        if !unsafe { assert_candidate_fact(api, runtime, values[1], attribute, value) } {
+            note_error(b"RustCodegen candidate Store is unavailable");
+            return api.nilObj;
+        }
+    }
+    if let Ok(mut candidates) = CANDIDATES.lock() {
+        candidates.push(CandidateState {
+            unit: values[1] as usize,
+            name: name as usize,
+            source: source_object as usize,
+            author_path: path,
+            checksum,
+            source_digest: digest,
+            non_method_digest: metadata.non_method_digest,
+            method_digest: metadata.method_digest,
+            revision_digest: metadata.revision_digest,
+            manifest: envelope.manifest.to_vec(),
+        });
+        return values[1];
+    }
+    note_error(b"RustCodegen candidate registry is unavailable");
+    api.nilObj
+}
+
 unsafe extern "C" fn rust_codegen_load(
     _self_object: Oop,
     pointer: *const Oop,
@@ -1995,12 +2297,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             abort("RustCodegen requires Tcc to be loaded");
         }
         let globals = unsafe { (host_api.import)(GLOBALS_NAME.as_ptr().cast()) };
+        let store = unsafe { (host_api.import)(STORE_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
             rust_codegen_vt: rust_codegen_vt as usize,
             rust_codegen: rust_codegen as usize,
             tcc: tcc as usize,
             globals: globals as usize,
+            store: store as usize,
         }
     });
     let api = unsafe { api(&runtime) };
@@ -2052,6 +2356,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, SUCCESSOR_GENERATION_PROJECTION_SELECTOR),
             rust_codegen_successor_generation_projection,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, INSPECT_CANDIDATE_SELECTOR),
+            rust_codegen_inspect_candidate,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

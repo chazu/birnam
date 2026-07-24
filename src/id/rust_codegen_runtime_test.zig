@@ -497,6 +497,46 @@ test "Rust Codegen retains registered module sources across collection" {
     );
 }
 
+test "Rust Codegen inspects a Zig candidate before mapping" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const old_codegen = api.import("Codegen") orelse return error.MissingCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_candidate.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source_text = "[Module named: #rustCandidate requires: #[]]; [Reflect defineMethod: #rustCandidateAnswer on: Integer as: [:self | 123]]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(path.ptr, path.len);
+    const compiled = api.send(
+        old_codegen,
+        api.intern("compileCandidate:named:output:"),
+        &.{ source, api.intern("rustCandidate"), output },
+        3,
+    );
+    try std.testing.expect(compiled != api.nilObj);
+
+    const unit = api.send(api.import("Object") orelse return error.MissingObject, api.intern("clone"), &.{}, 0);
+    const inspected = api.send(
+        rust_codegen,
+        api.intern("inspectCandidate:into:"),
+        &.{ output, unit },
+        2,
+    );
+    try std.testing.expectEqual(unit, inspected);
+    try std.testing.expectEqual(
+        api.intern("candidateArtifact"),
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("kind") }, 2),
+    );
+    try std.testing.expectEqual(
+        api.falseObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("mapped") }, 2),
+    );
+}
+
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
