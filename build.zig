@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
         PegImpl,
         "peg",
         "PEG matcher installed as canonical libbirnam_id_peg.dylib (zig or rust)",
-    ) orelse .zig;
+    ) orelse .rust;
     const TccImpl = enum { zig, rust };
     const selected_tcc = b.option(
         TccImpl,
