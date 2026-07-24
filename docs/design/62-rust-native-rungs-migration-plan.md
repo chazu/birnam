@@ -2226,6 +2226,13 @@ rejection, and a missing-file error; the full R6 rerun passed at 42/42 with no
 benchmark allowance change. Source loading, process controls, self-hosted
 handlers, and canonical prelude cutover remain open.
 
+The Rust System environment slice landed at `8873cc1`. `getEnv:` now returns
+owned String values for present UTF-8 variables, nil for absence, and an
+`ioError` for invalid names. The focused dynamic test covers selector
+installation, present/missing/type cases, and the full R6 rerun passed at
+42/42 with no benchmark allowance change. Source loading, process controls,
+self-hosted handlers, and canonical prelude cutover remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

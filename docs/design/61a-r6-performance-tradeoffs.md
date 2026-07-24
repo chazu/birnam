@@ -439,3 +439,10 @@ return `ioError` values on invalid paths or host failures. The focused
 round-trip/failure checks and full 42/42 R6 rerun passed with no benchmark
 allowance change. Source loading, process controls, self-hosted handlers, and
 canonical prelude cutover remain open.
+
+The Rust System environment slice landed at `8873cc1`: `getEnv:` now returns
+owned String values for present UTF-8 variables, nil for absence, and an
+`ioError` for invalid names. Focused present/missing/type checks and the full
+42/42 R6 rerun passed with no benchmark allowance change. Source loading,
+process controls, self-hosted handlers, and canonical prelude cutover remain
+open.
