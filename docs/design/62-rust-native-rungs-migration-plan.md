@@ -1458,7 +1458,9 @@ operation clears a process-local `lastError`, records a first failure message,
 and exposes it through `RustCodegen lastError`. The focused test proves a bad
 source publishes a diagnostic and a subsequent successful `7` evaluation clears
 it. This is intentionally a string-compatible observation seam, not yet the
-full Error-object propagation and source-span formatting required by N6.3.
+full Error-object propagation and source-span formatting required by N6.3. The
+compile-output test also proves a lowering failure returns `nil` without
+creating the requested dylib.
 
 ### N6.3 — Port eval and compile orchestration
 
