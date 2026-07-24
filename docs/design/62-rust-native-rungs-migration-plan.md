@@ -1854,6 +1854,12 @@ diagnostic and no runtime mutation. The method deliberately does not resolve
 symbols or exports, materialize heap objects, swizzle references, map code, or
 touch Store; those remain the mapped-unit and recovery handoff work in N6.6.
 
+The pure codec now also verifies each code record's unit bytes with the exact
+Zig Wyhash v4 checksum before an image is considered preflightable. Authority
+mismatch is reported before checksum failure, duplicate-code ordering remains
+fail-closed, and the Rust test vectors match Zig's implementation. The loader
+still does not map or retain the unit at this boundary.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
