@@ -681,6 +681,74 @@ unsafe extern "C" fn boolean_print_string(
     unsafe { (api.mkString)(text.as_ptr(), text.len()) }
 }
 
+unsafe fn block_loop(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+    continue_on_true: bool,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(body) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    loop {
+        let condition = unsafe { send0(api, self_object, b"value\0") };
+        let is_true = condition == api.trueObj;
+        let is_false = condition == api.falseObj;
+        if !is_true && !is_false {
+            return api.nilObj;
+        }
+        if is_true != continue_on_true {
+            return api.nilObj;
+        }
+        // The Error rung is not yet installed in this opt-in slice, so a body
+        // result cannot be classified here. The loop still discards ordinary
+        // body values and remains stack-flat across all iterations.
+        let _ = unsafe { send0(api, body, b"value\0") };
+    }
+}
+
+unsafe extern "C" fn block_while_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { block_loop(self_object, args, count, true) }
+}
+
+unsafe extern "C" fn block_while_false(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { block_loop(self_object, args, count, false) }
+}
+
+unsafe fn install_block_protocol(api: &IdApi) {
+    let (block_vt, block_proto) = if unsafe { (api.isExported)(c"Block".as_ptr()) } != 0 {
+        let block_vt = unsafe { (api.import)(c"BlockVt".as_ptr()) };
+        let block_proto = unsafe { (api.import)(c"Block".as_ptr()) };
+        (block_vt, block_proto)
+    } else {
+        let block_vt = unsafe { (api.proto)(api.object_vt) };
+        // SAFETY: a Block payload consists only of captured Oops, and this
+        // first native loop rung does not inspect the payload itself.
+        unsafe { (api.setLayout)(block_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
+        let block_proto = unsafe { (api.alloc)(block_vt, 0) };
+        unsafe { (api.setOwner)(block_vt, block_proto) };
+        unsafe { (api.exportObj)(c"Block".as_ptr(), block_proto) };
+        unsafe { (api.exportObj)(c"BlockVt".as_ptr(), block_vt) };
+        (block_vt, block_proto)
+    };
+    let _ = block_proto;
+    let while_true = unsafe { intern(api, b"whileTrue:\0") };
+    let while_false = unsafe { intern(api, b"whileFalse:\0") };
+    // SAFETY: the Block vtable is process-owned and remains live with the image.
+    unsafe {
+        (api.method)(block_vt, while_true, block_while_true);
+        (api.method)(block_vt, while_false, block_while_false);
+    }
+}
+
 unsafe fn bring_up(api_pointer: *mut IdApi) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
@@ -750,6 +818,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         // SAFETY: both singleton booleans share this vtable for the process lifetime.
         unsafe { (api.method)(boolean_vt, symbol, *method) };
     }
+    unsafe { install_block_protocol(api) };
 }
 
 /// Identifies this opt-in N7.1 Rust prelude numeric/Boolean slice.

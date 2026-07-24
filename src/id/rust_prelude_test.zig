@@ -18,6 +18,27 @@ fn valueSelf(self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
     return self;
 }
 
+var loop_true: Oop = undefined;
+var loop_nil: Oop = undefined;
+var condition_calls: usize = 0;
+var body_calls: usize = 0;
+
+fn loopCondition(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _args;
+    _ = _count;
+    condition_calls += 1;
+    return if (condition_calls < 3) loop_true else loop_nil;
+}
+
+fn loopBody(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _args;
+    _ = _count;
+    body_calls += 1;
+    return loop_nil;
+}
+
 test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_PRELUDE_DYLIB") orelse
@@ -115,4 +136,19 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var true_rendered_len: usize = 0;
     const true_rendered_bytes = api.stringBytes(true_rendered, &true_rendered_len);
     try std.testing.expectEqualStrings("true", true_rendered_bytes[0..true_rendered_len]);
+
+    loop_true = api.trueObj;
+    loop_nil = api.nilObj;
+    condition_calls = 0;
+    body_calls = 0;
+    const block_vt = api.import("BlockVt");
+    const condition_vt = api.proto(block_vt);
+    const body_vt = api.proto(block_vt);
+    const condition = api.alloc(condition_vt, 0);
+    const body = api.alloc(body_vt, 0);
+    api.method(condition_vt, api.intern("value"), &loopCondition);
+    api.method(body_vt, api.intern("value"), &loopBody);
+    try std.testing.expectEqual(api.nilObj, send(api, condition, "whileTrue:", &.{body}));
+    try std.testing.expectEqual(@as(usize, 3), condition_calls);
+    try std.testing.expectEqual(@as(usize, 2), body_calls);
 }
