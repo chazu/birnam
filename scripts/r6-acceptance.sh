@@ -46,9 +46,15 @@ cat "$functional"
 }
 
 # Pin the lifecycle boundary to the current accepted test set. A target that
-# accidentally discovers fewer tests must not silently keep R6 green.
+# accidentally discovers fewer tests or reports a partial build must not
+# silently keep R6 green.
 grep -Fq 'test-rust-codegen-runtime success' "$functional" || {
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
+  exit 1
+}
+summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 20/20 tests passed$' "$functional" || true)
+[ "$summary_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Codegen runtime summary no longer reports the accepted 20-test set" >&2
   exit 1
 }
 grep -Eq '^\+- run test 20 passed ' "$functional" || {
