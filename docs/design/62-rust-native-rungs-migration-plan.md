@@ -1912,6 +1912,13 @@ with 20/20 focused tests, the same fixture exception, and exactly the two
 accepted crossings (`query.aggregate +5.8%` and
 `compile.stage1-stdlib +11.9%`).
 
+The scalar image-field coverage landed at `507522f`: the existing 20-test Rust
+Codegen recovery case now replays and reads back float, boolean, symbol,
+String, and nil values through Rust Store while retaining the heap-reference
+fail-closed assertion. R6 passed again at that checkpoint with 20/20 focused
+tests, the same fixture exception, and no change to the accepted benchmark
+snapshot.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

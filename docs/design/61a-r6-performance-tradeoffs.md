@@ -167,3 +167,10 @@ The complete R6 acceptance script passed again at that checkpoint: 20/20
 focused tests, the documented `sortedModules` fixture exception, and exactly
 the two accepted crossings (`query.aggregate +5.8%` and
 `compile.stage1-stdlib +11.9%`).
+
+The scalar image-field coverage landed at `507522f`: the existing 20-test Rust
+Codegen recovery case now replays and reads back float, boolean, symbol,
+String, and nil values through Rust Store while retaining the heap-reference
+fail-closed assertion. R6 passed again at that checkpoint with 20/20 focused
+tests, the same fixture exception, and no change to the accepted benchmark
+snapshot.
