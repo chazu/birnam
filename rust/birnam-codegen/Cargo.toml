@@ -1,0 +1,12 @@
+[package]
+name = "birnam-codegen"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "birnam_codegen"
+
+[lints]
+workspace = true

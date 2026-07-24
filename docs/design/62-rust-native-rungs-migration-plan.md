@@ -1371,6 +1371,16 @@ emission, and translation-unit assembly. A Rust byte buffer replaces Zig's
 **Gate:** emitted C text is exact for the frozen corpus before any generated C
 is executed.
 
+#### N6.2 execution record — in progress, 2026-07-23
+
+The Rust workspace now contains a pure `birnam-codegen` crate. Its first slice
+is an allocation-owning byte emitter with Zig-compatible C-string escaping,
+small-integer, String, Symbol, late-bound global, and send projections. It has
+no `IdApi`, loader, object allocation, or runtime dependency, and therefore
+cannot silently become a second runtime authority. Two unit tests pin the
+escaping and compositional output shape; `cargo test --workspace --locked
+--offline` passes. The crate is not selected by the production build yet.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
