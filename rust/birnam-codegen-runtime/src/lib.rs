@@ -6,6 +6,7 @@
 //! Codegen core, and returns deterministic generated C without invoking TCC.
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
+use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -270,6 +271,9 @@ fn artifact_source(source: &[u8], generated: &[u8]) -> Vec<u8> {
         output.extend_from_slice(byte.to_string().as_bytes());
     }
     output.extend_from_slice(b"};\n");
+    output.extend_from_slice(b"const unsigned long __birnam_artifact_descriptor_len = ");
+    output.extend_from_slice(descriptor.len().to_string().as_bytes());
+    output.extend_from_slice(b"UL;\n");
     output.extend_from_slice(generated);
     output
 }
@@ -626,6 +630,23 @@ unsafe extern "C" fn rust_codegen_load(
     let abi = unsafe { CStr::from_ptr(abi_symbol.cast::<c_char>()) };
     if abi.to_bytes() != ARTIFACT_ABI {
         note_error(b"RustCodegen artifact ABI marker is incompatible");
+        return api.nilObj;
+    }
+    let descriptor_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_artifact_descriptor".as_ptr()) };
+    let descriptor_len_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_artifact_descriptor_len".as_ptr()) };
+    if descriptor_symbol.is_null() || descriptor_len_symbol.is_null() {
+        note_error(b"RustCodegen artifact descriptor is missing");
+        return api.nilObj;
+    }
+    // SAFETY: the artifact output owns an immutable byte array and matching
+    // process-width length symbol for the lifetime of the retained handle.
+    let descriptor_len = unsafe { *(descriptor_len_symbol.cast::<usize>()) };
+    let descriptor =
+        unsafe { core::slice::from_raw_parts(descriptor_symbol.cast::<u8>(), descriptor_len) };
+    if inspect_artifact(descriptor).is_err() {
+        note_error(b"RustCodegen artifact descriptor is incompatible");
         return api.nilObj;
     }
     let init_symbol = unsafe { (api.dlsym)(handle, c"__birnam_unit_init".as_ptr()) };

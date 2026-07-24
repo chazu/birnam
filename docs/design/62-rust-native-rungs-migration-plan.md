@@ -1467,11 +1467,12 @@ runtime initialization, and loader acceptance remain N6.4 work.
 
 The opt-in runtime now also exposes `RustCodegen load:` for that artifact
 boundary. It opens with lazy/global resolution, validates the ABI marker before
-calling `__birnam_unit_init`, dispatches the frozen `__ev` Method ABI, and
-retains successful handles for process lifetime. The installed gate compiles
-`7`, verifies the descriptor symbols, loads the dylib through Rust Codegen, and
-observes `7` again. Full descriptor inspection, host-capability policy, and
-image-generation handoff remain open.
+calling `__birnam_unit_init`, runs the allocation-free Rust artifact inspector
+over the descriptor bytes and length, dispatches the frozen `__ev` Method ABI,
+and retains successful handles for process lifetime. The installed gate
+compiles `7`, verifies the descriptor symbols, loads the dylib through Rust
+Codegen, and observes `7` again. Host-capability policy and image-generation
+handoff remain open.
 
 The diagnostic seam is also executable: every opt-in emit/eval/compile-output
 operation clears a process-local `lastError`, records a first failure message,
