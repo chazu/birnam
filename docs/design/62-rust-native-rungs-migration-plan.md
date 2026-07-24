@@ -1617,6 +1617,12 @@ matches `sourceRevisionOf:`. This keeps project indexing and lifecycle
 projections on one digest definition without evaluating source or touching
 Store state.
 
+Rust artifact descriptors now carry that same partition: indexed module units
+write the complete source digest and static revision digest separately, while
+legacy/non-indexable sources conservatively use the source digest in both
+slots. The installed descriptor gate proves the two values diverge for a
+module-bearing source with non-method content.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
