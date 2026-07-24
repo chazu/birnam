@@ -10,6 +10,8 @@ pub const FORMAT_VERSION: u32 = 4;
 pub const ENDIAN_TAG: u32 = 0x0102_0304;
 pub const HEADER_LEN: usize = 28;
 pub const RECORD_HEADER_LEN: usize = 12;
+pub const AUTHORITY_DIGEST_LEN: usize = 64;
+pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -20,6 +22,7 @@ pub enum Error {
     ArchitectureMismatch,
     AbiMismatch,
     InvalidRecordKind,
+    InvalidPayloadLength,
     RecordTooLarge,
 }
 
@@ -85,6 +88,49 @@ impl RecordKind {
 pub struct Record<'a> {
     pub kind: RecordKind,
     pub payload: &'a [u8],
+}
+
+/// The v4 authority record is exactly one borrowed 64-byte generation digest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Authority<'a> {
+    pub digest: &'a [u8; AUTHORITY_DIGEST_LEN],
+}
+
+impl<'a> Authority<'a> {
+    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+        Ok(Self {
+            digest: payload
+                .try_into()
+                .map_err(|_| Error::InvalidPayloadLength)?,
+        })
+    }
+}
+
+/// The fixed prefix of a v4 code record, borrowed from the image bytes.
+///
+/// The checksum is the existing image integrity field; the generation digest
+/// binds the unit to the preceding authority record. Hash verification and
+/// dynamic loading remain higher-layer responsibilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Code<'a> {
+    pub checksum: u64,
+    pub generation_digest: &'a [u8; AUTHORITY_DIGEST_LEN],
+    pub unit: &'a [u8],
+}
+
+impl<'a> Code<'a> {
+    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+        if payload.len() < CODE_PREFIX_LEN {
+            return Err(Error::InvalidPayloadLength);
+        }
+        Ok(Self {
+            checksum: read_u64(&payload[..8]),
+            generation_digest: payload[8..CODE_PREFIX_LEN]
+                .try_into()
+                .map_err(|_| Error::InvalidPayloadLength)?,
+            unit: &payload[CODE_PREFIX_LEN..],
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -217,6 +263,30 @@ mod tests {
         assert_eq!(
             Records::new(&truncated).next_record(),
             Err(Error::Truncated)
+        );
+    }
+
+    #[test]
+    fn authority_and_code_payloads_are_borrowed_and_length_checked() {
+        let digest = [b'd'; AUTHORITY_DIGEST_LEN];
+        let authority = Authority::parse(&digest).unwrap();
+        assert_eq!(authority.digest, &digest);
+        assert_eq!(
+            Authority::parse(&digest[..AUTHORITY_DIGEST_LEN - 1]),
+            Err(Error::InvalidPayloadLength)
+        );
+
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&0x0102_0304_0506_0708u64.to_le_bytes());
+        payload.extend_from_slice(&digest);
+        payload.extend_from_slice(b"dylib");
+        let code = Code::parse(&payload).unwrap();
+        assert_eq!(code.checksum, 0x0102_0304_0506_0708);
+        assert_eq!(code.generation_digest, &digest);
+        assert_eq!(code.unit, b"dylib");
+        assert_eq!(
+            Code::parse(&payload[..CODE_PREFIX_LEN - 1]),
+            Err(Error::InvalidPayloadLength)
         );
     }
 }
