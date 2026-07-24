@@ -1757,12 +1757,21 @@ unsafe extern "C" fn rust_codegen_replay_methods(
     };
     let mut replayed = 0usize;
     for source in sources {
-        let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[source]) };
-        if result == api.nilObj && LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
-            note_error(b"RustCodegen image method replay failed");
+        let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
+        else {
+            note_error(b"RustCodegen image method source is not indexable");
             return api.nilObj;
+        };
+        for operation in metadata.operations {
+            let operation_source =
+                unsafe { (api.mkString)(operation.source.as_ptr(), operation.source.len()) };
+            let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[operation_source]) };
+            if result == api.nilObj && LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
+                note_error(b"RustCodegen image method replay failed");
+                return api.nilObj;
+            }
+            replayed += 1;
         }
-        replayed += 1;
     }
     unsafe { (api.mkSmallInt)(replayed as i64) }
 }
