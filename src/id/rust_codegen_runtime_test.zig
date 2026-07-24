@@ -84,6 +84,14 @@ test "Rust Codegen writes a compiled dylib through Rust TCC" {
     const artifact = try std.fs.openFileAbsolute(path, .{});
     defer artifact.close();
     try std.testing.expect((try artifact.stat()).size > 0);
+
+    const bad_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_bad.dylib", .{directory});
+    defer std.testing.allocator.free(bad_path);
+    const bad_source = api.mkString("[", 1);
+    const bad_output = api.mkString(bad_path.ptr, bad_path.len);
+    const failed = api.send(codegen, api.intern("compile:output:"), &.{ bad_source, bad_output }, 2);
+    try std.testing.expect(failed == api.nilObj);
+    try std.testing.expectError(error.FileNotFound, std.fs.openFileAbsolute(bad_path, .{}));
 }
 
 test "Rust Codegen publishes and clears a diagnostic" {
