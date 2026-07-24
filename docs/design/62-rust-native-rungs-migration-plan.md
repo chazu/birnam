@@ -2020,6 +2020,12 @@ observer or authorizer is rejected with the frozen
 errors, proving the single-owner law before candidate activation. The focused
 21/21 target and complete R6 gate passed with no new benchmark exception.
 
+The runtime image-policy checkpoint at `e2db333` adds installed Rust Codegen
+fixtures for duplicate v4 Authority and Code records. Both are rejected before
+image activation, preserving the one-authority/one-code invariant at the
+runtime boundary. The focused 21/21 target and complete R6 gate passed with the
+same fixture quarantine and only the two accepted benchmark crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

@@ -262,3 +262,10 @@ allowance.
 
 The mixed-stack callback-owner assertions landed at `3b558ca`; R6 remains
 green at 21/21 and the comparator allowance is unchanged.
+
+The runtime image-policy fixtures landed at `e2db333`: the installed Rust
+Codegen preflight now has executable coverage that a v4 image contains one
+authority and at most one code record, rather than treating duplicate records
+as an append format. The complete `mise run r6-acceptance` run passed at this
+checkpoint with the 21/21 focused target, the documented fixture quarantine,
+and only the two accepted benchmark crossings.
