@@ -62,7 +62,7 @@ cat "$verify"
   # failure still fails the gate.
   known_verify_markers=(
     "error: the following command terminated unexpectedly:"
-    "/modules/run-tests.birnam"
+    "modules/run-tests.birnam"
     "ok   sortedModules orders by display name"
     "Segmentation fault at address"
     "/src/id/collection.zig:336:29:"
