@@ -180,3 +180,10 @@ fixture now resolves an `ExportRef("Store")` through the frozen import/export
 surface and verifies the live Store identity. R6 passed again at that
 checkpoint with 20/20 focused tests, the documented fixture exception, and the
 same two accepted benchmark crossings.
+
+Heap recovery landed at `f8ec3e7`: Rust Codegen now parses cumulative v4 Heap
+records, imports each named vtable, allocates layout-sized objects, fills Oop,
+raw, and code slots in a second pass, and swizzles `HeapRef` fields before the
+Store load begins. An unresolved reference still fails closed without Store
+mutation. R6 passed again at that checkpoint with 20/20 focused tests, the
+documented fixture exception, and the same two accepted benchmark crossings.

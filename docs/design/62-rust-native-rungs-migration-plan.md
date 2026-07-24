@@ -1925,6 +1925,16 @@ surface and verifies the live Store identity. R6 passed again at that
 checkpoint with 20/20 focused tests, the documented fixture exception, and the
 same two accepted benchmark crossings.
 
+Heap recovery landed at `f8ec3e7`: Rust Codegen now parses cumulative v4 Heap
+records, imports each named vtable, allocates layout-sized objects, fills Oop,
+raw, and code slots in a second pass, and swizzles `HeapRef` fields before the
+Store load begins. An unresolved reference still fails closed without Store
+mutation. The focused Rust Codegen target remains 20/20; the complete R6 gate
+passed again at that checkpoint with the documented fixture exception and the
+same two accepted benchmark crossings. This closes the first heap/fact
+materialization slice of N6.6; generation authority, multi-image policy, and
+full compatible image convergence remain later N6.6 work.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
