@@ -1954,6 +1954,12 @@ payload fails closed before `imageLoadBegin` or any Store mutation. The focused
 Rust Codegen target remains 20/20, and the complete R6 gate passed again with
 the documented fixture exception and the same two accepted crossings.
 
+The positive heap fixture now splits its objects across two Heap records at
+`80a52bd`. This exercises cumulative relocation IDs across record boundaries,
+including a forward Oop reference and raw-word preservation; the focused Rust
+Codegen target remains 20/20 and the complete R6 gate passed again with the
+documented fixture exception and the same two accepted crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

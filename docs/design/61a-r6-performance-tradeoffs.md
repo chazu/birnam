@@ -207,3 +207,9 @@ record that claims a missing object now fails during Rust heap materialization,
 before the Store load begins, and the pre-existing Store value remains absent.
 The complete R6 script passed again at that checkpoint with 20/20 focused Rust
 tests, the documented fixture exception, and the same two accepted crossings.
+
+The positive heap recovery fixture now spans two Heap records at `80a52bd`,
+proving that cumulative relocation IDs survive record boundaries while forward
+Oop references and raw words still swizzle correctly. R6 passed again at that
+checkpoint with 20/20 focused Rust tests, the documented fixture exception, and
+the same two accepted benchmark crossings.
