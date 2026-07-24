@@ -315,6 +315,43 @@ test "Rust Codegen exposes immutable source revisions" {
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("sourceRevisionOf:"), &.{legacy}, 1));
 }
 
+test "Rust Codegen partitions method and non-method revision digests" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const source_a_text =
+        "[Module named: #partitionedRevision requires: #[]]; [Reflect defineMethod: #answer on: Thing as: [:self | 7]]; 7";
+    const source_b_text =
+        "[Module named: #partitionedRevision requires: #[]]; [Reflect defineMethod: #answer on: Thing as: [:self | 8]]; 7";
+    const source_c_text =
+        "[Module named: #partitionedRevision requires: #[]]; [Reflect defineMethod: #answer on: Thing as: [:self | 7]]; 8";
+    const source_a = api.mkString(source_a_text.ptr, source_a_text.len);
+    const source_b = api.mkString(source_b_text.ptr, source_b_text.len);
+    const source_c = api.mkString(source_c_text.ptr, source_c_text.len);
+    const revision_a = api.send(codegen, api.intern("sourceRevisionOf:"), &.{source_a}, 1);
+    const revision_b = api.send(codegen, api.intern("sourceRevisionOf:"), &.{source_b}, 1);
+    const revision_c = api.send(codegen, api.intern("sourceRevisionOf:"), &.{source_c}, 1);
+    try std.testing.expect(revision_a != api.nilObj);
+    try std.testing.expect(revision_b != api.nilObj);
+    try std.testing.expect(revision_c != api.nilObj);
+
+    var a_non_len: usize = 0;
+    var b_non_len: usize = 0;
+    var c_non_len: usize = 0;
+    var a_method_len: usize = 0;
+    var b_method_len: usize = 0;
+    var c_method_len: usize = 0;
+    const a_non = api.stringBytes(api.send(revision_a, api.intern("at:"), &.{api.mkSmallInt(4)}, 1), &a_non_len);
+    const b_non = api.stringBytes(api.send(revision_b, api.intern("at:"), &.{api.mkSmallInt(4)}, 1), &b_non_len);
+    const c_non = api.stringBytes(api.send(revision_c, api.intern("at:"), &.{api.mkSmallInt(4)}, 1), &c_non_len);
+    const a_method = api.stringBytes(api.send(revision_a, api.intern("at:"), &.{api.mkSmallInt(5)}, 1), &a_method_len);
+    const b_method = api.stringBytes(api.send(revision_b, api.intern("at:"), &.{api.mkSmallInt(5)}, 1), &b_method_len);
+    const c_method = api.stringBytes(api.send(revision_c, api.intern("at:"), &.{api.mkSmallInt(5)}, 1), &c_method_len);
+    try std.testing.expectEqualSlices(u8, a_non[0..a_non_len], b_non[0..b_non_len]);
+    try std.testing.expect(!std.mem.eql(u8, a_non[0..a_non_len], c_non[0..c_non_len]));
+    try std.testing.expect(!std.mem.eql(u8, a_method[0..a_method_len], b_method[0..b_method_len]));
+    try std.testing.expectEqualSlices(u8, a_method[0..a_method_len], c_method[0..c_method_len]);
+}
+
 test "Rust Codegen retains registered module sources across collection" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

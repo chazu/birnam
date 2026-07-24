@@ -724,6 +724,165 @@ unsafe fn artifact_metadata(api: &IdApi, source_object: Oop) -> Option<ArtifactM
     Some((module, native_requires))
 }
 
+struct RevisionOperation {
+    target: Vec<u8>,
+    selector: Vec<u8>,
+    install: bool,
+    source: Vec<u8>,
+}
+
+struct RevisionMetadata {
+    name: Vec<u8>,
+    requires: Vec<Vec<u8>>,
+    non_method_digest: [u8; 64],
+    method_digest: [u8; 64],
+    revision_digest: [u8; 64],
+}
+
+fn append_digest_field(input: &mut Vec<u8>, bytes: &[u8]) {
+    input.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
+    input.extend_from_slice(bytes);
+}
+
+fn selector_arity(selector: &[u8]) -> usize {
+    let colons = selector.iter().filter(|byte| **byte == b':').count();
+    if colons != 0 {
+        return colons;
+    }
+    match selector.first() {
+        None => 0,
+        Some(byte) if byte.is_ascii_alphabetic() || *byte == b'_' => 0,
+        Some(_) => 1,
+    }
+}
+
+fn block_parameter_count(node: &OwnedCst) -> Option<usize> {
+    let node = skip_cst_wrappers(node)?;
+    if node.rule() != b"block" {
+        return None;
+    }
+    Some(
+        (0..node.child_count())
+            .filter_map(|index| node.child(index))
+            .filter(|child| child.rule() == b"ident")
+            .count(),
+    )
+}
+
+fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
+    let program = skip_cst_wrappers(tree)?;
+    if program.rule() != b"program" || program.child_count() != 1 {
+        return None;
+    }
+    let statements = program.child(0)?;
+    if statements.rule() != b"statements" {
+        return None;
+    }
+    let mut name = None;
+    let mut requires = Vec::new();
+    let mut operations = Vec::new();
+    let mut non_method_spans = Vec::new();
+    for index in 0..statements.child_count() {
+        let statement = statements.child(index)?;
+        if statement.child_count() == 0 {
+            continue;
+        }
+        let whole = skip_cst_wrappers(statement.child(0)?)?;
+        let whole_source = source_span(whole, source)?;
+        if whole.rule() != b"send" || whole.child_count() != 2 {
+            non_method_spans.push(whole_source.to_vec());
+            continue;
+        }
+        let receiver = skip_cst_wrappers(whole.child(0)?)?;
+        let message = skip_cst_wrappers(whole.child(1)?)?;
+        let Some((selector, args)) = keyword_selector_args(message, source) else {
+            non_method_spans.push(whole_source.to_vec());
+            continue;
+        };
+        if receiver.rule() == b"ident"
+            && source_span(receiver, source) == Some(b"Module".as_slice())
+            && selector == b"named:requires:"
+            && args.len() == 2
+        {
+            if name.is_some() {
+                return None;
+            }
+            name = Some(symbol_literal(args[0], source)?);
+            requires = vector_symbols(args[1], source)?;
+            non_method_spans.push(whole_source.to_vec());
+            continue;
+        }
+        if receiver.rule() != b"ident"
+            || source_span(receiver, source) != Some(b"Reflect".as_slice())
+        {
+            non_method_spans.push(whole_source.to_vec());
+            continue;
+        }
+        let is_define = (selector == b"defineMethod:on:as:" && args.len() == 3)
+            || (selector == b"defineMethod:on:as:doc:" && args.len() == 4);
+        let is_remove = selector == b"removeMethod:on:" && args.len() == 2;
+        if !is_define && !is_remove {
+            non_method_spans.push(whole_source.to_vec());
+            continue;
+        }
+        let operation_selector = symbol_literal(args[0], source)?;
+        let target = skip_cst_wrappers(args[1])?;
+        if target.rule() != b"ident" {
+            return None;
+        }
+        let target = source_span(target, source)?.to_vec();
+        if is_define {
+            let parameters = block_parameter_count(args[2])?;
+            if parameters != selector_arity(&operation_selector) + 1 {
+                return None;
+            }
+        }
+        if operations.iter().any(|operation: &RevisionOperation| {
+            operation.target == target && operation.selector == operation_selector
+        }) {
+            return None;
+        }
+        operations.push(RevisionOperation {
+            target,
+            selector: operation_selector,
+            install: is_define,
+            source: whole_source.to_vec(),
+        });
+    }
+    let name = name?;
+    let mut non_method_input = b"birnam.non-method.v1\0".to_vec();
+    for span in non_method_spans {
+        append_digest_field(&mut non_method_input, &span);
+    }
+    let non_method_digest = sha256_hex(&non_method_input);
+
+    let mut method_input = b"birnam.methods.v1\0".to_vec();
+    for operation in operations {
+        method_input.push(if operation.install { b'I' } else { b'R' });
+        append_digest_field(&mut method_input, &operation.target);
+        append_digest_field(&mut method_input, &operation.selector);
+        append_digest_field(&mut method_input, &operation.source);
+    }
+    let method_digest = sha256_hex(&method_input);
+
+    let mut revision_input = b"birnam.source-revision.v1\0".to_vec();
+    append_digest_field(&mut revision_input, &name);
+    revision_input.extend_from_slice(&(requires.len() as u64).to_be_bytes());
+    for requirement in &requires {
+        append_digest_field(&mut revision_input, requirement);
+    }
+    append_digest_field(&mut revision_input, source);
+    let revision_digest = sha256_hex(&revision_input);
+
+    Some(RevisionMetadata {
+        name,
+        requires,
+        non_method_digest,
+        method_digest,
+        revision_digest,
+    })
+}
+
 unsafe fn symbol_bytes(api: &IdApi, symbol: Oop) -> Option<Vec<u8>> {
     if symbol.is_null() || unsafe { (api.vtableOf)(symbol) != api.symbol_vt } {
         return None;
@@ -1308,9 +1467,20 @@ unsafe extern "C" fn rust_codegen_source_revision(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    let Some((Some((name, requires)), _native_requires)) =
-        (unsafe { artifact_metadata(api, values[0]) })
-    else {
+    let Some(source) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen source was not a String");
+        return api.nilObj;
+    };
+    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
+    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+        return api.nilObj;
+    }
+    let Some(tree) = (unsafe { cst_tree(api, cst, 0) }) else {
+        return api.nilObj;
+    };
+    let Some(metadata) = revision_metadata(&tree, &source) else {
         return api.nilObj;
     };
     let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
@@ -1325,23 +1495,39 @@ unsafe extern "C" fn rust_codegen_source_revision(
         }
         result
     };
-    let name_symbol = unsafe { (api.intern)(name.as_ptr().cast()) };
-    let require_symbols = requires
+    let name_symbol = unsafe { (api.intern)(metadata.name.as_ptr().cast()) };
+    let require_symbols = metadata
+        .requires
         .iter()
         .map(|requirement| unsafe { (api.intern)(requirement.as_ptr().cast()) })
         .collect::<Vec<_>>();
     let requires_vector = make_vector(&require_symbols);
-    let source = unsafe { string_bytes(api, values[0]) }.unwrap_or_default();
-    let digest = sha256_hex(&source);
-    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let non_method_digest = unsafe {
+        (api.mkString)(
+            metadata.non_method_digest.as_ptr(),
+            metadata.non_method_digest.len(),
+        )
+    };
+    let method_digest = unsafe {
+        (api.mkString)(
+            metadata.method_digest.as_ptr(),
+            metadata.method_digest.len(),
+        )
+    };
+    let revision_digest = unsafe {
+        (api.mkString)(
+            metadata.revision_digest.as_ptr(),
+            metadata.revision_digest.len(),
+        )
+    };
     make_vector(&[
         unsafe { intern(api, b"sourceRevision\0") },
         name_symbol,
         requires_vector,
         values[0],
-        digest_object,
-        digest_object,
-        digest_object,
+        non_method_digest,
+        method_digest,
+        revision_digest,
     ])
 }
 
