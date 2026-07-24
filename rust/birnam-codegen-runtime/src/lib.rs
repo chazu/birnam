@@ -66,6 +66,8 @@ const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
+const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
+const DERIVE_IMAGE_METHOD_TARGETS_SELECTOR: &[u8] = b"deriveImageMethodTargets\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
@@ -96,6 +98,7 @@ const ADD_SYMBOL_SELECTOR: &[u8] = b"addSymbol:value:\0";
 const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
 const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
 const CURRENT_VALUE_SELECTOR: &[u8] = b"currentValue:attr:\0";
+const HAS_VALUE_SELECTOR: &[u8] = b"hasValue:attr:\0";
 const CELL_FOR_SELECTOR: &[u8] = b"cellFor:attr:\0";
 const SET_SELECTOR: &[u8] = b"set:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
@@ -109,6 +112,8 @@ const MODULE_NAME: &[u8] = b"Module\0";
 const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
 const DISPATCH_NAME: &[u8] = b"dispatch\0";
 const ACTIVE_GENERATION_NAME: &[u8] = b"activeGeneration\0";
+const GLOBALS_ENTITY_NAME: &[u8] = b"__globals__\0";
+const GLOBAL_SOURCES_ENTITY_NAME: &[u8] = b"__globalsrc__\0";
 const MAX_CST_DEPTH: usize = 4096;
 const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
@@ -1935,6 +1940,122 @@ unsafe extern "C" fn rust_codegen_replay_aliens(
         }
     }
     unsafe { (api.mkSmallInt)(replayed as i64) }
+}
+
+unsafe fn derive_named_global(api: &IdApi, self_object: Oop, name: Oop) -> bool {
+    let runtime = runtime();
+    let store = runtime.store as Oop;
+    let globals = unsafe { intern(api, GLOBALS_ENTITY_NAME) };
+    let sources = unsafe { intern(api, GLOBAL_SOURCES_ENTITY_NAME) };
+    if unsafe { send(api, store, HAS_VALUE_SELECTOR, &[globals, name]) } == api.trueObj {
+        return false;
+    }
+    let source = unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[sources, name]) };
+    let Some(source_bytes) = (unsafe { string_bytes(api, source) }) else {
+        return false;
+    };
+    let Some(name_bytes) = (unsafe { symbol_bytes(api, name) }) else {
+        return false;
+    };
+    let mut program = b"let ".to_vec();
+    program.extend_from_slice(&name_bytes);
+    program.extend_from_slice(b" := ");
+    program.extend_from_slice(&source_bytes);
+    let program = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
+    clear_error();
+    let result = unsafe { send(api, self_object, EVAL_PERSISTING_SELECTOR, &[program]) };
+    result != api.nilObj && LAST_ERROR.lock().ok().is_none_or(|error| error.is_none())
+}
+
+unsafe extern "C" fn rust_codegen_derive_image_method_targets(
+    self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen deriveImageMethodTargets: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen image method-target derivation requires image recovery");
+        return api.nilObj;
+    }
+    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
+        note_error(b"RustCodegen image method-target source ordering failed");
+        return api.nilObj;
+    };
+    let mut names = Vec::<Vec<u8>>::new();
+    let mut derived = 0usize;
+    for source in sources {
+        let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
+        else {
+            note_error(b"RustCodegen image method-target source is not indexable");
+            return api.nilObj;
+        };
+        for operation in metadata.operations {
+            if names.contains(&operation.target) {
+                continue;
+            }
+            names.push(operation.target.clone());
+            let name = unsafe { intern_bytes(api, &operation.target) };
+            if unsafe { derive_named_global(api, self_object, name) } {
+                derived += 1;
+            }
+        }
+    }
+    unsafe { (api.mkSmallInt)(derived as i64) }
+}
+
+unsafe extern "C" fn rust_codegen_derive_image_globals(
+    self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen deriveImageGlobals: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen image global derivation requires image recovery");
+        return api.nilObj;
+    }
+    let store = runtime.store as Oop;
+    let sources = unsafe { intern(api, GLOBAL_SOURCES_ENTITY_NAME) };
+    let attr_count = unsafe { send(api, store, b"attrCount:\0", &[sources]) };
+    if unsafe { (api.isSmallInt)(attr_count) } == 0 {
+        note_error(b"RustCodegen image global source journal is malformed");
+        return api.nilObj;
+    }
+    let count = unsafe { (api.smallIntValue)(attr_count) };
+    let mut names = Vec::new();
+    for index in 0..count {
+        let name = unsafe {
+            send(
+                api,
+                store,
+                b"attrAt:index:\0",
+                &[sources, (api.mkSmallInt)(index)],
+            )
+        };
+        if unsafe { symbol_bytes(api, name) }.is_some() {
+            names.push(name);
+        }
+    }
+    let mut derived = 0usize;
+    for name in names {
+        if unsafe { derive_named_global(api, self_object, name) } {
+            derived += 1;
+        }
+    }
+    unsafe { (api.mkSmallInt)(derived as i64) }
 }
 
 unsafe fn emit_source(
@@ -4432,6 +4553,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, REPLAY_ALIENS_SELECTOR),
             rust_codegen_replay_aliens,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, DERIVE_IMAGE_GLOBALS_SELECTOR),
+            rust_codegen_derive_image_globals,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, DERIVE_IMAGE_METHOD_TARGETS_SELECTOR),
+            rust_codegen_derive_image_method_targets,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
