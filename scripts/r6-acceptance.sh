@@ -33,6 +33,7 @@ latest_tests=(
   test-rust-codegen-runtime
   test-rust-codegen-stack
   test-rust-codegen-zig-store
+  test-rust-prelude
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
@@ -63,6 +64,20 @@ rust_codegen_test_count=$(grep -Ec '^\+- run test 25 passed ' "$functional" || t
 rust_codegen_callback_test_count=$(grep -Ec '^\+- run test 4 passed ' "$functional" || true)
 [ "$rust_codegen_callback_test_count" -eq 2 ] || {
   echo "r6-acceptance: Rust Codegen callback matrix no longer has two 4-test variants" >&2
+  exit 1
+}
+rust_prelude_success_count=$(grep -Fc 'test-rust-prelude success' "$functional" || true)
+[ "$rust_prelude_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Prelude target was not executed" >&2
+  exit 1
+}
+rust_prelude_test_count=$(awk '
+/^test-rust-prelude success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
+[ "$rust_prelude_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Prelude test did not pass" >&2
   exit 1
 }
 
