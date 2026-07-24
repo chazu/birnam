@@ -1754,6 +1754,10 @@ projection/evolution authority remain N6.6 work. Rust `replayAliens` now adds
 the corresponding recovery-gated journal boundary: it reads ordered
 `__alien_<n>` Store facts, re-evaluates valid String sources, and continues past
 individual failed wraps without publishing a partial success as a hard error.
+Rust also exposes recovery-gated `deriveImageGlobals` and
+`deriveImageMethodTargets`: the former snapshots and re-evaluates only currently
+unbound `__globalsrc__` facts, while the latter walks ordered method targets and
+materializes their named receivers through that same source journal.
 
 `compileImageCode:` now consumes the ordered Rust generation-source handoff and
 emits one TCC-backed dylib at the requested output path. It is intentionally a
