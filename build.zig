@@ -1472,6 +1472,22 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run.step);
     }
 
+    const codegen_authority_audit = b.addSystemCommand(&.{
+        "bash",
+        "scripts/codegen-dylib-audit.sh",
+    });
+    codegen_authority_audit.setEnvironmentVariable(
+        "BIRNAM_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen.dylib"),
+    );
+    codegen_authority_audit.step.dependOn(b.getInstallStep());
+    const test_codegen_authority_step = b.step(
+        "test-codegen-authority",
+        "Audit the frozen Codegen exported-symbol authority surface",
+    );
+    test_codegen_authority_step.dependOn(&codegen_authority_audit.step);
+    test_step.dependOn(&codegen_authority_audit.step);
+
     const native_rung_singleton_probe_mod = b.createModule(.{
         .root_source_file = b.path("src/id/native_rung_singleton_probe_test.zig"),
         .target = target,

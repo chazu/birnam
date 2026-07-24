@@ -1352,10 +1352,12 @@ units. Its exact digest is
 `0f7f691dd27a587726981e6b71b11b6b1e6c71c817a1735a4cd7e13089a68bba`.
 
 The existing candidate lifecycle and image replay suites remain the behavioral
-authority for those generated-C paths. `test-codegen` (51 tests) and
-`test-rust-peg-codegen-parity` pass in ReleaseSafe. Remaining N6.1 work is to
-freeze the complete exported Codegen-owned shim manifest and add candidate/image
-goldens without normalizing semantic bytes.
+authority for those generated-C paths. The committed
+`src/id/fixtures/codegen-authority-v1.json` manifest now freezes the 16
+Codegen-owned dynamic exports, and `test-codegen-authority` audits the installed
+dylib against it (excluding only compiler-emitted UBSan handlers). `test-codegen`
+(51 tests) and `test-rust-peg-codegen-parity` pass in ReleaseSafe. Remaining
+N6.1 work is to add candidate/image goldens without normalizing semantic bytes.
 
 ### N6.2 — Port deterministic source emission
 

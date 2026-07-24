@@ -20,6 +20,13 @@ const idapi = @import("idapi.zig");
 const Oop = idapi.Oop;
 const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
 
+const AuthorityManifest = struct {
+    schema_version: u32,
+    codegen_selectors: []const []const u8,
+    reflect_selectors: []const []const u8,
+    exported_symbols: []const []const u8,
+};
+
 var gapi: *idapi.IdApi = undefined;
 
 fn bringPeg(api: *idapi.IdApi) !void {
@@ -91,31 +98,17 @@ fn expectFrozenSelectors(api: *idapi.IdApi, vt: Oop, expected: []const []const u
 
 test "N6.1: Codegen and Reflect authority surfaces are exact and frozen" {
     const api = setupFull();
-    const codegen_selectors = [_][]const u8{
-        "eval:", "evalPersisting:", "eval:from:", "evalPersisting:from:",
-        "compile:output:", "compile:output:from:", "compile:output:root:",
-        "sourceRevisionOf:", "moduleMetadataOf:", "embeddedFilesOf:",
-        "recordModuleSource:named:", "initialGenerationProjection", "sealInitialGeneration",
-        "successorGenerationProjection:replacing:with:unit:", "moduleSourceFor:",
-        "compileCandidate:named:output:", "inspectCandidate:into:", "mapCandidate:",
-        "candidateMapped:", "candidateContentPath:", "discardCandidate:", "releaseCandidate:",
-        "prepareActivation:", "prepareActivation:prior:", "prepareActivation:plan:",
-        "commitPrepared:", "prepareRollback:", "prepareRollback:plan:",
-        "commitPreparedRollback:", "discardPrepared:", "reconcileCandidate:",
-        "reconcileAllCandidates", "managedMethodChanged:on:", "authorizeManagedMethodMutation",
-        "beginImageDispatchRecovery", "endImageDispatchRecovery", "compileImageCode:",
-        "generationSources", "generationMethodSources", "currentGenerationDigest",
-        "replayMethods", "replayAliens", "deriveImageGlobals", "deriveImageMethodTargets",
-        "lastError", "load:", "loadHostCapability:",
-    };
-    const reflect_selectors = [_][]const u8{
-        "defineMethod:on:as:", "removeMethod:on:", "removeMethod:on:source:",
-        "defineMethod:on:as:source:", "defineMethod:on:as:doc:source:", "vtableOf:",
-        "exportVtableOf:as:", "exportObject:as:", "nameOf:", "allMethodsOf:",
-        "methodSource:", "factsOf:",
-    };
-    try expectFrozenSelectors(api, api.import("CodegenVt").?, &codegen_selectors);
-    try expectFrozenSelectors(api, api.import("ReflectVt").?, &reflect_selectors);
+    const parsed = try std.json.parseFromSlice(
+        AuthorityManifest,
+        std.testing.allocator,
+        @embedFile("fixtures/codegen-authority-v1.json"),
+        .{},
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(u32, 1), parsed.value.schema_version);
+    try expectFrozenSelectors(api, api.import("CodegenVt").?, parsed.value.codegen_selectors);
+    try expectFrozenSelectors(api, api.import("ReflectVt").?, parsed.value.reflect_selectors);
+    try std.testing.expectEqual(@as(usize, 16), parsed.value.exported_symbols.len);
 }
 
 // Primitive methods to install on smallint_vt so emitted birnam sends have real
