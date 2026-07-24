@@ -1732,7 +1732,9 @@ expected generation to that Store fact at both boundaries, and advances the
 Store cell only on a successful publication. Activation and rollback also
 validate the expected/successor entry topology: predecessor and delta-unit
 facts must point at the units named by the plan, so a canonical digest cannot
-mask a structurally inconsistent generation.
+mask a structurally inconsistent generation. The rooted prepared token carries
+that identity, and commit repeats the topology check after the quiescence
+barrier before invoking the native hook.
 
 Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
 post-carrier check without requiring a rollback attempt. They return the unit
