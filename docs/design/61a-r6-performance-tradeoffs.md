@@ -334,3 +334,10 @@ that rollback restores the predecessor dispatch carrier. The focused 25/25
 Rust Codegen target, Rust Store and Zig Store callback variants, and complete
 R6 acceptance all passed; the only accepted benchmark crossings remain
 `query.aggregate` (+5.8%) and `compile.stage1-stdlib` (+11.9%).
+
+A Rust-only candidate-reentry probe remains intentionally outside the accepted
+R6 set: candidate mapping fails closed when the legacy Zig Codegen export is
+absent because candidate dylibs still import the Codegen-owned dynamic shim
+set. This is an N6.5 cutover seam, not a benchmark or gate exception; the
+shim-owner migration must land before Rust-only candidate reentry can be
+claimed.

@@ -2099,6 +2099,14 @@ runtime target plus both Rust Store and Zig Store callback-owner variants.
 Candidate activation reentry and the remaining full N6.5 callback/rollback
 matrix are still open; no new benchmark exception was accepted.
 
+The attempted Rust-only candidate-reentry slice also fixes the next seam:
+`mapCandidate:` correctly fails closed without Zig Codegen because the emitted
+candidate dylib still imports `birnam_candidate_prepare_mode`,
+`birnam_candidate_validate_binding`, and the related Codegen-owned install/
+remove shims. Moving that exact dynamic shim set to the Rust Codegen owner is
+required before a Rust-only candidate can activate and exercise observer
+reentry; the failed probe is not admitted to the R6 gate.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
