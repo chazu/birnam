@@ -36,6 +36,10 @@ pub enum Expr<'a> {
     /// known Birnam escapes are decoded before the C string is emitted; an
     /// unknown escape keeps its backslash, matching the Zig emitter.
     StringLiteral(&'a [u8]),
+    /// Bytes resolved from a compiler `System embedFile:` intrinsic. These
+    /// bytes are owned by the CST projection rather than borrowed from the
+    /// authoring source, so generated artifacts remain self-contained.
+    StringOwned(Vec<u8>),
     Symbol(&'a [u8]),
     Global(&'a [u8]),
     Nil,
@@ -84,6 +88,14 @@ pub trait CstNode {
     fn end(&self) -> usize;
     fn child_count(&self) -> usize;
     fn child(&self, index: usize) -> Option<&Self>;
+
+    /// Optional compiler-owned bytes attached to a synthetic literal node.
+    /// Ordinary parser nodes return `None`; the runtime adapter uses this to
+    /// preserve embedded files without threading filesystem access into the
+    /// pure lowering functions.
+    fn embedded_bytes(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 /// An owned CST projection used at the runtime boundary. The core emitter does
@@ -95,6 +107,7 @@ pub struct OwnedCst {
     start: usize,
     end: usize,
     children: Vec<OwnedCst>,
+    embedded: Option<Vec<u8>>,
 }
 
 impl OwnedCst {
@@ -104,6 +117,21 @@ impl OwnedCst {
             start,
             end,
             children,
+            embedded: None,
+        }
+    }
+
+    /// Construct a synthetic string node whose bytes came from an embedded
+    /// file. The source span is retained for diagnostics and deterministic
+    /// traversal, while lowering reads the owned payload through
+    /// `CstNode::embedded_bytes`.
+    pub fn embedded_string(start: usize, end: usize, bytes: Vec<u8>) -> Self {
+        Self {
+            rule: b"embeddedString".to_vec(),
+            start,
+            end,
+            children: Vec::new(),
+            embedded: Some(bytes),
         }
     }
 }
@@ -128,6 +156,10 @@ impl CstNode for OwnedCst {
     fn child(&self, index: usize) -> Option<&Self> {
         self.children.get(index)
     }
+
+    fn embedded_bytes(&self) -> Option<&[u8]> {
+        self.embedded.as_deref()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -148,6 +180,12 @@ pub enum LowerError {
 /// corresponding CST-shape slices are frozen.
 pub fn lower_literal<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a>, LowerError> {
     let node = skip_wrappers(node)?;
+    if node.rule() == b"embeddedString" {
+        return node
+            .embedded_bytes()
+            .map(|bytes| Expr::StringOwned(bytes.to_vec()))
+            .ok_or(LowerError::InvalidShape);
+    }
     let span = span(node, source)?;
     match node.rule() {
         b"number" => Ok(Expr::SmallIntLiteral(span)),
@@ -203,7 +241,9 @@ fn lower_expr_at_depth<'a, N: CstNode>(
     }
     let node = skip_wrappers(node)?;
     match node.rule() {
-        b"number" | b"float" | b"string" | b"symbol" | b"ident" => lower_literal(node, source),
+        b"number" | b"float" | b"string" | b"symbol" | b"ident" | b"embeddedString" => {
+            lower_literal(node, source)
+        }
         b"send" => lower_send(node, source, depth + 1),
         b"vectorLit" => lower_vector(node, source, depth + 1),
         b"mapLit" => lower_map(node, source, depth + 1),
@@ -784,6 +824,7 @@ impl Emitter {
             Expr::Float(literal) => self.emit_float(literal),
             Expr::String(bytes) => self.emit_string(bytes),
             Expr::StringLiteral(source) => self.emit_string_literal(source),
+            Expr::StringOwned(bytes) => self.emit_string(bytes),
             Expr::Symbol(name) => self.emit_symbol(name),
             Expr::Global(name) => self.emit_reference(name),
             Expr::Nil => self.emit_nil(),
@@ -1117,6 +1158,16 @@ mod tests {
             lower_literal(&owned, b"17"),
             Ok(Expr::SmallIntLiteral(b"17"))
         );
+        let embedded = OwnedCst::embedded_string(0, 3, b"a\0b\xff".to_vec());
+        assert_eq!(
+            lower_literal(&embedded, b"foo"),
+            Ok(Expr::StringOwned(b"a\0b\xff".to_vec()))
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&Expr::StringOwned(b"a\0b\xff".to_vec()))
+            .unwrap();
+        assert_eq!(emitter.finish(), br#"birnam_mkString("a\000b\377", 4L)"#);
 
         let wrapped = node(
             b"expr",
