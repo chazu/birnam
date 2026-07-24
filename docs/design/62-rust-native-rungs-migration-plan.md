@@ -5,7 +5,7 @@
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
 > complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5.1
-> through N5.4 are complete; N6.1 is in progress.
+> through N5.4 and N6.1 are complete; N6.2 is in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1341,7 +1341,7 @@ as one file.
   quiescence, and lifecycle symbols independently of the already-migrated
   TCC-owned symbols.
 
-#### N6.1 execution record — in progress, 2026-07-23
+#### N6.1 execution record — complete, 2026-07-23
 
 The first authority slice is now executable. The Codegen test freezes the exact
 47-selector `CodegenVt` surface and 12-selector `ReflectVt` surface, rejecting
@@ -1358,8 +1358,9 @@ Codegen-owned dynamic exports, and `test-codegen-authority` audits the installed
 dylib against it (excluding only compiler-emitted UBSan handlers). `test-codegen`
 (51 tests) and `test-rust-peg-codegen-parity` pass in ReleaseSafe. The parity
 projection now includes candidate-root and compacted-image translation units in
-addition to JIT and installable-artifact units. Remaining N6.1 work is to pin
-the descriptor/header projection without normalizing semantic bytes.
+addition to JIT and installable-artifact units. The descriptor/header projection
+is pinned in the same digest without normalizing semantic bytes, completing the
+authority freeze.
 
 ### N6.2 — Port deterministic source emission
 

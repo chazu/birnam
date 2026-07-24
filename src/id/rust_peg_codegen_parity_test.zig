@@ -102,6 +102,19 @@ fn emitDigest(api: *idapi.IdApi) ![std.crypto.hash.sha2.Sha256.digest_length]u8 
     hash.update(&.{0});
     hash.update(image.items);
     hash.update(&.{0});
+
+    const descriptor_source =
+        "[Module named: #parityDescriptor requires: #[#file #time]]; " ++
+        "[Globals at: #descriptorProbe put: 1]";
+    var descriptor = codegen.emitArtifactDescriptorForTesting(
+        api.mkString(descriptor_source.ptr, descriptor_source.len),
+        api.intern("parityDescriptor"),
+    ) orelse return error.DescriptorEmitFailed;
+    defer descriptor.deinit(std.heap.c_allocator);
+    hash.update("descriptor");
+    hash.update(&.{0});
+    hash.update(descriptor.items);
+    hash.update(&.{0});
     var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
     hash.final(&digest);
     return digest;

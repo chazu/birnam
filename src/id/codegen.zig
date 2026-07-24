@@ -4488,6 +4488,29 @@ pub fn emitImageProgramForTesting(src: Oop) ?std.ArrayList(u8) {
     return emitProgram(src, false, true, true);
 }
 
+/// Test-only projection of the deterministic artifact descriptor/header block.
+/// Mach-O bytes are deliberately excluded; this is the semantic descriptor
+/// authority consumed by inert inspection before any code is mapped.
+pub fn emitArtifactDescriptorForTesting(src: Oop, name: Oop) ?std.ArrayList(u8) {
+    g_api.gcSetAuto(0);
+    defer g_api.gcSetAuto(1);
+    var scan = scanCandidateSource(src) orelse return null;
+    defer scan.deinit();
+    if (scan.name != name) return null;
+    var native_requires = nativeRequirementsOf(src);
+    defer native_requires.deinit(ca);
+    var out: std.ArrayList(u8) = .{};
+    appendArtifactDescriptorSymbols(
+        &out,
+        std.mem.span(g_api.symbolName(name)),
+        scan.requires.items,
+        native_requires.items,
+        &scan.source_digest,
+        &scan.revision_digest,
+    );
+    return out;
+}
+
 fn runProgram(src: Oop, persist: bool) Oop {
     var buf = emitProgram(src, persist, false, true) orelse return g_api.nilObj;
     defer buf.deinit(ca);
