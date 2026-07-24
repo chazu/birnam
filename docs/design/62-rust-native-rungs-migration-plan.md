@@ -1941,6 +1941,13 @@ same two accepted benchmark crossings. This closes the first heap/fact
 materialization slice of N6.6; generation authority, multi-image policy, and
 full compatible image convergence remain later N6.6 work.
 
+Method replay preflight landed at `4fe24b2`: Rust Codegen emits every recorded
+operation before evaluating the first one, preventing a later generated-C
+failure from leaving a partially applied method replay. The R6 gate's focused
+output check was aligned with the aggregate Zig build at `b20ccb5`; the
+complete acceptance script passed with the 20-test Rust Codegen boundary, the
+documented fixture exception, and only the two accepted benchmark crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

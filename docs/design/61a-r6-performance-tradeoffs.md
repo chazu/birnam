@@ -193,3 +193,11 @@ raw, and code slots in a second pass, and swizzles `HeapRef` fields before the
 Store load begins. An unresolved reference still fails closed without Store
 mutation. R6 passed again at that checkpoint with 20/20 focused tests, the
 documented fixture exception, and the same two accepted benchmark crossings.
+
+Method replay preflight landed at `4fe24b2`: every recorded operation is now
+emitted successfully before the first operation is evaluated, so a later
+generated-C failure cannot leave an earlier method mutation applied. The R6
+focused-output pin was corrected at `b20ccb5` to match the aggregate Zig build
+report while retaining the exact 20-test boundary. The complete acceptance
+script passed again with the documented fixture exception and only the two
+accepted benchmark crossings.
