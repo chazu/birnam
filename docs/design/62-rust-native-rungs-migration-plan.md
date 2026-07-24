@@ -1411,6 +1411,17 @@ the Zig ABI's `0, 0L` null-argument representation rather than an empty
 compound literal. The nine Codegen tests and full Cargo workspace suite pass
 after this slice.
 
+Block lowering and emission are now covered by the pure seam as well. The
+adapter preserves parameter order, statement order, local `let` bindings, and
+nested expressions. The emitter computes captures in enclosing-scope order,
+swaps a bounded lexical scope while emitting nested block functions, restores
+that scope on both success and failure, and emits the Method-ABI function,
+arity-specific `value` selector, block vtable, precise Oop layout, captured
+payload, and last-statement return. Nested function definitions are emitted in
+post-order and failed nested emission rolls back their definitions. Ten
+Codegen tests and Clippy pass; runtime orchestration and actual dylib
+selection remain intentionally deferred to N6.3+.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
