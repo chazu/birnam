@@ -23,7 +23,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const raw_identity = api.dlsym(handle, "birnam_prelude_rust_identity") orelse
         return error.RustPreludeIdentityMissing;
     const identity: Identity = @ptrCast(@alignCast(raw_identity));
-    try std.testing.expectEqualStrings("rust-prelude-n7.1-integer", std.mem.span(identity()));
+    try std.testing.expectEqualStrings("rust-prelude-n7.1-numeric", std.mem.span(identity()));
 
     const raw_init = api.dlsym(handle, "module_init") orelse
         return error.RustPreludeModuleInitMissing;
@@ -41,9 +41,53 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.trueObj, send(api, five, ">=", &.{three}));
     try std.testing.expectEqual(api.trueObj, send(api, three, "=", &.{api.mkSmallInt(3)}));
 
+    const two_point_five = api.mkFloat(2.5);
+    const mixed_sum = send(api, three, "+", &.{two_point_five});
+    try std.testing.expect(api.isFloat(mixed_sum) != 0);
+    try std.testing.expectApproxEqAbs(@as(f64, 5.5), api.floatValue(mixed_sum), 0.000001);
+    try std.testing.expectApproxEqAbs(
+        @as(f64, -0.5),
+        api.floatValue(send(api, two_point_five, "-", &.{three})),
+        0.000001,
+    );
+    try std.testing.expectApproxEqAbs(
+        @as(f64, 7.5),
+        api.floatValue(send(api, two_point_five, "*", &.{three})),
+        0.000001,
+    );
+    try std.testing.expectApproxEqAbs(
+        @as(f64, 1.25),
+        api.floatValue(send(api, two_point_five, "/", &.{api.mkSmallInt(2)})),
+        0.000001,
+    );
+    try std.testing.expectEqual(api.nilObj, send(api, two_point_five, "/", &.{api.mkSmallInt(0)}));
+    try std.testing.expectEqual(api.falseObj, send(api, two_point_five, "=", &.{api.mkSmallInt(5)}));
+    try std.testing.expectEqual(api.falseObj, send(api, two_point_five, ">", &.{three}));
+    try std.testing.expectEqual(api.trueObj, send(api, two_point_five, "<", &.{api.mkFloat(3.0)}));
+
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(send(api, api.mkFloat(2.9), "asInteger", &.{})));
+    try std.testing.expectEqual(@as(i64, -2), api.smallIntValue(send(api, api.mkFloat(-1.2), "floor", &.{})));
+    try std.testing.expectEqual(@as(i64, -1), api.smallIntValue(send(api, api.mkFloat(-1.2), "ceiling", &.{})));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, api.mkFloat(2.5), "rounded", &.{})));
+    try std.testing.expectApproxEqAbs(
+        @as(f64, 1.5),
+        api.floatValue(send(api, api.mkFloat(-1.5), "abs", &.{})),
+        0.000001,
+    );
+    try std.testing.expectApproxEqAbs(
+        @as(f64, 3.0),
+        api.floatValue(send(api, api.mkFloat(9.0), "sqrt", &.{})),
+        0.000001,
+    );
+    try std.testing.expectEqual(api.nilObj, send(api, api.mkFloat(-1.0), "sqrt", &.{}));
+
     const rendered = send(api, api.mkSmallInt(-42), "printString", &.{});
     var rendered_len: usize = 0;
     const rendered_bytes = api.stringBytes(rendered, &rendered_len);
     try std.testing.expectEqualStrings("-42", rendered_bytes[0..rendered_len]);
+    const float_rendered = send(api, api.mkFloat(4.0), "printString", &.{});
+    var float_rendered_len: usize = 0;
+    const float_rendered_bytes = api.stringBytes(float_rendered, &float_rendered_len);
+    try std.testing.expectEqualStrings("4.0", float_rendered_bytes[0..float_rendered_len]);
     try std.testing.expect(api.isFloat(send(api, three, "asFloat", &.{})) != 0);
 }
