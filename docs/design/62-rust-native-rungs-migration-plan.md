@@ -1710,6 +1710,13 @@ rollback, and the resulting Store state. Predecessor composition, quiescence,
 publication events, observer/authorizer callbacks, and multi-generation
 reconciliation remain open.
 
+Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
+post-carrier check without requiring a rollback attempt. They return the unit
+or `true` when every active binding still matches, and otherwise mark the
+candidate drifted and disable rollback. The installed gate covers both healthy
+single-candidate and all-candidate reconciliation; predecessor-ledger
+composition and persisted generation reconciliation remain later work.
+
 The Rust runtime now also carries the Store callback seam needed by the final
 authority switch. Its managed-method observer watches active candidate
 bindings and marks `drifted`/`rollbackAvailable = false` when a post-activation
