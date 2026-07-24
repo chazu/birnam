@@ -3,9 +3,10 @@
 #
 # This does not weaken the general Design 46 comparator. It proves that the
 # current native-rung semantic/performance baseline still passes, that the
-# committed, noise-qualified Zig/Rust pair is unchanged, and that its only
-# threshold crossings are the two tradeoffs accepted for the Rust-floor
-# cutover. Any changed result or additional regression fails closed.
+# latest Rust-Lang replacement gates pass, that the committed, noise-qualified
+# Zig/Rust pair is unchanged, and that its only threshold crossings are the
+# two tradeoffs accepted for the Rust-floor cutover. Any changed result,
+# functional failure, or additional regression fails closed.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -14,6 +15,30 @@ cd "$(dirname "$0")/.."
 # fail-closed and validates the semantic fixtures, accepted result pair, and
 # artifact-inspector baseline before the raw comparator is run below.
 python3 scripts/check-native-rung-baseline.py
+
+# Keep the R6 acceptance boundary aligned with the latest N5.1-N5.4 test set.
+# These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
+# and canonical/rollback selection checks. The broader `zig build test` target
+# includes long-running lower-rung matrices and is intentionally not substituted
+# for this focused replacement gate.
+latest_tests=(
+  test-rust-lang
+  test-rust-lang-parity
+  test-rust-lang-diagnostics
+  test-lang-selection
+)
+functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
+trap 'rm -f "$functional"' EXIT
+
+set +e
+zig build "${latest_tests[@]}" --summary all >"$functional" 2>&1
+functional_status=$?
+set -e
+cat "$functional"
+[ "$functional_status" -eq 0 ] || {
+  echo "r6-acceptance: latest Rust-Lang functional gates failed" >&2
+  exit 1
+}
 
 zig_result="bench/results/v0.11.0-zig-2fe44d2-c8b632e8882358672a0de5a24897a735c09af2f080cb1aea55510e021fc3d6b1.json"
 rust_result="bench/results/v0.11.0-rust-2fe44d2-239d348c297583789c4a4da8d5713ebcfd1b9ba1dbf12c04ecb44e56282ac0ea.json"
@@ -42,7 +67,7 @@ verify_result "$zig_result" "$zig_result_sha256"
 verify_result "$rust_result" "$rust_result_sha256"
 
 comparison=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-acceptance.XXXXXX")
-trap 'rm -f "$comparison"' EXIT
+trap 'rm -f "$functional" "$comparison"' EXIT
 
 set +e
 ./scripts/bench-compare.sh "$zig_result" "$rust_result" >"$comparison" 2>&1

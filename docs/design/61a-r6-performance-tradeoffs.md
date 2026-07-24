@@ -30,10 +30,13 @@ becoming a general dirty-tree allowance.
 
 `mise run r6-acceptance` first runs the current native-rung baseline checker
 (semantic fixtures, the accepted optimized pair, and the artifact-inspector
-baseline), then verifies both file hashes and runs the unchanged Design 46
-comparator. It fails unless the only threshold crossings are exactly the two
-entries below. Any changed snapshot, missing or unusable case, additional
-regression, or changed accepted measurement fails closed.
+baseline), then runs the latest N5.1-N5.4 Rust-Lang functional set: the
+unchanged grammar suite, frozen CST parity, syntax diagnostics, and canonical
+Rust/explicit Zig rollback selection. It then verifies both file hashes and
+runs the unchanged Design 46 comparator. It fails unless the only threshold
+crossings are exactly the two entries below. Any changed snapshot, functional
+failure, missing or unusable case, additional regression, or changed accepted
+measurement fails closed.
 
 ## Accepted tradeoffs
 
@@ -65,7 +68,9 @@ set or changing the accepted snapshot.
 
 The Rust TCC dynamic-boundary, separate-process artifact activation, full
 Codegen, Alien, and image suites were then added and passed on both floors.
-`mise run r6-acceptance` was rerun again on 2026-07-23: the exact accepted
-hashes remained unchanged, with the same two recorded crossings and zero
-missing or unusable cases. This additional native-TCC coverage likewise does
-not widen the R6 exception set or change the accepted snapshot.
+The R6 gate now also executes the latest Rust-Lang replacement set before
+checking the snapshot. `mise run r6-acceptance` was rerun again on 2026-07-23:
+the exact accepted hashes remained unchanged, with the same two recorded
+crossings and zero missing or unusable cases. This additional native-TCC and
+Rust-Lang coverage does not widen the R6 exception set or change the accepted
+snapshot.
