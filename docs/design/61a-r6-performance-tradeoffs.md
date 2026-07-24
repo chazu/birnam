@@ -380,3 +380,14 @@ The Rust-only drift hardening landed at `4f5a46c`: after the external method
 replacement marks an active candidate `drifted` and disables rollback, an
 explicit `prepareRollback:` is rejected as well. Both 4/4 callback variants
 and the full R6 gate remain green with no new benchmark exception.
+
+The first N7.1 Rust prelude rung landed at `7a7a887`. A separate Rust prelude
+cdylib is installed beside the Zig oracle, and its opt-in integer protocol
+(`+`, `-`, `*`, `/`, `mod:`, exact comparisons, `printString`, and `asFloat`)
+passes through the dynamic IdApi boundary against the selected Zig or Rust
+floor. The R6 gate now includes `test-rust-prelude` at 1/1; the focused set is
+42/42 and the complete gate passed after the canonical-prelude install fix at
+`531ad0f`. No new benchmark exception was admitted: only `query.aggregate`
+(+5.8%) and `compile.stage1-stdlib` (+11.9%) remain accepted for this
+snapshot. Boolean/Float/Error/Block/System parity and canonical prelude
+cutover remain open N7.1 work.

@@ -2146,6 +2146,20 @@ replacement marks an active candidate `drifted` and disables rollback, an
 explicit `prepareRollback:` is rejected as well. Both 4/4 callback variants
 and the full R6 gate remain green with no new benchmark exception.
 
+The first N7.1 Rust prelude rung landed at `7a7a887`. A separate Rust prelude
+cdylib is installed beside the Zig oracle, and its opt-in integer protocol
+(`+`, `-`, `*`, `/`, `mod:`, exact comparisons, `printString`, and `asFloat`)
+passes through the dynamic IdApi boundary against the selected Zig or Rust
+floor. The install graph preserves the canonical Zig prelude and publishes
+the Rust artifact under its explicit name; the installed Cargo workspace and
+required-dylib audit cover the new crate. The R6 pin advanced in `8e4200e`:
+the focused set is now 42/42, including `test-rust-prelude` at 1/1. The full
+R6 gate passed after the install-graph correction at `531ad0f`; only the
+recorded sortedModules fixture crash and the two existing benchmark crossings
+(`query.aggregate` +5.8% and `compile.stage1-stdlib` +11.9%) remain accepted.
+Boolean/Float/Error/Block/System parity and canonical prelude cutover remain
+open N7.1 work.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
