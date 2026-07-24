@@ -20,6 +20,7 @@ fn valueSelf(self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
 
 var loop_true: Oop = undefined;
 var loop_nil: Oop = undefined;
+var loop_error: Oop = undefined;
 var condition_calls: usize = 0;
 var body_calls: usize = 0;
 
@@ -37,6 +38,20 @@ fn loopBody(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
     _ = _count;
     body_calls += 1;
     return loop_nil;
+}
+
+fn loopBodyError(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _args;
+    _ = _count;
+    return loop_error;
+}
+
+fn loopConditionError(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _args;
+    _ = _count;
+    return loop_error;
 }
 
 test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
@@ -171,6 +186,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.falseObj, send(api, three, "isError", &.{}));
     const kind_only_error = send(api, error_factory, "kind:", &.{error_kind});
     try std.testing.expectEqual(api.trueObj, send(api, kind_only_error, "isError", &.{}));
+    loop_error = error_object;
 
     loop_true = api.trueObj;
     loop_nil = api.nilObj;
@@ -186,4 +202,15 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.nilObj, send(api, condition, "whileTrue:", &.{body}));
     try std.testing.expectEqual(@as(usize, 3), condition_calls);
     try std.testing.expectEqual(@as(usize, 2), body_calls);
+
+    const error_body_vt = api.proto(block_vt);
+    const error_body = api.alloc(error_body_vt, 0);
+    api.method(error_body_vt, api.intern("value"), &loopBodyError);
+    condition_calls = 0;
+    try std.testing.expectEqual(error_object, send(api, condition, "whileTrue:", &.{error_body}));
+
+    const error_condition_vt = api.proto(block_vt);
+    const error_condition = api.alloc(error_condition_vt, 0);
+    api.method(error_condition_vt, api.intern("value"), &loopConditionError);
+    try std.testing.expectEqual(error_object, send(api, error_condition, "whileTrue:", &.{body}));
 }

@@ -699,6 +699,9 @@ unsafe fn block_loop(
     };
     loop {
         let condition = unsafe { send0(api, self_object, b"value\0") };
+        if unsafe { is_error(api, condition) } {
+            return condition;
+        }
         let is_true = condition == api.trueObj;
         let is_false = condition == api.falseObj;
         if !is_true && !is_false {
@@ -707,11 +710,19 @@ unsafe fn block_loop(
         if is_true != continue_on_true {
             return api.nilObj;
         }
-        // The Error rung is not yet installed in this opt-in slice, so a body
-        // result cannot be classified here. The loop still discards ordinary
-        // body values and remains stack-flat across all iterations.
-        let _ = unsafe { send0(api, body, b"value\0") };
+        let result = unsafe { send0(api, body, b"value\0") };
+        if unsafe { is_error(api, result) } {
+            return result;
+        }
     }
+}
+
+unsafe fn is_error(api: &IdApi, value: Oop) -> bool {
+    if value.is_null() || unsafe { (api.isExported)(c"ErrorVt".as_ptr()) } == 0 {
+        return false;
+    }
+    let error_vt = unsafe { (api.import)(c"ErrorVt".as_ptr()) };
+    !error_vt.is_null() && unsafe { (api.vtableOf)(value) } == error_vt
 }
 
 unsafe extern "C" fn block_while_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
