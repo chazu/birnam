@@ -2134,6 +2134,12 @@ the predecessor's method carrier and dispatch result. Both callback variants
 remain 3/3, and the complete R6 gate passes with the same two accepted
 benchmark crossings.
 
+The Rust-only discard boundary landed at `cee60c8`, and the R6 pin advanced to
+four tests in each callback variant at `a11c0bd`. A mapped candidate can be
+prepared and discarded; its token cannot later commit, while the candidate
+remains mapped and publishes no Store state. The full gate passed with 4/4 for
+both Rust Store and Zig Store and no new benchmark exception.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
