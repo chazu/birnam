@@ -43,7 +43,9 @@
 //! Depends only on the IdApi + libtcc.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const idapi = @import("idapi.zig");
+const tcc_build_options = @import("tcc_build_options");
 const c = @cImport({
     @cInclude("libtcc.h");
 });
@@ -256,7 +258,7 @@ fn rtFreeCstr(p: [*:0]const u8) callconv(.c) void {
 // relocatable. The JIT path keeps patching the same addresses through
 // `bindRuntime`'s pre-relocate symbol window.
 comptime {
-    if (!@import("builtin").is_test) {
+    if (!builtin.is_test or !tcc_build_options.suppress_runtime_exports) {
         @export(&rtSend, .{ .name = "birnam_send" });
         @export(&rtIntern, .{ .name = "birnam_intern" });
         @export(&rtMkSmallInt, .{ .name = "birnam_mkSmallInt" });

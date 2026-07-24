@@ -53,6 +53,14 @@ pub fn build(b: *std.Build) void {
     const version = std.mem.trim(u8, @embedFile("VERSION"), " \t\r\n");
     const build_opts = b.addOptions();
     build_opts.addOption([]const u8, "version", version);
+    // TCC's runtime callbacks are real dynamic symbols in production and in
+    // the ordinary Zig-backed test executables. Rust-TCC integration tests
+    // select a replacement dylib at runtime, so their host executable must
+    // hide the Zig copies to keep dyld/TCC symbol lookup unambiguous.
+    const tcc_build_options = b.addOptions();
+    tcc_build_options.addOption(bool, "suppress_runtime_exports", false);
+    const rust_tcc_test_options = b.addOptions();
+    rust_tcc_test_options.addOption(bool, "suppress_runtime_exports", true);
 
     // -- libtcc static lib (the C → native backend) --------------------------
     // Vendored from the TinyCC source (vendor/libtcc-src/, LGPL — see COPYING),
@@ -723,6 +731,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_peg_codegen_parity_mod.addImport("tcc_build_options", tcc_build_options.createModule());
     rust_peg_codegen_parity_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const rust_peg_codegen_parity_tests = b.addTest(.{ .root_module = rust_peg_codegen_parity_mod });
     rust_peg_codegen_parity_tests.linkLibrary(libtcc_lib);
@@ -757,6 +766,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_peg_metadata_parity_mod.addImport("tcc_build_options", tcc_build_options.createModule());
     rust_peg_metadata_parity_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const rust_peg_metadata_parity_tests = b.addTest(.{ .root_module = rust_peg_metadata_parity_mod });
     rust_peg_metadata_parity_tests.linkLibrary(libtcc_lib);
@@ -907,6 +917,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_peg_codegen_mod.addImport("tcc_build_options", tcc_build_options.createModule());
     const rust_peg_codegen_tests = b.addTest(.{ .root_module = rust_peg_codegen_mod });
     rust_peg_codegen_tests.addIncludePath(b.path("vendor/libtcc-src"));
     rust_peg_codegen_tests.linkLibrary(libtcc_lib);
@@ -933,6 +944,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_peg_codegen_full_mod.addImport("tcc_build_options", rust_tcc_test_options.createModule());
     rust_peg_codegen_full_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const rust_peg_codegen_full_tests = b.addTest(.{ .root_module = rust_peg_codegen_full_mod });
     rust_peg_codegen_full_tests.linkLibrary(libtcc_lib);
@@ -963,6 +975,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_tcc_alien_mod.addImport("tcc_build_options", rust_tcc_test_options.createModule());
     rust_tcc_alien_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const rust_tcc_alien_tests = b.addTest(.{ .root_module = rust_tcc_alien_mod });
     rust_tcc_alien_tests.linkLibrary(libtcc_lib);
@@ -989,6 +1002,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_tcc_image_mod.addImport("tcc_build_options", rust_tcc_test_options.createModule());
     rust_tcc_image_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const rust_tcc_image_tests = b.addTest(.{ .root_module = rust_tcc_image_mod });
     rust_tcc_image_tests.linkLibrary(libtcc_lib);
@@ -1090,7 +1104,12 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
-        if (m.lib_links_tcc) lib_mod.addIncludePath(b.path("vendor/libtcc-src"));
+        if (m.lib_links_tcc) {
+            lib_mod.addIncludePath(b.path("vendor/libtcc-src"));
+            if (std.mem.eql(u8, m.src, "tcc.zig")) {
+                lib_mod.addImport("tcc_build_options", tcc_build_options.createModule());
+            }
+        }
         const lib = b.addLibrary(.{ .name = m.name, .root_module = lib_mod, .linkage = .dynamic });
         if (m.lib_links_tcc) lib.linkLibrary(libtcc_lib);
         lib.linkLibC();
@@ -1240,7 +1259,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         test_mod.export_symbol_names = m.test_exports;
-        if (m.test_links_tcc) test_mod.addIncludePath(b.path("vendor/libtcc-src"));
+        if (m.test_links_tcc) {
+            test_mod.addIncludePath(b.path("vendor/libtcc-src"));
+            test_mod.addImport("tcc_build_options", tcc_build_options.createModule());
+        }
         const tests = b.addTest(.{ .root_module = test_mod });
         if (m.test_links_tcc) {
             tests.linkLibrary(libtcc_lib);
