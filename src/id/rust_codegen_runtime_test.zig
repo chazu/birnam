@@ -613,6 +613,24 @@ test "Rust Codegen inspects and maps a Zig candidate" {
     var rollback_plan = api.send(vector, api.intern("new"), &.{}, 0);
     const rollback_event = api.send(object, api.intern("clone"), &.{}, 0);
     const rollback_basis = api.send(object, api.intern("clone"), &.{}, 0);
+    const stale_expected_generation = api.send(object, api.intern("clone"), &.{}, 0);
+    var stale_rollback_plan = api.send(vector, api.intern("new"), &.{}, 0);
+    for ([_]idapi.Oop{
+        api.intern("rollback"),
+        successor_unit,
+        api.intern("rustCandidateSuccessor"),
+        unit,
+        rollback_event,
+        rollback_basis,
+        stale_expected_generation,
+        expected_generation,
+    }) |value| {
+        stale_rollback_plan = api.send(stale_rollback_plan, api.intern("add:"), &.{value}, 1);
+    }
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(rust_codegen, api.intern("prepareRollback:plan:"), &.{ successor_unit, stale_rollback_plan }, 2),
+    );
     for ([_]idapi.Oop{
         api.intern("rollback"),
         successor_unit,
