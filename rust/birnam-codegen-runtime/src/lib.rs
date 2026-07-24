@@ -264,6 +264,13 @@ fn descriptor_list(payload: &mut Vec<u8>, values: &[&[u8]]) {
     }
 }
 
+fn descriptor_owned_list(payload: &mut Vec<u8>, values: &[Vec<u8>]) {
+    payload.extend_from_slice(&(values.len() as u32).to_le_bytes());
+    for value in values {
+        descriptor_field(payload, value);
+    }
+}
+
 fn artifact_identity(path: &[u8]) -> Vec<u8> {
     let mut name = path.rsplit(|byte| *byte == b'/').next().unwrap_or(path);
     if let Some(dot) = name.iter().rposition(|byte| *byte == b'.') {
@@ -295,7 +302,13 @@ fn append_c_string(output: &mut Vec<u8>, bytes: &[u8]) {
     }
 }
 
-fn artifact_source(source: &[u8], identity: &[u8], generated: &[u8]) -> Vec<u8> {
+fn artifact_source(
+    source: &[u8],
+    identity: &[u8],
+    requires: &[Vec<u8>],
+    native_requires: &[Vec<u8>],
+    generated: &[u8],
+) -> Vec<u8> {
     let digest = sha256_hex(source);
     let mut payload = Vec::new();
     descriptor_field(&mut payload, b"module");
@@ -304,8 +317,8 @@ fn artifact_source(source: &[u8], identity: &[u8], generated: &[u8]) -> Vec<u8> 
     descriptor_field(&mut payload, ARTIFACT_TARGET);
     descriptor_field(&mut payload, &digest);
     descriptor_field(&mut payload, &digest);
-    descriptor_list(&mut payload, &[]);
-    descriptor_list(&mut payload, &[]);
+    descriptor_owned_list(&mut payload, requires);
+    descriptor_owned_list(&mut payload, native_requires);
     descriptor_list(&mut payload, &[b"activate", b"source", b"reflection"]);
 
     let mut descriptor = Vec::with_capacity(ARTIFACT_DESCRIPTOR_MAGIC.len() + 4 + payload.len());
@@ -561,6 +574,110 @@ fn source_directory(path: &[u8]) -> Vec<u8> {
         Some(index) => path[..index].to_vec(),
         None => b".".to_vec(),
     }
+}
+
+fn symbol_literal(node: &OwnedCst, source: &[u8]) -> Option<Vec<u8>> {
+    let node = skip_cst_wrappers(node)?;
+    source_span(node, source)?
+        .strip_prefix(b"#")
+        .filter(|name| !name.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn vector_symbols(node: &OwnedCst, source: &[u8]) -> Option<Vec<Vec<u8>>> {
+    let node = skip_cst_wrappers(node)?;
+    if node.rule() != b"vectorLit" {
+        return None;
+    }
+    let mut values = Vec::with_capacity(node.child_count());
+    for index in 0..node.child_count() {
+        values.push(symbol_literal(node.child(index)?, source)?);
+    }
+    Some(values)
+}
+
+fn keyword_selector_args<'a>(
+    node: &'a OwnedCst,
+    source: &[u8],
+) -> Option<(Vec<u8>, Vec<&'a OwnedCst>)> {
+    let node = skip_cst_wrappers(node)?;
+    if node.rule() != b"keywordMsg" || node.child_count() == 0 || node.child_count() % 2 != 0 {
+        return None;
+    }
+    let mut selector = Vec::new();
+    let mut args = Vec::with_capacity(node.child_count() / 2);
+    let mut index = 0;
+    while index < node.child_count() {
+        selector.extend_from_slice(source_span(node.child(index)?, source)?);
+        args.push(node.child(index + 1)?);
+        index += 2;
+    }
+    Some((selector, args))
+}
+
+fn collect_artifact_metadata(
+    node: &OwnedCst,
+    source: &[u8],
+    depth: usize,
+    module: &mut Option<(Vec<u8>, Vec<Vec<u8>>)>,
+    native_requires: &mut Vec<Vec<u8>>,
+) {
+    if depth >= MAX_CST_DEPTH {
+        return;
+    }
+    if node.rule() == b"send" && node.child_count() == 2 {
+        let receiver = skip_cst_wrappers(node.child(0).unwrap_or(node));
+        let message = skip_cst_wrappers(node.child(1).unwrap_or(node));
+        if let (Some(receiver), Some(message)) = (receiver, message)
+            && let Some((selector, args)) = keyword_selector_args(message, source)
+        {
+            if receiver.rule() == b"ident"
+                && source_span(receiver, source) == Some(b"Module")
+                && selector == b"named:requires:"
+                && args.len() == 2
+                && let (Some(name), Some(requires)) = (
+                    symbol_literal(args[0], source),
+                    vector_symbols(args[1], source),
+                )
+            {
+                *module = Some((name, requires));
+            }
+            if receiver.rule() == b"ident"
+                && source_span(receiver, source) == Some(b"Alien")
+                && selector == b"dlopen:"
+                && args.len() == 1
+                && let Some(argument) = skip_cst_wrappers(args[0])
+                    .and_then(|argument| source_span(argument, source))
+                    .and_then(decode_string_literal)
+                && !native_requires.iter().any(|value| value == &argument)
+            {
+                native_requires.push(argument);
+            }
+        }
+    }
+    for index in 0..node.child_count() {
+        if let Some(child) = node.child(index) {
+            collect_artifact_metadata(child, source, depth + 1, module, native_requires);
+        }
+    }
+}
+
+type ModuleMetadata = (Vec<u8>, Vec<Vec<u8>>);
+type ArtifactMetadata = (Option<ModuleMetadata>, Vec<Vec<u8>>);
+
+unsafe fn artifact_metadata(api: &IdApi, source_object: Oop) -> Option<ArtifactMetadata> {
+    let source = unsafe { string_bytes(api, source_object) }?;
+    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
+    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+        return None;
+    }
+    let tree = unsafe { cst_tree(api, cst, 0) }?;
+    let mut module = None;
+    let mut native_requires = Vec::new();
+    collect_artifact_metadata(&tree, &source, 0, &mut module, &mut native_requires);
+    Some((module, native_requires))
 }
 
 unsafe fn emit_source(
@@ -827,8 +944,22 @@ unsafe extern "C" fn rust_codegen_compile_output(
         note_error(b"RustCodegen output path was not a String");
         return api.nilObj;
     };
-    let identity = artifact_identity(&path_bytes);
-    let artifact = artifact_source(&source_bytes, &identity, &source);
+    let (identity, requires, native_requires) = match unsafe { artifact_metadata(api, values[0]) } {
+        Some((Some((identity, requires)), native_requires)) => {
+            (identity, requires, native_requires)
+        }
+        Some((None, native_requires)) => {
+            (artifact_identity(&path_bytes), Vec::new(), native_requires)
+        }
+        None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
+    };
+    let artifact = artifact_source(
+        &source_bytes,
+        &identity,
+        &requires,
+        &native_requires,
+        &source,
+    );
     let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
     let result = unsafe {
@@ -1071,6 +1202,8 @@ mod tests {
         let output = artifact_source(
             b"7",
             b"rust-codegen",
+            &[],
+            &[],
             b"void* __ev(void* self, void** args, long n){}",
         );
         assert!(

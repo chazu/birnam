@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
+const artifact_inspector = @import("artifact_inspector.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const idapi = @import("idapi.zig");
@@ -20,6 +21,7 @@ fn load(api: *idapi.IdApi, variable: []const u8) !void {
 
 fn setup() !*idapi.IdApi {
     const api = floor.api();
+    artifact_inspector.bringUp(api);
     try load(api, "BIRNAM_RUST_PEG_DYLIB");
     lang.bringUp(api);
     try load(api, "BIRNAM_RUST_TCC_DYLIB");
@@ -202,4 +204,28 @@ test "Rust Codegen embeds files through source-aware eval and compile" {
     var loaded_len: usize = 0;
     const loaded_bytes = api.stringBytes(loaded, &loaded_len);
     try std.testing.expectEqualSlices(u8, "a\x00b\xff", loaded_bytes[0..loaded_len]);
+}
+
+test "Rust Codegen descriptors preserve module and native requirements" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const artifact = api.import("Artifact") orelse return error.MissingArtifact;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "libnative.dylib", .data = "fixture" });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const output_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_metadata.dylib", .{directory});
+    defer std.testing.allocator.free(output_path);
+    const source_text =
+        "[Module named: #metadataProbe requires: #[#dep]]; [Alien dlopen: \"libnative.dylib\"]; 7";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(output_path.ptr, output_path.len);
+    const compiled = api.send(codegen, api.intern("compile:output:"), &.{ source, output }, 2);
+    try std.testing.expectEqual(output, compiled);
+    const descriptor = api.send(artifact, api.intern("inspect:"), &.{output}, 1);
+    try std.testing.expect(descriptor != api.nilObj);
+    try std.testing.expectEqual(api.intern("metadataProbe"), api.send(descriptor, api.intern("identity"), &.{}, 0));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(descriptor, api.intern("requiresCount"), &.{}, 0)));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(descriptor, api.intern("nativeRequiresCount"), &.{}, 0)));
 }
