@@ -93,6 +93,9 @@ const SYMBOL_SELECTOR: &[u8] = b"symbol:\0";
 const ADD_SYMBOL_SELECTOR: &[u8] = b"addSymbol:value:\0";
 const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
 const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
+const CURRENT_VALUE_SELECTOR: &[u8] = b"currentValue:attr:\0";
+const CELL_FOR_SELECTOR: &[u8] = b"cellFor:attr:\0";
+const SET_SELECTOR: &[u8] = b"set:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
@@ -102,6 +105,8 @@ const SET_METHOD_AUTHORIZER_SELECTOR: &[u8] = b"setMethodMutationAuthorizer:\0";
 const CODEGEN_NAME: &[u8] = b"Codegen\0";
 const MODULE_NAME: &[u8] = b"Module\0";
 const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
+const DISPATCH_NAME: &[u8] = b"dispatch\0";
+const ACTIVE_GENERATION_NAME: &[u8] = b"activeGeneration\0";
 const MAX_CST_DEPTH: usize = 4096;
 const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
@@ -1391,6 +1396,71 @@ unsafe fn generation_digest(api: &IdApi, source_map: Oop) -> Option<[u8; 64]> {
     Some(sha256_hex(&digest_input))
 }
 
+unsafe fn durable_current_generation(api: &IdApi) -> Oop {
+    let runtime = runtime();
+    let store = runtime.store as Oop;
+    if store.is_null() || store == api.nilObj {
+        return api.nilObj;
+    }
+    let dispatch = unsafe { intern(api, DISPATCH_NAME) };
+    let attribute = unsafe { intern(api, ACTIVE_GENERATION_NAME) };
+    unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[dispatch, attribute]) }
+}
+
+unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool {
+    if generation.is_null() || generation == api.nilObj {
+        return false;
+    }
+    let runtime = runtime();
+    let store = runtime.store as Oop;
+    if store.is_null() || store == api.nilObj {
+        return false;
+    }
+    let source_map = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"sourceMap\0")],
+        )
+    };
+    let recorded = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"baseDigest\0")],
+        )
+    };
+    let Some(actual) = (unsafe { generation_digest(api, source_map) }) else {
+        return false;
+    };
+    unsafe { string_bytes(api, recorded) }.is_some_and(|digest| digest == actual)
+}
+
+unsafe fn set_durable_current_generation(api: &IdApi, generation: Oop) -> bool {
+    let runtime = runtime();
+    let store = runtime.store as Oop;
+    if store.is_null() || store == api.nilObj {
+        return false;
+    }
+    let cell = unsafe {
+        send(
+            api,
+            store,
+            CELL_FOR_SELECTOR,
+            &[
+                intern(api, DISPATCH_NAME),
+                intern(api, ACTIVE_GENERATION_NAME),
+            ],
+        )
+    };
+    if cell.is_null() || cell == api.nilObj {
+        return false;
+    }
+    unsafe { send(api, cell, SET_SELECTOR, &[generation]) != api.nilObj }
+}
+
 unsafe extern "C" fn rust_codegen_initial_generation_projection(
     _self_object: Oop,
     pointer: *const Oop,
@@ -1685,6 +1755,17 @@ unsafe extern "C" fn rust_codegen_current_generation_digest(
         abort("RustCodegen currentGenerationDigest: expects no arguments");
     }
     let api = unsafe { api(runtime()) };
+    let durable = unsafe { durable_current_generation(api) };
+    if durable != api.nilObj {
+        return unsafe {
+            send(
+                api,
+                runtime().store as Oop,
+                CURRENT_VALUE_SELECTOR,
+                &[durable, intern(api, b"baseDigest\0")],
+            )
+        };
+    }
     let generation = ACTIVE_GENERATION.load(Ordering::Acquire);
     if generation == 0 {
         return api.nilObj;
@@ -3148,7 +3229,13 @@ unsafe fn parse_publication_plan(
     ))
 }
 
-fn publication_plan_is_current(plan: PublicationPlanState) -> bool {
+unsafe fn publication_plan_is_current(api: &IdApi, plan: PublicationPlanState) -> bool {
+    let durable = unsafe { durable_current_generation(api) };
+    if durable != api.nilObj {
+        return durable == plan.expected_generation as Oop
+            && unsafe { durable_generation_is_canonical(api, plan.expected_generation as Oop) }
+            && unsafe { durable_generation_is_canonical(api, plan.successor_generation as Oop) };
+    }
     let current = ACTIVE_GENERATION.load(Ordering::Acquire);
     current == 0 || current == plan.expected_generation
 }
@@ -3208,7 +3295,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             PublicationPlanState::default(),
         )
     };
-    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+    if plan.enforce_lifecycle && !unsafe { publication_plan_is_current(api, plan) } {
         note_error(b"RustCodegen publication plan is stale");
         return api.nilObj;
     }
@@ -3365,7 +3452,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         note_error(b"RustCodegen publication commit requires quiescence");
         return api.nilObj;
     }
-    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+    if plan.enforce_lifecycle && !unsafe { publication_plan_is_current(api, plan) } {
         if let Ok(mut candidates) = CANDIDATES.lock()
             && let Some(candidate) = candidates
                 .iter_mut()
@@ -3488,6 +3575,12 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             })
         {
             note_error(b"RustCodegen publication event Store is unavailable");
+            return api.nilObj;
+        }
+        if unsafe { durable_current_generation(api) } != api.nilObj
+            && !unsafe { set_durable_current_generation(api, plan.successor_generation as Oop) }
+        {
+            note_error(b"RustCodegen durable generation update failed");
             return api.nilObj;
         }
         ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
@@ -3707,7 +3800,7 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
     } else {
         (predecessor, PublicationPlanState::default())
     };
-    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+    if plan.enforce_lifecycle && !unsafe { publication_plan_is_current(api, plan) } {
         note_error(b"RustCodegen rollback publication plan is stale");
         return api.nilObj;
     }
@@ -3831,7 +3924,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         note_error(b"RustCodegen publication rollback requires quiescence");
         return api.nilObj;
     }
-    if plan.enforce_lifecycle && !publication_plan_is_current(plan) {
+    if plan.enforce_lifecycle && !unsafe { publication_plan_is_current(api, plan) } {
         if let Ok(mut candidates) = CANDIDATES.lock()
             && let Some(candidate) = candidates
                 .iter_mut()
@@ -3947,6 +4040,12 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             })
         {
             note_error(b"RustCodegen publication event Store is unavailable");
+            return api.nilObj;
+        }
+        if unsafe { durable_current_generation(api) } != api.nilObj
+            && !unsafe { set_durable_current_generation(api, plan.successor_generation as Oop) }
+        {
+            note_error(b"RustCodegen durable generation update failed");
             return api.nilObj;
         }
         ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
