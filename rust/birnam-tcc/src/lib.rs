@@ -5,6 +5,8 @@
 //! `src/id/tcc.zig`; all calls into the host IdApi happen through short unsafe
 //! sections so no Rust borrow survives a foreign callback.
 
+#![allow(clippy::missing_safety_doc)]
+
 use birnam_abi::{IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args};
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
@@ -527,63 +529,77 @@ unsafe extern "C" fn m_compile_output(_self_object: Oop, args: *const Oop, count
 
 // -- generated-C runtime symbols -------------------------------------------
 
-unsafe extern "C" fn rt_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
+#[unsafe(export_name = "birnam_send")]
+pub unsafe extern "C" fn rt_send(
+    receiver: Oop,
+    selector: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).send)(receiver, selector, args, count) }
 }
 
-unsafe extern "C" fn rt_intern(name: *const c_char) -> Oop {
+#[unsafe(export_name = "birnam_intern")]
+pub unsafe extern "C" fn rt_intern(name: *const c_char) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).intern)(name) }
 }
 
-unsafe extern "C" fn rt_mk_small_int(value: i64) -> Oop {
+#[unsafe(export_name = "birnam_mkSmallInt")]
+pub unsafe extern "C" fn rt_mk_small_int(value: i64) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).mkSmallInt)(value) }
 }
 
-unsafe extern "C" fn rt_small_int_value(object: Oop) -> i64 {
+#[unsafe(export_name = "birnam_smallIntValue")]
+pub unsafe extern "C" fn rt_small_int_value(object: Oop) -> i64 {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).smallIntValue)(object) }
 }
 
-unsafe extern "C" fn rt_mk_float(value: f64) -> Oop {
+#[unsafe(export_name = "birnam_mkFloat")]
+pub unsafe extern "C" fn rt_mk_float(value: f64) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).mkFloat)(value) }
 }
 
-unsafe extern "C" fn rt_float_value(object: Oop) -> f64 {
+#[unsafe(export_name = "birnam_floatValue")]
+pub unsafe extern "C" fn rt_float_value(object: Oop) -> f64 {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).floatValue)(object) }
 }
 
-unsafe extern "C" fn rt_mk_word(value: u64) -> Oop {
+#[unsafe(export_name = "birnam_mkWord")]
+pub unsafe extern "C" fn rt_mk_word(value: u64) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).mkWord)(value) }
 }
 
-unsafe extern "C" fn rt_word_value(object: Oop) -> u64 {
+#[unsafe(export_name = "birnam_wordValue")]
+pub unsafe extern "C" fn rt_word_value(object: Oop) -> u64 {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).wordValue)(object) }
 }
 
-unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
+#[unsafe(export_name = "birnam_uintValue")]
+pub unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
@@ -595,7 +611,8 @@ unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
     }
 }
 
-unsafe extern "C" fn rt_mk_string(bytes: *const u8, length: usize) -> Oop {
+#[unsafe(export_name = "birnam_mkString")]
+pub unsafe extern "C" fn rt_mk_string(bytes: *const u8, length: usize) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
@@ -606,35 +623,40 @@ unsafe extern "C" fn rt_mk_string(bytes: *const u8, length: usize) -> Oop {
     unsafe { (api.mkString)(bytes, length) }
 }
 
-unsafe extern "C" fn rt_nil() -> Oop {
+#[unsafe(export_name = "birnam_nil")]
+pub unsafe extern "C" fn rt_nil() -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { api_ref(runtime) }.nilObj
 }
 
-unsafe extern "C" fn rt_true() -> Oop {
+#[unsafe(export_name = "birnam_true")]
+pub unsafe extern "C" fn rt_true() -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { api_ref(runtime) }.trueObj
 }
 
-unsafe extern "C" fn rt_false() -> Oop {
+#[unsafe(export_name = "birnam_false")]
+pub unsafe extern "C" fn rt_false() -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { api_ref(runtime) }.falseObj
 }
 
-unsafe extern "C" fn rt_object_vt() -> Oop {
+#[unsafe(export_name = "birnam_objectVt")]
+pub unsafe extern "C" fn rt_object_vt() -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { api_ref(runtime) }.object_vt
 }
 
-unsafe extern "C" fn rt_block_vt() -> Oop {
+#[unsafe(export_name = "birnam_blockVt")]
+pub unsafe extern "C" fn rt_block_vt() -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
@@ -647,21 +669,24 @@ unsafe extern "C" fn rt_block_vt() -> Oop {
     }
 }
 
-unsafe extern "C" fn rt_proto(parent: Oop) -> Oop {
+#[unsafe(export_name = "birnam_proto")]
+pub unsafe extern "C" fn rt_proto(parent: Oop) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).proto)(parent) }
 }
 
-unsafe extern "C" fn rt_ensure_private_vtable(object: Oop) -> Oop {
+#[unsafe(export_name = "birnam_ensurePrivateVtable")]
+pub unsafe extern "C" fn rt_ensure_private_vtable(object: Oop) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).ensurePrivateVtable)(object) }
 }
 
-unsafe extern "C" fn rt_method(vtable: Oop, selector: Oop, function: *mut c_void) {
+#[unsafe(export_name = "birnam_method")]
+pub unsafe extern "C" fn rt_method(vtable: Oop, selector: Oop, function: *mut c_void) {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
@@ -670,7 +695,8 @@ unsafe extern "C" fn rt_method(vtable: Oop, selector: Oop, function: *mut c_void
     unsafe { (api_ref(runtime).method)(vtable, selector, method) };
 }
 
-unsafe extern "C" fn rt_alloc(vtable: Oop, bytes: i64) -> Oop {
+#[unsafe(export_name = "birnam_alloc")]
+pub unsafe extern "C" fn rt_alloc(vtable: Oop, bytes: i64) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
@@ -680,7 +706,8 @@ unsafe extern "C" fn rt_alloc(vtable: Oop, bytes: i64) -> Oop {
     unsafe { (api_ref(runtime).alloc)(vtable, bytes as usize) }
 }
 
-unsafe extern "C" fn rt_cstr(object: Oop) -> *mut c_char {
+#[unsafe(export_name = "birnam_cstr")]
+pub unsafe extern "C" fn rt_cstr(object: Oop) -> *mut c_char {
     unsafe extern "C" {
         fn malloc(size: usize) -> *mut c_void;
     }
@@ -707,7 +734,8 @@ unsafe extern "C" fn rt_cstr(object: Oop) -> *mut c_char {
     output.cast::<c_char>()
 }
 
-unsafe extern "C" fn rt_free_cstr(pointer: *mut c_char) {
+#[unsafe(export_name = "birnam_free_cstr")]
+pub unsafe extern "C" fn rt_free_cstr(pointer: *mut c_char) {
     unsafe extern "C" {
         fn free(pointer: *mut c_void);
     }
@@ -717,7 +745,8 @@ unsafe extern "C" fn rt_free_cstr(pointer: *mut c_char) {
     }
 }
 
-unsafe extern "C" fn rt_layout_all_oops(vtable: Oop) {
+#[unsafe(export_name = "birnam_layoutAllOops")]
+pub unsafe extern "C" fn rt_layout_all_oops(vtable: Oop) {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));

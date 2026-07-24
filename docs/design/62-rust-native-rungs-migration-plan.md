@@ -1195,6 +1195,18 @@ where the current compiled-unit contract permits it. The still-Zig Codegen
 continues to own its disjoint symbol set until N6; no mixed stack contains two
 providers for one symbol.
 
+#### N4.3 execution record — in progress, 2026-07-23
+
+The Rust TCC rung now exports the complete current `birnam_*` set under the
+canonical dynamic names and registers the same addresses in libtcc's
+pre-relocation symbol window. A generated C Method calling
+`birnam_mkSmallInt` compiles, binds, relocates, installs, and dispatches through
+the Rust TCC module on both IdApi floors. The shell test also audits every
+runtime export with `dlsym`.
+
+The remaining N4.3 evidence is the existing full Codegen/Alien matrix through
+the Rust TCC selection and a separate-process load of an emitted artifact.
+
 ### N4.4 — Switch and observe
 
 Require generated-C execution, callback reentry, compiled dylibs in another
