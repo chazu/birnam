@@ -34,6 +34,46 @@ fn setup() !*idapi.IdApi {
     return api;
 }
 
+fn appendImageField(
+    facts: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    tag: u8,
+    payload: []const u8,
+) !void {
+    try facts.append(allocator, tag);
+    switch (tag) {
+        0, 1, 2, 8 => try std.testing.expectEqual(@as(usize, 0), payload.len),
+        3, 4, 7 => {
+            try std.testing.expectEqual(@as(usize, 8), payload.len);
+            try facts.appendSlice(allocator, payload);
+        },
+        5, 6, 9 => {
+            var length: [4]u8 = undefined;
+            std.mem.writeInt(u32, &length, @intCast(payload.len), .little);
+            try facts.appendSlice(allocator, &length);
+            try facts.appendSlice(allocator, payload);
+        },
+        else => return error.InvalidImageFieldTag,
+    }
+}
+
+fn appendImageFact(
+    facts: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    tx: u64,
+    attribute: []const u8,
+    value_tag: u8,
+    value_payload: []const u8,
+) !void {
+    var tx_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &tx_bytes, tx, .little);
+    try facts.append(allocator, 0);
+    try facts.appendSlice(allocator, &tx_bytes);
+    try appendImageField(facts, allocator, 5, "factEntity");
+    try appendImageField(facts, allocator, 5, attribute);
+    try appendImageField(facts, allocator, value_tag, value_payload);
+}
+
 fn emittedBytes(api: *idapi.IdApi, source: []const u8) ![]const u8 {
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
     const result = api.send(codegen, api.intern("emit:"), &.{api.mkString(source.ptr, source.len)}, 1);
@@ -217,20 +257,19 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try facts.appendSlice(std.testing.allocator, &u64_bytes);
     std.mem.writeInt(u32, &u32_bytes, 1, .little);
     try facts.appendSlice(std.testing.allocator, &u32_bytes);
-    try facts.append(std.testing.allocator, 0);
-    std.mem.writeInt(u64, &u64_bytes, 7, .little);
-    try facts.appendSlice(std.testing.allocator, &u64_bytes);
-    try facts.append(std.testing.allocator, 5);
-    std.mem.writeInt(u32, &u32_bytes, 10, .little);
-    try facts.appendSlice(std.testing.allocator, &u32_bytes);
-    try facts.appendSlice(std.testing.allocator, "factEntity");
-    try facts.append(std.testing.allocator, 5);
-    std.mem.writeInt(u32, &u32_bytes, 8, .little);
-    try facts.appendSlice(std.testing.allocator, &u32_bytes);
-    try facts.appendSlice(std.testing.allocator, "factAttr");
-    try facts.append(std.testing.allocator, 3);
+    var integer_bytes: [8]u8 = undefined;
     std.mem.writeInt(i64, &u64_bytes, 42, .little);
-    try facts.appendSlice(std.testing.allocator, &u64_bytes);
+    @memcpy(&integer_bytes, &u64_bytes);
+    try appendImageFact(&facts, std.testing.allocator, 7, "factAttr", 3, &integer_bytes);
+    var float_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &float_bytes, @as(u64, @bitCast(@as(f64, 1.5))), .little);
+    try appendImageFact(&facts, std.testing.allocator, 8, "factFloat", 4, &float_bytes);
+    try appendImageFact(&facts, std.testing.allocator, 9, "factTrue", 1, &.{});
+    try appendImageFact(&facts, std.testing.allocator, 10, "factFalse", 2, &.{});
+    try appendImageFact(&facts, std.testing.allocator, 11, "factSymbol", 5, "payloadSymbol");
+    try appendImageFact(&facts, std.testing.allocator, 12, "factString", 6, "payloadString");
+    try appendImageFact(&facts, std.testing.allocator, 13, "factNil", 0, &.{});
+    std.mem.writeInt(u32, facts.items[8..12], 7, .little);
 
     var image: std.ArrayList(u8) = .{};
     defer image.deinit(std.testing.allocator);
@@ -267,6 +306,7 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     var heap_facts: std.ArrayList(u8) = .{};
     defer heap_facts.deinit(std.testing.allocator);
     try heap_facts.appendSlice(std.testing.allocator, facts.items[0..49]);
+    std.mem.writeInt(u32, heap_facts.items[8..12], 1, .little);
     @memcpy(heap_facts.items[26..36], "heapEntity");
     @memcpy(heap_facts.items[41..49], "heapAttr");
     try heap_facts.append(std.testing.allocator, 7);
@@ -315,12 +355,35 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     );
     const replayed = api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1);
     try std.testing.expect(api.isSmallInt(replayed) != 0);
-    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(replayed));
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(replayed));
     const entity = api.intern("factEntity");
     const attribute = api.intern("factAttr");
     const value = api.send(store, api.intern("currentValue:attr:"), &.{ entity, attribute }, 2);
     try std.testing.expect(api.isSmallInt(value) != 0);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(value));
+    const float_value = api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factFloat") }, 2);
+    try std.testing.expect(api.isFloat(float_value) != 0);
+    try std.testing.expectEqual(@as(f64, 1.5), api.floatValue(float_value));
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factTrue") }, 2),
+    );
+    try std.testing.expectEqual(
+        api.falseObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factFalse") }, 2),
+    );
+    try std.testing.expectEqual(
+        api.intern("payloadSymbol"),
+        api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factSymbol") }, 2),
+    );
+    const string_value = api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factString") }, 2);
+    var string_length: usize = 0;
+    const string_bytes = api.stringBytes(string_value, &string_length);
+    try std.testing.expectEqualStrings("payloadString", string_bytes[0..string_length]);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factNil") }, 2),
+    );
     try std.testing.expectEqual(
         api.trueObj,
         api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
