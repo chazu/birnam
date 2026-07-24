@@ -2379,6 +2379,19 @@ unsafe extern "C" fn rust_codegen_replay_methods(
                 .map(|operation| operation.source),
         );
     }
+    // Compile every operation through the pure emitter before evaluating the
+    // first one. This closes the gap between metadata parsing and execution:
+    // a later generated-C failure cannot leave an earlier method mutation
+    // applied to the live dispatch dictionary.
+    for source in &replay_sources {
+        clear_error();
+        let operation_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let emitted = unsafe { send(api, self_object, EMIT_SELECTOR, &[operation_source]) };
+        if emitted == api.nilObj || LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
+            note_error(b"RustCodegen image method replay preflight failed");
+            return api.nilObj;
+        }
+    }
     let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
     let mut replayed = 0usize;
     for source in replay_sources {
