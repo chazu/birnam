@@ -764,6 +764,78 @@ test "Rust Codegen inspects and maps a Zig candidate" {
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endImageDispatchRecovery"), &.{}, 0));
     try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
+
+    // Commit repeats the durable topology check. Prepare a canonical first
+    // generation, mutate the successor predecessor after prepare, and prove
+    // that no activation occurs for the structurally stale token.
+    const lifecycle_revision = api.send(rust_codegen, api.intern("sourceRevisionOf:"), &.{source}, 1);
+    var lifecycle_map = api.send(vector, api.intern("new"), &.{}, 0);
+    var lifecycle_entry = api.send(vector, api.intern("new"), &.{}, 0);
+    for ([_]idapi.Oop{ api.intern("rustCandidate"), lifecycle_revision, api.nilObj }) |value| {
+        lifecycle_entry = api.send(lifecycle_entry, api.intern("add:"), &.{value}, 1);
+    }
+    lifecycle_map = api.send(lifecycle_map, api.intern("add:"), &.{lifecycle_entry}, 1);
+    const expected_projection = api.send(
+        rust_codegen,
+        api.intern("successorGenerationProjection:replacing:with:unit:"),
+        &.{ lifecycle_map, api.intern("rustCandidate"), lifecycle_revision, api.nilObj },
+        4,
+    );
+    const successor_projection = api.send(
+        rust_codegen,
+        api.intern("successorGenerationProjection:replacing:with:unit:"),
+        &.{ lifecycle_map, api.intern("rustCandidate"), lifecycle_revision, unit },
+        4,
+    );
+    try std.testing.expect(expected_projection != api.nilObj);
+    try std.testing.expect(successor_projection != api.nilObj);
+    const durable_expected_generation = api.send(object, api.intern("clone"), &.{}, 0);
+    const durable_successor_generation = api.send(object, api.intern("clone"), &.{}, 0);
+    const expected_map = api.send(expected_projection, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    const expected_digest = api.send(expected_projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1);
+    const successor_map = api.send(successor_projection, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    const successor_digest = api.send(successor_projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1);
+    var fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_expected_generation, api.intern("sourceMap") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{expected_map}, 1);
+    fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_expected_generation, api.intern("baseDigest") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{expected_digest}, 1);
+    fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_successor_generation, api.intern("sourceMap") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{successor_map}, 1);
+    fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_successor_generation, api.intern("baseDigest") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{successor_digest}, 1);
+    fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_successor_generation, api.intern("predecessor") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{durable_expected_generation}, 1);
+    fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_successor_generation, api.intern("deltaUnit") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{unit}, 1);
+    const durable_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ api.intern("dispatch"), api.intern("activeGeneration") },
+        2,
+    );
+    _ = api.send(durable_cell, api.intern("set:"), &.{durable_expected_generation}, 1);
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0));
+    var stale_commit_plan = api.send(vector, api.intern("new"), &.{}, 0);
+    for ([_]idapi.Oop{
+        api.intern("activate"),
+        unit,
+        api.intern("rustCandidate"),
+        api.nilObj,
+        api.send(object, api.intern("clone"), &.{}, 0),
+        api.send(object, api.intern("clone"), &.{}, 0),
+        durable_expected_generation,
+        durable_successor_generation,
+    }) |value| {
+        stale_commit_plan = api.send(stale_commit_plan, api.intern("add:"), &.{value}, 1);
+    }
+    const stale_token = api.send(rust_codegen, api.intern("prepareActivation:plan:"), &.{ unit, stale_commit_plan }, 2);
+    try std.testing.expect(stale_token != api.nilObj);
+    const bad_predecessor = api.send(object, api.intern("clone"), &.{}, 0);
+    fact_cell = api.send(store, api.intern("cellFor:attr:"), &.{ durable_successor_generation, api.intern("predecessor") }, 2);
+    _ = api.send(fact_cell, api.intern("set:"), &.{bad_predecessor}, 1);
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("commitPrepared:"), &.{stale_token}, 1));
+    _ = api.send(durable_cell, api.intern("set:"), &.{api.nilObj}, 1);
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
 }
 
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
