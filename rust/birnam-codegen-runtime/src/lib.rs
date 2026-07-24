@@ -79,6 +79,7 @@ const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
 const CANDIDATE_CONTENT_PATH_SELECTOR: &[u8] = b"candidateContentPath:\0";
 const PREPARE_ACTIVATION_SELECTOR: &[u8] = b"prepareActivation:\0";
+const PREPARE_ACTIVATION_PRIOR_SELECTOR: &[u8] = b"prepareActivation:prior:\0";
 const PREPARE_ACTIVATION_PLAN_SELECTOR: &[u8] = b"prepareActivation:plan:\0";
 const PREPARE_ROLLBACK_SELECTOR: &[u8] = b"prepareRollback:\0";
 const PREPARE_ROLLBACK_PLAN_SELECTOR: &[u8] = b"prepareRollback:plan:\0";
@@ -5974,6 +5975,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (api.method)(
             runtime.rust_codegen_vt as Oop,
             intern(api, PREPARE_ACTIVATION_SELECTOR),
+            rust_codegen_prepare_activation,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PREPARE_ACTIVATION_PRIOR_SELECTOR),
             rust_codegen_prepare_activation,
         );
         (api.method)(
