@@ -1508,6 +1508,18 @@ then reads it back through ordinary `eval:`. This closes the global write
 portion of N6.3 without introducing a second environment or changing the
 non-persisting evaluator.
 
+The first source/file portion of N6.4 is now executable at the explicit Rust
+boundary. `OwnedCst` can carry compiler-owned byte payloads, and the runtime
+rewrites only the canonical `[System embedFile: "relative/path"]` CST send into
+that synthetic literal after validating the path and reading at most 16 MiB.
+`eval:from:` and `evalPersisting:from:` anchor resolution at the source
+document directory; `compile:output:from:` embeds the same bytes in the dylib.
+The installed gate evaluates a binary asset, compiles it, deletes the authoring
+file, and loads the artifact successfully with the original bytes. This keeps
+filesystem access outside the pure emitter and leaves project-root embedding,
+dependency-list derivation, host-capability policy, and image handoff for the
+remaining N6.4 work.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
