@@ -1830,6 +1830,12 @@ executing the first one and rejects nil/Error results during execution, so a
 malformed later source cannot be accepted as a clean replay or silently leave
 the replay count overstated.
 
+The Rust artifact loader now enforces declared Birnam module requirements
+before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
+or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
+the generated global untouched; all post-open ABI, descriptor, native-library,
+and entry-point failures use the same cleanup path.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
