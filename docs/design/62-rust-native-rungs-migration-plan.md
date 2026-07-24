@@ -1578,6 +1578,13 @@ object after collection; sealing makes subsequent introductions fail closed.
 This is intentionally a Rust-only opt-in surface: it does not replace Zig's
 `Codegen` registry or claim the N6.5 dispatch lifecycle.
 
+`initialGenerationProjection` now consumes that registry into the frozen
+three-field generation projection. Entries are sorted by module name, each
+entry carries the Rust source revision and a nil unit slot, and the dispatch
+generation digest uses the same length-delimited name/revision-digest framing
+as the Zig authority. The projection is read-only and remains opt-in; successor
+replacement, Store publication, and rollback stay in N6.5.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,

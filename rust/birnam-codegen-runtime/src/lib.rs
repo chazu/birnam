@@ -47,6 +47,7 @@ const SOURCE_REVISION_SELECTOR: &[u8] = b"sourceRevisionOf:\0";
 const RECORD_MODULE_SOURCE_SELECTOR: &[u8] = b"recordModuleSource:named:\0";
 const MODULE_SOURCE_FOR_SELECTOR: &[u8] = b"moduleSourceFor:\0";
 const SEAL_INITIAL_GENERATION_SELECTOR: &[u8] = b"sealInitialGeneration\0";
+const INITIAL_GENERATION_PROJECTION_SELECTOR: &[u8] = b"initialGenerationProjection\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -842,6 +843,89 @@ unsafe extern "C" fn rust_codegen_seal_initial_generation(
     api.nilObj
 }
 
+unsafe fn make_vector(api: &IdApi, vector_proto: Oop, items: &[Oop]) -> Oop {
+    let mut result = unsafe { send0(api, vector_proto, NEW_SELECTOR) };
+    for &item in items {
+        result = unsafe { send(api, result, b"add:\0", &[item]) };
+    }
+    result
+}
+
+unsafe extern "C" fn rust_codegen_initial_generation_projection(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen initialGenerationProjection received invalid arguments")
+    });
+    if !values.is_empty() {
+        abort("RustCodegen initialGenerationProjection expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    if vector_proto.is_null() {
+        note_error(b"RustCodegen Vector is unavailable");
+        return api.nilObj;
+    }
+    let Ok(module_guard) = MODULE_SOURCES.lock() else {
+        note_error(b"RustCodegen module source registry is unavailable");
+        return api.nilObj;
+    };
+    let mut modules = module_guard.clone();
+    drop(module_guard);
+    modules.sort_by(|left, right| {
+        let left_name = unsafe { symbol_bytes(api, left.0 as Oop) }.unwrap_or_default();
+        let right_name = unsafe { symbol_bytes(api, right.0 as Oop) }.unwrap_or_default();
+        left_name.cmp(&right_name)
+    });
+
+    let mut entries = Vec::with_capacity(modules.len());
+    let mut digest_input = b"birnam.dispatch-generation.v1\0".to_vec();
+    digest_input.extend_from_slice(&(modules.len() as u64).to_be_bytes());
+    for (name, source) in modules {
+        let name = name as Oop;
+        let source = source as Oop;
+        let revision = unsafe {
+            send(
+                api,
+                runtime.rust_codegen as Oop,
+                SOURCE_REVISION_SELECTOR,
+                &[source],
+            )
+        };
+        if revision.is_null() || revision == api.nilObj {
+            note_error(b"RustCodegen source revision is unavailable");
+            return api.nilObj;
+        }
+        let name_bytes = unsafe { symbol_bytes(api, name) }.unwrap_or_default();
+        let revision_digest = unsafe {
+            let index = (api.mkSmallInt)(6);
+            let digest = send(api, revision, GLOBAL_AT_SELECTOR, &[index]);
+            string_bytes(api, digest).unwrap_or_default()
+        };
+        digest_input.extend_from_slice(&(name_bytes.len() as u64).to_be_bytes());
+        digest_input.extend_from_slice(&name_bytes);
+        digest_input.extend_from_slice(&(revision_digest.len() as u64).to_be_bytes());
+        digest_input.extend_from_slice(&revision_digest);
+        entries.push(unsafe { make_vector(api, vector_proto, &[name, revision, api.nilObj]) });
+    }
+    let source_map = unsafe { make_vector(api, vector_proto, &entries) };
+    let digest = sha256_hex(&digest_input);
+    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let tag = unsafe { intern(api, b"generationProjection\0") };
+    unsafe { make_vector(api, vector_proto, &[tag, source_map, digest_object]) }
+}
+
 unsafe fn emit_source(
     api: &IdApi,
     source_object: Oop,
@@ -1502,6 +1586,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, SEAL_INITIAL_GENERATION_SELECTOR),
             rust_codegen_seal_initial_generation,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, INITIAL_GENERATION_PROJECTION_SELECTOR),
+            rust_codegen_initial_generation_projection,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

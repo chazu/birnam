@@ -331,6 +331,16 @@ test "Rust Codegen retains registered module sources across collection" {
     );
     _ = api.gcCollect();
     try std.testing.expectEqual(source, api.send(codegen, api.intern("moduleSourceFor:"), &.{name}, 1));
+    const projection = api.send(codegen, api.intern("initialGenerationProjection"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(projection, api.intern("size"), &.{}, 0)));
+    const source_map = api.send(projection, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(source_map, api.intern("size"), &.{}, 0)));
+    const entry = api.send(source_map, api.intern("at:"), &.{api.mkSmallInt(0)}, 1);
+    try std.testing.expectEqual(name, api.send(entry, api.intern("at:"), &.{api.mkSmallInt(0)}, 1));
+    try std.testing.expectEqual(api.nilObj, api.send(entry, api.intern("at:"), &.{api.mkSmallInt(2)}, 1));
+    var digest_len: usize = 0;
+    _ = api.stringBytes(api.send(projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1), &digest_len);
+    try std.testing.expectEqual(@as(usize, 64), digest_len);
 
     const mismatch_name = api.intern("rustOtherModule");
     try std.testing.expectEqual(
