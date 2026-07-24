@@ -1966,6 +1966,13 @@ matching the Zig loader until mapped-unit recovery supplies executable carriers.
 The focused fixture covers the code, Oop, and raw layout kinds; Cargo/clippy,
 20/20 Rust Codegen tests, and the complete R6 gate remain green.
 
+Invalid fact-operation coverage landed at `d1ff90a`: Rust now rejects
+operation bytes outside assert/retract before `imageLoadBegin`, matching the
+Store ABI's abort boundary while keeping malformed images fail-closed. The
+focused Rust Codegen target remains 20/20 and the complete R6 gate passed
+again with the documented fixture exception and the same two accepted
+crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

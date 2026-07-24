@@ -219,3 +219,10 @@ so Rust now explicitly zeros those words until mapped-unit recovery fills them.
 A custom layout fixture checks the zeroed code slot alongside Oop and raw-word
 reconstruction. Cargo/clippy, the focused 20/20 target, and the complete R6
 acceptance script all passed with no new benchmark exception.
+
+Invalid fact-operation coverage landed at `d1ff90a`: Rust now rejects
+operation bytes outside assert/retract before `imageLoadBegin`, matching the
+Store ABI's abort boundary while keeping malformed images fail-closed. The
+focused Rust Codegen target remains 20/20 and the complete R6 gate passed
+again with the documented fixture exception and the same two accepted
+crossings.
