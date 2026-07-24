@@ -2008,6 +2008,11 @@ durable generation retain the format-only path. The focused boundary is now
 passed with the same fixture quarantine and only the two existing benchmark
 crossings.
 
+The follow-up at `793d228` exercises all three stale-authority call sites in a
+single recovery transaction (preflight, mapped code, and facts) and confirms
+that none reaches code loading or Store mutation. The 21/21 focused target and
+full R6 comparator passed unchanged.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

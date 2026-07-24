@@ -255,3 +255,7 @@ test: stale embedded generation digests are rejected before image recovery
 when a durable active generation exists. The R6 exact-output pin was updated
 to 21 tests at `c809bc6`; the full gate remained green with the same two
 accepted benchmark crossings and no new exception.
+
+Commit `793d228` extends that regression across mapped-code and facts replay
+inside the recovery guard; R6 remains green at 21/21 with the same comparator
+allowance.
