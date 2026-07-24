@@ -419,3 +419,10 @@ passed with no benchmark allowance changes.
 The Rust Error-core slice landed at `c7efdbe`: exported/reused Error families,
 the exact two-OOP payload, factory/accessor/DNU protocols, and the Object DNU
 swap passed focused checks and a full 42/42 R6 rerun with no allowance change.
+
+The loop Error-propagation slice landed at `252af1f`: Rust
+`whileTrue:`/`whileFalse:` now return an Error from either the condition or
+body instead of discarding it, while ordinary body values remain discarded.
+The focused condition/body checks and the full 42/42 R6 rerun passed with no
+benchmark allowance change. Numeric fault construction, self-hosted handlers,
+and canonical prelude cutover remain open N7.1 work.

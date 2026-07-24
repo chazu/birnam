@@ -2181,9 +2181,9 @@ The Block loop slice landed at `36091e7`. The Rust prelude now creates or
 reuses the exported `Block`/`BlockVt` family and installs stack-flat
 `whileTrue:` and `whileFalse:` native loops. The focused dynamic test drives a
 three-check/two-body loop and passes at 1/1; the complete R6 rerun under the
-42/42 pin also passed with the same two accepted benchmark crossings. Error
-propagation from loop bodies, System, and canonical prelude cutover remain
-open N7.1 work.
+42/42 pin also passed with the same two accepted benchmark crossings. System
+and canonical prelude cutover remain open N7.1 work; loop-body Error
+propagation is recorded in the following checkpoint.
 
 The System output slice landed at `25a877e`. The Rust prelude now creates or
 reuses the exported `System`/`SystemVt` singleton family and installs safe
@@ -2200,8 +2200,16 @@ factory selectors, `isError`, accessors, propagating Error DNU, and the Object
 DNU swap. The focused test covers factory construction, identity, accessors,
 propagation, and the false Object case; Cargo check/test/clippy and the rerun
 of the full R6 gate passed with 42/42 focused tests and no new benchmark
-allowance. Numeric error factories, loop-body Error propagation, self-hosted
-handlers, and canonical prelude cutover remain open.
+allowance. Numeric error factories, self-hosted handlers, and canonical
+prelude cutover remain open.
+
+The loop Error-propagation slice landed at `252af1f`. Rust
+`whileTrue:`/`whileFalse:` now return an Error from either the condition or
+body instead of discarding it; ordinary body values remain discarded and the
+loops stay stack-flat. The focused dynamic test covers both paths, and the
+full R6 rerun passed at 42/42 with no benchmark allowance change. Numeric
+fault construction, self-hosted handlers, and canonical prelude cutover
+remain open.
 
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
