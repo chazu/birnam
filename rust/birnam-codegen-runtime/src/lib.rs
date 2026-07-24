@@ -2194,7 +2194,13 @@ unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<O
                     }
                     cursor = end;
                 }
-                SlotKind::Code => {}
+                SlotKind::Code => unsafe {
+                    // Code slots are intentionally elided from v4 heap
+                    // payloads; mapped-unit recovery fills them later. Keep
+                    // the freshly allocated object deterministic and match
+                    // the Zig loader's zeroed code-slot contract.
+                    (pending.object as *mut usize).add(word).write(0);
+                },
             }
         }
         if cursor != pending.encoded_slots.len() {
