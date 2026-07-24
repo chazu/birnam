@@ -432,3 +432,10 @@ now construct `zeroDivide` Errors, and negative Float `sqrt` constructs a
 `domain` Error through the shared two-OOP payload. The focused numeric checks
 and the full 42/42 R6 rerun passed with no benchmark allowance change.
 Self-hosted handlers and canonical prelude cutover remain open N7.1 work.
+
+The Rust System file-I/O slice landed at `5ba474b`: `readFile:` and
+`writeFile:contents:` now enforce String operands, cap reads at 1 GiB, and
+return `ioError` values on invalid paths or host failures. The focused
+round-trip/failure checks and full 42/42 R6 rerun passed with no benchmark
+allowance change. Source loading, process controls, self-hosted handlers, and
+canonical prelude cutover remain open.
