@@ -4,6 +4,7 @@ const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
 const artifact_inspector = @import("artifact_inspector.zig");
 const collection = @import("collection.zig");
+const zig_codegen = @import("codegen.zig");
 const peg = @import("peg.zig");
 const lang = @import("lang.zig");
 const idapi = @import("idapi.zig");
@@ -29,6 +30,7 @@ fn setup() !*idapi.IdApi {
     try load(api, "BIRNAM_RUST_TCC_DYLIB");
     try load(api, "BIRNAM_RUST_STORE_DYLIB");
     try load(api, "BIRNAM_RUST_CODEGEN_DYLIB");
+    zig_codegen.bringUp(api);
     return api;
 }
 
@@ -281,4 +283,29 @@ test "Rust Codegen reports distinct embedded file literals" {
     var second_len: usize = 0;
     try std.testing.expectEqualStrings("a.txt", api.stringBytes(first, &first_len)[0..first_len]);
     try std.testing.expectEqualStrings("b.bin", api.stringBytes(second, &second_len)[0..second_len]);
+}
+
+test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const old_codegen = api.import("Codegen") orelse return error.MissingCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const zig_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/libbirnam_cross_zig.dylib", .{directory});
+    defer std.testing.allocator.free(zig_path);
+    const rust_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/libbirnam_cross_rust.dylib", .{directory});
+    defer std.testing.allocator.free(rust_path);
+    const source = api.mkString("7", 1);
+    const zig_output = api.mkString(zig_path.ptr, zig_path.len);
+    const rust_output = api.mkString(rust_path.ptr, rust_path.len);
+    try std.testing.expectEqual(zig_output, api.send(old_codegen, api.intern("compile:output:"), &.{ source, zig_output }, 2));
+    const zig_loaded_by_zig = api.send(old_codegen, api.intern("load:"), &.{zig_output}, 1);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(zig_loaded_by_zig));
+    const rust_loaded_zig = api.send(rust_codegen, api.intern("load:"), &.{zig_output}, 1);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(rust_loaded_zig));
+    try std.testing.expectEqual(rust_output, api.send(rust_codegen, api.intern("compile:output:"), &.{ source, rust_output }, 2));
+    const zig_loaded_rust = api.send(old_codegen, api.intern("load:"), &.{rust_output}, 1);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(zig_loaded_rust));
 }

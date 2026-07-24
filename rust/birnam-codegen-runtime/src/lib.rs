@@ -1108,13 +1108,36 @@ unsafe extern "C" fn rust_codegen_load(
         unsafe { (api.dlsym)(handle, c"__birnam_artifact_descriptor".as_ptr()) };
     let descriptor_len_symbol =
         unsafe { (api.dlsym)(handle, c"__birnam_artifact_descriptor_len".as_ptr()) };
-    if descriptor_symbol.is_null() || descriptor_len_symbol.is_null() {
+    if descriptor_symbol.is_null() {
         note_error(b"RustCodegen artifact descriptor is missing");
         return api.nilObj;
     }
     // SAFETY: the artifact output owns an immutable byte array and matching
-    // process-width length symbol for the lifetime of the retained handle.
-    let descriptor_len = unsafe { *(descriptor_len_symbol.cast::<usize>()) };
+    // process-width length symbol for the lifetime of the retained handle. Old
+    // Zig artifacts only export the descriptor array, so derive its framed
+    // length from the frozen magic/payload header when the optional symbol is
+    // absent.
+    let descriptor_len = if !descriptor_len_symbol.is_null() {
+        unsafe { *(descriptor_len_symbol.cast::<usize>()) }
+    } else {
+        let header_len = ARTIFACT_DESCRIPTOR_MAGIC.len() + 4;
+        let header =
+            unsafe { core::slice::from_raw_parts(descriptor_symbol.cast::<u8>(), header_len) };
+        if &header[..ARTIFACT_DESCRIPTOR_MAGIC.len()] != ARTIFACT_DESCRIPTOR_MAGIC {
+            note_error(b"RustCodegen artifact descriptor is missing");
+            return api.nilObj;
+        }
+        let payload_len = u32::from_le_bytes(
+            header[ARTIFACT_DESCRIPTOR_MAGIC.len()..header_len]
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        let Some(length) = header_len.checked_add(payload_len) else {
+            note_error(b"RustCodegen artifact descriptor is incompatible");
+            return api.nilObj;
+        };
+        length
+    };
     let descriptor =
         unsafe { core::slice::from_raw_parts(descriptor_symbol.cast::<u8>(), descriptor_len) };
     let Ok(parsed_descriptor) = inspect_artifact(descriptor) else {
