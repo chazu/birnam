@@ -1230,6 +1230,10 @@ while the installed canonical TCC remains Zig. The next slice is the
 old-artifact, image, Alien, and optimized compile observation matrix before any
 canonical TCC cutover.
 
+The complete 43-test Alien suite now runs through the explicit Rust TCC on both
+IdApi floors, including callback, struct-by-value, library, and failure-path
+coverage. Image composition and optimized compile observations remain open.
+
 ## 11. Phase N5 — Rust language-parser rung
 
 Port `lang.zig` as an independent dynamic rung used by the cold compiler, not as

@@ -942,6 +942,32 @@ pub fn build(b: *std.Build) void {
     test_rust_peg_codegen_full_step.dependOn(&run_rust_peg_codegen_full.step);
     test_step.dependOn(&run_rust_peg_codegen_full.step);
 
+    const rust_tcc_alien_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/alien_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    rust_tcc_alien_mod.addIncludePath(b.path("vendor/libtcc-src"));
+    const rust_tcc_alien_tests = b.addTest(.{ .root_module = rust_tcc_alien_mod });
+    rust_tcc_alien_tests.linkLibrary(libtcc_lib);
+    rust_tcc_alien_tests.rdynamic = true;
+    rust_tcc_alien_tests.linkLibC();
+    const run_rust_tcc_alien = b.addRunArtifact(rust_tcc_alien_tests);
+    run_rust_tcc_alien.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_tcc_alien.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_tcc_alien.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_tcc_alien.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_tcc_alien.step.dependOn(bootstrap_install);
+    const test_rust_tcc_alien_step = b.step(
+        "test-rust-tcc-alien",
+        "Run the complete Alien suite through the explicit Rust TCC rung",
+    );
+    test_rust_tcc_alien_step.dependOn(&run_rust_tcc_alien.step);
+    test_step.dependOn(&run_rust_tcc_alien.step);
+
     // -- The id rungs: a dylib + its test suite, one row per module ----------
     // Every rung is a dynamic library the siphon dlopens at runtime, plus a test
     // that imports its siblings directly (relative imports unify the IdApi type

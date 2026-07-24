@@ -21,12 +21,26 @@ const err_mod = @import("error.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
+const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
+
+fn bringTcc(api: *idapi.IdApi) !void {
+    if (std.posix.getenv("BIRNAM_RUST_TCC_DYLIB")) |path| {
+        const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+        defer std.heap.c_allocator.free(path_z);
+        const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustTccDlopenFailed;
+        const raw_init = api.dlsym(handle, "module_init") orelse return error.RustTccModuleInitMissing;
+        const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+        _ = init(api, null);
+    } else {
+        tcc.bringUp(api);
+    }
+}
 
 /// The floor + Tcc + Alien only — NO collection (see the first test).
 fn setupBare() *idapi.IdApi {
     retainExportedFixtures();
     const api = floor.api();
-    tcc.bringUp(api);
+    bringTcc(api) catch @panic("TCC Alien test backend failed to load");
     alien.bringUp(api);
     return api;
 }
@@ -35,7 +49,7 @@ fn setupBare() *idapi.IdApi {
 /// error (DNU → Error value) + Alien, in the real load order.
 fn setup() *idapi.IdApi {
     const api = floor.api();
-    tcc.bringUp(api);
+    bringTcc(api) catch @panic("TCC Alien test backend failed to load");
     collection.bringUp(api);
     err_mod.bringUp(api);
     alien.bringUp(api);
