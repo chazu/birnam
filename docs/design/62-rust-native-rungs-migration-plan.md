@@ -1542,6 +1542,12 @@ argument as the project root rather than deriving a directory from a source
 document. The gate proves a nested source path fails under source-directory
 resolution while the declared root compiles, embeds, and reloads the asset.
 
+`RustCodegen embeddedFilesOf:` now provides the corresponding allocation-free
+static analysis surface. It walks the Rust PEG CST, returns distinct decoded
+literal paths in source order, and does not read files or mutate Store state;
+the runtime test covers duplicates and nested blocks. This is the input needed
+for project-level asset digests before full candidate/image orchestration.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
