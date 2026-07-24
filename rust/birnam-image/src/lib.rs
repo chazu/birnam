@@ -25,6 +25,7 @@ pub enum Error {
     InvalidRecordKind,
     InvalidPayloadLength,
     InvalidFieldTag,
+    LayoutMismatch,
     RecordTooLarge,
 }
 
@@ -230,6 +231,10 @@ impl<'a> Fields<'a> {
         self.offset == self.bytes.len()
     }
 
+    fn consumed(&self) -> usize {
+        self.offset
+    }
+
     fn take_fixed<const N: usize>(&mut self) -> Result<[u8; N], Error> {
         let end = self.offset.checked_add(N).ok_or(Error::RecordTooLarge)?;
         let bytes = self
@@ -315,6 +320,124 @@ impl<'a> Facts<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotKind {
+    Oop,
+    RawWord,
+    Code,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeapHeader<'a> {
+    pub vtable_name: &'a [u8],
+    pub word_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeapObject<'a> {
+    pub header: HeapHeader<'a>,
+    /// The encoded bytes for the object's non-code slots. Code slots are
+    /// deliberately absent from v4 payloads and are reconstructed by a later
+    /// mapped-unit/replay layer.
+    pub encoded_slots: &'a [u8],
+}
+
+/// Borrowed iterator over a v4 heap payload. The caller supplies the live
+/// vtable layout after peeking at each object's name; the codec only validates
+/// framing and slot widths and never resolves names or heap references.
+#[derive(Debug, Clone, Copy)]
+pub struct Heap<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+    remaining: u32,
+}
+
+impl<'a> Heap<'a> {
+    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+        if payload.len() < 4 {
+            return Err(Error::InvalidPayloadLength);
+        }
+        Ok(Self {
+            bytes: payload,
+            offset: 4,
+            remaining: read_u32(&payload[..4]),
+        })
+    }
+
+    pub fn peek_header(&self) -> Result<Option<HeapHeader<'a>>, Error> {
+        self.header_at()
+            .map(|entry| entry.map(|(header, _)| header))
+    }
+
+    pub fn next_object(&mut self, layout: &[SlotKind]) -> Result<Option<HeapObject<'a>>, Error> {
+        let Some((header, body_start)) = self.header_at()? else {
+            return Ok(None);
+        };
+        if layout.len() != usize::try_from(header.word_count).unwrap_or(usize::MAX) {
+            return Err(Error::LayoutMismatch);
+        }
+        let mut cursor = body_start;
+        for slot in layout {
+            match slot {
+                SlotKind::Oop => {
+                    let mut fields = Fields::new(
+                        self.bytes
+                            .get(cursor..)
+                            .ok_or(Error::InvalidPayloadLength)?,
+                    );
+                    fields.next_field()?.ok_or(Error::InvalidPayloadLength)?;
+                    cursor = cursor
+                        .checked_add(fields.consumed())
+                        .ok_or(Error::RecordTooLarge)?;
+                }
+                SlotKind::RawWord => {
+                    cursor = cursor.checked_add(8).ok_or(Error::RecordTooLarge)?;
+                    if cursor > self.bytes.len() {
+                        return Err(Error::InvalidPayloadLength);
+                    }
+                }
+                SlotKind::Code => {}
+            }
+        }
+        let encoded_slots = self
+            .bytes
+            .get(body_start..cursor)
+            .ok_or(Error::InvalidPayloadLength)?;
+        self.offset = cursor;
+        self.remaining -= 1;
+        Ok(Some(HeapObject {
+            header,
+            encoded_slots,
+        }))
+    }
+
+    fn header_at(&self) -> Result<Option<(HeapHeader<'a>, usize)>, Error> {
+        if self.remaining == 0 {
+            return if self.offset == self.bytes.len() {
+                Ok(None)
+            } else {
+                Err(Error::InvalidPayloadLength)
+            };
+        }
+        let mut cursor = self.offset;
+        let name_len = read_u32_at(self.bytes, &mut cursor)? as usize;
+        let name_end = cursor.checked_add(name_len).ok_or(Error::RecordTooLarge)?;
+        let vtable_name = self
+            .bytes
+            .get(cursor..name_end)
+            .ok_or(Error::InvalidPayloadLength)?;
+        cursor = name_end;
+        let word_count = read_u32_at(self.bytes, &mut cursor)?;
+        Ok(Some((
+            HeapHeader {
+                vtable_name,
+                word_count,
+            },
+            cursor,
+        )))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Records<'a> {
     bytes: &'a [u8],
@@ -357,6 +480,16 @@ impl<'a> Records<'a> {
 
 fn read_u32(bytes: &[u8]) -> u32 {
     u32::from_le_bytes(bytes.try_into().expect("fixed-width image field"))
+}
+
+fn read_u32_at(bytes: &[u8], offset: &mut usize) -> Result<u32, Error> {
+    let end = (*offset).checked_add(4).ok_or(Error::RecordTooLarge)?;
+    let value = bytes
+        .get(*offset..end)
+        .ok_or(Error::InvalidPayloadLength)
+        .map(read_u32)?;
+    *offset = end;
+    Ok(value)
 }
 
 fn read_u64(bytes: &[u8]) -> u64 {
@@ -617,6 +750,76 @@ mod tests {
         trailing.extend_from_slice(&[FieldTag::Nil as u8]);
         assert_eq!(
             Facts::parse(&trailing).unwrap().next_fact(),
+            Err(Error::InvalidPayloadLength)
+        );
+    }
+
+    #[test]
+    fn heap_iterates_layout_driven_borrowed_objects() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&2u32.to_le_bytes());
+
+        payload.extend_from_slice(&3u32.to_le_bytes());
+        payload.extend_from_slice(b"Foo");
+        payload.extend_from_slice(&2u32.to_le_bytes());
+        payload.extend_from_slice(&0x0102_0304_0506_0708u64.to_le_bytes());
+        payload.push(FieldTag::String as u8);
+        payload.extend_from_slice(&3u32.to_le_bytes());
+        payload.extend_from_slice(b"abc");
+
+        payload.extend_from_slice(&3u32.to_le_bytes());
+        payload.extend_from_slice(b"Bar");
+        payload.extend_from_slice(&2u32.to_le_bytes());
+        payload.push(FieldTag::Nil as u8);
+
+        let mut heap = Heap::parse(&payload).unwrap();
+        assert_eq!(
+            heap.peek_header().unwrap(),
+            Some(HeapHeader {
+                vtable_name: b"Foo",
+                word_count: 2
+            })
+        );
+        let first = heap
+            .next_object(&[SlotKind::RawWord, SlotKind::Oop])
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.header.vtable_name, b"Foo");
+        assert_eq!(first.header.word_count, 2);
+        assert_eq!(
+            first.encoded_slots,
+            &[
+                0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 6, 3, 0, 0, 0, b'a', b'b', b'c'
+            ]
+        );
+        let second = heap
+            .next_object(&[SlotKind::Code, SlotKind::Oop])
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.header.vtable_name, b"Bar");
+        assert_eq!(second.encoded_slots, &[FieldTag::Nil as u8]);
+        assert_eq!(heap.peek_header().unwrap(), None);
+    }
+
+    #[test]
+    fn heap_rejects_layout_mismatch_truncation_and_trailing_bytes() {
+        let mut mismatch = vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
+        assert_eq!(
+            Heap::parse(&mismatch).unwrap().next_object(&[]),
+            Err(Error::LayoutMismatch)
+        );
+
+        mismatch[8..12].copy_from_slice(&1u32.to_le_bytes());
+        assert_eq!(
+            Heap::parse(&mismatch)
+                .unwrap()
+                .next_object(&[SlotKind::RawWord]),
+            Err(Error::InvalidPayloadLength)
+        );
+
+        let trailing = [0, 0, 0, 0, 0xff];
+        assert_eq!(
+            Heap::parse(&trailing).unwrap().peek_header(),
             Err(Error::InvalidPayloadLength)
         );
     }
