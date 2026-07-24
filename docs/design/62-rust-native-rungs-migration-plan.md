@@ -1658,6 +1658,17 @@ This helper is not yet a loader or publication path; it exists to make the
 later `inspectCandidate:into:` boundary compare two independently parsed
 representations before any mapping or Store mutation.
 
+That boundary is now executable. Rust `inspectCandidate:into:` reads and
+validates the detached sidecar, hashes the candidate dylib, applies the
+pre-`dlopen` thin-arm64/no-init/libSystem Mach-O policy, reparses the authored
+source through Rust Lang, and compares every manifest digest, dependency, and
+operation row. Only after those checks does it assert the inert candidate facts
+(`candidateArtifact`, source/revision digests, requirements, and `mapped =
+false`) into the selected Store and retain the unit/name/source as GC roots.
+The installed gate inspects a Zig-produced candidate and proves the facts are
+present while no native mapping occurs; candidate mapping and publication are
+still subsequent N6.5 slices.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
