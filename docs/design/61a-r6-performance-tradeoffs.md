@@ -181,6 +181,12 @@ surface and verifies the live Store identity. R6 passed again at that
 checkpoint with 20/20 focused tests, the documented fixture exception, and the
 same two accepted benchmark crossings.
 
+The follow-up heap regression at `e653bf4` covers cumulative relocation IDs: a
+`VectorNode` points forward to a `RangeVt`, raw words survive the second-pass
+fill, and a fact can use the relocated object as its Store entity. R6 passed
+again at that checkpoint with 20/20 focused tests and the same accepted
+benchmark snapshot.
+
 Heap recovery landed at `f8ec3e7`: Rust Codegen now parses cumulative v4 Heap
 records, imports each named vtable, allocates layout-sized objects, fills Oop,
 raw, and code slots in a second pass, and swizzles `HeapRef` fields before the
