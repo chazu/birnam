@@ -217,6 +217,19 @@ impl<'a> Fields<'a> {
         Ok(Some(field))
     }
 
+    fn take_byte(&mut self) -> Result<u8, Error> {
+        let byte = *self
+            .bytes
+            .get(self.offset)
+            .ok_or(Error::InvalidPayloadLength)?;
+        self.offset += 1;
+        Ok(byte)
+    }
+
+    fn is_exhausted(&self) -> bool {
+        self.offset == self.bytes.len()
+    }
+
     fn take_fixed<const N: usize>(&mut self) -> Result<[u8; N], Error> {
         let end = self.offset.checked_add(N).ok_or(Error::RecordTooLarge)?;
         let bytes = self
@@ -236,6 +249,69 @@ impl<'a> Fields<'a> {
             .ok_or(Error::InvalidPayloadLength)?;
         self.offset = end;
         Ok(bytes)
+    }
+}
+
+/// One borrowed fact from a v4 facts record. The field values are intentionally
+/// left tagged; a loader decides how to resolve symbols, exports, and heap refs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Fact<'a> {
+    pub op: u8,
+    pub tx: u64,
+    pub entity: Field<'a>,
+    pub attribute: Field<'a>,
+    pub value: Field<'a>,
+}
+
+/// Borrowed iterator over the v4 facts payload (`basis`, `count`, facts...).
+#[derive(Debug, Clone, Copy)]
+pub struct Facts<'a> {
+    pub basis: u64,
+    remaining: u32,
+    fields: Fields<'a>,
+}
+
+impl<'a> Facts<'a> {
+    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+        if payload.len() < 12 {
+            return Err(Error::InvalidPayloadLength);
+        }
+        Ok(Self {
+            basis: read_u64(&payload[..8]),
+            remaining: read_u32(&payload[8..12]),
+            fields: Fields::new(&payload[12..]),
+        })
+    }
+
+    pub fn next_fact(&mut self) -> Result<Option<Fact<'a>>, Error> {
+        if self.remaining == 0 {
+            if self.fields.is_exhausted() {
+                return Ok(None);
+            }
+            return Err(Error::InvalidPayloadLength);
+        }
+        let op = self.fields.take_byte()?;
+        let tx = u64::from_le_bytes(self.fields.take_fixed()?);
+        let entity = self
+            .fields
+            .next_field()?
+            .ok_or(Error::InvalidPayloadLength)?;
+        let attribute = self
+            .fields
+            .next_field()?
+            .ok_or(Error::InvalidPayloadLength)?;
+        let value = self
+            .fields
+            .next_field()?
+            .ok_or(Error::InvalidPayloadLength)?;
+        self.remaining -= 1;
+        Ok(Some(Fact {
+            op,
+            tx,
+            entity,
+            attribute,
+            value,
+        }))
     }
 }
 
@@ -455,6 +531,92 @@ mod tests {
         );
         assert_eq!(
             Fields::new(&[FieldTag::String as u8, 4, 0, 0, 0, b'x']).next_field(),
+            Err(Error::InvalidPayloadLength)
+        );
+    }
+
+    #[test]
+    fn facts_iterate_basis_and_tagged_values_without_copying() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&73u64.to_le_bytes());
+        payload.extend_from_slice(&2u32.to_le_bytes());
+        for (op, tx, fields) in [
+            (
+                1u8,
+                74u64,
+                vec![
+                    (FieldTag::HeapRef, 17u32.to_le_bytes().to_vec()),
+                    (FieldTag::Symbol, b"name".to_vec()),
+                    (FieldTag::NullOop, Vec::new()),
+                ],
+            ),
+            (
+                2u8,
+                75u64,
+                vec![
+                    (FieldTag::Integer, (-9i64).to_le_bytes().to_vec()),
+                    (FieldTag::String, b"value".to_vec()),
+                    (FieldTag::ExportRef, b"StringVt".to_vec()),
+                ],
+            ),
+        ] {
+            payload.push(op);
+            payload.extend_from_slice(&tx.to_le_bytes());
+            for (tag, value) in fields {
+                payload.push(tag as u8);
+                match tag {
+                    FieldTag::Symbol | FieldTag::String | FieldTag::ExportRef => {
+                        payload.extend_from_slice(&(value.len() as u32).to_le_bytes());
+                    }
+                    _ => {}
+                }
+                payload.extend_from_slice(&value);
+            }
+        }
+
+        let mut facts = Facts::parse(&payload).unwrap();
+        assert_eq!(facts.basis, 73);
+        assert_eq!(
+            facts.next_fact().unwrap(),
+            Some(Fact {
+                op: 1,
+                tx: 74,
+                entity: Field::HeapRef(17),
+                attribute: Field::Symbol(b"name"),
+                value: Field::NullOop,
+            })
+        );
+        assert_eq!(
+            facts.next_fact().unwrap(),
+            Some(Fact {
+                op: 2,
+                tx: 75,
+                entity: Field::Integer(-9),
+                attribute: Field::String(b"value"),
+                value: Field::ExportRef(b"StringVt"),
+            })
+        );
+        assert_eq!(facts.next_fact().unwrap(), None);
+    }
+
+    #[test]
+    fn facts_reject_truncated_counts_and_trailing_bytes() {
+        assert!(matches!(
+            Facts::parse(&[0; 11]),
+            Err(Error::InvalidPayloadLength)
+        ));
+
+        let mut count = vec![0; 12];
+        count[8..12].copy_from_slice(&1u32.to_le_bytes());
+        assert_eq!(
+            Facts::parse(&count).unwrap().next_fact(),
+            Err(Error::InvalidPayloadLength)
+        );
+
+        let mut trailing = vec![0; 12];
+        trailing.extend_from_slice(&[FieldTag::Nil as u8]);
+        assert_eq!(
+            Facts::parse(&trailing).unwrap().next_fact(),
             Err(Error::InvalidPayloadLength)
         );
     }
