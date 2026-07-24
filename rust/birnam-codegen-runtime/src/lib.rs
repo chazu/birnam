@@ -61,6 +61,8 @@ const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
     b"successorGenerationProjection:replacing:with:unit:\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
+const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
+const CANDIDATE_CONTENT_PATH_SELECTOR: &[u8] = b"candidateContentPath:\0";
 const PREPARE_ACTIVATION_SELECTOR: &[u8] = b"prepareActivation:\0";
 const PREPARE_ROLLBACK_SELECTOR: &[u8] = b"prepareRollback:\0";
 const COMMIT_PREPARED_SELECTOR: &[u8] = b"commitPrepared:\0";
@@ -2631,6 +2633,65 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     values[0]
 }
 
+unsafe extern "C" fn rust_codegen_candidate_mapped(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen candidateMapped: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen candidateMapped: expects one unit");
+    }
+    let api = unsafe { api(runtime()) };
+    if let Ok(candidates) = CANDIDATES.lock()
+        && let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[0] as usize)
+    {
+        return if candidate.handle != 0 {
+            api.trueObj
+        } else {
+            api.falseObj
+        };
+    }
+    api.falseObj
+}
+
+unsafe extern "C" fn rust_codegen_candidate_content_path(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen candidateContentPath: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen candidateContentPath: expects one unit");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let (author_path, checksum) = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[0] as usize)
+        else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        (candidate.author_path.clone(), candidate.checksum)
+    };
+    let Some(path) = ensure_candidate_content_path(&author_path, &checksum) else {
+        note_error(b"RustCodegen candidate publication failed");
+        return api.nilObj;
+    };
+    unsafe { (api.mkString)(path.as_ptr(), path.len()) }
+}
+
 unsafe extern "C" fn rust_codegen_prepare_activation(
     _self_object: Oop,
     pointer: *const Oop,
@@ -3422,6 +3483,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, MAP_CANDIDATE_SELECTOR),
             rust_codegen_map_candidate,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, CANDIDATE_MAPPED_SELECTOR),
+            rust_codegen_candidate_mapped,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, CANDIDATE_CONTENT_PATH_SELECTOR),
+            rust_codegen_candidate_content_path,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

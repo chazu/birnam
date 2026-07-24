@@ -537,6 +537,9 @@ test "Rust Codegen inspects and maps a Zig candidate" {
     );
     const mapped = api.send(rust_codegen, api.intern("mapCandidate:"), &.{unit}, 1);
     try std.testing.expectEqual(unit, mapped);
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("candidateMapped:"), &.{unit}, 1));
+    const content_path = api.send(rust_codegen, api.intern("candidateContentPath:"), &.{unit}, 1);
+    try std.testing.expect(api.vtableOf(content_path) == api.string_vt);
     try std.testing.expectEqual(
         api.trueObj,
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("mapped") }, 2),
