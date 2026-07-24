@@ -1725,9 +1725,11 @@ event, basis, generation handles, and predecessor identity into the rooted
 prepared state; commit requires bootstrapping or quiescence, asserts the event
 facts, and consumes the plan token only after the exact MOP mutation succeeds.
 The installed gate exercises both explicit plan selectors. A process-local
-current-generation guard rejects stale plans at preparation and commit; durable
-Store generation/currentness comparison remains the next publication hardening
-slice.
+current-generation fallback rejects stale plans at preparation and commit. When
+the durable `dispatch.activeGeneration` fact is present, Rust additionally
+requires canonical source-map/base-digest projections, compares the plan's
+expected generation to that Store fact at both boundaries, and advances the
+Store cell only on a successful publication.
 
 Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
 post-carrier check without requiring a rollback attempt. They return the unit
@@ -1741,13 +1743,14 @@ topologically orders the retained module sources by their declarative
 requirements, rejects cycles or malformed revisions, and remains deterministic
 within a generation. `generationMethodSources` extracts only install operations
 in that same order, while `currentGenerationDigest` reports the process-local
-published successor digest when an explicit plan has committed. These methods
-are read-only source composition. Rust `replayMethods` now provides the first
+published successor digest when an explicit plan has committed (or the durable
+generation's `baseDigest` when Store authority is present). These methods are
+read-only source composition. Rust `replayMethods` now provides the first
 image replay boundary: it is accepted only during `beginImageDispatchRecovery`,
 replays each indexed define/remove operation in dependency order, and fails
 closed on malformed source or compilation failure. Alien replay, global/method
-target derivation, mapped-unit composition, and durable generation authority
-remain N6.6 work.
+target derivation, mapped-unit composition, and full durable generation
+projection/evolution authority remain N6.6 work.
 
 `compileImageCode:` now consumes the ordered Rust generation-source handoff and
 emits one TCC-backed dylib at the requested output path. It is intentionally a
@@ -1773,8 +1776,10 @@ authorized. `enterRunning`, `beginQuiescence`, and `endQuiescence` expose the
 same transitions through the Rust Codegen surface. In a Rust-only stack, the
 first Rust candidate map conditionally installs this observer and authorizer;
 a mixed stack leaves the existing Zig Codegen callback owner untouched,
-honoring the Store single-registration law. The full Zig↔Rust callback matrix
-and publication-plan generation/currentness checks remain later hardening gates.
+  honoring the Store single-registration law. The durable currentness and
+  canonical-projection checks now run in Rust publication plans; the full
+  Zig↔Rust callback matrix and cross-process generation/evolution authority
+  remain later hardening gates.
 
 The image handoff now has explicit Rust `beginImageDispatchRecovery` and
 `endImageDispatchRecovery` methods. The begin gate suppresses candidate
