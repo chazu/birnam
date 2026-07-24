@@ -84,7 +84,8 @@ impl Emitter {
         self.bytes.extend_from_slice(b"birnam_mkString(\"");
         self.push_c_string_body(bytes);
         self.bytes.extend_from_slice(b"\", ");
-        self.bytes.extend_from_slice(bytes.len().to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(bytes.len().to_string().as_bytes());
         self.bytes.extend_from_slice(b"L)");
     }
 
@@ -113,7 +114,8 @@ impl Emitter {
             self.push(arg);
         }
         self.bytes.extend_from_slice(b"}, ");
-        self.bytes.extend_from_slice(args.len().to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(args.len().to_string().as_bytes());
         self.bytes.extend_from_slice(b"L)");
     }
 
@@ -147,7 +149,8 @@ impl Emitter {
                     self.emit_expr_at_depth(arg, depth + 1)?;
                 }
                 self.bytes.extend_from_slice(b"}, ");
-                self.bytes.extend_from_slice(args.len().to_string().as_bytes());
+                self.bytes
+                    .extend_from_slice(args.len().to_string().as_bytes());
                 self.bytes.extend_from_slice(b"L)");
             }
         }
