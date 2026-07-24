@@ -53,7 +53,7 @@ pairs use the normal thresholds without inheriting these exceptions.
 R6 is therefore complete. R7 may integrate and select the Rust floor while
 retaining the Zig oracle and rollback path required by Design 61.
 
-## Latest acceptance rerun
+## Latest acceptance reruns
 
 After the Rust PEG corpus, diagnostics, generated-C, metadata, stress, and
 relocated-install gates were added, `mise run r6-acceptance` was rerun on
@@ -62,3 +62,10 @@ comparison passed: the same two exact result hashes were present, with zero
 missing or unusable cases and only the two tradeoffs recorded above. These
 later PEG tests therefore add confidence without widening the R6 exception
 set or changing the accepted snapshot.
+
+The Rust TCC dynamic-boundary, separate-process artifact activation, full
+Codegen, Alien, and image suites were then added and passed on both floors.
+`mise run r6-acceptance` was rerun again on 2026-07-23: the exact accepted
+hashes remained unchanged, with the same two recorded crossings and zero
+missing or unusable cases. This additional native-TCC coverage likewise does
+not widen the R6 exception set or change the accepted snapshot.
