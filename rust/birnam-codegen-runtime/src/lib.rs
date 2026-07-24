@@ -75,6 +75,7 @@ const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
+const STORE_RAW_CURRENT_SELECTOR: &[u8] = b"rawCurrentValue:attr:\0";
 const MODULE_NAME: &[u8] = b"Module\0";
 const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
 const MAX_CST_DEPTH: usize = 4096;
@@ -120,6 +121,7 @@ struct CandidateState {
     revision_digest: [u8; 64],
     manifest: Vec<u8>,
     requires: Vec<Vec<u8>>,
+    operations: Vec<CandidateOperationState>,
     handle: usize,
     validate: usize,
     prepare: usize,
@@ -132,6 +134,17 @@ struct CandidateState {
 struct PreparedState {
     token: usize,
     unit: usize,
+}
+
+#[derive(Clone)]
+struct CandidateOperationState {
+    target_name: Vec<u8>,
+    selector: Vec<u8>,
+    install: bool,
+    target: usize,
+    vtable: usize,
+    prior_method: usize,
+    prior_present: bool,
 }
 
 fn abort(message: &str) -> ! {
@@ -201,6 +214,10 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
                 mark(candidate.unit as Oop);
                 mark(candidate.name as Oop);
                 mark(candidate.source as Oop);
+                for operation in &candidate.operations {
+                    mark(operation.target as Oop);
+                    mark(operation.vtable as Oop);
+                }
             }
         }
     }
@@ -483,6 +500,25 @@ unsafe fn intern_bytes(api: &IdApi, name: &[u8]) -> Oop {
     terminated.extend_from_slice(name);
     terminated.push(0);
     unsafe { (api.intern)(terminated.as_ptr().cast::<c_char>()) }
+}
+
+unsafe fn global_by_name(api: &IdApi, runtime: &Runtime, name: &[u8]) -> Oop {
+    let symbol = unsafe { intern_bytes(api, name) };
+    let globals = runtime.globals as Oop;
+    if !globals.is_null() {
+        let value = unsafe { send(api, globals, GLOBAL_AT_SELECTOR, &[symbol]) };
+        if value != api.nilObj && !value.is_null() {
+            return value;
+        }
+    }
+    let mut terminated = Vec::with_capacity(name.len() + 1);
+    terminated.extend_from_slice(name);
+    terminated.push(0);
+    if unsafe { (api.isExported)(terminated.as_ptr().cast()) } != 0 {
+        unsafe { (api.import)(terminated.as_ptr().cast()) }
+    } else {
+        api.nilObj
+    }
 }
 
 unsafe fn send(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -> Oop {
@@ -2164,6 +2200,18 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         note_error(b"RustCodegen candidate metadata mismatches source");
         return api.nilObj;
     }
+    let operations = (0..manifest.operation_count())
+        .filter_map(|index| manifest.operation(index))
+        .map(|operation| CandidateOperationState {
+            target_name: operation.target.to_vec(),
+            selector: operation.selector.to_vec(),
+            install: operation.install,
+            target: 0,
+            vtable: 0,
+            prior_method: 0,
+            prior_present: false,
+        })
+        .collect();
     let name = unsafe { intern_bytes(api, &metadata.name) };
     if let Ok(candidates) = CANDIDATES.lock()
         && let Some(existing) = candidates
@@ -2238,6 +2286,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             revision_digest: metadata.revision_digest,
             manifest: envelope.manifest.to_vec(),
             requires: metadata.requires.clone(),
+            operations,
             handle: 0,
             validate: 0,
             prepare: 0,
@@ -2406,15 +2455,7 @@ unsafe extern "C" fn rust_codegen_map_candidate(
         if operation.install {
             continue;
         }
-        let target_name = unsafe { intern_bytes(api, operation.target) };
-        let target = unsafe {
-            send(
-                api,
-                runtime.globals as Oop,
-                GLOBAL_AT_SELECTOR,
-                &[target_name],
-            )
-        };
+        let target = unsafe { global_by_name(api, runtime, operation.target) };
         let selector = unsafe { intern_bytes(api, operation.selector) };
         if target.is_null()
             || target == api.nilObj
@@ -2472,7 +2513,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let (validate, prepare, prepared, active) = {
+    let (validate, prepare, prepared, active, mut operations) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -2489,6 +2530,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             candidate.prepare,
             candidate.prepared,
             candidate.active,
+            candidate.operations.clone(),
         )
     };
     if validate == 0 || prepare == 0 {
@@ -2510,15 +2552,47 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
         note_error(b"RustCodegen candidate validation failed");
         return api.nilObj;
     }
+    for operation in &mut operations {
+        let target = unsafe { global_by_name(api, runtime, &operation.target_name) };
+        if target.is_null() || target == api.nilObj {
+            note_error(b"RustCodegen candidate target is missing");
+            return api.nilObj;
+        }
+        let vtable = unsafe { (api.vtableOf)(target) };
+        if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
+            note_error(b"RustCodegen candidate target is unstable");
+            return api.nilObj;
+        }
+        let selector = unsafe { intern_bytes(api, &operation.selector) };
+        let prior = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                STORE_RAW_CURRENT_SELECTOR,
+                &[vtable, selector],
+            )
+        };
+        let prior_present = !prior.is_null();
+        if !operation.install && !prior_present {
+            note_error(b"RustCodegen candidate direct method is missing");
+            return api.nilObj;
+        }
+        operation.target = target as usize;
+        operation.vtable = vtable as usize;
+        operation.prior_method = prior as usize;
+        operation.prior_present = prior_present;
+    }
     if unsafe { prepare(api.nilObj, ptr::null(), 0) } == api.nilObj {
         note_error(b"RustCodegen candidate preparation failed");
         return api.nilObj;
     }
-    let object = unsafe { (api.import)(c"Object".as_ptr()) };
-    let token = if object.is_null() || object == api.nilObj {
-        api.nilObj
-    } else {
-        unsafe { send0(api, object, NEW_SELECTOR) }
+    let token = {
+        let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+        if vector.is_null() || vector == api.nilObj {
+            api.nilObj
+        } else {
+            unsafe { send0(api, vector, NEW_SELECTOR) }
+        }
     };
     if token.is_null() || token == api.nilObj {
         note_error(b"RustCodegen prepared token allocation failed");
@@ -2534,6 +2608,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             .find(|candidate| candidate.unit == values[0] as usize)
     {
         candidate.prepared = token as usize;
+        candidate.operations = operations;
         prepared_states.push(PreparedState {
             token: token as usize,
             unit: values[0] as usize,
