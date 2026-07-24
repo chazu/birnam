@@ -5,7 +5,7 @@
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
 > complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5.1
-> through N5.3 are complete; N5.4 is in progress.
+> through N5.4 are complete; N6 is next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1306,14 +1306,23 @@ the Codegen migration.
 A Birnam grammar/compiler remains optional and additive. It cannot replace this
 phase's cold parser.
 
-#### N5.4 execution record — in progress, 2026-07-23
+#### N5.4 execution record — complete, 2026-07-23
 
 `-Dlang=rust` now selects Rust Lang canonically while installing explicit Rust
 and Zig names; `-Dlang=zig` restores the Zig canonical path. The selection gate
 checks both canonical/explicit identities, runs a relocated REPL expression on
-both implementations, and rejects unknown values. The full optimized verify
-gate still has an older relocated `docgen` recursion in the Rust-floor host
-path, so the observation window remains open before N6 begins.
+both implementations, and rejects unknown values. Rust Lang parity and
+diagnostics remain pinned to CST digest `0df93b8aea32fe0d`; the Rust and Zig
+oracles remain independently selectable.
+
+The relocated install smoke now includes the Rust Lang workspace crate, and the
+native-rung harness propagates `-Doptimize` into its nested builds. The focused
+Rust-Lang set, optimized native-rung harness, and complete
+`zig build verify -Doptimize=ReleaseSafe` all pass. The R6 acceptance gate now
+executes those checks before validating the unchanged digest-pinned benchmark
+pair and its two explicitly accepted crossings. The default Debug relocated
+`docgen` recursion remains a separate pre-existing host observation; it is not
+used as N5.4 acceptance evidence and does not change the ReleaseSafe gate.
 
 ## 12. Phase N6 — Rust code generator and cold-compiler cutover
 

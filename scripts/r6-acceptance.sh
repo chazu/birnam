@@ -18,25 +18,40 @@ python3 scripts/check-native-rung-baseline.py
 
 # Keep the R6 acceptance boundary aligned with the latest N5.1-N5.4 test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
-# and canonical/rollback selection checks. The broader `zig build test` target
-# includes long-running lower-rung matrices and is intentionally not substituted
-# for this focused replacement gate.
+# canonical/rollback selection checks, and the optimized native-rung harness
+# that verifies child builds inherit the selected profile. The full optimized
+# verify below remains the cross-layer acceptance gate; the focused set keeps
+# failures attributable to the latest replacement rung.
 latest_tests=(
   test-rust-lang
   test-rust-lang-parity
   test-rust-lang-diagnostics
   test-lang-selection
+  test-native-rung-harness
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
 
 set +e
-zig build "${latest_tests[@]}" --summary all >"$functional" 2>&1
+zig build "${latest_tests[@]}" -Doptimize=ReleaseSafe --summary all >"$functional" 2>&1
 functional_status=$?
 set -e
 cat "$functional"
 [ "$functional_status" -eq 0 ] || {
   echo "r6-acceptance: latest Rust-Lang functional gates failed" >&2
+  exit 1
+}
+
+verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
+trap 'rm -f "$functional" "$verify"' EXIT
+
+set +e
+zig build verify -Doptimize=ReleaseSafe --summary all >"$verify" 2>&1
+verify_status=$?
+set -e
+cat "$verify"
+[ "$verify_status" -eq 0 ] || {
+  echo "r6-acceptance: optimized cross-layer verify failed" >&2
   exit 1
 }
 
@@ -67,7 +82,7 @@ verify_result "$zig_result" "$zig_result_sha256"
 verify_result "$rust_result" "$rust_result_sha256"
 
 comparison=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-acceptance.XXXXXX")
-trap 'rm -f "$functional" "$comparison"' EXIT
+trap 'rm -f "$functional" "$verify" "$comparison"' EXIT
 
 set +e
 ./scripts/bench-compare.sh "$zig_result" "$rust_result" >"$comparison" 2>&1

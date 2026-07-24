@@ -31,12 +31,13 @@ becoming a general dirty-tree allowance.
 `mise run r6-acceptance` first runs the current native-rung baseline checker
 (semantic fixtures, the accepted optimized pair, and the artifact-inspector
 baseline), then runs the latest N5.1-N5.4 Rust-Lang functional set: the
-unchanged grammar suite, frozen CST parity, syntax diagnostics, and canonical
-Rust/explicit Zig rollback selection. It then verifies both file hashes and
-runs the unchanged Design 46 comparator. It fails unless the only threshold
-crossings are exactly the two entries below. Any changed snapshot, functional
-failure, missing or unusable case, additional regression, or changed accepted
-measurement fails closed.
+unchanged grammar suite, frozen CST parity, syntax diagnostics, canonical
+Rust/explicit Zig rollback selection, and the optimized native-rung harness.
+It then runs the complete `zig build verify -Doptimize=ReleaseSafe` closure,
+verifies both file hashes, and runs the unchanged Design 46 comparator. It
+fails unless the only threshold crossings are exactly the two entries below.
+Any changed snapshot, functional failure, verify failure, missing or unusable
+case, additional regression, or changed accepted measurement fails closed.
 
 ## Accepted tradeoffs
 
@@ -69,8 +70,11 @@ set or changing the accepted snapshot.
 The Rust TCC dynamic-boundary, separate-process artifact activation, full
 Codegen, Alien, and image suites were then added and passed on both floors.
 The R6 gate now also executes the latest Rust-Lang replacement set before
-checking the snapshot. `mise run r6-acceptance` was rerun again on 2026-07-23:
-the exact accepted hashes remained unchanged, with the same two recorded
-crossings and zero missing or unusable cases. This additional native-TCC and
-Rust-Lang coverage does not widen the R6 exception set or change the accepted
-snapshot.
+checking the snapshot. The native-rung harness now propagates the requested
+optimization profile into its nested builds, so the gate exercises the same
+ReleaseSafe closure used by the acceptance evidence. `zig build verify
+-Doptimize=ReleaseSafe` and `mise run r6-acceptance` were rerun on 2026-07-23:
+both passed, the exact accepted hashes remained unchanged, and the same two
+recorded crossings had zero missing or unusable cases. This additional
+cross-layer, native-TCC, and Rust-Lang coverage does not widen the R6 exception
+set or change the accepted snapshot.
