@@ -295,9 +295,9 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try image.appendSlice(std.testing.allocator, facts.items);
     try tmp.dir.writeFile(.{ .sub_path = "facts.image", .data = image.items });
 
-    // A heap reference is deliberately not materialized at this rung. Build a
-    // same-shape image with a unique entity/attribute and prove the replay
-    // rejects it before Rust Store can observe a partial fact.
+    // An unresolved heap reference must fail before Rust Store can observe a
+    // partial fact. A second image below supplies the heap record and proves
+    // the relocation path succeeds.
     const heap_image_path = try std.fmt.allocPrint(
         std.testing.allocator,
         "{s}/heap-facts.image",
@@ -320,8 +320,50 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try heap_image.appendSlice(std.testing.allocator, heap_facts.items);
     try tmp.dir.writeFile(.{ .sub_path = "heap-facts.image", .data = heap_image.items });
 
+    const materialized_heap_image_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/materialized-heap-facts.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(materialized_heap_image_path);
+    var heap_payload: std.ArrayList(u8) = .{};
+    defer heap_payload.deinit(std.testing.allocator);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try heap_payload.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 10, .little);
+    try heap_payload.appendSlice(std.testing.allocator, &u32_bytes);
+    try heap_payload.appendSlice(std.testing.allocator, "VectorNode");
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try heap_payload.appendSlice(std.testing.allocator, &u32_bytes);
+    try heap_payload.append(std.testing.allocator, 5);
+    std.mem.writeInt(u32, &u32_bytes, 11, .little);
+    try heap_payload.appendSlice(std.testing.allocator, &u32_bytes);
+    try heap_payload.appendSlice(std.testing.allocator, "heapPayload");
+    var materialized_heap_image: std.ArrayList(u8) = .{};
+    defer materialized_heap_image.deinit(std.testing.allocator);
+    try materialized_heap_image.appendSlice(std.testing.allocator, image.items[0..104]);
+    std.mem.writeInt(u32, &u32_bytes, 3, .little);
+    try materialized_heap_image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, heap_payload.items.len, .little);
+    try materialized_heap_image.appendSlice(std.testing.allocator, &u64_bytes);
+    try materialized_heap_image.appendSlice(std.testing.allocator, heap_payload.items);
+    std.mem.writeInt(u32, &u32_bytes, 2, .little);
+    try materialized_heap_image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, heap_facts.items.len, .little);
+    try materialized_heap_image.appendSlice(std.testing.allocator, &u64_bytes);
+    try materialized_heap_image.appendSlice(std.testing.allocator, heap_facts.items);
+    std.mem.writeInt(u32, materialized_heap_image.items[16..20], 2, .little);
+    try tmp.dir.writeFile(.{
+        .sub_path = "materialized-heap-facts.image",
+        .data = materialized_heap_image.items,
+    });
+
     const image_object = api.mkString(image_path.ptr, image_path.len);
     const heap_image_object = api.mkString(heap_image_path.ptr, heap_image_path.len);
+    const materialized_heap_image_object = api.mkString(
+        materialized_heap_image_path.ptr,
+        materialized_heap_image_path.len,
+    );
     try std.testing.expectEqual(
         api.nilObj,
         api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1),
@@ -389,6 +431,24 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
         store,
         api.send(store, api.intern("currentValue:attr:"), &.{ entity, api.intern("factExport") }, 2),
     );
+    const materialized_replayed = api.send(
+        codegen,
+        api.intern("replayImageFacts:"),
+        &.{materialized_heap_image_object},
+        1,
+    );
+    try std.testing.expect(api.isSmallInt(materialized_replayed) != 0);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(materialized_replayed));
+    const heap_entity = api.send(
+        store,
+        api.intern("currentValue:attr:"),
+        &.{ api.intern("heapEntity"), api.intern("heapAttr") },
+        2,
+    );
+    try std.testing.expect(heap_entity != api.nilObj and heap_entity != null);
+    try std.testing.expectEqual(api.import("VectorNode"), api.vtableOf(heap_entity));
+    const heap_slots: [*]idapi.Oop = @ptrCast(@alignCast(heap_entity.?));
+    try std.testing.expectEqual(api.intern("heapPayload"), heap_slots[0]);
     try std.testing.expectEqual(
         api.trueObj,
         api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),

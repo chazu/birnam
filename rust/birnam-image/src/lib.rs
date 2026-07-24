@@ -321,7 +321,7 @@ impl<'a> Fields<'a> {
         self.offset == self.bytes.len()
     }
 
-    fn consumed(&self) -> usize {
+    pub fn consumed(&self) -> usize {
         self.offset
     }
 

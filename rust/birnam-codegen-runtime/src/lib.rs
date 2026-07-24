@@ -12,8 +12,9 @@ use birnam_artifact::candidate::{
 };
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
-use birnam_image::{Facts, Field, Image, RecordKind};
+use birnam_image::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
 use core::ffi::{c_char, c_void};
+use core::mem::size_of;
 use core::ptr;
 use std::ffi::{CStr, OsStr, OsString};
 use std::fs;
@@ -2083,7 +2084,11 @@ unsafe extern "C" fn rust_codegen_map_image_code(
     result
 }
 
-unsafe fn materialize_image_field(api: &IdApi, field: Field<'_>) -> Result<Oop, ()> {
+unsafe fn materialize_image_field_with_relocations(
+    api: &IdApi,
+    field: Field<'_>,
+    relocations: Option<&[Oop]>,
+) -> Result<Oop, ()> {
     match field {
         Field::Nil => Ok(api.nilObj),
         Field::True => Ok(api.trueObj),
@@ -2100,14 +2105,109 @@ unsafe fn materialize_image_field(api: &IdApi, field: Field<'_>) -> Result<Oop, 
             let value = unsafe { (api.import)(terminated.as_ptr().cast()) };
             if value.is_null() { Err(()) } else { Ok(value) }
         }
-        Field::HeapRef(_) => Err(()),
+        Field::HeapRef(index) => relocations
+            .and_then(|entries| entries.get(index as usize).copied())
+            .filter(|value| !value.is_null())
+            .ok_or(()),
     }
 }
 
-/// Replay v4 facts through the Rust Store image ABI after all values have been
-/// decoded successfully. Heap references are rejected until the later heap
-/// materializer can provide a complete relocation table; this prevents a
-/// partial Store mutation from masquerading as successful recovery.
+struct PendingHeapObject<'a> {
+    object: Oop,
+    layout: Vec<SlotKind>,
+    encoded_slots: &'a [u8],
+}
+
+unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<Oop>, ()> {
+    let mut relocations = Vec::new();
+    let mut pending = Vec::new();
+    let mut records = image.records();
+    loop {
+        let record = records.next_record().map_err(|_| ())?;
+        let Some(record) = record else { break };
+        if record.kind != RecordKind::Heap {
+            continue;
+        }
+        let mut heap = Heap::parse(record.payload).map_err(|_| ())?;
+        while let Some(header) = heap.peek_header().map_err(|_| ())? {
+            let vtable_name = header.vtable_name;
+            let mut terminated = Vec::with_capacity(vtable_name.len() + 1);
+            terminated.extend_from_slice(vtable_name);
+            terminated.push(0);
+            let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
+            if vtable.is_null() || vtable == api.nilObj {
+                return Err(());
+            }
+            let word_count = usize::try_from(header.word_count).map_err(|_| ())?;
+            let payload_size = word_count.checked_mul(size_of::<usize>()).ok_or(())?;
+            let mut layout = Vec::with_capacity(word_count);
+            for word in 0..word_count {
+                let kind = match unsafe { (api.slotKind)(vtable, word) } {
+                    birnam_abi::SLOT_OOP => SlotKind::Oop,
+                    birnam_abi::SLOT_CODE => SlotKind::Code,
+                    _ => SlotKind::RawWord,
+                };
+                layout.push(kind);
+            }
+            let object = unsafe { (api.alloc)(vtable, payload_size) };
+            if object.is_null() {
+                return Err(());
+            }
+            let encoded_slots = heap
+                .next_object(&layout)
+                .map_err(|_| ())?
+                .ok_or(())?
+                .encoded_slots;
+            relocations.push(object);
+            pending.push(PendingHeapObject {
+                object,
+                layout,
+                encoded_slots,
+            });
+        }
+    }
+
+    for pending in pending {
+        let mut cursor = 0usize;
+        for (word, kind) in pending.layout.iter().copied().enumerate() {
+            match kind {
+                SlotKind::Oop => {
+                    let suffix = pending.encoded_slots.get(cursor..).ok_or(())?;
+                    let mut fields = Fields::new(suffix);
+                    let field = fields.next_field().map_err(|_| ())?.ok_or(())?;
+                    cursor = cursor.checked_add(fields.consumed()).ok_or(())?;
+                    let value = unsafe {
+                        materialize_image_field_with_relocations(api, field, Some(&relocations))?
+                    };
+                    unsafe {
+                        (pending.object as *mut usize)
+                            .add(word)
+                            .write(value as usize);
+                    }
+                }
+                SlotKind::RawWord => {
+                    let end = cursor.checked_add(size_of::<usize>()).ok_or(())?;
+                    let bytes = pending.encoded_slots.get(cursor..end).ok_or(())?;
+                    let raw = usize::from_le_bytes(bytes.try_into().map_err(|_| ())?);
+                    unsafe {
+                        (pending.object as *mut usize).add(word).write(raw);
+                    }
+                    cursor = end;
+                }
+                SlotKind::Code => {}
+            }
+        }
+        if cursor != pending.encoded_slots.len() {
+            return Err(());
+        }
+    }
+    Ok(relocations)
+}
+
+/// Replay v4 facts through the Rust Store image ABI after all heap objects and
+/// field values have been decoded successfully. Heap allocation and swizzling
+/// happen before Store mutation so malformed relocation data cannot masquerade
+/// as successful recovery or leave a partial fact load behind.
 unsafe extern "C" fn rust_codegen_replay_image_facts(
     _self_object: Oop,
     pointer: *const Oop,
@@ -2145,6 +2245,22 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
         return api.nilObj;
     }
 
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let relocations = match unsafe { materialize_image_heaps(api, image) } {
+        Ok(relocations) => relocations,
+        Err(_) => {
+            note_error(b"RustCodegen image heap materialization failed");
+            return api.nilObj;
+        }
+    };
+
     let mut pending = Vec::new();
     let mut max_basis = 0i64;
     let mut records = image.records();
@@ -2171,15 +2287,21 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
                 return api.nilObj;
             };
             let Some(fact) = next else { break };
-            let Ok(entity) = (unsafe { materialize_image_field(api, fact.entity) }) else {
+            let Ok(entity) = (unsafe {
+                materialize_image_field_with_relocations(api, fact.entity, Some(&relocations))
+            }) else {
                 note_error(b"RustCodegen image facts require materialized heap references");
                 return api.nilObj;
             };
-            let Ok(attribute) = (unsafe { materialize_image_field(api, fact.attribute) }) else {
+            let Ok(attribute) = (unsafe {
+                materialize_image_field_with_relocations(api, fact.attribute, Some(&relocations))
+            }) else {
                 note_error(b"RustCodegen image facts require materialized heap references");
                 return api.nilObj;
             };
-            let Ok(value) = (unsafe { materialize_image_field(api, fact.value) }) else {
+            let Ok(value) = (unsafe {
+                materialize_image_field_with_relocations(api, fact.value, Some(&relocations))
+            }) else {
                 note_error(b"RustCodegen image facts require materialized heap references");
                 return api.nilObj;
             };
