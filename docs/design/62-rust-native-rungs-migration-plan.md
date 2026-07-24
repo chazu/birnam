@@ -1784,6 +1784,10 @@ and heap/fact payload materialization remain later slices built on this framing
 boundary. The field iterator now covers all ten v4 tags (including null Oop,
 heap-reference, and exact float bits) with checked length prefixes and no
 allocation; it is a format decoder, not yet the loader's swizzling authority.
+The borrowed facts iterator now validates the 12-byte basis/count prefix,
+walks each `op`/transaction and three tagged values, and rejects truncated or
+trailing payloads. It still leaves heap-reference resolution and Store
+mutation to the later runtime handoff.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
