@@ -1453,6 +1453,13 @@ not yet acquired compiled-unit metadata, embedded source, dependency
 descriptors, runtime initialization, or loader acceptance, so it cannot enter
 the production Codegen authority or the N6.4 image/module path.
 
+The diagnostic seam is also executable: every opt-in emit/eval/compile-output
+operation clears a process-local `lastError`, records a first failure message,
+and exposes it through `RustCodegen lastError`. The focused test proves a bad
+source publishes a diagnostic and a subsequent successful `7` evaluation clears
+it. This is intentionally a string-compatible observation seam, not yet the
+full Error-object propagation and source-span formatting required by N6.3.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
