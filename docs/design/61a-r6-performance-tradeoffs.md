@@ -341,3 +341,14 @@ absent because candidate dylibs still import the Codegen-owned dynamic shim
 set. This is an N6.5 cutover seam, not a benchmark or gate exception; the
 shim-owner migration must land before Rust-only candidate reentry can be
 claimed.
+
+The Rust-only candidate shim cutover landed at `be775da`. When Zig Codegen is
+absent, candidate-generated C now selects a unique Rust-owned Codegen shim
+namespace while TCC-owned symbols remain with Rust TCC; mixed stacks retain the
+frozen legacy names. The focused candidate fixture passes inspect/map/prepare/
+commit and synchronous observer-drift reentry against both Rust Store and Zig
+Store. Its no-op Reflect seam isolates callback reentry; full generated
+candidate method-install semantics remain an N6.5 follow-up. The complete R6
+gate passed with 25/25 Rust Codegen runtime tests, both callback variants, and
+no benchmark change: only `query.aggregate` (+5.8%) and
+`compile.stage1-stdlib` (+11.9%) remain accepted for this snapshot.

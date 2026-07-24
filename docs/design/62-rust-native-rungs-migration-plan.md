@@ -2107,6 +2107,17 @@ remove shims. Moving that exact dynamic shim set to the Rust Codegen owner is
 required before a Rust-only candidate can activate and exercise observer
 reentry; the failed probe is not admitted to the R6 gate.
 
+The Rust-only candidate shim cutover landed at `be775da`. When Zig Codegen is
+absent, candidate-generated C now selects a unique Rust-owned Codegen shim
+namespace while TCC-owned symbols remain with Rust TCC; mixed stacks retain the
+frozen legacy names. The focused candidate fixture passes inspect/map/prepare/
+commit and synchronous observer-drift reentry against both Rust Store and Zig
+Store. Its no-op Reflect seam isolates callback reentry; full generated
+candidate method-install semantics remain an N6.5 follow-up. The complete R6
+gate passed with 25/25 Rust Codegen runtime tests, both callback variants, and
+no benchmark change: only `query.aggregate` (+5.8%) and
+`compile.stage1-stdlib` (+11.9%) remain accepted for this snapshot.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
