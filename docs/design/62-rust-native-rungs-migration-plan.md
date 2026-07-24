@@ -1404,6 +1404,13 @@ dependency. Eight deterministic Codegen tests, workspace tests, formatting,
 and Clippy pass; the Rust implementation remains unselected by production
 builds until the later orchestration and runtime-boundary gates are complete.
 
+The expression adapter now also lowers vector and map literals into the exact
+persistent `Vector new`/`add:` and `Map new`/`at:put:` send chains, and lowers
+`?name` into `LogicVar named:` with a symbol argument. Zero-argument sends use
+the Zig ABI's `0, 0L` null-argument representation rather than an empty
+compound literal. The nine Codegen tests and full Cargo workspace suite pass
+after this slice.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
