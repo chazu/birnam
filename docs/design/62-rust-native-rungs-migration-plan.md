@@ -1780,7 +1780,10 @@ Typed borrowed parsers now also enforce the exact 64-byte authority digest and
 the 72-byte code-record prefix, exposing the checksum, generation digest, and
 opaque unit bytes without allocating or copying. They perform no `IdApi`
 allocation or heap/Store interpretation; hash verification, dynamic loading,
-and heap/fact payload codecs remain later slices built on this framing boundary.
+and heap/fact payload materialization remain later slices built on this framing
+boundary. The field iterator now covers all ten v4 tags (including null Oop,
+heap-reference, and exact float bits) with checked length prefixes and no
+allocation; it is a format decoder, not yet the loader's swizzling authority.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
