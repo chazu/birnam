@@ -1767,7 +1767,7 @@ test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     try std.testing.expectEqual(zig_output, api.send(old_codegen, api.intern("compile:output:"), &.{ source, zig_output }, 2));
     const zig_loaded_by_zig = api.send(old_codegen, api.intern("load:"), &.{zig_output}, 1);
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(zig_loaded_by_zig));
-    const rust_loaded_zig = api.send(rust_codegen, api.intern("load:"), &.{zig_output}, 1);
+    const rust_loaded_zig = api.send(rust_codegen, api.intern("loadHostCapability:"), &.{zig_output}, 1);
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(rust_loaded_zig));
     try std.testing.expectEqual(rust_output, api.send(rust_codegen, api.intern("compile:output:"), &.{ source, rust_output }, 2));
     const zig_loaded_rust = api.send(old_codegen, api.intern("load:"), &.{rust_output}, 1);
@@ -1788,6 +1788,8 @@ test "Rust Codegen loads a host capability through its explicit entrypoint" {
     const source = api.mkString(source_text.ptr, source_text.len);
     const output = api.mkString(path.ptr, path.len);
     try std.testing.expectEqual(output, api.send(old_codegen, api.intern("compile:output:"), &.{ source, output }, 2));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("sealInitialGeneration"), &.{}, 0));
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("load:"), &.{output}, 1));
     const loaded = api.send(rust_codegen, api.intern("loadHostCapability:"), &.{output}, 1);
     try std.testing.expect(loaded != api.nilObj);
     try std.testing.expectEqual(

@@ -5222,6 +5222,16 @@ unsafe extern "C" fn rust_codegen_load(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
+    if INITIAL_GENERATION_SEALED
+        .lock()
+        .ok()
+        .is_some_and(|sealed| *sealed)
+        && !HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
+        && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+    {
+        note_error(b"RustCodegen module introduction is not available");
+        return api.nilObj;
+    }
     let Some(mut path) = (unsafe { string_bytes(api, values[0]) }) else {
         note_error(b"RustCodegen load path was not a String");
         return api.nilObj;
