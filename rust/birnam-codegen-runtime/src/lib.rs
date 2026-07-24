@@ -5,7 +5,7 @@
 //! The current method materializes the Rust PEG CST, lowers it through the pure
 //! Codegen core, and returns deterministic generated C without invoking TCC.
 
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use birnam_codegen::{Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -31,6 +31,7 @@ const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
 const RELOCATE_SELECTOR: &[u8] = b"relocate\0";
+const DISPOSABLE_SELECTOR: &[u8] = b"disposable\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const MAX_CST_DEPTH: usize = 4096;
@@ -45,6 +46,8 @@ struct Runtime {
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static LAST_ERROR: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+static LIVE_UNITS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Codegen: {message}");
@@ -68,6 +71,26 @@ fn note_error(message: &[u8]) {
         && error.is_none()
     {
         *error = Some(message.to_vec());
+    }
+}
+
+unsafe extern "C" fn mark_live_units(mark: MarkFn) {
+    let Ok(units) = LIVE_UNITS.lock() else {
+        return;
+    };
+    for &unit in units.iter() {
+        // SAFETY: each address was returned by IdApi.alloc and remains rooted
+        // by this provider until process teardown.
+        unsafe { mark(unit as Oop) };
+    }
+}
+
+fn retain_unit(unit: Oop) {
+    if let Ok(mut units) = LIVE_UNITS.lock() {
+        let address = unit as usize;
+        if !units.contains(&address) {
+            units.push(address);
+        }
     }
 }
 
@@ -238,7 +261,13 @@ unsafe extern "C" fn rust_codegen_eval(
     if instance.is_null() {
         return api.nilObj;
     }
-    unsafe { send0(api, instance, ENTRY_SELECTOR) }
+    let result = unsafe { send0(api, instance, ENTRY_SELECTOR) };
+    if source.windows(5).any(|window| window == b"__blk") {
+        retain_unit(unit);
+    } else {
+        let _ = unsafe { send0(api, unit, DISPOSABLE_SELECTOR) };
+    }
+    result
 }
 
 unsafe extern "C" fn rust_codegen_compile_output(
@@ -329,6 +358,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         }
     });
     let api = unsafe { api(&runtime) };
+    ROOT_REGISTERED.get_or_init(|| unsafe {
+        (api.gcRegisterRootProvider)(mark_live_units);
+    });
     unsafe {
         (api.method)(
             runtime.rust_codegen_vt as Oop,

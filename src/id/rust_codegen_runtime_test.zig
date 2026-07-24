@@ -62,6 +62,10 @@ test "Rust Codegen invokes an emitted block before its owner is collected" {
     const source = api.mkString("[:x | x]", 8);
     const block = api.send(codegen, api.intern("eval:"), &.{source}, 1);
     try std.testing.expect(block != api.nilObj);
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    for (0..128) |_| _ = api.mkString("temporary", 9);
+    _ = api.gcCollect();
     const argument = api.mkSmallInt(4);
     const result = api.send(block, api.intern("value:"), &.{argument}, 1);
     try std.testing.expect(api.isSmallInt(result) != 0);
