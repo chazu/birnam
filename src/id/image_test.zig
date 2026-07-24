@@ -29,6 +29,7 @@ const isolate = @import("isolate.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
+const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
 
 test "abiHash is deterministic and non-trivial" {
     try std.testing.expectEqual(image.abiHash(), image.abiHash());
@@ -114,6 +115,19 @@ test "load rejects an older image format before reading records" {
 // -- The round-trip: a real stack, in-process --------------------------------
 
 var gapi: *idapi.IdApi = undefined;
+
+fn bringTcc(api: *idapi.IdApi) !void {
+    if (std.posix.getenv("BIRNAM_RUST_TCC_DYLIB")) |path| {
+        const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+        defer std.heap.c_allocator.free(path_z);
+        const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustTccDlopenFailed;
+        const raw_init = api.dlsym(handle, "module_init") orelse return error.RustTccModuleInitMissing;
+        const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+        _ = init(api, null);
+    } else {
+        tcc.bringUp(api);
+    }
+}
 
 fn setup() *idapi.IdApi {
     const api = floor.api();
@@ -289,7 +303,7 @@ fn setupWithCodegen() *idapi.IdApi {
     store.bringUp(api);
     peg.bringUp(api);
     lang.bringUp(api);
-    tcc.bringUp(api);
+    bringTcc(api) catch @panic("TCC image test backend failed to load");
     codegen.bringUp(api);
     prelude.bringUp(api);
     collection.bringUp(api);

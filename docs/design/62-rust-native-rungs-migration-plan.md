@@ -1234,6 +1234,11 @@ The complete 43-test Alien suite now runs through the explicit Rust TCC on both
 IdApi floors, including callback, struct-by-value, library, and failure-path
 coverage. Image composition and optimized compile observations remain open.
 
+The Rust-TCC image/compiled-unit matrix passes 15 tests with the same 3
+platform skips on both floors. It covers mapped compiled code, image save/load,
+compiled-unit replay, and the existing image composition paths without changing
+the canonical Zig TCC selection.
+
 ## 11. Phase N5 — Rust language-parser rung
 
 Port `lang.zig` as an independent dynamic rung used by the cold compiler, not as
