@@ -89,3 +89,11 @@ native-TCC, and Rust-Lang coverage does not widen the R6 performance exception
 set or change the accepted snapshot. Commit `eacfa5f` extends the focused set
 with the explicit Rust Codegen runtime boundary; the gate revision records the
 fixture failure separately so it cannot mask a new failure.
+
+On 2026-07-24, after the Rust image framing crate entered the installed Cargo
+metadata gate, the complete `scripts/r6-acceptance.sh` run passed again from
+commit `8ae8a10`. The focused Rust language, parity, diagnostics, selection,
+native-rung, and Rust Codegen checks passed; the optimized verify closure and
+the unchanged comparator again reported zero missing or unusable cases and
+only `query.aggregate` (+5.8%) and `compile.stage1-stdlib` (+11.9%). The
+accepted result-file hashes and the exact two-tradeoff boundary are unchanged.

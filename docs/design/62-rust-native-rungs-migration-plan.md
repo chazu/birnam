@@ -1776,8 +1776,11 @@ remain subsequent N6.6 slices.
 The first pure image-codec slice is now present in `birnam-image`. It validates
 the v4 magic/version/endian/architecture/ABI header and iterates borrowed
 little-endian record envelopes with checked lengths and known record kinds.
-It performs no IdApi allocation or heap/Store interpretation; heap, fact, and
-code payload codecs remain later slices built on this framing boundary.
+Typed borrowed parsers now also enforce the exact 64-byte authority digest and
+the 72-byte code-record prefix, exposing the checksum, generation digest, and
+opaque unit bytes without allocating or copying. They perform no `IdApi`
+allocation or heap/Store interpretation; hash verification, dynamic loading,
+and heap/fact payload codecs remain later slices built on this framing boundary.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
