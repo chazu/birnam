@@ -1666,8 +1666,19 @@ operation row. Only after those checks does it assert the inert candidate facts
 (`candidateArtifact`, source/revision digests, requirements, and `mapped =
 false`) into the selected Store and retain the unit/name/source as GC roots.
 The installed gate inspects a Zig-produced candidate and proves the facts are
-present while no native mapping occurs; candidate mapping and publication are
-still subsequent N6.5 slices.
+present while no native mapping occurs. The next slice now implements Rust
+`mapCandidate:`: it gates Birnam dependencies through `Module isLoaded:`, copies
+the verified artifact and sidecar to an exclusive checksum-addressed
+`.birnam-candidates` path, rechecks the published bytes, then opens the copy
+with lazy/global resolution. Before retaining the handle it validates the
+artifact ABI, exact exported candidate manifest, all lifecycle hook symbols,
+the generated initializer, the exported validator, and remove-operation
+bindings; failed attempts close the handle and publish no mapped state. A
+successful map records the hook addresses and asserts `mapped = true` in Store
+without activating methods. The installed Rust runtime gate now inspects and
+maps a Zig-produced candidate and verifies that transition. Candidate prepare,
+activation, rollback, and Store observer/authorizer integration remain open
+N6.5 slices.
 
 ### N6.3 — Port eval and compile orchestration
 
