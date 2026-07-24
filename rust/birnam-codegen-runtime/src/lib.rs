@@ -39,6 +39,7 @@ const NEW_SELECTOR: &[u8] = b"new\0";
 const COMPILE_SELECTOR: &[u8] = b"compile:\0";
 const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
 const COMPILE_OUTPUT_FROM_SELECTOR: &[u8] = b"compile:output:from:\0";
+const COMPILE_OUTPUT_ROOT_SELECTOR: &[u8] = b"compile:output:root:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -687,6 +688,7 @@ unsafe fn emit_source(
     artifact: bool,
     persist_top_level: bool,
     source_path: Option<&[u8]>,
+    source_path_is_root: bool,
 ) -> Option<Vec<u8>> {
     let source = unsafe { string_bytes(api, source_object) }?;
     let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
@@ -697,7 +699,11 @@ unsafe fn emit_source(
         return None;
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;
-    let root = source_path.map(source_directory);
+    let root = if source_path_is_root {
+        source_path.map(ToOwned::to_owned)
+    } else {
+        source_path.map(source_directory)
+    };
     let tree = rewrite_embedded(tree, &source, root.as_deref().unwrap_or(b"."))?;
     let program = match lower_program(&tree, &source) {
         Ok(program) => program,
@@ -738,7 +744,7 @@ unsafe extern "C" fn rust_codegen_emit(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(output) = (unsafe { emit_source(api, values[0], false, false, None) }) else {
+    let Some(output) = (unsafe { emit_source(api, values[0], false, false, None, false) }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -769,7 +775,7 @@ unsafe extern "C" fn rust_codegen_eval(
         return api.nilObj;
     }
     let Some(source) =
-        (unsafe { emit_source(api, values[0], false, false, source_path.as_deref()) })
+        (unsafe { emit_source(api, values[0], false, false, source_path.as_deref(), false) })
     else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
@@ -862,7 +868,7 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
         return api.nilObj;
     }
     let Some(source) =
-        (unsafe { emit_source(api, values[0], false, true, source_path.as_deref()) })
+        (unsafe { emit_source(api, values[0], false, true, source_path.as_deref(), false) })
     else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
@@ -909,6 +915,22 @@ unsafe extern "C" fn rust_codegen_compile_output(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
+    unsafe { rust_codegen_compile_output_impl(pointer, count, false) }
+}
+
+unsafe extern "C" fn rust_codegen_compile_output_root(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { rust_codegen_compile_output_impl(pointer, count, true) }
+}
+
+unsafe fn rust_codegen_compile_output_impl(
+    pointer: *const Oop,
+    count: usize,
+    source_path_is_root: bool,
+) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen compile:output: received invalid arguments"));
     if values.len() != 2 && values.len() != 3 {
@@ -926,9 +948,16 @@ unsafe extern "C" fn rust_codegen_compile_output(
         note_error(b"RustCodegen source path was not a String");
         return api.nilObj;
     }
-    let Some(source) =
-        (unsafe { emit_source(api, values[0], true, false, source_path.as_deref()) })
-    else {
+    let Some(source) = (unsafe {
+        emit_source(
+            api,
+            values[0],
+            true,
+            false,
+            source_path.as_deref(),
+            source_path_is_root,
+        )
+    }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -1150,6 +1179,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_OUTPUT_FROM_SELECTOR),
             rust_codegen_compile_output,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_OUTPUT_ROOT_SELECTOR),
+            rust_codegen_compile_output_root,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

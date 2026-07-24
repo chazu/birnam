@@ -236,3 +236,31 @@ test "Rust Codegen descriptors preserve module and native requirements" {
     const diagnostic_bytes = api.stringBytes(diagnostic, &diagnostic_len);
     try std.testing.expect(std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "native requirement") != null);
 }
+
+test "Rust Codegen compile root anchors embedded files independently of source path" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "asset.bin", .data = "rooted" });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const source_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/nested/script.birnam", .{directory});
+    defer std.testing.allocator.free(source_path);
+    const output_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_root.dylib", .{directory});
+    defer std.testing.allocator.free(output_path);
+    const source_text = "[System embedFile: \"asset.bin\"]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const source_file = api.mkString(source_path.ptr, source_path.len);
+    const from_result = api.send(codegen, api.intern("eval:from:"), &.{ source, source_file }, 2);
+    try std.testing.expectEqual(api.nilObj, from_result);
+    const output = api.mkString(output_path.ptr, output_path.len);
+    const root = api.mkString(directory.ptr, directory.len);
+    const compiled = api.send(codegen, api.intern("compile:output:root:"), &.{ source, output, root }, 3);
+    try std.testing.expectEqual(output, compiled);
+    try tmp.dir.deleteFile("asset.bin");
+    const loaded = api.send(codegen, api.intern("load:"), &.{output}, 1);
+    var loaded_len: usize = 0;
+    const loaded_bytes = api.stringBytes(loaded, &loaded_len);
+    try std.testing.expectEqualSlices(u8, "rooted", loaded_bytes[0..loaded_len]);
+}
