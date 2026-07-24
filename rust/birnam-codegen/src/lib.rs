@@ -11,6 +11,9 @@ use std::borrow::Cow;
 #[derive(Debug, Default)]
 pub struct Emitter {
     bytes: Vec<u8>,
+    function_defs: Vec<u8>,
+    bound_names: Vec<Vec<u8>>,
+    next_block: usize,
 }
 
 /// The pure expression subset consumed by the first Rust emission seam.
@@ -369,6 +372,46 @@ fn lower_message<'a, N: CstNode>(
     })
 }
 
+fn collect_reference(references: &mut Vec<Vec<u8>>, name: &[u8]) {
+    if !references
+        .iter()
+        .any(|reference| reference.as_slice() == name)
+    {
+        references.push(name.to_vec());
+    }
+}
+
+fn collect_expr_refs(expr: &Expr<'_>, references: &mut Vec<Vec<u8>>) {
+    match expr {
+        Expr::Global(name) => collect_reference(references, name),
+        Expr::Send { receiver, args, .. } => {
+            collect_expr_refs(receiver, references);
+            for arg in args {
+                collect_expr_refs(arg, references);
+            }
+        }
+        Expr::Block(block) => {
+            for statement in &block.body {
+                collect_statement_refs(statement, references);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_statement_refs(statement: &Statement<'_>, references: &mut Vec<Vec<u8>>) {
+    match statement {
+        Statement::Let { value, .. } => collect_expr_refs(value, references),
+        Statement::Expr(expression) => collect_expr_refs(expression, references),
+    }
+}
+
+fn block_has_let(block: &Block<'_>, name: &[u8]) -> bool {
+    block.body.iter().any(
+        |statement| matches!(statement, Statement::Let { name: let_name, .. } if *let_name == name),
+    )
+}
+
 const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
 #define MKV(x) (birnam_mkSmallInt((long)(x)))
 extern void* birnam_send(void* rcv, void* sel, void** args, long n);
@@ -378,6 +421,11 @@ extern void* birnam_mkFloat(double v);
 extern void* birnam_nil(void);
 extern void* birnam_true(void);
 extern void* birnam_false(void);
+extern void* birnam_proto(void* parent);
+extern void* birnam_blockVt(void);
+extern void* birnam_method(void* vt, void* selector, void* method);
+extern void* birnam_layoutAllOops(void* vt);
+extern void* birnam_alloc(void* vt, long bytes);
 "#;
 
 /// Deterministic translation-unit assembly for the Rust emitter seam. Runtime
@@ -461,6 +509,7 @@ impl Emitter {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity),
+            ..Self::default()
         }
     }
 
@@ -573,6 +622,19 @@ impl Emitter {
         self.bytes.extend_from_slice(b"\")");
     }
 
+    fn emit_reference(&mut self, name: &[u8]) {
+        if self
+            .bound_names
+            .iter()
+            .any(|bound| bound.as_slice() == name)
+        {
+            self.bytes.extend_from_slice(b"b_");
+            self.bytes.extend_from_slice(name);
+        } else {
+            self.emit_global(name);
+        }
+    }
+
     pub fn emit_send(&mut self, receiver: &[u8], selector: &[u8], args: &[&[u8]]) {
         self.bytes.extend_from_slice(b"birnam_send(");
         self.push(receiver);
@@ -610,11 +672,11 @@ impl Emitter {
             Expr::String(bytes) => self.emit_string(bytes),
             Expr::StringLiteral(source) => self.emit_string_literal(source),
             Expr::Symbol(name) => self.emit_symbol(name),
-            Expr::Global(name) => self.emit_global(name),
+            Expr::Global(name) => self.emit_reference(name),
             Expr::Nil => self.emit_nil(),
             Expr::True => self.emit_true(),
             Expr::False => self.emit_false(),
-            Expr::Block(_) => return Err(EmitError::Unsupported),
+            Expr::Block(block) => self.emit_block(block)?,
             Expr::Send {
                 receiver,
                 selector,
@@ -644,8 +706,152 @@ impl Emitter {
         Ok(())
     }
 
-    pub fn finish(self) -> Vec<u8> {
+    fn emit_block(&mut self, block: &Block<'_>) -> Result<(), EmitError> {
+        let mut references = Vec::new();
+        for statement in &block.body {
+            collect_statement_refs(statement, &mut references);
+        }
+        let captures = self
+            .bound_names
+            .iter()
+            .filter(|name| {
+                references.iter().any(|reference| reference == *name)
+                    && !block.params.contains(&name.as_slice())
+                    && !block_has_let(block, name)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let number = self.next_block;
+        self.next_block += 1;
+        let saved_function_defs_len = self.function_defs.len();
+        let saved_bytes = std::mem::take(&mut self.bytes);
+        let saved_bound_names = std::mem::take(&mut self.bound_names);
+        self.bound_names = block
+            .params
+            .iter()
+            .map(|name| name.to_vec())
+            .chain(captures.iter().cloned())
+            .collect();
+        self.bytes = Vec::new();
+        for (index, name) in block.params.iter().enumerate() {
+            self.bytes.extend_from_slice(b"void* b_");
+            self.bytes.extend_from_slice(name);
+            self.bytes.extend_from_slice(b" = args[");
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"];\n");
+        }
+        for (index, name) in captures.iter().enumerate() {
+            self.bytes.extend_from_slice(b"void* b_");
+            self.bytes.extend_from_slice(name);
+            self.bytes.extend_from_slice(b" = ((void**)self)[");
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"];\n");
+        }
+        let body_result = self.emit_block_body(&block.body);
+        let body = std::mem::take(&mut self.bytes);
+        self.bytes = saved_bytes;
+        self.bound_names = saved_bound_names;
+        if let Err(error) = body_result {
+            self.function_defs.truncate(saved_function_defs_len);
+            return Err(error);
+        }
+
+        self.function_defs.extend_from_slice(b"void* __blk");
+        self.function_defs
+            .extend_from_slice(number.to_string().as_bytes());
+        self.function_defs.extend_from_slice(
+            b"(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n",
+        );
+        self.function_defs.extend_from_slice(&body);
+        self.function_defs.extend_from_slice(b"}\n");
+
+        self.bytes.extend_from_slice(b"({ static void* __vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b" = 0; if(!__vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"){ __vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
         self.bytes
+            .extend_from_slice(b" = birnam_proto(birnam_blockVt()); birnam_method(__vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b", birnam_intern(\"");
+        if block.params.is_empty() {
+            self.bytes.extend_from_slice(b"value");
+        } else {
+            for _ in &block.params {
+                self.bytes.extend_from_slice(b"value:");
+            }
+        }
+        self.bytes.extend_from_slice(b"\"), (void*)&__blk");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b"); birnam_layoutAllOops(__vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"); } void* __o");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b" = birnam_alloc(__vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b", ");
+        self.bytes
+            .extend_from_slice(captures.len().to_string().as_bytes());
+        self.bytes.extend_from_slice(b"*sizeof(void*));\n");
+        for (index, name) in captures.iter().enumerate() {
+            self.bytes.extend_from_slice(b"((void**)__o");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b")[");
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"] = b_");
+            self.bytes.extend_from_slice(name);
+            self.bytes.extend_from_slice(b";\n");
+        }
+        self.bytes.extend_from_slice(b"__o");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"; })");
+        Ok(())
+    }
+
+    fn emit_block_body(&mut self, body: &[Statement<'_>]) -> Result<(), EmitError> {
+        if body.is_empty() {
+            self.bytes.extend_from_slice(b"return birnam_nil();\n");
+            return Ok(());
+        }
+        for (index, statement) in body.iter().enumerate() {
+            let last = index + 1 == body.len();
+            match statement {
+                Statement::Let { name, value } => {
+                    self.bytes.extend_from_slice(b"void* b_");
+                    self.bytes.extend_from_slice(name);
+                    self.bytes.extend_from_slice(b" = ");
+                    self.emit_expr_at_depth(value, 1)?;
+                    self.bytes.extend_from_slice(b";\n");
+                    self.bound_names.push(name.to_vec());
+                    if last {
+                        self.bytes.extend_from_slice(b"return b_");
+                        self.bytes.extend_from_slice(name);
+                        self.bytes.extend_from_slice(b";\n");
+                    }
+                }
+                Statement::Expr(expression) => {
+                    if last {
+                        self.bytes.extend_from_slice(b"return ");
+                        self.emit_expr_at_depth(expression, 1)?;
+                        self.bytes.extend_from_slice(b";\n");
+                    } else {
+                        self.bytes.extend_from_slice(b"(void)(");
+                        self.emit_expr_at_depth(expression, 1)?;
+                        self.bytes.extend_from_slice(b");\n");
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn finish(self) -> Vec<u8> {
+        let mut output = self.function_defs;
+        output.extend_from_slice(&self.bytes);
+        output
     }
 }
 
@@ -654,8 +860,8 @@ mod tests {
     use std::borrow::Cow;
 
     use super::{
-        CstNode, EmitError, Emitter, Expr, LowerError, Statement, TranslationUnit, lower_expr,
-        lower_literal,
+        Block, CstNode, EmitError, Emitter, Expr, LowerError, Statement, TranslationUnit,
+        lower_expr, lower_literal,
     };
 
     struct TestNode {
@@ -1091,7 +1297,25 @@ mod tests {
         );
 
         let mut emitter = Emitter::new();
-        assert_eq!(emitter.emit_expr(&lowered), Err(EmitError::Unsupported));
+        emitter.emit_expr(&lowered).unwrap();
+        assert_eq!(
+            String::from_utf8(emitter.finish()).unwrap(),
+            "void* __blk0(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nvoid* b_x = args[0];\nvoid* b_y = b_x;\nreturn b_y;\n}\n({ static void* __vt0 = 0; if(!__vt0){ __vt0 = birnam_proto(birnam_blockVt()); birnam_method(__vt0, birnam_intern(\"value:\"), (void*)&__blk0); birnam_layoutAllOops(__vt0); } void* __o0 = birnam_alloc(__vt0, 0*sizeof(void*));\n__o0; })"
+        );
+
+        let nested = Expr::Block(Box::new(Block {
+            params: vec![b"x"],
+            body: vec![Statement::Expr(Expr::Block(Box::new(Block {
+                params: Vec::new(),
+                body: vec![Statement::Expr(Expr::Global(b"x"))],
+            })))],
+        }));
+        let mut emitter = Emitter::new();
+        emitter.emit_expr(&nested).unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains("void* __blk1(void* self, void** args, long n)"));
+        assert!(output.contains("void* b_x = ((void**)self)[0];"));
+        assert!(output.contains("((void**)__o1)[0] = b_x;"));
     }
 
     #[test]
@@ -1101,7 +1325,7 @@ mod tests {
         jit.push_body(b"return MKV(42L);\n");
         assert_eq!(
             String::from_utf8(jit.finish()).unwrap(),
-            "extern void* birnam_mkSmallInt(long v);\n#define MKV(x) (birnam_mkSmallInt((long)(x)))\nextern void* birnam_send(void* rcv, void* sel, void** args, long n);\nextern void* birnam_intern(const char* name);\nextern void* birnam_mkString(const char* p, long n);\nextern void* birnam_mkFloat(double v);\nextern void* birnam_nil(void);\nextern void* birnam_true(void);\nextern void* birnam_false(void);\nextern char __g0[];\nvoid* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"
+            "extern void* birnam_mkSmallInt(long v);\n#define MKV(x) (birnam_mkSmallInt((long)(x)))\nextern void* birnam_send(void* rcv, void* sel, void** args, long n);\nextern void* birnam_intern(const char* name);\nextern void* birnam_mkString(const char* p, long n);\nextern void* birnam_mkFloat(double v);\nextern void* birnam_nil(void);\nextern void* birnam_true(void);\nextern void* birnam_false(void);\nextern void* birnam_proto(void* parent);\nextern void* birnam_blockVt(void);\nextern void* birnam_method(void* vt, void* selector, void* method);\nextern void* birnam_layoutAllOops(void* vt);\nextern void* birnam_alloc(void* vt, long bytes);\nextern char __g0[];\nvoid* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"
         );
 
         let mut artifact = TranslationUnit::new(true);
