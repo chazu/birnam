@@ -2111,11 +2111,13 @@ The Rust-only candidate shim cutover landed at `be775da`. When Zig Codegen is
 absent, candidate-generated C now selects a unique Rust-owned Codegen shim
 namespace while TCC-owned symbols remain with Rust TCC; mixed stacks retain the
 frozen legacy names. The focused candidate fixture passes inspect/map/prepare/
-commit and synchronous observer-drift reentry against both Rust Store and Zig
-Store. Its no-op Reflect seam isolates callback reentry; full generated
-candidate method-install semantics remain an N6.5 follow-up. The complete R6
-gate passed with 25/25 Rust Codegen runtime tests, both callback variants, and
-no benchmark change: only `query.aggregate` (+5.8%) and
+commit, executes a precompiled candidate trampoline (71), and then proves
+synchronous observer-drift reentry against both Rust Store and Zig Store after
+an external replacement (77). Full generated candidate method-install
+semantics are now covered for this slice; the remaining N6.5 work is the full
+callback/rollback matrix. The complete R6 gate passed with 25/25 Rust Codegen
+runtime tests, both callback variants, and no benchmark change: only
+`query.aggregate` (+5.8%) and
 `compile.stage1-stdlib` (+11.9%) remain accepted for this snapshot.
 
 The Rust artifact loader now enforces declared Birnam module requirements
