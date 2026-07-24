@@ -3,6 +3,7 @@ members = [
     "rust/birnam-abi",
     "rust/birnam-artifact",
     "rust/birnam-codegen",
+    "rust/birnam-codegen-runtime",
     "rust/birnam-id",
     "rust/birnam-lang",
     "rust/birnam-peg",

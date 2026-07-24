@@ -945,9 +945,14 @@ impl Emitter {
     }
 
     pub fn finish(self) -> Vec<u8> {
-        let mut output = self.function_defs;
-        output.extend_from_slice(&self.bytes);
+        let (function_defs, bytes) = self.finish_parts();
+        let mut output = function_defs;
+        output.extend_from_slice(&bytes);
         output
+    }
+
+    pub fn finish_parts(self) -> (Vec<u8>, Vec<u8>) {
+        (self.function_defs, self.bytes)
     }
 }
 

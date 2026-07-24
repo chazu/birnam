@@ -1,0 +1,19 @@
+[package]
+name = "birnam-codegen-runtime"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+birnam-codegen = { path = "../birnam-codegen" }
+
+[build-dependencies]
+
+[lib]
+name = "birnam_codegen_runtime"
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true

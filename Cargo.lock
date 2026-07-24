@@ -18,6 +18,14 @@ name = "birnam-codegen"
 version = "0.0.0"
 
 [[package]]
+name = "birnam-codegen-runtime"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-codegen",
+]
+
+[[package]]
 name = "birnam-id"
 version = "0.0.0"
 dependencies = [
