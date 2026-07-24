@@ -6,6 +6,7 @@
 //! Codegen core, and returns deterministic generated C without invoking TCC.
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
+use birnam_artifact::candidate::{Manifest as CandidateManifest, Operation as CandidateOperation};
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
@@ -735,6 +736,8 @@ struct RevisionOperation {
 struct RevisionMetadata {
     name: Vec<u8>,
     requires: Vec<Vec<u8>>,
+    #[allow(dead_code)]
+    operations: Vec<RevisionOperation>,
     non_method_digest: [u8; 64],
     method_digest: [u8; 64],
     revision_digest: [u8; 64],
@@ -858,7 +861,7 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
     let non_method_digest = sha256_hex(&non_method_input);
 
     let mut method_input = b"birnam.methods.v1\0".to_vec();
-    for operation in operations {
+    for operation in &operations {
         method_input.push(if operation.install { b'I' } else { b'R' });
         append_digest_field(&mut method_input, &operation.target);
         append_digest_field(&mut method_input, &operation.selector);
@@ -878,10 +881,60 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
     Some(RevisionMetadata {
         name,
         requires,
+        operations,
         non_method_digest,
         method_digest,
         revision_digest,
     })
+}
+
+#[allow(dead_code)]
+fn candidate_manifest_matches(
+    manifest: CandidateManifest<'_>,
+    source: &[u8],
+    metadata: &RevisionMetadata,
+) -> bool {
+    if manifest.name != metadata.name
+        || manifest.source_digest != sha256_hex(source)
+        || manifest.non_method_digest != metadata.non_method_digest
+        || manifest.method_digest != metadata.method_digest
+        || manifest.revision_digest != metadata.revision_digest
+    {
+        return false;
+    }
+    let mut dependencies = Vec::new();
+    for (index, dependency) in metadata.requires.iter().enumerate() {
+        if index != 0 {
+            dependencies.push(b',');
+        }
+        dependencies.extend_from_slice(dependency);
+    }
+    if manifest.dependencies != dependencies {
+        return false;
+    }
+    if manifest.operation_count() != metadata.operations.len() {
+        return false;
+    }
+    for (index, operation) in metadata.operations.iter().enumerate() {
+        let Some(candidate) = manifest.operation(index) else {
+            return false;
+        };
+        if !candidate_operation_matches(candidate, operation) {
+            return false;
+        }
+    }
+    true
+}
+
+#[allow(dead_code)]
+fn candidate_operation_matches(
+    candidate: CandidateOperation<'_>,
+    operation: &RevisionOperation,
+) -> bool {
+    candidate.target == operation.target
+        && candidate.selector == operation.selector
+        && candidate.install == operation.install
+        && candidate.arity == selector_arity(&operation.selector) as u32
 }
 
 unsafe fn parse_revision_metadata(
@@ -2076,7 +2129,10 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 #[cfg(test)]
 mod tests {
-    use super::{IDENTITY, artifact_source, birnam_codegen_rust_identity, sha256_hex};
+    use super::{
+        IDENTITY, RevisionMetadata, RevisionOperation, artifact_source,
+        birnam_codegen_rust_identity, candidate_manifest_matches, sha256_hex,
+    };
     use std::ffi::CStr;
 
     #[test]
@@ -2110,5 +2166,43 @@ mod tests {
                 .windows(b"const unsigned char __birnam_artifact_descriptor[] = {".len())
                 .any(|window| window == b"const unsigned char __birnam_artifact_descriptor[] = {")
         );
+    }
+
+    #[test]
+    fn candidate_manifest_matches_static_revision_operations() {
+        let source = b"candidate source";
+        let metadata = RevisionMetadata {
+            name: b"candidate".to_vec(),
+            requires: vec![b"depA".to_vec(), b"depB".to_vec()],
+            operations: vec![RevisionOperation {
+                target: b"Target".to_vec(),
+                selector: b"answer:".to_vec(),
+                install: true,
+                source: b"operation".to_vec(),
+            }],
+            non_method_digest: *b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            method_digest: *b"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            revision_digest: *b"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        };
+        let mut manifest = b"v2|birnam-artifact-generation-v1|candidate|".to_vec();
+        manifest.extend_from_slice(&sha256_hex(source));
+        manifest.push(b'|');
+        manifest.extend_from_slice(&metadata.non_method_digest);
+        manifest.push(b'|');
+        manifest.extend_from_slice(&metadata.method_digest);
+        manifest.push(b'|');
+        manifest.extend_from_slice(&metadata.revision_digest);
+        manifest.extend_from_slice(b"|depA,depB|Target,answer:,I,1");
+        let parsed = birnam_artifact::candidate::inspect_manifest(&manifest).unwrap();
+        assert!(candidate_manifest_matches(parsed, source, &metadata));
+
+        let mut malformed = manifest;
+        let arity = malformed
+            .windows(b"Target,answer:,I,1".len())
+            .position(|window| window == b"Target,answer:,I,1")
+            .unwrap();
+        malformed[arity + b"Target,answer:,I,".len()] = b'2';
+        let parsed = birnam_artifact::candidate::inspect_manifest(&malformed).unwrap();
+        assert!(!candidate_manifest_matches(parsed, source, &metadata));
     }
 }
