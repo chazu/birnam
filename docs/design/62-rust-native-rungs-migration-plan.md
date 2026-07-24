@@ -1825,7 +1825,10 @@ The image handoff now has explicit Rust `beginImageDispatchRecovery` and
 activity/observer reactions while the image loader relinks durable state; the
 end gate releases that guard. This is only the dispatch-recovery boundary—the
 portable heap/fact codec, mapped-unit composition, and source replay remain
-N6.6 work.
+N6.6 work. `replayMethods` now preflights every indexed operation before
+executing the first one and rejects nil/Error results during execution, so a
+malformed later source cannot be accepted as a clean replay or silently leave
+the replay count overstated.
 
 ### N6.3 — Port eval and compile orchestration
 
