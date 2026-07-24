@@ -590,15 +590,16 @@ const WYHASH_SECRET: [u64; 4] = [
     0xa076_1d64_78bd_642f,
     0xe703_7ed1_a0b4_28db,
     0x8ebc_6af0_9c88_c6e3,
-    0x5899_65cc_7537_4cc4,
+    0x5899_65cc_7537_4cc3,
 ];
 
 fn wyhash(seed: u64, input: &[u8]) -> u64 {
     let mut state = [seed ^ mix(seed ^ WYHASH_SECRET[0], WYHASH_SECRET[1]); 3];
-    let mut a = 0;
-    let mut b = 0;
-    if input.len() <= 16 {
+    let (a, b) = if input.len() <= 16 {
+        let mut a = 0;
+        let mut b = 0;
         small_key(input, &mut a, &mut b);
+        (a, b)
     } else {
         let mut offset = 0;
         if input.len() >= 48 {
@@ -608,18 +609,22 @@ fn wyhash(seed: u64, input: &[u8]) -> u64 {
             }
             state[0] ^= state[1] ^ state[2];
         }
-        while offset + 16 < input.len() {
+        let remaining = &input[offset..];
+        let mut inner = 0;
+        while inner + 16 < remaining.len() {
             state[0] = mix(
-                read_u64(&input[offset..offset + 8]) ^ WYHASH_SECRET[1],
-                read_u64(&input[offset + 8..offset + 16]) ^ state[0],
+                read_u64(&remaining[inner..inner + 8]) ^ WYHASH_SECRET[1],
+                read_u64(&remaining[inner + 8..inner + 16]) ^ state[0],
             );
-            offset += 16;
+            inner += 16;
         }
-        a = read_u64(&input[input.len() - 16..input.len() - 8]);
-        b = read_u64(&input[input.len() - 8..]);
-    }
-    a ^= WYHASH_SECRET[1];
-    b ^= state[0];
+        (
+            read_u64(&input[input.len() - 16..input.len() - 8]),
+            read_u64(&input[input.len() - 8..]),
+        )
+    };
+    let mut a = a ^ WYHASH_SECRET[1];
+    let mut b = b ^ state[0];
     let product = (a as u128).wrapping_mul(b as u128);
     a = product as u64;
     b = (product >> 64) as u64;
@@ -772,6 +777,25 @@ mod tests {
         assert_eq!(wyhash(0, b""), 0x0409_638e_e2bd_e459);
         assert_eq!(wyhash(1, b"a"), 0xa841_2d09_1b5f_e0a9);
         assert_eq!(wyhash(2, b"abc"), 0x32dd_92e4_b291_5153);
+        assert_eq!(wyhash(3, b"message digest"), 0x8619_1240_89a3_a16b);
+        assert_eq!(
+            wyhash(4, b"abcdefghijklmnopqrstuvwxyz"),
+            0x7a43_afb6_1d7f_5f40
+        );
+        assert_eq!(
+            wyhash(
+                5,
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            ),
+            0xff42_329b_90e5_0d58
+        );
+        assert_eq!(
+            wyhash(
+                6,
+                b"12345678901234567890123456789012345678901234567890123456789012345678901234567890"
+            ),
+            0xc39c_ab13_b115_aad3
+        );
     }
 
     #[test]
