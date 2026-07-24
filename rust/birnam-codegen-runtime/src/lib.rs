@@ -2286,7 +2286,9 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
             note_error(b"RustCodegen image facts framing is invalid");
             return api.nilObj;
         };
-        max_basis = max_basis.max(i64::from_ne_bytes(facts.basis.to_ne_bytes()));
+        // v4 serializes all fixed-width integers little-endian, independently
+        // of the host that is replaying the image.
+        max_basis = max_basis.max(i64::from_le_bytes(facts.basis.to_le_bytes()));
         loop {
             let Ok(next) = facts.next_fact() else {
                 note_error(b"RustCodegen image facts framing is invalid");
@@ -2332,7 +2334,7 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
             entity,
             attribute,
             value,
-            unsafe { (api.mkSmallInt)(i64::from_ne_bytes(tx.to_ne_bytes())) },
+            unsafe { (api.mkSmallInt)(i64::from_le_bytes(tx.to_le_bytes())) },
             unsafe { (api.mkSmallInt)(i64::from(op)) },
         ];
         if unsafe { send(api, store, b"imageAddFact:attr:value:tx:op:\0", &arguments) }
