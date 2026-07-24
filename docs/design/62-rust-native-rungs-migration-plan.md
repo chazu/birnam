@@ -2194,6 +2194,15 @@ passed, still with 42/42 focused tests and only the two existing benchmark
 crossings. File I/O, auto-stringification, Error-valued failures, and
 canonical prelude cutover remain open.
 
+The Rust Error-core slice landed at `c7efdbe`. It exports or reuses the
+`Error`/`ErrorVt`/`ErrorFactoryVt` families with an exact two-OOP payload,
+factory selectors, `isError`, accessors, propagating Error DNU, and the Object
+DNU swap. The focused test covers factory construction, identity, accessors,
+propagation, and the false Object case; Cargo check/test/clippy and the rerun
+of the full R6 gate passed with 42/42 focused tests and no new benchmark
+allowance. Numeric error factories, loop-body Error propagation, self-hosted
+handlers, and canonical prelude cutover remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
