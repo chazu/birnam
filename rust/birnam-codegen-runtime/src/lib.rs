@@ -936,13 +936,11 @@ unsafe extern "C" fn rust_codegen_record_module_source(
         note_error(b"RustCodegen module name was not a Symbol");
         return api.nilObj;
     };
-    let Some((Some((declared_name, _requires)), _native_requires)) =
-        (unsafe { artifact_metadata(api, values[0]) })
-    else {
+    let Some((source, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
         note_error(b"RustCodegen module source is not indexable");
         return api.nilObj;
     };
-    if declared_name != name {
+    if metadata.name != name {
         note_error(b"RustCodegen module source identity does not match its name");
         return api.nilObj;
     }
@@ -952,11 +950,6 @@ unsafe extern "C" fn rust_codegen_record_module_source(
         note_error(b"RustCodegen module introduction is not available");
         return api.nilObj;
     }
-    let source = unsafe { string_bytes(api, values[0]) };
-    let Some(source) = source else {
-        note_error(b"RustCodegen module source was not a String");
-        return api.nilObj;
-    };
     if let Ok(mut modules) = MODULE_SOURCES.lock() {
         if let Some(&(_, existing_source)) = modules.iter().find(|&&(existing_name, _)| {
             unsafe { symbol_bytes(api, existing_name as Oop) }

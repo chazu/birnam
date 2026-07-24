@@ -475,6 +475,21 @@ test "Rust Codegen retains registered module sources across collection" {
         api.nilObj,
         api.send(codegen, api.intern("recordModuleSource:named:"), &.{ source, mismatch_name }, 2),
     );
+
+    // Registration uses the same strict top-level scan as the revision
+    // projection. A recursive metadata walk must not let a later duplicate
+    // declaration enter the source registry.
+    const duplicate_text = "[Module named: #rustDuplicateOne requires: #[]]; [Module named: #rustDuplicateTwo requires: #[]]";
+    const duplicate_source = api.mkString(duplicate_text.ptr, duplicate_text.len);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            codegen,
+            api.intern("recordModuleSource:named:"),
+            &.{ duplicate_source, api.intern("rustDuplicateTwo") },
+            2,
+        ),
+    );
     try std.testing.expectEqual(api.trueObj, api.send(codegen, api.intern("sealInitialGeneration"), &.{}, 0));
     try std.testing.expectEqual(
         api.nilObj,
