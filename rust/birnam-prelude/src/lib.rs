@@ -9,8 +9,10 @@
 
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
+use core::mem::size_of;
 use core::ptr;
 use std::io::{self, Write};
+use std::ffi::CStr;
 use std::sync::OnceLock;
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
@@ -724,6 +726,185 @@ unsafe extern "C" fn block_while_false(
     unsafe { block_loop(self_object, args, count, false) }
 }
 
+#[repr(C)]
+struct ErrorPayload {
+    kind: Oop,
+    message: Oop,
+}
+
+unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
+    let error_vt = unsafe { (api.import)(c"ErrorVt".as_ptr()) };
+    if error_vt.is_null() {
+        return api.nilObj;
+    }
+    let object = unsafe { (api.alloc)(error_vt, size_of::<ErrorPayload>()) };
+    if object.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: ErrorVt's layout is installed as two OOP slots before any
+    // factory or DNU callback can allocate an Error payload.
+    unsafe {
+        (object as *mut ErrorPayload).write(ErrorPayload { kind, message });
+    }
+    object
+}
+
+unsafe extern "C" fn error_dnu(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
+    self_object
+}
+
+unsafe extern "C" fn error_is_error(
+    _self_object: Oop,
+    _args: *const Oop,
+    _count: usize,
+) -> Oop {
+    unsafe { api_ref() }.trueObj
+}
+
+unsafe extern "C" fn error_kind(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 || self_object.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: dispatch reaches this callback only for ErrorVt instances with
+    // the exact two-OOP payload installed by install_error_protocol.
+    unsafe { (*(self_object as *const ErrorPayload)).kind }
+}
+
+unsafe extern "C" fn error_message(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 || self_object.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: see error_kind.
+    unsafe { (*(self_object as *const ErrorPayload)).message }
+}
+
+unsafe extern "C" fn object_is_error(
+    _self_object: Oop,
+    _args: *const Oop,
+    _count: usize,
+) -> Oop {
+    unsafe { api_ref() }.falseObj
+}
+
+unsafe extern "C" fn object_dnu(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(selector) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let name = unsafe { (api.symbolName)(selector) };
+    let message = if name.is_null() {
+        String::from("does not understand")
+    } else {
+        // SAFETY: symbolName returns a process-owned NUL-terminated selector.
+        let selector = unsafe { CStr::from_ptr(name) }.to_string_lossy();
+        format!("does not understand #{selector}")
+    };
+    let kind = unsafe { intern(api, b"doesNotUnderstand\0") };
+    let message = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    unsafe { make_error(api, kind, message) }
+}
+
+unsafe extern "C" fn error_factory_kind_message(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(values) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    unsafe { make_error(api, values[0], values[1]) }
+}
+
+unsafe extern "C" fn error_factory_kind(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(kind) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    unsafe { make_error(api, kind, api.nilObj) }
+}
+
+unsafe extern "C" fn error_factory_message(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(message) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let kind = unsafe { intern(api, b"error\0") };
+    unsafe { make_error(api, kind, message) }
+}
+
+unsafe fn install_error_protocol(api: &IdApi) {
+    let reloading = unsafe { (api.isExported)(c"Error".as_ptr()) } != 0;
+    let (error_vt, factory_vt, factory_object) = if reloading {
+        // SAFETY: exported families are process-owned and survive module reload.
+        unsafe {
+            (
+                (api.import)(c"ErrorVt".as_ptr()),
+                (api.import)(c"ErrorFactoryVt".as_ptr()),
+                (api.import)(c"Error".as_ptr()),
+            )
+        }
+    } else {
+        let error_vt = unsafe { (api.proto)(api.object_vt) };
+        let factory_vt = unsafe { (api.proto)(api.object_vt) };
+        let factory_object = unsafe { (api.alloc)(factory_vt, 0) };
+        unsafe { (api.setOwner)(factory_vt, factory_object) };
+        (error_vt, factory_vt, factory_object)
+    };
+    if error_vt.is_null() || factory_vt.is_null() || factory_object.is_null() {
+        abort("Error family allocation failed");
+    }
+    // SAFETY: ErrorPayload contains exactly two traced OOP slots.
+    unsafe { (api.setLayout)(error_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
+    let dnu = unsafe { intern(api, b"doesNotUnderstand:\0") };
+    let is_error = unsafe { intern(api, b"isError\0") };
+    let kind = unsafe { intern(api, b"kind\0") };
+    let message = unsafe { intern(api, b"message\0") };
+    let kind_message = unsafe { intern(api, b"kind:message:\0") };
+    let kind_selector = unsafe { intern(api, b"kind:\0") };
+    let message_selector = unsafe { intern(api, b"message:\0") };
+    unsafe {
+        (api.method)(error_vt, dnu, error_dnu);
+        (api.method)(error_vt, is_error, error_is_error);
+        (api.method)(error_vt, kind, error_kind);
+        (api.method)(error_vt, message, error_message);
+        (api.method)(factory_vt, kind_message, error_factory_kind_message);
+        (api.method)(factory_vt, kind_selector, error_factory_kind);
+        (api.method)(factory_vt, message_selector, error_factory_message);
+        (api.method)(api.object_vt, is_error, object_is_error);
+        (api.method)(api.object_vt, dnu, object_dnu);
+    }
+    if !reloading {
+        unsafe {
+            (api.exportObj)(c"ErrorVt".as_ptr(), error_vt);
+            (api.exportObj)(c"ErrorFactoryVt".as_ptr(), factory_vt);
+            (api.exportObj)(c"Error".as_ptr(), factory_object);
+        }
+    }
+}
+
 unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&[u8]> {
     if value.is_null() || unsafe { (api.vtableOf)(value) } != api.string_vt {
         return None;
@@ -897,6 +1078,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         unsafe { (api.method)(boolean_vt, symbol, *method) };
     }
     unsafe { install_block_protocol(api) };
+    unsafe { install_error_protocol(api) };
     unsafe { install_system_protocol(api) };
 }
 

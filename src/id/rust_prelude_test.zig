@@ -154,6 +154,24 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{api.trueObj}));
 
+    const error_factory = api.import("Error");
+    const error_vt = api.import("ErrorVt");
+    const error_factory_vt = api.import("ErrorFactoryVt");
+    try std.testing.expect(error_factory != null);
+    try std.testing.expect(error_vt != null);
+    try std.testing.expect(error_factory_vt != null);
+    const error_kind = api.intern("typeMismatch");
+    const error_message = api.mkString("Rust prelude type mismatch", 26);
+    const error_object = send(api, error_factory, "kind:message:", &.{ error_kind, error_message });
+    try std.testing.expectEqual(error_vt, api.vtableOf(error_object));
+    try std.testing.expectEqual(api.trueObj, send(api, error_object, "isError", &.{}));
+    try std.testing.expectEqual(error_kind, send(api, error_object, "kind", &.{}));
+    try std.testing.expectEqual(error_message, send(api, error_object, "message", &.{}));
+    try std.testing.expectEqual(error_object, send(api, error_object, "unknownFromRust", &.{}));
+    try std.testing.expectEqual(api.falseObj, send(api, three, "isError", &.{}));
+    const kind_only_error = send(api, error_factory, "kind:", &.{error_kind});
+    try std.testing.expectEqual(api.trueObj, send(api, kind_only_error, "isError", &.{}));
+
     loop_true = api.trueObj;
     loop_nil = api.nilObj;
     condition_calls = 0;
