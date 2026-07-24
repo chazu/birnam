@@ -3109,6 +3109,7 @@ unsafe fn emit_source(
     persist_top_level: bool,
     source_path: Option<&[u8]>,
     source_path_is_root: bool,
+    candidate_salt: Option<u64>,
 ) -> Option<Vec<u8>> {
     let source = unsafe { string_bytes(api, source_object) }?;
     let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
@@ -3132,7 +3133,9 @@ unsafe fn emit_source(
             return None;
         }
     };
-    let mut emitter = Emitter::new();
+    let mut emitter = candidate_salt
+        .map(Emitter::new_candidate_artifact)
+        .unwrap_or_default();
     if persist_top_level {
         if emitter.emit_program_persisting(&program).is_err() {
             note_error(b"RustCodegen could not emit the source");
@@ -3164,7 +3167,8 @@ unsafe extern "C" fn rust_codegen_emit(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(output) = (unsafe { emit_source(api, values[0], false, false, None, false) }) else {
+    let Some(output) = (unsafe { emit_source(api, values[0], false, false, None, false, None) })
+    else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -3353,9 +3357,17 @@ unsafe extern "C" fn rust_codegen_eval(
         note_error(b"RustCodegen source path was not a String");
         return api.nilObj;
     }
-    let Some(source) =
-        (unsafe { emit_source(api, values[0], false, false, source_path.as_deref(), false) })
-    else {
+    let Some(source) = (unsafe {
+        emit_source(
+            api,
+            values[0],
+            false,
+            false,
+            source_path.as_deref(),
+            false,
+            None,
+        )
+    }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -3446,9 +3458,17 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
         note_error(b"RustCodegen source path was not a String");
         return api.nilObj;
     }
-    let Some(source) =
-        (unsafe { emit_source(api, values[0], false, true, source_path.as_deref(), false) })
-    else {
+    let Some(source) = (unsafe {
+        emit_source(
+            api,
+            values[0],
+            false,
+            true,
+            source_path.as_deref(),
+            false,
+            None,
+        )
+    }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -3535,6 +3555,7 @@ unsafe fn rust_codegen_compile_output_impl(
             false,
             source_path.as_deref(),
             source_path_is_root,
+            None,
         )
     }) else {
         note_error(b"RustCodegen could not lower the source");
@@ -3651,15 +3672,25 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
         program.extend_from_slice(b";\n");
     }
     let program_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
-    let Some(generated) = (unsafe { emit_source(api, program_object, true, false, None, false) })
-    else {
+    let source_digest = sha256_hex(&source_bytes);
+    let artifact_salt = u64::from_be_bytes(source_digest[..8].try_into().unwrap());
+    let Some(generated) = (unsafe {
+        emit_source(
+            api,
+            program_object,
+            true,
+            false,
+            None,
+            false,
+            Some(artifact_salt),
+        )
+    }) else {
         note_error(b"RustCodegen candidate source could not be emitted");
         return api.nilObj;
     };
     let native_requires = unsafe { artifact_metadata(api, values[0]) }
         .map(|(_, native_requires)| native_requires)
         .unwrap_or_default();
-    let source_digest = sha256_hex(&source_bytes);
     let manifest = candidate_manifest(&metadata, &source_digest);
     let rust_owned_shims = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } == 0;
     let candidate_generated = candidate_generated(

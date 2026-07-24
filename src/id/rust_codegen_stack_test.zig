@@ -40,13 +40,6 @@ fn probeAnswer(_: idapi.Oop, _: [*]const idapi.Oop, _: usize) callconv(.c) idapi
     return @ptrFromInt(77);
 }
 
-fn candidateReflectDefine(self: idapi.Oop, _: [*]const idapi.Oop, _: usize) callconv(.c) idapi.Oop {
-    // Candidate reentry coverage isolates the Rust Codegen observer. The
-    // fixture's Reflect seam deliberately leaves the generated candidate
-    // method inert; the later external Store mutation is the watched drift.
-    return self;
-}
-
 test "Rust Codegen owns Rust Store callbacks after collection" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
@@ -113,13 +106,9 @@ test "Rust Codegen candidate uses Rust-owned shims and reenters Store" {
     defer std.testing.allocator.free(directory);
     const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_only_drift.dylib", .{directory});
     defer std.testing.allocator.free(path);
-    const source_text = "[Module named: #rustOnlyDrift requires: #[]]; [Reflect defineMethod: #rustOnlyDriftAnswer on: Integer as: [:self | 77]]";
+    const source_text = "[Module named: #rustOnlyDrift requires: #[]]; [Reflect defineMethod: #rustOnlyDriftAnswer on: Integer as: [:self | 71]]";
     const source = api.mkString(source_text.ptr, source_text.len);
     const output = api.mkString(path.ptr, path.len);
-    const reflect_vt = api.proto(api.object_vt);
-    api.method(reflect_vt, api.intern("defineMethod:on:as:"), &candidateReflectDefine);
-    const reflect = api.alloc(reflect_vt, 0);
-    _ = api.exportObj("Reflect", reflect);
     try std.testing.expect(api.send(
         rust_codegen,
         api.intern("compileCandidate:named:output:"),
@@ -142,6 +131,7 @@ test "Rust Codegen candidate uses Rust-owned shims and reenters Store" {
         api.intern("active"),
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
     );
+    try std.testing.expectEqual(@as(i64, 71), api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustOnlyDriftAnswer"), &.{}, 0)));
 
     // The external mutation synchronously reenters Rust Codegen's observer,
     // whose rawCurrentValue:attr: send observes the replacement before the

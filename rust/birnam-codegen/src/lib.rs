@@ -14,6 +14,9 @@ pub struct Emitter {
     function_defs: Vec<u8>,
     bound_names: Vec<Vec<u8>>,
     next_block: usize,
+    artifact_mode: bool,
+    artifact_salt: u64,
+    artifact_method_counter: usize,
 }
 
 /// The pure expression subset consumed by the first Rust emission seam.
@@ -50,6 +53,10 @@ pub enum Expr<'a> {
         receiver: Box<Expr<'a>>,
         selector: Cow<'a, [u8]>,
         args: Vec<Expr<'a>>,
+        /// Source span of the complete send. Artifact lowering uses this to
+        /// retain the portable live-operation journal alongside precompiled
+        /// method installation.
+        source: &'a [u8],
     },
 }
 
@@ -342,6 +349,7 @@ fn lower_vector<'a, N: CstNode>(
         receiver: Box::new(Expr::Global(b"Vector")),
         selector: Cow::Borrowed(b"new"),
         args: Vec::new(),
+        source: span(node, source)?,
     };
     for index in 0..node.child_count() {
         let element = lower_expr_at_depth(
@@ -353,6 +361,7 @@ fn lower_vector<'a, N: CstNode>(
             receiver: Box::new(result),
             selector: Cow::Borrowed(b"add:"),
             args: vec![element],
+            source: span(node, source)?,
         };
     }
     Ok(result)
@@ -367,6 +376,7 @@ fn lower_map<'a, N: CstNode>(
         receiver: Box::new(Expr::Global(b"Map")),
         selector: Cow::Borrowed(b"new"),
         args: Vec::new(),
+        source: span(node, source)?,
     };
     for index in 0..node.child_count() {
         let entry = node.child(index).ok_or(LowerError::MissingChild)?;
@@ -387,6 +397,7 @@ fn lower_map<'a, N: CstNode>(
             receiver: Box::new(result),
             selector: Cow::Borrowed(b"at:put:"),
             args: vec![key, value],
+            source: span(node, source)?,
         };
     }
     Ok(result)
@@ -401,6 +412,7 @@ fn lower_logic_var<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a
         receiver: Box::new(Expr::Global(b"LogicVar")),
         selector: Cow::Borrowed(b"named:"),
         args: vec![Expr::Symbol(name)],
+        source: span(node, source)?,
     })
 }
 
@@ -417,16 +429,17 @@ fn lower_send<'a, N: CstNode>(
         source,
         depth,
     )?;
+    let send_source = span(node, source)?;
     let message = skip_wrappers(node.child(1).ok_or(LowerError::MissingChild)?)?;
     if message.rule() == b"message" && message.child_count() > 1 {
         let mut accumulated = receiver;
         for index in 0..message.child_count() {
             let part = message.child(index).ok_or(LowerError::MissingChild)?;
-            accumulated = lower_message(accumulated, part, source, depth)?;
+            accumulated = lower_message(accumulated, part, source, depth, send_source)?;
         }
         return Ok(accumulated);
     }
-    lower_message(receiver, message, source, depth)
+    lower_message(receiver, message, source, depth, send_source)
 }
 
 fn lower_message<'a, N: CstNode>(
@@ -434,6 +447,7 @@ fn lower_message<'a, N: CstNode>(
     message: &N,
     source: &'a [u8],
     depth: usize,
+    send_source: &'a [u8],
 ) -> Result<Expr<'a>, LowerError> {
     let message = skip_wrappers(message)?;
     let (selector, args) = match message.rule() {
@@ -483,6 +497,7 @@ fn lower_message<'a, N: CstNode>(
         receiver: Box::new(receiver),
         selector,
         args,
+        source: send_source,
     })
 }
 
@@ -526,6 +541,10 @@ fn block_has_let(block: &Block<'_>, name: &[u8]) -> bool {
     )
 }
 
+fn selector_arity(selector: &[u8]) -> usize {
+    selector.iter().filter(|byte| **byte == b':').count()
+}
+
 const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
 #define MKV(x) (birnam_mkSmallInt((long)(x)))
 extern void* birnam_send(void* rcv, void* sel, void** args, long n);
@@ -537,6 +556,11 @@ extern void* birnam_true(void);
 extern void* birnam_false(void);
 extern void* birnam_global(const char* name);
 extern void* birnam_global_set(const char* name, void* value);
+extern void* birnam_ensurePrivateVtable(void* obj);
+extern void* birnam_install_method(void* vt, void* sel, void* method, const char* src, long n);
+extern void* birnam_remove_method(void* target, void* sel, const char* src, long n);
+extern void* birnam_candidate_root_get(unsigned long long salt, long index);
+extern void* birnam_candidate_root_set(unsigned long long salt, long index, void* value);
 extern void* birnam_proto(void* parent);
 extern void* birnam_blockVt(void);
 extern void* birnam_method(void* vt, void* selector, void* method);
@@ -620,6 +644,18 @@ impl TranslationUnit {
 impl Emitter {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Construct an emitter for a candidate artifact. Method definitions are
+    /// lowered to precompiled trampolines and rooted block captures; the
+    /// runtime candidate wrapper later rewrites the frozen Zig shim names to
+    /// the selected Rust-owned namespace when required.
+    pub fn new_candidate_artifact(salt: u64) -> Self {
+        Self {
+            artifact_mode: true,
+            artifact_salt: salt,
+            ..Self::default()
+        }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
@@ -835,7 +871,22 @@ impl Emitter {
                 receiver,
                 selector,
                 args,
+                source,
             } => {
+                if self.artifact_mode
+                    && matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
+                    && ((selector.as_ref() == b"defineMethod:on:as:" && args.len() == 3)
+                        || (selector.as_ref() == b"defineMethod:on:as:doc:" && args.len() == 4))
+                {
+                    return self.emit_artifact_method_install(args, source);
+                }
+                if self.artifact_mode
+                    && matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
+                    && selector.as_ref() == b"removeMethod:on:"
+                    && args.len() == 2
+                {
+                    return self.emit_artifact_method_remove(args, source);
+                }
                 self.bytes.extend_from_slice(b"birnam_send(");
                 self.emit_expr_at_depth(receiver, depth + 1)?;
                 self.bytes.extend_from_slice(b", ");
@@ -857,6 +908,113 @@ impl Emitter {
                 self.bytes.extend_from_slice(b"L)");
             }
         }
+        Ok(())
+    }
+
+    fn emit_artifact_method_install(
+        &mut self,
+        args: &[Expr<'_>],
+        source: &[u8],
+    ) -> Result<(), EmitError> {
+        let (selector, block) = match (&args[0], &args[2]) {
+            (Expr::Symbol(selector), Expr::Block(block)) => (*selector, block),
+            _ => return Err(EmitError::Unsupported),
+        };
+        let arity = selector_arity(selector);
+        let method_number = self.artifact_method_counter;
+        self.artifact_method_counter += 1;
+
+        // Emit the block expression into a temporary buffer. Its function
+        // definition is appended to `function_defs`, while the expression
+        // itself becomes the candidate-root initializer below.
+        let saved_bytes = std::mem::take(&mut self.bytes);
+        self.bytes = Vec::new();
+        self.emit_block(block)?;
+        let block_expression = std::mem::take(&mut self.bytes);
+        self.bytes = saved_bytes;
+
+        self.function_defs.extend_from_slice(b"void* __amtramp");
+        self.function_defs
+            .extend_from_slice(method_number.to_string().as_bytes());
+        self.function_defs
+            .extend_from_slice(b"(void* self, void** args, long n){ (void)n; void* a[");
+        self.function_defs
+            .extend_from_slice((arity + 1).to_string().as_bytes());
+        self.function_defs
+            .extend_from_slice(b"]; a[0]=self; long i; for(i=0;i<");
+        self.function_defs
+            .extend_from_slice(arity.to_string().as_bytes());
+        self.function_defs.extend_from_slice(
+            b";i++) a[i+1]=args[i]; return birnam_send(birnam_candidate_root_get(",
+        );
+        self.function_defs
+            .extend_from_slice(self.artifact_salt.to_string().as_bytes());
+        self.function_defs.extend_from_slice(b"ULL,");
+        self.function_defs
+            .extend_from_slice(method_number.to_string().as_bytes());
+        self.function_defs
+            .extend_from_slice(b"L), birnam_intern(\"");
+        for _ in 0..arity + 1 {
+            self.function_defs.extend_from_slice(b"value:");
+        }
+        self.function_defs.extend_from_slice(b"\"), a, ");
+        self.function_defs
+            .extend_from_slice((arity + 1).to_string().as_bytes());
+        self.function_defs.extend_from_slice(b"); }\n");
+
+        self.bytes
+            .extend_from_slice(b"({ void* _vt = birnam_ensurePrivateVtable(");
+        self.emit_expr_at_depth(&args[1], 1)?;
+        self.bytes
+            .extend_from_slice(b"); void* _blk = birnam_candidate_root_get(");
+        self.bytes
+            .extend_from_slice(self.artifact_salt.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"ULL,");
+        self.bytes
+            .extend_from_slice(method_number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b"L); if(_blk == birnam_nil()){ _blk = birnam_candidate_root_set(");
+        self.bytes
+            .extend_from_slice(self.artifact_salt.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"ULL,");
+        self.bytes
+            .extend_from_slice(method_number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"L, ");
+        self.bytes.extend_from_slice(&block_expression);
+        self.bytes
+            .extend_from_slice(b"); } birnam_install_method(_vt, birnam_intern(\"");
+        self.push_c_string_body(selector);
+        self.bytes.extend_from_slice(b"\"), (void*)&__amtramp");
+        self.bytes
+            .extend_from_slice(method_number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b", \"");
+        self.push_c_string_body(source);
+        self.bytes.extend_from_slice(b"\", ");
+        self.bytes
+            .extend_from_slice(source.len().to_string().as_bytes());
+        self.bytes.extend_from_slice(b"L); _vt; })");
+        Ok(())
+    }
+
+    fn emit_artifact_method_remove(
+        &mut self,
+        args: &[Expr<'_>],
+        source: &[u8],
+    ) -> Result<(), EmitError> {
+        let selector = match &args[0] {
+            Expr::Symbol(selector) => *selector,
+            _ => return Err(EmitError::Unsupported),
+        };
+        self.bytes.extend_from_slice(b"birnam_remove_method(");
+        self.emit_expr_at_depth(&args[1], 1)?;
+        self.bytes.extend_from_slice(b", birnam_intern(\"");
+        self.push_c_string_body(selector);
+        self.bytes.extend_from_slice(b"\"), \"");
+        self.push_c_string_body(source);
+        self.bytes.extend_from_slice(b"\", ");
+        self.bytes
+            .extend_from_slice(source.len().to_string().as_bytes());
+        self.bytes.extend_from_slice(b"L)");
         Ok(())
     }
 
@@ -1102,6 +1260,7 @@ mod tests {
             receiver: Box::new(Expr::Global(b"Integer")),
             selector: Cow::Borrowed(b"at:"),
             args: vec![Expr::String(b"answer")],
+            source: b"",
         };
         let mut emitter = Emitter::new();
         emitter.emit_expr(&expression).unwrap();
@@ -1116,10 +1275,35 @@ mod tests {
                 receiver: Box::new(deep),
                 selector: Cow::Borrowed(b"value"),
                 args: Vec::new(),
+                source: b"",
             };
         }
         let mut emitter = Emitter::new();
         assert_eq!(emitter.emit_expr(&deep), Err(EmitError::DepthLimit));
+    }
+
+    #[test]
+    fn lowers_candidate_method_install_to_rooted_trampoline() {
+        let expression = Expr::Send {
+            receiver: Box::new(Expr::Global(b"Reflect")),
+            selector: Cow::Borrowed(b"defineMethod:on:as:"),
+            args: vec![
+                Expr::Symbol(b"answer"),
+                Expr::Global(b"Integer"),
+                Expr::Block(Box::new(Block {
+                    params: vec![b"self"],
+                    body: vec![Statement::Expr(Expr::SmallInt(71))],
+                })),
+            ],
+            source: b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]",
+        };
+        let mut emitter = Emitter::new_candidate_artifact(7);
+        emitter.emit_expr(&expression).unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains("__amtramp0"));
+        assert!(output.contains("birnam_candidate_root_get(7ULL,0L)"));
+        assert!(output.contains("birnam_install_method"));
+        assert!(output.contains("birnam_intern(\"answer\")"));
     }
 
     #[test]
@@ -1128,6 +1312,7 @@ mod tests {
             receiver: Box::new(Expr::Float(b"-0.25")),
             selector: Cow::Borrowed(b"ifTrue:ifFalse:"),
             args: vec![Expr::True, Expr::StringLiteral(br#""a\n\c""#)],
+            source: b"",
         };
         let mut emitter = Emitter::new();
         emitter.emit_expr(&expression).unwrap();
