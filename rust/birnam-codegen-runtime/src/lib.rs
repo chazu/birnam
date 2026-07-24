@@ -70,6 +70,8 @@ const COMMIT_PREPARED_ROLLBACK_SELECTOR: &[u8] = b"commitPreparedRollback:\0";
 const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
 const RECONCILE_CANDIDATE_SELECTOR: &[u8] = b"reconcileCandidate:\0";
 const RECONCILE_ALL_CANDIDATES_SELECTOR: &[u8] = b"reconcileAllCandidates\0";
+const BEGIN_IMAGE_RECOVERY_SELECTOR: &[u8] = b"beginImageDispatchRecovery\0";
+const END_IMAGE_RECOVERY_SELECTOR: &[u8] = b"endImageDispatchRecovery\0";
 const MANAGED_METHOD_CHANGED_SELECTOR: &[u8] = b"managedMethodChanged:on:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
@@ -116,6 +118,7 @@ static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" {
     fn dlclose(handle: *mut c_void) -> i32;
@@ -2368,7 +2371,9 @@ unsafe extern "C" fn rust_codegen_managed_method_changed(
     if values.len() != 2 {
         abort("RustCodegen managedMethodChanged:on: expects selector and vtable");
     }
-    if MOP_MUTATION_IN_PROGRESS.load(Ordering::Acquire) {
+    if MOP_MUTATION_IN_PROGRESS.load(Ordering::Acquire)
+        || IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+    {
         return runtime().rust_codegen as Oop;
     }
     let runtime = runtime();
@@ -3019,6 +3024,37 @@ unsafe extern "C" fn rust_codegen_reconcile_all_candidates(
     api.trueObj
 }
 
+unsafe extern "C" fn rust_codegen_begin_image_dispatch_recovery(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen beginImageDispatchRecovery: expects no arguments");
+    }
+    IMAGE_DISPATCH_RECOVERY.store(true, Ordering::Release);
+    if let Ok(mut candidates) = CANDIDATES.lock() {
+        for candidate in candidates.iter_mut() {
+            candidate.active = false;
+        }
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    api.trueObj
+}
+
+unsafe extern "C" fn rust_codegen_end_image_dispatch_recovery(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen endImageDispatchRecovery: expects no arguments");
+    }
+    IMAGE_DISPATCH_RECOVERY.store(false, Ordering::Release);
+    unsafe { api(runtime()) }.trueObj
+}
+
 unsafe extern "C" fn rust_codegen_prepare_rollback(
     _self_object: Oop,
     pointer: *const Oop,
@@ -3528,6 +3564,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, RECONCILE_ALL_CANDIDATES_SELECTOR),
             rust_codegen_reconcile_all_candidates,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, BEGIN_IMAGE_RECOVERY_SELECTOR),
+            rust_codegen_begin_image_dispatch_recovery,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, END_IMAGE_RECOVERY_SELECTOR),
+            rust_codegen_end_image_dispatch_recovery,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
