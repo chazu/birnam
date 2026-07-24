@@ -67,3 +67,21 @@ test "Rust Codegen invokes an emitted block before its owner is collected" {
     try std.testing.expect(api.isSmallInt(result) != 0);
     try std.testing.expectEqual(@as(i64, 4), api.smallIntValue(result));
 }
+
+test "Rust Codegen writes a compiled dylib through Rust TCC" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_test.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source = api.mkString("7", 1);
+    const output = api.mkString(path.ptr, path.len);
+    const result = api.send(codegen, api.intern("compile:output:"), &.{ source, output }, 2);
+    try std.testing.expect(result != api.nilObj);
+    const artifact = try std.fs.openFileAbsolute(path, .{});
+    defer artifact.close();
+    try std.testing.expect((try artifact.stat()).size > 0);
+}
