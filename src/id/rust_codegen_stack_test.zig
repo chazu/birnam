@@ -238,3 +238,44 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     try std.testing.expectEqual(api.intern("rolledBack"), api.send(store, api.intern("currentValue:attr:"), &.{ successor_unit, api.intern("state") }, 2));
     try std.testing.expectEqual(@as(i64, 91), api.smallIntValue(api.send(api.mkSmallInt(3), removed_selector, &.{}, 0)));
 }
+
+test "Rust Codegen discards a prepared candidate without publication" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+    const object = api.import("Object") orelse return error.MissingObject;
+
+    if (api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0) == api.trueObj) {
+        try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
+    } else {
+        try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("enterRunning"), &.{}, 0));
+    }
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_only_discard.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source_text = "[Module named: #rustOnlyDiscard requires: #[]]; [Reflect defineMethod: #rustOnlyDiscardAnswer on: Integer as: [:self | 88]]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(path.ptr, path.len);
+    try std.testing.expect(api.send(
+        rust_codegen,
+        api.intern("compileCandidate:named:output:"),
+        &.{ source, api.intern("rustOnlyDiscard"), output },
+        3,
+    ) != api.nilObj);
+
+    const unit = api.send(object, api.intern("clone"), &.{}, 0);
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("inspectCandidate:into:"), &.{ output, unit }, 2));
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("mapCandidate:"), &.{unit}, 1));
+    const token = api.send(rust_codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(token != api.nilObj);
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("discardPrepared:"), &.{token}, 1));
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("commitPrepared:"), &.{token}, 1));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("candidateMapped:"), &.{unit}, 1));
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
+    );
+}
