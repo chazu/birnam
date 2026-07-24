@@ -1611,6 +1611,12 @@ leaves the non-method digest unchanged, while changing only a top-level form
 leaves the method digest unchanged. The source, identity, and requirements
 digest still changes for either edit.
 
+`moduleMetadataOf:` now consumes the same static revision scan: its source
+digest remains the complete authored-source identity, while its revision slot
+matches `sourceRevisionOf:`. This keeps project indexing and lifecycle
+projections on one digest definition without evaluating source or touching
+Store state.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
