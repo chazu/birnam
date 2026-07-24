@@ -1536,6 +1536,12 @@ initializer or `__ev` call. The gate deletes a declared native fixture and
 proves this pre-init rejection. Birnam dependency activation and image replay
 remain outside this narrow loader check.
 
+The Rust boundary also has an explicit `compile:output:root:` form. It shares
+the embedded-file lowering with `compile:output:from:`, but treats its third
+argument as the project root rather than deriving a directory from a source
+document. The gate proves a nested source path fails under source-directory
+resolution while the declared root compiles, embeds, and reloads the asset.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
