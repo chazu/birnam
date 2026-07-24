@@ -1,9 +1,10 @@
 //! Borrowed framing primitives for the portable Birnam v4 image.
 //!
-//! This first image slice deliberately stops at the header and record envelope.
-//! It owns no `IdApi` values, performs no allocation, and does not interpret
-//! heap or Store payloads. Higher layers can therefore reject malformed bytes
-//! before materializing any runtime state.
+//! This format-only crate owns no `IdApi` values and performs no allocation. It
+//! validates the v4 image header, authority/code relationship, borrowed field
+//! envelopes, facts, and layout-driven heap records without materializing any
+//! runtime state. Higher layers remain responsible for name resolution,
+//! swizzling, loading, and Store mutation.
 
 pub const MAGIC: &[u8; 8] = b"BIRNAMIM";
 pub const FORMAT_VERSION: u32 = 4;
