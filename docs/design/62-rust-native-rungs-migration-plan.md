@@ -1693,6 +1693,12 @@ activation happy path: explicit publication plans, quiescence, predecessor
 ledgers, rollback, drift reconciliation, and the Rust Store observer/authorizer
 matrix remain subsequent N6.5 hardening slices.
 
+Preparation now also captures each manifest operation's exported/global target,
+owned vtable, and raw prior method carrier without holding a Rust borrow across
+IdApi sends. Global lookup follows the frozen late-bound rule: Store bindings
+win, then exported prototypes such as `Integer` are imported. These snapshots
+are the native inputs for the upcoming exact rollback and drift checks.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
