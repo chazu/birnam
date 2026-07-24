@@ -1517,6 +1517,7 @@ pub fn build(b: *std.Build) void {
         "bash",
         "scripts/native-rung-harness.sh",
     });
+    native_rung_harness.setEnvironmentVariable("BIRNAM_NATIVE_RUNG_OPTIMIZE", @tagName(optimize));
     const test_native_rung_harness_step = b.step(
         "test-native-rung-harness",
         "Run one selected rung and the all-production install in clean processes",
