@@ -12,6 +12,12 @@ fn send(api: *idapi.IdApi, receiver: Oop, selector: [*:0]const u8, args: []const
     return api.send(receiver, api.intern(selector), args.ptr, args.len);
 }
 
+fn valueSelf(self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _args;
+    _ = _count;
+    return self;
+}
+
 test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_PRELUDE_DYLIB") orelse
@@ -23,7 +29,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const raw_identity = api.dlsym(handle, "birnam_prelude_rust_identity") orelse
         return error.RustPreludeIdentityMissing;
     const identity: Identity = @ptrCast(@alignCast(raw_identity));
-    try std.testing.expectEqualStrings("rust-prelude-n7.1-numeric", std.mem.span(identity()));
+    try std.testing.expectEqualStrings("rust-prelude-n7.1-core", std.mem.span(identity()));
 
     const raw_init = api.dlsym(handle, "module_init") orelse
         return error.RustPreludeModuleInitMissing;
@@ -90,4 +96,23 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const float_rendered_bytes = api.stringBytes(float_rendered, &float_rendered_len);
     try std.testing.expectEqualStrings("4.0", float_rendered_bytes[0..float_rendered_len]);
     try std.testing.expect(api.isFloat(send(api, three, "asFloat", &.{})) != 0);
+
+    const branch_vt = api.proto(api.object_vt);
+    const branch = api.alloc(branch_vt, 0);
+    api.method(branch_vt, api.intern("value"), &valueSelf);
+    try std.testing.expectEqual(branch, send(api, api.trueObj, "ifTrue:ifFalse:", &.{ branch, api.nilObj }));
+    try std.testing.expectEqual(api.nilObj, send(api, api.falseObj, "ifTrue:", &.{branch}));
+    try std.testing.expectEqual(branch, send(api, api.falseObj, "ifFalse:", &.{branch}));
+    try std.testing.expectEqual(api.falseObj, send(api, api.falseObj, "&", &.{api.trueObj}));
+    try std.testing.expectEqual(api.trueObj, send(api, api.trueObj, "|", &.{api.falseObj}));
+    try std.testing.expectEqual(branch, send(api, api.trueObj, "and:", &.{branch}));
+    try std.testing.expectEqual(api.falseObj, send(api, api.falseObj, "and:", &.{branch}));
+    try std.testing.expectEqual(api.trueObj, send(api, api.trueObj, "or:", &.{branch}));
+    try std.testing.expectEqual(branch, send(api, api.falseObj, "or:", &.{branch}));
+    try std.testing.expectEqual(api.falseObj, send(api, api.trueObj, "not", &.{}));
+    try std.testing.expectEqual(api.trueObj, send(api, api.falseObj, "not", &.{}));
+    const true_rendered = send(api, api.trueObj, "printString", &.{});
+    var true_rendered_len: usize = 0;
+    const true_rendered_bytes = api.stringBytes(true_rendered, &true_rendered_len);
+    try std.testing.expectEqualStrings("true", true_rendered_bytes[0..true_rendered_len]);
 }
