@@ -129,3 +129,9 @@ boundary, workspace tests and clippy, optimized verify closure, exact fixture
 quarantine, and digest-pinned comparator all remained green. The comparator
 still reports zero missing or unusable cases and only the two accepted
 crossings (`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`).
+
+The opt-in mapped-code handoff was then added at `d8a0787`: the 19-test Rust
+Codegen boundary now rejects mapping outside image recovery and maps a
+checksum-verified captured dylib through the existing Rust artifact loader.
+The R6 pin advances to 19/19 functional tests; this adds no benchmark case or
+performance exception.

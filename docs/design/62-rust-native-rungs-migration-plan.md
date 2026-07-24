@@ -1866,6 +1866,16 @@ comparator all remained green with no additional performance exception. The
 workspace image tests and clippy also pass, and the comparator retains zero
 missing/unusable cases plus only the two accepted R6 crossings.
 
+The first mapped-unit handoff is now executable at `d8a0787`. Opt-in Rust
+`mapImageCode:` requires `beginImageDispatchRecovery`, re-parses the v4 image,
+validates facts and the code checksum, stages the borrowed dylib bytes at a
+unique temporary path, and routes that path through the existing Rust artifact
+loader. The gate proves the recovery guard rejects an out-of-band map and that
+the captured unit executes (`7`) without source recompilation. Heap/fact
+materialization and Store replay remain outside this narrow slice. The focused
+Rust Codegen target is now pinned at 19/19 tests; this is functional coverage
+only and does not widen the R6 performance exception.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
