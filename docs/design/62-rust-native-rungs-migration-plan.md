@@ -1749,7 +1749,8 @@ requirements, rejects cycles or malformed revisions, and remains deterministic
 within a generation. `generationMethodSources` extracts only install operations
 in that same order, while `currentGenerationDigest` reports the process-local
 published successor digest when an explicit plan has committed (or the durable
-generation's `baseDigest` when Store authority is present). These methods are
+generation's canonical `baseDigest` when Store authority is present); it fails
+closed if the durable source-map digest is inconsistent. These methods are
 read-only source composition. Rust `replayMethods` now provides the first
 image replay boundary: it is accepted only during `beginImageDispatchRecovery`,
 replays each indexed define/remove operation in dependency order, and fails
