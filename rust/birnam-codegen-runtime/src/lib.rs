@@ -66,6 +66,7 @@ const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const PREFLIGHT_IMAGE_SELECTOR: &[u8] = b"preflightImage:\0";
+const MAP_IMAGE_CODE_SELECTOR: &[u8] = b"mapImageCode:\0";
 const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
@@ -145,6 +146,7 @@ static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
+static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
@@ -2006,6 +2008,78 @@ unsafe extern "C" fn rust_codegen_preflight_image(
         return api.nilObj;
     }
     api.trueObj
+}
+
+/// Stage the checksum-verified v4 code unit through the existing Rust artifact
+/// loader. This is deliberately an image-recovery-only handoff: it maps the
+/// captured dylib and runs its entry point, but does not materialize heap
+/// records or apply facts. Those operations remain owned by later recovery
+/// slices.
+unsafe extern "C" fn rust_codegen_map_image_code(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen mapImageCode: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen mapImageCode: expects one image path");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire) {
+        note_error(b"RustCodegen image code mapping requires image recovery");
+        return api.nilObj;
+    }
+    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen image path was not a String");
+        return api.nilObj;
+    };
+    let path = Path::new(OsStr::from_bytes(&path_bytes));
+    let Ok(bytes) = fs::read(path) else {
+        note_error(b"RustCodegen image code mapping could not read the image");
+        return api.nilObj;
+    };
+    let Ok(image) = Image::parse(&bytes) else {
+        note_error(b"RustCodegen image code mapping framing is invalid");
+        return api.nilObj;
+    };
+    if image.validate_facts().is_err() {
+        note_error(b"RustCodegen image code mapping facts are invalid");
+        return api.nilObj;
+    }
+    let Some(code) = image.code() else {
+        note_error(b"RustCodegen image has no code unit");
+        return api.nilObj;
+    };
+
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut staged_path = std::env::temp_dir().into_os_string().into_vec();
+    staged_path.extend_from_slice(b"birnam-image-code-");
+    staged_path.extend_from_slice(std::process::id().to_string().as_bytes());
+    staged_path.push(b'-');
+    staged_path.extend_from_slice(sequence.to_string().as_bytes());
+    staged_path.extend_from_slice(b".dylib");
+    let staged_path_ref = Path::new(OsStr::from_bytes(&staged_path));
+    let Ok(mut staged) = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(staged_path_ref)
+    else {
+        note_error(b"RustCodegen image code mapping could not stage the unit");
+        return api.nilObj;
+    };
+    if staged.write_all(code.unit).is_err() {
+        let _ = fs::remove_file(staged_path_ref);
+        note_error(b"RustCodegen image code mapping could not stage the unit");
+        return api.nilObj;
+    }
+    drop(staged);
+    let staged_object = unsafe { (api.mkString)(staged_path.as_ptr(), staged_path.len()) };
+    let result = unsafe { rust_codegen_load(self_object, &staged_object, 1) };
+    let _ = fs::remove_file(staged_path_ref);
+    result
 }
 
 unsafe extern "C" fn rust_codegen_replay_methods(
@@ -4846,6 +4920,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, PREFLIGHT_IMAGE_SELECTOR),
             rust_codegen_preflight_image,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, MAP_IMAGE_CODE_SELECTOR),
+            rust_codegen_map_image_code,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

@@ -116,6 +116,88 @@ test "Rust Codegen preflights v4 image framing without loading it" {
     );
 }
 
+test "Rust Codegen maps a verified v4 code unit during image recovery" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const artifact_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/librust_image_code_map.dylib",
+        .{directory},
+    );
+    defer std.testing.allocator.free(artifact_path);
+    const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/mapped.image", .{directory});
+    defer std.testing.allocator.free(image_path);
+
+    const source = api.mkString("7", 1);
+    const artifact = api.mkString(artifact_path.ptr, artifact_path.len);
+    try std.testing.expectEqual(
+        artifact,
+        api.send(codegen, api.intern("compile:output:"), &.{ source, artifact }, 2),
+    );
+    const artifact_bytes = try std.fs.cwd().readFileAlloc(
+        std.testing.allocator,
+        artifact_path,
+        64 * 1024 * 1024,
+    );
+    defer std.testing.allocator.free(artifact_bytes);
+
+    var image: std.ArrayList(u8) = .{};
+    defer image.deinit(std.testing.allocator);
+    var u32_bytes: [4]u8 = undefined;
+    var u64_bytes: [8]u8 = undefined;
+    try image.appendSlice(std.testing.allocator, "BIRNAMIM");
+    std.mem.writeInt(u32, &u32_bytes, 4, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 0x0102_0304, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 0, .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 5, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 64, .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    try image.appendNTimes(std.testing.allocator, 0, 64);
+    std.mem.writeInt(u32, &u32_bytes, 4, .little);
+    try image.appendSlice(std.testing.allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 72 + artifact_bytes.len, .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    std.mem.writeInt(u64, &u64_bytes, std.hash.Wyhash.hash(0, artifact_bytes), .little);
+    try image.appendSlice(std.testing.allocator, &u64_bytes);
+    try image.appendNTimes(std.testing.allocator, 0, 64);
+    try image.appendSlice(std.testing.allocator, artifact_bytes);
+    try tmp.dir.writeFile(.{ .sub_path = "mapped.image", .data = image.items });
+
+    const image_object = api.mkString(image_path.ptr, image_path.len);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("mapImageCode:"), &.{image_object}, 1),
+    );
+    const pre_gate_diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var pre_gate_len: usize = 0;
+    const pre_gate_bytes = api.stringBytes(pre_gate_diagnostic, &pre_gate_len);
+    try std.testing.expect(
+        std.mem.indexOf(u8, pre_gate_bytes[0..pre_gate_len], "image recovery") != null,
+    );
+
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    const mapped = api.send(codegen, api.intern("mapImageCode:"), &.{image_object}, 1);
+    try std.testing.expect(api.isSmallInt(mapped) != 0);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(mapped));
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
+    );
+}
+
 test "Rust Codegen evaluates a scalar program through Rust TCC" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
