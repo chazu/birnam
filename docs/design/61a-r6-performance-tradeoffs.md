@@ -291,3 +291,9 @@ second dynamic callback owner: candidate validation and prepare-mode symbols
 remain supplied by the legacy Zig Codegen while that mixed stack is active.
 The complete R6 gate passed at this checkpoint with 24/24 focused tests, the
 documented fixture quarantine, and the same two accepted benchmark crossings.
+
+The Rust host-capability loader landed at `8c1765d`: the opt-in
+`loadHostCapability:` entrypoint brackets the existing artifact loader with the
+frozen host-capability authorization mode and has an installed artifact test.
+The R6 focused boundary advances to 25/25; this is orchestration coverage only
+and does not change the default `load:` path or the accepted benchmark snapshot.

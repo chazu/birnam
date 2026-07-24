@@ -2052,6 +2052,12 @@ an open N6.5/N6.6 cutover item. The complete R6 gate passed at this checkpoint
 with 24/24 focused tests, the documented fixture quarantine, and the existing
 benchmark allowance.
 
+The Rust host-capability loader landed at `8c1765d`: the opt-in
+`loadHostCapability:` entrypoint brackets the existing artifact loader with the
+frozen host-capability authorization mode and has an installed artifact test.
+The focused Rust Codegen boundary advances to 25/25. The default `load:` path
+and dynamic symbol ownership remain unchanged.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
