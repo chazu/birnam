@@ -1445,6 +1445,14 @@ disposable-unit or registered-owner protocol. Persistent globals, error
 publication, compile-to-dylib output, metadata, candidate lifecycle, and image
 recovery remain N6.3–N6.6 gates.
 
+The same opt-in runtime now exposes `RustCodegen compile:output:`. It emits an
+artifact-mode translation unit and delegates `compile:output:as:` to the Rust
+TCC object; the installed-path test verifies a non-empty dylib is written for
+the scalar `7` program. This proves the output boundary only. The artifact has
+not yet acquired compiled-unit metadata, embedded source, dependency
+descriptors, runtime initialization, or loader acceptance, so it cannot enter
+the production Codegen authority or the N6.4 image/module path.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
