@@ -45,6 +45,17 @@ cat "$functional"
   exit 1
 }
 
+# Pin the lifecycle boundary to the current accepted test set. A target that
+# accidentally discovers fewer tests must not silently keep R6 green.
+grep -Fq 'test-rust-codegen-runtime success' "$functional" || {
+  echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
+  exit 1
+}
+grep -Eq '^\+- run test 16 passed ' "$functional" || {
+  echo "r6-acceptance: Rust Codegen runtime test set no longer has 16 passing tests" >&2
+  exit 1
+}
+
 verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
 trap 'rm -f "$functional" "$verify"' EXIT
 
