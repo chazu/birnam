@@ -59,6 +59,9 @@ const SEAL_INITIAL_GENERATION_SELECTOR: &[u8] = b"sealInitialGeneration\0";
 const INITIAL_GENERATION_PROJECTION_SELECTOR: &[u8] = b"initialGenerationProjection\0";
 const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
     b"successorGenerationProjection:replacing:with:unit:\0";
+const GENERATION_SOURCES_SELECTOR: &[u8] = b"generationSources\0";
+const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
+const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
@@ -1532,6 +1535,159 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
     let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
     let tag = unsafe { intern(api, b"generationProjection\0") };
     unsafe { make_vector(api, vector_proto, &[tag, successor, digest_object]) }
+}
+
+unsafe fn visit_generation_source(
+    api: &IdApi,
+    modules: &[(usize, usize)],
+    names: &[Vec<u8>],
+    index: usize,
+    state: &mut [u8],
+    ordered: &mut Vec<Oop>,
+) -> bool {
+    if state[index] == 2 {
+        return true;
+    }
+    if state[index] == 1 {
+        return false;
+    }
+    state[index] = 1;
+    let source = modules[index].1 as Oop;
+    let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) }) else {
+        return false;
+    };
+    for requirement in metadata.requires {
+        if let Some(dependency) = names.iter().position(|name| *name == requirement)
+            && !unsafe { visit_generation_source(api, modules, names, dependency, state, ordered) }
+        {
+            return false;
+        }
+    }
+    state[index] = 2;
+    ordered.push(source);
+    true
+}
+
+unsafe fn ordered_generation_sources(api: &IdApi) -> Option<Vec<Oop>> {
+    let Ok(module_guard) = MODULE_SOURCES.lock() else {
+        return None;
+    };
+    let mut modules = module_guard.clone();
+    drop(module_guard);
+    modules.sort_by(|left, right| {
+        let left_name = unsafe { symbol_bytes(api, left.0 as Oop) }.unwrap_or_default();
+        let right_name = unsafe { symbol_bytes(api, right.0 as Oop) }.unwrap_or_default();
+        left_name.cmp(&right_name)
+    });
+    let names = modules
+        .iter()
+        .map(|(name, _)| unsafe { symbol_bytes(api, *name as Oop) })
+        .collect::<Option<Vec<_>>>()?;
+    let mut state = vec![0; modules.len()];
+    let mut ordered = Vec::with_capacity(modules.len());
+    for index in 0..modules.len() {
+        if !unsafe {
+            visit_generation_source(api, &modules, &names, index, &mut state, &mut ordered)
+        } {
+            return None;
+        }
+    }
+    Some(ordered)
+}
+
+unsafe extern "C" fn rust_codegen_generation_sources(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen generationSources: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
+        note_error(b"RustCodegen generation source registry is malformed");
+        return api.nilObj;
+    };
+    if vector.is_null() || vector == api.nilObj {
+        note_error(b"RustCodegen Vector is unavailable");
+        return api.nilObj;
+    }
+    unsafe { make_vector(api, vector, &sources) }
+}
+
+unsafe extern "C" fn rust_codegen_generation_method_sources(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen generationMethodSources: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
+        note_error(b"RustCodegen generation source registry is malformed");
+        return api.nilObj;
+    };
+    if vector.is_null() || vector == api.nilObj {
+        note_error(b"RustCodegen Vector is unavailable");
+        return api.nilObj;
+    }
+    let mut methods = Vec::new();
+    for source in sources {
+        let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
+        else {
+            note_error(b"RustCodegen generation source is not indexable");
+            return api.nilObj;
+        };
+        methods.extend(
+            metadata
+                .operations
+                .into_iter()
+                .filter(|operation| operation.install)
+                .map(|operation| operation.source),
+        );
+    }
+    let method_objects = methods
+        .iter()
+        .map(|source| unsafe { (api.mkString)(source.as_ptr(), source.len()) })
+        .collect::<Vec<_>>();
+    unsafe { make_vector(api, vector, &method_objects) }
+}
+
+unsafe extern "C" fn rust_codegen_current_generation_digest(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen currentGenerationDigest: expects no arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let generation = ACTIVE_GENERATION.load(Ordering::Acquire);
+    if generation == 0 {
+        return api.nilObj;
+    }
+    unsafe { vector_item(api, generation as Oop, 2) }
 }
 
 unsafe fn emit_source(
@@ -3981,6 +4137,21 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, SUCCESSOR_GENERATION_PROJECTION_SELECTOR),
             rust_codegen_successor_generation_projection,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, GENERATION_SOURCES_SELECTOR),
+            rust_codegen_generation_sources,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, GENERATION_METHOD_SOURCES_SELECTOR),
+            rust_codegen_generation_method_sources,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, CURRENT_GENERATION_DIGEST_SELECTOR),
+            rust_codegen_current_generation_digest,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

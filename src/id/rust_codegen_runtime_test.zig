@@ -411,6 +411,12 @@ test "Rust Codegen retains registered module sources across collection" {
     const successor_map = api.send(successor, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
     const successor_entry = api.send(successor_map, api.intern("at:"), &.{api.mkSmallInt(0)}, 1);
     try std.testing.expectEqual(successor_unit, api.send(successor_entry, api.intern("at:"), &.{api.mkSmallInt(2)}, 1));
+    const ordered_sources = api.send(codegen, api.intern("generationSources"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(ordered_sources, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqual(source, api.send(ordered_sources, api.intern("at:"), &.{api.mkSmallInt(0)}, 1));
+    const method_sources = api.send(codegen, api.intern("generationMethodSources"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(api.send(method_sources, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("currentGenerationDigest"), &.{}, 0));
     const changed_text = "[Module named: #rustRegisteredModule requires: #[]]; 8";
     const changed_source = api.mkString(changed_text.ptr, changed_text.len);
     const changed_revision = api.send(codegen, api.intern("sourceRevisionOf:"), &.{changed_source}, 1);
