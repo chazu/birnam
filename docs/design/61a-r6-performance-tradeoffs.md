@@ -405,3 +405,8 @@ the combined N7.1 core, and the focused target covers conditional branches,
 eager and block-taking Boolean operators, `not`, and Boolean printing at 1/1.
 The full R6 rerun passed with 42/42 focused tests and no benchmark change; the
 same two accepted crossings remain the only allowance.
+
+The Block loop slice landed at `36091e7`: the Rust prelude creates or reuses
+the exported `Block`/`BlockVt` family and installs stack-flat
+`whileTrue:`/`whileFalse:` native loops. Its focused 1/1 test and the full
+42/42 R6 rerun passed with no benchmark allowance changes.

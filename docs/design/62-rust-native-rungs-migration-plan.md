@@ -2177,6 +2177,14 @@ the combined N7.1 core, and the dynamic rung installs `ifTrue:ifFalse:`,
 Block loop ownership, System I/O, Error-valued propagation, and canonical
 prelude cutover remain open.
 
+The Block loop slice landed at `36091e7`. The Rust prelude now creates or
+reuses the exported `Block`/`BlockVt` family and installs stack-flat
+`whileTrue:` and `whileFalse:` native loops. The focused dynamic test drives a
+three-check/two-body loop and passes at 1/1; the complete R6 rerun under the
+42/42 pin also passed with the same two accepted benchmark crossings. Error
+propagation from loop bodies, System, and canonical prelude cutover remain
+open N7.1 work.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
