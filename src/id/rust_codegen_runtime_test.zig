@@ -246,6 +246,33 @@ test "Rust Codegen descriptors preserve module and native requirements" {
     try std.testing.expect(std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "native requirement") != null);
 }
 
+test "Rust Codegen rejects artifact dependencies before module policy or init" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const globals = api.import("Globals") orelse return error.MissingGlobals;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const output_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_dependency_guard.dylib", .{directory});
+    defer std.testing.allocator.free(output_path);
+    const source_text = "[Module named: #dependencyGuard requires: #[#dependencyDefinitelyMissing]]; let rust_dependency_guard := 99";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(output_path.ptr, output_path.len);
+    try std.testing.expectEqual(output, api.send(codegen, api.intern("compile:output:"), &.{ source, output }, 2));
+
+    const guard = api.intern("rust_dependency_guard");
+    try std.testing.expectEqual(api.nilObj, api.send(globals, api.intern("at:"), &.{guard}, 1));
+    const loaded = api.send(codegen, api.intern("load:"), &.{output}, 1);
+    try std.testing.expectEqual(api.nilObj, loaded);
+    const after = api.send(globals, api.intern("at:"), &.{guard}, 1);
+    try std.testing.expectEqual(api.nilObj, after);
+    const diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var diagnostic_len: usize = 0;
+    const diagnostic_bytes = api.stringBytes(diagnostic, &diagnostic_len);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic_bytes[0..diagnostic_len], "module") != null);
+}
+
 test "Rust Codegen compile root anchors embedded files independently of source path" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

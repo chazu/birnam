@@ -4537,23 +4537,30 @@ unsafe extern "C" fn rust_codegen_load(
     }
     let abi_symbol = unsafe { (api.dlsym)(handle, c"__birnam_artifact_abi".as_ptr()) };
     if abi_symbol.is_null() {
-        note_error(b"RustCodegen artifact ABI marker is missing");
-        return api.nilObj;
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen artifact ABI marker is missing")
+        };
     }
     // SAFETY: the artifact contract requires a NUL-terminated immutable ABI
     // marker exported alongside the descriptor.
     let abi = unsafe { CStr::from_ptr(abi_symbol.cast::<c_char>()) };
     if abi.to_bytes() != ARTIFACT_ABI {
-        note_error(b"RustCodegen artifact ABI marker is incompatible");
-        return api.nilObj;
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact ABI marker is incompatible",
+            )
+        };
     }
     let descriptor_symbol =
         unsafe { (api.dlsym)(handle, c"__birnam_artifact_descriptor".as_ptr()) };
     let descriptor_len_symbol =
         unsafe { (api.dlsym)(handle, c"__birnam_artifact_descriptor_len".as_ptr()) };
     if descriptor_symbol.is_null() {
-        note_error(b"RustCodegen artifact descriptor is missing");
-        return api.nilObj;
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen artifact descriptor is missing")
+        };
     }
     // SAFETY: the artifact output owns an immutable byte array and matching
     // process-width length symbol for the lifetime of the retained handle. Old
@@ -4567,8 +4574,9 @@ unsafe extern "C" fn rust_codegen_load(
         let header =
             unsafe { core::slice::from_raw_parts(descriptor_symbol.cast::<u8>(), header_len) };
         if &header[..ARTIFACT_DESCRIPTOR_MAGIC.len()] != ARTIFACT_DESCRIPTOR_MAGIC {
-            note_error(b"RustCodegen artifact descriptor is missing");
-            return api.nilObj;
+            return unsafe {
+                map_candidate_failure(api, handle, b"RustCodegen artifact descriptor is missing")
+            };
         }
         let payload_len = u32::from_le_bytes(
             header[ARTIFACT_DESCRIPTOR_MAGIC.len()..header_len]
@@ -4576,16 +4584,26 @@ unsafe extern "C" fn rust_codegen_load(
                 .unwrap(),
         ) as usize;
         let Some(length) = header_len.checked_add(payload_len) else {
-            note_error(b"RustCodegen artifact descriptor is incompatible");
-            return api.nilObj;
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact descriptor is incompatible",
+                )
+            };
         };
         length
     };
     let descriptor =
         unsafe { core::slice::from_raw_parts(descriptor_symbol.cast::<u8>(), descriptor_len) };
     let Ok(parsed_descriptor) = inspect_artifact(descriptor) else {
-        note_error(b"RustCodegen artifact descriptor is incompatible");
-        return api.nilObj;
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact descriptor is incompatible",
+            )
+        };
     };
     let artifact_path = &path[..path.len() - 1];
     let artifact_path = Path::new(OsStr::from_bytes(artifact_path));
@@ -4596,14 +4614,50 @@ unsafe extern "C" fn rust_codegen_load(
             && !requirement.contains(&b'/')
             && fs::metadata(directory.join(OsStr::from_bytes(requirement))).is_ok()
     }) {
-        note_error(b"RustCodegen artifact native requirement is unavailable");
-        return api.nilObj;
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact native requirement is unavailable",
+            )
+        };
+    }
+    if parsed_descriptor.requires.count() != 0 {
+        let module = unsafe { (api.import)(MODULE_NAME.as_ptr().cast()) };
+        if module.is_null() || module == api.nilObj {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact module dependency surface is unavailable",
+                )
+            };
+        }
+        for requirement in parsed_descriptor.requires.iter() {
+            let requirement = unsafe { intern_bytes(api, requirement) };
+            if unsafe { send(api, module, MODULE_IS_LOADED_SELECTOR, &[requirement]) }
+                != api.trueObj
+            {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen artifact module requirement is unavailable",
+                    )
+                };
+            }
+        }
     }
     let init_symbol = unsafe { (api.dlsym)(handle, c"__birnam_unit_init".as_ptr()) };
     let entry_symbol = unsafe { (api.dlsym)(handle, c"__ev".as_ptr()) };
     if init_symbol.is_null() || entry_symbol.is_null() {
-        note_error(b"RustCodegen artifact entry points are incomplete");
-        return api.nilObj;
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact entry points are incomplete",
+            )
+        };
     }
     // SAFETY: validated artifact exports use the frozen no-argument initializer
     // and Method ABI entry point.
