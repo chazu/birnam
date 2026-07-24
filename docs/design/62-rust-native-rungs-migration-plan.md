@@ -1439,9 +1439,10 @@ object through `new`, `compile:`, `bindRuntime`, `relocate`, and
 `install:as:on:` before dispatching the generated `__ev` Method. The dedicated
 IdApi test now passes both deterministic emission and scalar native evaluation
 (`7 -> 7`) with Rust PEG and Rust TCC loaded from installed paths. It also
-invokes an emitted identity block immediately (`[:x | x] value: 4 -> 4`), but
-does not yet claim post-collection closure ownership: each eval has no
-disposable-unit or registered-owner protocol. Persistent globals, error
+invokes an emitted identity block immediately (`[:x | x] value: 4 -> 4`).
+Block-bearing evals now register their TCC unit through an IdApi GC root
+provider and survive a collection probe; scalar evals mark their unit
+disposable after dispatch. Persistent globals, error
 publication, compile-to-dylib output, metadata, candidate lifecycle, and image
 recovery remain N6.3–N6.6 gates.
 
