@@ -341,6 +341,30 @@ test "Rust Codegen retains registered module sources across collection" {
     var digest_len: usize = 0;
     _ = api.stringBytes(api.send(projection, api.intern("at:"), &.{api.mkSmallInt(2)}, 1), &digest_len);
     try std.testing.expectEqual(@as(usize, 64), digest_len);
+    const revision = api.send(entry, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    const successor_unit = api.mkSmallInt(99);
+    const successor = api.send(
+        codegen,
+        api.intern("successorGenerationProjection:replacing:with:unit:"),
+        &.{ source_map, name, revision, successor_unit },
+        4,
+    );
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(successor, api.intern("size"), &.{}, 0)));
+    const successor_map = api.send(successor, api.intern("at:"), &.{api.mkSmallInt(1)}, 1);
+    const successor_entry = api.send(successor_map, api.intern("at:"), &.{api.mkSmallInt(0)}, 1);
+    try std.testing.expectEqual(successor_unit, api.send(successor_entry, api.intern("at:"), &.{api.mkSmallInt(2)}, 1));
+    const changed_text = "[Module named: #rustRegisteredModule requires: #[]]; 8";
+    const changed_source = api.mkString(changed_text.ptr, changed_text.len);
+    const changed_revision = api.send(codegen, api.intern("sourceRevisionOf:"), &.{changed_source}, 1);
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            codegen,
+            api.intern("successorGenerationProjection:replacing:with:unit:"),
+            &.{ source_map, name, changed_revision, successor_unit },
+            4,
+        ),
+    );
 
     const mismatch_name = api.intern("rustOtherModule");
     try std.testing.expectEqual(

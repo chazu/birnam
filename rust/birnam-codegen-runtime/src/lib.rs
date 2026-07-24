@@ -23,6 +23,7 @@ const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
 const VECTOR_NAME: &[u8] = b"Vector\0";
+const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
 const PEG_CST_VT_NAME: &[u8] = b"PegCstVt\0";
 const PARSE_SELECTOR: &[u8] = b"parse:\0";
 const FURTHEST_FAIL_SELECTOR: &[u8] = b"furthestFail\0";
@@ -48,6 +49,8 @@ const RECORD_MODULE_SOURCE_SELECTOR: &[u8] = b"recordModuleSource:named:\0";
 const MODULE_SOURCE_FOR_SELECTOR: &[u8] = b"moduleSourceFor:\0";
 const SEAL_INITIAL_GENERATION_SELECTOR: &[u8] = b"sealInitialGeneration\0";
 const INITIAL_GENERATION_PROJECTION_SELECTOR: &[u8] = b"initialGenerationProjection\0";
+const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
+    b"successorGenerationProjection:replacing:with:unit:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -851,6 +854,88 @@ unsafe fn make_vector(api: &IdApi, vector_proto: Oop, items: &[Oop]) -> Oop {
     result
 }
 
+unsafe fn vector_item(api: &IdApi, vector: Oop, index: usize) -> Oop {
+    let index = unsafe { (api.mkSmallInt)(index as i64) };
+    unsafe { send(api, vector, GLOBAL_AT_SELECTOR, &[index]) }
+}
+
+unsafe fn vector_length(api: &IdApi, vector: Oop, vector_vt: Oop) -> Option<usize> {
+    if vector.is_null() || unsafe { (api.vtableOf)(vector) != vector_vt } {
+        return None;
+    }
+    let size = unsafe { send0(api, vector, b"size\0") };
+    if unsafe { (api.isSmallInt)(size) } == 0 {
+        return None;
+    }
+    usize::try_from(unsafe { (api.smallIntValue)(size) }).ok()
+}
+
+unsafe fn revision_transition_allowed(api: &IdApi, current: Oop, successor: Oop) -> bool {
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    if vector_vt.is_null()
+        || unsafe { vector_length(api, current, vector_vt) } != Some(7)
+        || unsafe { vector_length(api, successor, vector_vt) } != Some(7)
+    {
+        return false;
+    }
+    let tag = unsafe { intern(api, b"sourceRevision\0") };
+    if unsafe { vector_item(api, current, 0) } != tag
+        || unsafe { vector_item(api, successor, 0) } != tag
+    {
+        return false;
+    }
+    if unsafe { symbol_bytes(api, vector_item(api, current, 1)) }
+        != unsafe { symbol_bytes(api, vector_item(api, successor, 1)) }
+    {
+        return false;
+    }
+    let current_requires = unsafe { vector_item(api, current, 2) };
+    let successor_requires = unsafe { vector_item(api, successor, 2) };
+    let Some(current_count) = (unsafe { vector_length(api, current_requires, vector_vt) }) else {
+        return false;
+    };
+    let Some(successor_count) = (unsafe { vector_length(api, successor_requires, vector_vt) })
+    else {
+        return false;
+    };
+    if current_count != successor_count {
+        return false;
+    }
+    for index in 0..current_count {
+        if unsafe { symbol_bytes(api, vector_item(api, current_requires, index)) }
+            != unsafe { symbol_bytes(api, vector_item(api, successor_requires, index)) }
+        {
+            return false;
+        }
+    }
+    (unsafe { string_bytes(api, vector_item(api, current, 4)) })
+        == (unsafe { string_bytes(api, vector_item(api, successor, 4)) })
+}
+
+unsafe fn generation_digest(api: &IdApi, source_map: Oop) -> Option<[u8; 64]> {
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let count = unsafe { vector_length(api, source_map, vector_vt) }?;
+    let mut digest_input = b"birnam.dispatch-generation.v1\0".to_vec();
+    digest_input.extend_from_slice(&(count as u64).to_be_bytes());
+    for index in 0..count {
+        let entry = unsafe { vector_item(api, source_map, index) };
+        if unsafe { vector_length(api, entry, vector_vt) } != Some(3) {
+            return None;
+        }
+        let name = unsafe { symbol_bytes(api, vector_item(api, entry, 0)) }?;
+        let revision = unsafe { vector_item(api, entry, 1) };
+        if unsafe { vector_length(api, revision, vector_vt) } != Some(7) {
+            return None;
+        }
+        let digest = unsafe { string_bytes(api, vector_item(api, revision, 6)) }?;
+        digest_input.extend_from_slice(&(name.len() as u64).to_be_bytes());
+        digest_input.extend_from_slice(&name);
+        digest_input.extend_from_slice(&(digest.len() as u64).to_be_bytes());
+        digest_input.extend_from_slice(&digest);
+    }
+    Some(sha256_hex(&digest_input))
+}
+
 unsafe extern "C" fn rust_codegen_initial_generation_projection(
     _self_object: Oop,
     pointer: *const Oop,
@@ -890,8 +975,6 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
     });
 
     let mut entries = Vec::with_capacity(modules.len());
-    let mut digest_input = b"birnam.dispatch-generation.v1\0".to_vec();
-    digest_input.extend_from_slice(&(modules.len() as u64).to_be_bytes());
     for (name, source) in modules {
         let name = name as Oop;
         let source = source as Oop;
@@ -907,23 +990,98 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
             note_error(b"RustCodegen source revision is unavailable");
             return api.nilObj;
         }
-        let name_bytes = unsafe { symbol_bytes(api, name) }.unwrap_or_default();
-        let revision_digest = unsafe {
-            let index = (api.mkSmallInt)(6);
-            let digest = send(api, revision, GLOBAL_AT_SELECTOR, &[index]);
-            string_bytes(api, digest).unwrap_or_default()
-        };
-        digest_input.extend_from_slice(&(name_bytes.len() as u64).to_be_bytes());
-        digest_input.extend_from_slice(&name_bytes);
-        digest_input.extend_from_slice(&(revision_digest.len() as u64).to_be_bytes());
-        digest_input.extend_from_slice(&revision_digest);
         entries.push(unsafe { make_vector(api, vector_proto, &[name, revision, api.nilObj]) });
     }
     let source_map = unsafe { make_vector(api, vector_proto, &entries) };
-    let digest = sha256_hex(&digest_input);
+    let Some(digest) = (unsafe { generation_digest(api, source_map) }) else {
+        note_error(b"RustCodegen generation projection is malformed");
+        return api.nilObj;
+    };
     let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
     let tag = unsafe { intern(api, b"generationProjection\0") };
     unsafe { make_vector(api, vector_proto, &[tag, source_map, digest_object]) }
+}
+
+unsafe extern "C" fn rust_codegen_successor_generation_projection(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen successorGenerationProjection received invalid arguments")
+    });
+    if values.len() != 4 {
+        abort(
+            "RustCodegen successorGenerationProjection expects source map, name, revision, and unit",
+        );
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let Some(count) = (unsafe { vector_length(api, values[0], vector_vt) }) else {
+        note_error(b"RustCodegen source map is malformed");
+        return api.nilObj;
+    };
+    if vector_proto.is_null() {
+        note_error(b"RustCodegen Vector is unavailable");
+        return api.nilObj;
+    }
+    let Some(name) = (unsafe { symbol_bytes(api, values[1]) }) else {
+        note_error(b"RustCodegen module name was not a Symbol");
+        return api.nilObj;
+    };
+    let mut entries = Vec::with_capacity(count);
+    let mut found = false;
+    for index in 0..count {
+        let entry = unsafe { vector_item(api, values[0], index) };
+        if unsafe { vector_length(api, entry, vector_vt) } != Some(3) {
+            note_error(b"RustCodegen source map is malformed");
+            return api.nilObj;
+        }
+        let entry_name = unsafe { vector_item(api, entry, 0) };
+        let Some(entry_name_bytes) = (unsafe { symbol_bytes(api, entry_name) }) else {
+            note_error(b"RustCodegen source map has a non-symbol module name");
+            return api.nilObj;
+        };
+        if entry_name_bytes == name {
+            if found {
+                note_error(b"RustCodegen source map has duplicate module names");
+                return api.nilObj;
+            }
+            found = true;
+            if !(unsafe { revision_transition_allowed(api, vector_item(api, entry, 1), values[2]) })
+            {
+                note_error(b"RustCodegen top-level evolution is not available");
+                return api.nilObj;
+            }
+            entries.push(unsafe {
+                make_vector(api, vector_proto, &[values[1], values[2], values[3]])
+            });
+        } else {
+            entries.push(entry);
+        }
+    }
+    if !found {
+        note_error(b"RustCodegen module introduction is not available");
+        return api.nilObj;
+    }
+    let successor = unsafe { make_vector(api, vector_proto, &entries) };
+    let Some(digest) = (unsafe { generation_digest(api, successor) }) else {
+        note_error(b"RustCodegen successor projection is malformed");
+        return api.nilObj;
+    };
+    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let tag = unsafe { intern(api, b"generationProjection\0") };
+    unsafe { make_vector(api, vector_proto, &[tag, successor, digest_object]) }
 }
 
 unsafe fn emit_source(
@@ -1591,6 +1749,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, INITIAL_GENERATION_PROJECTION_SELECTOR),
             rust_codegen_initial_generation_projection,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, SUCCESSOR_GENERATION_PROJECTION_SELECTOR),
+            rust_codegen_successor_generation_projection,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

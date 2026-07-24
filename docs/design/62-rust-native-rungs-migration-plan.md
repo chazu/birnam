@@ -1585,6 +1585,15 @@ generation digest uses the same length-delimited name/revision-digest framing
 as the Zig authority. The projection is read-only and remains opt-in; successor
 replacement, Store publication, and rollback stay in N6.5.
 
+The corresponding read-only successor projection is now present at
+`successorGenerationProjection:replacing:with:unit:`. It replaces exactly one
+existing module entry, enforces the same name/requirements/non-method revision
+transition rule as the Zig projection, preserves untouched entries, and
+recomputes the canonical generation digest. Duplicate names, missing modules,
+malformed vectors, and top-level-evolution attempts fail closed. It still does
+not publish a Store generation or mutate dispatch; those are deliberately
+reserved for the transactional N6.5 implementation.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
