@@ -1846,6 +1846,14 @@ executing the first one and rejects nil/Error results during execution, so a
 malformed later source cannot be accepted as a clean replay or silently leave
 the replay count overstated.
 
+The opt-in Rust Codegen `preflightImage:` boundary now consumes the pure image
+codec and validates the v4 header, authority/code relationship, record
+envelopes, and every facts record's count and tagged-field framing before
+returning success. Invalid magic and malformed fact counts fail with a
+diagnostic and no runtime mutation. The method deliberately does not resolve
+symbols or exports, materialize heap objects, swizzle references, map code, or
+touch Store; those remain the mapped-unit and recovery handoff work in N6.6.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
