@@ -1615,6 +1615,14 @@ test "Rust Codegen inspects and maps a Zig candidate" {
     );
     try std.testing.expectEqual(@as(i64, 456), api.smallIntValue(api.send(api.mkSmallInt(3), api.intern("rustCandidateAnswer"), &.{}, 0)));
 
+    // The retained candidate registry is a Rust GC root provider. Collect
+    // after successor activation, before constructing the rollback token, so
+    // rollback proves it does not depend on a transient test-stack reference.
+    var rollback_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&rollback_anchor));
+    _ = api.gcCollect();
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("candidateMapped:"), &.{successor_unit}, 1));
+
     var rollback_plan = api.send(vector, api.intern("new"), &.{}, 0);
     const rollback_event = api.send(object, api.intern("clone"), &.{}, 0);
     const rollback_basis = api.send(object, api.intern("clone"), &.{}, 0);
