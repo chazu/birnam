@@ -36,6 +36,90 @@ pub enum EmitError {
 
 const MAX_EXPR_DEPTH: usize = 4096;
 
+const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
+#define MKV(x) (birnam_mkSmallInt((long)(x)))
+extern void* birnam_send(void* rcv, void* sel, void** args, long n);
+extern void* birnam_intern(const char* name);
+extern void* birnam_mkString(const char* p, long n);
+extern void* birnam_mkFloat(double v);
+extern void* birnam_nil(void);
+extern void* birnam_true(void);
+extern void* birnam_false(void);
+"#;
+
+/// Deterministic translation-unit assembly for the Rust emitter seam. Runtime
+/// shims are declarations only; this type never links or resolves them.
+#[derive(Debug, Default)]
+pub struct TranslationUnit {
+    artifact: bool,
+    baked_globals: Vec<Vec<u8>>,
+    function_defs: Vec<u8>,
+    body: Vec<u8>,
+}
+
+impl TranslationUnit {
+    pub fn new(artifact: bool) -> Self {
+        Self {
+            artifact,
+            ..Self::default()
+        }
+    }
+
+    pub fn add_baked_global(&mut self, name: &[u8]) {
+        self.baked_globals.push(name.to_vec());
+    }
+
+    pub fn push_function(&mut self, definition: &[u8]) {
+        self.function_defs.extend_from_slice(definition);
+    }
+
+    pub fn push_body(&mut self, body: &[u8]) {
+        self.body.extend_from_slice(body);
+    }
+
+    pub fn finish(self) -> Vec<u8> {
+        let mut output = Vec::with_capacity(
+            C_RUNTIME_PRELUDE.len()
+                + self.function_defs.len()
+                + self.body.len()
+                + self.baked_globals.len() * 32
+                + if self.artifact { 64 } else { 0 },
+        );
+        output.extend_from_slice(C_RUNTIME_PRELUDE);
+        for (index, _name) in self.baked_globals.iter().enumerate() {
+            if self.artifact {
+                output.extend_from_slice(b"static void* __g");
+                output.extend_from_slice(index.to_string().as_bytes());
+                output.extend_from_slice(b";\n");
+            } else {
+                output.extend_from_slice(b"extern char __g");
+                output.extend_from_slice(index.to_string().as_bytes());
+                output.extend_from_slice(b"[];\n");
+            }
+        }
+        output.extend_from_slice(&self.function_defs);
+        output.extend_from_slice(
+            b"void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n",
+        );
+        output.extend_from_slice(&self.body);
+        output.extend_from_slice(b"}\n");
+        if self.artifact {
+            output.extend_from_slice(b"void __birnam_unit_init(void){\n");
+            for (index, name) in self.baked_globals.iter().enumerate() {
+                output.extend_from_slice(b"  __g");
+                output.extend_from_slice(index.to_string().as_bytes());
+                output.extend_from_slice(b" = birnam_intern(\"");
+                let mut escaped = Emitter::new();
+                escaped.push_c_string_body(name);
+                output.extend_from_slice(&escaped.finish());
+                output.extend_from_slice(b"\");\n");
+            }
+            output.extend_from_slice(b"}\n");
+        }
+        output
+    }
+}
+
 impl Emitter {
     pub fn new() -> Self {
         Self::default()
@@ -164,7 +248,7 @@ impl Emitter {
 
 #[cfg(test)]
 mod tests {
-    use super::{EmitError, Emitter, Expr};
+    use super::{EmitError, Emitter, Expr, TranslationUnit};
 
     #[test]
     fn escapes_like_zig_codegen() {
@@ -214,5 +298,24 @@ mod tests {
         }
         let mut emitter = Emitter::new();
         assert_eq!(emitter.emit_expr(&deep), Err(EmitError::DepthLimit));
+    }
+
+    #[test]
+    fn assembles_jit_and_artifact_units_deterministically() {
+        let mut jit = TranslationUnit::new(false);
+        jit.add_baked_global(b"Integer");
+        jit.push_body(b"return MKV(42L);\n");
+        assert_eq!(
+            String::from_utf8(jit.finish()).unwrap(),
+            "extern void* birnam_mkSmallInt(long v);\n#define MKV(x) (birnam_mkSmallInt((long)(x)))\nextern void* birnam_send(void* rcv, void* sel, void** args, long n);\nextern void* birnam_intern(const char* name);\nextern void* birnam_mkString(const char* p, long n);\nextern void* birnam_mkFloat(double v);\nextern void* birnam_nil(void);\nextern void* birnam_true(void);\nextern void* birnam_false(void);\nextern char __g0[];\nvoid* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"
+        );
+
+        let mut artifact = TranslationUnit::new(true);
+        artifact.add_baked_global(b"Integer");
+        artifact.push_body(b"return __g0;\n");
+        let output = String::from_utf8(artifact.finish()).unwrap();
+        assert!(output.contains("static void* __g0;"));
+        assert!(output.contains("void __birnam_unit_init(void){"));
+        assert!(output.contains("__g0 = birnam_intern(\"Integer\");"));
     }
 }

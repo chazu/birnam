@@ -1385,6 +1385,12 @@ recursing without a limit. Integer emission now matches the Zig oracle's
 `MKV(<literal>L)` spelling exactly. Clippy is clean, and the crate is not
 selected by the production build yet.
 
+The deterministic translation-unit assembler now emits the shared runtime
+declaration prelude, baked-global handle declarations, `__ev` body, and the
+artifact-only `__birnam_unit_init` fixup in separate JIT/artifact modes. Exact
+unit text is pinned for both modes; workspace formatting, tests, and Clippy
+remain clean.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
