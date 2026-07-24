@@ -30,14 +30,15 @@ becoming a general dirty-tree allowance.
 
 `mise run r6-acceptance` first runs the current native-rung baseline checker
 (semantic fixtures, the accepted optimized pair, and the artifact-inspector
-baseline), then runs the latest N5.1-N5.4 Rust-Lang functional set: the
-unchanged grammar suite, frozen CST parity, syntax diagnostics, canonical
-Rust/explicit Zig rollback selection, and the optimized native-rung harness.
-It then runs the complete `zig build verify -Doptimize=ReleaseSafe` closure,
-verifies both file hashes, and runs the unchanged Design 46 comparator. It
-fails unless the only threshold crossings are exactly the two entries below.
-Any changed snapshot, functional failure, verify failure, missing or unusable
-case, additional regression, or changed accepted measurement fails closed.
+baseline), then runs the latest replacement set: the unchanged grammar suite,
+frozen CST parity, syntax diagnostics, canonical Rust/explicit Zig rollback
+selection, the optimized native-rung harness, and the explicit Rust Codegen
+runtime boundary (`test-rust-codegen-runtime`). It then runs the complete
+`zig build verify -Doptimize=ReleaseSafe` closure, verifies both file hashes,
+and runs the unchanged Design 46 comparator. It fails unless the only
+threshold crossings are exactly the two entries below. Any changed snapshot,
+functional failure, verify failure, missing or unusable case, additional
+regression, or changed accepted measurement fails closed.
 
 ## Accepted tradeoffs
 
@@ -77,4 +78,7 @@ ReleaseSafe closure used by the acceptance evidence. `zig build verify
 both passed, the exact accepted hashes remained unchanged, and the same two
 recorded crossings had zero missing or unusable cases. This additional
 cross-layer, native-TCC, and Rust-Lang coverage does not widen the R6 exception
-set or change the accepted snapshot.
+set or change the accepted snapshot. Commit `eacfa5f` extends the focused set
+with the explicit Rust Codegen runtime boundary; the complete acceptance rerun
+then passed with all six focused checks, full verify, and the same two exact
+crossings.
