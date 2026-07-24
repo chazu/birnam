@@ -1476,8 +1476,10 @@ handoff remain open.
 
 The diagnostic seam is also executable: every opt-in emit/eval/compile-output
 operation clears a process-local `lastError`, records a first failure message,
-and exposes it through `RustCodegen lastError`. The focused test proves a bad
-source publishes a diagnostic and a subsequent successful `7` evaluation clears
+and exposes it through `RustCodegen lastError`. Parse failures now query Rust
+Lang's furthest-failure offset and publish `syntax error at byte N`; lowering
+and TCC failures retain their specific boundary messages. The focused test
+proves a syntax diagnostic and a subsequent successful `7` evaluation clears
 it. This is intentionally a string-compatible observation seam, not yet the
 full Error-object propagation and source-span formatting required by N6.3. The
 compile-output test also proves a lowering failure returns `nil` without

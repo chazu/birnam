@@ -21,6 +21,7 @@ const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
 const PEG_CST_VT_NAME: &[u8] = b"PegCstVt\0";
 const PARSE_SELECTOR: &[u8] = b"parse:\0";
+const FURTHEST_FAIL_SELECTOR: &[u8] = b"furthestFail\0";
 const RULE_NAME_SELECTOR: &[u8] = b"ruleName\0";
 const START_SELECTOR: &[u8] = b"start\0";
 const END_SELECTOR: &[u8] = b"end\0";
@@ -86,6 +87,21 @@ fn note_error(message: &[u8]) {
     {
         *error = Some(message.to_vec());
     }
+}
+
+unsafe fn note_syntax_error(api: &IdApi, lang: Oop) {
+    let offset = unsafe { send0(api, lang, FURTHEST_FAIL_SELECTOR) };
+    if unsafe { (api.isSmallInt)(offset) } == 0 {
+        note_error(b"RustCodegen syntax error");
+        return;
+    }
+    let mut message = b"RustCodegen syntax error at byte ".to_vec();
+    message.extend_from_slice(
+        unsafe { (api.smallIntValue)(offset) }
+            .to_string()
+            .as_bytes(),
+    );
+    note_error(&message);
 }
 
 unsafe extern "C" fn mark_live_units(mark: MarkFn) {
@@ -376,6 +392,7 @@ unsafe fn emit_source(
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
     let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+        unsafe { note_syntax_error(api, lang) };
         return None;
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;
