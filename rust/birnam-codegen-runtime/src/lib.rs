@@ -1450,6 +1450,38 @@ unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool 
         .is_some_and(|digest| digest.as_slice() == actual.as_slice())
 }
 
+unsafe fn image_generation_matches_durable(api: &IdApi) -> bool {
+    let durable = unsafe { durable_current_generation(api) };
+    if durable == api.nilObj {
+        return true;
+    }
+    let runtime = runtime();
+    let projection = unsafe {
+        send(
+            api,
+            runtime.rust_codegen as Oop,
+            INITIAL_GENERATION_PROJECTION_SELECTOR,
+            &[],
+        )
+    };
+    if projection.is_null() || projection == api.nilObj {
+        return false;
+    }
+    let projection_digest = unsafe { vector_item(api, projection, 2) };
+    let store = runtime.store as Oop;
+    let durable_digest = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[durable, intern(api, b"baseDigest\0")],
+        )
+    };
+    let projection_bytes = unsafe { string_bytes(api, projection_digest) };
+    let durable_bytes = unsafe { string_bytes(api, durable_digest) };
+    projection_bytes == durable_bytes
+}
+
 unsafe fn durable_generation_entry(api: &IdApi, generation: Oop, name: Oop) -> Option<Oop> {
     let store = runtime().store as Oop;
     let source_map = unsafe {
@@ -1901,6 +1933,10 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
     };
     if sources.is_empty() {
         note_error(b"RustCodegen image has no generation sources");
+        return api.nilObj;
+    }
+    if !unsafe { image_generation_matches_durable(api) } {
+        note_error(b"RustCodegen image generation is stale");
         return api.nilObj;
     }
     let mut program = Vec::new();
