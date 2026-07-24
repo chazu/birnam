@@ -20,6 +20,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
@@ -65,6 +66,7 @@ const PREPARE_ROLLBACK_SELECTOR: &[u8] = b"prepareRollback:\0";
 const COMMIT_PREPARED_SELECTOR: &[u8] = b"commitPrepared:\0";
 const COMMIT_PREPARED_ROLLBACK_SELECTOR: &[u8] = b"commitPreparedRollback:\0";
 const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
+const MANAGED_METHOD_CHANGED_SELECTOR: &[u8] = b"managedMethodChanged:on:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -78,6 +80,9 @@ const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
 const STORE_RAW_CURRENT_SELECTOR: &[u8] = b"rawCurrentValue:attr:\0";
+const SET_METHOD_OBSERVER_SELECTOR: &[u8] = b"setMethodMutationObserver:\0";
+const SET_METHOD_AUTHORIZER_SELECTOR: &[u8] = b"setMethodMutationAuthorizer:\0";
+const CODEGEN_NAME: &[u8] = b"Codegen\0";
 const MODULE_NAME: &[u8] = b"Module\0";
 const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
 const MAX_CST_DEPTH: usize = 4096;
@@ -105,6 +110,8 @@ static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
+static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
+static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" {
     fn dlclose(handle: *mut c_void) -> i32;
@@ -2336,6 +2343,120 @@ unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: Oop) -> bool
     }
 }
 
+unsafe extern "C" fn rust_codegen_authorize_method_mutation() -> Oop {
+    // The complete runtime-phase/quiescence state machine is introduced with
+    // the production Codegen switch. Until then, the callback is deliberately
+    // permissive so a mixed Zig-Codegen/Rust-Codegen stack keeps its existing
+    // mutation authority while Rust candidates can still observe drift.
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    api.trueObj
+}
+
+unsafe extern "C" fn rust_codegen_managed_method_changed(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen managedMethodChanged:on: received invalid arguments")
+    });
+    if values.len() != 2 {
+        abort("RustCodegen managedMethodChanged:on: expects selector and vtable");
+    }
+    if MOP_MUTATION_IN_PROGRESS.load(Ordering::Acquire) {
+        return runtime().rust_codegen as Oop;
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let selector_name = unsafe { CStr::from_ptr((api.symbolName)(values[0])) }
+        .to_bytes()
+        .to_vec();
+    let vtable = values[1] as usize;
+    let mut watches = Vec::new();
+    if let Ok(candidates) = CANDIDATES.lock() {
+        for candidate in candidates.iter().filter(|candidate| candidate.active) {
+            for operation in &candidate.operations {
+                if operation.vtable == vtable && operation.selector == selector_name {
+                    watches.push((
+                        candidate.unit,
+                        operation.post_method,
+                        operation.post_present,
+                        operation.vtable,
+                        operation.selector.clone(),
+                    ));
+                }
+            }
+        }
+    }
+    for (unit, post_method, post_present, operation_vtable, operation_selector) in watches {
+        let selector = unsafe { intern_bytes(api, &operation_selector) };
+        let current = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                STORE_RAW_CURRENT_SELECTOR,
+                &[operation_vtable as Oop, selector],
+            )
+        };
+        if !post_present || current as usize != post_method {
+            let drifted = unsafe { intern(api, b"drifted\0") };
+            let _ =
+                unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", drifted) };
+            let _ = unsafe {
+                assert_candidate_fact(
+                    api,
+                    runtime,
+                    unit as Oop,
+                    b"rollbackAvailable\0",
+                    api.falseObj,
+                )
+            };
+        }
+    }
+    _self_object
+}
+
+unsafe fn ensure_store_callbacks(api: &IdApi, runtime: &Runtime) {
+    if STORE_CALLBACKS_REGISTERED.load(Ordering::Acquire)
+        || runtime.store as Oop == api.nilObj
+        || (runtime.store as Oop).is_null()
+    {
+        return;
+    }
+    // A mixed stack keeps Zig Codegen's callback owner. Rust becomes the owner
+    // only when no legacy Codegen export is present, avoiding registration-law
+    // conflicts while the migration is opt-in.
+    if unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } != 0 {
+        return;
+    }
+    let observer = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            SET_METHOD_OBSERVER_SELECTOR,
+            &[runtime.rust_codegen as Oop],
+        )
+    };
+    if observer == api.nilObj {
+        return;
+    }
+    let callback = unsafe {
+        (api.mkSmallInt)(rust_codegen_authorize_method_mutation as *const () as usize as i64)
+    };
+    let authorizer = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            SET_METHOD_AUTHORIZER_SELECTOR,
+            &[callback],
+        )
+    };
+    if authorizer != api.nilObj {
+        STORE_CALLBACKS_REGISTERED.store(true, Ordering::Release);
+    }
+}
+
 unsafe extern "C" fn rust_codegen_map_candidate(
     _self_object: Oop,
     pointer: *const Oop,
@@ -2349,6 +2470,7 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
+    unsafe { ensure_store_callbacks(api, runtime) };
 
     let (author_path, checksum, manifest, requires, existing_handle) = {
         let Ok(candidates) = CANDIDATES.lock() else {
@@ -2669,7 +2791,9 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
     };
     // SAFETY: the hook is retained by the mapped candidate handle.
     let activate: Method = unsafe { core::mem::transmute(activate) };
+    MOP_MUTATION_IN_PROGRESS.store(true, Ordering::Release);
     let result = unsafe { activate(api.nilObj, ptr::null(), 0) };
+    MOP_MUTATION_IN_PROGRESS.store(false, Ordering::Release);
     if result == api.nilObj {
         note_error(b"RustCodegen candidate activation failed");
         return api.nilObj;
@@ -2873,6 +2997,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         }
         candidate.operations.clone()
     };
+    MOP_MUTATION_IN_PROGRESS.store(true, Ordering::Release);
     for operation in operations.iter().rev() {
         let selector = unsafe { intern_bytes(api, &operation.selector) };
         let vtable = operation.vtable as Oop;
@@ -2897,10 +3022,12 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             }
         };
         if result == api.nilObj {
+            MOP_MUTATION_IN_PROGRESS.store(false, Ordering::Release);
             note_error(b"RustCodegen candidate rollback failed");
             return api.nilObj;
         }
     }
+    MOP_MUTATION_IN_PROGRESS.store(false, Ordering::Release);
     let rolled_back = unsafe { intern(api, b"rolledBack\0") };
     if !(unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", rolled_back) }) {
         note_error(b"RustCodegen candidate Store is unavailable");
@@ -3214,6 +3341,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, DISCARD_PREPARED_SELECTOR),
             rust_codegen_discard_prepared,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, MANAGED_METHOD_CHANGED_SELECTOR),
+            rust_codegen_managed_method_changed,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
