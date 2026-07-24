@@ -146,6 +146,17 @@ pub fn build(b: *std.Build) void {
     test_native_rung_selection_step.dependOn(&native_rung_selection_smoke.step);
     test_step.dependOn(&native_rung_selection_smoke.step);
 
+    const tcc_selection_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/tcc-selection-smoke.sh",
+    });
+    const test_tcc_selection_step = b.step(
+        "test-tcc-selection",
+        "Verify canonical Rust-TCC selection, Zig rollback, and fail-closed choices",
+    );
+    test_tcc_selection_step.dependOn(&tcc_selection_smoke.step);
+    test_step.dependOn(&tcc_selection_smoke.step);
+
     // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
     // only to this test module; runtime, install, and artifact-selection code do
     // not import it.
