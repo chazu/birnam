@@ -1688,9 +1688,8 @@ that token, calls the retained activation hook, marks the unit active and
 rollback-available in Store, and only then releases the token root;
 `discardPrepared:` consumes a prepared token without activation. The installed
 gate now proves inspect → map → prepare → commit, observes the active Store
-fact, and dispatches the newly installed method. This is deliberately only the
-activation happy path: explicit publication plans, quiescence, predecessor
-ledgers, rollback, drift reconciliation, and the Rust Store observer/authorizer
+fact, and dispatches the newly installed method. Explicit publication plans,
+quiescence, publication events, and the full Rust Store observer/authorizer
 matrix remain subsequent N6.5 hardening slices.
 
 Preparation now also captures each manifest operation's exported/global target,
@@ -1706,16 +1705,27 @@ rollback when an external mutation intervened. `commitPreparedRollback:` then
 restores prior carriers in reverse manifest order through Store's tracked
 `addMethod:on:with:`/`removeMethod:on:` surface, marks the unit `rolledBack`,
 and consumes the token. The installed gate now proves active dispatch, exact
-rollback, and the resulting Store state. Predecessor composition, quiescence,
-publication events, observer/authorizer callbacks, and multi-generation
-reconciliation remain open.
+rollback, and the resulting Store state. Quiescence, publication events,
+observer/authorizer callbacks, and multi-generation reconciliation remain open.
+
+Predecessor-aware composition now extends the token boundary without changing
+the single-owner mutation law. `prepareActivation:` accepts an optional active
+prior unit, rejects self or inactive priors, and retains the prior identity in
+the prepared token. Commit asserts `successor.supersedes = prior`, marks the
+prior `superseded`, and deactivates its Rust registry entry only after the new
+candidate's activation and post-carrier checks succeed. Rollback captures that
+predecessor, restores the exact prior method carriers, reasserts the prior
+`active` state, and reactivates its registry entry. The installed gate now
+exercises A → B → rollback B → A, including the Store state transitions and
+observable dispatch result. This is predecessor composition, not yet the
+generation/publication-plan or quiescence protocol.
 
 Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
 post-carrier check without requiring a rollback attempt. They return the unit
 or `true` when every active binding still matches, and otherwise mark the
 candidate drifted and disable rollback. The installed gate covers both healthy
-single-candidate and all-candidate reconciliation; predecessor-ledger
-composition and persisted generation reconciliation remain later work.
+single-candidate and all-candidate reconciliation; persisted generation
+reconciliation remains later work.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
