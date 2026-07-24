@@ -1792,7 +1792,10 @@ validates each vtable-name/word-count header and consumes Oop fields, raw
 machine words, and elided code slots without copying; the caller supplies the
 live layout after peeking the vtable name. It returns borrowed encoded bytes,
 not materialized objects, so vtable relinking, heap-reference swizzling, and
-GC integration remain later work.
+GC integration remain later work. The pure crate now also exposes whole-image
+preflight: it requires one authority, rejects duplicate or out-of-order code,
+and verifies each code record's generation digest against that authority before
+returning a re-iterable borrowed record stream.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
