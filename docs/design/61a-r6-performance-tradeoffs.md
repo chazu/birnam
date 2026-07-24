@@ -391,3 +391,9 @@ floor. The R6 gate now includes `test-rust-prelude` at 1/1; the focused set is
 (+5.8%) and `compile.stage1-stdlib` (+11.9%) remain accepted for this
 snapshot. Boolean/Float/Error/Block/System parity and canonical prelude
 cutover remain open N7.1 work.
+
+The follow-up numeric slice landed at `31f8984`: the opt-in Rust prelude now
+covers Float receivers, mixed Integer/Float arithmetic and comparisons,
+Float-to-Integer conversion and rounding, `abs`, `sqrt`, and canonical float
+printing. Its focused target remains 1/1; no benchmark allowance changes and
+the Zig prelude remains the behavioral oracle.
