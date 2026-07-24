@@ -2349,6 +2349,9 @@ unsafe extern "C" fn rust_codegen_replay_aliens(
             replayed += 1;
         }
     }
+    // Individual alien failures are best-effort during image recovery. Do not
+    // leak the last failed wrapper's diagnostic after returning a usable count.
+    clear_error();
     unsafe { (api.mkSmallInt)(replayed as i64) }
 }
 

@@ -810,6 +810,7 @@ test "Rust Codegen retains registered module sources across collection" {
         @as(i64, 1),
         api.smallIntValue(api.send(codegen, api.intern("replayAliens"), &.{}, 0)),
     );
+    try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("lastError"), &.{}, 0));
     try std.testing.expectEqual(
         @as(i64, 1),
         api.smallIntValue(api.send(codegen, api.intern("deriveImageGlobals"), &.{}, 0)),
