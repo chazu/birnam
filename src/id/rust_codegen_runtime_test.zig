@@ -255,7 +255,32 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try image.appendSlice(std.testing.allocator, facts.items);
     try tmp.dir.writeFile(.{ .sub_path = "facts.image", .data = image.items });
 
+    // A heap reference is deliberately not materialized at this rung. Build a
+    // same-shape image with a unique entity/attribute and prove the replay
+    // rejects it before Rust Store can observe a partial fact.
+    const heap_image_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/heap-facts.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(heap_image_path);
+    var heap_facts: std.ArrayList(u8) = .{};
+    defer heap_facts.deinit(std.testing.allocator);
+    try heap_facts.appendSlice(std.testing.allocator, facts.items[0..49]);
+    @memcpy(heap_facts.items[26..36], "heapEntity");
+    @memcpy(heap_facts.items[41..49], "heapAttr");
+    try heap_facts.append(std.testing.allocator, 7);
+    std.mem.writeInt(u32, &u32_bytes, 0, .little);
+    try heap_facts.appendSlice(std.testing.allocator, &u32_bytes);
+    var heap_image: std.ArrayList(u8) = .{};
+    defer heap_image.deinit(std.testing.allocator);
+    try heap_image.appendSlice(std.testing.allocator, image.items[0..116]);
+    std.mem.writeInt(u64, heap_image.items[108..116], heap_facts.items.len, .little);
+    try heap_image.appendSlice(std.testing.allocator, heap_facts.items);
+    try tmp.dir.writeFile(.{ .sub_path = "heap-facts.image", .data = heap_image.items });
+
     const image_object = api.mkString(image_path.ptr, image_path.len);
+    const heap_image_object = api.mkString(heap_image_path.ptr, heap_image_path.len);
     try std.testing.expectEqual(
         api.nilObj,
         api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1),
@@ -270,6 +295,23 @@ test "Rust Codegen replays scalar v4 facts through Rust Store recovery" {
     try std.testing.expectEqual(
         api.trueObj,
         api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    const heap_rejected = api.send(codegen, api.intern("replayImageFacts:"), &.{heap_image_object}, 1);
+    try std.testing.expectEqual(api.nilObj, heap_rejected);
+    const heap_diagnostic = api.send(codegen, api.intern("lastError"), &.{}, 0);
+    var heap_diagnostic_len: usize = 0;
+    const heap_diagnostic_bytes = api.stringBytes(heap_diagnostic, &heap_diagnostic_len);
+    try std.testing.expect(
+        std.mem.indexOf(u8, heap_diagnostic_bytes[0..heap_diagnostic_len], "heap references") != null,
+    );
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            store,
+            api.intern("currentValue:attr:"),
+            &.{ api.intern("heapEntity"), api.intern("heapAttr") },
+            2,
+        ),
     );
     const replayed = api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1);
     try std.testing.expect(api.isSmallInt(replayed) != 0);
