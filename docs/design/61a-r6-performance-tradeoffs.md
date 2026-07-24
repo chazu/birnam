@@ -114,3 +114,10 @@ optimized closure retained only the exact quarantined fixture signature, and
 the digest-pinned comparator again reported exactly the same two crossings with
 zero missing or unusable cases. This remains a functional coverage update, not
 a new performance exception or benchmark snapshot.
+
+After fact-record validation and the exact Wyhash code checksum check landed at
+`a2b331f`, the complete script passed again on the current head. The 18-test
+Rust Codegen boundary, pure image tests, optimized verify closure, and
+digest-pinned comparator all remained green; the only verify observation was
+the same quarantined `sortedModules` fixture, and the comparator retained zero
+missing/unusable cases plus the same two accepted crossings.
