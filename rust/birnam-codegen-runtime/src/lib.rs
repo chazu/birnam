@@ -20,7 +20,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
@@ -73,6 +73,10 @@ const RECONCILE_ALL_CANDIDATES_SELECTOR: &[u8] = b"reconcileAllCandidates\0";
 const BEGIN_IMAGE_RECOVERY_SELECTOR: &[u8] = b"beginImageDispatchRecovery\0";
 const END_IMAGE_RECOVERY_SELECTOR: &[u8] = b"endImageDispatchRecovery\0";
 const MANAGED_METHOD_CHANGED_SELECTOR: &[u8] = b"managedMethodChanged:on:\0";
+const AUTHORIZE_METHOD_MUTATION_SELECTOR: &[u8] = b"authorizeManagedMethodMutation\0";
+const ENTER_RUNNING_SELECTOR: &[u8] = b"enterRunning\0";
+const BEGIN_QUIESCENCE_SELECTOR: &[u8] = b"beginQuiescence\0";
+const END_QUIESCENCE_SELECTOR: &[u8] = b"endQuiescence\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -119,6 +123,13 @@ static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
+static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
+static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
+
+const PHASE_BOOTSTRAPPING: u8 = 0;
+const PHASE_RUNNING: u8 = 1;
+const PHASE_QUIESCENT: u8 = 2;
+const PHASE_IMAGE_RECOVERY: u8 = 3;
 
 unsafe extern "C" {
     fn dlclose(handle: *mut c_void) -> i32;
@@ -2357,13 +2368,115 @@ unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: Oop) -> bool
 }
 
 unsafe extern "C" fn rust_codegen_authorize_method_mutation() -> Oop {
-    // The complete runtime-phase/quiescence state machine is introduced with
-    // the production Codegen switch. Until then, the callback is deliberately
-    // permissive so a mixed Zig-Codegen/Rust-Codegen stack keeps its existing
-    // mutation authority while Rust candidates can still observe drift.
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    api.trueObj
+    if MOP_MUTATION_IN_PROGRESS.load(Ordering::Acquire)
+        || matches!(
+            RUNTIME_PHASE.load(Ordering::Acquire),
+            PHASE_BOOTSTRAPPING | PHASE_QUIESCENT | PHASE_IMAGE_RECOVERY
+        )
+    {
+        return api.trueObj;
+    }
+    note_error(b"RustCodegen dispatch mutation requires quiescence");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_authorize_method_mutation_method(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen authorizeManagedMethodMutation: expects no arguments");
+    }
+    unsafe { rust_codegen_authorize_method_mutation() }
+}
+
+unsafe extern "C" fn rust_codegen_enter_running(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen enterRunning: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if RUNTIME_PHASE
+        .compare_exchange(
+            PHASE_BOOTSTRAPPING,
+            PHASE_RUNNING,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+        || RUNTIME_PHASE
+            .compare_exchange(
+                PHASE_QUIESCENT,
+                PHASE_RUNNING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    {
+        return api.trueObj;
+    }
+    note_error(b"RustCodegen cannot enter running from the current phase");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_begin_quiescence(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen beginQuiescence: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if RUNTIME_PHASE
+        .compare_exchange(
+            PHASE_RUNNING,
+            PHASE_QUIESCENT,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+    {
+        return api.trueObj;
+    }
+    note_error(b"RustCodegen cannot begin quiescence from the current phase");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_end_quiescence(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen endQuiescence: expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if RUNTIME_PHASE
+        .compare_exchange(
+            PHASE_QUIESCENT,
+            PHASE_RUNNING,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+    {
+        return api.trueObj;
+    }
+    note_error(b"RustCodegen cannot end quiescence from the current phase");
+    api.nilObj
 }
 
 unsafe extern "C" fn rust_codegen_managed_method_changed(
@@ -3080,6 +3193,8 @@ unsafe extern "C" fn rust_codegen_begin_image_dispatch_recovery(
     if count != 0 {
         abort("RustCodegen beginImageDispatchRecovery: expects no arguments");
     }
+    let previous = RUNTIME_PHASE.swap(PHASE_IMAGE_RECOVERY, Ordering::AcqRel);
+    IMAGE_PREVIOUS_PHASE.store(previous, Ordering::Release);
     IMAGE_DISPATCH_RECOVERY.store(true, Ordering::Release);
     if let Ok(mut candidates) = CANDIDATES.lock() {
         for candidate in candidates.iter_mut() {
@@ -3100,6 +3215,13 @@ unsafe extern "C" fn rust_codegen_end_image_dispatch_recovery(
         abort("RustCodegen endImageDispatchRecovery: expects no arguments");
     }
     IMAGE_DISPATCH_RECOVERY.store(false, Ordering::Release);
+    let previous = IMAGE_PREVIOUS_PHASE.load(Ordering::Acquire);
+    let _ = RUNTIME_PHASE.compare_exchange(
+        PHASE_IMAGE_RECOVERY,
+        previous,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
     unsafe { api(runtime()) }.trueObj
 }
 
@@ -3643,6 +3765,26 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, MANAGED_METHOD_CHANGED_SELECTOR),
             rust_codegen_managed_method_changed,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, AUTHORIZE_METHOD_MUTATION_SELECTOR),
+            rust_codegen_authorize_method_mutation_method,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, ENTER_RUNNING_SELECTOR),
+            rust_codegen_enter_running,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, BEGIN_QUIESCENCE_SELECTOR),
+            rust_codegen_begin_quiescence,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, END_QUIESCENCE_SELECTOR),
+            rust_codegen_end_quiescence,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

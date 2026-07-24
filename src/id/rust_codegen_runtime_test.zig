@@ -608,8 +608,16 @@ test "Rust Codegen inspects and maps a Zig candidate" {
         api.intern("rolledBack"),
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
     );
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("enterRunning"), &.{}, 0));
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endImageDispatchRecovery"), &.{}, 0));
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("authorizeManagedMethodMutation"), &.{}, 0));
 }
 
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
