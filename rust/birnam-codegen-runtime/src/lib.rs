@@ -1442,7 +1442,98 @@ unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool 
     let Some(actual) = (unsafe { generation_digest(api, source_map) }) else {
         return false;
     };
-    unsafe { string_bytes(api, recorded) }.is_some_and(|digest| digest == actual)
+    unsafe { string_bytes(api, recorded) }
+        .is_some_and(|digest| digest.as_slice() == actual.as_slice())
+}
+
+unsafe fn durable_generation_entry(api: &IdApi, generation: Oop, name: Oop) -> Option<Oop> {
+    let store = runtime().store as Oop;
+    let source_map = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"sourceMap\0")],
+        )
+    };
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let count = unsafe { vector_length(api, source_map, vector_vt) }?;
+    for index in 0..count {
+        let entry = unsafe { vector_item(api, source_map, index) };
+        if unsafe { vector_length(api, entry, vector_vt) } != Some(3) {
+            return None;
+        }
+        if unsafe { vector_item(api, entry, 0) } == name {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+unsafe fn durable_generation_plan_is_valid(
+    api: &IdApi,
+    unit: Oop,
+    name: Oop,
+    prior: Oop,
+    expected: Oop,
+    successor: Oop,
+    action: &[u8],
+) -> bool {
+    if !unsafe { durable_generation_is_canonical(api, expected) }
+        || !unsafe { durable_generation_is_canonical(api, successor) }
+    {
+        return false;
+    }
+    let Some(expected_entry) = (unsafe { durable_generation_entry(api, expected, name) }) else {
+        return false;
+    };
+    let Some(successor_entry) = (unsafe { durable_generation_entry(api, successor, name) }) else {
+        return false;
+    };
+    let store = runtime().store as Oop;
+    let expected_predecessor = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[expected, intern(api, b"predecessor\0")],
+        )
+    };
+    let expected_delta = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[expected, intern(api, b"deltaUnit\0")],
+        )
+    };
+    let successor_predecessor = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[successor, intern(api, b"predecessor\0")],
+        )
+    };
+    let successor_delta = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[successor, intern(api, b"deltaUnit\0")],
+        )
+    };
+    if action == b"activate\0" {
+        (unsafe { vector_item(api, expected_entry, 2) }) == prior
+            && (unsafe { vector_item(api, successor_entry, 2) }) == unit
+            && successor_predecessor == expected
+            && successor_delta == unit
+    } else {
+        (unsafe { vector_item(api, expected_entry, 2) }) == unit
+            && expected_predecessor == successor
+            && expected_delta == unit
+            && (unsafe { vector_item(api, successor_entry, 2) }) == prior
+    }
 }
 
 unsafe fn set_durable_current_generation(api: &IdApi, generation: Oop) -> bool {
@@ -3412,6 +3503,22 @@ unsafe fn parse_publication_plan(
         || successor_generation == api.nilObj
     {
         note_error(b"RustCodegen publication plan is incomplete");
+        return None;
+    }
+    if unsafe { durable_current_generation(api) } != api.nilObj
+        && !unsafe {
+            durable_generation_plan_is_valid(
+                api,
+                unit,
+                name,
+                prior,
+                expected_generation,
+                successor_generation,
+                action,
+            )
+        }
+    {
+        note_error(b"RustCodegen publication plan does not match durable generation");
         return None;
     }
     Some((
