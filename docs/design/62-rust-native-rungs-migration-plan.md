@@ -2127,6 +2127,13 @@ dispatch carrier is restored; the successor is marked rolled back. The fixture
 passes for both Rust Store and Zig Store, each at 3/3 in the focused matrix.
 The full R6 gate passed again with no new benchmark exception.
 
+The Rust-only candidate remove/rollback branch landed at `320c19a`. The base
+candidate installs a second direct method returning 91; the successor's
+generated `removeMethod:on:` removes that binding, and GC-safe rollback restores
+the predecessor's method carrier and dispatch result. Both callback variants
+remain 3/3, and the complete R6 gate passes with the same two accepted
+benchmark crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
