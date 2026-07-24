@@ -1724,9 +1724,10 @@ through `prepareActivation:plan:` and `prepareRollback:plan:`. It copies the
 event, basis, generation handles, and predecessor identity into the rooted
 prepared state; commit requires bootstrapping or quiescence, asserts the event
 facts, and consumes the plan token only after the exact MOP mutation succeeds.
-The installed gate exercises both explicit plan selectors. Canonical generation
-digest/current-generation comparison and stale-plan rejection remain the next
-publication hardening slice.
+The installed gate exercises both explicit plan selectors. A process-local
+current-generation guard rejects stale plans at preparation and commit; durable
+Store generation/currentness comparison remains the next publication hardening
+slice.
 
 Rust `reconcileCandidate:` and `reconcileAllCandidates` now expose the same
 post-carrier check without requiring a rollback attempt. They return the unit
