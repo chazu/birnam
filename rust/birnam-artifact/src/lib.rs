@@ -5,6 +5,7 @@
 //! artifact and rejects malformed framing before a higher rung can materialize
 //! any Birnam value.
 
+pub mod candidate;
 mod module;
 
 pub const ABI: &[u8] = b"birnam-artifact-generation-v1";
