@@ -1602,7 +1602,9 @@ source String, and all three 64-character hexadecimal digest Strings. It also
 requires each source-map entry name to equal its revision name and type-checks
 String payloads before calling the invariant-enforcing IdApi byte accessor. A
 regression fixture proves that a partially malformed successor revision is
-rejected without recomputing or publishing a generation.
+rejected without recomputing or publishing a generation. The digest projection
+also rejects duplicate module names among untouched entries, with a separate
+fixture covering that non-target collision.
 
 ### N6.3 — Port eval and compile orchestration
 
