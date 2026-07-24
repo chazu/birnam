@@ -13,7 +13,7 @@ use birnam_artifact::candidate::{
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use birnam_image::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
-use core::ffi::{c_char, c_void};
+use core::ffi::{c_char, c_long, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::ffi::{CStr, OsStr, OsString};
@@ -146,9 +146,11 @@ static INITIAL_GENERATION_SEALED: Mutex<bool> = Mutex::new(false);
 static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
+static CANDIDATE_ROOTS: Mutex<Vec<CandidateRoot>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static CANDIDATE_PREPARING: AtomicBool = AtomicBool::new(false);
 static HOST_CAPABILITY_LOADING: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -195,6 +197,13 @@ struct PreparedState {
     rollback: bool,
     prior: usize,
     plan: PublicationPlanState,
+}
+
+#[derive(Clone, Copy)]
+struct CandidateRoot {
+    salt: u64,
+    index: isize,
+    value: usize,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -321,6 +330,14 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
             }
         }
     }
+    if let Ok(roots) = CANDIDATE_ROOTS.lock() {
+        for root in roots.iter() {
+            // SAFETY: candidate root slots are generated Oops retained until
+            // process teardown; the provider keeps block captures alive across
+            // candidate activation and collection.
+            unsafe { mark(root.value as Oop) };
+        }
+    }
     let generation = ACTIVE_GENERATION.load(Ordering::Acquire);
     if generation != 0 {
         // SAFETY: the generation is a projection object retained for the
@@ -344,7 +361,15 @@ pub unsafe extern "C" fn birnam_global(name: *const c_char) -> Oop {
         return api.nilObj;
     }
     let key = unsafe { (api.intern)(name) };
-    unsafe { send(api, globals, GLOBAL_AT_SELECTOR, &[key]) }
+    let value = unsafe { send(api, globals, GLOBAL_AT_SELECTOR, &[key]) };
+    if value != api.nilObj && !value.is_null() {
+        return value;
+    }
+    if unsafe { (api.isExported)(name.cast()) } != 0 {
+        unsafe { (api.import)(name.cast()) }
+    } else {
+        api.nilObj
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -363,6 +388,255 @@ pub unsafe extern "C" fn birnam_global_set(name: *const c_char, value: Oop) -> O
     }
     let key = unsafe { (api.intern)(name) };
     unsafe { send(api, globals, GLOBAL_AT_PUT_SELECTOR, &[key, value]) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_global")]
+/// Rust-owned generated-global lookup used by candidate artifacts.
+///
+/// # Safety
+/// `name` must point to a readable NUL-terminated string for the synchronous call.
+pub unsafe extern "C" fn birnam_rust_codegen_global(name: *const c_char) -> Oop {
+    // SAFETY: this is the Rust-owned spelling of the same generated-global
+    // contract; the candidate emitter supplies a live NUL-terminated name.
+    unsafe { birnam_global(name) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_global_b")]
+/// Rust-owned baked global lookup used by candidate artifacts.
+///
+/// # Safety
+/// `symbol` must be a live Symbol Oop owned by the current IdApi floor.
+pub unsafe extern "C" fn birnam_rust_codegen_global_b(symbol: Oop) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if symbol.is_null() {
+        return api.nilObj;
+    }
+    let name = unsafe { (api.symbolName)(symbol) };
+    // SAFETY: symbolName returns the interned NUL-terminated storage for a
+    // live Symbol, which remains valid for the synchronous send.
+    unsafe { birnam_rust_codegen_global(name.cast()) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_global_set")]
+/// Rust-owned generated-global setter used by candidate artifacts.
+///
+/// # Safety
+/// `name` must point to a readable NUL-terminated string and `value` must be a live Oop.
+pub unsafe extern "C" fn birnam_rust_codegen_global_set(name: *const c_char, value: Oop) -> Oop {
+    // SAFETY: forwarded generated-global ABI contract.
+    unsafe { birnam_global_set(name, value) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_record_global_src")]
+/// Record a generated top-level binding source in the Rust-owned Globals mirror.
+///
+/// # Safety
+/// `name` and `source` must reference readable buffers of the declared form.
+pub unsafe extern "C" fn birnam_rust_codegen_record_global_src(
+    name: *const c_char,
+    source: *const u8,
+    length: c_long,
+) {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if name.is_null() || source.is_null() || length < 0 {
+        return;
+    }
+    let source = unsafe { (api.mkString)(source, length as usize) };
+    let entity = unsafe { intern(api, GLOBAL_SOURCES_ENTITY_NAME) };
+    let key = unsafe { (api.intern)(name) };
+    let _ = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            STORE_ASSERT_SELECTOR,
+            &[entity, key, source],
+        )
+    };
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_record_module_source")]
+/// Retain a generated module source pair in the Rust Codegen provider registry.
+///
+/// # Safety
+/// `name` and `source` must reference readable buffers of the declared form.
+pub unsafe extern "C" fn birnam_rust_codegen_record_module_source(
+    name: *const c_char,
+    source: *const u8,
+    length: c_long,
+) {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if name.is_null() || source.is_null() || length < 0 {
+        return;
+    }
+    let source = unsafe { (api.mkString)(source, length as usize) };
+    let key = unsafe { (api.intern)(name) };
+    if let Ok(mut modules) = MODULE_SOURCES.lock() {
+        modules.push((key as usize, source as usize));
+    }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_is_error")]
+/// Return one when `value` is an Error object in the current floor.
+///
+/// # Safety
+/// `value` must be a pointer-sized ABI carrier supplied by the active IdApi.
+pub unsafe extern "C" fn birnam_rust_codegen_is_error(value: Oop) -> c_long {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if value.is_null() || value == api.nilObj {
+        return 0;
+    }
+    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    if error_vt.is_null() || error_vt == api.nilObj {
+        return 0;
+    }
+    (unsafe { (api.vtableOf)(value) } == error_vt) as c_long
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_install_method")]
+/// Install one generated method through the selected Store MOP.
+///
+/// # Safety
+/// All Oop carriers and the method address must remain valid for this synchronous call.
+pub unsafe extern "C" fn birnam_rust_codegen_install_method(
+    vtable: Oop,
+    selector: Oop,
+    method: *mut c_void,
+    _source: *const u8,
+    _length: c_long,
+) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if CANDIDATE_PREPARING.load(Ordering::Acquire) {
+        return runtime.store as Oop;
+    }
+    // SAFETY: generated C supplies a Method address in the ABI's pointer
+    // carrier position; Store consumes the same raw carrier representation.
+    let method: Oop = method;
+    unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            b"addMethod:on:with:\0",
+            &[selector, vtable, method],
+        )
+    }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_remove_method")]
+/// Remove one generated direct method through the selected Store MOP.
+///
+/// # Safety
+/// `target` and `selector` must be live Oop carriers from the active IdApi.
+pub unsafe extern "C" fn birnam_rust_codegen_remove_method(
+    target: Oop,
+    selector: Oop,
+    _source: *const u8,
+    _length: c_long,
+) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let vtable = unsafe { (api.vtableOf)(target) };
+    if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
+        return api.nilObj;
+    }
+    unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            b"removeMethod:on:\0",
+            &[selector, vtable],
+        )
+    }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_candidate_root_set")]
+/// Store one generated candidate capture in the Rust root provider.
+///
+/// # Safety
+/// `value` must be a live Oop or a null ABI carrier.
+pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_set(
+    salt: u64,
+    index: c_long,
+    value: Oop,
+) -> Oop {
+    let value = value as usize;
+    let index = index as isize;
+    if let Ok(mut roots) = CANDIDATE_ROOTS.lock() {
+        if let Some(root) = roots
+            .iter_mut()
+            .find(|root| root.salt == salt && root.index == index)
+        {
+            root.value = value;
+        } else {
+            roots.push(CandidateRoot { salt, index, value });
+        }
+    }
+    value as Oop
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_candidate_root_get")]
+/// Load one generated candidate capture from the Rust root provider.
+///
+/// # Safety
+/// The call must occur while the Rust Codegen module remains initialized.
+pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(salt: u64, index: c_long) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let index = index as isize;
+    CANDIDATE_ROOTS
+        .lock()
+        .ok()
+        .and_then(|roots| {
+            roots
+                .iter()
+                .find(|root| root.salt == salt && root.index == index)
+                .copied()
+        })
+        .map(|root| root.value as Oop)
+        .unwrap_or(api.nilObj)
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_candidate_prepare_mode")]
+/// Toggle candidate preparation mode for generated method-install shims.
+///
+/// # Safety
+/// The caller must use the generated candidate lifecycle protocol.
+pub unsafe extern "C" fn birnam_rust_codegen_candidate_prepare_mode(on: c_long) {
+    CANDIDATE_PREPARING.store(on != 0, Ordering::Release);
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_candidate_validate_binding")]
+/// Validate one candidate target and selector binding against the live floor.
+///
+/// # Safety
+/// `target_name` and `selector_name` must be readable NUL-terminated strings.
+pub unsafe extern "C" fn birnam_rust_codegen_candidate_validate_binding(
+    target_name: *const c_char,
+    selector_name: *const c_char,
+    arity: c_long,
+    _removal: c_long,
+) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if target_name.is_null() || selector_name.is_null() || arity < 0 {
+        return api.falseObj;
+    }
+    let target_name = unsafe { CStr::from_ptr(target_name.cast()) }.to_bytes();
+    let selector_name = unsafe { CStr::from_ptr(selector_name.cast()) }.to_bytes();
+    let target = unsafe { global_by_name(api, runtime, target_name) };
+    if target.is_null()
+        || target == api.nilObj
+        || unsafe { (api.vtableOf)(target) }.is_null()
+        || unsafe { (api.vtableOwner)((api.vtableOf)(target)) } != target
+        || selector_arity(selector_name) != arity as usize
+    {
+        return api.falseObj;
+    }
+    api.trueObj
 }
 
 unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
@@ -608,26 +882,38 @@ fn candidate_generated(
     generated: &[u8],
     manifest: &[u8],
     operations: &[RevisionOperation],
+    rust_owned_shims: bool,
 ) -> Vec<u8> {
     // The mixed stack still owns the candidate callback ABI in Zig Codegen.
     // Keep these declarations local to the candidate instead of exporting a
     // second Rust owner for the same dynamic symbols before the final cutover.
+    let generated = if rust_owned_shims {
+        rewrite_codegen_shims(generated)
+    } else {
+        generated.to_vec()
+    };
+    let prepare_mode = codegen_shim_name(b"birnam_candidate_prepare_mode", rust_owned_shims);
+    let validate_binding =
+        codegen_shim_name(b"birnam_candidate_validate_binding", rust_owned_shims);
     let mut output = Vec::with_capacity(generated.len() + manifest.len() + 512);
-    output.extend_from_slice(b"extern void birnam_candidate_prepare_mode(long on);\n".as_slice());
-    output.extend_from_slice(
-        b"extern void* birnam_candidate_validate_binding(const char*, const char*, long, long);\n"
-            .as_slice(),
-    );
+    output.extend_from_slice(b"extern void ");
+    output.extend_from_slice(prepare_mode);
+    output.extend_from_slice(b"(long on);\n");
+    output.extend_from_slice(b"extern void* ");
+    output.extend_from_slice(validate_binding);
+    output.extend_from_slice(b"(const char*, const char*, long, long);\n");
     output.extend_from_slice(b"const char __birnam_candidate_manifest[] = \"");
     append_c_string(&mut output, manifest);
     output.extend_from_slice(b"\";\n");
-    output.extend_from_slice(generated);
+    output.extend_from_slice(&generated);
     output.extend_from_slice(
         b"void* __birnam_candidate_validate(void* s, void** a, long n){(void)s;(void)a;(void)n;\n"
             .as_slice(),
     );
     for operation in operations {
-        output.extend_from_slice(b"if(birnam_candidate_validate_binding(\"");
+        output.extend_from_slice(b"if(");
+        output.extend_from_slice(validate_binding);
+        output.extend_from_slice(b"(\"");
         append_c_string(&mut output, &operation.target);
         output.extend_from_slice(b"\",\"");
         append_c_string(&mut output, &operation.selector);
@@ -639,8 +925,12 @@ fn candidate_generated(
     }
     output.extend_from_slice(b"return birnam_true();}\n");
     output.extend_from_slice(
-        b"void* __birnam_candidate_prepare(void* s, void** a, long n){birnam_candidate_prepare_mode(1L);(void)__ev(s,a,n);birnam_candidate_prepare_mode(0L);return birnam_true();}\n"
-            .as_slice(),
+        format!(
+            "void* __birnam_candidate_prepare(void* s, void** a, long n){{{}(1L);(void)__ev(s,a,n);{}(0L);return birnam_true();}}\n",
+            String::from_utf8_lossy(prepare_mode),
+            String::from_utf8_lossy(prepare_mode),
+        )
+        .as_bytes(),
     );
     output.extend_from_slice(
         b"void* __birnam_candidate_activate(void* s, void** a, long n){return __ev(s,a,n);}\n"
@@ -650,6 +940,69 @@ fn candidate_generated(
         b"void* __birnam_candidate_rollback(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_nil();}\n"
             .as_slice(),
     );
+    output
+}
+
+fn codegen_shim_name(name: &[u8], rust_owned: bool) -> &'static [u8] {
+    if !rust_owned {
+        return match name {
+            b"birnam_candidate_prepare_mode" => b"birnam_candidate_prepare_mode",
+            b"birnam_candidate_validate_binding" => b"birnam_candidate_validate_binding",
+            _ => unreachable!("unknown Codegen shim"),
+        };
+    }
+    match name {
+        b"birnam_global" => b"birnam_rust_codegen_global",
+        b"birnam_global_b" => b"birnam_rust_codegen_global_b",
+        b"birnam_global_set" => b"birnam_rust_codegen_global_set",
+        b"birnam_record_global_src" => b"birnam_rust_codegen_record_global_src",
+        b"birnam_record_module_source" => b"birnam_rust_codegen_record_module_source",
+        b"birnam_is_error" => b"birnam_rust_codegen_is_error",
+        b"birnam_install_method" => b"birnam_rust_codegen_install_method",
+        b"birnam_remove_method" => b"birnam_rust_codegen_remove_method",
+        b"birnam_candidate_root_set" => b"birnam_rust_codegen_candidate_root_set",
+        b"birnam_candidate_root_get" => b"birnam_rust_codegen_candidate_root_get",
+        b"birnam_candidate_prepare_mode" => b"birnam_rust_codegen_candidate_prepare_mode",
+        b"birnam_candidate_validate_binding" => b"birnam_rust_codegen_candidate_validate_binding",
+        _ => unreachable!("unknown Codegen shim"),
+    }
+}
+
+fn rewrite_codegen_shims(generated: &[u8]) -> Vec<u8> {
+    let mut rewritten = generated.to_vec();
+    const NAMES: [&[u8]; 12] = [
+        b"birnam_candidate_validate_binding",
+        b"birnam_candidate_prepare_mode",
+        b"birnam_candidate_root_set",
+        b"birnam_candidate_root_get",
+        b"birnam_record_module_source",
+        b"birnam_record_global_src",
+        b"birnam_install_method",
+        b"birnam_remove_method",
+        b"birnam_global_set",
+        b"birnam_global_b",
+        b"birnam_global",
+        b"birnam_is_error",
+    ];
+    for name in NAMES {
+        rewritten = replace_bytes(&rewritten, name, codegen_shim_name(name, true));
+    }
+    rewritten
+}
+
+fn replace_bytes(input: &[u8], old: &[u8], new: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(input.len());
+    let mut cursor = 0;
+    while let Some(relative) = input[cursor..]
+        .windows(old.len())
+        .position(|window| window == old)
+    {
+        let start = cursor + relative;
+        output.extend_from_slice(&input[cursor..start]);
+        output.extend_from_slice(new);
+        cursor = start + old.len();
+    }
+    output.extend_from_slice(&input[cursor..]);
     output
 }
 
@@ -3308,7 +3661,13 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
         .unwrap_or_default();
     let source_digest = sha256_hex(&source_bytes);
     let manifest = candidate_manifest(&metadata, &source_digest);
-    let candidate_generated = candidate_generated(&generated, &manifest, &metadata.operations);
+    let rust_owned_shims = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } == 0;
+    let candidate_generated = candidate_generated(
+        &generated,
+        &manifest,
+        &metadata.operations,
+        rust_owned_shims,
+    );
     let artifact = artifact_source(
         &source_bytes,
         &metadata.name,
