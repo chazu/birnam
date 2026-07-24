@@ -591,6 +591,47 @@ pub fn build(b: *std.Build) void {
         b.pathFromRoot(".cargo-target"),
     );
     if (optimize != .Debug) rust_floor_build.addArg("--release");
+    // Keep the explicit Rust Codegen emitter available beside the frozen Zig
+    // Codegen authority. It is opt-in until N6.3–N6.6 lifecycle gates pass.
+    const install_rust_codegen = b.addInstallFileWithDir(
+        b.path(b.fmt(
+            ".cargo-target/{s}/libbirnam_codegen_runtime.dylib",
+            .{rust_floor_profile},
+        )),
+        .lib,
+        "libbirnam_id_codegen_rust.dylib",
+    );
+    install_rust_codegen.step.dependOn(&rust_floor_build.step);
+    b.getInstallStep().dependOn(&install_rust_codegen.step);
+    bootstrap_install.dependOn(&install_rust_codegen.step);
+
+    const rust_codegen_runtime_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_codegen_runtime_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_codegen_runtime_test = b.addTest(.{ .root_module = rust_codegen_runtime_test_mod });
+    const run_rust_codegen_runtime_test = b.addRunArtifact(rust_codegen_runtime_test);
+    run_rust_codegen_runtime_test.setEnvironmentVariable(
+        "BIRNAM_ID_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id.dylib"),
+    );
+    run_rust_codegen_runtime_test.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", "rust-id-v1");
+    run_rust_codegen_runtime_test.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_codegen_runtime_test.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_codegen_runtime_test.step.dependOn(bootstrap_install);
+    const test_rust_codegen_runtime_step = b.step(
+        "test-rust-codegen-runtime",
+        "Exercise the explicit Rust Codegen emitter through IdApi and Rust PEG",
+    );
+    test_rust_codegen_runtime_step.dependOn(&run_rust_codegen_runtime_test.step);
+    test_step.dependOn(&run_rust_codegen_runtime_test.step);
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(
             b.path(b.fmt(
