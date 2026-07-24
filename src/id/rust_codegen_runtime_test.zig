@@ -769,6 +769,14 @@ test "Rust Codegen retains registered module sources across collection" {
         2,
     );
     _ = api.send(replay_alien_cell, api.intern("set:"), &.{replay_alien_source}, 1);
+    const invalid_alien_source = api.mkString("[", 1);
+    const invalid_alien_cell = api.send(
+        store,
+        api.intern("cellFor:attr:"),
+        &.{ api.intern("__aliens__"), api.intern("__alien_8") },
+        2,
+    );
+    _ = api.send(invalid_alien_cell, api.intern("set:"), &.{invalid_alien_source}, 1);
     const derived_global_name = api.intern("rustDerivedGlobal");
     const derived_global_source = api.mkString("43", 2);
     const derived_global_cell = api.send(
