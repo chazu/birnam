@@ -32,6 +32,7 @@ pub enum Error {
     CodeBeforeAuthority,
     DuplicateCode,
     AuthorityMismatch,
+    CodeChecksumMismatch,
     RecordTooLarge,
 }
 
@@ -138,6 +139,9 @@ impl<'a> Image<'a> {
                     if code_value.generation_digest != authority_value.digest {
                         return Err(Error::AuthorityMismatch);
                     }
+                    if !code_value.checksum_matches() {
+                        return Err(Error::CodeChecksumMismatch);
+                    }
                     code = Some(code_value);
                 }
                 RecordKind::Facts | RecordKind::Heap => {}
@@ -215,6 +219,10 @@ impl<'a> Code<'a> {
                 .map_err(|_| Error::InvalidPayloadLength)?,
             unit: &payload[CODE_PREFIX_LEN..],
         })
+    }
+
+    pub fn checksum_matches(self) -> bool {
+        wyhash(0, self.unit) == self.checksum
     }
 }
 
@@ -578,6 +586,78 @@ fn read_u64(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(bytes.try_into().expect("fixed-width image field"))
 }
 
+const WYHASH_SECRET: [u64; 4] = [
+    0xa076_1d64_78bd_642f,
+    0xe703_7ed1_a0b4_28db,
+    0x8ebc_6af0_9c88_c6e3,
+    0x5899_65cc_7537_4cc4,
+];
+
+fn wyhash(seed: u64, input: &[u8]) -> u64 {
+    let mut state = [seed ^ mix(seed ^ WYHASH_SECRET[0], WYHASH_SECRET[1]); 3];
+    let mut a = 0;
+    let mut b = 0;
+    if input.len() <= 16 {
+        small_key(input, &mut a, &mut b);
+    } else {
+        let mut offset = 0;
+        if input.len() >= 48 {
+            while offset + 48 < input.len() {
+                round(&mut state, &input[offset..offset + 48]);
+                offset += 48;
+            }
+            state[0] ^= state[1] ^ state[2];
+        }
+        while offset + 16 < input.len() {
+            state[0] = mix(
+                read_u64(&input[offset..offset + 8]) ^ WYHASH_SECRET[1],
+                read_u64(&input[offset + 8..offset + 16]) ^ state[0],
+            );
+            offset += 16;
+        }
+        a = read_u64(&input[input.len() - 16..input.len() - 8]);
+        b = read_u64(&input[input.len() - 8..]);
+    }
+    a ^= WYHASH_SECRET[1];
+    b ^= state[0];
+    let product = (a as u128).wrapping_mul(b as u128);
+    a = product as u64;
+    b = (product >> 64) as u64;
+    mix(
+        a ^ WYHASH_SECRET[0] ^ input.len() as u64,
+        b ^ WYHASH_SECRET[1],
+    )
+}
+
+fn small_key(input: &[u8], a: &mut u64, b: &mut u64) {
+    if input.len() >= 4 {
+        let end = input.len() - 4;
+        let quarter = (input.len() >> 3) << 2;
+        *a = (u64::from(read_u32(&input[..4])) << 32)
+            | u64::from(read_u32(&input[quarter..quarter + 4]));
+        *b = (u64::from(read_u32(&input[end..end + 4])) << 32)
+            | u64::from(read_u32(&input[end - quarter..end - quarter + 4]));
+    } else if !input.is_empty() {
+        *a = (u64::from(input[0]) << 16)
+            | (u64::from(input[input.len() >> 1]) << 8)
+            | u64::from(input[input.len() - 1]);
+    }
+}
+
+fn round(state: &mut [u64; 3], input: &[u8]) {
+    for index in 0..3 {
+        state[index] = mix(
+            read_u64(&input[index * 16..index * 16 + 8]) ^ WYHASH_SECRET[index + 1],
+            read_u64(&input[index * 16 + 8..index * 16 + 16]) ^ state[index],
+        );
+    }
+}
+
+fn mix(left: u64, right: u64) -> u64 {
+    let product = (left as u128).wrapping_mul(right as u128);
+    product as u64 ^ (product >> 64) as u64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,6 +768,13 @@ mod tests {
     }
 
     #[test]
+    fn code_checksum_matches_the_zig_wyhash_vectors() {
+        assert_eq!(wyhash(0, b""), 0x0409_638e_e2bd_e459);
+        assert_eq!(wyhash(1, b"a"), 0xa841_2d09_1b5f_e0a9);
+        assert_eq!(wyhash(2, b"abc"), 0x32dd_92e4_b291_5153);
+    }
+
+    #[test]
     fn image_preflight_binds_code_to_one_authority() {
         let digest = [b'g'; AUTHORITY_DIGEST_LEN];
         let mut bytes = header(1, 99);
@@ -697,7 +784,7 @@ mod tests {
         assert_eq!(image.authority.digest, &digest);
         assert_eq!(image.code(), None);
 
-        let mut code_payload = 7u64.to_le_bytes().to_vec();
+        let mut code_payload = wyhash(0, b"unit").to_le_bytes().to_vec();
         code_payload.extend_from_slice(&digest);
         code_payload.extend_from_slice(b"unit");
         bytes.extend_from_slice(&record(RecordKind::Code, &code_payload));
@@ -727,7 +814,7 @@ mod tests {
         ));
 
         let mut before = header(1, 99);
-        let mut code = 0u64.to_le_bytes().to_vec();
+        let mut code = wyhash(0, b"").to_le_bytes().to_vec();
         code.extend_from_slice(&digest);
         before.extend_from_slice(&record(RecordKind::Code, &code));
         assert!(matches!(
@@ -752,6 +839,17 @@ mod tests {
         assert!(matches!(
             Image::parse(&duplicate_code),
             Err(Error::DuplicateCode)
+        ));
+
+        let mut bad_checksum = header(1, 99);
+        bad_checksum.extend_from_slice(&record(RecordKind::Authority, &digest));
+        let mut bad_code = 0u64.to_le_bytes().to_vec();
+        bad_code.extend_from_slice(&digest);
+        bad_code.extend_from_slice(b"unit");
+        bad_checksum.extend_from_slice(&record(RecordKind::Code, &bad_code));
+        assert!(matches!(
+            Image::parse(&bad_checksum),
+            Err(Error::CodeChecksumMismatch)
         ));
     }
 
