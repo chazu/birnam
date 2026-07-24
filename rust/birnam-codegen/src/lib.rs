@@ -11,6 +11,31 @@ pub struct Emitter {
     bytes: Vec<u8>,
 }
 
+/// The pure expression subset consumed by the first Rust emission seam.
+///
+/// This is intentionally not a parser CST or a runtime Oop graph. A later
+/// adapter will lower the Rust PEG CST into this representation after the
+/// generated-byte contract is frozen.
+#[derive(Debug, PartialEq)]
+pub enum Expr<'a> {
+    SmallInt(i64),
+    String(&'a [u8]),
+    Symbol(&'a [u8]),
+    Global(&'a [u8]),
+    Send {
+        receiver: Box<Expr<'a>>,
+        selector: &'a [u8],
+        args: Vec<Expr<'a>>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EmitError {
+    DepthLimit,
+}
+
+const MAX_EXPR_DEPTH: usize = 4096;
+
 impl Emitter {
     pub fn new() -> Self {
         Self::default()
@@ -92,6 +117,43 @@ impl Emitter {
         self.bytes.extend_from_slice(b"L)");
     }
 
+    pub fn emit_expr(&mut self, expr: &Expr<'_>) -> Result<(), EmitError> {
+        self.emit_expr_at_depth(expr, 0)
+    }
+
+    fn emit_expr_at_depth(&mut self, expr: &Expr<'_>, depth: usize) -> Result<(), EmitError> {
+        if depth >= MAX_EXPR_DEPTH {
+            return Err(EmitError::DepthLimit);
+        }
+        match expr {
+            Expr::SmallInt(value) => self.emit_small_int(*value),
+            Expr::String(bytes) => self.emit_string(bytes),
+            Expr::Symbol(name) => self.emit_symbol(name),
+            Expr::Global(name) => self.emit_global(name),
+            Expr::Send {
+                receiver,
+                selector,
+                args,
+            } => {
+                self.bytes.extend_from_slice(b"birnam_send(");
+                self.emit_expr_at_depth(receiver, depth + 1)?;
+                self.bytes.extend_from_slice(b", ");
+                self.emit_symbol(selector);
+                self.bytes.extend_from_slice(b", (void*[]){");
+                for (index, arg) in args.iter().enumerate() {
+                    if index != 0 {
+                        self.bytes.extend_from_slice(b", ");
+                    }
+                    self.emit_expr_at_depth(arg, depth + 1)?;
+                }
+                self.bytes.extend_from_slice(b"}, ");
+                self.bytes.extend_from_slice(args.len().to_string().as_bytes());
+                self.bytes.extend_from_slice(b"L)");
+            }
+        }
+        Ok(())
+    }
+
     pub fn finish(self) -> Vec<u8> {
         self.bytes
     }
@@ -99,7 +161,7 @@ impl Emitter {
 
 #[cfg(test)]
 mod tests {
-    use super::Emitter;
+    use super::{EmitError, Emitter, Expr};
 
     #[test]
     fn escapes_like_zig_codegen() {
@@ -123,5 +185,31 @@ mod tests {
             String::from_utf8(emitter.finish()).unwrap(),
             "birnam_mkSmallInt(42); birnam_global(\"Integer\"); birnam_send(birnam_mkSmallInt(1), birnam_intern(\"+\"), (void*[]){birnam_mkSmallInt(2)}, 1L)"
         );
+    }
+
+    #[test]
+    fn emits_pure_expression_ir_and_refuses_unbounded_depth() {
+        let expression = Expr::Send {
+            receiver: Box::new(Expr::Global(b"Integer")),
+            selector: b"at:",
+            args: vec![Expr::String(b"answer")],
+        };
+        let mut emitter = Emitter::new();
+        emitter.emit_expr(&expression).unwrap();
+        assert_eq!(
+            String::from_utf8(emitter.finish()).unwrap(),
+            "birnam_send(birnam_global(\"Integer\"), birnam_intern(\"at:\"), (void*[]){birnam_mkString(\"answer\", 6L)}, 1L)"
+        );
+
+        let mut deep = Expr::SmallInt(0);
+        for _ in 0..4096 {
+            deep = Expr::Send {
+                receiver: Box::new(deep),
+                selector: b"value",
+                args: Vec::new(),
+            };
+        }
+        let mut emitter = Emitter::new();
+        assert_eq!(emitter.emit_expr(&deep), Err(EmitError::DepthLimit));
     }
 }
