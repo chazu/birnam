@@ -24,7 +24,7 @@ fn setup() !*idapi.IdApi {
     try load(api, "BIRNAM_RUST_PEG_DYLIB");
     lang.bringUp(api);
     try load(api, "BIRNAM_RUST_TCC_DYLIB");
-    try load(api, "BIRNAM_RUST_STORE_DYLIB");
+    try load(api, "BIRNAM_CALLBACK_STORE_DYLIB");
     try load(api, "BIRNAM_RUST_CODEGEN_DYLIB");
     // Do not bring up Zig Codegen here. Rust Codegen must become the sole
     // Store callback owner in this process.

@@ -32,6 +32,7 @@ latest_tests=(
   test-native-rung-harness
   test-rust-codegen-runtime
   test-rust-codegen-stack
+  test-rust-codegen-zig-store
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT

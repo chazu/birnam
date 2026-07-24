@@ -662,7 +662,7 @@ pub fn build(b: *std.Build) void {
         b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
     );
     run_rust_codegen_stack_test.setEnvironmentVariable(
-        "BIRNAM_RUST_STORE_DYLIB",
+        "BIRNAM_CALLBACK_STORE_DYLIB",
         b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
     );
     run_rust_codegen_stack_test.setEnvironmentVariable(
@@ -676,6 +676,42 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_codegen_stack_step.dependOn(&run_rust_codegen_stack_test.step);
     test_step.dependOn(&run_rust_codegen_stack_test.step);
+
+    const rust_codegen_zig_store_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_codegen_stack_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_codegen_zig_store_test = b.addTest(.{ .root_module = rust_codegen_zig_store_test_mod });
+    const run_rust_codegen_zig_store_test = b.addRunArtifact(rust_codegen_zig_store_test);
+    run_rust_codegen_zig_store_test.setEnvironmentVariable(
+        "BIRNAM_ID_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id.dylib"),
+    );
+    run_rust_codegen_zig_store_test.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", "rust-id-v1");
+    run_rust_codegen_zig_store_test.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_codegen_zig_store_test.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_codegen_zig_store_test.setEnvironmentVariable(
+        "BIRNAM_CALLBACK_STORE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_store_zig.dylib"),
+    );
+    run_rust_codegen_zig_store_test.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_codegen_zig_store_test.step.dependOn(bootstrap_install);
+    const test_rust_codegen_zig_store_step = b.step(
+        "test-rust-codegen-zig-store",
+        "Exercise Rust Codegen callbacks against the Zig Store oracle",
+    );
+    test_rust_codegen_zig_store_step.dependOn(&run_rust_codegen_zig_store_test.step);
+    test_step.dependOn(&run_rust_codegen_zig_store_test.step);
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(
             b.path(b.fmt(
