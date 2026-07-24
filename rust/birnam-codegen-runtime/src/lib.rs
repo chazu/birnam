@@ -5,7 +5,7 @@
 //! The current method materializes the Rust PEG CST, lowers it through the pure
 //! Codegen core, and returns deterministic generated C without invoking TCC.
 
-use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use birnam_codegen::{Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -33,6 +33,7 @@ const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
 const RELOCATE_SELECTOR: &[u8] = b"relocate\0";
 const DISPOSABLE_SELECTOR: &[u8] = b"disposable\0";
+const SYMBOL_SELECTOR: &[u8] = b"symbol:\0";
 const ADD_SYMBOL_SELECTOR: &[u8] = b"addSymbol:value:\0";
 const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
@@ -111,6 +112,13 @@ unsafe fn bind_global_shim(api: &IdApi, unit: Oop) -> bool {
     let name = unsafe { (api.mkString)(b"birnam_global".as_ptr(), 13) };
     let address = unsafe { (api.mkSmallInt)(birnam_global as *const () as usize as i64) };
     unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
+}
+
+unsafe fn dispose_unit(api: &IdApi, unit: Oop) {
+    // SAFETY: callers use this only before installing a method, or after a
+    // direct one-shot entry call.  The Rust TCC invariant rejects disposal of
+    // installed units, so a failed request cannot release live code.
+    let _ = unsafe { send0(api, unit, DISPOSABLE_SELECTOR) };
 }
 
 fn retain_unit(unit: Oop) {
@@ -266,15 +274,38 @@ unsafe extern "C" fn rust_codegen_eval(
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
     {
+        unsafe { dispose_unit(api, unit) };
         note_error(b"RustCodegen generated C failed to compile");
-        return api.nilObj;
-    }
-    let harness_vt = unsafe { (api.proto)(api.object_vt) };
-    if harness_vt.is_null() {
         return api.nilObj;
     }
     let entry_name = unsafe { (api.mkString)(b"__ev".as_ptr(), 4) };
     let entry_selector = unsafe { intern(api, ENTRY_SELECTOR) };
+    if !source.windows(5).any(|window| window == b"__blk") {
+        let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
+        if unsafe { (api.isSmallInt)(symbol) } == 0 {
+            unsafe { dispose_unit(api, unit) };
+            note_error(b"RustCodegen could not resolve generated entry point");
+            return api.nilObj;
+        }
+        let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+        // SAFETY: TCC's `symbol:` returns the generated `__ev` address with the
+        // frozen Method ABI; the unit is still relocated and not installed.
+        let entry: Method = unsafe { core::mem::transmute(address) };
+        let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+        unsafe { dispose_unit(api, unit) };
+        return result;
+    }
+
+    let harness_vt = unsafe { (api.proto)(api.object_vt) };
+    if harness_vt.is_null() {
+        unsafe { dispose_unit(api, unit) };
+        return api.nilObj;
+    }
+    let instance = unsafe { (api.alloc)(harness_vt, 0) };
+    if instance.is_null() {
+        unsafe { dispose_unit(api, unit) };
+        return api.nilObj;
+    }
     if unsafe {
         send(
             api,
@@ -284,18 +315,11 @@ unsafe extern "C" fn rust_codegen_eval(
         )
     } == api.nilObj
     {
-        return api.nilObj;
-    }
-    let instance = unsafe { (api.alloc)(harness_vt, 0) };
-    if instance.is_null() {
+        unsafe { dispose_unit(api, unit) };
         return api.nilObj;
     }
     let result = unsafe { send0(api, instance, ENTRY_SELECTOR) };
-    if source.windows(5).any(|window| window == b"__blk") {
-        retain_unit(unit);
-    } else {
-        let _ = unsafe { send0(api, unit, DISPOSABLE_SELECTOR) };
-    }
+    retain_unit(unit);
     result
 }
 

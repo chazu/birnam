@@ -55,6 +55,17 @@ test "Rust Codegen evaluates a scalar program through Rust TCC" {
     const result = api.send(codegen, api.intern("eval:"), &.{source}, 1);
     try std.testing.expect(api.isSmallInt(result) != 0);
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(result));
+
+    // Scalar entry points are invoked directly from the relocated TCC symbol,
+    // then their unit is marked disposable before it can become an installed
+    // code owner. Repeat the path and collect to exercise that cleanup seam.
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    for (0..32) |_| {
+        const repeated = api.send(codegen, api.intern("eval:"), &.{source}, 1);
+        try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(repeated));
+    }
+    _ = api.gcCollect();
 }
 
 test "Rust Codegen invokes an emitted block before its owner is collected" {
