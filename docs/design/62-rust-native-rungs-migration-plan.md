@@ -4,8 +4,8 @@
 > passes. N0.1 through N0.6, N1.1–N1.4, N2.1, N2.2d, N2.3a, N2.3b, N2.3c,
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
-> complete; N3.5.1 through N3.5.3 and N4.1 through N4.3 are complete; N4.4 is
-> in progress.
+> complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5 is
+> next.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1223,12 +1223,12 @@ process, old compiled units, Alien, image composition, and optimized compile
 performance before switching. An installed symbol audit must prove exactly one
 owner for every generated-C symbol before and after the switch.
 
-#### N4.4 execution record — in progress, 2026-07-23
+#### N4.4 execution record — complete, 2026-07-23
 
-The Rust TCC selection seam and separate-process AOT evidence are executable,
-while the installed canonical TCC remains Zig. The next slice is the
-old-artifact, image, Alien, and optimized compile observation matrix before any
-canonical TCC cutover.
+The Rust TCC selection seam, separate-process AOT evidence, and canonical
+selection gate are executable. `-Dtcc=rust` now installs Rust under
+`libbirnam_id_tcc.dylib` while retaining both explicit Rust and Zig names;
+`-Dtcc=zig` restores the Zig canonical path. Unknown values fail closed.
 
 The complete 43-test Alien suite now runs through the explicit Rust TCC on both
 IdApi floors, including callback, struct-by-value, library, and failure-path
@@ -1244,11 +1244,16 @@ The installed Rust TCC audit now fails closed on its exact 22 runtime exports,
 Darwin dependency set. It also caught and closed the Cargo build-tree install
 name before the audit was added.
 
-The benchmark driver now accepts `BENCH_TCC=rust` as an observation-only
+The benchmark driver accepts `BENCH_TCC=rust` as an observation-only
 override. A quick ReleaseSafe Rust-floor run through the explicit Rust TCC
 completed the full suite; `compile.stage1-stdlib` measured 40,682 µs median
 (2 reps), below the accepted R6 Rust-floor snapshot's 44,564 µs. Because this
 was a quick, non-guarded run, it is not a replacement acceptance snapshot.
+
+The canonical-selection smoke, relocated Rust-canonical REPL evaluation, and
+explicit Zig rollback REPL evaluation all passed. The exact R6 acceptance gate
+also remains green with only its two recorded crossings. The retained Zig TCC
+is still available under `libbirnam_id_tcc_zig.dylib` for the oracle window.
 
 ## 11. Phase N5 — Rust language-parser rung
 
