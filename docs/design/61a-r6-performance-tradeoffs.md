@@ -299,3 +299,9 @@ The R6 focused boundary advances to 25/25; this is orchestration coverage only
 and does not change the default `load:` path or the accepted benchmark snapshot.
 The complete R6 acceptance run passed at this checkpoint with 25/25 focused
 tests, the documented fixture quarantine, and the same two accepted crossings.
+
+The post-seal loader hardening landed at `776ccb3`: Rust `load:` now rejects
+ordinary module introduction after the initial generation is sealed, while
+`loadHostCapability:` remains the explicit host-safe exception and image
+recovery remains guarded separately. The focused 25/25 boundary remains green;
+this closes a lifecycle-policy gap without changing the benchmark snapshot.
