@@ -22,6 +22,7 @@ fn setup() !*idapi.IdApi {
     const api = floor.api();
     try load(api, "BIRNAM_RUST_PEG_DYLIB");
     lang.bringUp(api);
+    try load(api, "BIRNAM_RUST_TCC_DYLIB");
     try load(api, "BIRNAM_RUST_CODEGEN_DYLIB");
     return api;
 }
@@ -44,4 +45,13 @@ test "Rust Codegen emits through Rust PEG and the live IdApi boundary" {
     const block = try emittedBytes(api, "[:x | [x + 1]]");
     try std.testing.expect(std.mem.indexOf(u8, block, "void* __blk0") != null);
     try std.testing.expect(std.mem.indexOf(u8, block, "birnam_intern(\"value:\")") != null);
+}
+
+test "Rust Codegen evaluates a scalar program through Rust TCC" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const source = api.mkString("7", 1);
+    const result = api.send(codegen, api.intern("eval:"), &.{source}, 1);
+    try std.testing.expect(api.isSmallInt(result) != 0);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(result));
 }
