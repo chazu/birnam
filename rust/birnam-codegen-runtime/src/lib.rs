@@ -1891,6 +1891,10 @@ unsafe extern "C" fn rust_codegen_current_generation_digest(
     let api = unsafe { api(runtime()) };
     let durable = unsafe { durable_current_generation(api) };
     if durable != api.nilObj {
+        if !unsafe { durable_generation_is_canonical(api, durable) } {
+            note_error(b"RustCodegen durable generation is not canonical");
+            return api.nilObj;
+        }
         return unsafe {
             send(
                 api,
