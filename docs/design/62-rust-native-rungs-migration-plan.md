@@ -1737,11 +1737,16 @@ The Rust runtime now also carries the Store callback seam needed by the final
 authority switch. Its managed-method observer watches active candidate
 bindings and marks `drifted`/`rollbackAvailable = false` when a post-activation
 raw carrier changes; candidate-owned activation and rollback mutations are
-guarded from self-observation. In a Rust-only stack, the first Rust candidate
-map conditionally installs this observer and a permissive authorizer; a mixed
-stack leaves the existing Zig Codegen callback owner untouched, honoring the
-Store single-registration law. Runtime-phase/quiescence denial and the full
-Zig↔Rust callback matrix remain a later hardening gate.
+guarded from self-observation. The Rust authorizer now has an explicit
+bootstrapping → running → quiescent phase machine: ordinary running-phase
+mutations fail closed with `dispatch mutation requires quiescence`, while
+candidate-owned commits, bootstrap, quiescence, and image recovery are
+authorized. `enterRunning`, `beginQuiescence`, and `endQuiescence` expose the
+same transitions through the Rust Codegen surface. In a Rust-only stack, the
+first Rust candidate map conditionally installs this observer and authorizer;
+a mixed stack leaves the existing Zig Codegen callback owner untouched,
+honoring the Store single-registration law. The full Zig↔Rust callback matrix
+and publication-plan quiescence handoff remain later hardening gates.
 
 The image handoff now has explicit Rust `beginImageDispatchRecovery` and
 `endImageDispatchRecovery` methods. The begin gate suppresses candidate
