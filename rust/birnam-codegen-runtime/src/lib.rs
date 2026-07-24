@@ -61,7 +61,9 @@ const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const PREPARE_ACTIVATION_SELECTOR: &[u8] = b"prepareActivation:\0";
+const PREPARE_ROLLBACK_SELECTOR: &[u8] = b"prepareRollback:\0";
 const COMMIT_PREPARED_SELECTOR: &[u8] = b"commitPrepared:\0";
+const COMMIT_PREPARED_ROLLBACK_SELECTOR: &[u8] = b"commitPreparedRollback:\0";
 const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
@@ -134,6 +136,7 @@ struct CandidateState {
 struct PreparedState {
     token: usize,
     unit: usize,
+    rollback: bool,
 }
 
 #[derive(Clone)]
@@ -145,6 +148,8 @@ struct CandidateOperationState {
     vtable: usize,
     prior_method: usize,
     prior_present: bool,
+    post_method: usize,
+    post_present: bool,
 }
 
 fn abort(message: &str) -> ! {
@@ -2210,6 +2215,8 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             vtable: 0,
             prior_method: 0,
             prior_present: false,
+            post_method: 0,
+            post_present: false,
         })
         .collect();
     let name = unsafe { intern_bytes(api, &metadata.name) };
@@ -2612,6 +2619,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
         prepared_states.push(PreparedState {
             token: token as usize,
             unit: values[0] as usize,
+            rollback: false,
         });
         return token;
     }
@@ -2666,6 +2674,31 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         note_error(b"RustCodegen candidate activation failed");
         return api.nilObj;
     }
+    let mut operations = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == unit) else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        candidate.operations.clone()
+    };
+    for operation in &mut operations {
+        let selector = unsafe { intern_bytes(api, &operation.selector) };
+        let vtable = operation.vtable as Oop;
+        let current = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                STORE_RAW_CURRENT_SELECTOR,
+                &[vtable, selector],
+            )
+        };
+        operation.post_method = current as usize;
+        operation.post_present = !current.is_null();
+    }
     let active = unsafe { intern(api, b"active\0") };
     if !(unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", active) }) {
         note_error(b"RustCodegen candidate Store is unavailable");
@@ -2686,6 +2719,208 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             .find(|candidate| candidate.unit == unit)
     {
         candidate.active = true;
+        candidate.prepared = 0;
+        candidate.operations = operations;
+    }
+    if let Ok(mut prepared) = PREPARED.lock() {
+        prepared.retain(|state| state.token != token);
+    }
+    unit as Oop
+}
+
+unsafe extern "C" fn rust_codegen_prepare_rollback(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen prepareRollback: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen prepareRollback: expects one unit");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let (prepared, active, operations) = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[0] as usize)
+        else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        (
+            candidate.prepared,
+            candidate.active,
+            candidate.operations.clone(),
+        )
+    };
+    if !active {
+        note_error(b"RustCodegen candidate is not active");
+        return api.nilObj;
+    }
+    if prepared != 0 {
+        note_error(b"RustCodegen candidate is already prepared");
+        return api.nilObj;
+    }
+    for operation in &operations {
+        let selector = unsafe { intern_bytes(api, &operation.selector) };
+        let current = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                STORE_RAW_CURRENT_SELECTOR,
+                &[operation.vtable as Oop, selector],
+            )
+        };
+        let current_present = !current.is_null();
+        if current_present != operation.post_present
+            || (current_present && current as usize != operation.post_method)
+        {
+            let drifted = unsafe { intern(api, b"drifted\0") };
+            let _ = unsafe { assert_candidate_fact(api, runtime, values[0], b"state\0", drifted) };
+            let _ = unsafe {
+                assert_candidate_fact(
+                    api,
+                    runtime,
+                    values[0],
+                    b"rollbackAvailable\0",
+                    api.falseObj,
+                )
+            };
+            note_error(b"RustCodegen candidate dispatch drifted");
+            return api.nilObj;
+        }
+    }
+    let token = {
+        let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+        if vector.is_null() || vector == api.nilObj {
+            api.nilObj
+        } else {
+            unsafe { send0(api, vector, NEW_SELECTOR) }
+        }
+    };
+    if token.is_null() || token == api.nilObj {
+        note_error(b"RustCodegen prepared token allocation failed");
+        return api.nilObj;
+    }
+    let Ok(mut prepared_states) = PREPARED.lock() else {
+        note_error(b"RustCodegen prepared registry is unavailable");
+        return api.nilObj;
+    };
+    if let Ok(mut candidates) = CANDIDATES.lock()
+        && let Some(candidate) = candidates
+            .iter_mut()
+            .find(|candidate| candidate.unit == values[0] as usize)
+    {
+        candidate.prepared = token as usize;
+        prepared_states.push(PreparedState {
+            token: token as usize,
+            unit: values[0] as usize,
+            rollback: true,
+        });
+        return token;
+    }
+    note_error(b"RustCodegen candidate registry is unavailable");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen commitPreparedRollback: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen commitPreparedRollback: expects one token");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let token = values[0] as usize;
+    let (unit, rollback) = {
+        let Ok(prepared) = PREPARED.lock() else {
+            note_error(b"RustCodegen prepared registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(state) = prepared.iter().find(|state| state.token == token) else {
+            note_error(b"RustCodegen prepared token is invalid");
+            return api.nilObj;
+        };
+        (state.unit, state.rollback)
+    };
+    if !rollback {
+        note_error(b"RustCodegen prepared token is invalid");
+        return api.nilObj;
+    }
+    let operations = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == unit) else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        if candidate.prepared != token || !candidate.active {
+            note_error(b"RustCodegen prepared token is invalid");
+            return api.nilObj;
+        }
+        candidate.operations.clone()
+    };
+    for operation in operations.iter().rev() {
+        let selector = unsafe { intern_bytes(api, &operation.selector) };
+        let vtable = operation.vtable as Oop;
+        let result = if operation.prior_present {
+            let method = operation.prior_method as Oop;
+            unsafe {
+                send(
+                    api,
+                    runtime.store as Oop,
+                    b"addMethod:on:with:\0",
+                    &[selector, vtable, method],
+                )
+            }
+        } else {
+            unsafe {
+                send(
+                    api,
+                    runtime.store as Oop,
+                    b"removeMethod:on:\0",
+                    &[selector, vtable],
+                )
+            }
+        };
+        if result == api.nilObj {
+            note_error(b"RustCodegen candidate rollback failed");
+            return api.nilObj;
+        }
+    }
+    let rolled_back = unsafe { intern(api, b"rolledBack\0") };
+    if !(unsafe { assert_candidate_fact(api, runtime, unit as Oop, b"state\0", rolled_back) }) {
+        note_error(b"RustCodegen candidate Store is unavailable");
+        return api.nilObj;
+    }
+    let _ = unsafe {
+        assert_candidate_fact(
+            api,
+            runtime,
+            unit as Oop,
+            b"rollbackAvailable\0",
+            api.falseObj,
+        )
+    };
+    if let Ok(mut candidates) = CANDIDATES.lock()
+        && let Some(candidate) = candidates
+            .iter_mut()
+            .find(|candidate| candidate.unit == unit)
+    {
+        candidate.active = false;
         candidate.prepared = 0;
     }
     if let Ok(mut prepared) = PREPARED.lock() {
@@ -2962,8 +3197,18 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, PREPARE_ROLLBACK_SELECTOR),
+            rust_codegen_prepare_rollback,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, COMMIT_PREPARED_SELECTOR),
             rust_codegen_commit_prepared,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMMIT_PREPARED_ROLLBACK_SELECTOR),
+            rust_codegen_commit_prepared_rollback,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
