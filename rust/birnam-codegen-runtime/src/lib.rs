@@ -258,11 +258,42 @@ fn descriptor_list(payload: &mut Vec<u8>, values: &[&[u8]]) {
     }
 }
 
-fn artifact_source(source: &[u8], generated: &[u8]) -> Vec<u8> {
+fn artifact_identity(path: &[u8]) -> Vec<u8> {
+    let mut name = path.rsplit(|byte| *byte == b'/').next().unwrap_or(path);
+    if let Some(dot) = name.iter().rposition(|byte| *byte == b'.') {
+        name = &name[..dot];
+    }
+    if let Some(rest) = name.strip_prefix(b"libbirnam_") {
+        name = rest;
+    } else if let Some(rest) = name.strip_prefix(b"lib") {
+        name = rest;
+    }
+    name.to_vec()
+}
+
+fn append_c_string(output: &mut Vec<u8>, bytes: &[u8]) {
+    for byte in bytes {
+        match byte {
+            b'"' => output.extend_from_slice(br#"\""#),
+            b'\\' => output.extend_from_slice(br#"\\"#),
+            0x20..=0x7e => output.push(*byte),
+            other => {
+                output.extend_from_slice(&[
+                    b'\\',
+                    b'0' + ((other >> 6) & 7),
+                    b'0' + ((other >> 3) & 7),
+                    b'0' + (other & 7),
+                ]);
+            }
+        }
+    }
+}
+
+fn artifact_source(source: &[u8], identity: &[u8], generated: &[u8]) -> Vec<u8> {
     let digest = sha256_hex(source);
     let mut payload = Vec::new();
     descriptor_field(&mut payload, b"module");
-    descriptor_field(&mut payload, b"rust-codegen");
+    descriptor_field(&mut payload, identity);
     descriptor_field(&mut payload, ARTIFACT_ABI);
     descriptor_field(&mut payload, ARTIFACT_TARGET);
     descriptor_field(&mut payload, &digest);
@@ -279,6 +310,8 @@ fn artifact_source(source: &[u8], generated: &[u8]) -> Vec<u8> {
     let mut output = Vec::new();
     output.extend_from_slice(b"const char __birnam_artifact_abi[] = \"");
     output.extend_from_slice(ARTIFACT_ABI);
+    output.extend_from_slice(b"\";\nconst char __birnam_artifact_identity[] = \"");
+    append_c_string(&mut output, identity);
     output.extend_from_slice(b"\";\nconst unsigned char __birnam_artifact_source[] = {");
     for (index, byte) in source.iter().enumerate() {
         if index != 0 {
@@ -605,7 +638,12 @@ unsafe extern "C" fn rust_codegen_compile_output(
         note_error(b"RustCodegen source was not a String");
         return api.nilObj;
     };
-    let artifact = artifact_source(&source_bytes, &source);
+    let Some(path_bytes) = (unsafe { string_bytes(api, values[1]) }) else {
+        note_error(b"RustCodegen output path was not a String");
+        return api.nilObj;
+    };
+    let identity = artifact_identity(&path_bytes);
+    let artifact = artifact_source(&source_bytes, &identity, &source);
     let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
     let result = unsafe {
@@ -830,7 +868,11 @@ mod tests {
             sha256_hex(b"7"),
             *b"7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451"
         );
-        let output = artifact_source(b"7", b"void* __ev(void* self, void** args, long n){}");
+        let output = artifact_source(
+            b"7",
+            b"rust-codegen",
+            b"void* __ev(void* self, void** args, long n){}",
+        );
         assert!(
             output
                 .windows(b"const unsigned char __birnam_artifact_descriptor[] = {".len())

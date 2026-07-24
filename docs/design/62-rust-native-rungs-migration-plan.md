@@ -1456,11 +1456,12 @@ not yet acquired compiled-unit metadata, embedded source, dependency
 descriptors, runtime initialization, or loader acceptance, so it cannot enter
 the production Codegen authority or the N6.4 image/module path.
 
-The first artifact metadata slice is now present. Rust compile output prepends
-the frozen `birnam-artifact-generation-v1` ABI marker and a pointer-free
-`BIRNAM-ARTIFACT-DESCRIPTOR-V1` record with module identity, aarch64-macos
-target, empty dependency lists, the activate/source/reflection capabilities,
-and deterministic SHA-256 source/revision digests. It also exports the original
+The first artifact metadata slice is now present. Rust compile output derives
+the module identity from the `libbirnam_<name>.dylib` output convention, then
+prepends the frozen `birnam-artifact-generation-v1` ABI marker and a
+pointer-free `BIRNAM-ARTIFACT-DESCRIPTOR-V1` record with that identity,
+aarch64-macos target, empty dependency lists, the activate/source/reflection
+capabilities, and deterministic SHA-256 source/revision digests. It also exports the original
 source bytes plus a length symbol for source fallback. The installed runtime
 test opens the resulting dylib and verifies the ABI, embedded source, and
 descriptor symbols before any initializer or entry point is invoked. Dependency
