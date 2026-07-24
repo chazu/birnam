@@ -73,6 +73,51 @@ fn setupFull() *idapi.IdApi {
     return api;
 }
 
+fn expectFrozenSelectors(api: *idapi.IdApi, vt: Oop, expected: []const []const u8) !void {
+    var actual: usize = 0;
+    while (api.vtableSelectorAt(vt, actual)) |selector| : (actual += 1) {
+        const name = std.mem.span(api.symbolName(selector));
+        var known = false;
+        for (expected) |candidate| {
+            if (std.mem.eql(u8, name, candidate)) {
+                known = true;
+                break;
+            }
+        }
+        try std.testing.expect(known);
+    }
+    try std.testing.expectEqual(expected.len, actual);
+}
+
+test "N6.1: Codegen and Reflect authority surfaces are exact and frozen" {
+    const api = setupFull();
+    const codegen_selectors = [_][]const u8{
+        "eval:", "evalPersisting:", "eval:from:", "evalPersisting:from:",
+        "compile:output:", "compile:output:from:", "compile:output:root:",
+        "sourceRevisionOf:", "moduleMetadataOf:", "embeddedFilesOf:",
+        "recordModuleSource:named:", "initialGenerationProjection", "sealInitialGeneration",
+        "successorGenerationProjection:replacing:with:unit:", "moduleSourceFor:",
+        "compileCandidate:named:output:", "inspectCandidate:into:", "mapCandidate:",
+        "candidateMapped:", "candidateContentPath:", "discardCandidate:", "releaseCandidate:",
+        "prepareActivation:", "prepareActivation:prior:", "prepareActivation:plan:",
+        "commitPrepared:", "prepareRollback:", "prepareRollback:plan:",
+        "commitPreparedRollback:", "discardPrepared:", "reconcileCandidate:",
+        "reconcileAllCandidates", "managedMethodChanged:on:", "authorizeManagedMethodMutation",
+        "beginImageDispatchRecovery", "endImageDispatchRecovery", "compileImageCode:",
+        "generationSources", "generationMethodSources", "currentGenerationDigest",
+        "replayMethods", "replayAliens", "deriveImageGlobals", "deriveImageMethodTargets",
+        "lastError", "load:", "loadHostCapability:",
+    };
+    const reflect_selectors = [_][]const u8{
+        "defineMethod:on:as:", "removeMethod:on:", "removeMethod:on:source:",
+        "defineMethod:on:as:source:", "defineMethod:on:as:doc:source:", "vtableOf:",
+        "exportVtableOf:as:", "exportObject:as:", "nameOf:", "allMethodsOf:",
+        "methodSource:", "factsOf:",
+    };
+    try expectFrozenSelectors(api, api.import("CodegenVt").?, &codegen_selectors);
+    try expectFrozenSelectors(api, api.import("ReflectVt").?, &reflect_selectors);
+}
+
 // Primitive methods to install on smallint_vt so emitted birnam sends have real
 // targets to dispatch to (the floor's SmallInt has no protocol of its own).
 fn mDouble(self: Oop, args: [*]const Oop, n: usize) callconv(.c) Oop {

@@ -839,7 +839,7 @@ pub fn build(b: *std.Build) void {
         []const u8,
         "peg-parity-digest",
         "Expected generated-C SHA-256 for the explicitly selected PEG dylib",
-    ) orelse "2b8293bb3ae6f625e68060ce7a02795a9802e41e6c611b08b5b18eb637dbb0dc";
+    ) orelse "0f7f691dd27a587726981e6b71b11b6b1e6c71c817a1735a4cd7e13089a68bba";
     run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_RUST_PEG_DYLIB", parity_peg_dylib);
     run_rust_peg_codegen_parity.setEnvironmentVariable("BIRNAM_RUST_PEG_CODEGEN_DIGEST", parity_codegen_digest);
     run_rust_peg_codegen_parity.step.dependOn(bootstrap_install);

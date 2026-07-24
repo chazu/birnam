@@ -5,7 +5,7 @@
 > and N2.4a through N2.4d are complete; N2.5a through N2.5c, N3.1, N3.2a,
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
 > complete; N3.5.1 through N3.5.3 and N4.1 through N4.4 are complete; N5.1
-> through N5.4 are complete; N6 is next.
+> through N5.4 are complete; N6.1 is in progress.
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -1340,6 +1340,22 @@ as one file.
 - Assign and test the Codegen-owned global, method-mutation, candidate,
   quiescence, and lifecycle symbols independently of the already-migrated
   TCC-owned symbols.
+
+#### N6.1 execution record — in progress, 2026-07-23
+
+The first authority slice is now executable. The Codegen test freezes the exact
+47-selector `CodegenVt` surface and 12-selector `ReflectVt` surface, rejecting
+both missing and newly introduced direct bindings. The generated-C parity corpus
+now covers literals, sends, blocks, globals, module metadata, embedded files,
+method definition/removal, and both JIT and installable-artifact translation
+units. Its exact digest is
+`0f7f691dd27a587726981e6b71b11b6b1e6c71c817a1735a4cd7e13089a68bba`.
+
+The existing candidate lifecycle and image replay suites remain the behavioral
+authority for those generated-C paths. `test-codegen` (51 tests) and
+`test-rust-peg-codegen-parity` pass in ReleaseSafe. Remaining N6.1 work is to
+freeze the complete exported Codegen-owned shim manifest and add candidate/image
+goldens without normalizing semantic bytes.
 
 ### N6.2 — Port deterministic source emission
 

@@ -25,6 +25,16 @@ const sources = [_][]const u8{
     "{\"a\" -> 1, \"b\" -> 2}",
     "[:n | [n + 1]]",
     "// comment\nlet x := 1;\n[x + 2]",
+    "-3.25",
+    "\"line\\ntext\"",
+    "#answer",
+    "[1 >= 0]",
+    "let globalProbe := 7; globalProbe",
+    "[System embedFile: \"VERSION\"]",
+    "[Module named: #parityModule requires: #[#file #time]]; [Globals at: #parityProbe put: 1]",
+    "[Reflect defineMethod: #parityMethod on: Integer as: [:self | 42]]",
+    "[Reflect defineMethod: #parityMethod on: Integer as: [:self | 42] doc: \"parity\"]",
+    "[Reflect removeMethod: #parityMethod on: Integer]",
 };
 
 fn bringPeg(api: *idapi.IdApi) !void {
@@ -56,14 +66,18 @@ fn setup() *idapi.IdApi {
 
 fn emitDigest(api: *idapi.IdApi) ![std.crypto.hash.sha2.Sha256.digest_length]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    for (sources) |source| {
-        hash.update(source);
+    for ([_]bool{ false, true }) |artifact| {
+        hash.update(if (artifact) "artifact" else "jit");
         hash.update(&.{0});
-        var emitted = codegen.emitProgramForTesting(api.mkString(source.ptr, source.len), false) orelse
-            return error.EmitFailed;
-        defer emitted.deinit(std.heap.c_allocator);
-        hash.update(emitted.items);
-        hash.update(&.{0});
+        for (sources) |source| {
+            hash.update(source);
+            hash.update(&.{0});
+            var emitted = codegen.emitProgramForTesting(api.mkString(source.ptr, source.len), artifact) orelse
+                return error.EmitFailed;
+            defer emitted.deinit(std.heap.c_allocator);
+            hash.update(emitted.items);
+            hash.update(&.{0});
+        }
     }
     var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
     hash.final(&digest);
