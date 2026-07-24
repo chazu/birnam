@@ -22,6 +22,10 @@ fn duplicateMopAuthorizer() callconv(.c) idapi.Oop {
     return null;
 }
 
+fn driftAnswer() callconv(.c) idapi.Oop {
+    return null;
+}
+
 fn load(api: *idapi.IdApi, variable: []const u8) !void {
     const path = std.posix.getenv(variable) orelse return error.MissingDylib;
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -1726,4 +1730,57 @@ test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     try std.testing.expectEqual(rust_output, api.send(rust_codegen, api.intern("compile:output:"), &.{ source, rust_output }, 2));
     const zig_loaded_rust = api.send(old_codegen, api.intern("load:"), &.{rust_output}, 1);
     try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(zig_loaded_rust));
+}
+
+test "Rust Codegen disables rollback after external method drift" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const old_codegen = api.import("Codegen") orelse return error.MissingCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_drift_candidate.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source_text = "[Module named: #rustDriftCandidate requires: #[]]; [Reflect defineMethod: #rustDriftAnswer on: Integer as: [:self | 77]]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(path.ptr, path.len);
+    try std.testing.expect(api.send(
+        old_codegen,
+        api.intern("compileCandidate:named:output:"),
+        &.{ source, api.intern("rustDriftCandidate"), output },
+        3,
+    ) != api.nilObj);
+
+    const object = api.import("Object") orelse return error.MissingObject;
+    const unit = api.send(object, api.intern("clone"), &.{}, 0);
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("inspectCandidate:into:"), &.{ output, unit }, 2));
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("mapCandidate:"), &.{unit}, 1));
+    const token = api.send(rust_codegen, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(token != api.nilObj);
+    try std.testing.expectEqual(unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{token}, 1));
+    try std.testing.expectEqual(
+        api.intern("active"),
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
+    );
+
+    const integer = api.import("Integer") orelse return error.MissingInteger;
+    const integer_vt = api.vtableOf(integer);
+    const drift_method: idapi.Oop = @ptrCast(@constCast(&driftAnswer));
+    try std.testing.expectEqual(
+        store,
+        api.send(store, api.intern("addMethod:on:with:"), &.{ api.intern("rustDriftAnswer"), integer_vt, drift_method }, 3),
+    );
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("reconcileCandidate:"), &.{unit}, 1));
+    try std.testing.expectEqual(
+        api.intern("drifted"),
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("state") }, 2),
+    );
+    try std.testing.expectEqual(
+        api.falseObj,
+        api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("rollbackAvailable") }, 2),
+    );
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("prepareRollback:"), &.{unit}, 1));
 }
