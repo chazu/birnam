@@ -1642,9 +1642,12 @@ The first N6.5 candidate slice is now independent and executable in Rust:
 `BIRNAM-CANDIDATE-2` sidecar without allocation, dylib loading, or IdApi state.
 It validates the runtime ABI, candidate ABI 3, aarch64-macos platform, exact
 64-character artifact digest, manifest framing, and byte-exact source length.
-Nine artifact tests (including adversarial malformed-input probes) pass. This
-is only the inert candidate boundary; candidate compilation, mapping, Store
-publication, rollback, and image composition remain unported N6.5/N6.6 work.
+The same boundary now parses the `v2` pipe-delimited manifest and exposes
+borrowed dependency and operation rows with target, selector, kind, and arity
+validation. Eleven artifact tests (including adversarial malformed-input
+probes) pass. This is only the inert candidate boundary; candidate compilation,
+mapping, Store publication, rollback, and image composition remain unported
+N6.5/N6.6 work.
 
 ### N6.3 — Port eval and compile orchestration
 
