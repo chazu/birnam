@@ -421,6 +421,9 @@ unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
 }
 
 unsafe fn string_bytes(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
+    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.string_vt {
+        return None;
+    }
     let mut length = 0;
     // SAFETY: object is a live String Oop returned by the host.
     let pointer = unsafe { (api.stringBytes)(object, &mut length) };
@@ -870,11 +873,51 @@ unsafe fn vector_length(api: &IdApi, vector: Oop, vector_vt: Oop) -> Option<usiz
     usize::try_from(unsafe { (api.smallIntValue)(size) }).ok()
 }
 
+fn is_digest(bytes: &[u8]) -> bool {
+    bytes.len() == 64
+        && bytes.iter().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(byte) || (b'A'..=b'F').contains(byte)
+        })
+}
+
+unsafe fn valid_revision(api: &IdApi, revision: Oop) -> bool {
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    if unsafe { vector_length(api, revision, vector_vt) } != Some(7) {
+        return false;
+    }
+    if unsafe { vector_item(api, revision, 0) } != unsafe { intern(api, b"sourceRevision\0") }
+        || unsafe { symbol_bytes(api, vector_item(api, revision, 1)) }.is_none()
+    {
+        return false;
+    }
+    let requirements = unsafe { vector_item(api, revision, 2) };
+    let Some(requirement_count) = (unsafe { vector_length(api, requirements, vector_vt) }) else {
+        return false;
+    };
+    for index in 0..requirement_count {
+        if unsafe { symbol_bytes(api, vector_item(api, requirements, index)) }.is_none() {
+            return false;
+        }
+    }
+    if unsafe { string_bytes(api, vector_item(api, revision, 3)) }.is_none() {
+        return false;
+    }
+    for index in 4..7 {
+        let Some(digest) = (unsafe { string_bytes(api, vector_item(api, revision, index)) }) else {
+            return false;
+        };
+        if !is_digest(&digest) {
+            return false;
+        }
+    }
+    true
+}
+
 unsafe fn revision_transition_allowed(api: &IdApi, current: Oop, successor: Oop) -> bool {
     let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
     if vector_vt.is_null()
-        || unsafe { vector_length(api, current, vector_vt) } != Some(7)
-        || unsafe { vector_length(api, successor, vector_vt) } != Some(7)
+        || !unsafe { valid_revision(api, current) }
+        || !unsafe { valid_revision(api, successor) }
     {
         return false;
     }
@@ -924,7 +967,10 @@ unsafe fn generation_digest(api: &IdApi, source_map: Oop) -> Option<[u8; 64]> {
         }
         let name = unsafe { symbol_bytes(api, vector_item(api, entry, 0)) }?;
         let revision = unsafe { vector_item(api, entry, 1) };
-        if unsafe { vector_length(api, revision, vector_vt) } != Some(7) {
+        if !unsafe { valid_revision(api, revision) } {
+            return None;
+        }
+        if unsafe { symbol_bytes(api, vector_item(api, revision, 1)) }? != name {
             return None;
         }
         let digest = unsafe { string_bytes(api, vector_item(api, revision, 6)) }?;

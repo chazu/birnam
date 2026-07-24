@@ -366,6 +366,28 @@ test "Rust Codegen retains registered module sources across collection" {
         ),
     );
 
+    // A revision with one missing digest slot is not a valid lifecycle value,
+    // even when its non-method digest and module identity match the current
+    // revision. The projection must reject it before recomputing a successor.
+    const vector = api.import("Vector") orelse return error.MissingVector;
+    var malformed_revision = api.send(vector, api.intern("new"), &.{}, 0);
+    for (0..7) |index| {
+        const value = if (index == 5)
+            api.nilObj
+        else
+            api.send(revision, api.intern("at:"), &.{api.mkSmallInt(@intCast(index))}, 1);
+        malformed_revision = api.send(malformed_revision, api.intern("add:"), &.{value}, 1);
+    }
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(
+            codegen,
+            api.intern("successorGenerationProjection:replacing:with:unit:"),
+            &.{ source_map, name, malformed_revision, successor_unit },
+            4,
+        ),
+    );
+
     const mismatch_name = api.intern("rustOtherModule");
     try std.testing.expectEqual(
         api.nilObj,
