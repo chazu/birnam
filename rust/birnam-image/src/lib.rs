@@ -26,6 +26,11 @@ pub enum Error {
     InvalidPayloadLength,
     InvalidFieldTag,
     LayoutMismatch,
+    MissingAuthority,
+    DuplicateAuthority,
+    CodeBeforeAuthority,
+    DuplicateCode,
+    AuthorityMismatch,
     RecordTooLarge,
 }
 
@@ -91,6 +96,68 @@ impl RecordKind {
 pub struct Record<'a> {
     pub kind: RecordKind,
     pub payload: &'a [u8],
+}
+
+/// A semantically preflighted v4 image. The records remain borrowed and can
+/// be iterated again after the authority/code relationship has been checked.
+#[derive(Debug, Clone, Copy)]
+pub struct Image<'a> {
+    pub header: Header,
+    pub authority: Authority<'a>,
+    code: Option<Code<'a>>,
+    records: Records<'a>,
+}
+
+impl<'a> Image<'a> {
+    pub fn parse(bytes: &'a [u8]) -> Result<Self, Error> {
+        let header = Header::parse(bytes)?;
+        let record_bytes = bytes.get(HEADER_LEN..).ok_or(Error::Truncated)?;
+        let mut records = Records::new(record_bytes);
+        let mut authority = None;
+        let mut code = None;
+        while let Some(record) = records.next_record()? {
+            match record.kind {
+                RecordKind::Authority => {
+                    if authority.is_some() {
+                        return Err(Error::DuplicateAuthority);
+                    }
+                    if code.is_some() {
+                        return Err(Error::CodeBeforeAuthority);
+                    }
+                    authority = Some(Authority::parse(record.payload)?);
+                }
+                RecordKind::Code => {
+                    let Some(authority_value) = authority else {
+                        return Err(Error::CodeBeforeAuthority);
+                    };
+                    if code.is_some() {
+                        return Err(Error::DuplicateCode);
+                    }
+                    let code_value = Code::parse(record.payload)?;
+                    if code_value.generation_digest != authority_value.digest {
+                        return Err(Error::AuthorityMismatch);
+                    }
+                    code = Some(code_value);
+                }
+                RecordKind::Facts | RecordKind::Heap => {}
+            }
+        }
+        let authority = authority.ok_or(Error::MissingAuthority)?;
+        Ok(Self {
+            header,
+            authority,
+            code,
+            records: Records::new(record_bytes),
+        })
+    }
+
+    pub fn code(&self) -> Option<Code<'a>> {
+        self.code
+    }
+
+    pub fn records(&self) -> Records<'a> {
+        self.records
+    }
 }
 
 /// The v4 authority record is exactly one borrowed 64-byte generation digest.
@@ -603,6 +670,74 @@ mod tests {
             Code::parse(&payload[..CODE_PREFIX_LEN - 1]),
             Err(Error::InvalidPayloadLength)
         );
+    }
+
+    #[test]
+    fn image_preflight_binds_code_to_one_authority() {
+        let digest = [b'g'; AUTHORITY_DIGEST_LEN];
+        let mut bytes = header(1, 99);
+        bytes.extend_from_slice(&record(RecordKind::Authority, &digest));
+        let image = Image::parse(&bytes).unwrap();
+        assert_eq!(image.header.architecture, 1);
+        assert_eq!(image.authority.digest, &digest);
+        assert_eq!(image.code(), None);
+
+        let mut code_payload = 7u64.to_le_bytes().to_vec();
+        code_payload.extend_from_slice(&digest);
+        code_payload.extend_from_slice(b"unit");
+        bytes.extend_from_slice(&record(RecordKind::Code, &code_payload));
+        let image = Image::parse(&bytes).unwrap();
+        assert_eq!(image.code().unwrap().unit, b"unit");
+        assert_eq!(
+            image.records().next_record().unwrap().unwrap().kind,
+            RecordKind::Authority
+        );
+    }
+
+    #[test]
+    fn image_preflight_rejects_missing_duplicate_or_mismatched_authority() {
+        let digest = [b'g'; AUTHORITY_DIGEST_LEN];
+        let other = [b'h'; AUTHORITY_DIGEST_LEN];
+        assert!(matches!(
+            Image::parse(&header(1, 99)),
+            Err(Error::MissingAuthority)
+        ));
+
+        let mut duplicate = header(1, 99);
+        duplicate.extend_from_slice(&record(RecordKind::Authority, &digest));
+        duplicate.extend_from_slice(&record(RecordKind::Authority, &digest));
+        assert!(matches!(
+            Image::parse(&duplicate),
+            Err(Error::DuplicateAuthority)
+        ));
+
+        let mut before = header(1, 99);
+        let mut code = 0u64.to_le_bytes().to_vec();
+        code.extend_from_slice(&digest);
+        before.extend_from_slice(&record(RecordKind::Code, &code));
+        assert!(matches!(
+            Image::parse(&before),
+            Err(Error::CodeBeforeAuthority)
+        ));
+
+        let mut mismatch = header(1, 99);
+        mismatch.extend_from_slice(&record(RecordKind::Authority, &digest));
+        let mut wrong_code = 0u64.to_le_bytes().to_vec();
+        wrong_code.extend_from_slice(&other);
+        mismatch.extend_from_slice(&record(RecordKind::Code, &wrong_code));
+        assert!(matches!(
+            Image::parse(&mismatch),
+            Err(Error::AuthorityMismatch)
+        ));
+
+        let mut duplicate_code = header(1, 99);
+        duplicate_code.extend_from_slice(&record(RecordKind::Authority, &digest));
+        duplicate_code.extend_from_slice(&record(RecordKind::Code, &code));
+        duplicate_code.extend_from_slice(&record(RecordKind::Code, &code));
+        assert!(matches!(
+            Image::parse(&duplicate_code),
+            Err(Error::DuplicateCode)
+        ));
     }
 
     #[test]
