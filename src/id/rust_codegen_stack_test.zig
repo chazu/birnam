@@ -152,6 +152,7 @@ test "Rust Codegen candidate uses Rust-owned shims and reenters Store" {
         api.falseObj,
         api.send(store, api.intern("currentValue:attr:"), &.{ unit, api.intern("rollbackAvailable") }, 2),
     );
+    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("prepareRollback:"), &.{unit}, 1));
     try std.testing.expectEqual(@as(usize, 77), @intFromPtr(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
 }
