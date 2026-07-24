@@ -2350,6 +2350,12 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
         return api.nilObj;
     }
     let _ = unsafe { send0(api, store, b"backfillMirror\0") };
+    // Relational rules are canonical Store facts, but the query engine keeps a
+    // derived in-memory cache. Rebuild it after image facts replace the store,
+    // matching the authoritative Zig image loader's recovery boundary.
+    if unsafe { (api.isExported)(c"db".as_ptr().cast()) } != 0 {
+        let _ = unsafe { send0(api, store, b"rebuildRules\0") };
+    }
     unsafe { (api.mkSmallInt)(pending.len() as i64) }
 }
 
