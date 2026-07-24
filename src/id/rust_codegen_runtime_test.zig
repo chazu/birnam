@@ -296,6 +296,22 @@ test "Rust Codegen exposes module metadata without evaluating source" {
     try std.testing.expectEqual(api.intern("rustMetadata"), api.send(metadata, api.intern("at:"), &.{api.mkSmallInt(1)}, 1));
     const requires = api.send(metadata, api.intern("at:"), &.{api.mkSmallInt(2)}, 1);
     try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(requires, api.intern("size"), &.{}, 0)));
+    const revision = api.send(codegen, api.intern("sourceRevisionOf:"), &.{source}, 1);
+    var metadata_revision_len: usize = 0;
+    var source_revision_len: usize = 0;
+    const metadata_revision = api.stringBytes(
+        api.send(metadata, api.intern("at:"), &.{api.mkSmallInt(4)}, 1),
+        &metadata_revision_len,
+    );
+    const source_revision = api.stringBytes(
+        api.send(revision, api.intern("at:"), &.{api.mkSmallInt(6)}, 1),
+        &source_revision_len,
+    );
+    try std.testing.expectEqualSlices(
+        u8,
+        metadata_revision[0..metadata_revision_len],
+        source_revision[0..source_revision_len],
+    );
     const legacy = api.mkString("7", 1);
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("moduleMetadataOf:"), &.{legacy}, 1));
 }

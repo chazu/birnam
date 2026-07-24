@@ -883,6 +883,22 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
     })
 }
 
+unsafe fn parse_revision_metadata(
+    api: &IdApi,
+    source_object: Oop,
+) -> Option<(Vec<u8>, RevisionMetadata)> {
+    let source = unsafe { string_bytes(api, source_object) }?;
+    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
+    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+        return None;
+    }
+    let tree = unsafe { cst_tree(api, cst, 0) }?;
+    let metadata = revision_metadata(&tree, &source)?;
+    Some((source, metadata))
+}
+
 unsafe fn symbol_bytes(api: &IdApi, symbol: Oop) -> Option<Vec<u8>> {
     if symbol.is_null() || unsafe { (api.vtableOf)(symbol) != api.symbol_vt } {
         return None;
@@ -1417,9 +1433,7 @@ unsafe extern "C" fn rust_codegen_module_metadata(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    let Some((Some((name, requires)), _native_requires)) =
-        (unsafe { artifact_metadata(api, values[0]) })
-    else {
+    let Some((source, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
         return api.nilObj;
     };
     let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
@@ -1434,14 +1448,20 @@ unsafe extern "C" fn rust_codegen_module_metadata(
         }
         result
     };
-    let name_symbol = unsafe { (api.intern)(name.as_ptr().cast()) };
-    let require_symbols = requires
+    let name_symbol = unsafe { (api.intern)(metadata.name.as_ptr().cast()) };
+    let require_symbols = metadata
+        .requires
         .iter()
         .map(|requirement| unsafe { (api.intern)(requirement.as_ptr().cast()) })
         .collect::<Vec<_>>();
-    let source = unsafe { string_bytes(api, values[0]) }.unwrap_or_default();
     let digest = sha256_hex(&source);
     let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let revision_object = unsafe {
+        (api.mkString)(
+            metadata.revision_digest.as_ptr(),
+            metadata.revision_digest.len(),
+        )
+    };
     let requires_vector = make_vector(api, &require_symbols);
     make_vector(
         api,
@@ -1450,7 +1470,7 @@ unsafe extern "C" fn rust_codegen_module_metadata(
             name_symbol,
             requires_vector,
             digest_object,
-            digest_object,
+            revision_object,
         ],
     )
 }
@@ -1467,20 +1487,8 @@ unsafe extern "C" fn rust_codegen_source_revision(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    let Some(source) = (unsafe { string_bytes(api, values[0]) }) else {
+    let Some((_source, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
         note_error(b"RustCodegen source was not a String");
-        return api.nilObj;
-    };
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
-    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
-    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
-        return api.nilObj;
-    }
-    let Some(tree) = (unsafe { cst_tree(api, cst, 0) }) else {
-        return api.nilObj;
-    };
-    let Some(metadata) = revision_metadata(&tree, &source) else {
         return api.nilObj;
     };
     let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
