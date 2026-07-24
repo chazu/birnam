@@ -43,6 +43,7 @@ const COMPILE_OUTPUT_FROM_SELECTOR: &[u8] = b"compile:output:from:\0";
 const COMPILE_OUTPUT_ROOT_SELECTOR: &[u8] = b"compile:output:root:\0";
 const EMBEDDED_FILES_SELECTOR: &[u8] = b"embeddedFilesOf:\0";
 const MODULE_METADATA_SELECTOR: &[u8] = b"moduleMetadataOf:\0";
+const SOURCE_REVISION_SELECTOR: &[u8] = b"sourceRevisionOf:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -862,6 +863,55 @@ unsafe extern "C" fn rust_codegen_module_metadata(
     )
 }
 
+unsafe extern "C" fn rust_codegen_source_revision(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen sourceRevisionOf: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen sourceRevisionOf: expects one source argument");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let Some((Some((name, requires)), _native_requires)) =
+        (unsafe { artifact_metadata(api, values[0]) })
+    else {
+        return api.nilObj;
+    };
+    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    if vector_proto.is_null() {
+        note_error(b"RustCodegen Vector is unavailable");
+        return api.nilObj;
+    }
+    let make_vector = |items: &[Oop]| -> Oop {
+        let mut result = unsafe { send0(api, vector_proto, NEW_SELECTOR) };
+        for &item in items {
+            result = unsafe { send(api, result, b"add:\0", &[item]) };
+        }
+        result
+    };
+    let name_symbol = unsafe { (api.intern)(name.as_ptr().cast()) };
+    let require_symbols = requires
+        .iter()
+        .map(|requirement| unsafe { (api.intern)(requirement.as_ptr().cast()) })
+        .collect::<Vec<_>>();
+    let requires_vector = make_vector(&require_symbols);
+    let source = unsafe { string_bytes(api, values[0]) }.unwrap_or_default();
+    let digest = sha256_hex(&source);
+    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    make_vector(&[
+        unsafe { intern(api, b"sourceRevision\0") },
+        name_symbol,
+        requires_vector,
+        values[0],
+        digest_object,
+        digest_object,
+        digest_object,
+    ])
+}
+
 unsafe extern "C" fn rust_codegen_eval(
     _self_object: Oop,
     pointer: *const Oop,
@@ -1292,6 +1342,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, MODULE_METADATA_SELECTOR),
             rust_codegen_module_metadata,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, SOURCE_REVISION_SELECTOR),
+            rust_codegen_source_revision,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

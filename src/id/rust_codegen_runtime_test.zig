@@ -300,6 +300,21 @@ test "Rust Codegen exposes module metadata without evaluating source" {
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("moduleMetadataOf:"), &.{legacy}, 1));
 }
 
+test "Rust Codegen exposes immutable source revisions" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const source_text = "[Module named: #rustRevision requires: #[#dep]]; 7";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const revision = api.send(codegen, api.intern("sourceRevisionOf:"), &.{source}, 1);
+    try std.testing.expect(revision != api.nilObj);
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(api.send(revision, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqual(api.intern("sourceRevision"), api.send(revision, api.intern("at:"), &.{api.mkSmallInt(0)}, 1));
+    try std.testing.expectEqual(api.intern("rustRevision"), api.send(revision, api.intern("at:"), &.{api.mkSmallInt(1)}, 1));
+    try std.testing.expectEqual(source, api.send(revision, api.intern("at:"), &.{api.mkSmallInt(3)}, 1));
+    const legacy = api.mkString("7", 1);
+    try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("sourceRevisionOf:"), &.{legacy}, 1));
+}
+
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
