@@ -1765,10 +1765,12 @@ unbound `__globalsrc__` facts, while the latter walks ordered method targets and
 materializes their named receivers through that same source journal.
 
 `compileImageCode:` now consumes the ordered Rust generation-source handoff and
-emits one TCC-backed dylib at the requested output path. It is intentionally a
-source-backed image compiler: mapped-unit reuse, replay of durable image facts,
-global/method derivation, and explicit rebuild policy remain subsequent N6.6
-slices.
+emits one TCC-backed dylib at the requested output path. When durable
+`dispatch.activeGeneration` exists, it now rejects a source registry whose
+canonical digest does not match that authority before emitting code. It is
+intentionally a source-backed image compiler: mapped-unit reuse, replay of
+durable image facts, global/method derivation, and explicit rebuild policy
+remain subsequent N6.6 slices.
 
 The mapped-candidate observation surface is complete for this slice as well:
 `candidateMapped:` reports the retained native handle, while
