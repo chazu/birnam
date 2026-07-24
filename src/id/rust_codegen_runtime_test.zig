@@ -315,6 +315,35 @@ test "Rust Codegen exposes immutable source revisions" {
     try std.testing.expectEqual(api.nilObj, api.send(codegen, api.intern("sourceRevisionOf:"), &.{legacy}, 1));
 }
 
+test "Rust Codegen retains registered module sources across collection" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const name = api.intern("rustRegisteredModule");
+    const source_text = "[Module named: #rustRegisteredModule requires: #[]]; 7";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    try std.testing.expectEqual(
+        source,
+        api.send(codegen, api.intern("recordModuleSource:named:"), &.{ source, name }, 2),
+    );
+    try std.testing.expectEqual(
+        source,
+        api.send(codegen, api.intern("recordModuleSource:named:"), &.{ source, name }, 2),
+    );
+    _ = api.gcCollect();
+    try std.testing.expectEqual(source, api.send(codegen, api.intern("moduleSourceFor:"), &.{name}, 1));
+
+    const mismatch_name = api.intern("rustOtherModule");
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("recordModuleSource:named:"), &.{ source, mismatch_name }, 2),
+    );
+    try std.testing.expectEqual(api.trueObj, api.send(codegen, api.intern("sealInitialGeneration"), &.{}, 0));
+    try std.testing.expectEqual(
+        api.nilObj,
+        api.send(codegen, api.intern("recordModuleSource:named:"), &.{ source, name }, 2),
+    );
+}
+
 test "Rust and Zig Codegen artifacts cross-load through the frozen ABI" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

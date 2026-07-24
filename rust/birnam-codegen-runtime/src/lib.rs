@@ -44,6 +44,9 @@ const COMPILE_OUTPUT_ROOT_SELECTOR: &[u8] = b"compile:output:root:\0";
 const EMBEDDED_FILES_SELECTOR: &[u8] = b"embeddedFilesOf:\0";
 const MODULE_METADATA_SELECTOR: &[u8] = b"moduleMetadataOf:\0";
 const SOURCE_REVISION_SELECTOR: &[u8] = b"sourceRevisionOf:\0";
+const RECORD_MODULE_SOURCE_SELECTOR: &[u8] = b"recordModuleSource:named:\0";
+const MODULE_SOURCE_FOR_SELECTOR: &[u8] = b"moduleSourceFor:\0";
+const SEAL_INITIAL_GENERATION_SELECTOR: &[u8] = b"sealInitialGeneration\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -73,6 +76,8 @@ struct Runtime {
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static LAST_ERROR: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 static LIVE_UNITS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+static MODULE_SOURCES: Mutex<Vec<(usize, usize)>> = Mutex::new(Vec::new());
+static INITIAL_GENERATION_SEALED: Mutex<bool> = Mutex::new(false);
 static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 
@@ -117,13 +122,23 @@ unsafe fn note_syntax_error(api: &IdApi, lang: Oop) {
 }
 
 unsafe extern "C" fn mark_live_units(mark: MarkFn) {
-    let Ok(units) = LIVE_UNITS.lock() else {
+    if let Ok(units) = LIVE_UNITS.lock() {
+        for &unit in units.iter() {
+            // SAFETY: each address was returned by IdApi.alloc and remains rooted
+            // by this provider until process teardown.
+            unsafe { mark(unit as Oop) };
+        }
+    }
+    let Ok(sources) = MODULE_SOURCES.lock() else {
         return;
     };
-    for &unit in units.iter() {
+    for &(name, source) in sources.iter() {
         // SAFETY: each address was returned by IdApi.alloc and remains rooted
         // by this provider until process teardown.
-        unsafe { mark(unit as Oop) };
+        unsafe {
+            mark(name as Oop);
+            mark(source as Oop);
+        }
     }
 }
 
@@ -700,6 +715,131 @@ unsafe fn artifact_metadata(api: &IdApi, source_object: Oop) -> Option<ArtifactM
     let mut native_requires = Vec::new();
     collect_artifact_metadata(&tree, &source, 0, &mut module, &mut native_requires);
     Some((module, native_requires))
+}
+
+unsafe fn symbol_bytes(api: &IdApi, symbol: Oop) -> Option<Vec<u8>> {
+    if symbol.is_null() || unsafe { (api.vtableOf)(symbol) != api.symbol_vt } {
+        return None;
+    }
+    let pointer = unsafe { (api.symbolName)(symbol) };
+    if pointer.is_null() {
+        return None;
+    }
+    Some(unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec())
+}
+
+unsafe extern "C" fn rust_codegen_record_module_source(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen recordModuleSource:named: received invalid arguments")
+    });
+    if values.len() != 2 {
+        abort("RustCodegen recordModuleSource:named: expects source and name");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let Some(name) = (unsafe { symbol_bytes(api, values[1]) }) else {
+        note_error(b"RustCodegen module name was not a Symbol");
+        return api.nilObj;
+    };
+    let Some((Some((declared_name, _requires)), _native_requires)) =
+        (unsafe { artifact_metadata(api, values[0]) })
+    else {
+        note_error(b"RustCodegen module source is not indexable");
+        return api.nilObj;
+    };
+    if declared_name != name {
+        note_error(b"RustCodegen module source identity does not match its name");
+        return api.nilObj;
+    }
+    if let Ok(sealed) = INITIAL_GENERATION_SEALED.lock()
+        && *sealed
+    {
+        note_error(b"RustCodegen module introduction is not available");
+        return api.nilObj;
+    }
+    let source = unsafe { string_bytes(api, values[0]) };
+    let Some(source) = source else {
+        note_error(b"RustCodegen module source was not a String");
+        return api.nilObj;
+    };
+    if let Ok(mut modules) = MODULE_SOURCES.lock() {
+        if let Some(&(_, existing_source)) = modules.iter().find(|&&(existing_name, _)| {
+            unsafe { symbol_bytes(api, existing_name as Oop) }
+                .as_deref()
+                .is_some_and(|existing_name| existing_name == name.as_slice())
+        }) {
+            let existing = existing_source as Oop;
+            if unsafe { string_bytes(api, existing) }.as_deref() == Some(source.as_slice()) {
+                return values[0];
+            }
+            note_error(b"RustCodegen duplicate module source");
+            return api.nilObj;
+        }
+        modules.push((values[1] as usize, values[0] as usize));
+        return values[0];
+    }
+    note_error(b"RustCodegen module source registry is unavailable");
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_module_source_for(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen moduleSourceFor: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen moduleSourceFor: expects one name");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let Some(name) = (unsafe { symbol_bytes(api, values[0]) }) else {
+        return api.nilObj;
+    };
+    let Ok(modules) = MODULE_SOURCES.lock() else {
+        return api.nilObj;
+    };
+    for &(existing_name, source) in modules.iter() {
+        if unsafe { symbol_bytes(api, existing_name as Oop) }
+            .as_deref()
+            .is_some_and(|existing| existing == name.as_slice())
+        {
+            return source as Oop;
+        }
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_codegen_seal_initial_generation(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen sealInitialGeneration received invalid arguments"));
+    if !values.is_empty() {
+        abort("RustCodegen sealInitialGeneration expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if let Ok(mut sealed) = INITIAL_GENERATION_SEALED.lock() {
+        *sealed = true;
+        return api.trueObj;
+    }
+    api.nilObj
 }
 
 unsafe fn emit_source(
@@ -1347,6 +1487,21 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, SOURCE_REVISION_SELECTOR),
             rust_codegen_source_revision,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, RECORD_MODULE_SOURCE_SELECTOR),
+            rust_codegen_record_module_source,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, MODULE_SOURCE_FOR_SELECTOR),
+            rust_codegen_module_source_for,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, SEAL_INITIAL_GENERATION_SELECTOR),
+            rust_codegen_seal_initial_generation,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,

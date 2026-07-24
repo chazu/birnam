@@ -1568,6 +1568,16 @@ partition is intentionally conservative at this rung (all slots use the
 source digest); method/non-method partitioning remains part of candidate
 projection hardening before N6.5 activation.
 
+The first Rust source-recovery seam is now executable as well. `RustCodegen`
+implements `recordModuleSource:named:`, `moduleSourceFor:`, and
+`sealInitialGeneration`. Registration re-parses the source metadata, enforces
+that the declared module identity matches the supplied symbol, rejects
+conflicting duplicates, and retains both the symbol and authored source through
+the IdApi GC root-provider contract. Lookup still returns the original source
+object after collection; sealing makes subsequent introductions fail closed.
+This is intentionally a Rust-only opt-in surface: it does not replace Zig's
+`Codegen` registry or claim the N6.5 dispatch lifecycle.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
