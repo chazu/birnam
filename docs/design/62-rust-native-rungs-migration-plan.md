@@ -1456,6 +1456,15 @@ not yet acquired compiled-unit metadata, embedded source, dependency
 descriptors, runtime initialization, or loader acceptance, so it cannot enter
 the production Codegen authority or the N6.4 image/module path.
 
+The first artifact metadata slice is now present. Rust compile output prepends
+the frozen `birnam-artifact-generation-v1` ABI marker and a pointer-free
+`BIRNAM-ARTIFACT-DESCRIPTOR-V1` record with module identity, aarch64-macos
+target, empty dependency lists, the activate/source/reflection capabilities,
+and deterministic SHA-256 source/revision digests. The installed runtime test
+opens the resulting dylib and verifies both descriptor symbols before any
+initializer or entry point is invoked. Embedded source, dependency derivation,
+runtime initialization, and loader acceptance remain N6.4 work.
+
 The diagnostic seam is also executable: every opt-in emit/eval/compile-output
 operation clears a process-local `lastError`, records a first failure message,
 and exposes it through `RustCodegen lastError`. The focused test proves a bad

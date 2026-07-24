@@ -41,6 +41,9 @@ const GLOBAL_AT_PUT_SELECTOR: &[u8] = b"at:put:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const MAX_CST_DEPTH: usize = 4096;
+const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
+const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
+const ARTIFACT_DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -137,6 +140,135 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     let name = unsafe { (api.mkString)(b"birnam_global_set".as_ptr(), 17) };
     let address = unsafe { (api.mkSmallInt)(birnam_global_set as *const () as usize as i64) };
     unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
+}
+
+fn sha256_hex(bytes: &[u8]) -> [u8; 64] {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+    let mut state = [
+        0x6a09e667u32,
+        0xbb67ae85,
+        0x3c6ef372,
+        0xa54ff53a,
+        0x510e527f,
+        0x9b05688c,
+        0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    let block_count = (bytes.len() + 9).div_ceil(64);
+    let mut padded = Vec::with_capacity(block_count * 64);
+    padded.extend_from_slice(bytes);
+    padded.push(0x80);
+    padded.resize(block_count * 64 - 8, 0);
+    padded.extend_from_slice(&((bytes.len() as u64) * 8).to_be_bytes());
+    for chunk in padded.chunks_exact(64) {
+        let mut schedule = [0u32; 64];
+        for (index, word) in schedule[..16].iter_mut().enumerate() {
+            *word = u32::from_be_bytes([
+                chunk[index * 4],
+                chunk[index * 4 + 1],
+                chunk[index * 4 + 2],
+                chunk[index * 4 + 3],
+            ]);
+        }
+        for index in 16..64 {
+            let s0 = schedule[index - 15].rotate_right(7)
+                ^ schedule[index - 15].rotate_right(18)
+                ^ (schedule[index - 15] >> 3);
+            let s1 = schedule[index - 2].rotate_right(17)
+                ^ schedule[index - 2].rotate_right(19)
+                ^ (schedule[index - 2] >> 10);
+            schedule[index] = schedule[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(schedule[index - 7])
+                .wrapping_add(s1);
+        }
+        let mut working = state;
+        for index in 0..64 {
+            let s1 = working[4].rotate_right(6)
+                ^ working[4].rotate_right(11)
+                ^ working[4].rotate_right(25);
+            let ch = (working[4] & working[5]) ^ ((!working[4]) & working[6]);
+            let temp1 = working[7]
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[index])
+                .wrapping_add(schedule[index]);
+            let s0 = working[0].rotate_right(2)
+                ^ working[0].rotate_right(13)
+                ^ working[0].rotate_right(22);
+            let maj =
+                (working[0] & working[1]) ^ (working[0] & working[2]) ^ (working[1] & working[2]);
+            let temp2 = s0.wrapping_add(maj);
+            working.copy_within(0..7, 1);
+            working[0] = temp1.wrapping_add(temp2);
+            working[4] = working[4].wrapping_add(temp1);
+        }
+        for (value, update) in state.iter_mut().zip(working) {
+            *value = value.wrapping_add(update);
+        }
+    }
+    let mut output = [0u8; 64];
+    for (index, byte) in state.iter().flat_map(|word| word.to_be_bytes()).enumerate() {
+        output[index * 2] = b"0123456789abcdef"[(byte >> 4) as usize];
+        output[index * 2 + 1] = b"0123456789abcdef"[(byte & 0x0f) as usize];
+    }
+    output
+}
+
+fn descriptor_field(payload: &mut Vec<u8>, value: &[u8]) {
+    payload.extend_from_slice(&(value.len() as u32).to_le_bytes());
+    payload.extend_from_slice(value);
+}
+
+fn descriptor_list(payload: &mut Vec<u8>, values: &[&[u8]]) {
+    payload.extend_from_slice(&(values.len() as u32).to_le_bytes());
+    for value in values {
+        descriptor_field(payload, value);
+    }
+}
+
+fn artifact_source(source: &[u8], generated: &[u8]) -> Vec<u8> {
+    let digest = sha256_hex(source);
+    let mut payload = Vec::new();
+    descriptor_field(&mut payload, b"module");
+    descriptor_field(&mut payload, b"rust-codegen");
+    descriptor_field(&mut payload, ARTIFACT_ABI);
+    descriptor_field(&mut payload, ARTIFACT_TARGET);
+    descriptor_field(&mut payload, &digest);
+    descriptor_field(&mut payload, &digest);
+    descriptor_list(&mut payload, &[]);
+    descriptor_list(&mut payload, &[]);
+    descriptor_list(&mut payload, &[b"activate", b"source", b"reflection"]);
+
+    let mut descriptor = Vec::with_capacity(ARTIFACT_DESCRIPTOR_MAGIC.len() + 4 + payload.len());
+    descriptor.extend_from_slice(ARTIFACT_DESCRIPTOR_MAGIC);
+    descriptor.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    descriptor.extend_from_slice(&payload);
+
+    let mut output = Vec::new();
+    output.extend_from_slice(b"const char __birnam_artifact_abi[] = \"");
+    output.extend_from_slice(ARTIFACT_ABI);
+    output.extend_from_slice(b"\";\nconst unsigned char __birnam_artifact_descriptor[] = {");
+    for (index, byte) in descriptor.iter().enumerate() {
+        if index != 0 {
+            output.push(b',');
+        }
+        output.extend_from_slice(byte.to_string().as_bytes());
+    }
+    output.extend_from_slice(b"};\n");
+    output.extend_from_slice(generated);
+    output
 }
 
 unsafe fn dispose_unit(api: &IdApi, unit: Oop) {
@@ -433,7 +565,12 @@ unsafe extern "C" fn rust_codegen_compile_output(
         note_error(b"RustCodegen Tcc is unavailable");
         return api.nilObj;
     }
-    let c_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let Some(source_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
+        note_error(b"RustCodegen source was not a String");
+        return api.nilObj;
+    };
+    let artifact = artifact_source(&source_bytes, &source);
+    let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
     let result = unsafe {
         send(
@@ -561,7 +698,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 #[cfg(test)]
 mod tests {
-    use super::{IDENTITY, birnam_codegen_rust_identity};
+    use super::{IDENTITY, artifact_source, birnam_codegen_rust_identity, sha256_hex};
     use std::ffi::CStr;
 
     #[test]
@@ -569,5 +706,23 @@ mod tests {
         // SAFETY: the export points to immutable crate storage for process life.
         let identity = unsafe { CStr::from_ptr(birnam_codegen_rust_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), IDENTITY);
+    }
+
+    #[test]
+    fn artifact_digest_and_descriptor_are_deterministic() {
+        assert_eq!(
+            sha256_hex(b""),
+            *b"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"7"),
+            *b"7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451"
+        );
+        let output = artifact_source(b"7", b"void* __ev(void* self, void** args, long n){}");
+        assert!(
+            output
+                .windows(b"const unsigned char __birnam_artifact_descriptor[] = {".len())
+                .any(|window| window == b"const unsigned char __birnam_artifact_descriptor[] = {")
+        );
     }
 }

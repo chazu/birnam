@@ -100,6 +100,15 @@ test "Rust Codegen writes a compiled dylib through Rust TCC" {
     const artifact = try std.fs.openFileAbsolute(path, .{});
     defer artifact.close();
     try std.testing.expect((try artifact.stat()).size > 0);
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.ArtifactDlopenFailed;
+    const abi_symbol = api.dlsym(handle, "__birnam_artifact_abi") orelse
+        return error.ArtifactAbiMissing;
+    const abi: [*:0]const u8 = @ptrCast(abi_symbol);
+    try std.testing.expectEqualStrings("birnam-artifact-generation-v1", std.mem.span(abi));
+    _ = api.dlsym(handle, "__birnam_artifact_descriptor") orelse
+        return error.ArtifactDescriptorMissing;
 
     const bad_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_bad.dylib", .{directory});
     defer std.testing.allocator.free(bad_path);
