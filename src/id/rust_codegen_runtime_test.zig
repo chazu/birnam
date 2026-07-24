@@ -172,3 +172,34 @@ test "Rust Codegen resolves a global through Rust Store" {
     try std.testing.expect(api.isSmallInt(persisted_read) != 0);
     try std.testing.expectEqual(@as(i64, 43), api.smallIntValue(persisted_read));
 }
+
+test "Rust Codegen embeds files through source-aware eval and compile" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "asset.bin", .data = "a\x00b\xff" });
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const source_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/script.birnam", .{directory});
+    defer std.testing.allocator.free(source_path);
+    const output_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/librust_codegen_embed.dylib", .{directory});
+    defer std.testing.allocator.free(output_path);
+    const source_text = "[System embedFile: \"asset.bin\"]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const source_file = api.mkString(source_path.ptr, source_path.len);
+
+    const evaluated = api.send(codegen, api.intern("eval:from:"), &.{ source, source_file }, 2);
+    var evaluated_len: usize = 0;
+    const evaluated_bytes = api.stringBytes(evaluated, &evaluated_len);
+    try std.testing.expectEqualSlices(u8, "a\x00b\xff", evaluated_bytes[0..evaluated_len]);
+
+    const output = api.mkString(output_path.ptr, output_path.len);
+    const compiled = api.send(codegen, api.intern("compile:output:from:"), &.{ source, output, source_file }, 3);
+    try std.testing.expectEqual(output, compiled);
+    try tmp.dir.deleteFile("asset.bin");
+    const loaded = api.send(codegen, api.intern("load:"), &.{output}, 1);
+    var loaded_len: usize = 0;
+    const loaded_bytes = api.stringBytes(loaded, &loaded_len);
+    try std.testing.expectEqualSlices(u8, "a\x00b\xff", loaded_bytes[0..loaded_len]);
+}

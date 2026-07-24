@@ -7,10 +7,12 @@
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use birnam_artifact::inspect as inspect_artifact;
-use birnam_codegen::{Emitter, OwnedCst, TranslationUnit, lower_program};
+use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CStr;
+use std::fs;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
@@ -30,9 +32,12 @@ const CHILD_AT_SELECTOR: &[u8] = b"childAt:\0";
 const EMIT_SELECTOR: &[u8] = b"emit:\0";
 const EVAL_SELECTOR: &[u8] = b"eval:\0";
 const EVAL_PERSISTING_SELECTOR: &[u8] = b"evalPersisting:\0";
+const EVAL_FROM_SELECTOR: &[u8] = b"eval:from:\0";
+const EVAL_PERSISTING_FROM_SELECTOR: &[u8] = b"evalPersisting:from:\0";
 const NEW_SELECTOR: &[u8] = b"new\0";
 const COMPILE_SELECTOR: &[u8] = b"compile:\0";
 const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
+const COMPILE_OUTPUT_FROM_SELECTOR: &[u8] = b"compile:output:from:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -48,6 +53,7 @@ const MAX_CST_DEPTH: usize = 4096;
 const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
 const ARTIFACT_DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
+const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -426,11 +432,143 @@ unsafe fn cst_tree(api: &IdApi, node: Oop, depth: usize) -> Option<OwnedCst> {
     ))
 }
 
+fn skip_cst_wrappers(mut node: &OwnedCst) -> Option<&OwnedCst> {
+    for _ in 0..MAX_CST_DEPTH {
+        if matches!(node.rule(), b"expr" | b"primary" | b"message") && node.child_count() == 1 {
+            node = node.child(0)?;
+        } else {
+            return Some(node);
+        }
+    }
+    None
+}
+
+fn source_span<'a>(node: &OwnedCst, source: &'a [u8]) -> Option<&'a [u8]> {
+    source.get(node.start()..node.end())
+}
+
+fn decode_string_literal(raw: &[u8]) -> Option<Vec<u8>> {
+    if raw.len() < 2 || raw.first() != Some(&b'"') || raw.last() != Some(&b'"') {
+        return None;
+    }
+    let inner = &raw[1..raw.len() - 1];
+    let mut decoded = Vec::with_capacity(inner.len());
+    let mut index = 0;
+    while index < inner.len() {
+        if inner[index] == b'\\'
+            && index + 1 < inner.len()
+            && let Some(byte) = match inner[index + 1] {
+                b'"' => Some(b'"'),
+                b'\\' => Some(b'\\'),
+                b'n' => Some(b'\n'),
+                b't' => Some(b'\t'),
+                b'r' => Some(b'\r'),
+                b'0' => Some(0),
+                _ => None,
+            }
+        {
+            decoded.push(byte);
+            index += 2;
+            continue;
+        }
+        decoded.push(inner[index]);
+        index += 1;
+    }
+    Some(decoded)
+}
+
+fn embedded_path(node: &OwnedCst, source: &[u8]) -> Option<Vec<u8>> {
+    if node.rule() != b"send" {
+        return None;
+    }
+    let node = skip_cst_wrappers(node)?;
+    if node.rule() != b"send" || node.child_count() != 2 {
+        return None;
+    }
+    let receiver = skip_cst_wrappers(node.child(0)?)?;
+    if receiver.rule() != b"ident" || source_span(receiver, source)? != b"System" {
+        return None;
+    }
+    let message = skip_cst_wrappers(node.child(1)?)?;
+    if message.rule() != b"keywordMsg" || message.child_count() != 2 {
+        return None;
+    }
+    let selector = source_span(message.child(0)?, source)?;
+    if selector != b"embedFile:" {
+        return None;
+    }
+    let argument = skip_cst_wrappers(message.child(1)?)?;
+    if argument.rule() != b"string" {
+        return None;
+    }
+    decode_string_literal(source_span(argument, source)?)
+}
+
+fn valid_relative_path(path: &[u8]) -> bool {
+    !path.is_empty()
+        && !path.starts_with(b"/")
+        && !path
+            .split(|byte| *byte == b'/')
+            .any(|part| part == b"." || part == b"..")
+}
+
+fn read_embedded_file(root: &[u8], relative: &[u8]) -> Option<Vec<u8>> {
+    if !valid_relative_path(relative) {
+        note_error(
+            b"RustCodegen embedFile: path must be a non-empty relative path without '.' or '..'",
+        );
+        return None;
+    }
+    let root = std::str::from_utf8(root).ok()?;
+    let relative = std::str::from_utf8(relative).ok()?;
+    let path = Path::new(root).join(relative);
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            note_error(b"RustCodegen embedFile: could not read the file");
+            return None;
+        }
+    };
+    if bytes.len() > MAX_EMBEDDED_FILE_BYTES {
+        note_error(b"RustCodegen embedFile: file exceeds the 16 MiB limit");
+        return None;
+    }
+    Some(bytes)
+}
+
+fn rewrite_embedded(node: OwnedCst, source: &[u8], root: &[u8]) -> Option<OwnedCst> {
+    if let Some(path) = embedded_path(&node, source) {
+        let bytes = read_embedded_file(root, &path)?;
+        return Some(OwnedCst::embedded_string(node.start(), node.end(), bytes));
+    }
+    let rule = node.rule().to_vec();
+    let start = node.start();
+    let end = node.end();
+    if let Some(bytes) = node.embedded_bytes() {
+        return Some(OwnedCst::embedded_string(start, end, bytes.to_vec()));
+    }
+    let mut children = Vec::with_capacity(node.child_count());
+    for index in 0..node.child_count() {
+        let child = node.child(index)?.to_owned();
+        children.push(rewrite_embedded(child, source, root)?);
+    }
+    Some(OwnedCst::new(&rule, start, end, children))
+}
+
+fn source_directory(path: &[u8]) -> Vec<u8> {
+    match path.iter().rposition(|byte| *byte == b'/') {
+        Some(0) => b"/".to_vec(),
+        Some(index) => path[..index].to_vec(),
+        None => b".".to_vec(),
+    }
+}
+
 unsafe fn emit_source(
     api: &IdApi,
     source_object: Oop,
     artifact: bool,
     persist_top_level: bool,
+    source_path: Option<&[u8]>,
 ) -> Option<Vec<u8>> {
     let source = unsafe { string_bytes(api, source_object) }?;
     let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
@@ -441,12 +579,26 @@ unsafe fn emit_source(
         return None;
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;
-    let program = lower_program(&tree, &source).ok()?;
+    let root = source_path.map(source_directory);
+    let tree = rewrite_embedded(tree, &source, root.as_deref().unwrap_or(b"."))?;
+    let program = match lower_program(&tree, &source) {
+        Ok(program) => program,
+        Err(_) => {
+            note_error(b"RustCodegen could not lower the source");
+            return None;
+        }
+    };
     let mut emitter = Emitter::new();
     if persist_top_level {
-        emitter.emit_program_persisting(&program).ok()?;
+        if emitter.emit_program_persisting(&program).is_err() {
+            note_error(b"RustCodegen could not emit the source");
+            return None;
+        }
     } else {
-        emitter.emit_program(&program).ok()?;
+        if emitter.emit_program(&program).is_err() {
+            note_error(b"RustCodegen could not emit the source");
+            return None;
+        }
     }
     let (function_defs, body) = emitter.finish_parts();
     let mut unit = TranslationUnit::new(artifact);
@@ -468,7 +620,7 @@ unsafe extern "C" fn rust_codegen_emit(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(output) = (unsafe { emit_source(api, values[0], false, false) }) else {
+    let Some(output) = (unsafe { emit_source(api, values[0], false, false, None) }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -483,13 +635,24 @@ unsafe extern "C" fn rust_codegen_eval(
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen eval: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen eval: expects one source argument");
+    if values.len() != 1 && values.len() != 2 {
+        abort("RustCodegen eval: expects source or source and source path");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(source) = (unsafe { emit_source(api, values[0], false, false) }) else {
+    let source_path = if values.len() == 2 {
+        unsafe { string_bytes(api, values[1]) }
+    } else {
+        None
+    };
+    if values.len() == 2 && source_path.is_none() {
+        note_error(b"RustCodegen source path was not a String");
+        return api.nilObj;
+    }
+    let Some(source) =
+        (unsafe { emit_source(api, values[0], false, false, source_path.as_deref()) })
+    else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -565,13 +728,24 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen evalPersisting: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen evalPersisting: expects one source argument");
+    if values.len() != 1 && values.len() != 2 {
+        abort("RustCodegen evalPersisting: expects source or source and source path");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(source) = (unsafe { emit_source(api, values[0], false, true) }) else {
+    let source_path = if values.len() == 2 {
+        unsafe { string_bytes(api, values[1]) }
+    } else {
+        None
+    };
+    if values.len() == 2 && source_path.is_none() {
+        note_error(b"RustCodegen source path was not a String");
+        return api.nilObj;
+    }
+    let Some(source) =
+        (unsafe { emit_source(api, values[0], false, true, source_path.as_deref()) })
+    else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -619,13 +793,24 @@ unsafe extern "C" fn rust_codegen_compile_output(
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen compile:output: received invalid arguments"));
-    if values.len() != 2 {
-        abort("RustCodegen compile:output: expects source and output path");
+    if values.len() != 2 && values.len() != 3 {
+        abort("RustCodegen compile:output: expects source/output or source/output/source path");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(source) = (unsafe { emit_source(api, values[0], true, false) }) else {
+    let source_path = if values.len() == 3 {
+        unsafe { string_bytes(api, values[2]) }
+    } else {
+        None
+    };
+    if values.len() == 3 && source_path.is_none() {
+        note_error(b"RustCodegen source path was not a String");
+        return api.nilObj;
+    }
+    let Some(source) =
+        (unsafe { emit_source(api, values[0], true, false, source_path.as_deref()) })
+    else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -799,12 +984,27 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, EVAL_FROM_SELECTOR),
+            rust_codegen_eval,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, EVAL_PERSISTING_SELECTOR),
             rust_codegen_eval_persisting,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, EVAL_PERSISTING_FROM_SELECTOR),
+            rust_codegen_eval_persisting,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_OUTPUT_SELECTOR),
+            rust_codegen_compile_output,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_OUTPUT_FROM_SELECTOR),
             rust_codegen_compile_output,
         );
         (api.method)(
