@@ -61,6 +61,11 @@ pub enum Statement<'a> {
     Expr(Expr<'a>),
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Program<'a> {
+    pub body: Vec<Statement<'a>>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum EmitError {
     DepthLimit,
@@ -217,6 +222,31 @@ fn lower_statements<'a, N: CstNode>(
         }
     }
     Ok(statements)
+}
+
+/// Lower the accepted `program` root into an ordered, runtime-free statement
+/// list. An empty program is a valid program whose eventual value is nil.
+pub fn lower_program<'a, N: CstNode>(
+    node: &N,
+    source: &'a [u8],
+) -> Result<Program<'a>, LowerError> {
+    let node = skip_wrappers(node)?;
+    if node.rule() != b"program" {
+        return Err(LowerError::UnsupportedRule);
+    }
+    if node.child_count() == 0 {
+        return Ok(Program { body: Vec::new() });
+    }
+    if node.child_count() != 1 {
+        return Err(LowerError::InvalidShape);
+    }
+    let statements = node.child(0).ok_or(LowerError::MissingChild)?;
+    if statements.rule() != b"statements" {
+        return Err(LowerError::InvalidShape);
+    }
+    Ok(Program {
+        body: lower_statements(statements, source, 1)?,
+    })
 }
 
 fn lower_vector<'a, N: CstNode>(
@@ -661,6 +691,28 @@ impl Emitter {
         self.emit_expr_at_depth(expr, 0)
     }
 
+    /// Emit a program body transactionally. The caller owns the surrounding
+    /// translation-unit wrapper; this method only appends the ordered body and
+    /// any nested block definitions. Runtime error propagation and persistent
+    /// top-level global writes remain N6.3 orchestration concerns.
+    pub fn emit_program(&mut self, program: &Program<'_>) -> Result<(), EmitError> {
+        let saved_bytes = std::mem::take(&mut self.bytes);
+        let saved_bound_names = std::mem::take(&mut self.bound_names);
+        let saved_function_defs_len = self.function_defs.len();
+        self.bytes = Vec::new();
+        self.bound_names = Vec::new();
+        let body_result = self.emit_block_body(&program.body);
+        let body = std::mem::take(&mut self.bytes);
+        self.bytes = saved_bytes;
+        self.bound_names = saved_bound_names;
+        if let Err(error) = body_result {
+            self.function_defs.truncate(saved_function_defs_len);
+            return Err(error);
+        }
+        self.bytes.extend_from_slice(&body);
+        Ok(())
+    }
+
     fn emit_expr_at_depth(&mut self, expr: &Expr<'_>, depth: usize) -> Result<(), EmitError> {
         if depth >= MAX_EXPR_DEPTH {
             return Err(EmitError::DepthLimit);
@@ -860,8 +912,8 @@ mod tests {
     use std::borrow::Cow;
 
     use super::{
-        Block, CstNode, EmitError, Emitter, Expr, LowerError, Statement, TranslationUnit,
-        lower_expr, lower_literal,
+        Block, CstNode, EmitError, Emitter, Expr, LowerError, Program, Statement, TranslationUnit,
+        lower_expr, lower_literal, lower_program,
     };
 
     struct TestNode {
@@ -1316,6 +1368,59 @@ mod tests {
         assert!(output.contains("void* __blk1(void* self, void** args, long n)"));
         assert!(output.contains("void* b_x = ((void**)self)[0];"));
         assert!(output.contains("((void**)__o1)[0] = b_x;"));
+    }
+
+    #[test]
+    fn lowers_and_emits_program_bodies_with_transactional_local_scope() {
+        let source = b"let x := 1; x";
+        let program = node(
+            b"program",
+            0,
+            source.len(),
+            vec![node(
+                b"statements",
+                0,
+                source.len(),
+                vec![
+                    node(
+                        b"statement",
+                        0,
+                        10,
+                        vec![node(
+                            b"letBinding",
+                            0,
+                            10,
+                            vec![
+                                node(b"ident", 4, 5, vec![]),
+                                node(b"expr", 9, 10, vec![node(b"number", 9, 10, vec![])]),
+                            ],
+                        )],
+                    ),
+                    node(
+                        b"statement",
+                        12,
+                        13,
+                        vec![node(b"expr", 12, 13, vec![node(b"ident", 12, 13, vec![])])],
+                    ),
+                ],
+            )],
+        );
+        let lowered = lower_program(&program, source).unwrap();
+        assert_eq!(
+            lowered,
+            Program {
+                body: vec![
+                    Statement::Let {
+                        name: b"x",
+                        value: Expr::SmallIntLiteral(b"1"),
+                    },
+                    Statement::Expr(Expr::Global(b"x")),
+                ],
+            }
+        );
+        let mut emitter = Emitter::new();
+        emitter.emit_program(&lowered).unwrap();
+        assert_eq!(emitter.finish(), b"void* b_x = MKV(1L);\nreturn b_x;\n");
     }
 
     #[test]
