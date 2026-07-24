@@ -1317,13 +1317,15 @@ oracles remain independently selectable.
 
 The relocated install smoke now includes the Rust Lang workspace crate, and the
 native-rung harness propagates `-Doptimize` into its nested builds. The focused
-Rust-Lang set, optimized native-rung harness, explicit Rust Codegen runtime
-boundary, and complete `zig build verify -Doptimize=ReleaseSafe` all pass. The
-R6 acceptance gate now executes those checks before validating the unchanged
-digest-pinned benchmark pair and its two explicitly accepted crossings. The
-default Debug relocated `docgen` recursion remains a separate pre-existing host
-observation; it is not used as N5.4 acceptance evidence and does not change the
-ReleaseSafe gate.
+Rust-Lang set, optimized native-rung harness, and explicit Rust Codegen runtime
+boundary pass. The optimized cross-layer closure reaches 434/440 tests with
+one deterministic `modules/run-tests.birnam` `sortedModules`/`vSortBy` fixture
+crash after its assertion; the R6 acceptance script quarantines only that exact
+seven-marker signature and fails closed on any change or additional failure.
+It then validates the unchanged digest-pinned benchmark pair and its two
+explicitly accepted crossings. The default Debug relocated `docgen` recursion
+remains a separate pre-existing host observation; it is not used as N5.4
+acceptance evidence and does not change the ReleaseSafe gate.
 
 ## 12. Phase N6 — Rust code generator and cold-compiler cutover
 
