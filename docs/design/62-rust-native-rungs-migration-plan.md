@@ -1580,6 +1580,11 @@ object after collection; sealing makes subsequent introductions fail closed.
 This is intentionally a Rust-only opt-in surface: it does not replace Zig's
 `Codegen` registry or claim the N6.5 dispatch lifecycle.
 
+Registration now consumes the same strict top-level revision scan as
+`moduleMetadataOf:` and `sourceRevisionOf:` rather than the looser recursive
+artifact walk. A fixture with duplicate module declarations proves that a
+later declaration cannot enter the registry under an otherwise matching name.
+
 `initialGenerationProjection` now consumes that registry into the frozen
 three-field generation projection. Entries are sorted by module name, each
 entry carries the Rust source revision and a nil unit slot, and the dispatch
