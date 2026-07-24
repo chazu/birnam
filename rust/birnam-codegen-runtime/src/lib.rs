@@ -10,8 +10,9 @@ use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
@@ -1028,8 +1029,20 @@ unsafe extern "C" fn rust_codegen_load(
     let descriptor_len = unsafe { *(descriptor_len_symbol.cast::<usize>()) };
     let descriptor =
         unsafe { core::slice::from_raw_parts(descriptor_symbol.cast::<u8>(), descriptor_len) };
-    if inspect_artifact(descriptor).is_err() {
+    let Ok(parsed_descriptor) = inspect_artifact(descriptor) else {
         note_error(b"RustCodegen artifact descriptor is incompatible");
+        return api.nilObj;
+    };
+    let artifact_path = &path[..path.len() - 1];
+    let artifact_path = Path::new(OsStr::from_bytes(artifact_path));
+    let directory = artifact_path.parent().unwrap_or_else(|| Path::new("."));
+    if !parsed_descriptor.native_requires.iter().all(|requirement| {
+        !requirement.is_empty()
+            && !requirement.contains(&0)
+            && !requirement.contains(&b'/')
+            && fs::metadata(directory.join(OsStr::from_bytes(requirement))).is_ok()
+    }) {
+        note_error(b"RustCodegen artifact native requirement is unavailable");
         return api.nilObj;
     }
     let init_symbol = unsafe { (api.dlsym)(handle, c"__birnam_unit_init".as_ptr()) };
