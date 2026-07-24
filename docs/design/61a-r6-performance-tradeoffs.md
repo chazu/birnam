@@ -156,3 +156,8 @@ The source-journal recovery coverage landed at `2586925`: the Rust boundary
 replays a recorded alien source and re-derives an unbound scalar global during
 image recovery. R6 passed again at that checkpoint with 20/20 focused tests,
 the documented fixture exception, and only the same two accepted crossings.
+
+The malformed-alien continuation regression landed at `90d5181`: a bad
+recorded source is skipped while a valid neighboring source still counts as
+replayed. The complete R6 script passed again with 20/20 focused tests and no
+new benchmark exception.
