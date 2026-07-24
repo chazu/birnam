@@ -1565,10 +1565,10 @@ analysis-only: no source is evaluated and no Store facts are changed.
 
 `sourceRevisionOf:` now exposes the corresponding seven-field revision value
 (`name`, requirements, authored source, and three deterministic digest slots)
-for the same literal module shape, with `nil` for legacy source. The digest
-partition is intentionally conservative at this rung (all slots use the
-source digest); method/non-method partitioning remains part of candidate
-projection hardening before N6.5 activation.
+for the same literal module shape, with `nil` for legacy source. Its bounded
+top-level scan now partitions non-method statements, direct declarative method
+operations, and the complete authored revision into the three digest slots;
+candidate compilation and Store publication remain part of N6.5.
 
 The first Rust source-recovery seam is now executable as well. `RustCodegen`
 implements `recordModuleSource:named:`, `moduleSourceFor:`, and
@@ -1605,6 +1605,11 @@ regression fixture proves that a partially malformed successor revision is
 rejected without recomputing or publishing a generation. The digest projection
 also rejects duplicate module names among untouched entries, with a separate
 fixture covering that non-target collision.
+
+The partition is pinned by a 15-test runtime gate: changing only a method body
+leaves the non-method digest unchanged, while changing only a top-level form
+leaves the method digest unchanged. The source, identity, and requirements
+digest still changes for either edit.
 
 ### N6.3 — Port eval and compile orchestration
 
