@@ -1529,6 +1529,13 @@ output filename for source without a module declaration; source/revision
 digest enrichment and capability-policy enforcement remain subsequent N6.4
 slices.
 
+Rust `load:` now applies the native-capability half of that handoff before
+initialization: each descriptor entry must be a basename and must exist beside
+the artifact, otherwise loading returns `nil` with a stable diagnostic and no
+initializer or `__ev` call. The gate deletes a declared native fixture and
+proves this pre-init rejection. Birnam dependency activation and image replay
+remain outside this narrow loader check.
+
 ### N6.3 — Port eval and compile orchestration
 
 Connect the Rust emitter to the accepted TCC rung for eval, output dylibs,
