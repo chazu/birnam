@@ -1999,6 +1999,15 @@ Rust image replay now rebuilds the relational rule cache at `bf54131` when the
 are restored. The focused target and full R6 gate passed with no benchmark
 change.
 
+Image authority hardening landed at `392d70b`: Rust preflight, code mapping,
+and fact replay now compare an image's embedded authority digest with the
+canonical durable generation before any recovery mutation. An inconsistent or
+stale durable projection fails closed, while data-only runtimes without a
+durable generation retain the format-only path. The focused boundary is now
+21/21; the R6 exact-output pin moved to 21 at `c809bc6`, and the complete gate
+passed with the same fixture quarantine and only the two existing benchmark
+crossings.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves
