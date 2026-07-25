@@ -207,6 +207,8 @@ const COLLECTION_VT_NAME: &[u8] = b"CollectionVt\0";
 const VECTOR_NAME: &[u8] = b"Vector\0";
 const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
 const VECTOR_NODE_NAME: &[u8] = b"VectorNode\0";
+const RANGE_NAME: &[u8] = b"Range\0";
+const RANGE_VT_NAME: &[u8] = b"RangeVt\0";
 
 #[repr(C)]
 struct VecPayload {
@@ -217,6 +219,14 @@ struct VecPayload {
     tail_len: usize,
 }
 
+#[repr(C)]
+struct RangePayload {
+    start: i64,
+    end: i64,
+}
+
+static RANGE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
+
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
@@ -224,6 +234,8 @@ struct Runtime {
     vector_vt: usize,
     vector_proto: usize,
     node_vt: usize,
+    range_vt: usize,
+    range_proto: usize,
     value1: usize,
     value2: usize,
     print_string: usize,
@@ -354,6 +366,17 @@ unsafe fn empty_vector(api: &IdApi, runtime: &Runtime) -> Oop {
         };
     }
     vector
+}
+
+unsafe fn empty_range(api: &IdApi, runtime: &Runtime, start: i64, end: i64) -> Oop {
+    let range = unsafe { (api.alloc)(runtime.range_vt as Oop, size_of::<RangePayload>()) };
+    if range.is_null() {
+        abort("Range allocation failed");
+    }
+    unsafe {
+        *range.cast::<RangePayload>() = RangePayload { start, end };
+    }
+    range
 }
 
 unsafe fn oop_array_for(vector: *const VecPayload, index: usize) -> Oop {
@@ -675,6 +698,210 @@ unsafe extern "C" fn vector_comma(self_object: Oop, args: *const Oop, count: usi
     result
 }
 
+unsafe fn range_payload(object: Oop) -> *mut RangePayload {
+    if object.is_null() {
+        abort("Range method received a null receiver");
+    }
+    object.cast::<RangePayload>()
+}
+
+unsafe fn range_bounds(object: Oop) -> (i64, i64) {
+    let payload = unsafe { range_payload(object) };
+    unsafe { ((*payload).start, (*payload).end) }
+}
+
+unsafe extern "C" fn range_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let (start, end) = unsafe { range_bounds(self_object) };
+    if end < start {
+        return unsafe { (api.mkSmallInt)(0) };
+    }
+    let size = i128::from(end) - i128::from(start) + 1;
+    if size > i128::from(i64::MAX) {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)(size as i64) }
+}
+
+unsafe extern "C" fn range_includes(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(value) } == 0 {
+        return api.falseObj;
+    }
+    let value = unsafe { (api.smallIntValue)(value) };
+    let (start, end) = unsafe { range_bounds(self_object) };
+    if start <= end && value >= start && value <= end {
+        api.trueObj
+    } else {
+        api.falseObj
+    }
+}
+
+unsafe extern "C" fn range_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(index) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(index) } == 0 {
+        return api.nilObj;
+    }
+    let index = unsafe { (api.smallIntValue)(index) };
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let value = i128::from(start) + i128::from(index);
+    if index < 0 || start > end || value > i128::from(end) || value > i128::from(i64::MAX) {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)(value as i64) }
+}
+
+unsafe extern "C" fn range_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(block) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let selector = runtime().value1 as Oop;
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut value = i128::from(start);
+    let end = i128::from(end);
+    while value <= end {
+        let item = unsafe { (api.mkSmallInt)(value as i64) };
+        let arguments = [item];
+        unsafe { (api.send)(block, selector, arguments.as_ptr(), 1) };
+        value += 1;
+    }
+    self_object
+}
+
+unsafe extern "C" fn range_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let selector = runtime().value2 as Oop;
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut value = i128::from(start);
+    let end = i128::from(end);
+    let mut accumulator = arguments[0];
+    while value <= end {
+        let item = unsafe { (api.mkSmallInt)(value as i64) };
+        let call_arguments = [accumulator, item];
+        accumulator = unsafe { (api.send)(arguments[1], selector, call_arguments.as_ptr(), 2) };
+        if accumulator.is_null() {
+            return api.nilObj;
+        }
+        value += 1;
+    }
+    accumulator
+}
+
+unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut result = unsafe { empty_vector(api, runtime()) };
+    let mut value = i128::from(end);
+    let start = i128::from(start);
+    while value >= start {
+        result = unsafe { vector_push(api, runtime(), result, (api.mkSmallInt)(value as i64)) };
+        value -= 1;
+    }
+    result
+}
+
+unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let selector = runtime().print_string as Oop;
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut output = Vec::from(&b"#["[..]);
+    let mut value = i128::from(start);
+    let end = i128::from(end);
+    while value <= end {
+        if value != i128::from(start) {
+            output.push(b' ');
+        }
+        let item = unsafe { (api.mkSmallInt)(value as i64) };
+        let printed = unsafe { (api.send)(item, selector, ptr::null(), 0) };
+        if printed.is_null() {
+            return api.nilObj;
+        }
+        let mut length = 0;
+        let bytes = unsafe { (api.stringBytes)(printed, &mut length) };
+        if bytes.is_null() {
+            return api.nilObj;
+        }
+        output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
+        value += 1;
+    }
+    output.push(b']');
+    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+}
+
+unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(other) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.vtableOf)(other) } != runtime().vector_vt as Oop {
+        return api.nilObj;
+    }
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut result = unsafe { empty_vector(api, runtime()) };
+    let mut value = i128::from(start);
+    let end = i128::from(end);
+    while value <= end {
+        result = unsafe { vector_push(api, runtime(), result, (api.mkSmallInt)(value as i64)) };
+        value += 1;
+    }
+    unsafe { vector_comma(result, args, count) }
+}
+
+unsafe extern "C" fn integer_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 || unsafe { (api.isSmallInt)(self_object) } == 0 {
+        return api.nilObj;
+    }
+    let Some(end) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(end) } == 0 {
+        return api.nilObj;
+    }
+    unsafe {
+        empty_range(
+            api,
+            runtime(),
+            (api.smallIntValue)(self_object),
+            (api.smallIntValue)(end),
+        )
+    }
+}
+
 unsafe fn bring_up(api_pointer: *mut IdApi) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
@@ -682,20 +909,31 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
         let reloading = unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) != 0 };
-        let (collection_vt, node_vt, vector_vt, vector_proto) = if reloading {
+        let (collection_vt, node_vt, vector_vt, vector_proto, range_vt, range_proto) = if reloading
+        {
             (
                 unsafe { import(api, COLLECTION_VT_NAME) },
                 unsafe { import(api, VECTOR_NODE_NAME) },
                 unsafe { import(api, VECTOR_VT_NAME) },
                 unsafe { import(api, VECTOR_NAME) },
+                unsafe { import(api, RANGE_VT_NAME) },
+                unsafe { import(api, RANGE_NAME) },
             )
         } else {
             let collection_vt = unsafe { (api.proto)(api.object_vt) };
             let node_vt = unsafe { (api.proto)(api.object_vt) };
             let vector_vt = unsafe { (api.proto)(collection_vt) };
-            (collection_vt, node_vt, vector_vt, ptr::null_mut())
+            let range_vt = unsafe { (api.proto)(collection_vt) };
+            (
+                collection_vt,
+                node_vt,
+                vector_vt,
+                ptr::null_mut(),
+                range_vt,
+                ptr::null_mut(),
+            )
         };
-        if [collection_vt, node_vt, vector_vt]
+        if [collection_vt, node_vt, vector_vt, range_vt]
             .iter()
             .any(|value| value.is_null())
         {
@@ -711,6 +949,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         vector_vt: vector_vt as usize,
                         vector_proto: 0,
                         node_vt: node_vt as usize,
+                        range_vt: range_vt as usize,
+                        range_proto: 0,
                         value1: 0,
                         value2: 0,
                         print_string: 0,
@@ -720,12 +960,37 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         } else {
             vector_proto
         };
+        let range_proto = if range_proto.is_null() {
+            unsafe {
+                empty_range(
+                    api,
+                    &Runtime {
+                        api: api_pointer as usize,
+                        collection_vt: collection_vt as usize,
+                        vector_vt: vector_vt as usize,
+                        vector_proto: vector_proto as usize,
+                        node_vt: node_vt as usize,
+                        range_vt: range_vt as usize,
+                        range_proto: 0,
+                        value1: 0,
+                        value2: 0,
+                        print_string: 0,
+                    },
+                    0,
+                    0,
+                )
+            }
+        } else {
+            range_proto
+        };
         Runtime {
             api: api_pointer as usize,
             collection_vt: collection_vt as usize,
             vector_vt: vector_vt as usize,
             vector_proto: vector_proto as usize,
             node_vt: node_vt as usize,
+            range_vt: range_vt as usize,
+            range_proto: range_proto as usize,
             value1: unsafe { intern(api, b"value:\0") } as usize,
             value2: unsafe { intern(api, b"value:value:\0") } as usize,
             print_string: unsafe { intern(api, b"printString\0") } as usize,
@@ -737,6 +1002,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.vector_vt as Oop,
             VECTOR_LAYOUT.as_ptr(),
             VECTOR_LAYOUT.len(),
+            birnam_abi::SLOT_RAW,
+        );
+        (api.setLayout)(
+            runtime.range_vt as Oop,
+            RANGE_LAYOUT.as_ptr(),
+            RANGE_LAYOUT.len(),
             birnam_abi::SLOT_RAW,
         );
         (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
@@ -778,6 +1049,31 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"reversed\0"),
             vector_reversed,
         );
+        (api.method)(runtime.range_vt as Oop, intern(api, b"size\0"), range_size);
+        (api.method)(
+            runtime.range_vt as Oop,
+            intern(api, b"includes:\0"),
+            range_includes,
+        );
+        (api.method)(runtime.range_vt as Oop, intern(api, b"do:\0"), range_do);
+        (api.method)(
+            runtime.range_vt as Oop,
+            intern(api, b"inject:into:\0"),
+            range_inject,
+        );
+        (api.method)(runtime.range_vt as Oop, intern(api, b"at:\0"), range_at);
+        (api.method)(
+            runtime.range_vt as Oop,
+            intern(api, b"reversed\0"),
+            range_reversed,
+        );
+        (api.method)(
+            runtime.range_vt as Oop,
+            intern(api, b"printString\0"),
+            range_print_string,
+        );
+        (api.method)(runtime.range_vt as Oop, intern(api, b",\0"), range_comma);
+        (api.method)(api.smallint_vt, intern(api, b"to:\0"), integer_to);
     }
     if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
@@ -793,6 +1089,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             let _ = (api.exportObj)(VECTOR_VT_NAME.as_ptr().cast(), runtime.vector_vt as Oop);
             let _ = (api.exportObj)(VECTOR_NAME.as_ptr().cast(), runtime.vector_proto as Oop);
             let _ = (api.exportObj)(VECTOR_NODE_NAME.as_ptr().cast(), runtime.node_vt as Oop);
+            (api.setOwner)(runtime.range_vt as Oop, runtime.range_proto as Oop);
+            let _ = (api.exportObj)(RANGE_VT_NAME.as_ptr().cast(), runtime.range_vt as Oop);
+            let _ = (api.exportObj)(RANGE_NAME.as_ptr().cast(), runtime.range_proto as Oop);
         }
     }
 }

@@ -62,9 +62,14 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const vector = api.import("Vector") orelse return error.VectorMissing;
     const vector_vt = api.import("VectorVt") orelse return error.VectorVtMissing;
     const node_vt = api.import("VectorNode") orelse return error.VectorNodeMissing;
+    const range = api.import("Range") orelse return error.RangeMissing;
+    const range_vt = api.import("RangeVt") orelse return error.RangeVtMissing;
     try std.testing.expectEqual(vector_vt, api.vtableOf(vector));
+    try std.testing.expectEqual(range_vt, api.vtableOf(range));
     const probe_node = api.alloc(node_vt, 32) orelse return error.VectorNodeAllocationFailed;
     try std.testing.expectEqual(@as(usize, 32), api.objectPayloadSize(probe_node));
+    const probe_range = api.alloc(range_vt, 16) orelse return error.RangeAllocationFailed;
+    try std.testing.expectEqual(@as(usize, 16), api.objectPayloadSize(probe_range));
 
     const first = send(api, vector, "add:", &.{api.mkSmallInt(10)});
     const second = send(api, first, "add:", &.{api.mkSmallInt(20)});
@@ -122,4 +127,37 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const joined = send(api, first, ",", &.{second});
     try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, joined, "size", &.{})));
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, joined, "at:", &.{api.mkSmallInt(2)})));
+
+    const integer_range = send(api, api.mkSmallInt(3), "to:", &.{api.mkSmallInt(5)});
+    try std.testing.expectEqual(range_vt, api.vtableOf(integer_range));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, integer_range, "size", &.{})));
+    try std.testing.expectEqual(api.trueObj, send(api, integer_range, "includes:", &.{api.mkSmallInt(4)}));
+    try std.testing.expectEqual(api.falseObj, send(api, integer_range, "includes:", &.{api.mkSmallInt(6)}));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, integer_range, "at:", &.{api.mkSmallInt(0)})));
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(send(api, integer_range, "at:", &.{api.mkSmallInt(2)})));
+    try std.testing.expectEqual(api.nilObj, send(api, integer_range, "at:", &.{api.mkSmallInt(3)}));
+
+    sum = 0;
+    try std.testing.expectEqual(integer_range, send(api, integer_range, "do:", &.{block}));
+    try std.testing.expectEqual(@as(i64, 12), sum);
+    const range_folded = send(api, integer_range, "inject:into:", &.{ api.mkSmallInt(0), fold_block });
+    try std.testing.expectEqual(@as(i64, 12), api.smallIntValue(range_folded));
+
+    const range_rendered = send(api, integer_range, "printString", &.{});
+    var range_rendered_len: usize = 0;
+    const range_rendered_bytes = api.stringBytes(range_rendered, &range_rendered_len);
+    try std.testing.expectEqualStrings("#[3 4 5]", range_rendered_bytes[0..range_rendered_len]);
+
+    const range_reversed = send(api, integer_range, "reversed", &.{});
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(send(api, range_reversed, "at:", &.{api.mkSmallInt(0)})));
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, range_reversed, "at:", &.{api.mkSmallInt(2)})));
+    const range_joined = send(api, integer_range, ",", &.{second});
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(send(api, range_joined, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, range_joined, "at:", &.{api.mkSmallInt(4)})));
+
+    const empty_range = send(api, api.mkSmallInt(5), "to:", &.{api.mkSmallInt(3)});
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_range, "size", &.{})));
+    try std.testing.expectEqual(api.falseObj, send(api, empty_range, "includes:", &.{api.mkSmallInt(4)}));
+    const empty_reversed = send(api, empty_range, "reversed", &.{});
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_reversed, "size", &.{})));
 }
