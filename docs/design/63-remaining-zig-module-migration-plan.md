@@ -8,7 +8,7 @@ behavior and the order in which their Rust replacements can become canonical.
 
 The goal is not a mechanical translation. Each replacement is a separately
 loadable dylib, preserves the frozen IdApi and generated-C ABIs, keeps the
-object dictionary and Store authoritative, and remains selectable beside its
+object dictionary authoritative with Store as its derived mirror, and remains selectable beside its
 Zig oracle until an observation window closes.
 
 ## 1. Current boundary and remaining owners
@@ -25,24 +25,27 @@ The remaining Zig-owned production modules are:
 
 | Zig owner | Rust work still required | First safe cutover |
 | --- | --- | --- |
+| `src/id/prelude.zig` | complete the Rust Prelude selector/export surface, then make one canonical Prelude selection while preserving the Error dylib boundary | after Prelude selector, bootstrap, and observation gates |
 | `src/id/collection.zig` | persistent Vector/RRB, Range, Map/HAMT, String/native collection protocol, layouts and tracing | after collection cross-floor and GC gates |
-| `src/id/error.zig` | reconcile the Rust Prelude Error core with the standalone Error rung; remove duplicate ownership without changing the self-hosted protocol | after Error identity/DNU and source bootstrap gates |
+| `src/id/error.zig` | standalone Rust Error dylib with the existing family/factory/DNU boundary; Prelude imports it lazily | after Error identity/DNU and source bootstrap gates |
 | `src/id/isolate.zig` | process launch, worker loop, pipes, wire-v1 codec, bounded copied values, termination | after wire corpus and hostile-child gates |
 | `src/id/relational.zig` | query engine, rule evaluation, pull, aggregation, time windows, Store integration | after collection and query-performance gates |
 | `src/id/alien.zig` | dynamic-library ownership, C layout/signature handling, TCC shims, callbacks, buffers and finalizers | after ABI corpus and callback lifetime gates |
 | `src/id/image.zig` | host orchestration around the Rust codec: mapping, swizzling, code records, Store replay, rebuild and save | after compatible-v4 cross-product gates |
 | `src/id/main.zig`, project/build helpers | Rust host, source/bootstrap workflow, install and distribution closure | last, after every lower rung is observable |
 
-`src/id/artifact.zig`, `artifact_inspector.zig`, and `artifact_preflight.zig`
-must be treated as one artifact boundary. The Rust artifact crate is the
-replacement candidate, but host preflight and activation policy remain Zig
-until the N6/N10 closure gates prove that moving them does not broaden loader
-authority.
+The artifact boundary has three deliberately separate owners: the
+language-neutral schema/parser in `birnam-artifact`, the pointer-free dynamic
+inspector rung, and the host-owned closure/preflight walker. The Rust artifact
+crate is the schema/inspector replacement candidate; activation and dependency
+closure policy remain host-owned until the final host phase. No artifact crate
+may become a second preflight authority.
 
-The Rust Prelude Error family is already the only Error-family owner in a
-process that loads it. The migration must not create a second `ErrorVt`,
-factory, or Object DNU owner. The standalone Zig Error dylib is therefore a
-compatibility oracle and consolidation target, not an independent new family.
+The Rust Prelude currently contains an opt-in Error-compatible helper so its
+focused tests can exercise faults. It must not own the production Error family
+when the standalone Error rung is present: Prelude imports `Error`/`ErrorVt`
+lazily, exactly as the Zig Prelude does. A separate Rust Error dylib is required
+before the Zig Error dylib can be retired.
 
 ## 2. Non-negotiable invariants
 
@@ -60,13 +63,14 @@ Every phase below inherits these rules.
 4. **Canonical object dictionary.** Exported objects and vtables are looked up
    by canonical name. A reload extends the existing family; it never mints a
    competing family or singleton.
-5. **MOP consistency law.** Every method mutation updates the exact dictionary
-   and the `#primitive` projection atomically: an exact method answers its
-   callable primitive, an explicit primitive answers `#primitive`, and an
-   absent method answers nil. No observer or authorizer callback may publish a
-   contradictory state.
-6. **Store authority.** Store facts are the sole source of relational state;
-   object dispatch and Store reads are two views of one state. Rust code must
+5. **MOP consistency law.** The object dictionary is the dispatch authority;
+   Store is its derived mirror and mutation chokepoint. For every selector, the
+   mirror is exactly the callable Method, `#primitive`, or absent. A tracked
+   replacement retracts the old mirror, mutates the dictionary, then asserts
+   the new mirror; transient absence is allowed during that transaction. No
+   observer or authorizer callback may publish a contradictory state.
+6. **Store authority.** Relational reads use the Store's derived facts, but
+   those facts never become authoritative over object dispatch. Rust code must
    not introduce a second global environment or bypass the Store callback
    contract.
 7. **GC and reentry.** Every payload has an exact layout/trace description;
@@ -102,7 +106,13 @@ Do this before adding a collection or service crate.
 5. Add a clean-prefix test proving that no remaining-rung test accidentally
    resolves an installed Zig dylib through cwd, source tree, or ambient loader
    search paths.
-6. Run `zig build verify` and `mise run r6-acceptance`; record the current R6
+6. Apply Design 62 §§5.3–5.4 to every checkpoint and observation window. After
+   Design 61 R8 retires the live Zig floor, cross-floor tests use only pinned,
+   test-only Zig binary/dylib fixtures with fixed identity and digest in
+   isolated prefixes. Those fixtures are never installed or distributed and
+   are excluded from clean-bootstrap proofs; do not require a live Zig floor
+   to remain available once R8 is complete.
+7. Run `zig build verify` and `mise run r6-acceptance`; record the current R6
    aggregate and the two explicitly accepted benchmark crossings. Do not
    widen the R6 exception for inventory noise.
 
@@ -110,7 +120,35 @@ Do this before adding a collection or service crate.
 fixture; Rust and Zig choices are explicit; no default switch has occurred; the
 worktree is clean and both gates pass.
 
-## 4. Phase R1 — Collection (first implementation slice)
+## 4. Phase R0.5 — Prelude completion and canonical switch
+
+The Rust Prelude is opt-in today; the Zig Prelude remains the canonical
+production owner. Complete this boundary before Collection or Error cutover.
+
+1. Inventory the entire `src/id/prelude.zig` surface, including source `load:`,
+   `loadModule:`, line input, file/environment I/O, output stringification,
+   GC controls, and every exported System/Block/Error family selector.
+2. Remove Error-family ownership from the Rust Prelude implementation. It must
+   import the standalone Error family lazily and work with either Zig or Rust
+   Error during the observation window.
+3. Add a standalone Rust Error dylib and run Prelude against both Error
+   implementations in isolated prefixes. No test may load two singleton owners
+   for the same family.
+4. Add source-bootstrap, self-hosted-handler, relocated-install, and subprocess
+   stdin/output gates. The valid `readLine` path must be tested outside the
+   in-process dynamic runner.
+5. Add an explicit `prelude-impl` selection to the native-rung harness. Record
+   identity, digest, selector membership, exports, and the Rust/Zig result
+   matrix before changing the canonical install mapping.
+6. Run full verify and R6, then observe project builds, image save/load, module
+   loading, process controls, and release packaging before one canonical switch
+   commit. Keep the Zig Prelude as the rollback fixture.
+
+**R0.5 exit gate:** complete Prelude surface parity, one Error owner per
+process, cold/source bootstrap and subprocess I/O evidence, explicit selector
+selection, full verify/R6, and a closed observation window.
+
+## 5. Phase R1 — Collection (first implementation slice)
 
 Collection is first because Relational and Alien use its Vector/Map protocol,
 and because its id-native payloads exercise layouts, persistent sharing, and
@@ -119,18 +157,25 @@ GC without changing the floor.
 ### R1.1 Rust crate and payload model
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
-   Install it beside `libbirnam_collection.dylib`; give it a unique identity
-   and a versioned diagnostic export.
-2. Port the smallest owned family first: `VectorVt`/`Vector` and its 32-way
+   Its production install name is the canonical `libbirnam_id_collection.dylib`;
+   use explicit `libbirnam_id_collection_zig.dylib` and
+   `libbirnam_id_collection_rust.dylib` names for side-by-side test fixtures.
+   Give the Rust library a unique identity and a versioned diagnostic export.
+2. Freeze and enumerate the complete owned surface before porting behavior:
+   `CollectionVt`, `VectorNode`, `MapNode`, `StringBuilder`, all collection
+   constructors and owner/root-provider paths, Object and nil collection
+   methods, Integer `to:`, and every native Vector, Map, and String selector.
+   Derived stdlib selectors are recorded as derived and remain self-hosted.
+3. Port the smallest owned family first: `VectorVt`/`Vector` and its 32-way
    persistent trie. Keep node payloads as exact OOP slots and install the same
    layout descriptors before allocation.
-3. Reuse canonical `Integer`, `String`, `Symbol`, `Block`, `Error`, and System
+4. Reuse canonical `Integer`, `String`, `Symbol`, `Block`, `Error`, and System
    objects. Never allocate a second Boolean, Error, or Object family.
-4. Port `size`, `at:`, `add:`, `do:`, `inject:into:`, `printString`,
+5. Port `size`, `at:`, `add:`, `do:`, `inject:into:`, `printString`,
    `indexOf:`, `copyFrom:to:`, and `reversed` with exact count/type/error
    behavior. Leave derived higher-order selectors in Birnam unless the Zig
    oracle proves they are native and the benchmark says they must remain so.
-5. Add Rust-only unit tests for trie path-copying, tail growth, structural
+6. Add Rust-only unit tests for trie path-copying, tail growth, structural
    sharing, overflow/empty cases, and deterministic rendering. No unit test
    may call a foreign `send` while holding a Rust borrow or lock.
 
@@ -140,7 +185,10 @@ GC without changing the floor.
    `do:`, `inject:into:`, `includes:`, `reversed`, and exact Integer values.
 2. Add `Map`/`MapVt` as a persistent HAMT with value equality matching the Zig
    contract: SmallInt by value, String by bytes, Symbols/other objects by
-   identity. Node payloads must be layout-described OOP slots.
+   identity. Preserve the actual node shape: each HAMT node begins with two
+   raw header words followed by its OOP entry slots. Layout descriptors must
+   encode that mixed raw/OOP shape exactly; never mark either raw header word
+   as an OOP slot or trace it as one.
 3. Port only the native String methods still owned by the Zig collection rung
    (` ,`, `=`, `size`, `at:`, `byteAt:`, `copyFrom:to:`, case conversion,
    replacement, symbol/number conversion, and printString). Keep the derived
@@ -168,38 +216,50 @@ GC without changing the floor.
 the cross-floor corpus, forced-GC and relocation checks, full verify, R6, and
 the observation window. Zig remains available for rollback.
 
-## 5. Phase R2 — Error-family consolidation
+## 6. Phase R2 — Standalone Error dylib
 
-This phase is a de-duplication and compatibility phase, not a new Error
-implementation.
+Error remains its own dynamic rung. The Rust Prelude imports the family; it
+does not subsume the rung or mint a second family.
 
-1. Prove that the Rust Prelude Error family and the standalone Zig Error family
-   have identical vtable/payload layout, exports, factory selectors, DNU
-   propagation, and Object `isError`/DNU behavior.
-2. Move any remaining native-only Error core selector to the Rust owner or
-   leave it in self-hosted `stdlib.birnam`; do not install it on a duplicate
-   family.
-3. Run nested propagation, handler, DNU restoration, numeric-fault, GC, image
-   export, and reload tests with both preload orders.
-4. Delete only the Zig Error implementation after a compatible-image and
-   source-bootstrap observation window proves that no installed artifact asks
-   for its identity.
+1. Add `rust/birnam-error` as `libbirnam_id_error.dylib` with the existing
+   Error/ErrorVt/ErrorFactoryVt exports, exact two-OOP payload, factory
+   selectors, DNU propagation, and Object DNU swap.
+2. Remove the Rust Prelude's private Error-family creation path. Its numeric,
+   loop, I/O, and DNU helpers must resolve the already-exported Error family
+   and fail closed if the required family is unavailable.
+3. Prove Zig Error, Rust Error, and both Prelude implementations have identical
+   vtable/payload layout, exports, factory selectors, DNU propagation,
+   numeric-fault kinds/messages, and reload behavior in isolated processes.
+4. Run nested propagation, self-hosted handlers, image export, source
+   bootstrap, forced-GC, and both preload-order tests. A preload order that
+   would create duplicate families is a failed gate, not a tolerated mode.
+5. Switch the Error dylib canonically only after the standalone Rust identity
+   is observed through the complete Prelude, Collection, image, and project
+   workflows. Retain the Zig Error dylib as the pinned rollback fixture.
 
-**R2 exit gate:** one Error family, one factory, stable kind/message identity,
-and no duplicate `ErrorVt`/`Error` export under any supported load order.
+**R2 exit gate:** one Error family per process, one dynamic Error owner, stable
+kind/message identity, and no duplicate `ErrorVt`/`Error` export under any
+supported load order.
 
-## 6. Phase R3 — Isolate
+## 7. Phase R3 — Isolate
 
 1. Add `rust/birnam-isolate` with a pointer-free codec and the exact `BISO`
    wire-v1 frame/schema already implemented by `src/id/isolate.zig`.
-2. Port frame validation first (magic/version/flags/request IDs, maximum
+2. Freeze and audit the host-facing C ABI before porting worker behavior:
+   `birnam_isolate_worker_driver`, `birnam_isolate_worker_boot_error`,
+   `birnam_isolate_drain`, and `birnam_isolate_shutdown`. Record exact
+   signatures, symbol ownership, buffer/handle ownership, worker and host
+   lifetimes, and reentry rules. The existing Zig host must operate against
+   the Rust Isolate implementation in an explicit selection before the host
+   itself is switched.
+3. Port frame validation first (magic/version/flags/request IDs, maximum
    frame/depth/container/node limits, duplicate map keys, UTF-8 and
    transferable-value rules) and compare every error enum to the Zig corpus.
-3. Port copied-value encode/decode with bounded allocation and cycle/depth
+4. Port copied-value encode/decode with bounded allocation and cycle/depth
    guards. Never send a borrowed Rust reference to a worker or callback.
-4. Port worker boot, request/reply, timeout/failure, stop/stopped, and owned
+5. Port worker boot, request/reply, timeout/failure, stop/stopped, and owned
    termination. Keep orchestration and policy in `isolate.birnam`/the host.
-5. Add child-process tests for malformed frames, hostile children, truncated
+6. Add child-process tests for malformed frames, hostile children, truncated
    replies, timeout, double-stop, and forced termination. Run debug and
    ReleaseSafe variants.
 
@@ -207,7 +267,7 @@ and no duplicate `ErrorVt`/`Error` export under any supported load order.
 the boundary, deterministic failure/termination, relocated install pass, and
 R6/verify green.
 
-## 7. Phase R4 — Relational
+## 8. Phase R4 — Relational
 
 1. Port the query engine over the Rust Store callback surface only after R1.
    The Rust implementation must read live triples from Store and never cache a
@@ -227,7 +287,7 @@ R6/verify green.
 collection performance are accepted, full image/project workflows remain green,
 and the observation window closes.
 
-## 8. Phase R5 — Alien
+## 9. Phase R5 — Alien
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
@@ -245,29 +305,34 @@ and the observation window closes.
 **R5 exit gate:** ABI corpus parity, callback ownership/lifetime proofs,
 deterministic generated C, no unwind across C, and full R6/verify/install pass.
 
-## 9. Phase R6 — Image orchestration
+## 10. Phase R6 — Image orchestration
 
 The Rust image crate already owns codec primitives; this phase ports the Zig
 orchestration around them.
 
-1. Port the image module's authority checks, one-generation binding, record
+1. Convert the current Rust `birnam-image` library from its `rlib` shape to
+   the canonical `libbirnam_id_image.dylib` `cdylib`, preserving `module_init`,
+   the System image selectors, the `ImageSaveReport` family, collector/layout
+   registration, and `bakeExe:`. Add an exact export, selector, family, and
+   payload-layout parity gate before testing codec cross-products.
+2. Port the image module's authority checks, one-generation binding, record
    ordering, and atomic save protocol without changing v4 framing.
-2. Port heap walking and exact slot swizzling using floor `objectPayloadSize`,
+3. Port heap walking and exact slot swizzling using floor `objectPayloadSize`,
    `slotKind`, exported-name, and vtable APIs. Reject unsupported or ambiguous
    graph shapes before mutation.
-3. Port Store fact journaling/replay, compiled-unit code records, mapped dylib
+4. Port Store fact journaling/replay, compiled-unit code records, mapped dylib
    activation, quiescence, and explicit source rebuild. Compatible frozen v4
    images remain readable; unsupported older formats remain rejected.
-4. Run the full cross-product: Zig/Rust writer × Zig/Rust reader, Zig/Rust
+5. Run the full cross-product: Zig/Rust writer × Zig/Rust reader, Zig/Rust
    Store, Zig/Rust Codegen, mapped/rebuild paths, corrupt/truncated/duplicate
    authority/multiple-code fixtures, and relocated installed trees.
-5. Keep image save/load behind the Rust selection until the observation window
+6. Keep image save/load behind the Rust selection until the observation window
    includes project builds, live replacement, rollback, and release packaging.
 
 **R6 exit gate:** all compatible-v4 cross-products pass with exact rejection
 reports, no partial activation, and unchanged R6 allowances.
 
-## 10. Phase R7 — Host and final closure
+## 11. Phase R7 — Host and final closure
 
 1. Port `main.zig` startup/REPL/project dispatch and runtime resource
    resolution only after R1–R6 are canonical and observable.
@@ -275,16 +340,19 @@ reports, no partial activation, and unchanged R6 allowances.
    relocation, project check/build/install, docs, diagnostics, and release
    packaging. Host process controls remain host policy; they do not become
    hidden floor behavior.
-3. Replace Zig artifact preflight/host helpers only in separate dylib/tool
-   slices with explicit identity and digest gates.
+3. Replace the Zig artifact preflight helper with an internal Rust-host module
+   that consumes the existing pointer-free inspector protocol and host-owned
+   closure rules. There is no separate preflight dylib/tool slice and no
+   second runtime preflight authority.
 4. Run two independent clean Rust bootstraps with no Birnam artifact, full
-   verify, installed relocation, R6, source fallback, images, isolates, and
-   release rollback.
+   verify, installed relocation, R6, declared embedded bootstrap-source
+   recovery only, images, isolates, and release rollback. Runtime resolution
+   must never fall back to a checkout, cwd, source tree, or manifest.
 5. Remove Zig implementations only after the Rust observation window and the
    Design 61 R8 closure. Retain frozen compatibility dylibs where required for
    old images and rollback.
 
-## 11. Commit and review discipline
+## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
 R6 pass. The commit records the selected identity/digest and docs checkpoint;
@@ -302,7 +370,7 @@ decision. Do not reinterpret a failed parity test as permission to change the
 floor, MOP law, Store authority, ABI, image format, wire version, or dynamic
 library boundary.
 
-## 12. Critical path and estimate
+## 13. Critical path and estimate
 
 The critical path is **R0 → Collection → Relational → Alien → Image → Host**;
 Error consolidation and Isolate can proceed alongside Collection once their
