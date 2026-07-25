@@ -280,5 +280,7 @@ R2 standalone Error implementation checkpoint (2026-07-24):
 - `79a84cd` extended the Rust Error corpus through Rust reload and Rust→Zig
   reload, proving the existing `ErrorVt`, factory, two-OOP payload, and exports
   are retained rather than duplicated.
+- `bc8c119` executes isolated Rust→Zig and Zig→Rust preload-order runs, with
+  both orders retaining one family and stable export/payload identity.
 - The latest full R6 run remains green at `44/44`, with the exact recorded
   verify exception and the two accepted benchmark crossings unchanged.

@@ -377,6 +377,8 @@ post-switch observation are recorded.
 - `79a84cd` extended the Rust Error corpus to reload Rust twice and then load
   the Zig Error fixture, asserting stable `ErrorVt`, `ErrorFactoryVt`, factory,
   payload size, and export identity across the mixed reload path.
+- `bc8c119` runs the same corpus in isolated Rust→Zig and Zig→Rust preload
+  orders, rejecting duplicate-family behavior in either supported order.
 - A fresh `mise run r6-acceptance` passed at `44/44`; optimized verify still
   matches only the recorded `sortedModules` fixture exception, and the
   comparator still reports exactly the accepted `query.aggregate +5.8%` and
