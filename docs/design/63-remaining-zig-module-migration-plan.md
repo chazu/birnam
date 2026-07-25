@@ -1449,6 +1449,25 @@ remain the next implementation slices.
   with zero missing or unusable cases. The new selection target is now part of
   the fail-closed R6 boundary; no benchmark threshold was broadened.
 
+### R4.44 Canonical Rust Relational mixed-contract acceptance (2026-07-25)
+
+- `bdc58e3` delays the Rust Relational `db` export until Store, collection, and
+  the complete selector bridge are installed; `7bb002b` keeps the Zig rollback
+  fixture's own Store/Relational path explicit. This prevents a partial Rust
+  export from making rollback bring-up import an incomplete contract.
+- `c7d4d18` makes Zig Relational reuse an already-published LogicVar family even
+  when `db` is not yet exported, and gives Rust Relational the shared
+  LogicVar/Entity/collector methods and GC-rooted named-variable cache. Mixed
+  Rust-Relational/Zig-Relational loading therefore preserves one canonical
+  `LogicVar`/`LogicVarVt` family instead of minting competing vtables.
+- The complete `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` gate passes:
+  `103/103` focused build steps, `80/80` focused tests, both Rust Relational
+  dynamic targets at `14/14`, optimized verify success, and exactly the two
+  accepted comparator crossings (`query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`) with zero missing or unusable cases. This
+  closes the current R4 acceptance seam; post-switch project/image observation
+  remains the next Relational checkpoint.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
