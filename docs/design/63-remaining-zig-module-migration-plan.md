@@ -1874,6 +1874,18 @@ post-switch image/project observation window closes.
   cross-layer verify/R6 run is the next required observation boundary; no
   benchmark allowance or threshold is changed by the selection.
 
+### R5.24 Rust Alien post-switch acceptance (2026-07-25)
+
+- The post-switch `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` run
+  passes with Rust canonical under the installed `Alien` name. The focused
+  replacement boundary remains `80/80`, the required Rust FFI/Alien abort
+  target passes, and the sequential Rust Alien live target remains `9/9`.
+- The optimized cross-layer verify retains the recorded install-smoke fixture
+  exception only; the benchmark comparator reports exactly the two accepted
+  crossings (`query.aggregate` and `compile.stage1-stdlib`), with no missing
+  or unusable cases. Zig remains an explicit rollback fixture and no selection
+  or performance threshold was broadened.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
