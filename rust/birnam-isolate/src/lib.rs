@@ -1640,7 +1640,25 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
                     b"request transport failed",
                 ),
             };
-            return make_failure(api, class, kind, message);
+            let class_z = class
+                .iter()
+                .copied()
+                .chain(std::iter::once(0))
+                .collect::<Vec<_>>();
+            let kind_z = kind
+                .iter()
+                .copied()
+                .chain(std::iter::once(0))
+                .collect::<Vec<_>>();
+            let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
+            let kind_o = unsafe { (api.intern)(kind_z.as_ptr().cast()) };
+            let message_o = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+            let status_o = entry
+                .exit_status
+                .map(|status| unsafe { (api.mkSmallInt)(status as i64) })
+                .unwrap_or(api.nilObj);
+            let request_o = unsafe { (api.mkSmallInt)(request_id as i64) };
+            return make_failure_objects(api, class_o, kind_o, message_o, status_o, request_o);
         }
     };
     if reply.header.request_id != request_id {

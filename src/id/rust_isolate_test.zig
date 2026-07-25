@@ -506,6 +506,23 @@ test "Rust Isolate host registry starts requests and stops a worker" {
     try std.testing.expectEqual(api.intern("timeout"), api.send(timed_out, api.intern("class"), &.{}, 0));
     try std.testing.expectEqual(api.intern("deadline"), api.send(timed_out, api.intern("kind"), &.{}, 0));
     try std.testing.expectEqual(api.intern("exited"), api.send(sleeping, api.intern("state"), &.{}, 0));
+
+    const crashing = api.send(
+        api.import("Isolate"),
+        api.intern("start:selector:image:"),
+        &[_]idapi.Oop{ api.intern("Isolate"), api.intern("_isolateCrash:"), image },
+        3,
+    );
+    try std.testing.expect(api.vtableOf(crashing) != api.import("IsolateFailureVt"));
+    const exited = api.send(
+        crashing,
+        api.intern("request:timeout:"),
+        &[_]idapi.Oop{ api.nilObj, api.mkSmallInt(5_000) },
+        2,
+    );
+    try std.testing.expectEqual(api.intern("exit"), api.send(exited, api.intern("class"), &.{}, 0));
+    try std.testing.expectEqual(api.intern("transport"), api.send(exited, api.intern("kind"), &.{}, 0));
+    try std.testing.expect(api.send(exited, api.intern("exitStatus"), &.{}, 0) != api.nilObj);
 }
 
 test "Rust Isolate worker dispatches copied values and stops" {

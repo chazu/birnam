@@ -655,6 +655,16 @@ remain the next implementation slices.
   `timeout/deadline` failure and exited state in Debug and ReleaseSafe. An
   abrupt-child exit corpus and canonical Rust selection remain pending.
 
+### R3.16 Rust Isolate abrupt-exit checkpoint (2026-07-24)
+
+- Host transport failures now retain the child exit status and request id in
+  the returned Failure object. The lifecycle corpus starts the built-in crash
+  worker and asserts `exit/transport`, a non-nil exit status, and clean
+  registry reaping in both optimization profiles.
+- The Rust host lifecycle/error corpus is now green against the installed Zig
+  worker. Canonical Rust worker selection and a Rust-owned child boot corpus
+  remain deliberately outside this fixture boundary.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
