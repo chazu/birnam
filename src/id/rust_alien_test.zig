@@ -19,7 +19,7 @@ const RTLD_LOCAL: c_int = 0x4;
 extern fn dlopen(path: [*:0]const u8, mode: c_int) ?*anyopaque;
 extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
 
-var retained_handles: [2]?*anyopaque = .{ null, null };
+var retained_handles: [3]?*anyopaque = .{ null, null, null };
 var retained_count: usize = 0;
 
 fn loadModule(
@@ -60,6 +60,12 @@ test "Rust Alien owns loader state and installs a generated scalar wrapper" {
     );
     loadModule(
         api,
+        "BIRNAM_RUST_COLLECTION_DYLIB",
+        "birnam_collection_rust_identity",
+        "rust-collection-r1-vector",
+    );
+    loadModule(
+        api,
         "BIRNAM_RUST_ALIEN_DYLIB",
         "birnam_alien_rust_identity",
         "rust-alien-r5-loader",
@@ -88,4 +94,38 @@ test "Rust Alien owns loader state and installs a generated scalar wrapper" {
     try std.testing.expect(wrapped != api.nilObj);
     const answer = api.send(str(api, "hello"), selector, &[_]Oop{}, 0);
     try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(answer));
+
+    const aggregate_selector = api.intern("rustDiv");
+    const aggregate_wrap = api.send(
+        alien,
+        api.intern("wrap:signature:as:on:"),
+        &[_]Oop{ str(api, "div"), str(api, "{ii} i i"), aggregate_selector, api.smallint_vt },
+        4,
+    );
+    try std.testing.expect(aggregate_wrap != api.nilObj);
+    const aggregate = api.send(
+        api.mkSmallInt(20),
+        aggregate_selector,
+        &[_]Oop{api.mkSmallInt(3)},
+        1,
+    );
+    try std.testing.expect(api.vtableOf(aggregate) == api.import("VectorVt").?);
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(
+        aggregate,
+        api.intern("size"),
+        &[_]Oop{},
+        0,
+    )));
+    try std.testing.expectEqual(@as(i64, 6), api.smallIntValue(api.send(
+        aggregate,
+        api.intern("at:"),
+        &[_]Oop{api.mkSmallInt(0)},
+        1,
+    )));
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(
+        aggregate,
+        api.intern("at:"),
+        &[_]Oop{api.mkSmallInt(1)},
+        1,
+    )));
 }
