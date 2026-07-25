@@ -1534,6 +1534,21 @@ post-switch image/project observation window closes.
   and callbacks remain in the numbered R5 steps below and no canonical Alien
   selection has been made.
 
+### R5.2 Owned loader-state checkpoint (2026-07-25)
+
+- `c7a80c8` adds the Rust `LibraryRegistry`, which owns one closeable entry
+  per successful `dlopen`, preserves requested paths as replay keys, resolves
+  bare names through an explicit library directory, and provides both
+  handle-scoped and process-default `dlsym` lookup.
+- Empty paths, embedded NULs, missing handles, empty symbols, and unresolved
+  symbols fail closed before crossing the platform loader. Repeated opens are
+  balanced one close at a time; registry drop closes any remaining owned
+  references. The crate tests cover these policies against the host C library.
+- The registry remains authority-free: no Oop, `IdApi`, TCC unit, wrapper
+  address, callback root, or GC state is stored here. A later Alien integration
+  slice must keep the registry alive for every patched wrapper and must not
+  close a library while a live wrapper can still call it.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
