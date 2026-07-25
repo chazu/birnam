@@ -1153,6 +1153,21 @@ remain the next implementation slices.
   semantics, canonical grouped/pull materialization, and canonical Rust
   Relational selection remain open.
 
+### R4.22 Rust Relational nested-rule descriptor checkpoint (2026-07-25)
+
+- `462b610` adds a separate tree-shaped rule ABI for nested bodies, preserving
+  the flat descriptor layout already in use. Bounded nodes represent
+  negation, disjunction, and explicit branch containers; depth, child ranges,
+  term arity, and malformed branch shapes fail closed. The adapter reuses the
+  same left-to-right pure kernel and caller-owned output records.
+- The existing cross-floor rule fixture now covers a mixed numeric predicate,
+  negated blocker, and two disjunction branches through the tree ABI. Both
+  dynamic targets remain `14/14`; the Rust pure corpus remains `17/17`, and
+  R6 stays pinned at `80/80`, `14/14`, optimized `486/492`.
+- Canonical Store rule-fact reification, image-triggered cache rebuild wiring,
+  arbitrary parameter semantics, canonical grouped/pull materialization, and
+  canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
