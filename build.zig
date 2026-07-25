@@ -800,6 +800,39 @@ pub fn build(b: *std.Build) void {
     test_rust_prelude_step.dependOn(&run_rust_prelude_tests.step);
     test_step.dependOn(&run_rust_prelude_tests.step);
 
+    const rust_prelude_io_probe_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_prelude_io_probe.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_prelude_io_probe = b.addExecutable(.{
+        .name = "rust-prelude-io-probe",
+        .root_module = rust_prelude_io_probe_mod,
+    });
+    rust_prelude_io_probe.linkLibC();
+    const run_rust_prelude_io_probe = b.addRunArtifact(rust_prelude_io_probe);
+    run_rust_prelude_io_probe.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_prelude_io_probe.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_prelude_io_probe.setEnvironmentVariable(
+        "BIRNAM_RUST_PRELUDE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_prelude_rust.dylib"),
+    );
+    run_rust_prelude_io_probe.setEnvironmentVariable(
+        "BIRNAM_ERROR_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_error.dylib"),
+    );
+    run_rust_prelude_io_probe.step.dependOn(bootstrap_install);
+    run_rust_prelude_io_probe.setStdIn(.{ .bytes = "rust-prelude-stdin\n" });
+    run_rust_prelude_io_probe.expectStdOutEqual("rust-prelude-stdin\n");
+    const test_rust_prelude_io_step = b.step(
+        "test-rust-prelude-io",
+        "Exercise Rust Prelude readLine/println through a subprocess stdin/stdout boundary",
+    );
+    test_rust_prelude_io_step.dependOn(&run_rust_prelude_io_probe.step);
+
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(
             b.path(b.fmt(

@@ -34,6 +34,7 @@ latest_tests=(
   test-rust-codegen-stack
   test-rust-codegen-zig-store
   test-rust-prelude
+  test-rust-prelude-io
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
@@ -83,6 +84,11 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec '^\+- run test 2 passed ' || true)
 [ "$rust_prelude_test_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Prelude test set no longer has 2 passing tests" >&2
+  exit 1
+}
+rust_prelude_io_success_count=$(grep -Fc 'test-rust-prelude-io success' "$functional" || true)
+[ "$rust_prelude_io_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Prelude subprocess I/O target was not executed" >&2
   exit 1
 }
 
