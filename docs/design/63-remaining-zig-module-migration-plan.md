@@ -963,6 +963,29 @@ remain the next implementation slices.
   disjunctions, rule fixpoints, aggregation, pull, and canonical Rust
   Relational selection remain open.
 
+### R4.13 Rust Relational recursive-edge checkpoint (2026-07-24)
+
+- `14b2e7c` adds a bounded recursive-edge probe. It copies one binary edge
+  relation from Store, computes a deterministic finite transitive closure with
+  value-law set membership, and projects either the root or its reachable
+  targets. The probe has no rule-definition registration, rule-cache
+  persistence/rebuild, mutual-rule network, or second Store authority; it is
+  an explicit seam for the later full rule engine.
+- The cross-floor corpus covers a three-hop parent chain, root projection,
+  target ordering, finite-fixpoint termination, output capacity rejection, and
+  rejection of unsupported endpoint/projection shapes against both Rust Store
+  and the Zig Store rollback provider. Both relational targets report `9/9`.
+- `5e0e495` advances the R6 focused boundary to `70/70` and requires both
+  relational targets to report exactly nine passing tests. The full gate passes
+  with optimized verify pinned at `260/264` steps, `476/482` tests, and 6
+  skipped, accepting only the two exact `install-smoke.sh: line 92`
+  `collection.zig:336:29` fixture crashes. The digest-pinned comparator remains
+  at zero missing/unusable cases and exactly the accepted
+  `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%` crossings.
+- Full rule-definition semantics, mutual recursion, rule-cache rebuild,
+  arbitrary recursive bodies, aggregation, pull, and canonical Rust
+  Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
