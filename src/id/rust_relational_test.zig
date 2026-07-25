@@ -935,6 +935,18 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const x = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_x")}, 1);
     const y = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_y")}, 1);
     const z = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_z")}, 1);
+    const canonical_query_clause = makeVector(api, &.{ x, parent, y });
+    const canonical_query_body = makeVector(api, &.{canonical_query_clause});
+    const canonical_query = api.send(
+        store,
+        api.intern("findAll:where:"),
+        &.{ x, canonical_query_body },
+        2,
+    );
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(canonical_query, api.intern("size"), &.{}, 0)));
+    try std.testing.expect(api.send(canonical_query, api.intern("at:"), &.{api.mkSmallInt(0)}, 1) == tom);
+    try std.testing.expect(api.send(canonical_query, api.intern("at:"), &.{api.mkSmallInt(1)}, 1) == bob);
+    try std.testing.expect(api.send(canonical_query, api.intern("at:"), &.{api.mkSmallInt(2)}, 1) == ann);
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});

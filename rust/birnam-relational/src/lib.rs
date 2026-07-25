@@ -3,8 +3,9 @@
 //! This first R4 slice evaluates a left-to-right conjunction over a borrowed
 //! Store snapshot. It owns neither facts nor IdApi objects: the caller supplies
 //! the current (or historical) live triples, and receives projected bindings.
-//! The dynamic module/Store callback wrapper is deliberately still a probe;
-//! canonical `findAll:where:` installation remains a later slice.
+//! The dynamic module/Store wrapper currently installs the `entity` and
+//! `findAll:where:` seams; the remaining selector family is still migration
+//! work.
 
 pub mod oop;
 
@@ -121,6 +122,94 @@ unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: u
     unsafe { (api.alloc)(*vtable as Oop, 0) }
 }
 
+unsafe fn value_oop(api: &IdApi, value: Value) -> Oop {
+    match value {
+        Value::Identity(identity) => identity as usize as Oop,
+        Value::Integer(integer) => unsafe { (api.mkSmallInt)(integer) },
+        Value::Float(float) => unsafe { (api.mkFloat)(float) },
+        Value::String(bytes) => unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) },
+    }
+}
+
+unsafe extern "C" fn rust_find_all(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let vector_factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    if vector_factory.is_null() {
+        return api.nilObj;
+    }
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let empty: [Oop; 0] = [];
+    let mut output = unsafe { (api.send)(vector_factory, new_selector, empty.as_ptr(), 0) };
+    if output.is_null() {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return output;
+    };
+    if arguments.len() < 2 {
+        return output;
+    }
+    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    if logicvar_vt.is_null() {
+        return output;
+    }
+    let name_selector = unsafe { (api.intern)(c"name".as_ptr()) };
+    let mut variables = Vec::new();
+    let result = match unsafe {
+        parse_store_term(
+            api,
+            arguments[0],
+            logicvar_vt,
+            name_selector,
+            &mut variables,
+        )
+    } {
+        Ok(Term::Variable(variable)) => variable,
+        _ => return output,
+    };
+    let body = match unsafe {
+        parse_store_rule_body(
+            api,
+            arguments[1],
+            logicvar_vt,
+            name_selector,
+            &mut variables,
+        )
+    } {
+        Ok(body) => body,
+        Err(_) => return output,
+    };
+    let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
+    let (facts, pairs, _) =
+        match unsafe { collect_project_facts_and_rules(_self_object, rule_name) } {
+            Ok(snapshot) => snapshot,
+            Err(_) => return output,
+        };
+    let definitions = match unsafe { parse_store_rule_definitions(api, &pairs) } {
+        Ok(definitions) => definitions,
+        Err(_) => return output,
+    };
+    let values = project_rule_body(&facts, &definitions, &body, result);
+    // Root the growing Vector across any floor sends performed by `add:`.
+    ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+    for value in values {
+        let object = unsafe { value_oop(api, value) };
+        output = unsafe { (api.send)(output, add_selector, &object, 1) };
+        if output.is_null() {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return api.nilObj;
+        }
+        ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+    }
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    output
+}
+
 unsafe fn install_entity_method(api: &IdApi) {
     let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
@@ -146,9 +235,20 @@ unsafe fn install_entity_method(api: &IdApi) {
     // SAFETY: the Store vtable and selector are process-owned and the method
     // has the frozen IdApi callback ABI.
     unsafe { (api.method)(store_vt, selector, rust_entity) };
+    if unsafe { (api.import)(c"Vector".as_ptr()) }.is_null()
+        || unsafe { (api.import)(c"LogicVarVt".as_ptr()) }.is_null()
+    {
+        return;
+    }
+    let find_all_selector = unsafe { (api.intern)(c"findAll:where:".as_ptr()) };
+    // SAFETY: this bridge is installed only when the live collection and
+    // LogicVar contracts are already present; the callback keeps Store as its
+    // sole fact authority and returns the shared Vector family.
+    unsafe { (api.method)(store_vt, find_all_selector, rust_find_all) };
 }
 
-/// Identifies the explicit Rust Relational probe; it is not canonical yet.
+/// Identifies the Rust Relational module; only a bounded Store selector family
+/// is canonical at this checkpoint.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_relational_rust_identity() -> *const c_char {
     RUST_RELATIONAL_IDENTITY.as_ptr().cast()
@@ -2645,17 +2745,17 @@ unsafe fn parse_rule_compare_op(api: &IdApi, name: Oop) -> Result<CompareOp, i32
     // SAFETY: operator symbols are interned in the process symbol table and
     // compared by the same identity law as the Zig relational selector.
     let intern = |bytes: &'static [u8]| unsafe { (api.intern)(bytes.as_ptr().cast()) };
-    let operation = if name == intern(b"<\0") {
+    let operation = if name == intern(b"lt\0") || name == intern(b"<\0") {
         CompareOp::Less
-    } else if name == intern(b"<=\0") {
+    } else if name == intern(b"le\0") || name == intern(b"<=\0") {
         CompareOp::LessEqual
-    } else if name == intern(b">\0") {
+    } else if name == intern(b"gt\0") || name == intern(b">\0") {
         CompareOp::Greater
-    } else if name == intern(b">=\0") {
+    } else if name == intern(b"ge\0") || name == intern(b">=\0") {
         CompareOp::GreaterEqual
-    } else if name == intern(b"=\0") {
+    } else if name == intern(b"eq\0") || name == intern(b"=\0") {
         CompareOp::Equal
-    } else if name == intern(b"!=\0") {
+    } else if name == intern(b"ne\0") || name == intern(b"~=\0") || name == intern(b"!=\0") {
         CompareOp::NotEqual
     } else {
         return Err(-7);
