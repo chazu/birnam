@@ -1922,6 +1922,18 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_error_selected.step);
                 bootstrap_install.dependOn(&install_zig_error_selected.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_isolate")) {
+            const install_rust_isolate = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_isolate.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_isolate_rust.dylib",
+            );
+            install_rust_isolate.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_isolate.step);
+            bootstrap_install.dependOn(&install_rust_isolate.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
