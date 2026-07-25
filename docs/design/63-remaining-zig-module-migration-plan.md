@@ -1970,6 +1970,22 @@ The next bounded step can use this encoder in a pure fact-record builder, then
 feed those records to `ImageWriter` and `publish_atomic` under an explicit
 preflight result. Runtime object classification must remain a separate seam.
 
+### R6.6 Rust Image facts-builder checkpoint (2026-07-25)
+
+- `88d3525` adds `FactsWriter`, which emits the v4 basis/count envelope and
+  appends each operation atomically as `op`, `tx`, and three classified fields.
+  It reuses `FieldEncoder` for all value tags and rejects count overflow before
+  changing the payload.
+- The facts builder round-trips through the borrowed `Facts` decoder, including
+  signed integers, symbols, booleans, and float-bit preservation. The Rust unit
+  suite is green (`19/19`). It has no Store access and cannot infer an Oop's
+  durability or recovery contract; those decisions remain in the live preflight
+  layer.
+
+The next bounded slice should introduce that explicit preflight classification
+for one store fact at a time, with rejection reasons mapped into `SaveReport`
+before any writer or publisher call.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
