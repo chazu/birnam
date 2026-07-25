@@ -679,6 +679,20 @@ remain the next implementation slices.
   full `-Disolate-impl=rust` install relocation and R6 matrix acceptance remain
   before changing the default.
 
+### R3.18 Rust Isolate canonical-R6 acceptance checkpoint (2026-07-24)
+
+- The explicit Rust selection path now passes the relocated install smoke and
+  the full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` gate. The run
+  completed `93/93` build steps and `52/52` focused tests, including all `4`
+  Rust Isolate lifecycle tests, the optimized verify boundary, and the
+  accepted benchmark comparator crossings (`query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`).
+- The gate accepts the latest lifecycle corpus through the same explicit
+  implementation selector used by the install matrix. This closes the
+  pre-switch Rust Isolate acceptance evidence; the canonical default remains
+  Zig until the separate default-switch commit and its post-switch observation
+  window are complete.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
