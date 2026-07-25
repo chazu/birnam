@@ -720,4 +720,14 @@ mod tests {
         assert!(source.contains("__S0 __r = birnam_div(a0, a1);"));
         assert!(source.contains("return __mk0(&__r);"));
     }
+
+    #[test]
+    fn scalar_wrapper_compiles_and_relocates_through_rust_tcc() {
+        let signature = parse_signature(b"l s").unwrap();
+        let source = emit_shim(b"strlen", &signature).unwrap();
+        assert!(birnam_tcc::compile_source_for_validation(
+            source.as_bytes(),
+            b"strlen"
+        ));
+    }
 }

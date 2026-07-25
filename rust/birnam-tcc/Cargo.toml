@@ -13,7 +13,7 @@ cc.workspace = true
 
 [lib]
 name = "birnam_tcc"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [lints]
 workspace = true

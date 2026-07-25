@@ -10,7 +10,7 @@
 use birnam_abi::{IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args};
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
-use core::ptr;
+use core::ptr::{self, NonNull};
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 
@@ -44,6 +44,119 @@ unsafe extern "C" {
     fn tcc_output_file(state: *mut TccState, path: *const c_char) -> c_int;
     fn tcc_relocate(state: *mut TccState) -> c_int;
     fn tcc_get_symbol(state: *mut TccState, name: *const c_char) -> *mut c_void;
+}
+
+static VALIDATION_VEC_FACTORY: u8 = 0;
+
+unsafe extern "C" fn validation_foreign() -> i64 {
+    0
+}
+
+unsafe extern "C" fn validation_strlen(_value: *const c_char) -> i64 {
+    0
+}
+
+unsafe extern "C" fn validation_pointer(_value: *mut c_void) -> *mut c_void {
+    ptr::null_mut()
+}
+
+unsafe extern "C" fn validation_small_int(_value: *mut c_void) -> i64 {
+    0
+}
+
+unsafe extern "C" fn validation_float(_value: *mut c_void) -> f64 {
+    0.0
+}
+
+unsafe extern "C" fn validation_word(_value: *mut c_void) -> u64 {
+    0
+}
+
+unsafe extern "C" fn validation_cstr(_value: *mut c_void) -> *const c_char {
+    c"".as_ptr()
+}
+
+unsafe extern "C" fn validation_free_cstr(_value: *const c_char) {}
+
+unsafe extern "C" fn validation_make_string(
+    _value: *const c_char,
+    _length: i64,
+) -> *mut c_void {
+    ptr::null_mut()
+}
+
+unsafe extern "C" fn validation_send(
+    _receiver: *mut c_void,
+    _selector: *mut c_void,
+    _args: *mut c_void,
+    _count: i64,
+) -> *mut c_void {
+    ptr::null_mut()
+}
+
+unsafe extern "C" fn validation_intern(_name: *const c_char) -> *mut c_void {
+    ptr::null_mut()
+}
+
+fn add_validation_symbol(state: *mut TccState, name: &[u8], value: *const c_void) -> bool {
+    let Ok(name) = CString::new(name) else {
+        return false;
+    };
+    // SAFETY: `name` owns a NUL-terminated symbol name and `value` is the
+    // address of a validation callback or static carrier retained for the
+    // whole TCC operation.
+    unsafe { tcc_add_symbol(state, name.as_ptr(), value) >= 0 }
+}
+
+/// Compile and relocate one generated unit for source-validation tests.
+///
+/// This uses the same embedded libtcc owner as the Rust TCC floor, but is not
+/// part of the object protocol and is never called by production Alien code.
+#[doc(hidden)]
+pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool {
+    let Ok(source) = CString::new(source) else {
+        return false;
+    };
+    let Some(state) = NonNull::new(unsafe { tcc_new() }) else {
+        return false;
+    };
+    let state = state.as_ptr();
+    let configured = unsafe {
+        tcc_set_error_func(state, ptr::null_mut(), Some(error_silent));
+        tcc_set_output_type(state, TCC_OUTPUT_MEMORY) >= 0
+            && tcc_compile_string(state, source.as_ptr()) >= 0
+    };
+    if !configured {
+        unsafe { tcc_delete(state) };
+        return false;
+    }
+
+    let mut symbols: Vec<(&[u8], *const c_void)> = vec![
+        (b"birnam_mkSmallInt", validation_pointer as *const c_void),
+        (b"birnam_smallIntValue", validation_small_int as *const c_void),
+        (b"birnam_mkFloat", validation_pointer as *const c_void),
+        (b"birnam_floatValue", validation_float as *const c_void),
+        (b"birnam_mkWord", validation_pointer as *const c_void),
+        (b"birnam_wordValue", validation_word as *const c_void),
+        (b"birnam_uintValue", validation_word as *const c_void),
+        (b"birnam_cstr", validation_cstr as *const c_void),
+        (b"birnam_free_cstr", validation_free_cstr as *const c_void),
+        (b"birnam_mkString", validation_make_string as *const c_void),
+        (b"birnam_nil", validation_pointer as *const c_void),
+        (b"strlen", validation_strlen as *const c_void),
+        (b"birnam_send", validation_send as *const c_void),
+        (b"birnam_intern", validation_intern as *const c_void),
+    ];
+    symbols.push((b"__vecFactory", ptr::addr_of!(VALIDATION_VEC_FACTORY).cast()));
+    symbols.push((foreign_name, validation_foreign as *const c_void));
+    let symbols_added = symbols
+        .into_iter()
+        .all(|(name, value)| add_validation_symbol(state, name, value));
+    let relocated = symbols_added
+        && unsafe { tcc_relocate(state) >= 0 }
+        && !unsafe { tcc_get_symbol(state, c"__shim".as_ptr()) }.is_null();
+    unsafe { tcc_delete(state) };
+    relocated
 }
 
 #[derive(Clone, Copy)]

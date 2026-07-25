@@ -9,6 +9,9 @@ version = "0.0.0"
 [[package]]
 name = "birnam-alien"
 version = "0.0.0"
+dependencies = [
+ "birnam-tcc",
+]
 
 [[package]]
 name = "birnam-artifact"
