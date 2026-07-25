@@ -40,7 +40,7 @@ latest_tests=(
   test-rust-collection
   test-rust-error
 )
-isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-zig}")
+isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
 
