@@ -7,6 +7,120 @@
 
 pub mod oop;
 
+use birnam_abi::{IdApi, Oop};
+use core::ffi::{c_char, c_void};
+use core::mem::size_of;
+use core::ptr;
+use std::sync::OnceLock;
+
+const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.3-kernel\0";
+static API: OnceLock<usize> = OnceLock::new();
+
+fn abort(message: &str) -> ! {
+    eprintln!("birnam Rust Relational: {message}");
+    std::process::abort();
+}
+
+unsafe fn bring_up(api: *mut IdApi) {
+    if api.is_null() {
+        abort("module_init received a null IdApi");
+    }
+    let address = api as usize;
+    match API.get() {
+        Some(existing) if *existing != address => abort("IdApi was replaced"),
+        Some(_) => {}
+        None => {
+            let _ = API.set(address);
+        }
+    }
+}
+
+#[repr(C)]
+pub struct ClassifiedValue {
+    pub tag: u8,
+    pub reserved: [u8; 7],
+    pub integer: i64,
+    pub float: f64,
+    pub identity: u64,
+    pub byte_len: usize,
+}
+
+const _: () = assert!(size_of::<ClassifiedValue>() == 40);
+
+/// Identifies the explicit Rust Relational probe; it is not canonical yet.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_relational_rust_identity() -> *const c_char {
+    RUST_RELATIONAL_IDENTITY.as_ptr().cast()
+}
+
+/// Classifies one floor object into the pointer-free probe record.
+///
+/// Return values: `0` success, `-1` null output, `-2` before `module_init`,
+/// `-3` malformed/unsupported object, and `-4` output byte capacity too small.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_classify(
+    object: Oop,
+    output: *mut ClassifiedValue,
+    bytes: *mut u8,
+    capacity: usize,
+) -> i32 {
+    if output.is_null() {
+        return -1;
+    }
+    let Some(api_address) = API.get() else {
+        return -2;
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    // SAFETY: object is borrowed for this call under the module probe contract.
+    let Some(value) = (unsafe { oop::classify(api, object) }) else {
+        return -3;
+    };
+    let mut record = ClassifiedValue {
+        tag: 0,
+        reserved: [0; 7],
+        integer: 0,
+        float: 0.0,
+        identity: 0,
+        byte_len: 0,
+    };
+    match value {
+        Value::Identity(identity) => {
+            record.identity = identity;
+        }
+        Value::Integer(integer) => {
+            record.tag = 1;
+            record.integer = integer;
+        }
+        Value::Float(float) => {
+            record.tag = 2;
+            record.float = float;
+        }
+        Value::String(string) => {
+            if string.len() > capacity || (string.len() != 0 && bytes.is_null()) {
+                return -4;
+            }
+            // SAFETY: the caller supplied a writable buffer of `capacity` bytes;
+            // the length check above bounds this copy.
+            unsafe { ptr::copy_nonoverlapping(string.as_ptr(), bytes, string.len()) };
+            record.tag = 3;
+            record.byte_len = string.len();
+        }
+    }
+    // SAFETY: output is non-null and points to caller-owned storage for the
+    // frozen record layout.
+    unsafe { ptr::write(output, record) };
+    0
+}
+
+/// Initialize the explicit Rust Relational probe against the process IdApi.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
+    // SAFETY: forwarded frozen host initialization contract.
+    unsafe { bring_up(api) };
+    ptr::null_mut()
+}
+
 /// A value classified by the IdApi adapter before entering the query kernel.
 /// Identity values compare by pointer identity; scalar values compare by value,
 /// matching the Zig relational `valEq` law.

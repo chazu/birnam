@@ -903,6 +903,31 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_isolate_step.dependOn(&run_rust_isolate_tests.step);
 
+    const rust_relational_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_relational_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_relational_tests = b.addTest(.{ .root_module = rust_relational_test_mod });
+    const run_rust_relational_tests = b.addRunArtifact(rust_relational_tests);
+    run_rust_relational_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_relational_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_relational_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_RELATIONAL_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_relational.dylib", .{rust_floor_profile})),
+    );
+    run_rust_relational_tests.step.dependOn(bootstrap_install);
+    run_rust_relational_tests.step.dependOn(&rust_floor_build.step);
+    const test_rust_relational_step = b.step(
+        "test-rust-relational",
+        "Exercise the explicit Rust Relational IdApi value-classification probe",
+    );
+    test_rust_relational_step.dependOn(&run_rust_relational_tests.step);
+    test_step.dependOn(&run_rust_relational_tests.step);
+
     const rust_prelude_io_probe_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_prelude_io_probe.zig"),
         .target = target,
@@ -1976,6 +2001,21 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_isolate_selected.step);
                 bootstrap_install.dependOn(&install_zig_isolate_selected.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_relational")) {
+            const install_rust_relational = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_relational.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_relational_rust.dylib",
+            );
+            install_rust_relational.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_relational.step);
+            bootstrap_install.dependOn(&install_rust_relational.step);
+            const install_zig_relational = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_relational.step);
+            bootstrap_install.dependOn(&install_zig_relational.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
