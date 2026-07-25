@@ -990,7 +990,10 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const friend_attribute = api.intern("rust_relational_rule_window_friend");
     _ = api.send(store, api.intern("assert:attr:value:"), &.{ planner_high, friend_attribute, planner_low }, 3);
     const nested_pull_spec = makeVector(api, &.{makeVector(api, &.{ friend_attribute, pull_spec })});
+    api.gcSetAuto(1);
+    for (0..256) |_| _ = api.alloc(api.object_vt, 8);
     const nested_pulled = api.send(store, api.intern("pull:spec:"), &.{ planner_high, nested_pull_spec }, 2);
+    api.gcSetAuto(0);
     const nested_friend = api.send(nested_pulled, api.intern("at:"), &.{friend_attribute}, 1);
     try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(api.send(nested_friend, api.intern("at:"), &.{score_attribute}, 1)));
     const rule_params = makeVector(api, &.{ x, y });
