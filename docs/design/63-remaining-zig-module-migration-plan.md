@@ -639,6 +639,9 @@ remain the next implementation slices.
 - The focused R6 aggregate consequently advances from `51/51` to `52/52`,
   with the Isolate target pinned at `4` tests; the benchmark and optimized
   verify boundaries remain unchanged.
+- The subsequent full `mise run r6-acceptance` passes at `52/52` with all
+  scoped target pins green and the accepted comparator crossings unchanged:
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
 ## 8. Phase R4 — Relational
 
