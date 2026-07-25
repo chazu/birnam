@@ -2125,6 +2125,16 @@ The next bounded step should exercise this probe in a setup with the canonical
 Zig Codegen generation initialized, compare the returned bytes with the Zig
 image authority fixture, and retain the Rust shell's no-publication boundary.
 
+### R6.15 R6 acceptance after live-authority probe (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after `506e3b8`
+  and `4020411`. The focused matrix remains `81/81`, Rust Alien live remains
+  `9/9`, ReleaseSafe verify/install/harness legs pass, and the full acceptance
+  reports no missing or unusable cases.
+- The comparator remains limited to the two pre-existing snapshot allowances:
+  `query.aggregate` `+5.8%` and `compile.stage1-stdlib` `+11.9%`. The live
+  authority probe adds no benchmark allowance and no publication authority.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
