@@ -194,6 +194,17 @@ GC without changing the floor.
 
 ### R1.1 Rust crate and payload model
 
+Implementation checkpoint (2026-07-24): `1d0c72e` added the
+`rust/birnam-collection` crate and characterized its first owned family as a
+pure persistent-storage kernel. `PersistentVector<T>` uses the durable
+32-way path-copied trie plus a short tail, preserves old versions on append,
+and covers empty/bounds behavior, tail promotion, structural sharing, and
+growth beyond the first root overflow. The crate is both `rlib` and `cdylib`,
+depends only on the frozen `birnam-abi`, and passes locked offline tests and
+clippy. It is not selectable by the runtime yet; the next R1 slice adds the
+OOP payload wrapper, exact layout registration, and explicit Rust/Zig fixture
+selection.
+
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;
    use explicit `libbirnam_id_collection_zig.dylib` and

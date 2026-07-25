@@ -219,3 +219,14 @@ R0.5 implementation checkpoint (2026-07-24):
 - R0.5 is complete. The Zig Prelude remains available only with explicit
   `-Dprelude-impl=zig` rollback selection; the next implementation slice is
   R1 Collection.
+
+R1 first implementation checkpoint (2026-07-24):
+
+- `1d0c72e` added `rust/birnam-collection` as a locked-workspace `rlib`/`cdylib`
+  crate and implemented the persistent 32-way vector storage kernel. Tests
+  cover empty/bounds behavior, immutable append, tail-to-trie promotion,
+  structural sharing, and deep growth through a root expansion.
+- This kernel has no foreign callback or OOP allocation surface yet. The next
+  checkpoint must add the exact `Vector`/`VectorNode` payload layouts and
+  `IdApi` method/export protocol before any Rust collection selection is
+  enabled.
