@@ -5,6 +5,13 @@ const floor = @import("floor_adapter_test.zig");
 
 const Identity = *const fn () callconv(.c) [*:0]const u8;
 const EncodeHeader = *const fn (u8, u64, u32, ?[*]u8) callconv(.c) c_int;
+const DecodeHeader = *const fn (
+    ?[*]const u8,
+    usize,
+    ?*u8,
+    ?*u64,
+    ?*u32,
+) callconv(.c) c_int;
 
 test "Rust Isolate exports the exact BISO header probe" {
     const api = floor.api();
@@ -34,4 +41,27 @@ test "Rust Isolate exports the exact BISO header probe" {
     }, &bytes);
     try std.testing.expectEqual(@as(c_int, 5), encode(3, 0, 0, &bytes));
     try std.testing.expectEqual(@as(c_int, -1), encode(3, 1, 0, null));
+
+    const raw_decode = api.dlsym(handle, "birnam_isolate_rust_decode_header") orelse
+        return error.RustIsolateHeaderDecoderMissing;
+    const decode: DecodeHeader = @ptrCast(@alignCast(raw_decode));
+    var decoded_kind: u8 = 0;
+    var decoded_request_id: u64 = 0;
+    var decoded_payload_len: u32 = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode(&bytes, bytes.len, &decoded_kind, &decoded_request_id, &decoded_payload_len),
+    );
+    try std.testing.expectEqual(@as(u8, 3), decoded_kind);
+    try std.testing.expectEqual(@as(u64, 0x0102030405060708), decoded_request_id);
+    try std.testing.expectEqual(@as(u32, 0x00123344), decoded_payload_len);
+    bytes[0] = 'X';
+    try std.testing.expectEqual(
+        @as(c_int, 1),
+        decode(&bytes, bytes.len, &decoded_kind, &decoded_request_id, &decoded_payload_len),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -1),
+        decode(null, bytes.len, &decoded_kind, &decoded_request_id, &decoded_payload_len),
+    );
 }

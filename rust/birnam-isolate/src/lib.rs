@@ -483,6 +483,47 @@ pub unsafe extern "C" fn birnam_isolate_rust_encode_header(
     0
 }
 
+/// Decode a BISO header from caller-owned bytes and return its fields through
+/// caller-owned output pointers. This keeps frame validation observable at the
+/// dynamic boundary before worker orchestration is introduced.
+///
+/// # Safety
+///
+/// `bytes` must be non-null and point to `len` readable bytes. Each output
+/// pointer must be non-null and point to writable storage of the corresponding
+/// type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_isolate_rust_decode_header(
+    bytes: *const u8,
+    len: usize,
+    kind_out: *mut u8,
+    request_id_out: *mut u64,
+    payload_len_out: *mut u32,
+) -> i32 {
+    if bytes.is_null()
+        || kind_out.is_null()
+        || request_id_out.is_null()
+        || payload_len_out.is_null()
+    {
+        return -1;
+    }
+    // SAFETY: the caller promises that `bytes` points to `len` readable bytes;
+    // the null check above establishes a non-null base pointer.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let header = match decode_header(bytes) {
+        Ok(header) => header,
+        Err(error) => return error_code(error),
+    };
+    // SAFETY: the caller promises writable output storage for each field;
+    // null checks above establish all three destinations.
+    unsafe {
+        *kind_out = header.kind as u8;
+        *request_id_out = header.request_id;
+        *payload_len_out = header.payload_len;
+    }
+    0
+}
+
 fn valid_map_key(value: &Value) -> bool {
     matches!(
         value,
