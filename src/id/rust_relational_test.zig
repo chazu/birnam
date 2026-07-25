@@ -984,6 +984,15 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("avg:where:"), &.{ score_variable, planner_body }, 2)));
     const grouped_scores = api.send(store, api.intern("groupBy:aggregate:of:where:"), &.{ x, api.intern("sum"), score_variable, planner_body }, 4);
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(grouped_scores, api.intern("at:"), &.{planner_high}, 1)));
+    const pull_spec = makeVector(api, &.{score_attribute});
+    const pulled = api.send(store, api.intern("pull:spec:"), &.{ planner_high, pull_spec }, 2);
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(pulled, api.intern("at:"), &.{score_attribute}, 1)));
+    const friend_attribute = api.intern("rust_relational_rule_window_friend");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ planner_high, friend_attribute, planner_low }, 3);
+    const nested_pull_spec = makeVector(api, &.{makeVector(api, &.{ friend_attribute, pull_spec })});
+    const nested_pulled = api.send(store, api.intern("pull:spec:"), &.{ planner_high, nested_pull_spec }, 2);
+    const nested_friend = api.send(nested_pulled, api.intern("at:"), &.{friend_attribute}, 1);
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(api.send(nested_friend, api.intern("at:"), &.{score_attribute}, 1)));
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});

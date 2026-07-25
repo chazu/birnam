@@ -466,6 +466,181 @@ unsafe extern "C" fn rust_group_by(_self_object: Oop, args: *const Oop, count: u
     output
 }
 
+unsafe fn parse_store_pull_specs(
+    api: &IdApi,
+    store: Oop,
+    spec: Oop,
+    depth: usize,
+) -> Result<Vec<PullSpec>, i32> {
+    if depth >= PULL_MAX_DEPTH {
+        return Err(-7);
+    }
+    let elements = unsafe { vector_elements(api, spec)? };
+    let vector_vt = unsafe { (api.import)(c"VectorVt".as_ptr()) };
+    if vector_vt.is_null() {
+        return Err(-6);
+    }
+    let cardinality_selector = unsafe { (api.intern)(c"cardinality:".as_ptr()) };
+    let many_symbol = unsafe { (api.intern)(c"many".as_ptr()) };
+    let mut specs = Vec::with_capacity(elements.len());
+    for element in elements {
+        let (attribute, kind, children) = if unsafe { (api.vtableOf)(element) } == vector_vt {
+            let nested = unsafe { vector_elements(api, element)? };
+            if nested.len() != 2 {
+                return Err(-7);
+            }
+            let Some(attribute) = (unsafe { oop::classify(api, nested[0]) }) else {
+                return Err(-4);
+            };
+            let children = unsafe { parse_store_pull_specs(api, store, nested[1], depth + 1)? };
+            (attribute, PullKind::Reference, children)
+        } else {
+            let Some(attribute) = (unsafe { oop::classify(api, element) }) else {
+                return Err(-4);
+            };
+            (attribute, PullKind::Leaf, Vec::new())
+        };
+        let argument = unsafe { value_oop(api, attribute.clone()) };
+        let cardinality = unsafe { (api.send)(store, cardinality_selector, &argument, 1) };
+        specs.push(PullSpec {
+            attribute,
+            kind,
+            many: cardinality == many_symbol,
+            children,
+        });
+    }
+    Ok(specs)
+}
+
+unsafe fn new_vector(api: &IdApi) -> Oop {
+    let factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    if factory.is_null() {
+        return ptr::null_mut();
+    }
+    let selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    unsafe { (api.send)(factory, selector, ptr::null(), 0) }
+}
+
+unsafe fn materialize_pull_entity(
+    api: &IdApi,
+    facts: &[Triple],
+    entity: &Value,
+    specs: &[PullSpec],
+) -> Oop {
+    let factory = unsafe { (api.import)(c"Map".as_ptr()) };
+    if factory.is_null() {
+        return ptr::null_mut();
+    }
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let at_put_selector = unsafe { (api.intern)(c"at:put:".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let mut output = unsafe { (api.send)(factory, new_selector, ptr::null(), 0) };
+    if output.is_null() {
+        return ptr::null_mut();
+    }
+    ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+    for spec in specs {
+        let values = pull_values(facts, entity, &spec.attribute);
+        if values.is_empty() {
+            continue;
+        }
+        let result = match spec.kind {
+            PullKind::Leaf => {
+                if spec.many {
+                    let mut vector = unsafe { new_vector(api) };
+                    if vector.is_null() {
+                        ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+                        return ptr::null_mut();
+                    }
+                    ACTIVE_PROBE_BLOCK.store(vector as usize, Ordering::Release);
+                    for value in values {
+                        let object = unsafe { value_oop(api, value) };
+                        vector = unsafe { (api.send)(vector, add_selector, &object, 1) };
+                        if vector.is_null() {
+                            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+                            return ptr::null_mut();
+                        }
+                        ACTIVE_PROBE_BLOCK.store(vector as usize, Ordering::Release);
+                    }
+                    ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+                    vector
+                } else {
+                    unsafe { value_oop(api, values[0].clone()) }
+                }
+            }
+            PullKind::Reference => {
+                if spec.many {
+                    let mut vector = unsafe { new_vector(api) };
+                    if vector.is_null() {
+                        ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+                        return ptr::null_mut();
+                    }
+                    ACTIVE_PROBE_BLOCK.store(vector as usize, Ordering::Release);
+                    for value in values {
+                        let child =
+                            unsafe { materialize_pull_entity(api, facts, &value, &spec.children) };
+                        if child.is_null() {
+                            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+                            return ptr::null_mut();
+                        }
+                        vector = unsafe { (api.send)(vector, add_selector, &child, 1) };
+                        if vector.is_null() {
+                            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+                            return ptr::null_mut();
+                        }
+                        ACTIVE_PROBE_BLOCK.store(vector as usize, Ordering::Release);
+                    }
+                    ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+                    vector
+                } else {
+                    unsafe { materialize_pull_entity(api, facts, &values[0], &spec.children) }
+                }
+            }
+        };
+        if result.is_null() {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return ptr::null_mut();
+        }
+        let attribute = unsafe { value_oop(api, spec.attribute.clone()) };
+        let arguments = [attribute, result];
+        output = unsafe { (api.send)(output, at_put_selector, arguments.as_ptr(), 2) };
+        if output.is_null() {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return ptr::null_mut();
+        }
+        ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+    }
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    output
+}
+
+unsafe extern "C" fn rust_pull(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 2 {
+        return api.nilObj;
+    }
+    let Some(entity) = (unsafe { oop::classify(api, arguments[0]) }) else {
+        return api.nilObj;
+    };
+    let specs = match unsafe { parse_store_pull_specs(api, _self_object, arguments[1], 0) } {
+        Ok(specs) => specs,
+        Err(_) => return api.nilObj,
+    };
+    let (facts, _) = match unsafe { collect_project_facts(_self_object) } {
+        Ok(snapshot) => snapshot,
+        Err(_) => return api.nilObj,
+    };
+    let result = unsafe { materialize_pull_entity(api, &facts, &entity, &specs) };
+    if result.is_null() { api.nilObj } else { result }
+}
+
 unsafe fn install_entity_method(api: &IdApi) {
     let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
@@ -519,6 +694,7 @@ unsafe fn install_entity_method(api: &IdApi) {
             (api.intern)(c"groupBy:aggregate:of:where:".as_ptr()),
             rust_group_by,
         );
+        (api.method)(store_vt, (api.intern)(c"pull:spec:".as_ptr()), rust_pull);
     }
 }
 
