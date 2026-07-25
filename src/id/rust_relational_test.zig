@@ -82,9 +82,9 @@ test "Rust Relational classifier copies scalar values and preserves identities" 
     try std.testing.expectEqual(@as(c_int, -1), classify(symbol, null, &bytes, bytes.len));
 }
 
-test "Rust Relational callback copies Rust Store live triples" {
+test "Rust Relational callback copies Store live triples" {
     const api = floor.api();
-    try loadEnvModule(api, "BIRNAM_RUST_STORE_DYLIB");
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
     const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
         return error.MissingRustRelationalDylib;
     try loadModule(api, relation_path);

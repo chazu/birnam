@@ -920,7 +920,7 @@ pub fn build(b: *std.Build) void {
         b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_relational.dylib", .{rust_floor_profile})),
     );
     run_rust_relational_tests.setEnvironmentVariable(
-        "BIRNAM_RUST_STORE_DYLIB",
+        "BIRNAM_RELATIONAL_STORE_DYLIB",
         b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
     );
     run_rust_relational_tests.step.dependOn(bootstrap_install);
@@ -931,6 +931,35 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_relational_step.dependOn(&run_rust_relational_tests.step);
     test_step.dependOn(&run_rust_relational_tests.step);
+
+    const rust_relational_zig_store_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_relational_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_relational_zig_store_tests = b.addTest(.{ .root_module = rust_relational_zig_store_test_mod });
+    const run_rust_relational_zig_store_tests = b.addRunArtifact(rust_relational_zig_store_tests);
+    run_rust_relational_zig_store_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_relational_zig_store_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_relational_zig_store_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_RELATIONAL_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_relational.dylib", .{rust_floor_profile})),
+    );
+    run_rust_relational_zig_store_tests.setEnvironmentVariable(
+        "BIRNAM_RELATIONAL_STORE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_store_zig.dylib"),
+    );
+    run_rust_relational_zig_store_tests.step.dependOn(bootstrap_install);
+    run_rust_relational_zig_store_tests.step.dependOn(&rust_floor_build.step);
+    const test_rust_relational_zig_store_step = b.step(
+        "test-rust-relational-zig-store",
+        "Exercise Rust Relational callbacks against the Zig Store oracle",
+    );
+    test_rust_relational_zig_store_step.dependOn(&run_rust_relational_zig_store_tests.step);
+    test_step.dependOn(&run_rust_relational_zig_store_tests.step);
 
     const rust_prelude_io_probe_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_prelude_io_probe.zig"),
