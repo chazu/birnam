@@ -1955,6 +1955,21 @@ with exact authority/facts/heap payloads. Only then may `saveImage:` call this
 publisher, with the report counters and rejection detail set before any
 publication attempt.
 
+### R6.5 Rust Image field-encoding checkpoint (2026-07-25)
+
+- `1e6ffad` adds `FieldEncoder` for every frozen v4 tagged value: singleton
+  markers, signed integers, lossless float bits, symbols/strings/export names,
+  heap relocation ids, and null-Oop slots. Length-delimited values are bounded
+  to the on-disk `u32` envelope and all output remains caller-owned bytes.
+- The encoder round-trips through the existing borrowed `Fields` decoder for
+  the complete tag corpus. The Rust unit suite is green (`18/18`). No Oop is
+  classified implicitly, no heap is walked, and no Store or filesystem state is
+  changed; the dynamic shell remains fail-closed.
+
+The next bounded step can use this encoder in a pure fact-record builder, then
+feed those records to `ImageWriter` and `publish_atomic` under an explicit
+preflight result. Runtime object classification must remain a separate seam.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
