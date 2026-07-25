@@ -233,3 +233,7 @@ R1 first implementation checkpoint (2026-07-24):
 - `75a49af` updated the relocated install smoke for the new workspace member.
   The post-change R6 focused aggregate is `44/44`, with full optimized verify
   and the two previously accepted benchmark crossings unchanged.
+- `17d9e1a` completed the first Vector-native protocol slice:
+  `inject:into:`, value-aware `indexOf:`, bounded `copyFrom:to:`, and
+  `reversed` now run through the Rust wrapper. The subsequent R6 run remained
+  green at `44/44`.

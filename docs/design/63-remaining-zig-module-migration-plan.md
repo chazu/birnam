@@ -212,6 +212,10 @@ Implementation checkpoints (2026-07-24):
 - `75a49af` reconciled the relocated install smoke with the new workspace
   member. The post-change `mise run r6-acceptance` passed at `44/44` focused
   tests; full optimized verify matched only the recorded fixture exception.
+- `17d9e1a` completed the first Vector-native protocol slice with
+  `inject:into:`, value-aware `indexOf:`, bounded `copyFrom:to:`, and
+  `reversed`, with Rust/Zig floor selection and the locked Rust tests still
+  green. A fresh R6 run passed at `44/44` after this change.
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;
