@@ -50,7 +50,7 @@ pub fn build(b: *std.Build) void {
         PreludeImpl,
         "prelude-impl",
         "Primitive prelude implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .zig;
+    ) orelse .rust;
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
     else
