@@ -1408,6 +1408,16 @@ remain the next implementation slices.
   with no missing or unusable cases. The R6 gate accepted the latest test set
   without broadening thresholds or the recorded fixture exception.
 
+### R4.40 Query-result Vector auto-GC checkpoint (2026-07-25)
+
+- `188124d` runs the canonical Rust `findAll:where:` bridge against 64 live
+  Store facts while automatic GC is enabled. The callback returns a complete
+  64-entry shared Vector, complementing the nested pull and grouped Map growth
+  fixtures.
+- The Rust Relational target and its Zig-Store rollback target both remain
+  `14/14`; callback reentry and canonical Rust Relational selection remain
+  open hardening work.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
