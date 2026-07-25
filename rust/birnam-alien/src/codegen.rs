@@ -327,8 +327,7 @@ fn emit_unmarshal_field(
 ) -> Result<(), CodegenError> {
     match field {
         Type::Scalar(scalar) => {
-            source.push_str(scalar_c_type(*scalar).expect("validated field scalar"));
-            source.push_str(" out->f");
+            source.push_str("out->f");
             source.push_str(&field_index.to_string());
             source.push_str(" = ");
             emit_unbox(source, *scalar, "e");
@@ -349,8 +348,7 @@ fn emit_unmarshal_field(
             source.push_str("L) return 0;\n{ long __k; for (__k = 0; __k < ");
             source.push_str(&count.to_string());
             source.push_str("L; __k++) {\nvoid* __ae = birnam_send(e, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(__k)}, 1L);\n");
-            source.push_str(scalar_c_type(*element).expect("validated array element"));
-            source.push_str(" out->f");
+            source.push_str("out->f");
             source.push_str(&field_index.to_string());
             source.push_str("[__k] = ");
             emit_unbox(source, *element, "__ae");
@@ -464,7 +462,7 @@ fn emit_box_expr(source: &mut String, scalar: Scalar, expression: &str) {
         Scalar::Int | Scalar::Long => {
             source.push_str("birnam_mkSmallInt((long)(");
             source.push_str(expression);
-            source.push(')')
+            source.push_str("))")
         }
         Scalar::UnsignedLong => {
             source.push_str("(((unsigned long)(");
@@ -728,6 +726,16 @@ mod tests {
         assert!(birnam_tcc::compile_source_for_validation(
             source.as_bytes(),
             b"strlen"
+        ));
+    }
+
+    #[test]
+    fn aggregate_wrapper_compiles_and_relocates_through_rust_tcc() {
+        let signature = parse_signature(b"{ii} {ii} i").unwrap();
+        let source = emit_shim(b"birnam_div", &signature).unwrap();
+        assert!(birnam_tcc::compile_source_for_validation(
+            source.as_bytes(),
+            b"birnam_div"
         ));
     }
 }
