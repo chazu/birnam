@@ -8,6 +8,7 @@ const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
 const idapi = @import("idapi.zig");
 const prelude = @import("prelude.zig");
+const store = @import("store.zig");
 
 const Oop = idapi.Oop;
 const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
@@ -51,6 +52,7 @@ fn tryIdentity(identity: Identity) void {
 test "Rust Image shell preserves report layout and selector surface" {
     const api = floor.api();
     prelude.bringUp(api);
+    store.bringUp(api);
     loadImageModule(api);
 
     const report_vt = api.import("ImageSaveReportVt") orelse return error.ImageReportVtMissing;
@@ -93,7 +95,14 @@ test "Rust Image shell preserves report layout and selector surface" {
     try std.testing.expectEqualStrings("rejected", std.mem.span(api.symbolName(send(api, report, "status", &.{}))));
     detail_len = 0;
     const shell_detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
-    try std.testing.expectEqualStrings("Rust Image save orchestration is not installed", shell_detail[0..detail_len]);
+    const rejected_facts = api.smallIntValue(send(api, report, "rejectedFacts", &.{}));
+    const saved_facts = api.smallIntValue(send(api, report, "savedFacts", &.{}));
+    try std.testing.expect(saved_facts + rejected_facts > 0);
+    if (rejected_facts == 0) {
+        try std.testing.expectEqualStrings("Rust Image heap preflight is not installed", shell_detail[0..detail_len]);
+    } else {
+        try std.testing.expectEqualStrings("Rust Image fact preflight rejected unsupported values", shell_detail[0..detail_len]);
+    }
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, "shell.image")}) == api.nilObj);
     try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, "shell.image"), api.trueObj }) == api.nilObj);
     try std.testing.expect(send(api, system, "bakeExe:", &.{str(api, "shell-exe")}) == api.nilObj);

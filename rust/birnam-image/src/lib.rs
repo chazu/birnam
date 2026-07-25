@@ -18,6 +18,7 @@ pub const AUTHORITY_DIGEST_LEN: usize = 64;
 pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
 pub const FIELD_LENGTH_PREFIX: usize = 4;
 
+use std::ffi::CStr;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -550,6 +551,7 @@ pub enum EncodeError {
     CodeBeforeAuthority,
     DuplicateCode,
     AuthorityMismatch,
+    InvalidFields,
     PayloadTooLarge,
 }
 
@@ -651,17 +653,43 @@ impl FactsWriter {
         attribute: Field<'_>,
         value: Field<'_>,
     ) -> Result<(), EncodeError> {
-        let count = self
-            .count
-            .checked_add(1)
-            .ok_or(EncodeError::PayloadTooLarge)?;
         let mut fields = FieldEncoder::new();
         append_field(&mut fields, entity)?;
         append_field(&mut fields, attribute)?;
         append_field(&mut fields, value)?;
+        self.fact_encoded(op, tx, fields.as_bytes())
+    }
+
+    pub fn fact_encoded(
+        &mut self,
+        op: u8,
+        tx: u64,
+        encoded_fields: &[u8],
+    ) -> Result<(), EncodeError> {
+        let mut fields = Fields::new(encoded_fields);
+        for _ in 0..3 {
+            if fields
+                .next_field()
+                .map_err(|_| EncodeError::InvalidFields)?
+                .is_none()
+            {
+                return Err(EncodeError::InvalidFields);
+            }
+        }
+        if fields
+            .next_field()
+            .map_err(|_| EncodeError::InvalidFields)?
+            .is_some()
+        {
+            return Err(EncodeError::InvalidFields);
+        }
+        let count = self
+            .count
+            .checked_add(1)
+            .ok_or(EncodeError::PayloadTooLarge)?;
         self.bytes.push(op);
         self.bytes.extend_from_slice(&tx.to_le_bytes());
-        self.bytes.extend_from_slice(fields.as_bytes());
+        self.bytes.extend_from_slice(encoded_fields);
         self.count = count;
         self.bytes[8..12].copy_from_slice(&count.to_le_bytes());
         Ok(())
@@ -965,6 +993,14 @@ struct Runtime {
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
+struct FactCollection {
+    writer: FactsWriter,
+    kept: u32,
+    rejected: u32,
+}
+
+static FACT_COLLECTION: Mutex<Option<FactCollection>> = Mutex::new(None);
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Default)]
 enum ReportStatus {
@@ -1038,6 +1074,126 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
     unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
 }
 
+unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
+    if pointer.is_null() {
+        return None;
+    }
+    // SAFETY: IdApi returns process-owned NUL-terminated names that remain
+    // valid for the loaded floor's lifetime.
+    Some(unsafe { CStr::from_ptr(pointer) }.to_bytes())
+}
+
+unsafe fn encode_runtime_oop(api: &IdApi, encoder: &mut FieldEncoder, object: Oop) -> bool {
+    if object.is_null() {
+        encoder.null_oop();
+        return true;
+    }
+    if object == api.nilObj {
+        encoder.nil();
+        return true;
+    }
+    if object == api.trueObj {
+        encoder.true_value();
+        return true;
+    }
+    if object == api.falseObj {
+        encoder.false_value();
+        return true;
+    }
+    if unsafe { (api.isSmallInt)(object) } != 0 {
+        encoder.integer(unsafe { (api.smallIntValue)(object) });
+        return true;
+    }
+    if unsafe { (api.isFloat)(object) } != 0 {
+        encoder.float_bits(unsafe { (api.floatValue)(object).to_bits() });
+        return true;
+    }
+    let vtable = unsafe { (api.vtableOf)(object) };
+    if vtable == api.symbol_vt {
+        let Some(bytes) = (unsafe { c_string_bytes((api.symbolName)(object)) }) else {
+            return false;
+        };
+        return encoder.symbol(bytes).is_ok();
+    }
+    if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
+        return encoder.export_ref(name).is_ok();
+    }
+    if vtable == api.string_vt {
+        let mut length = 0;
+        let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+        if bytes.is_null() && length != 0 {
+            return false;
+        }
+        // SAFETY: stringBytes supplies `length` readable bytes for a live String.
+        let bytes = if length == 0 {
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(bytes, length) }
+        };
+        return encoder.string(bytes).is_ok();
+    }
+    false
+}
+
+fn record_fact_counts(kept: u32, rejected: u32) {
+    let mut report = runtime()
+        .report
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    report.saved_facts = kept;
+    report.rejected_facts = rejected;
+}
+
+unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32) {
+    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    if store.is_null() || store == api.nilObj {
+        return (0, 0);
+    }
+    let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
+    if collector_vt.is_null() {
+        return (0, 0);
+    }
+    let basis_object = unsafe { (api.send)(store, intern(api, b"basis\0"), ptr::null(), 0) };
+    let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
+        unsafe { (api.smallIntValue)(basis_object) }.max(0) as u64
+    } else {
+        0
+    };
+    let collector = unsafe { (api.alloc)(collector_vt, 0) };
+    if collector.is_null() {
+        return (0, 0);
+    }
+    {
+        let mut collection = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *collection = Some(FactCollection {
+            writer: FactsWriter::new(basis),
+            kept: 0,
+            rejected: 0,
+        });
+    }
+    let arguments = [collector];
+    let _ = unsafe {
+        (api.send)(
+            store,
+            intern(api, b"imageFactsInto:\0"),
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    };
+    let collection = FACT_COLLECTION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    let Some(collection) = collection else {
+        return (0, 0);
+    };
+    let counts = (collection.kept, collection.rejected);
+    let _payload = collection.writer.finish();
+    counts
+}
+
 unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
@@ -1055,7 +1211,13 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     }
     // The shell deliberately has no authority to mutate or publish an image.
     // Later R6 slices install the codec-backed save transaction here.
-    reject_save("Rust Image save orchestration is not installed");
+    let (kept, rejected) = unsafe { collect_store_facts(api) };
+    reject_save(if rejected == 0 {
+        "Rust Image heap preflight is not installed"
+    } else {
+        "Rust Image fact preflight rejected unsupported values"
+    });
+    record_fact_counts(kept, rejected);
     api.nilObj
 }
 
@@ -1213,10 +1375,74 @@ unsafe extern "C" fn report_detail(_self_object: Oop, _args: *const Oop, count: 
 }
 
 unsafe extern "C" fn collector_collect(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
     if count != 5 {
-        return unsafe { api_ref() }.nilObj;
+        if let Some(collection) = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_mut()
+        {
+            collection.rejected = collection.rejected.saturating_add(1);
+        }
+        return api.nilObj;
     }
-    unsafe { api_ref() }.nilObj
+    let Some(arguments) = (unsafe { borrowed_oop_args(_args, count) }) else {
+        if let Some(collection) = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_mut()
+        {
+            collection.rejected = collection.rejected.saturating_add(1);
+        }
+        return api.nilObj;
+    };
+    let tx_object = arguments[3];
+    let op_object = arguments[4];
+    if unsafe { (api.isSmallInt)(tx_object) } == 0 || unsafe { (api.isSmallInt)(op_object) } == 0 {
+        if let Some(collection) = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_mut()
+        {
+            collection.rejected = collection.rejected.saturating_add(1);
+        }
+        return api.nilObj;
+    }
+    let tx = unsafe { (api.smallIntValue)(tx_object) };
+    let op = unsafe { (api.smallIntValue)(op_object) };
+    if tx < 0 || !(0..=1).contains(&op) {
+        if let Some(collection) = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_mut()
+        {
+            collection.rejected = collection.rejected.saturating_add(1);
+        }
+        return api.nilObj;
+    }
+    let mut fields = FieldEncoder::new();
+    let encoded = unsafe {
+        encode_runtime_oop(api, &mut fields, arguments[0])
+            && encode_runtime_oop(api, &mut fields, arguments[1])
+            && encode_runtime_oop(api, &mut fields, arguments[2])
+    };
+    let mut collection = FACT_COLLECTION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(collection) = collection.as_mut() else {
+        return api.nilObj;
+    };
+    if !encoded
+        || collection
+            .writer
+            .fact_encoded(op as u8, tx as u64, fields.as_bytes())
+            .is_err()
+    {
+        collection.rejected = collection.rejected.saturating_add(1);
+    } else {
+        collection.kept = collection.kept.saturating_add(1);
+    }
+    api.nilObj
 }
 
 unsafe fn bring_up(api: *mut IdApi) {
