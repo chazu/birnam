@@ -6,12 +6,13 @@
 //! the frozen `IdApi` and is never retained by Rust after a call returns.
 
 use birnam_abi::{IdApi, Oop};
-use std::ffi::{CStr, c_char, c_int};
+use std::ffi::{CStr, c_char, c_int, c_void};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::mem::ManuallyDrop;
 use std::os::fd::{FromRawFd, RawFd};
 use std::ptr;
+use std::sync::OnceLock;
 
 pub const MAGIC: &[u8; 4] = b"BISO";
 pub const VERSION: u16 = 1;
@@ -1006,6 +1007,240 @@ fn borrowed_file(file: &mut ManuallyDrop<File>) -> &mut File {
     // SAFETY: `ManuallyDrop<T>` has the same representation as `T`; the
     // wrapper only suppresses `File`'s destructor and does not move it.
     unsafe { &mut *(file as *mut ManuallyDrop<File> as *mut File) }
+}
+
+#[repr(C)]
+struct Failure {
+    class: Oop,
+    kind: Oop,
+    message: Oop,
+    exit_status: Oop,
+    request_id: Oop,
+}
+
+struct Runtime {
+    api: usize,
+    isolate_vt: usize,
+    isolate_obj: usize,
+    handle_vt: usize,
+    failure_vt: usize,
+}
+
+static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+fn runtime_api() -> &'static IdApi {
+    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
+    // SAFETY: module_init records the process-owned IdApi pointer for the
+    // process lifetime; all dynamic methods are synchronous borrows.
+    unsafe { &*(runtime.api as *const IdApi) }
+}
+
+fn failure_object(value: Oop) -> &'static mut Failure {
+    // SAFETY: callers pass only instances allocated from the registered
+    // IsolateFailureVt family with the exact five-OOP payload layout.
+    unsafe { &mut *(value as *mut Failure) }
+}
+
+fn make_failure(api: &IdApi, class: &[u8], kind: &[u8], message: &[u8]) -> Oop {
+    let class_z = class
+        .iter()
+        .copied()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let kind_z = kind
+        .iter()
+        .copied()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
+    let kind_o = unsafe { (api.intern)(kind_z.as_ptr().cast()) };
+    let message_o = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
+    let value = unsafe { (api.alloc)(runtime.failure_vt as Oop, std::mem::size_of::<Failure>()) };
+    failure_object(value).class = class_o;
+    failure_object(value).kind = kind_o;
+    failure_object(value).message = message_o;
+    failure_object(value).exit_status = api.nilObj;
+    failure_object(value).request_id = api.nilObj;
+    value
+}
+
+unsafe extern "C" fn isolate_start(_: Oop, _: *const Oop, _: usize) -> Oop {
+    make_failure(
+        runtime_api(),
+        b"boot",
+        b"rustWorkerHostPending",
+        b"Rust Isolate worker is available as an explicit fixture; host lifecycle is not ported yet",
+    )
+}
+
+unsafe extern "C" fn isolate_sleep(_: Oop, args: *const Oop, count: usize) -> Oop {
+    if count == 0 || args.is_null() {
+        return runtime_api().nilObj;
+    }
+    // SAFETY: the IdApi send contract supplies `count` readable OOP carriers.
+    unsafe { *args }
+}
+
+unsafe extern "C" fn isolate_crash(_: Oop, _: *const Oop, _: usize) -> Oop {
+    std::process::abort()
+}
+
+unsafe extern "C" fn handle_request(_: Oop, _: *const Oop, _: usize) -> Oop {
+    make_failure(
+        runtime_api(),
+        b"stopped",
+        b"rustWorkerHostPending",
+        b"Rust Isolate host request lifecycle is not ported yet",
+    )
+}
+
+unsafe extern "C" fn handle_stop(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    self_oop
+}
+
+unsafe extern "C" fn handle_state(_: Oop, _: *const Oop, _: usize) -> Oop {
+    unsafe { (runtime_api().intern)(c"stopped".as_ptr()) }
+}
+
+unsafe extern "C" fn failure_is_error(_: Oop, _: *const Oop, _: usize) -> Oop {
+    runtime_api().trueObj
+}
+
+unsafe extern "C" fn failure_class(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    failure_object(self_oop).class
+}
+
+unsafe extern "C" fn failure_kind(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    failure_object(self_oop).kind
+}
+
+unsafe extern "C" fn failure_message(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    failure_object(self_oop).message
+}
+
+unsafe extern "C" fn failure_status(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    failure_object(self_oop).exit_status
+}
+
+unsafe extern "C" fn failure_request_id(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    failure_object(self_oop).request_id
+}
+
+/// Register the Rust Isolate family shape without claiming host lifecycle
+/// parity. The worker ABI can be exercised independently; this bridge keeps
+/// family names/layouts and structured pending failures explicit until process
+/// registry/timeout ownership is ported.
+///
+/// # Safety
+///
+/// `api` must point to a live process-owned `IdApi` table for the duration of
+/// initialization. The returned module state is null and no caller memory is
+/// retained beyond the process-owned API table.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+    if api.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: the caller owns a live process IdApi table for module_init.
+    let api_ref = unsafe { &*api };
+    let runtime = RUNTIME.get_or_init(|| {
+        let reloading = unsafe { (api_ref.isExported)(c"Isolate".as_ptr()) } != 0;
+        let (isolate_vt, isolate_obj, handle_vt, failure_vt) = if reloading {
+            (
+                unsafe { (api_ref.import)(c"IsolateVt".as_ptr()) },
+                unsafe { (api_ref.import)(c"Isolate".as_ptr()) },
+                unsafe { (api_ref.import)(c"IsolateHandleVt".as_ptr()) },
+                unsafe { (api_ref.import)(c"IsolateFailureVt".as_ptr()) },
+            )
+        } else {
+            let isolate_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+            let isolate_obj = unsafe { (api_ref.alloc)(isolate_vt, 0) };
+            let handle_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+            let error_vt = unsafe { (api_ref.import)(c"ErrorVt".as_ptr()) };
+            let failure_vt = if error_vt.is_null() {
+                unsafe { (api_ref.proto)(api_ref.object_vt) }
+            } else {
+                unsafe { (api_ref.proto)(error_vt) }
+            };
+            (isolate_vt, isolate_obj, handle_vt, failure_vt)
+        };
+        Runtime {
+            api: api as usize,
+            isolate_vt: isolate_vt as usize,
+            isolate_obj: isolate_obj as usize,
+            handle_vt: handle_vt as usize,
+            failure_vt: failure_vt as usize,
+        }
+    });
+    let isolate_vt = runtime.isolate_vt as Oop;
+    let handle_vt = runtime.handle_vt as Oop;
+    let failure_vt = runtime.failure_vt as Oop;
+    unsafe {
+        (api_ref.setLayout)(isolate_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        (api_ref.setLayout)(handle_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        (api_ref.setLayout)(failure_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
+        (api_ref.method)(
+            isolate_vt,
+            (api_ref.intern)(c"start:selector:image:".as_ptr()),
+            isolate_start,
+        );
+        (api_ref.method)(
+            isolate_vt,
+            (api_ref.intern)(c"_isolateSleep:".as_ptr()),
+            isolate_sleep,
+        );
+        (api_ref.method)(
+            isolate_vt,
+            (api_ref.intern)(c"_isolateCrash:".as_ptr()),
+            isolate_crash,
+        );
+        (api_ref.method)(
+            handle_vt,
+            (api_ref.intern)(c"request:timeout:".as_ptr()),
+            handle_request,
+        );
+        (api_ref.method)(
+            handle_vt,
+            (api_ref.intern)(c"request:".as_ptr()),
+            handle_request,
+        );
+        (api_ref.method)(handle_vt, (api_ref.intern)(c"stop".as_ptr()), handle_stop);
+        (api_ref.method)(handle_vt, (api_ref.intern)(c"state".as_ptr()), handle_state);
+        (api_ref.method)(
+            failure_vt,
+            (api_ref.intern)(c"isError".as_ptr()),
+            failure_is_error,
+        );
+        (api_ref.method)(
+            failure_vt,
+            (api_ref.intern)(c"class".as_ptr()),
+            failure_class,
+        );
+        (api_ref.method)(failure_vt, (api_ref.intern)(c"kind".as_ptr()), failure_kind);
+        (api_ref.method)(
+            failure_vt,
+            (api_ref.intern)(c"message".as_ptr()),
+            failure_message,
+        );
+        (api_ref.method)(
+            failure_vt,
+            (api_ref.intern)(c"exitStatus".as_ptr()),
+            failure_status,
+        );
+        (api_ref.method)(
+            failure_vt,
+            (api_ref.intern)(c"requestId".as_ptr()),
+            failure_request_id,
+        );
+        if (api_ref.isExported)(c"Isolate".as_ptr()) == 0 {
+            let _ = (api_ref.exportObj)(c"IsolateVt".as_ptr(), isolate_vt);
+            let _ = (api_ref.exportObj)(c"Isolate".as_ptr(), runtime.isolate_obj as Oop);
+            let _ = (api_ref.exportObj)(c"IsolateHandleVt".as_ptr(), handle_vt);
+            let _ = (api_ref.exportObj)(c"IsolateFailureVt".as_ptr(), failure_vt);
+        }
+    }
+    ptr::null_mut()
 }
 
 /// Run the Rust worker loop over an inherited channel.
