@@ -18,16 +18,17 @@ The current repository already contains Rust implementations for:
 - the `libid` floor and public IdApi;
 - Store/MOP and its Codegen observer/authorizer seam;
 - PEG, Lang, TCC, Codegen runtime, artifact inspection, and the image codec;
-- the opt-in N7.1 Prelude protocol through arithmetic, Boolean, Error, Block,
+- the canonical N7.1 Prelude protocol through arithmetic, Boolean, Error, Block,
   System I/O/environment/output, GC controls, source `load:`, `loadModule:`,
   and `readLine`. Its Error behavior delegates to the standalone Error rung;
-  it does not create an Error family.
+  it does not create an Error family. The Zig Prelude remains a pinned,
+  explicit rollback fixture only.
 
 The remaining Zig-owned production modules are:
 
 | Zig owner | Rust work still required | First safe cutover |
 | --- | --- | --- |
-| `src/id/prelude.zig` | complete the Rust Prelude selector/export surface, then make one canonical Prelude selection while preserving the Error dylib boundary | after Prelude selector, bootstrap, and observation gates |
+| `src/id/prelude.zig` | retain the Zig implementation as an explicit rollback fixture; Rust Prelude is now canonical while preserving the Error dylib boundary | R0.5 post-switch observation |
 | `src/id/collection.zig` | persistent Vector/RRB, Range, Map/HAMT, String/native collection protocol, layouts and tracing | after collection cross-floor and GC gates |
 | `src/id/error.zig` | standalone Rust Error dylib with the existing family/factory/DNU boundary; Prelude imports it lazily | after Error identity/DNU and source bootstrap gates |
 | `src/id/isolate.zig` | process launch, worker loop, pipes, wire-v1 codec, bounded copied values, termination | after wire corpus and hostile-child gates |
@@ -43,11 +44,11 @@ crate is the schema/inspector replacement candidate; activation and dependency
 closure policy remain host-owned until the final host phase. No artifact crate
 may become a second preflight authority.
 
-The Rust Prelude currently contains an opt-in Error-compatible helper so its
-focused tests can exercise faults. It must not own the production Error family
-when the standalone Error rung is present: Prelude imports `Error`/`ErrorVt`
-lazily, exactly as the Zig Prelude does. A separate Rust Error dylib is required
-before the Zig Error dylib can be retired.
+The Rust Prelude owns the canonical prelude selectors but not the production
+Error family. It imports `Error`/`ErrorVt` lazily, exactly as the Zig Prelude
+does. A separate Rust Error dylib is required before the Zig Error dylib can be
+retired; the current Rust Prelude therefore remains compatible with the
+standalone Zig Error owner.
 
 ## 2. Non-negotiable invariants
 
@@ -138,8 +139,10 @@ worktree is clean and both gates pass.
 
 ## 4. Phase R0.5 — Prelude completion and canonical switch
 
-The Rust Prelude is opt-in today; the Zig Prelude remains the canonical
-production owner. Complete this boundary before Collection or Error cutover.
+This phase completed the Prelude boundary before Collection or Error cutover.
+The numbered checklist records the acceptance work that led to the canonical
+switch; the Zig implementation remains available only through explicit
+`-Dprelude-impl=zig` selection.
 
 1. Inventory the entire `src/id/prelude.zig` surface, including source `load:`,
    `loadModule:`, line input, file/environment I/O, output stringification,
@@ -163,6 +166,25 @@ production owner. Complete this boundary before Collection or Error cutover.
 process, cold/source bootstrap and subprocess I/O evidence, explicit selector
 selection, pre-switch full verify/R6, one canonical switch commit, and a
 post-switch observation window.
+
+### R0.5 completion record (2026-07-24)
+
+- `a14732f` added explicit `-Dprelude-impl=rust|zig` selection, clean-prefix
+  selector smoke coverage, and side-by-side canonical/fixture installation.
+- `48a719a` completed the Rust Prelude Word protocol and inclusive `to:do:`
+  loop; `53d53f2` aligned numeric fault kinds and propagation; `06bbf47` and
+  `94025f4` aligned non-Boolean block-loop faults and the parity expectation.
+- `8ba03b6` made Rust the canonical Prelude. The Zig Prelude remains a
+  fail-closed rollback fixture and is never selected implicitly.
+- Post-switch `mise run r6-acceptance` passed with the focused set at `43/43`.
+  Optimized verify matched the exact recorded `sortedModules` fixture crash
+  exception; no additional failure was accepted. The comparator reported only
+  the already accepted `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` crossings (`regressions: 2, missing: 0,
+  unusable: 0`).
+- The R0.5 gate is complete. Continue observing project builds, image
+  save/load, module loading, process controls, and release packaging before
+  retiring the Zig fixture.
 
 ## 5. Phase R1 — Collection (first implementation slice)
 

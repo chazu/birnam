@@ -28,7 +28,7 @@ the implementation.
 
 | Field | Current contract |
 | --- | --- |
-| Dynamic identity | Zig Prelude rung; `module_init`; current Rust candidate is opt-in and must not own Error |
+| Dynamic identity | Rust Prelude is canonical via `module_init`; Zig Prelude remains an explicit rollback fixture and neither implementation owns Error |
 | Exported objects/vtables | `Block`, `BlockVt`, `System`, `SystemVt`; Boolean is floor-owned; Error is imported lazily |
 | Payload/layout | Block instances: captured OOP slots (`slot_oop`); System: zero payload; numeric/word payloads remain floor-owned |
 | Roots/finalizers | No module root provider or finalizer; callbacks are bounded by the active send/GC root contract |
@@ -193,8 +193,8 @@ Execution evidence (2026-07-24):
   benchmark crossings remained `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`, with `regressions: 2, missing: 0,
   unusable: 0`.
-- R0 is complete. No canonical runtime switch occurred in this phase; R0.5
-  Prelude completion and its pre-switch acceptance gate are next.
+- R0 is complete. The R0.5 Prelude completion and canonical-switch checkpoint
+  below records the follow-on cutover.
 
 R0.5 implementation checkpoint (2026-07-24):
 
@@ -208,5 +208,14 @@ R0.5 implementation checkpoint (2026-07-24):
 - `e1453c7` added `test-rust-prelude-io`, a separate executable with piped
   stdin/stdout proving `readLine` and `println:` outside the in-process test
   runner. R6 now includes this target and pins the focused set at `43/43`.
-- Rust remains opt-in and the Zig Prelude remains canonical. The R0.5
-  pre-switch verify/R6 gate and canonical-switch commit are still pending.
+- `a14732f` added explicit `-Dprelude-impl=rust|zig` selection and clean-prefix
+  rollback coverage; `48a719a`, `53d53f2`, `06bbf47`, and `94025f4` completed
+  Word, loop, numeric-fault, and block-fault parity; and `8ba03b6` made Rust
+  the canonical Prelude while retaining the Zig fixture.
+- The post-switch `mise run r6-acceptance` passed with the focused set at
+  `43/43`; optimized verify matched only the exact recorded `sortedModules`
+  fixture exception, and the comparator retained only the accepted
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` crossings.
+- R0.5 is complete. The Zig Prelude remains available only with explicit
+  `-Dprelude-impl=zig` rollback selection; the next implementation slice is
+  R1 Collection.
