@@ -84,7 +84,16 @@ test "Rust Image shell preserves report layout and selector surface" {
     const identity_bytes = api.stringBytes(identity, &identity_len);
     try std.testing.expectEqualStrings("rust-image-r6-shell", identity_bytes[0..identity_len]);
     try std.testing.expect(send(api, system, "imageSaveReport", &.{}) == report);
+    try std.testing.expect(send(api, system, "saveImage:", &.{api.nilObj}) == api.nilObj);
+    try std.testing.expectEqualStrings("rejected", std.mem.span(api.symbolName(send(api, report, "status", &.{}))));
+    detail_len = 0;
+    const invalid_detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
+    try std.testing.expectEqualStrings("saveImage: expects one String path", invalid_detail[0..detail_len]);
     try std.testing.expect(send(api, system, "saveImage:", &.{str(api, "shell.image")}) == api.nilObj);
+    try std.testing.expectEqualStrings("rejected", std.mem.span(api.symbolName(send(api, report, "status", &.{}))));
+    detail_len = 0;
+    const shell_detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
+    try std.testing.expectEqualStrings("Rust Image save orchestration is not installed", shell_detail[0..detail_len]);
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, "shell.image")}) == api.nilObj);
     try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, "shell.image"), api.trueObj }) == api.nilObj);
     try std.testing.expect(send(api, system, "bakeExe:", &.{str(api, "shell-exe")}) == api.nilObj);

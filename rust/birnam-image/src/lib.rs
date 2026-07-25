@@ -668,7 +668,7 @@ fn mix(left: u64, right: u64) -> u64 {
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r6-shell\0";
 const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
@@ -679,9 +679,61 @@ const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
 struct Runtime {
     api: usize,
     report_obj: usize,
+    report: &'static Mutex<SaveReport>,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Default)]
+enum ReportStatus {
+    #[default]
+    Never,
+    Saved,
+    Rejected,
+    IoFailed,
+}
+
+#[derive(Clone, Copy)]
+struct SaveReport {
+    status: ReportStatus,
+    saved_facts: u32,
+    recovered_facts: u32,
+    rejected_facts: u32,
+    recovered_slots: u32,
+    rejected_slots: u32,
+    code_units: u32,
+    detail: [u8; 256],
+    detail_len: usize,
+}
+
+impl Default for SaveReport {
+    fn default() -> Self {
+        Self {
+            status: ReportStatus::Never,
+            saved_facts: 0,
+            recovered_facts: 0,
+            rejected_facts: 0,
+            recovered_slots: 0,
+            rejected_slots: 0,
+            code_units: 0,
+            detail: [0; 256],
+            detail_len: 0,
+        }
+    }
+}
+
+static SAVE_REPORT: Mutex<SaveReport> = Mutex::new(SaveReport {
+    status: ReportStatus::Never,
+    saved_facts: 0,
+    recovered_facts: 0,
+    rejected_facts: 0,
+    recovered_slots: 0,
+    rejected_slots: 0,
+    code_units: 0,
+    detail: [0; 256],
+    detail_len: 0,
+});
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Image: {message}");
@@ -707,11 +759,22 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
 
 unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+    if count != 1 {
+        reject_save("saveImage: expects one String path");
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        reject_save("saveImage: received an invalid argument buffer");
+        return api.nilObj;
+    };
+    let path = arguments[0];
+    if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
+        reject_save("saveImage: expects one String path");
         return api.nilObj;
     }
     // The shell deliberately has no authority to mutate or publish an image.
     // Later R6 slices install the codec-backed save transaction here.
+    reject_save("Rust Image save orchestration is not installed");
     api.nilObj
 }
 
@@ -774,15 +837,83 @@ unsafe extern "C" fn report_status(_self_object: Oop, _args: *const Oop, count: 
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { intern(api, b"never\0") }
+    let status = runtime()
+        .report
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .status;
+    unsafe {
+        intern(
+            api,
+            match status {
+                ReportStatus::Never => b"never\0",
+                ReportStatus::Saved => b"saved\0",
+                ReportStatus::Rejected => b"rejected\0",
+                ReportStatus::IoFailed => b"ioFailed\0",
+            },
+        )
+    }
 }
 
-unsafe extern "C" fn report_count(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+fn report_value(field: fn(&SaveReport) -> u32) -> u32 {
+    let report = runtime()
+        .report
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    field(&report)
+}
+
+unsafe fn report_count_value(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+    field: fn(&SaveReport) -> u32,
+) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)(0) }
+    unsafe { (api.mkSmallInt)(i64::from(report_value(field))) }
+}
+
+unsafe extern "C" fn report_saved_facts(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { report_count_value(self_object, args, count, |report| report.saved_facts) }
+}
+
+unsafe extern "C" fn report_recovered_facts(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { report_count_value(self_object, args, count, |report| report.recovered_facts) }
+}
+
+unsafe extern "C" fn report_rejected_facts(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { report_count_value(self_object, args, count, |report| report.rejected_facts) }
+}
+
+unsafe extern "C" fn report_recovered_slots(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { report_count_value(self_object, args, count, |report| report.recovered_slots) }
+}
+
+unsafe extern "C" fn report_rejected_slots(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { report_count_value(self_object, args, count, |report| report.rejected_slots) }
+}
+
+unsafe extern "C" fn report_code_units(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { report_count_value(self_object, args, count, |report| report.code_units) }
 }
 
 unsafe extern "C" fn report_detail(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -790,7 +921,14 @@ unsafe extern "C" fn report_detail(_self_object: Oop, _args: *const Oop, count: 
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkString)(b"".as_ptr(), 0) }
+    let (detail, detail_len) = {
+        let report = runtime()
+            .report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (report.detail, report.detail_len)
+    };
+    unsafe { (api.mkString)(detail.as_ptr(), detail_len) }
 }
 
 unsafe extern "C" fn collector_collect(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -826,16 +964,36 @@ unsafe fn bring_up(api: *mut IdApi) {
     let collector_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
     unsafe {
         (api_ref.method)(report_vt, intern(api_ref, b"status\0"), report_status);
-        for selector in [
-            b"savedFacts\0".as_slice(),
-            b"recoveredFacts\0".as_slice(),
-            b"rejectedFacts\0".as_slice(),
-            b"recoveredSlots\0".as_slice(),
-            b"rejectedSlots\0".as_slice(),
-            b"codeUnits\0".as_slice(),
-        ] {
-            (api_ref.method)(report_vt, intern(api_ref, selector), report_count);
-        }
+        (api_ref.method)(
+            report_vt,
+            intern(api_ref, b"savedFacts\0"),
+            report_saved_facts,
+        );
+        (api_ref.method)(
+            report_vt,
+            intern(api_ref, b"recoveredFacts\0"),
+            report_recovered_facts,
+        );
+        (api_ref.method)(
+            report_vt,
+            intern(api_ref, b"rejectedFacts\0"),
+            report_rejected_facts,
+        );
+        (api_ref.method)(
+            report_vt,
+            intern(api_ref, b"recoveredSlots\0"),
+            report_recovered_slots,
+        );
+        (api_ref.method)(
+            report_vt,
+            intern(api_ref, b"rejectedSlots\0"),
+            report_rejected_slots,
+        );
+        (api_ref.method)(
+            report_vt,
+            intern(api_ref, b"codeUnits\0"),
+            report_code_units,
+        );
         (api_ref.method)(report_vt, intern(api_ref, b"detail\0"), report_detail);
         (api_ref.method)(
             collector_vt,
@@ -876,7 +1034,22 @@ unsafe fn bring_up(api: *mut IdApi) {
     let _ = RUNTIME.set(Runtime {
         api: api as usize,
         report_obj: report_obj as usize,
+        report: &SAVE_REPORT,
     });
+}
+
+fn reject_save(detail: &str) {
+    let mut report = runtime()
+        .report
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *report = SaveReport {
+        status: ReportStatus::Rejected,
+        detail_len: detail.len().min(256),
+        ..SaveReport::default()
+    };
+    let detail_len = report.detail_len;
+    report.detail[..detail_len].copy_from_slice(&detail.as_bytes()[..detail_len]);
 }
 
 /// Identifies the first dynamic Rust Image orchestration shell.
