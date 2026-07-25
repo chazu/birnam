@@ -708,7 +708,7 @@ remain the next implementation slices.
 
 ### R4.1 authority-free relational kernel checkpoint (2026-07-25)
 
-- The new `birnam-relational` Rust crate evaluates a borrowed Store triple
+- `4019091` adds the new `birnam-relational` Rust crate, which evaluates a borrowed Store triple
   snapshot with a deterministic left-to-right conjunction join and distinct
   projection. Its input facts remain owned by the Store; it owns only copied
   query bindings and never crosses an IdApi callback or stores a second fact
@@ -717,6 +717,11 @@ remain the next implementation slices.
   variables, empty results, result-order preservation, and no invented
   bindings. Scalar value-aware matching and the dynamic `module_init` wrapper
   remain subsequent slices.
+- `3d3739a` updates the relocated Cargo-manifest acceptance for the new member;
+  the subsequent Rust-default R6 rerun passes `93/93` build steps and `52/52`
+  focused tests with the existing benchmark allowances unchanged. The full
+  workspace Cargo test still has the pre-existing deep-codegen stack-overflow
+  abort; the new crate's locked offline test and clippy gates are green.
 
 ## 8. Phase R4 — Relational
 
