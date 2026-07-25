@@ -2374,6 +2374,23 @@ pub fn query_rule(
     cache.query(name, args, result_variable)
 }
 
+/// Evaluate a canonical query body against one authoritative Store snapshot
+/// and the definitions reified from that same snapshot. The rule cache is
+/// rebuilt for this call and discarded afterwards; it is an execution aid, not
+/// a second fact authority. This is the pure seam used by the later
+/// `findAll:where:` adapter.
+pub fn project_rule_body(
+    facts: &[Triple],
+    definitions: &[RuleDefinition],
+    body: &[RuleClause],
+    result_variable: u32,
+) -> Vec<Value> {
+    let mut cache = RuleCache::default();
+    cache.rebuild(facts, definitions);
+    let solutions = evaluate_rule_body(facts, &cache.relations, body);
+    project_solutions(solutions, result_variable)
+}
+
 unsafe fn parse_pull_specs(
     api: &IdApi,
     store: Oop,
@@ -3258,7 +3275,7 @@ mod tests {
     use super::{
         AggregateOp, Clause, CompareOp, PullKind, PullSpec, RuleCache, RuleClause, RuleDefinition,
         Term, Triple, Value, aggregate_values, group_aggregate, project, project_disjunction,
-        project_negated, project_predicate, project_recursive, pull, query_rule,
+        project_negated, project_predicate, project_recursive, project_rule_body, pull, query_rule,
     };
 
     fn id(value: u64) -> Value {
@@ -3844,5 +3861,10 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert!(values[0].matches(&id(1)));
         assert!(values[1].matches(&id(4)));
+
+        let body_values = project_rule_body(&facts, &definitions, &definitions[0].body, 0);
+        assert_eq!(body_values.len(), 2);
+        assert!(body_values[0].matches(&id(1)));
+        assert!(body_values[1].matches(&id(4)));
     }
 }
