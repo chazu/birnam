@@ -131,32 +131,35 @@ unsafe fn value_oop(api: &IdApi, value: Value) -> Oop {
     }
 }
 
-unsafe extern "C" fn rust_find_all(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+unsafe fn smallint_u64(api: &IdApi, object: Oop) -> Option<u64> {
+    if object.is_null() || unsafe { (api.isSmallInt)(object) } == 0 {
+        return None;
+    }
+    let value = unsafe { (api.smallIntValue)(object) };
+    (value >= 0).then_some(value as u64)
+}
+
+unsafe fn rust_find_all_window(store: Oop, args: *const Oop, count: usize, mode: u8) -> Oop {
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
     let api = unsafe { &*(*api_address as *const IdApi) };
-    let vector_factory = unsafe { (api.import)(c"Vector".as_ptr()) };
-    if vector_factory.is_null() {
-        return api.nilObj;
-    }
-    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
-    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
-    let empty: [Oop; 0] = [];
-    let mut output = unsafe { (api.send)(vector_factory, new_selector, empty.as_ptr(), 0) };
-    if output.is_null() {
-        return api.nilObj;
-    }
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return output;
+        return api.nilObj;
     };
-    if arguments.len() < 2 {
-        return output;
+    let expected_count = match mode {
+        0 => 2,
+        1 | 2 => 3,
+        3 => 4,
+        _ => return api.nilObj,
+    };
+    if arguments.len() != expected_count || store.is_null() {
+        return api.nilObj;
     }
     let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
     if logicvar_vt.is_null() {
-        return output;
+        return api.nilObj;
     }
     let name_selector = unsafe { (api.intern)(c"name".as_ptr()) };
     let mut variables = Vec::new();
@@ -170,7 +173,7 @@ unsafe extern "C" fn rust_find_all(_self_object: Oop, args: *const Oop, count: u
         )
     } {
         Ok(Term::Variable(variable)) => variable,
-        _ => return output,
+        _ => return api.nilObj,
     };
     let body = match unsafe {
         parse_store_rule_body(
@@ -182,19 +185,50 @@ unsafe extern "C" fn rust_find_all(_self_object: Oop, args: *const Oop, count: u
         )
     } {
         Ok(body) => body,
-        Err(_) => return output,
+        Err(_) => return api.nilObj,
     };
+    let (lower, upper) = match mode {
+        0 => (0, 0),
+        1 => (
+            0,
+            unsafe { smallint_u64(api, arguments[2]) }.unwrap_or(u64::MAX),
+        ),
+        2 => (
+            unsafe { smallint_u64(api, arguments[2]) }.unwrap_or(u64::MAX),
+            0,
+        ),
+        3 => (
+            unsafe { smallint_u64(api, arguments[2]) }.unwrap_or(u64::MAX),
+            unsafe { smallint_u64(api, arguments[3]) }.unwrap_or(u64::MAX),
+        ),
+        _ => unreachable!(),
+    };
+    if (mode != 0 && (lower == u64::MAX || upper == u64::MAX)) || (mode == 3 && lower > upper) {
+        return api.nilObj;
+    }
     let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
-    let (facts, pairs, _) =
-        match unsafe { collect_project_facts_and_rules(_self_object, rule_name) } {
-            Ok(snapshot) => snapshot,
-            Err(_) => return output,
-        };
+    let (facts, pairs, _) = match unsafe {
+        collect_project_facts_window_with_rules(store, mode, lower, upper, rule_name)
+    } {
+        Ok(snapshot) => snapshot,
+        Err(_) => return api.nilObj,
+    };
     let definitions = match unsafe { parse_store_rule_definitions(api, &pairs) } {
         Ok(definitions) => definitions,
-        Err(_) => return output,
+        Err(_) => return api.nilObj,
     };
     let values = project_rule_body(&facts, &definitions, &body, result);
+    let vector_factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    if vector_factory.is_null() {
+        return api.nilObj;
+    }
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let empty: [Oop; 0] = [];
+    let mut output = unsafe { (api.send)(vector_factory, new_selector, empty.as_ptr(), 0) };
+    if output.is_null() {
+        return api.nilObj;
+    }
     // Root the growing Vector across any floor sends performed by `add:`.
     ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
     for value in values {
@@ -208,6 +242,26 @@ unsafe extern "C" fn rust_find_all(_self_object: Oop, args: *const Oop, count: u
     }
     ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
     output
+}
+
+unsafe extern "C" fn rust_find_all(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_find_all_window(_self_object, args, count, 0) }
+}
+
+unsafe extern "C" fn rust_find_all_as_of(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_find_all_window(_self_object, args, count, 1) }
+}
+
+unsafe extern "C" fn rust_find_all_since(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_find_all_window(_self_object, args, count, 2) }
+}
+
+unsafe extern "C" fn rust_find_all_between(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { rust_find_all_window(_self_object, args, count, 3) }
 }
 
 unsafe fn install_entity_method(api: &IdApi) {
@@ -245,6 +299,14 @@ unsafe fn install_entity_method(api: &IdApi) {
     // LogicVar contracts are already present; the callback keeps Store as its
     // sole fact authority and returns the shared Vector family.
     unsafe { (api.method)(store_vt, find_all_selector, rust_find_all) };
+    let as_of_selector = unsafe { (api.intern)(c"findAll:where:asOf:".as_ptr()) };
+    let since_selector = unsafe { (api.intern)(c"findAll:where:since:".as_ptr()) };
+    let between_selector = unsafe { (api.intern)(c"findAll:where:between:and:".as_ptr()) };
+    unsafe {
+        (api.method)(store_vt, as_of_selector, rust_find_all_as_of);
+        (api.method)(store_vt, since_selector, rust_find_all_since);
+        (api.method)(store_vt, between_selector, rust_find_all_between);
+    }
 }
 
 /// Identifies the Rust Relational module; only a bounded Store selector family
