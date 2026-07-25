@@ -628,6 +628,66 @@ impl FieldEncoder {
     }
 }
 
+/// Builder for one v4 facts payload. Every fact is appended atomically as an
+/// operation, transaction id, and exactly three already-classified fields.
+pub struct FactsWriter {
+    bytes: Vec<u8>,
+    count: u32,
+}
+
+impl FactsWriter {
+    pub fn new(basis: u64) -> Self {
+        let mut bytes = Vec::with_capacity(12);
+        bytes.extend_from_slice(&basis.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        Self { bytes, count: 0 }
+    }
+
+    pub fn fact(
+        &mut self,
+        op: u8,
+        tx: u64,
+        entity: Field<'_>,
+        attribute: Field<'_>,
+        value: Field<'_>,
+    ) -> Result<(), EncodeError> {
+        let count = self
+            .count
+            .checked_add(1)
+            .ok_or(EncodeError::PayloadTooLarge)?;
+        let mut fields = FieldEncoder::new();
+        append_field(&mut fields, entity)?;
+        append_field(&mut fields, attribute)?;
+        append_field(&mut fields, value)?;
+        self.bytes.push(op);
+        self.bytes.extend_from_slice(&tx.to_le_bytes());
+        self.bytes.extend_from_slice(fields.as_bytes());
+        self.count = count;
+        self.bytes[8..12].copy_from_slice(&count.to_le_bytes());
+        Ok(())
+    }
+
+    pub fn finish(self) -> Vec<u8> {
+        self.bytes
+    }
+}
+
+fn append_field(encoder: &mut FieldEncoder, field: Field<'_>) -> Result<(), EncodeError> {
+    match field {
+        Field::Nil => encoder.nil(),
+        Field::True => encoder.true_value(),
+        Field::False => encoder.false_value(),
+        Field::Integer(value) => encoder.integer(value),
+        Field::FloatBits(bits) => encoder.float_bits(bits),
+        Field::Symbol(bytes) => encoder.symbol(bytes)?,
+        Field::String(bytes) => encoder.string(bytes)?,
+        Field::HeapRef(id) => encoder.heap_ref(id),
+        Field::NullOop => encoder.null_oop(),
+        Field::ExportRef(bytes) => encoder.export_ref(bytes)?,
+    }
+    Ok(())
+}
+
 /// Checked, allocation-owning v4 framing writer.
 ///
 /// This type deliberately accepts already-encoded facts/heap/code payloads. It
@@ -1400,6 +1460,48 @@ mod tests {
             Some(Field::ExportRef(b"System"))
         );
         assert_eq!(fields.next_field().unwrap(), None);
+    }
+
+    #[test]
+    fn facts_writer_round_trips_atomic_facts() {
+        let mut writer = FactsWriter::new(41);
+        writer
+            .fact(
+                1,
+                42,
+                Field::Symbol(b"entity"),
+                Field::Symbol(b"attribute"),
+                Field::Integer(-9),
+            )
+            .unwrap();
+        writer
+            .fact(0, 43, Field::Nil, Field::True, Field::FloatBits(7))
+            .unwrap();
+
+        let payload = writer.finish();
+        let mut facts = Facts::parse(&payload).unwrap();
+        assert_eq!(facts.basis, 41);
+        assert_eq!(
+            facts.next_fact().unwrap(),
+            Some(Fact {
+                op: 1,
+                tx: 42,
+                entity: Field::Symbol(b"entity"),
+                attribute: Field::Symbol(b"attribute"),
+                value: Field::Integer(-9),
+            })
+        );
+        assert_eq!(
+            facts.next_fact().unwrap(),
+            Some(Fact {
+                op: 0,
+                tx: 43,
+                entity: Field::Nil,
+                attribute: Field::True,
+                value: Field::FloatBits(7),
+            })
+        );
+        assert_eq!(facts.next_fact().unwrap(), None);
     }
 
     #[test]
