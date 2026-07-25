@@ -360,6 +360,25 @@ kind/message identity, and no duplicate `ErrorVt`/`Error` export under any
 supported load order; pre-switch acceptance, one canonical switch commit, and
 post-switch observation are recorded.
 
+### R2.1 implementation checkpoint (2026-07-24)
+
+- `eef950a` added `rust/birnam-error` as a standalone `rlib`/`cdylib` over the
+  frozen `birnam-abi`. It owns the exact two-OOP `{kind, message}` payload,
+  OOP-default layout, Error/ErrorVt/ErrorFactoryVt exports and reload path,
+  factory selectors, propagating Error DNU, Object DNU swap, and the Rust
+  identity `rust-error-r2-core`.
+- `973990e` added explicit `-Derror-impl=zig|rust` side-by-side installation
+  and the `test-rust-error` cross-language target. Debug/ReleaseSafe tests pass
+  on both floors, including payload size/layout, factory, DNU propagation, and
+  exact `doesNotUnderstand` kind/message behavior. Zig remains canonical.
+- `867a68a` reconciled install metadata and required dylib fixtures for the
+  new workspace member. `test-install` and `test-native-rung-harness` pass with
+  the Rust Error fixtures present.
+- A fresh `mise run r6-acceptance` passed at `44/44`; optimized verify still
+  matches only the recorded `sortedModules` fixture exception, and the
+  comparator still reports exactly the accepted `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` crossings.
+
 ## 7. Phase R3 — Isolate
 
 1. Add `rust/birnam-isolate` with a pointer-free codec and the exact `BISO`

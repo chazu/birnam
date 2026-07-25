@@ -264,3 +264,18 @@ R1 first implementation checkpoint (2026-07-24):
   `test-rust-collection`, `test-collection`, `test-collection-gc`, and
   `test-gc-layout-mark` all pass with `-Dcollection-impl=rust`; Zig remains
   the repository default pending the R1 observation window.
+
+R2 standalone Error implementation checkpoint (2026-07-24):
+
+- `eef950a` added the standalone Rust Error crate with the exact two-OOP
+  `{kind, message}` payload, OOP-default `ErrorVt` layout, family exports and
+  reload behavior, factory selectors, propagating Error DNU, Object DNU swap,
+  and identity `rust-error-r2-core`.
+- `973990e` added explicit `-Derror-impl=zig|rust` installation and the
+  `test-rust-error` cross-language target. Both optimization modes pass on
+  Zig and Rust floors; Zig remains the default owner.
+- `867a68a` updated the relocated install smoke for the new Cargo package and
+  both Rust/Zig Error fixture dylibs. `test-install` and
+  `test-native-rung-harness` pass.
+- The latest full R6 run remains green at `44/44`, with the exact recorded
+  verify exception and the two accepted benchmark crossings unchanged.
