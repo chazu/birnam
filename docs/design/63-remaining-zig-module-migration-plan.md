@@ -2136,6 +2136,22 @@ image authority fixture, and retain the Rust shell's no-publication boundary.
   diagnostic-only; it adds no filesystem, Store, codegen, or publication
   authority to Rust Image.
 
+### R6.17 R6 acceptance with Rust Image CLI save coverage (2026-07-25)
+
+- `c1624e4` adds `test-rust-image-save` to the focused R6 matrix. The target
+  runs the representative CLI image-save smoke through both Debug and Release
+  Rust-floor profiles and requires one 64-byte floor digest receipt for each;
+  the existing Rust Image shell remains a separate required `1/1` test.
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after the gate
+  change: the focused aggregate is `141/141` build steps and `81/81` tests,
+  Rust Image CLI save reports both profiles, Rust Alien live remains `9/9`,
+  optimized verify passes, and the comparator reports zero missing/unusable
+  cases.
+- The accepted benchmark snapshot is unchanged: only `query.aggregate`
+  `+5.8%` and `compile.stage1-stdlib` `+11.9%` are allowed. This strengthens
+  the pre-switch Image observation boundary; it does not select Rust Image as
+  canonical or add publication authority.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
