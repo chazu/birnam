@@ -1658,6 +1658,377 @@ unsafe extern "C" fn string_builder_as_string(
     unsafe { (api.mkString)(bytes, length) }
 }
 
+unsafe fn string_copy(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
+    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.string_vt {
+        return None;
+    }
+    let mut length = 0;
+    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    if length == 0 {
+        return Some(Vec::new());
+    }
+    if bytes.is_null() {
+        return None;
+    }
+    Some(unsafe { core::slice::from_raw_parts(bytes, length) }.to_vec())
+}
+
+unsafe extern "C" fn string_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    self_object
+}
+
+unsafe extern "C" fn string_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(mut other) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.vtableOf)(other) } != api.string_vt {
+        other = unsafe { (api.send)(other, runtime().print_string as Oop, ptr::null(), 0) };
+    }
+    let Some(left) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(right) = (unsafe { string_copy(api, other) }) else {
+        return unsafe { (api.mkString)(left.as_ptr(), left.len()) };
+    };
+    let mut output = Vec::with_capacity(left.len() + right.len());
+    output.extend_from_slice(&left);
+    output.extend_from_slice(&right);
+    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+}
+
+unsafe extern "C" fn string_equals(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(other) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let equal = unsafe { string_copy(api, self_object) }
+        .zip(unsafe { string_copy(api, other) })
+        .is_some_and(|(left, right)| left == right);
+    if equal { api.trueObj } else { api.falseObj }
+}
+
+unsafe extern "C" fn string_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    unsafe { (api.mkSmallInt)(bytes.len() as i64) }
+}
+
+unsafe extern "C" fn string_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(index) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(index) } == 0 {
+        return api.nilObj;
+    }
+    let index = unsafe { (api.smallIntValue)(index) };
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    if index < 0 || index as usize >= bytes.len() {
+        return api.nilObj;
+    }
+    let byte = [bytes[index as usize]];
+    unsafe { (api.mkString)(byte.as_ptr(), 1) }
+}
+
+unsafe extern "C" fn string_byte_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(index) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(index) } == 0 {
+        return api.nilObj;
+    }
+    let index = unsafe { (api.smallIntValue)(index) };
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    if index < 0 || index as usize >= bytes.len() {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)(i64::from(bytes[index as usize])) }
+}
+
+unsafe extern "C" fn string_copy_from_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let from = arguments[0];
+    let to = arguments[1];
+    if unsafe { (api.isSmallInt)(from) } == 0 || unsafe { (api.isSmallInt)(to) } == 0 {
+        return api.nilObj;
+    }
+    let from = unsafe { (api.smallIntValue)(from) };
+    let to = unsafe { (api.smallIntValue)(to) };
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    if from < 0 || to < from || to as usize > bytes.len() {
+        return api.nilObj;
+    }
+    unsafe {
+        (api.mkString)(
+            bytes[from as usize..to as usize].as_ptr(),
+            (to - from) as usize,
+        )
+    }
+}
+
+unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(separator) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(separator) = (unsafe { string_copy(api, separator) }) else {
+        return api.nilObj;
+    };
+    let mut result = unsafe { empty_vector(api, runtime()) };
+    if separator.is_empty() {
+        let item = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+        return unsafe { vector_push(api, runtime(), result, item) };
+    }
+    let mut start = 0usize;
+    let mut cursor = 0usize;
+    while cursor + separator.len() <= bytes.len() {
+        if bytes[cursor..cursor + separator.len()] == separator[..] {
+            let item = unsafe { (api.mkString)(bytes[start..cursor].as_ptr(), cursor - start) };
+            result = unsafe { vector_push(api, runtime(), result, item) };
+            cursor += separator.len();
+            start = cursor;
+        } else {
+            cursor += 1;
+        }
+    }
+    let item = unsafe { (api.mkString)(bytes[start..].as_ptr(), bytes.len() - start) };
+    unsafe { vector_push(api, runtime(), result, item) }
+}
+
+unsafe extern "C" fn string_trimmed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let is_space = |byte: u8| matches!(byte, b' ' | b'\t' | b'\r' | b'\n' | 0x0b | 0x0c);
+    let start = bytes
+        .iter()
+        .position(|byte| !is_space(*byte))
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|byte| !is_space(*byte))
+        .map_or(start, |index| index + 1);
+    unsafe { (api.mkString)(bytes[start..end].as_ptr(), end - start) }
+}
+
+unsafe extern "C" fn string_index_of(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(needle) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(haystack) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(needle) = (unsafe { string_copy(api, needle) }) else {
+        return api.nilObj;
+    };
+    if needle.is_empty() {
+        return unsafe { (api.mkSmallInt)(0) };
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle.as_slice())
+        .map_or(api.nilObj, |index| unsafe {
+            (api.mkSmallInt)(index as i64)
+        })
+}
+
+unsafe extern "C" fn string_bracket_depth(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let mut depth = 0i64;
+    let mut in_string = false;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if in_string {
+            if byte == b'\\' {
+                index = index.saturating_add(2);
+                continue;
+            }
+            if byte == b'"' {
+                in_string = false;
+            }
+            index += 1;
+            continue;
+        }
+        if byte == b'/' && index + 1 < bytes.len() && bytes[index + 1] == b'/' {
+            while index < bytes.len() && bytes[index] != b'\n' {
+                index += 1;
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'[' | b'{' => depth += 1,
+            b']' | b'}' => depth -= 1,
+            _ => {}
+        }
+        index += 1;
+    }
+    unsafe { (api.mkSmallInt)(depth) }
+}
+
+unsafe extern "C" fn string_replace_with(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(haystack) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(needle) = (unsafe { string_copy(api, arguments[0]) }) else {
+        return api.nilObj;
+    };
+    let Some(replacement) = (unsafe { string_copy(api, arguments[1]) }) else {
+        return api.nilObj;
+    };
+    if needle.is_empty() {
+        return unsafe { (api.mkString)(haystack.as_ptr(), haystack.len()) };
+    }
+    let mut output = Vec::new();
+    let mut index = 0usize;
+    while index < haystack.len() {
+        if index + needle.len() <= haystack.len()
+            && haystack[index..index + needle.len()] == needle[..]
+        {
+            output.extend_from_slice(&replacement);
+            index += needle.len();
+        } else {
+            output.push(haystack[index]);
+            index += 1;
+        }
+    }
+    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+}
+
+unsafe extern "C" fn string_as_symbol(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let mut terminated = bytes;
+    terminated.push(0);
+    unsafe { (api.intern)(terminated.as_ptr().cast::<c_char>()) }
+}
+
+unsafe extern "C" fn string_as_integer(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let text = trim_ascii(&bytes);
+    match core::str::from_utf8(text)
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+    {
+        Some(value) => unsafe { (api.mkSmallInt)(value) },
+        None => api.nilObj,
+    }
+}
+
+unsafe extern "C" fn string_as_number(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let text = trim_ascii(&bytes);
+    let Ok(text) = core::str::from_utf8(text) else {
+        return api.nilObj;
+    };
+    if !text.contains(['.', 'e', 'E'])
+        && let Ok(value) = text.parse::<i64>()
+    {
+        return unsafe { (api.mkSmallInt)(value) };
+    }
+    match text.parse::<f64>() {
+        Ok(value) => unsafe { (api.mkFloat)(value) },
+        Err(_) => api.nilObj,
+    }
+}
+
+fn trim_ascii(bytes: &[u8]) -> &[u8] {
+    let is_space = |byte: u8| matches!(byte, b' ' | b'\t' | b'\r' | b'\n');
+    let start = bytes
+        .iter()
+        .position(|byte| !is_space(*byte))
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|byte| !is_space(*byte))
+        .map_or(start, |index| index + 1);
+    &bytes[start..end]
+}
+
 unsafe fn range_payload(object: Oop) -> *mut RangePayload {
     if object.is_null() {
         abort("Range method received a null receiver");
@@ -2094,6 +2465,41 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             birnam_abi::SLOT_RAW,
         );
         (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
+        (api.method)(api.string_vt, intern(api, b",\0"), string_comma);
+        (api.method)(
+            api.string_vt,
+            intern(api, b"printString\0"),
+            string_print_string,
+        );
+        (api.method)(api.string_vt, intern(api, b"=\0"), string_equals);
+        (api.method)(api.string_vt, intern(api, b"size\0"), string_size);
+        (api.method)(api.string_vt, intern(api, b"at:\0"), string_at);
+        (api.method)(api.string_vt, intern(api, b"byteAt:\0"), string_byte_at);
+        (api.method)(
+            api.string_vt,
+            intern(api, b"copyFrom:to:\0"),
+            string_copy_from_to,
+        );
+        (api.method)(api.string_vt, intern(api, b"split:\0"), string_split);
+        (api.method)(api.string_vt, intern(api, b"trimmed\0"), string_trimmed);
+        (api.method)(api.string_vt, intern(api, b"indexOf:\0"), string_index_of);
+        (api.method)(
+            api.string_vt,
+            intern(api, b"bracketDepth\0"),
+            string_bracket_depth,
+        );
+        (api.method)(
+            api.string_vt,
+            intern(api, b"replace:with:\0"),
+            string_replace_with,
+        );
+        (api.method)(api.string_vt, intern(api, b"asSymbol\0"), string_as_symbol);
+        (api.method)(
+            api.string_vt,
+            intern(api, b"asInteger\0"),
+            string_as_integer,
+        );
+        (api.method)(api.string_vt, intern(api, b"asNumber\0"), string_as_number);
         (api.method)(
             runtime.vector_vt as Oop,
             intern(api, b"size\0"),
