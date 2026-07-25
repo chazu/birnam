@@ -264,6 +264,81 @@ unsafe extern "C" fn rust_find_all_between(
     unsafe { rust_find_all_window(_self_object, args, count, 3) }
 }
 
+unsafe fn rust_aggregate(store: Oop, args: *const Oop, count: usize, kind: u8) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let values = unsafe { rust_find_all_window(store, args, count, 0) };
+    if values.is_null() || values == api.nilObj {
+        return api.nilObj;
+    }
+    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let size = unsafe { (api.send)(values, size_selector, ptr::null(), 0) };
+    if size.is_null() || unsafe { (api.isSmallInt)(size) } == 0 {
+        return api.nilObj;
+    }
+    let count_value = unsafe { (api.smallIntValue)(size) };
+    if count_value < 0 {
+        return api.nilObj;
+    }
+    if kind == 0 {
+        return size;
+    }
+    if count_value == 0 {
+        return if kind == 1 {
+            unsafe { (api.mkSmallInt)(0) }
+        } else {
+            api.nilObj
+        };
+    }
+    ACTIVE_PROBE_BLOCK.store(values as usize, Ordering::Release);
+    let mut copied = Vec::with_capacity(count_value as usize);
+    for index in 0..count_value {
+        let argument = unsafe { (api.mkSmallInt)(index) };
+        let value = unsafe { (api.send)(values, at_selector, &argument, 1) };
+        let Some(value) = (unsafe { oop::classify(api, value) }) else {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return api.nilObj;
+        };
+        copied.push(value);
+    }
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    let operation = match kind {
+        1 => AggregateOp::Sum,
+        2 => AggregateOp::Min,
+        3 => AggregateOp::Max,
+        4 => AggregateOp::Average,
+        _ => return api.nilObj,
+    };
+    match aggregate_values(&copied, operation) {
+        Ok(Some(value)) => unsafe { value_oop(api, value) },
+        Ok(None) | Err(AggregateError::UnsupportedValue | AggregateError::Overflow) => api.nilObj,
+    }
+}
+
+unsafe extern "C" fn rust_count(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_aggregate(_self_object, args, count, 0) }
+}
+
+unsafe extern "C" fn rust_sum(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_aggregate(_self_object, args, count, 1) }
+}
+
+unsafe extern "C" fn rust_min(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_aggregate(_self_object, args, count, 2) }
+}
+
+unsafe extern "C" fn rust_max(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_aggregate(_self_object, args, count, 3) }
+}
+
+unsafe extern "C" fn rust_avg(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { rust_aggregate(_self_object, args, count, 4) }
+}
+
 unsafe fn install_entity_method(api: &IdApi) {
     let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
@@ -306,6 +381,11 @@ unsafe fn install_entity_method(api: &IdApi) {
         (api.method)(store_vt, as_of_selector, rust_find_all_as_of);
         (api.method)(store_vt, since_selector, rust_find_all_since);
         (api.method)(store_vt, between_selector, rust_find_all_between);
+        (api.method)(store_vt, (api.intern)(c"count:where:".as_ptr()), rust_count);
+        (api.method)(store_vt, (api.intern)(c"sum:where:".as_ptr()), rust_sum);
+        (api.method)(store_vt, (api.intern)(c"min:where:".as_ptr()), rust_min);
+        (api.method)(store_vt, (api.intern)(c"max:where:".as_ptr()), rust_max);
+        (api.method)(store_vt, (api.intern)(c"avg:where:".as_ptr()), rust_avg);
     }
 }
 

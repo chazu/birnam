@@ -977,6 +977,11 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(window_as_of, api.intern("size"), &.{}, 0)));
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(window_since, api.intern("size"), &.{}, 0)));
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(window_between, api.intern("size"), &.{}, 0)));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(store, api.intern("count:where:"), &.{ x, planner_body }, 2)));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("sum:where:"), &.{ score_variable, planner_body }, 2)));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("min:where:"), &.{ score_variable, planner_body }, 2)));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("max:where:"), &.{ score_variable, planner_body }, 2)));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("avg:where:"), &.{ score_variable, planner_body }, 2)));
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});
