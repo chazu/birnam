@@ -71,7 +71,12 @@ rust_codegen_test_count=$(grep -Ec '^\+- run test 25 passed ' "$functional" || t
   echo "r6-acceptance: Rust Codegen runtime test set no longer has 25 passing tests" >&2
   exit 1
 }
-rust_codegen_callback_test_count=$(grep -Ec '^\+- run test 4 passed ' "$functional" || true)
+rust_codegen_callback_test_count=$(awk '
+/^test-rust-codegen-runtime success$/ { seen=1; next }
+seen && /^test-rust-prelude success$/ { exit }
+seen && /^\+- run test 4 passed / { count++ }
+END { print count + 0 }
+' "$functional")
 [ "$rust_codegen_callback_test_count" -eq 2 ] || {
   echo "r6-acceptance: Rust Codegen callback matrix no longer has two 4-test variants" >&2
   exit 1
