@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
+const idapi = @import("idapi.zig");
 
 const Identity = *const fn () callconv(.c) [*:0]const u8;
 const EncodeHeader = *const fn (u8, u64, u32, ?[*]u8) callconv(.c) c_int;
@@ -28,6 +29,7 @@ const EncodeOop = *const fn (
     usize,
     ?*usize,
 ) callconv(.c) c_int;
+const ModuleInit = *const fn (?*anyopaque, ?*anyopaque) callconv(.c) ?*anyopaque;
 
 test "Rust Isolate exports the exact BISO header probe" {
     const api = floor.api();
@@ -147,4 +149,47 @@ test "Rust Isolate exports the exact BISO header probe" {
         encode_oop(api, api.mkSmallInt(1), oop_bytes[0..1], 1, &oop_len),
     );
     try std.testing.expectEqual(@as(usize, 9), oop_len);
+
+    const collection_path = std.posix.getenv("BIRNAM_RUST_COLLECTION_DYLIB") orelse
+        return error.MissingRustCollectionDylib;
+    const collection_path_z = try std.heap.c_allocator.dupeZ(u8, collection_path);
+    defer std.heap.c_allocator.free(collection_path_z);
+    const collection_handle = api.dlopen(collection_path_z.ptr, 1) orelse
+        return error.RustCollectionDlopenFailed;
+    const raw_collection_init = api.dlsym(collection_handle, "module_init") orelse
+        return error.RustCollectionModuleInitMissing;
+    const collection_init: ModuleInit = @ptrCast(@alignCast(raw_collection_init));
+    _ = collection_init(api, null);
+
+    const vector_global = api.import("Vector");
+    var vector = api.send(vector_global, api.intern("new"), &.{}, 0);
+    const vector_items = [_]idapi.Oop{ api.mkSmallInt(11), api.mkString("ok", 2) };
+    for (vector_items) |item| vector = api.send(vector, api.intern("add:"), &[_]idapi.Oop{item}, 1);
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        encode_oop(api, vector, &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqualSlices(u8, &.{
+        7,   0, 0, 0,  2,
+        3,   0, 0, 0,  0,
+        0,   0, 0, 11, 5,
+        0,   0, 0, 2,  'o',
+        'k',
+    }, oop_bytes[0..oop_len]);
+
+    const map_global = api.import("Map");
+    var map = api.send(map_global, api.intern("new"), &.{}, 0);
+    const key = api.intern("answer");
+    map = api.send(map, api.intern("at:put:"), &[_]idapi.Oop{ key, api.mkSmallInt(42) }, 2);
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        encode_oop(api, map, &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqualSlices(u8, &.{
+        8,   0,   0,   0,   1,
+        6,   0,   0,   0,   6,
+        'a', 'n', 's', 'w', 'e',
+        'r', 3,   0,   0,   0,
+        0,   0,   0,   0,   42,
+    }, oop_bytes[0..oop_len]);
 }

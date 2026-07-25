@@ -533,6 +533,7 @@ struct OopEncoder<'a> {
     api: &'a IdApi,
     bytes: Vec<u8>,
     nodes: usize,
+    active: Vec<usize>,
 }
 
 impl<'a> OopEncoder<'a> {
@@ -541,6 +542,7 @@ impl<'a> OopEncoder<'a> {
             api,
             bytes: Vec::new(),
             nodes: 0,
+            active: Vec::new(),
         }
     }
 
@@ -644,7 +646,96 @@ impl<'a> OopEncoder<'a> {
             self.byte(TAG_SYMBOL)?;
             return self.sized(bytes);
         }
-        Err(CodecError::NonTransferable)
+
+        let vector_vt = unsafe { (self.api.import)(c"VectorVt".as_ptr()) };
+        let map_vt = unsafe { (self.api.import)(c"MapVt".as_ptr()) };
+        if vtable != vector_vt && vtable != map_vt {
+            return Err(CodecError::NonTransferable);
+        }
+        let address = value as usize;
+        if self.active.contains(&address) {
+            return Err(CodecError::CyclicValue);
+        }
+        self.active.push(address);
+        let result = if vtable == vector_vt {
+            self.vector(value, depth)
+        } else {
+            self.map(value, depth)
+        };
+        self.active.pop();
+        result
+    }
+
+    fn size(&self, object: Oop) -> Result<usize, CodecError> {
+        let selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
+        let size = unsafe { (self.api.send)(object, selector, ptr::null(), 0) };
+        if unsafe { (self.api.isSmallInt)(size) } == 0 {
+            return Err(CodecError::NonTransferable);
+        }
+        let size = unsafe { (self.api.smallIntValue)(size) };
+        if size < 0 {
+            return Err(CodecError::ContainerTooLarge);
+        }
+        let size = usize::try_from(size).map_err(|_| CodecError::ContainerTooLarge)?;
+        if size > MAX_CONTAINER {
+            return Err(CodecError::ContainerTooLarge);
+        }
+        Ok(size)
+    }
+
+    fn at(&self, object: Oop, index: Oop) -> Oop {
+        let selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
+        unsafe { (self.api.send)(object, selector, &index, 1) }
+    }
+
+    fn vector(&mut self, object: Oop, depth: usize) -> Result<(), CodecError> {
+        let size = self.size(object)?;
+        self.byte(TAG_VECTOR)?;
+        self.reserve(4)?;
+        self.bytes.extend_from_slice(&(size as u32).to_be_bytes());
+        for index in 0..size {
+            let item = self.at(object, unsafe { (self.api.mkSmallInt)(index as i64) });
+            self.value(item, depth + 1)?;
+        }
+        Ok(())
+    }
+
+    fn valid_map_key(&self, key: Oop) -> bool {
+        if key == self.api.nilObj || key == self.api.falseObj || key == self.api.trueObj {
+            return true;
+        }
+        if unsafe { (self.api.isSmallInt)(key) } != 0 {
+            return true;
+        }
+        let vtable = unsafe { (self.api.vtableOf)(key) };
+        vtable == self.api.string_vt || vtable == self.api.symbol_vt
+    }
+
+    fn map(&mut self, object: Oop, depth: usize) -> Result<(), CodecError> {
+        let size = self.size(object)?;
+        let keys_selector = unsafe { (self.api.intern)(c"keys".as_ptr()) };
+        let keys = unsafe { (self.api.send)(object, keys_selector, ptr::null(), 0) };
+        if keys.is_null() {
+            return Err(CodecError::NonTransferable);
+        }
+        if self.size(keys)? != size {
+            return Err(CodecError::InvalidRecord);
+        }
+        let at_put_size = size;
+        self.byte(TAG_MAP)?;
+        self.reserve(4)?;
+        self.bytes
+            .extend_from_slice(&(at_put_size as u32).to_be_bytes());
+        for index in 0..size {
+            let key = self.at(keys, unsafe { (self.api.mkSmallInt)(index as i64) });
+            if !self.valid_map_key(key) {
+                return Err(CodecError::InvalidMapKey);
+            }
+            self.value(key, depth + 1)?;
+            let value = self.at(object, key);
+            self.value(value, depth + 1)?;
+        }
+        Ok(())
     }
 }
 
