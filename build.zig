@@ -923,6 +923,14 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RELATIONAL_STORE_DYLIB",
         b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
     );
+    run_rust_relational_tests.setEnvironmentVariable(
+        "BIRNAM_ZIG_RELATIONAL_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_relational.dylib"),
+    );
+    run_rust_relational_tests.setEnvironmentVariable(
+        "BIRNAM_COLLECTION_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_collection.dylib"),
+    );
     run_rust_relational_tests.step.dependOn(bootstrap_install);
     run_rust_relational_tests.step.dependOn(&rust_floor_build.step);
     const test_rust_relational_step = b.step(
@@ -951,6 +959,14 @@ pub fn build(b: *std.Build) void {
     run_rust_relational_zig_store_tests.setEnvironmentVariable(
         "BIRNAM_RELATIONAL_STORE_DYLIB",
         b.getInstallPath(.lib, "libbirnam_store_zig.dylib"),
+    );
+    run_rust_relational_zig_store_tests.setEnvironmentVariable(
+        "BIRNAM_ZIG_RELATIONAL_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_relational.dylib"),
+    );
+    run_rust_relational_zig_store_tests.setEnvironmentVariable(
+        "BIRNAM_COLLECTION_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_collection.dylib"),
     );
     run_rust_relational_zig_store_tests.step.dependOn(bootstrap_install);
     run_rust_relational_zig_store_tests.step.dependOn(&rust_floor_build.step);

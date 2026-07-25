@@ -170,8 +170,12 @@ struct ProbeCollector {
 struct ProjectCollector {
     api: *const IdApi,
     facts: Vec<Triple>,
+    rule_name: Oop,
+    rule_pairs: Vec<(Oop, Oop)>,
     status: i32,
 }
+
+type ProjectRuleSnapshot = (Vec<Triple>, Vec<(Oop, Oop)>, *const IdApi);
 
 /// One three-position Store pattern for the explicit relational migration
 /// probes. A null position is a variable identified by its position (0, 1, or
@@ -354,6 +358,9 @@ unsafe extern "C" fn collect_project_triple(
         attribute,
         value,
     });
+    if !collector.rule_name.is_null() && args[1] == collector.rule_name {
+        collector.rule_pairs.push((args[0], args[2]));
+    }
     api.nilObj
 }
 
@@ -438,12 +445,13 @@ unsafe fn collect_window(
     collector.status
 }
 
-unsafe fn collect_project_facts_window(
+unsafe fn collect_project_facts_window_with_rules(
     store: Oop,
     mode: u8,
     lower: u64,
     upper: u64,
-) -> Result<(Vec<Triple>, *const IdApi), i32> {
+    rule_name: Oop,
+) -> Result<ProjectRuleSnapshot, i32> {
     if store.is_null() {
         return Err(-3);
     }
@@ -466,6 +474,8 @@ unsafe fn collect_project_facts_window(
     let mut collector = ProjectCollector {
         api: api as *const IdApi,
         facts: Vec::new(),
+        rule_name,
+        rule_pairs: Vec::new(),
         status: 0,
     };
     let callback = unsafe { (api.alloc)(callback_vt, size_of::<*mut ProjectCollector>()) };
@@ -513,12 +523,31 @@ unsafe fn collect_project_facts_window(
     if collector.status != 0 {
         return Err(collector.status);
     }
-    Ok((collector.facts, collector.api))
+    Ok((collector.facts, collector.rule_pairs, collector.api))
+}
+
+unsafe fn collect_project_facts_window(
+    store: Oop,
+    mode: u8,
+    lower: u64,
+    upper: u64,
+) -> Result<(Vec<Triple>, *const IdApi), i32> {
+    let (facts, _, api) = unsafe {
+        collect_project_facts_window_with_rules(store, mode, lower, upper, ptr::null_mut())?
+    };
+    Ok((facts, api))
 }
 
 unsafe fn collect_project_facts(store: Oop) -> Result<(Vec<Triple>, *const IdApi), i32> {
     // SAFETY: mode zero uses the current liveTriplesDo: callback protocol.
     unsafe { collect_project_facts_window(store, 0, 0, 0) }
+}
+
+unsafe fn collect_project_facts_and_rules(
+    store: Oop,
+    rule_name: Oop,
+) -> Result<ProjectRuleSnapshot, i32> {
+    unsafe { collect_project_facts_window_with_rules(store, 0, 0, 0, rule_name) }
 }
 
 unsafe fn project_terms(api: &IdApi, pattern: ProjectPattern) -> Result<[Term; 3], i32> {
@@ -1378,6 +1407,42 @@ pub unsafe extern "C" fn birnam_relational_rust_project_rule_tree_live(
             store,
             definitions,
             definition_count,
+            query_name,
+            query_terms,
+            query_term_count,
+            result_variable,
+            output,
+            capacity,
+            written,
+        )
+    }
+}
+
+/// Reify the canonical `[pair __rule-name__ name]` facts from the supplied
+/// Store snapshot and project one rule query. This is still an explicit probe:
+/// it copies definitions synchronously and does not install Store selectors or
+/// retain a second authoritative cache.
+///
+/// # Safety
+///
+/// The Store, query descriptors, and output pointers are borrowed for this
+/// synchronous call and must remain valid for its duration.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_rule_store_live(
+    store: Oop,
+    query_name: Oop,
+    query_terms: *const RuleTermNode,
+    query_term_count: usize,
+    result_variable: u32,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store, query descriptors, and
+    // output contracts for one synchronous probe call.
+    unsafe {
+        project_rule_store_live(
+            store,
             query_name,
             query_terms,
             query_term_count,
@@ -2670,6 +2735,162 @@ unsafe fn parse_rule_tree_definitions(
     Ok(definitions)
 }
 
+unsafe fn vector_elements(api: &IdApi, vector: Oop) -> Result<Vec<Oop>, i32> {
+    if vector.is_null() {
+        return Err(-4);
+    }
+    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let size = unsafe { (api.send)(vector, size_selector, ptr::null(), 0) };
+    if size.is_null() || unsafe { (api.isSmallInt)(size) } == 0 {
+        return Err(-7);
+    }
+    let size = unsafe { (api.smallIntValue)(size) };
+    if size < 0 || size as usize > MAX_RULE_BODY_CLAUSES {
+        return Err(-7);
+    }
+    let mut elements = Vec::with_capacity(size as usize);
+    for index in 0..size {
+        let argument = unsafe { (api.mkSmallInt)(index) };
+        let element = unsafe { (api.send)(vector, at_selector, &argument, 1) };
+        if element.is_null() {
+            return Err(-4);
+        }
+        elements.push(element);
+    }
+    Ok(elements)
+}
+
+unsafe fn parse_store_term(
+    api: &IdApi,
+    term: Oop,
+    logicvar_vt: Oop,
+    name_selector: Oop,
+    variables: &mut Vec<Oop>,
+) -> Result<Term, i32> {
+    if term.is_null() {
+        return Err(-4);
+    }
+    if unsafe { (api.vtableOf)(term) } == logicvar_vt {
+        let name = unsafe { (api.send)(term, name_selector, ptr::null(), 0) };
+        if name.is_null() {
+            return Err(-4);
+        }
+        let variable = match variables.iter().position(|existing| *existing == name) {
+            Some(index) => index as u32,
+            None => {
+                variables.push(name);
+                (variables.len() - 1) as u32
+            }
+        };
+        return Ok(Term::Variable(variable));
+    }
+    // SAFETY: non-logic terms are copied by value under the frozen classifier.
+    unsafe { oop::classify(api, term) }
+        .map(Term::Constant)
+        .ok_or(-4)
+}
+
+unsafe fn parse_store_rule_body(
+    api: &IdApi,
+    body: Oop,
+    logicvar_vt: Oop,
+    name_selector: Oop,
+    variables: &mut Vec<Oop>,
+) -> Result<Vec<RuleClause>, i32> {
+    let clauses = unsafe { vector_elements(api, body)? };
+    let rule_symbol = unsafe { (api.intern)(c"rule".as_ptr()) };
+    let mut parsed = Vec::with_capacity(clauses.len());
+    for clause in clauses {
+        let terms = unsafe { vector_elements(api, clause)? };
+        if terms.len() == 3 {
+            let left =
+                unsafe { parse_store_term(api, terms[0], logicvar_vt, name_selector, variables)? };
+            let middle =
+                unsafe { parse_store_term(api, terms[1], logicvar_vt, name_selector, variables)? };
+            let right =
+                unsafe { parse_store_term(api, terms[2], logicvar_vt, name_selector, variables)? };
+            if let Term::Constant(operator) = &middle {
+                // Predicate operators are symbols; recover their original Oop
+                // identity from the source slot for the exact selector law.
+                let _ = operator;
+                if let Ok(operation) = unsafe { parse_rule_compare_op(api, terms[1]) } {
+                    parsed.push(RuleClause::Predicate {
+                        left,
+                        operation,
+                        right,
+                    });
+                    continue;
+                }
+            }
+            parsed.push(RuleClause::Triple(Clause([left, middle, right])));
+            continue;
+        }
+        if terms.len() >= 2 && terms[0] == rule_symbol {
+            let Some(name) = (unsafe { oop::classify(api, terms[1]) }) else {
+                return Err(-4);
+            };
+            let mut args = Vec::with_capacity(terms.len() - 2);
+            for term in &terms[2..] {
+                args.push(unsafe {
+                    parse_store_term(api, *term, logicvar_vt, name_selector, variables)?
+                });
+            }
+            parsed.push(RuleClause::Call { name, args });
+            continue;
+        }
+        return Err(-7);
+    }
+    Ok(parsed)
+}
+
+unsafe fn parse_store_rule_definitions(
+    api: &IdApi,
+    pairs: &[(Oop, Oop)],
+) -> Result<Vec<RuleDefinition>, i32> {
+    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    if logicvar_vt.is_null() {
+        return Err(-6);
+    }
+    let name_selector = unsafe { (api.intern)(c"name".as_ptr()) };
+    let mut definitions = Vec::with_capacity(pairs.len());
+    for (pair, name_oop) in pairs {
+        let pair_values = unsafe { vector_elements(api, *pair)? };
+        if pair_values.len() != 2 {
+            return Err(-7);
+        }
+        let Some(name) = (unsafe { oop::classify(api, *name_oop) }) else {
+            return Err(-4);
+        };
+        let params = unsafe { vector_elements(api, pair_values[0])? };
+        let mut variables = Vec::with_capacity(params.len());
+        let mut parameter_ids = Vec::with_capacity(params.len());
+        for parameter in params {
+            let Term::Variable(variable) = (unsafe {
+                parse_store_term(api, parameter, logicvar_vt, name_selector, &mut variables)?
+            }) else {
+                return Err(-7);
+            };
+            parameter_ids.push(variable);
+        }
+        let body = unsafe {
+            parse_store_rule_body(
+                api,
+                pair_values[1],
+                logicvar_vt,
+                name_selector,
+                &mut variables,
+            )?
+        };
+        definitions.push(RuleDefinition {
+            name,
+            params: parameter_ids,
+            body,
+        });
+    }
+    Ok(definitions)
+}
+
 unsafe fn parse_rule_definitions(
     api: &IdApi,
     nodes: *const RuleDefinitionNode,
@@ -2839,6 +3060,70 @@ unsafe fn project_rule_tree_live(
             Ok(definitions) => definitions,
             Err(status) => return status,
         };
+    // SAFETY: query name and terms are borrowed for this synchronous call.
+    let Some(query_name) = (unsafe { oop::classify(api, query_name) }) else {
+        return -4;
+    };
+    let query_terms = match unsafe { parse_rule_terms(api, query_terms, query_term_count) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let values = query_rule(
+        &facts,
+        &definitions,
+        &query_name,
+        &query_terms,
+        result_variable,
+    );
+    if values.len() > capacity {
+        return -5;
+    }
+    for (slot, value) in values.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity records and the length check
+        // above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = values.len() };
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_rule_store_live(
+    store: Oop,
+    query_name: Oop,
+    query_terms: *const RuleTermNode,
+    query_term_count: usize,
+    result_variable: u32,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if store.is_null()
+        || query_name.is_null()
+        || written.is_null()
+        || (capacity != 0 && output.is_null())
+    {
+        return -3;
+    }
+    let Some(api_address) = API.get() else {
+        return -2;
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
+    let (facts, pairs, api_address) =
+        match unsafe { collect_project_facts_and_rules(store, rule_name) } {
+            Ok(snapshot) => snapshot,
+            Err(status) => return status,
+        };
+    debug_assert_eq!(
+        *API.get().expect("IdApi initialized") as *const IdApi,
+        api_address
+    );
+    let definitions = match unsafe { parse_store_rule_definitions(api, &pairs) } {
+        Ok(definitions) => definitions,
+        Err(status) => return status,
+    };
     // SAFETY: query name and terms are borrowed for this synchronous call.
     let Some(query_name) = (unsafe { oop::classify(api, query_name) }) else {
         return -4;

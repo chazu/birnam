@@ -107,6 +107,7 @@ const RuleTreeDefinitionNode = extern struct {
 };
 const ProjectRuleLive = *const fn (Oop, ?[*]const RuleDefinitionNode, usize, Oop, ?[*]const RuleTermNode, usize, u32, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectRuleTreeLive = *const fn (Oop, ?[*]const RuleTreeDefinitionNode, usize, Oop, ?[*]const RuleTermNode, usize, u32, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectRuleStoreLive = *const fn (Oop, Oop, ?[*]const RuleTermNode, usize, u32, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -145,6 +146,15 @@ fn ruleVar(variable: u32) RuleTermNode {
 
 fn ruleConst(object: Oop) RuleTermNode {
     return .{ .object = object, .variable = 0, .kind = 0, .reserved = [_]u8{0} ** 3 };
+}
+
+fn makeVector(api: *idapi.IdApi, elements: []const Oop) Oop {
+    const factory = api.import("Vector") orelse return null;
+    const empty = [_]Oop{};
+    const vector = api.send(factory, api.intern("new"), &empty, 0);
+    var result = vector;
+    for (elements) |element| result = api.send(result, api.intern("add:"), &.{element}, 1);
+    return result;
 }
 
 test "Rust Relational classifier copies scalar values and preserves identities" {
@@ -839,6 +849,8 @@ test "Rust Relational grouped aggregate preserves group order and distinct value
 test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const api = floor.api();
     try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    try loadEnvModule(api, "BIRNAM_COLLECTION_DYLIB");
+    try loadEnvModule(api, "BIRNAM_ZIG_RELATIONAL_DYLIB");
     const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
         return error.MissingRustRelationalDylib;
     try loadModule(api, relation_path);
@@ -910,6 +922,42 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     );
     try std.testing.expectEqual(@as(usize, 1), written);
     try std.testing.expectEqual(@intFromPtr(high), @as(usize, @intCast(values[0].identity)));
+
+    const canonical_rule = api.intern("rust_relational_rule_store_ancestor");
+    const logic_var = api.import("LogicVar") orelse return error.RustRelationalLogicVarMissing;
+    const named = api.intern("named:");
+    const x = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_x")}, 1);
+    const y = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_y")}, 1);
+    const z = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_z")}, 1);
+    const rule_params = makeVector(api, &.{ x, y });
+    const rule_base_clause = makeVector(api, &.{ x, parent, y });
+    const rule_base_body = makeVector(api, &.{rule_base_clause});
+    _ = api.send(
+        store,
+        api.intern("defineRule:params:body:"),
+        &.{ canonical_rule, rule_params, rule_base_body },
+        3,
+    );
+    const rule_recursive_clause = makeVector(api, &.{ x, parent, z });
+    const rule_recursive_call = makeVector(api, &.{ api.intern("rule"), canonical_rule, z, y });
+    const rule_recursive_body = makeVector(api, &.{ rule_recursive_clause, rule_recursive_call });
+    _ = api.send(
+        store,
+        api.intern("defineRule:params:body:"),
+        &.{ canonical_rule, rule_params, rule_recursive_body },
+        3,
+    );
+    const store_rule_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_rule_store_live") orelse
+        return error.RustRelationalStoreRuleMissing;
+    const store_rule: ProjectRuleStoreLive = @ptrCast(@alignCast(store_rule_raw));
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        store_rule(store, canonical_rule, &query_terms, query_terms.len, 1, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 3), written);
+    try std.testing.expectEqual(@intFromPtr(bob), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(ann), @as(usize, @intCast(values[1].identity)));
+    try std.testing.expectEqual(@intFromPtr(kim), @as(usize, @intCast(values[2].identity)));
 
     const tree_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_rule_tree_live") orelse
         return error.RustRelationalRuleTreeMissing;
