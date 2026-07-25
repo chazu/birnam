@@ -12,6 +12,15 @@ const DecodeHeader = *const fn (
     ?*u64,
     ?*u32,
 ) callconv(.c) c_int;
+const WorkerDriver = *const fn (?*anyopaque, c_int, ?*anyopaque, ?*anyopaque) callconv(.c) c_int;
+const WorkerBootError = *const fn (
+    ?*anyopaque,
+    c_int,
+    [*:0]const u8,
+    [*]const u8,
+    usize,
+) callconv(.c) void;
+const Lifecycle = *const fn () callconv(.c) void;
 
 test "Rust Isolate exports the exact BISO header probe" {
     const api = floor.api();
@@ -64,4 +73,21 @@ test "Rust Isolate exports the exact BISO header probe" {
         @as(c_int, -1),
         decode(null, bytes.len, &decoded_kind, &decoded_request_id, &decoded_payload_len),
     );
+
+    const raw_driver = api.dlsym(handle, "birnam_isolate_worker_driver") orelse
+        return error.RustIsolateWorkerDriverMissing;
+    const raw_boot_error = api.dlsym(handle, "birnam_isolate_worker_boot_error") orelse
+        return error.RustIsolateWorkerBootErrorMissing;
+    const raw_drain = api.dlsym(handle, "birnam_isolate_drain") orelse
+        return error.RustIsolateDrainMissing;
+    const raw_shutdown = api.dlsym(handle, "birnam_isolate_shutdown") orelse
+        return error.RustIsolateShutdownMissing;
+    const driver: WorkerDriver = @ptrCast(@alignCast(raw_driver));
+    const boot_error: WorkerBootError = @ptrCast(@alignCast(raw_boot_error));
+    const drain: Lifecycle = @ptrCast(@alignCast(raw_drain));
+    const shutdown: Lifecycle = @ptrCast(@alignCast(raw_shutdown));
+    _ = driver;
+    _ = boot_error;
+    drain();
+    shutdown();
 }
