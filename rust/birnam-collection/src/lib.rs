@@ -15,6 +15,7 @@ use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{CStr, c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
+use std::alloc::{Layout, alloc, dealloc};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -213,6 +214,8 @@ const RANGE_VT_NAME: &[u8] = b"RangeVt\0";
 const MAP_NAME: &[u8] = b"Map\0";
 const MAP_VT_NAME: &[u8] = b"MapVt\0";
 const MAP_NODE_NAME: &[u8] = b"MapNode\0";
+const STRING_BUILDER_NAME: &[u8] = b"StringBuilder\0";
+const STRING_BUILDER_VT_NAME: &[u8] = b"StringBuilderVt\0";
 
 #[repr(C)]
 struct VecPayload {
@@ -232,6 +235,11 @@ struct RangePayload {
 static RANGE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
 static MAP_LAYOUT: [u8; 2] = [birnam_abi::SLOT_OOP, birnam_abi::SLOT_RAW];
 static HNODE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
+static STRING_BUILDER_LAYOUT: [u8; 3] = [
+    birnam_abi::SLOT_RAW,
+    birnam_abi::SLOT_RAW,
+    birnam_abi::SLOT_RAW,
+];
 
 const HNODE_BITMAP: u32 = 0;
 const HNODE_COLLISION: u32 = 1;
@@ -251,6 +259,13 @@ struct MapPayload {
     count: usize,
 }
 
+#[repr(C)]
+struct StringBuilderPayload {
+    ptr: *mut u8,
+    len: usize,
+    cap: usize,
+}
+
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
@@ -263,6 +278,8 @@ struct Runtime {
     map_vt: usize,
     map_proto: usize,
     map_node_vt: usize,
+    string_builder_vt: usize,
+    string_builder_proto: usize,
     value: usize,
     value1: usize,
     value2: usize,
@@ -1457,6 +1474,190 @@ unsafe extern "C" fn map_print_string(self_object: Oop, _args: *const Oop, count
     unsafe { (api.mkString)(output.as_ptr(), output.len()) }
 }
 
+unsafe fn string_builder_payload(object: Oop) -> *mut StringBuilderPayload {
+    if object.is_null() {
+        abort("StringBuilder method received a null receiver");
+    }
+    object.cast::<StringBuilderPayload>()
+}
+
+unsafe fn string_builder_alloc(capacity: usize) -> *mut u8 {
+    if capacity == 0 {
+        return ptr::null_mut();
+    }
+    let layout =
+        Layout::array::<u8>(capacity).unwrap_or_else(|_| abort("StringBuilder capacity overflow"));
+    let buffer = unsafe { alloc(layout) };
+    if buffer.is_null() {
+        abort("StringBuilder buffer allocation failed");
+    }
+    buffer
+}
+
+unsafe fn string_builder_free(buffer: *mut u8, capacity: usize) {
+    if buffer.is_null() || capacity == 0 {
+        return;
+    }
+    let layout =
+        Layout::array::<u8>(capacity).unwrap_or_else(|_| abort("StringBuilder capacity overflow"));
+    unsafe { dealloc(buffer, layout) };
+}
+
+unsafe extern "C" fn string_builder_finalize(object: Oop) {
+    let payload = unsafe { string_builder_payload(object) };
+    let buffer = unsafe { (*payload).ptr };
+    let capacity = unsafe { (*payload).cap };
+    unsafe { string_builder_free(buffer, capacity) };
+    unsafe {
+        (*payload).ptr = ptr::null_mut();
+        (*payload).len = 0;
+        (*payload).cap = 0;
+    }
+}
+
+unsafe fn string_builder_ensure(payload: *mut StringBuilderPayload, extra: usize) {
+    let length = unsafe { (*payload).len };
+    let capacity = unsafe { (*payload).cap };
+    let needed = length
+        .checked_add(extra)
+        .unwrap_or_else(|| abort("StringBuilder length overflow"));
+    if needed <= capacity {
+        return;
+    }
+    let mut next_capacity = if capacity == 0 { 64 } else { capacity };
+    while next_capacity < needed {
+        next_capacity = next_capacity
+            .checked_mul(2)
+            .unwrap_or_else(|| abort("StringBuilder capacity overflow"));
+    }
+    let next_buffer = unsafe { string_builder_alloc(next_capacity) };
+    let old_buffer = unsafe { (*payload).ptr };
+    if length != 0 {
+        unsafe { ptr::copy_nonoverlapping(old_buffer, next_buffer, length) };
+    }
+    unsafe { string_builder_free(old_buffer, capacity) };
+    unsafe {
+        (*payload).ptr = next_buffer;
+        (*payload).cap = next_capacity;
+    }
+}
+
+unsafe fn empty_string_builder(api: &IdApi, runtime: &Runtime) -> Oop {
+    let builder = unsafe {
+        (api.alloc)(
+            runtime.string_builder_vt as Oop,
+            size_of::<StringBuilderPayload>(),
+        )
+    };
+    if builder.is_null() {
+        abort("StringBuilder allocation failed");
+    }
+    unsafe {
+        ptr::write(
+            string_builder_payload(builder),
+            StringBuilderPayload {
+                ptr: ptr::null_mut(),
+                len: 0,
+                cap: 0,
+            },
+        );
+        (api.setFinalizer)(builder, string_builder_finalize);
+    }
+    builder
+}
+
+unsafe extern "C" fn string_builder_new(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { empty_string_builder(api, runtime()) }
+}
+
+unsafe extern "C" fn string_builder_add(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(mut value) = (unsafe { argument(args, count) }) else {
+        return self_object;
+    };
+    if unsafe { (api.vtableOf)(value) } != api.string_vt {
+        value = unsafe { (api.send)(value, runtime().print_string as Oop, ptr::null(), 0) };
+    }
+    if value.is_null() || unsafe { (api.vtableOf)(value) } != api.string_vt {
+        return self_object;
+    }
+    let mut length = 0;
+    let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+    if length == 0 {
+        return self_object;
+    }
+    if bytes.is_null() {
+        return self_object;
+    }
+    let payload = unsafe { string_builder_payload(self_object) };
+    unsafe { string_builder_ensure(payload, length) };
+    let destination = unsafe { (*payload).ptr.add((*payload).len) };
+    unsafe { ptr::copy_nonoverlapping(bytes, destination, length) };
+    unsafe { (*payload).len += length };
+    self_object
+}
+
+unsafe extern "C" fn string_builder_add_byte(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return self_object;
+    };
+    if unsafe { (api.isSmallInt)(value) } == 0 {
+        return self_object;
+    }
+    let payload = unsafe { string_builder_payload(self_object) };
+    unsafe { string_builder_ensure(payload, 1) };
+    let byte = unsafe { (api.smallIntValue)(value) } as u8;
+    unsafe {
+        (*payload).ptr.add((*payload).len).write(byte);
+        (*payload).len += 1;
+    }
+    self_object
+}
+
+unsafe extern "C" fn string_builder_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)((*string_builder_payload(self_object)).len as i64) }
+}
+
+unsafe extern "C" fn string_builder_as_string(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let payload = unsafe { string_builder_payload(self_object) };
+    let length = unsafe { (*payload).len };
+    if length == 0 {
+        return unsafe { (api.mkString)(b"".as_ptr(), 0) };
+    }
+    let bytes = unsafe { (*payload).ptr };
+    if bytes.is_null() {
+        return api.nilObj;
+    }
+    unsafe { (api.mkString)(bytes, length) }
+}
+
 unsafe fn range_payload(object: Oop) -> *mut RangePayload {
     if object.is_null() {
         abort("Range method received a null receiver");
@@ -1709,6 +1910,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                 map_node_vt,
             )
         };
+        let (string_builder_vt, string_builder_proto) =
+            if unsafe { (api.isExported)(STRING_BUILDER_NAME.as_ptr().cast()) } != 0 {
+                (unsafe { import(api, STRING_BUILDER_VT_NAME) }, unsafe {
+                    import(api, STRING_BUILDER_NAME)
+                })
+            } else {
+                (unsafe { (api.proto)(api.object_vt) }, ptr::null_mut())
+            };
         if [
             collection_vt,
             node_vt,
@@ -1716,6 +1925,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             range_vt,
             map_vt,
             map_node_vt,
+            string_builder_vt,
         ]
         .iter()
         .any(|value| value.is_null())
@@ -1737,6 +1947,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         map_vt: map_vt as usize,
                         map_proto: 0,
                         map_node_vt: map_node_vt as usize,
+                        string_builder_vt: string_builder_vt as usize,
+                        string_builder_proto: 0,
                         value: 0,
                         value1: 0,
                         value2: 0,
@@ -1762,6 +1974,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         map_vt: map_vt as usize,
                         map_proto: 0,
                         map_node_vt: map_node_vt as usize,
+                        string_builder_vt: string_builder_vt as usize,
+                        string_builder_proto: 0,
                         value: 0,
                         value1: 0,
                         value2: 0,
@@ -1789,6 +2003,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         map_vt: map_vt as usize,
                         map_proto: 0,
                         map_node_vt: map_node_vt as usize,
+                        string_builder_vt: string_builder_vt as usize,
+                        string_builder_proto: 0,
                         value: 0,
                         value1: 0,
                         value2: 0,
@@ -1798,6 +2014,33 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             }
         } else {
             map_proto
+        };
+        let string_builder_proto = if string_builder_proto.is_null() {
+            unsafe {
+                empty_string_builder(
+                    api,
+                    &Runtime {
+                        api: api_pointer as usize,
+                        collection_vt: collection_vt as usize,
+                        vector_vt: vector_vt as usize,
+                        vector_proto: vector_proto as usize,
+                        node_vt: node_vt as usize,
+                        range_vt: range_vt as usize,
+                        range_proto: range_proto as usize,
+                        map_vt: map_vt as usize,
+                        map_proto: map_proto as usize,
+                        map_node_vt: map_node_vt as usize,
+                        string_builder_vt: string_builder_vt as usize,
+                        string_builder_proto: 0,
+                        value: 0,
+                        value1: 0,
+                        value2: 0,
+                        print_string: 0,
+                    },
+                )
+            }
+        } else {
+            string_builder_proto
         };
         Runtime {
             api: api_pointer as usize,
@@ -1810,6 +2053,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             map_vt: map_vt as usize,
             map_proto: map_proto as usize,
             map_node_vt: map_node_vt as usize,
+            string_builder_vt: string_builder_vt as usize,
+            string_builder_proto: string_builder_proto as usize,
             value: unsafe { intern(api, b"value\0") } as usize,
             value1: unsafe { intern(api, b"value:\0") } as usize,
             value2: unsafe { intern(api, b"value:value:\0") } as usize,
@@ -1840,6 +2085,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.map_vt as Oop,
             MAP_LAYOUT.as_ptr(),
             MAP_LAYOUT.len(),
+            birnam_abi::SLOT_RAW,
+        );
+        (api.setLayout)(
+            runtime.string_builder_vt as Oop,
+            STRING_BUILDER_LAYOUT.as_ptr(),
+            STRING_BUILDER_LAYOUT.len(),
             birnam_abi::SLOT_RAW,
         );
         (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
@@ -1945,6 +2196,41 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"printString\0"),
             map_print_string,
         );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"new\0"),
+            string_builder_new,
+        );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"clone\0"),
+            string_builder_new,
+        );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"add:\0"),
+            string_builder_add,
+        );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"addByte:\0"),
+            string_builder_add_byte,
+        );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"size\0"),
+            string_builder_size,
+        );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"asString\0"),
+            string_builder_as_string,
+        );
+        (api.method)(
+            runtime.string_builder_vt as Oop,
+            intern(api, b"printString\0"),
+            string_builder_as_string,
+        );
     }
     if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
@@ -1967,6 +2253,18 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             let _ = (api.exportObj)(MAP_VT_NAME.as_ptr().cast(), runtime.map_vt as Oop);
             let _ = (api.exportObj)(MAP_NAME.as_ptr().cast(), runtime.map_proto as Oop);
             let _ = (api.exportObj)(MAP_NODE_NAME.as_ptr().cast(), runtime.map_node_vt as Oop);
+            (api.setOwner)(
+                runtime.string_builder_vt as Oop,
+                runtime.string_builder_proto as Oop,
+            );
+            let _ = (api.exportObj)(
+                STRING_BUILDER_VT_NAME.as_ptr().cast(),
+                runtime.string_builder_vt as Oop,
+            );
+            let _ = (api.exportObj)(
+                STRING_BUILDER_NAME.as_ptr().cast(),
+                runtime.string_builder_proto as Oop,
+            );
         }
     }
 }

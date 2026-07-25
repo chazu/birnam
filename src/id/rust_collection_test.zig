@@ -84,6 +84,8 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const map = api.import("Map") orelse return error.MapMissing;
     const map_vt = api.import("MapVt") orelse return error.MapVtMissing;
     const map_node_vt = api.import("MapNode") orelse return error.MapNodeVtMissing;
+    const string_builder = api.import("StringBuilder") orelse return error.StringBuilderMissing;
+    const string_builder_vt = api.import("StringBuilderVt") orelse return error.StringBuilderVtMissing;
     try std.testing.expectEqual(vector_vt, api.vtableOf(vector));
     try std.testing.expectEqual(range_vt, api.vtableOf(range));
     try std.testing.expectEqual(map_vt, api.vtableOf(map));
@@ -95,6 +97,9 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     try std.testing.expectEqual(@as(usize, 16), api.objectPayloadSize(probe_map));
     const probe_map_node = api.alloc(map_node_vt, 32) orelse return error.MapNodeAllocationFailed;
     try std.testing.expectEqual(@as(usize, 32), api.objectPayloadSize(probe_map_node));
+    try std.testing.expectEqual(string_builder_vt, api.vtableOf(string_builder));
+    const probe_string_builder = api.alloc(string_builder_vt, 24) orelse return error.StringBuilderAllocationFailed;
+    try std.testing.expectEqual(@as(usize, 24), api.objectPayloadSize(probe_string_builder));
 
     const first = send(api, vector, "add:", &.{api.mkSmallInt(10)});
     const second = send(api, first, "add:", &.{api.mkSmallInt(20)});
@@ -236,6 +241,23 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     try std.testing.expect(map_rendered_bytes[0] == '{' and map_rendered_bytes[map_rendered_len - 1] == '}');
     try std.testing.expect(std.mem.indexOf(u8, map_rendered_bytes[0..map_rendered_len], "1 -> 10") != null);
     try std.testing.expect(std.mem.indexOf(u8, map_rendered_bytes[0..map_rendered_len], "2 -> 20") != null);
+
+    const builder = send(api, string_builder, "new", &.{});
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, builder, "size", &.{})));
+    try std.testing.expectEqual(builder, send(api, builder, "add:", &.{api.mkString("hello ", 6)}));
+    try std.testing.expectEqual(builder, send(api, builder, "add:", &.{api.mkSmallInt(5)}));
+    try std.testing.expectEqual(builder, send(api, builder, "addByte:", &.{api.mkSmallInt('!')}));
+    try std.testing.expectEqual(@as(i64, 8), api.smallIntValue(send(api, builder, "size", &.{})));
+    const builder_string = send(api, builder, "asString", &.{});
+    var builder_len: usize = 0;
+    const builder_bytes = api.stringBytes(builder_string, &builder_len);
+    try std.testing.expectEqualStrings("hello 5!", builder_bytes[0..builder_len]);
+    const builder_printed = send(api, builder, "printString", &.{});
+    var builder_printed_len: usize = 0;
+    const builder_printed_bytes = api.stringBytes(builder_printed, &builder_printed_len);
+    try std.testing.expectEqualStrings("hello 5!", builder_printed_bytes[0..builder_printed_len]);
+    const empty_builder = send(api, string_builder, "clone", &.{});
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_builder, "size", &.{})));
 
     const empty_range = send(api, api.mkSmallInt(5), "to:", &.{api.mkSmallInt(3)});
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_range, "size", &.{})));
