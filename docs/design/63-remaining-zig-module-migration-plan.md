@@ -1886,6 +1886,21 @@ post-switch image/project observation window closes.
   or unusable cases. Zig remains an explicit rollback fixture and no selection
   or performance threshold was broadened.
 
+### R6.1 Rust Image dynamic-shell checkpoint (2026-07-25)
+
+- `42f63c5` converts `birnam-image` to a `cdylib`/`rlib` pair over the frozen
+  `IdApi` and adds the first dynamic shell. It preserves the zero-payload
+  `ImageSaveReport` family, exports `ImageCollectorVt`, installs the complete
+  System selector surface, and retains the borrowed v4 codec as the lower
+  framing authority. Save/load/bake selectors intentionally answer nil until
+  their orchestration authorities are ported, so this shell cannot publish a
+  partial image.
+- `98adc7d` installs explicit Zig and Rust Image fixtures, and `1aac0d7`
+  adds the Debug/ReleaseSafe live shape gate (`1/1`). `82f13ab` makes that
+  target a required focused R6 input. Rust Image is not canonical; the next
+  slice ports report state and the atomic save transaction behind this exact
+  surface.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
