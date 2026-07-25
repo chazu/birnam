@@ -16,6 +16,7 @@ pub enum CodegenError {
     InvalidFunctionName { byte: u8, offset: usize },
     InvalidAggregateIndex { index: usize },
     TopLevelArray,
+    UnsupportedAggregateShim { index: usize },
 }
 
 impl fmt::Display for CodegenError {
@@ -33,6 +34,12 @@ impl fmt::Display for CodegenError {
             }
             Self::TopLevelArray => {
                 formatter.write_str("top-level arrays are not legal C ABI values")
+            }
+            Self::UnsupportedAggregateShim { index } => {
+                write!(
+                    formatter,
+                    "aggregate {index} requires aggregate marshalling"
+                )
             }
         }
     }
@@ -69,6 +76,165 @@ pub fn emit_prototype(function_name: &[u8], signature: &Signature) -> Result<Str
     }
     source.push_str(");\n");
     Ok(source)
+}
+
+/// Emit a complete method-ABI shim for a scalar-only signature.
+///
+/// The first C argument is the Birnam receiver; remaining C arguments are read
+/// from `args`. The shim checks the exact method arity before unboxing values,
+/// and returns nil on a mismatch. Aggregate arguments and returns are rejected
+/// until their Vector marshalling helpers land in a later slice.
+pub fn emit_scalar_shim(
+    function_name: &[u8],
+    signature: &Signature,
+) -> Result<String, CodegenError> {
+    reject_aggregate_shim(signature)?;
+    let mut source = runtime_preamble();
+    source.push_str(&emit_prototype(function_name, signature)?);
+    source.push_str("void* __shim(void* self, void** args, long n){\n");
+    let expected = signature.arguments.len().saturating_sub(1);
+    source.push_str("if (n != ");
+    source.push_str(&expected.to_string());
+    source.push_str("L) return birnam_nil();\n");
+
+    for (index, ty) in signature.arguments.iter().enumerate() {
+        let Type::Scalar(scalar) = ty else {
+            unreachable!("aggregate shim was rejected before emission");
+        };
+        source.push_str(scalar_c_type(*scalar).expect("scalar has a C spelling"));
+        source.push_str(" a");
+        source.push_str(&index.to_string());
+        source.push_str(" = ");
+        let expression = if index == 0 {
+            "self".to_owned()
+        } else {
+            format!("args[{}]", index - 1)
+        };
+        emit_unbox(&mut source, *scalar, &expression);
+        source.push_str(";\n");
+    }
+
+    let return_scalar = match &signature.return_type {
+        Type::Scalar(scalar) => *scalar,
+        Type::Aggregate(index) => {
+            return Err(CodegenError::UnsupportedAggregateShim { index: *index });
+        }
+        Type::Array { .. } => return Err(CodegenError::TopLevelArray),
+    };
+    source.push_str("  ");
+    if return_scalar == Scalar::Void {
+        source.push_str("(void)");
+    } else {
+        source.push_str(scalar_c_type(return_scalar).expect("scalar has a C spelling"));
+        source.push_str(" __r = ");
+    }
+    source.push_str(std::str::from_utf8(function_name).expect("C identifier is ASCII"));
+    source.push('(');
+    for (index, _) in signature.arguments.iter().enumerate() {
+        if index != 0 {
+            source.push_str(", ");
+        }
+        source.push('a');
+        source.push_str(&index.to_string());
+    }
+    source.push_str(");\n");
+    for (index, ty) in signature.arguments.iter().enumerate() {
+        if *ty == Type::Scalar(Scalar::StringPointer) {
+            source.push_str("birnam_free_cstr(a");
+            source.push_str(&index.to_string());
+            source.push_str(");\n");
+        }
+    }
+    emit_box_return(&mut source, return_scalar);
+    source.push_str("}\n");
+    Ok(source)
+}
+
+fn reject_aggregate_shim(signature: &Signature) -> Result<(), CodegenError> {
+    for ty in signature
+        .arguments
+        .iter()
+        .chain(std::iter::once(&signature.return_type))
+    {
+        if let Type::Aggregate(index) = ty {
+            return Err(CodegenError::UnsupportedAggregateShim { index: *index });
+        }
+        if matches!(ty, Type::Array { .. }) {
+            return Err(CodegenError::TopLevelArray);
+        }
+    }
+    Ok(())
+}
+
+fn runtime_preamble() -> String {
+    "extern void* birnam_mkSmallInt(long);\n".to_owned()
+        + "extern long birnam_smallIntValue(void*);\n"
+        + "extern void* birnam_mkFloat(double);\n"
+        + "extern double birnam_floatValue(void*);\n"
+        + "extern void* birnam_mkWord(unsigned long);\n"
+        + "extern unsigned long birnam_wordValue(void*);\n"
+        + "extern unsigned long birnam_uintValue(void*);\n"
+        + "extern const char* birnam_cstr(void*);\n"
+        + "extern void birnam_free_cstr(const char*);\n"
+        + "extern void* birnam_mkString(const char*, long);\n"
+        + "extern void* birnam_nil(void);\n"
+        + "extern long strlen(const char*);\n"
+}
+
+fn emit_unbox(source: &mut String, scalar: Scalar, expression: &str) {
+    match scalar {
+        Scalar::Int => {
+            source.push_str("(int)birnam_smallIntValue(");
+            source.push_str(expression);
+            source.push(')');
+        }
+        Scalar::Long => {
+            source.push_str("birnam_smallIntValue(");
+            source.push_str(expression);
+            source.push(')');
+        }
+        Scalar::UnsignedLong => {
+            source.push_str("birnam_uintValue(");
+            source.push_str(expression);
+            source.push(')');
+        }
+        Scalar::Double | Scalar::Float => {
+            if scalar == Scalar::Float {
+                source.push_str("(float)");
+            }
+            source.push_str("birnam_floatValue(");
+            source.push_str(expression);
+            source.push(')');
+        }
+        Scalar::StringPointer => {
+            source.push_str("birnam_cstr(");
+            source.push_str(expression);
+            source.push(')');
+        }
+        Scalar::Pointer => {
+            source.push_str("(void*)birnam_wordValue(");
+            source.push_str(expression);
+            source.push(')');
+        }
+        Scalar::Void => unreachable!("void cannot be an argument"),
+    }
+}
+
+fn emit_box_return(source: &mut String, scalar: Scalar) {
+    match scalar {
+        Scalar::Void => source.push_str("return birnam_nil();\n"),
+        Scalar::Int | Scalar::Long => source.push_str("return birnam_mkSmallInt((long)__r);\n"),
+        Scalar::UnsignedLong => source.push_str(
+            "return (((unsigned long)__r >> 63) ? birnam_mkWord((unsigned long)__r) : birnam_mkSmallInt((long)__r));\n",
+        ),
+        Scalar::Double | Scalar::Float => {
+            source.push_str("return birnam_mkFloat((double)__r);\n")
+        }
+        Scalar::StringPointer => {
+            source.push_str("return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n")
+        }
+        Scalar::Pointer => source.push_str("return birnam_mkWord((unsigned long)__r);\n"),
+    }
 }
 
 fn validate_identifier(name: &[u8]) -> Result<(), CodegenError> {
@@ -220,6 +386,26 @@ mod tests {
         assert_eq!(
             emit_prototype(b"f", &malformed),
             Err(CodegenError::TopLevelArray)
+        );
+    }
+
+    #[test]
+    fn emits_scalar_receiver_shim_with_arity_and_string_cleanup() {
+        let signature = parse_signature(b"l s").unwrap();
+        let source = emit_scalar_shim(b"strlen", &signature).unwrap();
+        assert!(source.contains("if (n != 0L) return birnam_nil();"));
+        assert!(source.contains("const char* a0 = birnam_cstr(self);"));
+        assert!(source.contains("long __r = strlen(a0);"));
+        assert!(source.contains("birnam_free_cstr(a0);"));
+        assert!(source.contains("return birnam_mkSmallInt((long)__r);"));
+    }
+
+    #[test]
+    fn rejects_aggregate_shims_until_vector_marshalling_exists() {
+        let signature = parse_signature(b"{ii} i i").unwrap();
+        assert_eq!(
+            emit_scalar_shim(b"birnam_div", &signature),
+            Err(CodegenError::UnsupportedAggregateShim { index: 0 })
         );
     }
 }
