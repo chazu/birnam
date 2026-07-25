@@ -40,11 +40,12 @@ latest_tests=(
   test-rust-collection
   test-rust-error
 )
+isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-zig}")
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
 
 set +e
-zig build "${latest_tests[@]}" -Doptimize=ReleaseSafe --summary all >"$functional" 2>&1
+zig build "${latest_tests[@]}" "${isolate_option[@]}" -Doptimize=ReleaseSafe --summary all >"$functional" 2>&1
 functional_status=$?
 set -e
 cat "$functional"
@@ -162,7 +163,7 @@ verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
 trap 'rm -f "$functional" "$verify"' EXIT
 
 set +e
-zig build verify -Doptimize=ReleaseSafe --summary all >"$verify" 2>&1
+zig build verify "${isolate_option[@]}" -Doptimize=ReleaseSafe --summary all >"$verify" 2>&1
 verify_status=$?
 set -e
 cat "$verify"
