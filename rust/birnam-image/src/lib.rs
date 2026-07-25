@@ -6,6 +6,8 @@
 //! runtime state. Higher layers remain responsible for name resolution,
 //! swizzling, loading, and Store mutation.
 
+#![allow(clippy::missing_safety_doc)]
+
 pub const MAGIC: &[u8; 8] = b"BIRNAMIM";
 pub const FORMAT_VERSION: u32 = 4;
 pub const ENDIAN_TAG: u32 = 0x0102_0304;
@@ -661,6 +663,236 @@ fn round(state: &mut [u64; 3], input: &[u8]) {
 fn mix(left: u64, right: u64) -> u64 {
     let product = (left as u128).wrapping_mul(right as u128);
     product as u64 ^ (product >> 64) as u64
+}
+
+use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use core::ffi::{c_char, c_void};
+use core::ptr;
+use std::sync::OnceLock;
+
+const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r6-shell\0";
+const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
+const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
+const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
+
+#[derive(Clone, Copy)]
+struct Runtime {
+    api: usize,
+    report_obj: usize,
+}
+
+static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+fn abort(message: &str) -> ! {
+    eprintln!("birnam Rust Image: {message}");
+    std::process::abort();
+}
+
+fn runtime() -> &'static Runtime {
+    RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("module_init was not called"))
+}
+
+unsafe fn api_ref() -> &'static IdApi {
+    // SAFETY: module_init records the process-owned IdApi address and the host
+    // retains that table for the loaded floor's lifetime.
+    unsafe { &*(runtime().api as *const IdApi) }
+}
+
+unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
+    // SAFETY: all current selectors are static NUL-terminated byte strings.
+    unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
+}
+
+unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+        return api.nilObj;
+    }
+    // The shell deliberately has no authority to mutate or publish an image.
+    // Later R6 slices install the codec-backed save transaction here.
+    api.nilObj
+}
+
+unsafe extern "C" fn system_load_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+        return api.nilObj;
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn system_load_image_rebuild(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+        return api.nilObj;
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn system_image_save_report(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        return unsafe { api_ref() }.nilObj;
+    }
+    runtime().report_obj as Oop
+}
+
+unsafe extern "C" fn system_image_composition_identity(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    // This identity is intentionally distinct from the eventual composition
+    // digest; it proves the Rust shell was selected without claiming image
+    // orchestration authority before the later R6 slices land.
+    unsafe { (api.mkString)(RUST_IMAGE_IDENTITY.as_ptr(), RUST_IMAGE_IDENTITY.len() - 1) }
+}
+
+unsafe extern "C" fn system_bake_exe(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+        return api.nilObj;
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn report_status(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { intern(api, b"never\0") }
+}
+
+unsafe extern "C" fn report_count(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)(0) }
+}
+
+unsafe extern "C" fn report_detail(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkString)(b"".as_ptr(), 0) }
+}
+
+unsafe extern "C" fn collector_collect(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    if count != 5 {
+        return unsafe { api_ref() }.nilObj;
+    }
+    unsafe { api_ref() }.nilObj
+}
+
+unsafe fn bring_up(api: *mut IdApi) {
+    if api.is_null() {
+        abort("module_init received a null IdApi");
+    }
+    let api_ref = unsafe { &*api };
+    let report_vt = if unsafe { (api_ref.isExported)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
+        unsafe { (api_ref.import)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
+    } else {
+        let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+        unsafe { (api_ref.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+        vt
+    };
+    let report_obj = if unsafe { (api_ref.isExported)(IMAGE_REPORT_NAME.as_ptr().cast()) } != 0 {
+        unsafe { (api_ref.import)(IMAGE_REPORT_NAME.as_ptr().cast()) }
+    } else {
+        let object = unsafe { (api_ref.alloc)(report_vt, 0) };
+        unsafe {
+            (api_ref.setOwner)(report_vt, object);
+            let _ = (api_ref.exportObj)(IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
+            let _ = (api_ref.exportObj)(IMAGE_REPORT_NAME.as_ptr().cast(), object);
+        }
+        object
+    };
+    let collector_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+    unsafe {
+        (api_ref.method)(report_vt, intern(api_ref, b"status\0"), report_status);
+        for selector in [
+            b"savedFacts\0".as_slice(),
+            b"recoveredFacts\0".as_slice(),
+            b"rejectedFacts\0".as_slice(),
+            b"recoveredSlots\0".as_slice(),
+            b"rejectedSlots\0".as_slice(),
+            b"codeUnits\0".as_slice(),
+        ] {
+            (api_ref.method)(report_vt, intern(api_ref, selector), report_count);
+        }
+        (api_ref.method)(report_vt, intern(api_ref, b"detail\0"), report_detail);
+        (api_ref.method)(
+            collector_vt,
+            intern(api_ref, b"e:a:v:tx:op:\0"),
+            collector_collect,
+        );
+        let _ = (api_ref.exportObj)(COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
+        let system_vt = (api_ref.import)(c"SystemVt".as_ptr());
+        if !system_vt.is_null() {
+            (api_ref.method)(
+                system_vt,
+                intern(api_ref, b"saveImage:\0"),
+                system_save_image,
+            );
+            (api_ref.method)(
+                system_vt,
+                intern(api_ref, b"imageSaveReport\0"),
+                system_image_save_report,
+            );
+            (api_ref.method)(
+                system_vt,
+                intern(api_ref, b"loadImage:\0"),
+                system_load_image,
+            );
+            (api_ref.method)(
+                system_vt,
+                intern(api_ref, b"loadImage:rebuild:\0"),
+                system_load_image_rebuild,
+            );
+            (api_ref.method)(
+                system_vt,
+                intern(api_ref, b"imageCompositionIdentity\0"),
+                system_image_composition_identity,
+            );
+            (api_ref.method)(system_vt, intern(api_ref, b"bakeExe:\0"), system_bake_exe);
+        }
+    }
+    let _ = RUNTIME.set(Runtime {
+        api: api as usize,
+        report_obj: report_obj as usize,
+    });
+}
+
+/// Identifies the first dynamic Rust Image orchestration shell.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_image_rust_identity() -> *const c_char {
+    RUST_IMAGE_IDENTITY.as_ptr().cast()
+}
+
+/// Initialize the Rust Image shell against the process floor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
+    let _ = state;
+    if RUNTIME.get().is_none() {
+        unsafe { bring_up(api) };
+    }
+    ptr::null_mut()
 }
 
 #[cfg(test)]
