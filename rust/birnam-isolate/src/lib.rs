@@ -118,6 +118,60 @@ pub fn decode_header(bytes: &[u8]) -> Result<Header, CodecError> {
     })
 }
 
+/// An owned BISO frame. The payload is copied so callers never retain a
+/// borrowed transport buffer across a worker or callback boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Frame {
+    pub header: Header,
+    pub payload: Vec<u8>,
+}
+
+impl Frame {
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        validate_empty_payload(self.header.kind, self.payload.len())?;
+        let payload_len =
+            u32::try_from(self.payload.len()).map_err(|_| CodecError::FrameTooLarge)?;
+        let header = encode_header(Header {
+            payload_len,
+            ..self.header
+        })?;
+        let mut bytes = Vec::with_capacity(HEADER_LEN + self.payload.len());
+        bytes.extend_from_slice(&header);
+        bytes.extend_from_slice(&self.payload);
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, CodecError> {
+        let header = decode_header(bytes)?;
+        let payload_len = header.payload_len as usize;
+        validate_empty_payload(header.kind, payload_len)?;
+        let frame_len = HEADER_LEN
+            .checked_add(payload_len)
+            .ok_or(CodecError::FrameTooLarge)?;
+        if bytes.len() < frame_len {
+            return Err(CodecError::Truncated);
+        }
+        if bytes.len() > frame_len {
+            return Err(CodecError::TrailingBytes);
+        }
+        Ok(Self {
+            header,
+            payload: bytes[HEADER_LEN..frame_len].to_vec(),
+        })
+    }
+}
+
+fn validate_empty_payload(kind: FrameKind, payload_len: usize) -> Result<(), CodecError> {
+    if matches!(
+        kind,
+        FrameKind::Ready | FrameKind::Stop | FrameKind::Stopped
+    ) && payload_len != 0
+    {
+        return Err(CodecError::InvalidRecord);
+    }
+    Ok(())
+}
+
 fn validate_request_id(kind: FrameKind, request_id: u64) -> Result<(), CodecError> {
     if matches!(kind, FrameKind::Ready | FrameKind::BootError) && request_id != 0 {
         return Err(CodecError::InvalidRequestId);
@@ -590,6 +644,36 @@ mod tests {
             })
             .is_ok()
         );
+    }
+
+    #[test]
+    fn frames_round_trip_and_reject_transport_shape_errors() {
+        let frame = Frame {
+            header: Header {
+                kind: FrameKind::Request,
+                request_id: 7,
+                payload_len: 1,
+            },
+            payload: vec![TAG_NIL],
+        };
+        let encoded = frame.encode().expect("frame encode");
+        assert_eq!(Frame::decode(&encoded).expect("frame decode"), frame);
+
+        let truncated = &encoded[..encoded.len() - 1];
+        assert_eq!(Frame::decode(truncated), Err(CodecError::Truncated));
+        let mut trailing = encoded.clone();
+        trailing.push(0);
+        assert_eq!(Frame::decode(&trailing), Err(CodecError::TrailingBytes));
+
+        let ready = Frame {
+            header: Header {
+                kind: FrameKind::Ready,
+                request_id: 0,
+                payload_len: 0,
+            },
+            payload: vec![TAG_NIL],
+        };
+        assert_eq!(ready.encode(), Err(CodecError::InvalidRecord));
     }
 
     #[test]
