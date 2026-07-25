@@ -130,19 +130,19 @@ fn callbacks() -> &'static Mutex<Vec<CallbackEntry>> {
 }
 
 unsafe extern "C" fn callback_roots(mark: MarkFn) {
-    let roots = callbacks()
+    let live = callbacks()
         .lock()
-        .unwrap_or_else(|_| abort("Alien callback registry was poisoned"))
-        .iter()
-        .flat_map(|entry| [entry.block, entry.unit])
-        .collect::<Vec<_>>();
-    // Do not hold the registry lock across the host mark callback.  The mark
-    // function currently only queues addresses, but this keeps the boundary
-    // valid if the collector grows re-entrant bookkeeping later.
-    for root in roots {
+        .unwrap_or_else(|_| abort("Alien callback registry was poisoned"));
+    // `MarkFn` only records a root in the host collector worklist; it cannot
+    // re-enter an Alien method or the Rust registry. Keep the lock while
+    // marking so GC never allocates a temporary Rust snapshot.
+    for entry in live.iter() {
         // SAFETY: every entry was copied from a live Oop supplied by the host;
         // the root provider is called synchronously by that same collector.
-        unsafe { mark(root as Oop) };
+        unsafe {
+            mark(entry.block as Oop);
+            mark(entry.unit as Oop);
+        }
     }
 }
 
@@ -186,6 +186,9 @@ unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Res
 
 unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
     let Some(value) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
