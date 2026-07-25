@@ -769,6 +769,28 @@ remain the next implementation slices.
   `compile.stage1-stdlib +11.9%` crossings. The Store callback bridge and
   canonical Rust Relational selection remain pending.
 
+### R4.5 Rust Relational Store callback checkpoint (2026-07-25)
+
+- `d64d9f9` adds the Rust-owned Store callback adapter. It invokes the frozen
+  `liveTriplesDo:` protocol through IdApi, classifies each callback triple into
+  caller-owned pointer-free records, bounds output capacity, and rejects
+  malformed callback arguments. A temporary callback block is rooted through
+  the floor root-provider seam for the synchronous send; no Store fact, IdApi
+  pointer, or borrowed Oop is retained after the call. The explicit module
+  identity is now `rust-relational-r4.4-bridge`.
+- The dynamic Rust Relational target loads the Rust Store provider, asserts a
+  fresh fact, verifies identity and integer classification in the returned
+  live-triple stream, and checks short-buffer rejection. The focused target is
+  `2/2`; the Zig Store rollback cross-product remains a subsequent fixture.
+- `bae02de` advances the R6 focused pin to `54/54` and requires the two-test
+  callback target. `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes:
+  optimized verify remains the exact `modules/run-tests.birnam`
+  `collection.zig:336:29` fixture exception at `259/262` steps,
+  `460/466` tests, and 6 skipped; the digest-pinned comparator retains zero
+  missing or unusable cases and only `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`. Canonical Rust Relational selection and
+  the Zig Store rollback cross-floor fixture remain pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
