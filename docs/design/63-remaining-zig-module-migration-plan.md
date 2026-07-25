@@ -1761,6 +1761,11 @@ post-switch image/project observation window closes.
   tests with Zig/Debug and Rust/ReleaseSafe selected floors. Buffer bounds and
   pointer provenance remain deliberately caller-owned unsafe obligations, as
   they are in the Zig protocol.
+- `7652859` folds the live target into R6 acceptance as a required sequential
+  sub-gate. The focused matrix remains `80/80` tests; the separate live target
+  is asserted at `3/3` to avoid racing its Cargo install against clean-prefix
+  selection scripts. With the canonical Zig Alien install restored, full R6
+  passes with only the two already-recorded benchmark tradeoffs.
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
