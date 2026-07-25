@@ -1710,6 +1710,21 @@ post-switch image/project observation window closes.
   selected floors. The full Alien callback, buffer, replay, GC-lifetime, and
   canonical-selection gates remain future R5 work.
 
+### R5.13 Rust Alien aggregate live checkpoint (2026-07-25)
+
+- `1511a28` extends the live fixture with the Rust Collection owner and a real
+  aggregate wrapper for libc `div` (`{ii} i i`). The test dispatches the
+  receiver-first method, verifies the Rust-generated `__unm1`/`__mk0` path, and
+  checks the returned Vector shape and quotient/remainder values.
+- The same gate still balances the loader handle and scalar `strlen` wrapper;
+  it passes with Zig/Debug and Rust/ReleaseSafe selected floors. Rust Alien,
+  Rust Collection, and Rust TCC are all loaded as explicit fixtures; no
+  canonical Collection or Alien selection has changed.
+- This proves live aggregate marshalling against a real Vector factory, but it
+  does not yet cover nested/array ABI corpus parity, callbacks, raw buffers,
+  replay records, forced-GC roots, unload safety for installed wrappers, or the
+  pre-switch/full R6 acceptance required by the R5 exit gate.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
