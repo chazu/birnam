@@ -947,6 +947,18 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     try std.testing.expect(api.send(canonical_query, api.intern("at:"), &.{api.mkSmallInt(0)}, 1) == tom);
     try std.testing.expect(api.send(canonical_query, api.intern("at:"), &.{api.mkSmallInt(1)}, 1) == bob);
     try std.testing.expect(api.send(canonical_query, api.intern("at:"), &.{api.mkSmallInt(2)}, 1) == ann);
+    const planner_high = api.intern("rust_relational_rule_planner_high");
+    const planner_low = api.intern("rust_relational_rule_planner_low");
+    const score_attribute = api.intern("rust_relational_rule_planner_score");
+    const score_variable = api.send(logic_var, named, &.{api.intern("rust_relational_rule_planner_score_var")}, 1);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ planner_high, score_attribute, api.mkSmallInt(20) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ planner_low, score_attribute, api.mkSmallInt(5) }, 3);
+    const planner_predicate = makeVector(api, &.{ score_variable, api.intern("gt"), api.mkSmallInt(10) });
+    const planner_triple = makeVector(api, &.{ x, score_attribute, score_variable });
+    const planner_body = makeVector(api, &.{ planner_predicate, planner_triple });
+    const planner_query = api.send(store, api.intern("findAll:where:"), &.{ x, planner_body }, 2);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(planner_query, api.intern("size"), &.{}, 0)));
+    try std.testing.expect(api.send(planner_query, api.intern("at:"), &.{api.mkSmallInt(0)}, 1) == planner_high);
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});

@@ -2265,13 +2265,98 @@ fn term_value(solution: &[Binding], term: &Term) -> Option<Value> {
     }
 }
 
+fn add_clause_variable(variables: &mut Vec<u32>, term: &Term) {
+    let Term::Variable(variable) = term else {
+        return;
+    };
+    if !variables.contains(variable) {
+        variables.push(*variable);
+    }
+}
+
+fn clause_variables(clause: &RuleClause, variables: &mut Vec<u32>) {
+    match clause {
+        RuleClause::Triple(Clause(terms)) => {
+            for term in terms {
+                add_clause_variable(variables, term);
+            }
+        }
+        RuleClause::Call { args, .. } => {
+            for term in args {
+                add_clause_variable(variables, term);
+            }
+        }
+        RuleClause::Predicate { left, right, .. } => {
+            add_clause_variable(variables, left);
+            add_clause_variable(variables, right);
+        }
+        RuleClause::Negated(inner) => {
+            for clause in inner {
+                clause_variables(clause, variables);
+            }
+        }
+        RuleClause::Disjunction(branches) => {
+            for branch in branches {
+                for clause in branch {
+                    clause_variables(clause, variables);
+                }
+            }
+        }
+    }
+}
+
+fn clause_is_binder(clause: &RuleClause) -> bool {
+    matches!(
+        clause,
+        RuleClause::Triple(_) | RuleClause::Call { .. } | RuleClause::Disjunction(_)
+    )
+}
+
+/// Pick binders before filters while retaining source order among clauses that
+/// are ready. This is the Rust equivalent of the Zig relational planner: a
+/// predicate or negation written before its operands are bound must not drop
+/// every row merely because it appeared first in the Vector.
+fn plan_rule_body(body: &[RuleClause]) -> Vec<usize> {
+    let mut order = Vec::with_capacity(body.len());
+    let mut used = vec![false; body.len()];
+    let mut bound = Vec::new();
+    for _ in 0..body.len() {
+        let mut chosen = None;
+        for (index, clause) in body.iter().enumerate() {
+            if used[index] {
+                continue;
+            }
+            let ready = clause_is_binder(clause) || {
+                let mut variables = Vec::new();
+                clause_variables(clause, &mut variables);
+                variables.iter().all(|variable| bound.contains(variable))
+            };
+            if ready {
+                chosen = Some(index);
+                break;
+            }
+        }
+        let index = chosen.or_else(|| used.iter().position(|is_used| !is_used));
+        let Some(index) = index else {
+            break;
+        };
+        used[index] = true;
+        order.push(index);
+        if clause_is_binder(&body[index]) {
+            clause_variables(&body[index], &mut bound);
+        }
+    }
+    order
+}
+
 fn evaluate_rule_body_from_solutions(
     facts: &[Triple],
     relations: &[DerivedRelation],
     body: &[RuleClause],
     mut solutions: Vec<Vec<Binding>>,
 ) -> Vec<Vec<Binding>> {
-    for clause in body {
+    for clause_index in plan_rule_body(body) {
+        let clause = &body[clause_index];
         let mut next = Vec::new();
         for solution in &solutions {
             match clause {
@@ -3928,16 +4013,16 @@ mod tests {
             name: eligible.clone(),
             params: vec![0],
             body: vec![
-                RuleClause::Triple(Clause([
-                    Term::Variable(0),
-                    Term::Constant(score),
-                    Term::Variable(1),
-                ])),
                 RuleClause::Predicate {
                     left: Term::Variable(1),
                     operation: CompareOp::Greater,
                     right: Term::Constant(Value::Integer(10)),
                 },
+                RuleClause::Triple(Clause([
+                    Term::Variable(0),
+                    Term::Constant(score),
+                    Term::Variable(1),
+                ])),
                 RuleClause::Negated(vec![RuleClause::Triple(Clause([
                     Term::Variable(0),
                     Term::Constant(blocked),
