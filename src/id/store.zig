@@ -1158,8 +1158,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_many = api.intern("many");
     s_name = api.intern("name");
     s_history = api.intern("history");
-    s_true = api.intern("true");
-    s_false = api.intern("false");
+    // Schema booleans cross the IdApi boundary as the canonical singleton
+    // objects.  Keeping these markers aligned with trueObj/falseObj lets
+    // foreign Store clients (including Rust) opt attributes into history
+    // without depending on an interned spelling of the boolean value.
+    s_true = api.trueObj;
+    s_false = api.falseObj;
 
     s_rawAssert = api.intern("rawAssert:attr:value:");
     s_flip = api.intern("flip");

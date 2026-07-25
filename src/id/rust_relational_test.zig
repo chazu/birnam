@@ -22,6 +22,7 @@ const ClassifiedTriple = extern struct {
     value: Classified,
 };
 const CollectLive = *const fn (Oop, ?[*]ClassifiedTriple, usize, *usize) callconv(.c) c_int;
+const CollectWindow = *const fn (Oop, u8, u64, u64, ?[*]ClassifiedTriple, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -35,6 +36,23 @@ fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
 fn loadEnvModule(api: *idapi.IdApi, variable: []const u8) !void {
     const path = std.posix.getenv(variable) orelse return error.MissingRustRelationalStoreDylib;
     try loadModule(api, path);
+}
+
+fn hasTriple(
+    records: []const ClassifiedTriple,
+    entity: Oop,
+    attribute: Oop,
+    integer: i64,
+) bool {
+    for (records) |record| {
+        if (record.entity.tag == 0 and record.entity.identity == @intFromPtr(entity) and
+            record.attribute.tag == 0 and record.attribute.identity == @intFromPtr(attribute) and
+            record.value.tag == 1 and record.value.integer == integer)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 test "Rust Relational classifier copies scalar values and preserves identities" {
@@ -106,16 +124,60 @@ test "Rust Relational callback copies Store live triples" {
     try std.testing.expectEqual(@as(c_int, 0), collect(store, &records, records.len, &written));
     try std.testing.expect(written >= 1);
 
-    var found = false;
-    for (records[0..written]) |record| {
-        if (record.entity.tag == 0 and record.entity.identity == @intFromPtr(entity) and
-            record.attribute.tag == 0 and record.attribute.identity == @intFromPtr(attribute) and
-            record.value.tag == 1 and record.value.integer == 73)
-        {
-            found = true;
-            break;
-        }
-    }
-    try std.testing.expect(found);
+    try std.testing.expect(hasTriple(records[0..written], entity, attribute, 73));
     try std.testing.expectEqual(@as(c_int, -5), collect(store, null, 0, &written));
+}
+
+test "Rust Relational callback preserves Store transaction windows" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const collect_raw = api.dlsym(relation_handle, "birnam_relational_rust_collect_window") orelse
+        return error.RustRelationalCollectWindowMissing;
+    const collect: CollectWindow = @ptrCast(@alignCast(collect_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const entity = api.intern("rust_relational_window_entity");
+    const attribute = api.intern("rust_relational_window_attribute");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ attribute, api.intern("history"), api.trueObj }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, api.mkSmallInt(11) }, 3);
+    const after_first = api.send(store, api.intern("basis"), &.{}, 0);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, api.mkSmallInt(22) }, 3);
+    const after_second = api.send(store, api.intern("basis"), &.{}, 0);
+
+    var records: [32]ClassifiedTriple = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        collect(store, 1, 0, @intCast(api.smallIntValue(after_first)), &records, records.len, &written),
+    );
+    try std.testing.expect(hasTriple(records[0..written], entity, attribute, 11));
+    try std.testing.expect(!hasTriple(records[0..written], entity, attribute, 22));
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        collect(store, 2, @intCast(api.smallIntValue(after_first)), 0, &records, records.len, &written),
+    );
+    try std.testing.expect(hasTriple(records[0..written], entity, attribute, 22));
+    try std.testing.expect(!hasTriple(records[0..written], entity, attribute, 11));
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        collect(
+            store,
+            3,
+            @intCast(api.smallIntValue(after_first)),
+            @intCast(api.smallIntValue(after_second)),
+            &records,
+            records.len,
+            &written,
+        ),
+    );
+    try std.testing.expect(hasTriple(records[0..written], entity, attribute, 22));
+    try std.testing.expectEqual(@as(c_int, -7), collect(store, 9, 0, 0, &records, records.len, &written));
 }

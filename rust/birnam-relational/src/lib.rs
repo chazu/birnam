@@ -224,20 +224,11 @@ unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, cou
     api.nilObj
 }
 
-/// Enumerate the current Store snapshot through the frozen callback protocol.
-///
-/// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
-/// output pointers, `-4` an unsupported/malformed Oop, `-5` insufficient output
-/// capacity, and `-6` failure to allocate the temporary callback object.
-///
-/// # Safety
-///
-/// `store` must be a live Store object whose `liveTriplesDo:` callback follows
-/// the frozen IdApi protocol. `output` and `written` must point to caller-owned
-/// writable storage for the declared capacity and count.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_relational_rust_collect_live(
+unsafe fn collect_window(
     store: Oop,
+    mode: u8,
+    lower: u64,
+    upper: u64,
     output: *mut ClassifiedTriple,
     capacity: usize,
     written: *mut usize,
@@ -275,14 +266,91 @@ pub unsafe extern "C" fn birnam_relational_rust_collect_live(
     // SAFETY: callback payload was allocated with exactly one raw pointer slot.
     unsafe { ptr::write(callback.cast::<*mut ProbeCollector>(), &mut collector) };
     ACTIVE_PROBE_BLOCK.store(callback as usize, Ordering::Release);
-    let selector = unsafe { (api.intern)(c"liveTriplesDo:".as_ptr()) };
-    let arguments = [callback];
+    let selector_name: &[u8] = match mode {
+        0 => b"liveTriplesDo:\0",
+        1 => b"liveTriplesAsOf:do:\0",
+        2 => b"liveTriplesSince:do:\0",
+        3 => b"liveTriplesBetween:and:do:\0",
+        _ => {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return -7;
+        }
+    };
+    if (mode == 1 || mode == 2 || mode == 3) && (lower > i64::MAX as u64 || upper > i64::MAX as u64)
+    {
+        ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+        return -7;
+    }
+    let selector = unsafe { (api.intern)(selector_name.as_ptr().cast()) };
+    let lower_oop = unsafe { (api.mkSmallInt)(lower as i64) };
+    let upper_oop = unsafe { (api.mkSmallInt)(upper as i64) };
+    let arguments: [Oop; 3] = match mode {
+        0 => [callback, ptr::null_mut(), ptr::null_mut()],
+        1 => [upper_oop, callback, ptr::null_mut()],
+        2 => [lower_oop, callback, ptr::null_mut()],
+        3 => [lower_oop, upper_oop, callback],
+        _ => unreachable!(),
+    };
+    let argument_count = match mode {
+        0 => 1,
+        1 | 2 => 2,
+        3 => 3,
+        _ => unreachable!(),
+    };
     // SAFETY: Store owns the frozen liveTriplesDo: selector and synchronously
     // invokes value:value:value: on the callback object.
-    unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
+    unsafe { (api.send)(store, selector, arguments.as_ptr(), argument_count) };
     ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
     unsafe { *written = collector.written };
     collector.status
+}
+
+/// Enumerate the current Store snapshot through the frozen callback protocol.
+///
+/// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
+/// output pointers, `-4` an unsupported/malformed Oop, `-5` insufficient output
+/// capacity, and `-6` failure to allocate the temporary callback object.
+///
+/// # Safety
+///
+/// `store` must be a live Store object whose `liveTriplesDo:` callback follows
+/// the frozen IdApi protocol. `output` and `written` must point to caller-owned
+/// writable storage for the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_collect_live(
+    store: Oop,
+    output: *mut ClassifiedTriple,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe { collect_window(store, 0, 0, 0, output, capacity, written) }
+}
+
+/// Enumerate one Store transaction window: mode `0` is current, `1` is as-of
+/// `upper`, `2` is since `lower`, and `3` is between `[lower, upper)`.
+///
+/// Return values are the same as `birnam_relational_rust_collect_live`, with
+/// `-7` additionally rejecting an unknown mode or a transaction outside the
+/// SmallInt range.
+///
+/// # Safety
+///
+/// `store` must be a live Store object implementing the frozen window selectors.
+/// `output` and `written` must point to caller-owned writable storage for the
+/// declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_collect_window(
+    store: Oop,
+    mode: u8,
+    lower: u64,
+    upper: u64,
+    output: *mut ClassifiedTriple,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe { collect_window(store, mode, lower, upper, output, capacity, written) }
 }
 
 /// Initialize the explicit Rust Relational probe against the process IdApi.
