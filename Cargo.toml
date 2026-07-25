@@ -12,6 +12,7 @@ members = [
     "rust/birnam-lang",
     "rust/birnam-peg",
     "rust/birnam-prelude",
+    "rust/birnam-relational",
     "rust/birnam-store",
     "rust/birnam-tcc",
 ]

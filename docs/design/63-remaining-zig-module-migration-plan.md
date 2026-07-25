@@ -706,6 +706,18 @@ remain the next implementation slices.
   Isolate switch; future R3 work retains the explicit Zig artifact and the
   implementation selector as the rollback seam.
 
+### R4.1 authority-free relational kernel checkpoint (2026-07-25)
+
+- The new `birnam-relational` Rust crate evaluates a borrowed Store triple
+  snapshot with a deterministic left-to-right conjunction join and distinct
+  projection. Its input facts remain owned by the Store; it owns only copied
+  query bindings and never crosses an IdApi callback or stores a second fact
+  authority.
+- The first corpus covers constant matching, shared-variable joins, repeated
+  variables, empty results, result-order preservation, and no invented
+  bindings. Scalar value-aware matching and the dynamic `module_init` wrapper
+  remain subsequent slices.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

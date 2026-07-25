@@ -1,0 +1,12 @@
+[package]
+name = "birnam-relational"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "birnam_relational"
+
+[lints]
+workspace = true
