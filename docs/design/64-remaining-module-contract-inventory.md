@@ -290,3 +290,10 @@ R2 standalone Error implementation checkpoint (2026-07-24):
   to both preload-order runs.
 - The latest full R6 run remains green at `48/48`, with the exact recorded
   verify exception and the two accepted benchmark crossings unchanged.
+
+R2 canonical switch checkpoint (2026-07-24):
+
+- `6a19b9b` selected Rust Error as the canonical owner while preserving the
+  explicit Zig rollback fixture and option.
+- Post-switch focused Prelude/Error, selection, install, and full R6 checks
+  passed at `48/48`; no new verify failure or benchmark crossing appeared.

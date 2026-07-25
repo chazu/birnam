@@ -392,6 +392,16 @@ post-switch observation are recorded.
   comparator still reports exactly the accepted `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` crossings.
 
+### R2.2 canonical switch checkpoint (2026-07-24)
+
+- `6a19b9b` made Rust Error the canonical `libbirnam_id_error.dylib` owner
+  (`-Derror-impl=rust`), while retaining `libbirnam_id_error_zig.dylib` as the
+  explicit rollback fixture and preserving `-Derror-impl=zig`.
+- The post-switch focused Prelude/Error, selection, and relocated-install
+  checks passed. A fresh `mise run r6-acceptance` remained green at `48/48`,
+  with the exact existing verify exception and the two accepted benchmark
+  crossings unchanged.
+
 ## 7. Phase R3 — Isolate
 
 1. Add `rust/birnam-isolate` with a pointer-free codec and the exact `BISO`
