@@ -179,6 +179,12 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(zero_divide_kind, send(api, integer_float_zero_divide, "kind", &.{}));
     const float_zero_divide = send(api, two_point_five, "/", &.{api.mkFloat(0.0)});
     try std.testing.expectEqual(zero_divide_kind, send(api, float_zero_divide, "kind", &.{}));
+    const overflow = send(api, api.mkSmallInt(1 << 61), "*", &.{api.mkSmallInt(1 << 61)});
+    try std.testing.expectEqual(api.intern("overflow"), send(api, overflow, "kind", &.{}));
+    const type_mismatch = send(api, three, "+", &.{api.import("System").?});
+    try std.testing.expectEqual(api.intern("typeMismatch"), send(api, type_mismatch, "kind", &.{}));
+    const propagated = send(api, three, "+", &.{integer_zero_divide});
+    try std.testing.expectEqual(zero_divide_kind, send(api, propagated, "kind", &.{}));
     try std.testing.expectEqual(api.falseObj, send(api, two_point_five, "=", &.{api.mkSmallInt(5)}));
     try std.testing.expectEqual(api.falseObj, send(api, two_point_five, ">", &.{three}));
     try std.testing.expectEqual(api.trueObj, send(api, two_point_five, "<", &.{api.mkFloat(3.0)}));

@@ -82,7 +82,7 @@ unsafe fn integer(api: &IdApi, value: Oop) -> Option<i64> {
 
 unsafe fn result(api: &IdApi, value: i128) -> Oop {
     if value < i64::MIN as i128 || value > i64::MAX as i128 {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"overflow\0", b"integer overflow") };
     }
     // SAFETY: the range check makes the conversion exact.
     unsafe { (api.mkSmallInt)(value as i64) }
@@ -124,8 +124,11 @@ unsafe fn numeric_binary(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number") };
     };
     match (left, right) {
         (Numeric::Integer(left), Numeric::Integer(right)) => {
@@ -166,8 +169,11 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number") };
     };
     let zero_divide = match right {
         Numeric::Integer(value) => value == 0,
@@ -203,8 +209,11 @@ unsafe extern "C" fn integer_mod(self_object: Oop, args: *const Oop, count: usiz
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { integer(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"mod: needs an Integer") };
     };
     if right == 0 {
         return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
@@ -228,8 +237,11 @@ unsafe fn compare(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"comparison needs a number") };
     };
     let matches = match (left, right) {
         (Numeric::Integer(left), Numeric::Integer(right)) => predicate(left as f64, right as f64),
@@ -436,8 +448,11 @@ unsafe fn float_binary(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"Float arithmetic needs a number") };
     };
     let right = match right {
         Numeric::Integer(value) => value as f64,
@@ -469,8 +484,11 @@ unsafe extern "C" fn float_div(self_object: Oop, args: *const Oop, count: usize)
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"Float arithmetic needs a number") };
     };
     let right = match right {
         Numeric::Integer(value) => value as f64,
@@ -498,8 +516,11 @@ unsafe fn float_compare(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { is_error(api, right_object) } {
+        return right_object;
+    }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"typeMismatch\0", b"comparison needs a number") };
     };
     let right = match right {
         Numeric::Integer(value) => value as f64,
@@ -558,13 +579,13 @@ unsafe extern "C" fn float_negated(
 
 unsafe fn float_to_integer(api: &IdApi, value: f64) -> Oop {
     if !value.is_finite() {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"overflow\0", b"float out of Integer range") };
     }
     let value = value.trunc();
     // A SmallInt cannot represent 2^63 even though that boundary rounds from
     // i64::MAX when converted to f64. Reject it before Rust's saturating cast.
     if value < i64::MIN as f64 || value >= 9_223_372_036_854_775_808.0 {
-        return api.nilObj;
+        return unsafe { numeric_error(api, b"overflow\0", b"float out of Integer range") };
     }
     unsafe { (api.mkSmallInt)(value as i64) }
 }
