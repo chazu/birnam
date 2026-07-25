@@ -381,7 +381,12 @@ unsafe fn collect_window(
     collector.status
 }
 
-unsafe fn collect_project_facts(store: Oop) -> Result<(Vec<Triple>, *const IdApi), i32> {
+unsafe fn collect_project_facts_window(
+    store: Oop,
+    mode: u8,
+    lower: u64,
+    upper: u64,
+) -> Result<(Vec<Triple>, *const IdApi), i32> {
     if store.is_null() {
         return Err(-3);
     }
@@ -413,16 +418,50 @@ unsafe fn collect_project_facts(store: Oop) -> Result<(Vec<Triple>, *const IdApi
     // SAFETY: callback payload was allocated with exactly one raw pointer slot.
     unsafe { ptr::write(callback.cast::<*mut ProjectCollector>(), &mut collector) };
     ACTIVE_PROBE_BLOCK.store(callback as usize, Ordering::Release);
-    let selector = unsafe { (api.intern)(c"liveTriplesDo:".as_ptr()) };
-    let arguments = [callback];
-    // SAFETY: Store owns the frozen liveTriplesDo: selector and synchronously
+    let selector_name: &[u8] = match mode {
+        0 => b"liveTriplesDo:\0",
+        1 => b"liveTriplesAsOf:do:\0",
+        2 => b"liveTriplesSince:do:\0",
+        3 => b"liveTriplesBetween:and:do:\0",
+        _ => {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return Err(-7);
+        }
+    };
+    if (mode == 1 || mode == 2 || mode == 3) && (lower > i64::MAX as u64 || upper > i64::MAX as u64)
+    {
+        ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+        return Err(-7);
+    }
+    let selector = unsafe { (api.intern)(selector_name.as_ptr().cast()) };
+    let lower_oop = unsafe { (api.mkSmallInt)(lower as i64) };
+    let upper_oop = unsafe { (api.mkSmallInt)(upper as i64) };
+    let arguments: [Oop; 3] = match mode {
+        0 => [callback, ptr::null_mut(), ptr::null_mut()],
+        1 => [upper_oop, callback, ptr::null_mut()],
+        2 => [lower_oop, callback, ptr::null_mut()],
+        3 => [lower_oop, upper_oop, callback],
+        _ => unreachable!(),
+    };
+    let argument_count = match mode {
+        0 => 1,
+        1 | 2 => 2,
+        3 => 3,
+        _ => unreachable!(),
+    };
+    // SAFETY: Store owns the frozen current/history selector and synchronously
     // invokes value:value:value: on the callback object.
-    unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
+    unsafe { (api.send)(store, selector, arguments.as_ptr(), argument_count) };
     ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
     if collector.status != 0 {
         return Err(collector.status);
     }
     Ok((collector.facts, collector.api))
+}
+
+unsafe fn collect_project_facts(store: Oop) -> Result<(Vec<Triple>, *const IdApi), i32> {
+    // SAFETY: mode zero uses the current liveTriplesDo: callback protocol.
+    unsafe { collect_project_facts_window(store, 0, 0, 0) }
 }
 
 unsafe fn project_terms(api: &IdApi, pattern: ProjectPattern) -> Result<[Term; 3], i32> {
@@ -491,6 +530,49 @@ unsafe fn project_live(
         unsafe { ptr::write(output.add(slot), record(value)) };
     }
     // `written` is the number of projected values, not the callback snapshot.
+    unsafe { *written = projected_len };
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_window_live(
+    store: Oop,
+    mode: u8,
+    lower: u64,
+    upper: u64,
+    projection: u8,
+    pattern: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let (facts, api_address) =
+        match unsafe { collect_project_facts_window(store, mode, lower, upper) } {
+            Ok(snapshot) => snapshot,
+            Err(status) => return status,
+        };
+    // SAFETY: collect_project_facts_window returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let terms = match unsafe { project_terms(api, pattern) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let projected = project(&facts, &[Clause(terms)], projection as u32);
+    if projected.len() > capacity {
+        return -5;
+    }
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity elements of writable output
+        // storage; the length check above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
     unsafe { *written = projected_len };
     0
 }
@@ -866,6 +948,36 @@ pub unsafe extern "C" fn birnam_relational_rust_project_live(
     unsafe {
         project_live(
             store, projection, entity, attribute, value, output, capacity, written,
+        )
+    }
+}
+
+/// Project one triple-pattern variable from a Store transaction window. Mode
+/// `0` is current, `1` is as-of `upper`, `2` is since `lower`, and `3` is the
+/// half-open `[lower, upper)` window. This composes the frozen Store history
+/// selectors with the same authority-free projection kernel.
+///
+/// # Safety
+///
+/// `store` and any non-null pattern term must remain live for the synchronous
+/// call. `output` and `written` must point to caller-owned writable storage for
+/// the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_window_live(
+    store: Oop,
+    mode: u8,
+    lower: u64,
+    upper: u64,
+    projection: u8,
+    pattern: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe {
+        project_window_live(
+            store, mode, lower, upper, projection, pattern, output, capacity, written,
         )
     }
 }

@@ -31,6 +31,7 @@ const ProjectNegatedLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?
 const ProjectDisjunctionLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectRecursiveLive = *const fn (Oop, u8, ProjectPattern, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const AggregateLive = *const fn (Oop, u8, ProjectPattern, u8, ?*Classified) callconv(.c) c_int;
+const ProjectWindowLive = *const fn (Oop, u8, u64, u64, u8, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -550,4 +551,70 @@ test "Rust Relational kernel folds distinct aggregate values" {
     _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, city, api.intern("Boston") }, 3);
     const nonnumeric = ProjectPattern{ .entity = null, .attribute = city, .value = null };
     try std.testing.expectEqual(@as(c_int, -4), aggregate(store, 2, nonnumeric, 2, &output));
+}
+
+test "Rust Relational kernel projects Store transaction windows" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const window_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_window_live") orelse
+        return error.RustRelationalProjectWindowMissing;
+    const window: ProjectWindowLive = @ptrCast(@alignCast(window_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const entity = api.intern("rust_relational_window_project_entity");
+    const attribute = api.intern("rust_relational_window_project_attribute");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ attribute, api.intern("history"), api.trueObj }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, api.mkSmallInt(11) }, 3);
+    const after_first = api.send(store, api.intern("basis"), &.{}, 0);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, api.mkSmallInt(22) }, 3);
+    const after_second = api.send(store, api.intern("basis"), &.{}, 0);
+
+    const pattern = ProjectPattern{ .entity = null, .attribute = attribute, .value = null };
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        window(store, 1, 0, @intCast(api.smallIntValue(after_first)), 2, pattern, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@as(i64, 11), values[0].integer);
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        window(store, 2, @intCast(api.smallIntValue(after_first)), 0, 2, pattern, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@as(i64, 22), values[0].integer);
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        window(
+            store,
+            3,
+            @intCast(api.smallIntValue(after_first)),
+            @intCast(api.smallIntValue(after_second)),
+            2,
+            pattern,
+            &values,
+            values.len,
+            &written,
+        ),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@as(i64, 22), values[0].integer);
+
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        window(store, 9, 0, 0, 2, pattern, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        window(store, 1, 0, std.math.maxInt(u64), 2, pattern, &values, values.len, &written),
+    );
 }
