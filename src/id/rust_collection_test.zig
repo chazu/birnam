@@ -30,6 +30,13 @@ fn collectInteger(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oo
     return floor.api().nilObj;
 }
 
+fn addInteger(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    const api = floor.api();
+    return api.mkSmallInt(api.smallIntValue(args[0]) + api.smallIntValue(args[1]));
+}
+
 test "Rust Collection vector protocol preserves persistent indexed values" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_COLLECTION_DYLIB") orelse
@@ -94,6 +101,23 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const block = api.alloc(block_vt, 0);
     try std.testing.expectEqual(second, send(api, second, "do:", &.{block}));
     try std.testing.expectEqual(@as(i64, 30), sum);
+
+    const fold_vt = api.proto(api.object_vt);
+    api.method(fold_vt, api.intern("value:value:"), &addInteger);
+    const fold_block = api.alloc(fold_vt, 0);
+    const folded = send(api, second, "inject:into:", &.{ api.mkSmallInt(0), fold_block });
+    try std.testing.expectEqual(@as(i64, 30), api.smallIntValue(folded));
+
+    const copied = send(api, vector_with_tail, "copyFrom:to:", &.{ api.mkSmallInt(10), api.mkSmallInt(13) });
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, copied, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 10), api.smallIntValue(send(api, copied, "at:", &.{api.mkSmallInt(0)})));
+    try std.testing.expectEqual(api.nilObj, send(api, vector_with_tail, "copyFrom:to:", &.{ api.mkSmallInt(13), api.mkSmallInt(10) }));
+
+    const reversed = send(api, second, "reversed", &.{});
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, reversed, "at:", &.{api.mkSmallInt(0)})));
+    try std.testing.expectEqual(@as(i64, 10), api.smallIntValue(send(api, reversed, "at:", &.{api.mkSmallInt(1)})));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, second, "indexOf:", &.{api.mkSmallInt(20)})));
+    try std.testing.expectEqual(api.nilObj, send(api, second, "indexOf:", &.{api.mkSmallInt(99)}));
 
     const joined = send(api, first, ",", &.{second});
     try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, joined, "size", &.{})));

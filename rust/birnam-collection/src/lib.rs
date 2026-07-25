@@ -225,6 +225,7 @@ struct Runtime {
     vector_proto: usize,
     node_vt: usize,
     value1: usize,
+    value2: usize,
     print_string: usize,
 }
 
@@ -451,6 +452,39 @@ unsafe fn vector_push(api: &IdApi, runtime: &Runtime, vector: Oop, value: Oop) -
     result
 }
 
+unsafe fn same_value(api: &IdApi, left: Oop, right: Oop) -> bool {
+    if left == right {
+        return true;
+    }
+    if left.is_null() || right.is_null() {
+        return false;
+    }
+    if unsafe { (api.isSmallInt)(left) } != 0 && unsafe { (api.isSmallInt)(right) } != 0 {
+        return unsafe { (api.smallIntValue)(left) == (api.smallIntValue)(right) };
+    }
+    if unsafe { (api.isFloat)(left) } != 0 && unsafe { (api.isFloat)(right) } != 0 {
+        return unsafe { (api.floatValue)(left) == (api.floatValue)(right) };
+    }
+    if unsafe { (api.vtableOf)(left) } != api.string_vt
+        || unsafe { (api.vtableOf)(right) } != api.string_vt
+    {
+        return false;
+    }
+    let mut left_len = 0;
+    let mut right_len = 0;
+    let left_bytes = unsafe { (api.stringBytes)(left, &mut left_len) };
+    let right_bytes = unsafe { (api.stringBytes)(right, &mut right_len) };
+    if left_len != right_len {
+        return false;
+    }
+    // SAFETY: stringBytes supplies borrowed byte extents for this synchronous
+    // comparison; both slices end before any foreign call.
+    unsafe {
+        core::slice::from_raw_parts(left_bytes, left_len)
+            == core::slice::from_raw_parts(right_bytes, right_len)
+    }
+}
+
 unsafe extern "C" fn vector_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
@@ -507,6 +541,88 @@ unsafe extern "C" fn vector_do(self_object: Oop, args: *const Oop, count: usize)
         unsafe { (api.send)(block, selector, arguments.as_ptr(), arguments.len()) };
     }
     self_object
+}
+
+unsafe extern "C" fn vector_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let block = arguments[1];
+    let selector = runtime().value2 as Oop;
+    let total = unsafe { (*vec_payload(self_object)).count };
+    let mut accumulator = arguments[0];
+    for index in 0..total {
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        let call_arguments = [accumulator, value];
+        accumulator = unsafe { (api.send)(block, selector, call_arguments.as_ptr(), 2) };
+        if accumulator.is_null() {
+            return api.nilObj;
+        }
+    }
+    accumulator
+}
+
+unsafe extern "C" fn vector_index_of(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(needle) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let total = unsafe { (*vec_payload(self_object)).count };
+    for index in 0..total {
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        if unsafe { same_value(api, value, needle) } {
+            return unsafe { (api.mkSmallInt)(index as i64) };
+        }
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn vector_copy_from_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(arguments[0]) } == 0
+        || unsafe { (api.isSmallInt)(arguments[1]) } == 0
+    {
+        return api.nilObj;
+    }
+    let from = unsafe { (api.smallIntValue)(arguments[0]) };
+    let to = unsafe { (api.smallIntValue)(arguments[1]) };
+    let total = unsafe { (*vec_payload(self_object)).count };
+    if from < 0 || to < from || to as usize > total {
+        return api.nilObj;
+    }
+    let mut result = unsafe { empty_vector(api, runtime()) };
+    for index in from as usize..to as usize {
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        result = unsafe { vector_push(api, runtime(), result, value) };
+    }
+    result
+}
+
+unsafe extern "C" fn vector_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let total = unsafe { (*vec_payload(self_object)).count };
+    let mut result = unsafe { empty_vector(api, runtime()) };
+    for index in (0..total).rev() {
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        result = unsafe { vector_push(api, runtime(), result, value) };
+    }
+    result
 }
 
 unsafe extern "C" fn vector_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -596,6 +712,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         vector_proto: 0,
                         node_vt: node_vt as usize,
                         value1: 0,
+                        value2: 0,
                         print_string: 0,
                     },
                 )
@@ -610,6 +727,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             vector_proto: vector_proto as usize,
             node_vt: node_vt as usize,
             value1: unsafe { intern(api, b"value:\0") } as usize,
+            value2: unsafe { intern(api, b"value:value:\0") } as usize,
             print_string: unsafe { intern(api, b"printString\0") } as usize,
         }
     });
@@ -636,10 +754,30 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (api.method)(runtime.vector_vt as Oop, intern(api, b"do:\0"), vector_do);
         (api.method)(
             runtime.vector_vt as Oop,
+            intern(api, b"inject:into:\0"),
+            vector_inject,
+        );
+        (api.method)(
+            runtime.vector_vt as Oop,
             intern(api, b"printString\0"),
             vector_print_string,
         );
         (api.method)(runtime.vector_vt as Oop, intern(api, b",\0"), vector_comma);
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"indexOf:\0"),
+            vector_index_of,
+        );
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"copyFrom:to:\0"),
+            vector_copy_from_to,
+        );
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"reversed\0"),
+            vector_reversed,
+        );
     }
     if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
