@@ -65,6 +65,10 @@ fn runtime_abi_hash() -> u64 {
     hash
 }
 
+fn authority_digest_from_bytes(bytes: &[u8]) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+    bytes.try_into().ok()
+}
+
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fs;
@@ -1361,6 +1365,39 @@ fn preflight_writer_accepts(facts: &[u8], heap: &[u8]) -> bool {
     writer.facts(facts).is_ok() && writer.heap(heap).is_ok()
 }
 
+unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    if codegen.is_null() || codegen == api.nilObj {
+        return None;
+    }
+    let digest = unsafe {
+        (api.send)(
+            codegen,
+            intern(api, b"currentGenerationDigest\0"),
+            ptr::null(),
+            0,
+        )
+    };
+    if digest.is_null()
+        || digest == api.nilObj
+        || unsafe { (api.vtableOf)(digest) } != api.string_vt
+    {
+        return None;
+    }
+    let mut length = 0;
+    let bytes = unsafe { (api.stringBytes)(digest, &mut length) };
+    if bytes.is_null() && length != 0 {
+        return None;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        // SAFETY: stringBytes supplies `length` readable bytes for this live String.
+        unsafe { core::slice::from_raw_parts(bytes, length) }
+    };
+    authority_digest_from_bytes(bytes)
+}
+
 unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
@@ -1443,14 +1480,17 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     // Later R6 slices install the codec-backed save transaction here.
     let (kept, rejected, heap_ok, recovered_slots, rejected_slots, writer_ok) =
         unsafe { collect_store_facts(api) };
+    let authority_available = unsafe { current_generation_digest(api) }.is_some();
     reject_save(if !heap_ok {
         "Rust Image heap preflight rejected unsupported layout"
     } else if rejected != 0 {
         "Rust Image fact preflight rejected unsupported values"
     } else if !writer_ok {
         "Rust Image writer rejected preflight payload"
+    } else if !authority_available {
+        "Rust Image generation authority is not available"
     } else {
-        "Rust Image authority/code orchestration is not installed"
+        "Rust Image code capture/rebuild orchestration is not installed"
     });
     record_fact_counts(kept, rejected, recovered_slots, rejected_slots);
     api.nilObj
@@ -1863,6 +1903,8 @@ mod tests {
     #[test]
     fn writer_emits_parser_compatible_v4_records() {
         let digest = [b'0'; AUTHORITY_DIGEST_LEN];
+        assert_eq!(authority_digest_from_bytes(&digest), Some(digest));
+        assert_eq!(authority_digest_from_bytes(&digest[..63]), None);
         let bytes = compose_complete_image(
             1,
             99,

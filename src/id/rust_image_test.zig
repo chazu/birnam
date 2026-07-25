@@ -154,7 +154,7 @@ test "Rust Image shell preserves report layout and selector surface" {
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, report, "rejectedSlots", &.{})));
     detail_len = 0;
     const writer_detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
-    try std.testing.expectEqualStrings("Rust Image authority/code orchestration is not installed", writer_detail[0..detail_len]);
+    try std.testing.expectEqualStrings("Rust Image generation authority is not available", writer_detail[0..detail_len]);
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, "shell.image")}) == api.nilObj);
     try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, "shell.image"), api.trueObj }) == api.nilObj);
     try std.testing.expect(send(api, system, "bakeExe:", &.{str(api, "shell-exe")}) == api.nilObj);
