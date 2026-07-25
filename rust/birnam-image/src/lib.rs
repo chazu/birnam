@@ -1,10 +1,11 @@
-//! Borrowed framing primitives for the portable Birnam v4 image.
+//! Borrowed framing primitives and a checked writer for the portable Birnam v4 image.
 //!
 //! This format-only crate owns no `IdApi` values and performs no allocation. It
 //! validates the v4 image header, authority/code relationship, borrowed field
 //! envelopes, facts, and layout-driven heap records without materializing any
-//! runtime state. Higher layers remain responsible for name resolution,
-//! swizzling, loading, and Store mutation.
+//! runtime state. The writer emits only framing and caller-owned payloads;
+//! higher layers remain responsible for name resolution, swizzling, loading,
+//! heap walking, and Store mutation.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -534,6 +535,111 @@ impl<'a> Heap<'a> {
 pub struct Records<'a> {
     bytes: &'a [u8],
     offset: usize,
+}
+
+/// Errors raised while assembling a v4 image's framed records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncodeError {
+    MissingAuthority,
+    DuplicateAuthority,
+    CodeBeforeAuthority,
+    DuplicateCode,
+    AuthorityMismatch,
+    PayloadTooLarge,
+}
+
+/// Checked, allocation-owning v4 framing writer.
+///
+/// This type deliberately accepts already-encoded facts/heap/code payloads. It
+/// does not inspect or mutate runtime objects, and it never publishes a file.
+pub struct ImageWriter {
+    bytes: Vec<u8>,
+    authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
+    code_written: bool,
+}
+
+impl ImageWriter {
+    pub fn new(architecture: u32, abi_hash: u64) -> Self {
+        let mut bytes = Vec::with_capacity(HEADER_LEN);
+        bytes.extend_from_slice(MAGIC);
+        bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&ENDIAN_TAG.to_le_bytes());
+        bytes.extend_from_slice(&architecture.to_le_bytes());
+        bytes.extend_from_slice(&abi_hash.to_le_bytes());
+        Self {
+            bytes,
+            authority: None,
+            code_written: false,
+        }
+    }
+
+    pub fn facts(&mut self, payload: &[u8]) -> Result<(), EncodeError> {
+        self.record(RecordKind::Facts, payload)
+    }
+
+    pub fn heap(&mut self, payload: &[u8]) -> Result<(), EncodeError> {
+        self.record(RecordKind::Heap, payload)
+    }
+
+    pub fn authority(&mut self, digest: &[u8; AUTHORITY_DIGEST_LEN]) -> Result<(), EncodeError> {
+        if self.authority.is_some() {
+            return Err(EncodeError::DuplicateAuthority);
+        }
+        self.push_record(RecordKind::Authority, digest)?;
+        self.authority = Some(*digest);
+        Ok(())
+    }
+
+    pub fn code(
+        &mut self,
+        checksum: u64,
+        generation_digest: &[u8; AUTHORITY_DIGEST_LEN],
+        unit: &[u8],
+    ) -> Result<(), EncodeError> {
+        let Some(authority) = self.authority else {
+            return Err(EncodeError::CodeBeforeAuthority);
+        };
+        if self.code_written {
+            return Err(EncodeError::DuplicateCode);
+        }
+        if authority != *generation_digest {
+            return Err(EncodeError::AuthorityMismatch);
+        }
+        let payload_len = 8usize
+            .checked_add(AUTHORITY_DIGEST_LEN)
+            .and_then(|length| length.checked_add(unit.len()))
+            .ok_or(EncodeError::PayloadTooLarge)?;
+        let mut payload = Vec::with_capacity(payload_len);
+        payload.extend_from_slice(&checksum.to_le_bytes());
+        payload.extend_from_slice(generation_digest);
+        payload.extend_from_slice(unit);
+        self.push_record(RecordKind::Code, &payload)?;
+        self.code_written = true;
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<Vec<u8>, EncodeError> {
+        if self.authority.is_none() {
+            return Err(EncodeError::MissingAuthority);
+        }
+        Ok(self.bytes)
+    }
+
+    fn record(&mut self, kind: RecordKind, payload: &[u8]) -> Result<(), EncodeError> {
+        match kind {
+            RecordKind::Facts | RecordKind::Heap => self.push_record(kind, payload),
+            RecordKind::Code => Err(EncodeError::CodeBeforeAuthority),
+            RecordKind::Authority => Err(EncodeError::DuplicateAuthority),
+        }
+    }
+
+    fn push_record(&mut self, kind: RecordKind, payload: &[u8]) -> Result<(), EncodeError> {
+        let length = u64::try_from(payload.len()).map_err(|_| EncodeError::PayloadTooLarge)?;
+        self.bytes.extend_from_slice(&(kind as u32).to_le_bytes());
+        self.bytes.extend_from_slice(&length.to_le_bytes());
+        self.bytes.extend_from_slice(payload);
+        Ok(())
+    }
 }
 
 impl<'a> Records<'a> {
@@ -1115,6 +1221,65 @@ mod tests {
             })
         );
         assert_eq!(records.next_record().unwrap(), None);
+    }
+
+    #[test]
+    fn writer_emits_parser_compatible_v4_records() {
+        let digest = [b'0'; AUTHORITY_DIGEST_LEN];
+        let mut writer = ImageWriter::new(1, 99);
+        writer.facts(b"facts").unwrap();
+        writer.heap(b"heap").unwrap();
+        writer.authority(&digest).unwrap();
+        writer.code(wyhash(0, b"unit"), &digest, b"unit").unwrap();
+        let bytes = writer.finish().unwrap();
+
+        let image = Image::parse(&bytes).unwrap().header.require(1, 99).unwrap();
+        assert_eq!(image.architecture, 1);
+        assert_eq!(image.abi_hash, 99);
+        let mut records = Image::parse(&bytes).unwrap().records();
+        let mut kinds = Vec::new();
+        while let Some(record) = records.next_record().unwrap() {
+            kinds.push(record.kind);
+        }
+        assert_eq!(
+            kinds,
+            vec![
+                RecordKind::Facts,
+                RecordKind::Heap,
+                RecordKind::Authority,
+                RecordKind::Code
+            ]
+        );
+    }
+
+    #[test]
+    fn writer_rejects_authority_and_code_ordering_errors() {
+        let digest = [b'0'; AUTHORITY_DIGEST_LEN];
+        let other_digest = [b'1'; AUTHORITY_DIGEST_LEN];
+        assert_eq!(
+            ImageWriter::new(1, 99).finish(),
+            Err(EncodeError::MissingAuthority)
+        );
+
+        let mut writer = ImageWriter::new(1, 99);
+        assert_eq!(
+            writer.code(7, &digest, b"unit"),
+            Err(EncodeError::CodeBeforeAuthority)
+        );
+        writer.authority(&digest).unwrap();
+        assert_eq!(
+            writer.authority(&digest),
+            Err(EncodeError::DuplicateAuthority)
+        );
+        assert_eq!(
+            writer.code(7, &other_digest, b"unit"),
+            Err(EncodeError::AuthorityMismatch)
+        );
+        writer.code(7, &digest, b"unit").unwrap();
+        assert_eq!(
+            writer.code(8, &digest, b"unit"),
+            Err(EncodeError::DuplicateCode)
+        );
     }
 
     #[test]
