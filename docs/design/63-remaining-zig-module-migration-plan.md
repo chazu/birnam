@@ -63,12 +63,24 @@ Every phase below inherits these rules.
 4. **Canonical object dictionary.** Exported objects and vtables are looked up
    by canonical name. A reload extends the existing family; it never mints a
    competing family or singleton.
-5. **MOP consistency law.** The object dictionary is the dispatch authority;
-   Store is its derived mirror and mutation chokepoint. For every selector, the
-   mirror is exactly the callable Method, `#primitive`, or absent. A tracked
-   replacement retracts the old mirror, mutates the dictionary, then asserts
-   the new mirror; transient absence is allowed during that transaction. No
-   observer or authorizer callback may publish a contradictory state.
+5. **MOP consistency law.** The live object dictionary is authoritative for
+   dispatch. Store is a derived MOP mirror and the supported post-bootstrap
+   semantic mutation chokepoint.
+
+   For every direct `(vtable, selector)` binding, the mirror is exactly one of:
+
+   - the exact live Method for a tracked binding;
+   - `#primitive` for an unreified direct binding found by backfill; or
+   - absent.
+
+   With no direct binding it is absent. It never names a different method, and
+   `#primitive` never survives replacement or removal of the direct binding.
+   Tracked replacement remains `retract mirror → mutate dictionary → assert
+   exact mirror`; tracked removal remains `retract mirror → remove direct
+   dictionary entry`. A raw bootstrap/private mutation may degrade the mirror
+   only to honest absence. No observer or authorizer callback may publish a
+   contradictory state, copy inherited methods into direct slots, or create a
+   second Rust-side method registry.
 6. **Store authority.** Relational reads use the Store's derived facts, but
    those facts never become authoritative over object dispatch. Rust code must
    not introduce a second global environment or bypass the Store callback
@@ -129,24 +141,24 @@ production owner. Complete this boundary before Collection or Error cutover.
    `loadModule:`, line input, file/environment I/O, output stringification,
    GC controls, and every exported System/Block/Error family selector.
 2. Remove Error-family ownership from the Rust Prelude implementation. It must
-   import the standalone Error family lazily and work with either Zig or Rust
-   Error during the observation window.
-3. Add a standalone Rust Error dylib and run Prelude against both Error
-   implementations in isolated prefixes. No test may load two singleton owners
-   for the same family.
-4. Add source-bootstrap, self-hosted-handler, relocated-install, and subprocess
+   import the existing standalone Zig Error family lazily. During this phase,
+   Prelude is tested against that Zig Error owner; Rust Error selection begins
+   only after R2 creates its standalone replacement.
+3. Add source-bootstrap, self-hosted-handler, relocated-install, and subprocess
    stdin/output gates. The valid `readLine` path must be tested outside the
    in-process dynamic runner.
-5. Add an explicit `prelude-impl` selection to the native-rung harness. Record
+4. Add an explicit `prelude-impl` selection to the native-rung harness. Record
    identity, digest, selector membership, exports, and the Rust/Zig result
    matrix before changing the canonical install mapping.
-6. Run full verify and R6, then observe project builds, image save/load, module
-   loading, process controls, and release packaging before one canonical switch
-   commit. Keep the Zig Prelude as the rollback fixture.
+5. Run focused parity, full verify, and R6 as the pre-switch acceptance gate.
+   Make one canonical Rust-Prelude selection commit, then observe project
+   builds, image save/load, module loading, process controls, and release
+   packaging. Keep the Zig Prelude as the rollback fixture throughout.
 
 **R0.5 exit gate:** complete Prelude surface parity, one Error owner per
 process, cold/source bootstrap and subprocess I/O evidence, explicit selector
-selection, full verify/R6, and a closed observation window.
+selection, pre-switch full verify/R6, one canonical switch commit, and a
+post-switch observation window.
 
 ## 5. Phase R1 — Collection (first implementation slice)
 
@@ -179,7 +191,25 @@ GC without changing the floor.
    sharing, overflow/empty cases, and deterministic rendering. No unit test
    may call a foreign `send` while holding a Rust borrow or lock.
 
-### R1.2 Range, Map, and String slices
+### R1.2 Collection foundation and ownership
+
+1. Port `CollectionVt` as the shared abstract parent and preserve the exact
+   parent graph for Vector, Range, Map, and String. Reuse canonical prototypes,
+   owners, reload/import behavior, and the no-`[Collection new]` rule.
+2. Port the `VectorNode` and `MapNode` families, their constructors, owner
+   links, and root-provider registration. Vector nodes are all-OOP payloads;
+   HAMT nodes retain the two raw header words followed by OOP entries.
+3. Port `StringBuilder` as a raw `{ptr,len,cap}` payload with explicit
+   allocation, growth, `new`/`clone`, `add:`, `addByte:`, `size`, `asString`,
+   and `printString` behavior. Register its finalizer/ownership rule so a
+   builder's native buffer is released exactly once and never traced as OOP.
+4. Port Object/nil `isNil`, `notNil`, and `printString` overrides, Integer
+   `to:`, every constructor/factory selector, and the exact absent/error/abort
+   behavior for invalid receivers and counts.
+5. Add export, layout, reload, forced-GC, and constructor-owner fixtures before
+   enabling any concrete collection implementation.
+
+### R1.3 Range, Map, and String slices
 
 1. Add `Range` with inclusive bounds, empty/descending behavior, `size`, `at:`,
    `do:`, `inject:into:`, `includes:`, `reversed`, and exact Integer values.
@@ -197,7 +227,7 @@ GC without changing the floor.
    callback. Add forced-GC tests during `do:`/`inject:into:` and after a failed
    callback; prove no shared node is reclaimed early.
 
-### R1.3 Cross-floor and acceptance gates
+### R1.4 Cross-floor and acceptance gates
 
 1. Add one Zig test corpus that loads exactly one selected collection dylib,
    checks exports and selector membership, and runs the behavior matrix.
@@ -208,13 +238,17 @@ GC without changing the floor.
 4. Run the R6 focused target and full optimized verify. A benchmark change is
    accepted only as a new explicit comparator crossing with a checked-in
    result digest and tradeoff note.
-5. Keep Rust opt-in for an observation window covering stdlib bootstrap,
-   relational smoke, Alien struct conversion, image save/load, and project
-   builds. Only then make one canonical-selection commit.
+5. Keep Rust opt-in through the pre-switch acceptance gate, then make one
+   canonical-selection commit. Observe stdlib bootstrap, relational smoke,
+   Alien struct conversion, image save/load, and project builds after that
+   commit; the Zig collection remains the rollback fixture.
 
-**R1 exit gate:** Vector, Range, Map, and retained native String behavior pass
-the cross-floor corpus, forced-GC and relocation checks, full verify, R6, and
-the observation window. Zig remains available for rollback.
+**R1 exit gate:** `CollectionVt`, `Vector`, `VectorNode`, `Range`, `Map`,
+`MapNode`, `StringBuilder`, Object/nil methods, Integer `to:`, every retained
+native String/Vector/Map selector, all exports and mixed layouts pass the
+cross-floor corpus, forced-GC and relocation checks, pre-switch full verify/R6,
+one canonical switch commit, and the post-switch observation window. Zig
+remains available for rollback.
 
 ## 6. Phase R2 — Standalone Error dylib
 
@@ -233,13 +267,15 @@ does not subsume the rung or mint a second family.
 4. Run nested propagation, self-hosted handlers, image export, source
    bootstrap, forced-GC, and both preload-order tests. A preload order that
    would create duplicate families is a failed gate, not a tolerated mode.
-5. Switch the Error dylib canonically only after the standalone Rust identity
-   is observed through the complete Prelude, Collection, image, and project
+5. Run the standalone Error parity, preload-order, GC, image, and source gates
+   as the pre-switch acceptance. Make one canonical Rust Error selection
+   commit, then observe the complete Prelude, Collection, image, and project
    workflows. Retain the Zig Error dylib as the pinned rollback fixture.
 
 **R2 exit gate:** one Error family per process, one dynamic Error owner, stable
 kind/message identity, and no duplicate `ErrorVt`/`Error` export under any
-supported load order.
+supported load order; pre-switch acceptance, one canonical switch commit, and
+post-switch observation are recorded.
 
 ## 7. Phase R3 — Isolate
 
@@ -262,30 +298,45 @@ supported load order.
 6. Add child-process tests for malformed frames, hostile children, truncated
    replies, timeout, double-stop, and forced termination. Run debug and
    ReleaseSafe variants.
+7. Treat wire, ABI, hostile-child, relocation, full verify, and R6 results as
+   the pre-switch acceptance. Make one canonical Rust Isolate selection commit,
+   then observe host/project/image workflows and retain the Zig Isolate as the
+   rollback fixture.
 
 **R3 exit gate:** wire-v1 corpus parity, no unbounded allocation or panic across
-the boundary, deterministic failure/termination, relocated install pass, and
-R6/verify green.
+the boundary, deterministic failure/termination, relocated install pass,
+pre-switch full verify/R6, one canonical switch commit, and post-switch
+observation.
 
 ## 8. Phase R4 — Relational
 
-1. Port the query engine over the Rust Store callback surface only after R1.
-   The Rust implementation must read live triples from Store and never cache a
-   second authoritative fact set.
+1. Port the query engine against the frozen Store object/message protocol only
+   after R1. Exercise the Rust Relational implementation against both the live
+   Rust Store and the live-or-pinned Zig Store rollback fixture; the boundary is
+   not a Rust-private callback surface. Read live triples from Store and never
+   cache a second authoritative fact set.
 2. Port clauses left-to-right: constants/logic variables, joins, predicates,
    negation, disjunction, recursive rules, deterministic ordering, then pull
    and time-window reads. Preserve the existing no-reorder semantics.
 3. Port aggregation (`count`, `sum`, `min`, `max`, `avg`, `groupBy`) with exact
    empty/type/error behavior and deterministic Map/Vector results.
 4. Add cross-floor query fixtures for single/join/negation/rule/pull/asOf and
-   the full Store MOP consistency law. Add GC during collector callbacks and
-   callback reentry tests.
-5. Run the query benchmark corpus. Any regression must be classified against
-   the existing R6 allowances; do not hide it behind a broader threshold.
+   all `liveTriplesDo:`/`AsOf`/`Since`/`Between` variants, using both Store
+   implementations. Prove the full Store MOP consistency law, rule-cache
+   rebuild after image load, GC during collector callbacks, and callback
+   reentry.
+5. Run the query benchmark corpus and the Rust-Relational × Zig-Store rollback
+   combination. Any regression must be classified against the existing R6
+   allowances; do not hide it behind a broader threshold.
+6. Treat parity, rollback, benchmark, full verify, and R6 as the pre-switch
+   acceptance. Make one canonical Rust Relational selection commit, then close
+   the post-switch observation window with project/image workflows; retain the
+   Zig Relational and Store fixtures for rollback.
 
-**R4 exit gate:** relational results and Store authority match, query and
-collection performance are accepted, full image/project workflows remain green,
-and the observation window closes.
+**R4 exit gate:** relational results and Store authority match across Rust and
+Zig Store combinations, query and collection performance are accepted,
+pre-switch full verify/R6 passes, one canonical switch commit lands, and the
+post-switch image/project observation window closes.
 
 ## 9. Phase R5 — Alien
 
@@ -301,9 +352,13 @@ and the observation window closes.
    reference or lock crosses a callback or reentrant send.
 6. Run the complete ABI-shape corpus, hostile signatures, callback lifetime,
    GC, library unload, and child-abort tests under both floors.
+7. Treat ABI, callback, GC, install, full verify, and R6 results as the
+   pre-switch acceptance. Make one canonical Rust Alien selection commit, then
+   observe project/image workflows and retain the Zig Alien as rollback.
 
 **R5 exit gate:** ABI corpus parity, callback ownership/lifetime proofs,
-deterministic generated C, no unwind across C, and full R6/verify/install pass.
+deterministic generated C, no unwind across C, pre-switch full R6/verify/install,
+one canonical switch commit, and post-switch observation.
 
 ## 10. Phase R6 — Image orchestration
 
@@ -326,11 +381,14 @@ orchestration around them.
 5. Run the full cross-product: Zig/Rust writer × Zig/Rust reader, Zig/Rust
    Store, Zig/Rust Codegen, mapped/rebuild paths, corrupt/truncated/duplicate
    authority/multiple-code fixtures, and relocated installed trees.
-6. Keep image save/load behind the Rust selection until the observation window
-   includes project builds, live replacement, rollback, and release packaging.
+6. Use the export/layout and cross-product results as the pre-switch acceptance,
+   then make one canonical Rust image selection commit. Observe project builds,
+   live replacement, rollback, and release packaging after that commit.
 
 **R6 exit gate:** all compatible-v4 cross-products pass with exact rejection
-reports, no partial activation, and unchanged R6 allowances.
+reports, no partial activation, pre-switch full verify/R6 passes, one canonical
+switch commit, and a post-switch observation window with unchanged R6
+allowances.
 
 ## 11. Phase R7 — Host and final closure
 
@@ -372,22 +430,23 @@ library boundary.
 
 ## 13. Critical path and estimate
 
-The critical path is **R0 → Collection → Relational → Alien → Image → Host**;
-Error consolidation and Isolate can proceed alongside Collection once their
-contracts are frozen. A realistic remaining estimate is:
+The critical path is **R0 → R0.5 Prelude → Collection → Relational → Alien →
+Image → Host**; standalone Error and Isolate can proceed alongside Collection
+once their contracts are frozen. A realistic remaining estimate is:
 
 | Phase | Engineering effort |
 | --- | ---: |
 | R0 inventory/contracts | 1–2 weeks |
+| R0.5 Prelude completion/switch | 1–2 weeks |
 | R1 Collection | 3–5 weeks |
-| R2 Error consolidation | 1–2 weeks |
+| R2 Standalone Error dylib | 1–2 weeks |
 | R3 Isolate | 3–5 weeks |
 | R4 Relational | 4–7 weeks |
 | R5 Alien | 4–7 weeks |
 | R6 Image orchestration | 4–7 weeks |
 | R7 Host/final closure | 5–8 weeks plus observation |
 
-This is **25–43 engineering weeks plus observation windows** for one developer,
+This is **26–45 engineering weeks plus observation windows** for one developer,
 with the widest variance in Relational, Alien, and Image. The estimate excludes
 already-landed Rust floor/compiler work and includes migration-specific parity,
 GC, install, and rollback evidence.
