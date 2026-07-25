@@ -1102,6 +1102,25 @@ remain the next implementation slices.
   probe deliberately preserves the Zig Relational implementation as the
   behavioral authority and rollback path.
 
+### R4.19 Rust Relational rule-cache lifecycle checkpoint (2026-07-25)
+
+- `1f5fce0` factors the Rust rule kernel through an explicit query-scoped
+  `RuleCache`. `rebuild` clears all derived tuples before reseeding definitions
+  and recomputing the finite least fixpoint; `query` reads only that rebuilt
+  cache. This makes stale snapshot rows impossible at the Rust seam while
+  retaining Store as the sole fact authority.
+- The Rust unit corpus now has `16/16` passing tests, including a snapshot
+  replacement test that rebuilds `ancestor` from `1 → 2` to `1 → 3` and proves
+  the old tuple is absent. The cross-floor dynamic corpus remains `14/14` for
+  both Rust Store and Zig Store because this is an internal kernel lifecycle
+  refactor; the accepted R6 gate counts therefore remain `80/80`, `14/14`, and
+  optimized `486/492`.
+- Canonical Store rule-fact reification, image-triggered rebuild wiring,
+  arbitrary rule-body/parameter semantics, canonical grouped/pull result
+  materialization, and canonical Rust Relational selection remain open. The
+  cache is intentionally rebuilt per supplied snapshot and is not persisted
+  as a second authority.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
