@@ -648,6 +648,14 @@ unsafe fn install_entity_method(api: &IdApi) {
         // canonical bridge is installed once StoreVt is available.
         return;
     }
+    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    if store.is_null() {
+        return;
+    }
+    // The canonical Relational module publishes the Store under `db`; the
+    // self-hosted compiled-unit and runtime modules use that shared name for
+    // all imperative and relational reads. Keep Store as the sole authority.
+    unsafe { (api.exportObj)(c"db".as_ptr(), store) };
     let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
     let entity_vt = if entity_vt.is_null() {
         // SAFETY: the new vtable delegates to the process Object vtable and
