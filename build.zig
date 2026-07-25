@@ -942,7 +942,7 @@ pub fn build(b: *std.Build) void {
     );
     run_rust_relational_tests.setEnvironmentVariable(
         "BIRNAM_ZIG_RELATIONAL_DYLIB",
-        b.getInstallPath(.lib, "libbirnam_id_relational.dylib"),
+        b.getInstallPath(.lib, "libbirnam_id_relational_zig.dylib"),
     );
     run_rust_relational_tests.setEnvironmentVariable(
         "BIRNAM_COLLECTION_DYLIB",
@@ -979,7 +979,7 @@ pub fn build(b: *std.Build) void {
     );
     run_rust_relational_zig_store_tests.setEnvironmentVariable(
         "BIRNAM_ZIG_RELATIONAL_DYLIB",
-        b.getInstallPath(.lib, "libbirnam_id_relational.dylib"),
+        b.getInstallPath(.lib, "libbirnam_id_relational_zig.dylib"),
     );
     run_rust_relational_zig_store_tests.setEnvironmentVariable(
         "BIRNAM_COLLECTION_DYLIB",
