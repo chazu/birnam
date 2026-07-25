@@ -1650,7 +1650,7 @@ pub fn build(b: *std.Build) void {
     run_rust_alien_live.step.dependOn(bootstrap_install);
     const test_rust_alien_live_step = b.step(
         "test-rust-alien-live",
-        "Run the Rust Alien loader, wrapper, and callback live-owner proof",
+        "Run the Rust Alien loader, wrapper, callback, buffer, and ABI-corpus live-owner proof",
     );
     test_rust_alien_live_step.dependOn(&run_rust_alien_live.step);
     test_step.dependOn(&run_rust_alien_live.step);
