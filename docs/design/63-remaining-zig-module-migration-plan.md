@@ -2182,7 +2182,28 @@ image authority fixture, and retain the Rust shell's no-publication boundary.
 - The comparator remains unchanged: only `query.aggregate` `+5.8%` and
   `compile.stage1-stdlib` `+11.9%` are accepted. This checkpoint proves live
   authority observation and preserves Rust Image's no-publication boundary; it
-  does not make Rust Image canonical or install code-capture/rebuild authority.
+  does not make Rust Image canonical or install code mapping/rebuild authority.
+
+### R6.20 Rust Image generation-code capture checkpoint (2026-07-25)
+
+- `e620592` adds a capture-only Rust Image seam after live authority is
+  available. It invokes Zig Codegen's existing `compileImageCode:` selector,
+  copies the generated dylib bytes from a process-unique temporary path, and
+  removes that path before returning. Rust Image does not load, map, activate,
+  or publish the unit; Codegen/TCC remain the generation and ABI authorities.
+- The live mixed-runtime probe now requires `ImageSaveReport codeUnits = 1`
+  while the requested image path remains absent and the existing fact-preflight
+  rejection remains fail-closed. The Rust Image codec suite is `19/19`,
+  image-only clippy is clean, and the dynamic shell remains `2/2`.
+- A full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passed with
+  the focused `82/82` pin, Rust Alien live `9/9`, both Rust Image CLI save
+  profile receipts, optimized verify/install/harness legs, and zero
+  missing/unusable cases. The only accepted comparator crossings remain
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+The next bounded slice must bind the captured bytes to the checked v4 code
+record and authority digest in memory, while keeping mapping/rebuild and final
+atomic publication outside the Rust Image shell.
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
