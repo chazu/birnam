@@ -1326,6 +1326,20 @@ remain the next implementation slices.
   parameter/variable-scope semantics, and canonical Rust Relational selection
   remain open.
 
+### R4.33 Rust Relational grouped-aggregate bridge checkpoint (2026-07-25)
+
+- `e754c76` adds the pure rule-body grouping seam and installs
+  `groupBy:aggregate:of:where:` on Store when the shared Map/Vector/LogicVar
+  contracts are present. It rebuilds rules from the Store snapshot, groups in
+  first-appearance order, folds distinct values with the Rust aggregate law,
+  and materializes a shared Map without retaining Rust authority.
+- The cross-floor corpus exercises a predicate-first grouped sum and observes
+  `planner_high → 20`; Rust unit tests remain `17/17`, both dynamic targets
+  remain `14/14`, and no R6 threshold or allowance changed.
+- Pull materialization, image-triggered rebuild, arbitrary
+  parameter/variable-scope semantics, and canonical Rust Relational selection
+  remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
