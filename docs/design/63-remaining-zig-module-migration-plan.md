@@ -620,6 +620,10 @@ remain the next implementation slices.
   the structured pending failure in Debug and ReleaseSafe. The Rust worker
   transport/error corpus remains green; host lifecycle parity and canonical
   selection are still pending.
+- A post-bridge `mise run r6-acceptance` rerun passes at `51/51` with the
+  Isolate target pinned at `3` tests. The optimized verify boundary and the
+  two accepted comparator crossings are unchanged: `query.aggregate +5.8%`
+  and `compile.stage1-stdlib +11.9%`.
 
 ## 8. Phase R4 — Relational
 
