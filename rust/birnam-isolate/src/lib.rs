@@ -1204,7 +1204,9 @@ fn spawn_host_worker(
     let receiver = std::str::from_utf8(receiver).map_err(|_| "invalidReceiverEncoding")?;
     let selector = std::str::from_utf8(selector).map_err(|_| "invalidSelectorEncoding")?;
     let image = std::fs::canonicalize(image).map_err(|_| "imageUnavailable")?;
-    let executable = std::env::current_exe().map_err(|_| "executableUnavailable")?;
+    let executable = std::env::var_os("BIRNAM_WORKER_EXECUTABLE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(std::env::current_exe().map_err(|_| "executableUnavailable")?);
     let (host, worker) = UnixStream::pair().map_err(|_| "socketPairFailed")?;
     let host_fd = host.into_raw_fd();
     let worker_fd = worker.into_raw_fd();

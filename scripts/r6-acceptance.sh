@@ -113,9 +113,9 @@ rust_isolate_test_count=$(awk '
 /^test-rust-isolate success$/ { seen=1; next }
 seen && /^\+- run test / { print; exit }
 seen && /^[^ ]/ { exit }
-' "$functional" | grep -Ec '^\+- run test 3 passed ' || true)
+' "$functional" | grep -Ec '^\+- run test 4 passed ' || true)
 [ "$rust_isolate_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Isolate test set no longer has 3 passing tests" >&2
+  echo "r6-acceptance: Rust Isolate test set no longer has 4 passing tests" >&2
   exit 1
 }
 rust_prelude_io_success_count=$(grep -Ec '^test-rust-prelude-io (success|cached)$' "$functional" || true)

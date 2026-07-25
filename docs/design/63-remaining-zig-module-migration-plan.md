@@ -632,10 +632,10 @@ remain the next implementation slices.
   drain/shutdown cleanup. Requests reconstruct replies through the frozen
   `IdApi`; no receiver, selector, or borrowed OOP is retained in the registry.
 - The focused Debug and ReleaseSafe probe now rejects a missing image with the
-  concrete `imageUnavailable` boot failure instead of the placeholder
-  `rustWorkerHostPending`. A valid-image end-to-end host/worker corpus and
-  canonical Rust selection remain the next gates; the current probe still
-  exercises the Rust worker driver directly.
+  concrete `imageUnavailable` boot failure, and builds a fixture image to
+  exercise Rust host `start`, ready state, one copied-value request, and
+  `stop`/exit against a live worker. The probe still uses the installed Zig
+  worker as the child while canonical Rust selection remains a later gate.
 
 ## 8. Phase R4 — Relational
 

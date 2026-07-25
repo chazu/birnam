@@ -166,6 +166,21 @@ fn readExact(fd: std.posix.fd_t, bytes: []u8) !void {
     }
 }
 
+fn buildLifecycleImage() !void {
+    const bin = std.posix.getenv("BIRNAM_BIN") orelse return error.MissingBirnamBinary;
+    const result = try std.process.Child.run(.{
+        .allocator = std.heap.c_allocator,
+        .argv = &.{ bin, "scripts/isolate-fixture.birnam" },
+        .max_output_bytes = 1 << 20,
+    });
+    defer std.heap.c_allocator.free(result.stdout);
+    defer std.heap.c_allocator.free(result.stderr);
+    switch (result.term) {
+        .Exited => |code| if (code != 0) return error.ImageBuildFailed,
+        else => return error.ImageBuildFailed,
+    }
+}
+
 test "Rust Isolate exports the exact BISO header probe" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_ISOLATE_DYLIB") orelse
@@ -441,6 +456,39 @@ test "Rust Isolate exports the exact BISO header probe" {
         decode_oop(api, &unknown_tag, unknown_tag.len, &decoded),
     );
     try std.testing.expectEqual(@as(idapi.Oop, null), decoded);
+}
+
+test "Rust Isolate host registry starts requests and stops a worker" {
+    const api = floor.api();
+    const module_path = std.posix.getenv("BIRNAM_RUST_ISOLATE_DYLIB") orelse
+        return error.MissingRustIsolateDylib;
+    const module_path_z = try std.heap.c_allocator.dupeZ(u8, module_path);
+    defer std.heap.c_allocator.free(module_path_z);
+    const module_handle = api.dlopen(module_path_z.ptr, 1) orelse return error.RustIsolateDlopenFailed;
+    const raw_init = api.dlsym(module_handle, "module_init") orelse return error.RustIsolateModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+
+    try buildLifecycleImage();
+    const image = api.mkString("/tmp/birnam-isolate-smoke.image", 31);
+    const worker = api.send(
+        api.import("Isolate"),
+        api.intern("start:selector:image:"),
+        &[_]idapi.Oop{ api.intern("IsolateFixture"), api.intern("handle:"), image },
+        3,
+    );
+    try std.testing.expect(api.vtableOf(worker) != api.import("IsolateFailureVt"));
+    try std.testing.expectEqual(api.intern("ready"), api.send(worker, api.intern("state"), &.{}, 0));
+
+    const result = api.send(
+        worker,
+        api.intern("request:timeout:"),
+        &[_]idapi.Oop{ api.mkSmallInt(42), api.mkSmallInt(5_000) },
+        2,
+    );
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(result));
+    _ = api.send(worker, api.intern("stop"), &.{}, 0);
+    try std.testing.expectEqual(api.intern("exited"), api.send(worker, api.intern("state"), &.{}, 0));
 }
 
 test "Rust Isolate worker dispatches copied values and stops" {

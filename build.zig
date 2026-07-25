@@ -867,6 +867,8 @@ pub fn build(b: *std.Build) void {
     const rust_isolate_tests = b.addTest(.{ .root_module = rust_isolate_test_mod });
     const run_rust_isolate_tests = b.addRunArtifact(rust_isolate_tests);
     run_rust_isolate_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_isolate_tests.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    run_rust_isolate_tests.setEnvironmentVariable("BIRNAM_WORKER_EXECUTABLE", b.getInstallPath(.bin, "birnam"));
     run_rust_isolate_tests.setEnvironmentVariable(
         "BIRNAM_ID_FLOOR_IDENTITY",
         if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
