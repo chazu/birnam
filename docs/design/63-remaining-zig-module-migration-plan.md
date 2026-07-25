@@ -1745,6 +1745,23 @@ post-switch image/project observation window closes.
   `rust-alien-r5-loader` fixture identity until the complete Alien owner is
   ready for canonical selection.
 
+### R5.15 Rust Alien raw-buffer checkpoint (2026-07-25)
+
+- `cb284d6` adds the Rust raw-memory protocol: `alloc:`/`free` plus typed
+  `peekIntAt:`, `peekByteAt:`, `peekPtrAt:`, `peekDoubleAt:`,
+  `peekStringAt:`, and matching `poke*:at:` methods. Allocation is zeroed with
+  the platform allocator; typed operations intentionally preserve the frozen
+  unsafe Word contract and use unaligned reads/writes like the Zig owner.
+- The implementation keeps the IdApi/Store authority boundary intact: raw
+  addresses are carried only as Words, strings are copied into managed values,
+  and all failure construction goes through the existing Error factory. No
+  Rust borrow or mutex guard crosses a reentrant send.
+- The live gate now allocates one buffer, round-trips signed integer, double,
+  byte/string, and pointer values, and frees it explicitly. It passes `3/3`
+  tests with Zig/Debug and Rust/ReleaseSafe selected floors. Buffer bounds and
+  pointer provenance remain deliberately caller-owned unsafe obligations, as
+  they are in the Zig protocol.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
