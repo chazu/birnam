@@ -1386,6 +1386,28 @@ remain the next implementation slices.
 - Broader query-result vectors, nested pull growth, callback reentry, and
   image-triggered rule-cache rebuild remain open R4 hardening obligations.
 
+### R4.38 Canonical rule-cache rebuild checkpoint (2026-07-25)
+
+- `588a89d` defines canonical stored ancestor rules, invokes the canonical Zig
+  `rebuildRules` selector, and then runs the Rust-installed `findAll:where:`
+  query against the rebuilt Store. The result still contains the expected
+  `bob`, `ann`, and `kim` facts, proving that the Rust callback reconstructs
+  durable rule definitions from Store rather than depending on Zig's in-memory
+  query cache.
+- Both dynamic targets remain `14/14`; this is a cache-rebuild observation
+  seam, not a new gate count. Broader query-result-vector growth, callback
+  reentry, and canonical Rust Relational selection remain open.
+
+### R4.39 R6 acceptance after canonical rule-cache rebuild coverage (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after `588a89d`:
+  `100/100` focused build steps, `80/80` focused tests, and both Rust
+  Relational dynamic targets at `14/14`.
+- The optimized comparator remains the exact accepted snapshot: only
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` regressions,
+  with no missing or unusable cases. The R6 gate accepted the latest test set
+  without broadening thresholds or the recorded fixture exception.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
