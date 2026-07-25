@@ -13,7 +13,7 @@ use core::mem::size_of;
 use core::ptr;
 use std::ffi::{CStr, CString};
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::path::Path;
 use std::sync::OnceLock;
 use std::{env, str};
@@ -1128,6 +1128,26 @@ unsafe extern "C" fn system_load_module(
     self_object
 }
 
+unsafe extern "C" fn system_read_line(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    let mut line = Vec::new();
+    match stdin.read_until(b'\n', &mut line) {
+        Ok(0) => api.nilObj,
+        Ok(_) => {
+            if line.last() == Some(&b'\n') {
+                line.pop();
+            }
+            unsafe { (api.mkString)(line.as_ptr(), line.len()) }
+        }
+        Err(_) => unsafe { numeric_error(api, b"ioError\0", b"stdin read failed") },
+    }
+}
+
 unsafe extern "C" fn system_gc(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
@@ -1240,6 +1260,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
     let write_file = unsafe { intern(api, b"writeFile:contents:\0") };
     let get_env = unsafe { intern(api, b"getEnv:\0") };
     let load_module = unsafe { intern(api, b"loadModule:\0") };
+    let read_line = unsafe { intern(api, b"readLine\0") };
     let gc = unsafe { intern(api, b"gc\0") };
     let live_objects = unsafe { intern(api, b"liveObjects\0") };
     let auto_gc = unsafe { intern(api, b"autoGc:\0") };
@@ -1253,6 +1274,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
         (api.method)(system_vt, write_file, system_write_file);
         (api.method)(system_vt, get_env, system_get_env);
         (api.method)(system_vt, load_module, system_load_module);
+        (api.method)(system_vt, read_line, system_read_line);
         (api.method)(system_vt, gc, system_gc);
         (api.method)(system_vt, live_objects, system_live_objects);
         (api.method)(system_vt, auto_gc, system_auto_gc);

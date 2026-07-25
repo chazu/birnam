@@ -197,6 +197,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var saw_write_file = false;
     var saw_get_env = false;
     var saw_load_module = false;
+    var saw_read_line = false;
     var saw_gc = false;
     var saw_live_objects = false;
     var saw_auto_gc = false;
@@ -209,6 +210,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         saw_write_file = saw_write_file or std.mem.eql(u8, name, "writeFile:contents:");
         saw_get_env = saw_get_env or std.mem.eql(u8, name, "getEnv:");
         saw_load_module = saw_load_module or std.mem.eql(u8, name, "loadModule:");
+        saw_read_line = saw_read_line or std.mem.eql(u8, name, "readLine");
         saw_gc = saw_gc or std.mem.eql(u8, name, "gc");
         saw_live_objects = saw_live_objects or std.mem.eql(u8, name, "liveObjects");
         saw_auto_gc = saw_auto_gc or std.mem.eql(u8, name, "autoGc:");
@@ -220,6 +222,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expect(saw_write_file);
     try std.testing.expect(saw_get_env);
     try std.testing.expect(saw_load_module);
+    try std.testing.expect(saw_read_line);
     try std.testing.expect(saw_gc);
     try std.testing.expect(saw_live_objects);
     try std.testing.expect(saw_auto_gc);
@@ -230,6 +233,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "getEnv:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "loadModule:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "readLine", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "gc", &.{api.trueObj}));
     try std.testing.expect(api.isSmallInt(send(api, system, "gc", &.{})) != 0);
     try std.testing.expect(api.isSmallInt(send(api, system, "liveObjects", &.{})) != 0);

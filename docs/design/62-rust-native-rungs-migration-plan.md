@@ -2261,6 +2261,14 @@ full R6 rerun passed at 42/42 with no benchmark allowance change. Source
 loading, process controls, self-hosted handlers, and canonical prelude cutover
 remain open.
 
+The Rust `readLine` slice now reads stdin through a byte-preserving buffered
+line read, strips only the terminating newline, answers nil at empty EOF, and
+returns `ioError` on host read failure. The focused dynamic test covers
+selector installation and invalid arity without consuming stdin; valid input
+remains a subprocess-only gate. The full R6 rerun passed at 42/42 with no
+benchmark allowance change. Source loading, process controls, self-hosted
+handlers, and canonical prelude cutover remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

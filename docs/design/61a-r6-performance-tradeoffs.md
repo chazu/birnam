@@ -469,3 +469,10 @@ the process-owned IdApi. Focused self-load and missing-path checks passed at
 1/1; the full R6 rerun remained 42/42 with no benchmark allowance change.
 Source loading, process controls, self-hosted handlers, and canonical prelude
 cutover remain open.
+
+The Rust `readLine` slice now reads stdin through a byte-preserving buffered
+line read, strips only the terminating newline, answers nil at empty EOF, and
+returns `ioError` on host read failure. Its focused arity guard and selector
+check passed at 1/1 without blocking the in-process runner; the full R6 rerun
+remained 42/42 with no benchmark allowance change. Source loading, process
+controls, self-hosted handlers, and canonical prelude cutover remain open.
