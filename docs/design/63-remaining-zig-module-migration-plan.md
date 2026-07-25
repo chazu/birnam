@@ -231,6 +231,11 @@ Implementation checkpoints (2026-07-24):
   one-shot native-buffer finalization, fresh `new`/`clone`, append/byte/size,
   and `asString`/`printString`. The cross-language target and full R6 gate
   remained green at `44/44` with the same verify exception and crossings.
+- `4ee08d0` added the retained native String protocol to the Rust rung:
+  concatenation/equality, indexing and slicing, split/trim/search, bracket
+  depth, replacement, symbol conversion, and integer/number parsing. The
+  expanded StringBuilder/Collection cross-language target and full R6 gate
+  remained green at `44/44`; benchmark crossings are unchanged.
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;

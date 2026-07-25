@@ -249,3 +249,7 @@ R1 first implementation checkpoint (2026-07-24):
   state, one-shot finalization, constructors, append/byte/size, and
   materialization/printing. Its cross-language coverage and full R6 acceptance
   remained green at `44/44`.
+- `4ee08d0` added the retained native String selectors for concatenation,
+  equality, indexing/slicing, split/trim/search, bracket depth, replacement,
+  symbol conversion, and numeric parsing. The expanded target and full R6
+  acceptance remained green at `44/44`.
