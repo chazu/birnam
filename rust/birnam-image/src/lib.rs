@@ -18,6 +18,11 @@ pub const AUTHORITY_DIGEST_LEN: usize = 64;
 pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
 pub const FIELD_LENGTH_PREFIX: usize = 4;
 
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Truncated,
@@ -556,6 +561,41 @@ pub struct ImageWriter {
     bytes: Vec<u8>,
     authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
     code_written: bool,
+}
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Publish complete image bytes through a same-directory temporary file and
+/// rename. The destination is never opened for truncation; failed writes clean
+/// up their temporary file and leave an existing destination untouched.
+pub fn publish_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path.file_name().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "image path has no file name")
+    })?;
+    let mut temporary_name = std::ffi::OsString::from(".");
+    temporary_name.push(file_name);
+    temporary_name.push(format!(
+        ".birnam-tmp-{}-{}",
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let temporary_path = parent.join(temporary_name);
+
+    let result = (|| -> io::Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temporary_path, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    result
 }
 
 impl ImageWriter {
@@ -1177,6 +1217,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn header(architecture: u32, abi_hash: u64) -> Vec<u8> {
         let mut bytes = Vec::from(MAGIC.as_slice());
@@ -1280,6 +1321,56 @@ mod tests {
             writer.code(8, &digest, b"unit"),
             Err(EncodeError::DuplicateCode)
         );
+    }
+
+    #[test]
+    fn publisher_replaces_destination_without_truncation_first() {
+        let path = std::env::temp_dir().join(format!(
+            "birnam-image-publish-{}-{}.image",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_file(&path);
+        fs::write(&path, b"old image").unwrap();
+        publish_atomic(&path, b"new image").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new image");
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn publisher_cleans_temporary_bytes_when_rename_fails() {
+        let path = std::env::temp_dir().join(format!(
+            "birnam-image-publish-directory-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir(&path).unwrap();
+        let temporary_prefix = format!(".{}", path.file_name().unwrap().to_string_lossy());
+        let before = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&temporary_prefix)
+            })
+            .count();
+        assert!(publish_atomic(&path, b"cannot replace a directory").is_err());
+        let after = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&temporary_prefix)
+            })
+            .count();
+        assert_eq!(after, before);
+        assert!(path.is_dir());
+        fs::remove_dir(path).unwrap();
     }
 
     #[test]
