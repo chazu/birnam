@@ -1377,6 +1377,15 @@ remain the next implementation slices.
   grouped Map growth, callback reentry, and image-triggered rule-cache rebuild
   still need dedicated stress fixtures before canonical selection.
 
+### R4.37 Grouped Map auto-GC stress checkpoint (2026-07-25)
+
+- `012333e` adds allocation pressure and automatic GC while the Rust grouped
+  aggregate callback grows a 64-entry Map. Both dynamic targets remain
+  `14/14`, proving the callback's active-root seam survives this Map-growth
+  stress case.
+- Broader query-result vectors, nested pull growth, callback reentry, and
+  image-triggered rule-cache rebuild remain open R4 hardening obligations.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
