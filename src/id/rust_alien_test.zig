@@ -554,6 +554,34 @@ test "Rust Alien hostile signatures fail closed with kinded errors" {
     try std.testing.expectEqual(api.intern("typeMismatch"), errorKind(api, embedded_nul));
 }
 
+test "Rust Alien hostile callback signatures fail closed with kinded errors" {
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const responder = liveResponder(api, "value:", &liveDouble);
+    const callback_selector = api.intern("callback:signature:");
+    const malformed = [_][]const u8{ "s l", "q l", "", "l {ll" };
+
+    for (malformed) |signature| {
+        const result = api.send(
+            alien,
+            callback_selector,
+            &[_]Oop{ responder, str(api, signature) },
+            2,
+        );
+        try std.testing.expect(isError(api, result));
+        try std.testing.expectEqual(api.intern("badSignature"), errorKind(api, result));
+    }
+
+    const nil_block = api.send(
+        alien,
+        callback_selector,
+        &[_]Oop{ api.nilObj, str(api, "l l") },
+        2,
+    );
+    try std.testing.expect(isError(api, nil_block));
+    try std.testing.expectEqual(api.intern("typeMismatch"), errorKind(api, nil_block));
+}
+
 test "Rust Alien refuses to unload a library retained by a live wrapper" {
     const api = floor.api();
     const alien = api.import("Alien") orelse return error.AlienExportMissing;

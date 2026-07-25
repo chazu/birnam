@@ -630,7 +630,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
         }
         (arguments[0], arguments[1])
     };
-    if block.is_null() {
+    if block.is_null() || block == api.nilObj {
         return unsafe { make_error(api, b"typeMismatch\0", b"callback needs a live block") };
     }
     let Some(signature_bytes) = (unsafe { string_bytes(api, signature_object) }) else {
