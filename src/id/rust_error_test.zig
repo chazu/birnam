@@ -71,6 +71,29 @@ test "Rust Error preserves the standalone family and DNU contract" {
     try std.testing.expectEqual(api.trueObj, send(api, error_object, "isError", &.{}));
     try std.testing.expectEqual(kind, send(api, error_object, "kind", &.{}));
     try std.testing.expectEqual(message, send(api, error_object, "message", &.{}));
+    var propagated = error_object;
+    for (0..5) |depth| {
+        var selector_buf: [32]u8 = undefined;
+        const selector = try std.fmt.bufPrintZ(&selector_buf, "propagate-{d}", .{depth});
+        propagated = send(api, propagated, selector, &.{});
+    }
+    try std.testing.expectEqual(error_object, propagated);
+
+    var stack_anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&stack_anchor));
+    api.gcSetAuto(0);
+    api.gcSetPrecise(1);
+    defer {
+        api.gcSetPrecise(0);
+        api.gcSetAuto(1);
+    }
+    for (0..128) |_| {
+        _ = api.mkString("rust-error-gc-churn", 19);
+    }
+    _ = api.gcCollect();
+    try std.testing.expectEqual(error_vt, api.vtableOf(error_object));
+    try std.testing.expectEqual(kind, send(api, error_object, "kind", &.{}));
+    try std.testing.expectEqual(message, send(api, error_object, "message", &.{}));
     try std.testing.expectEqual(error_object, send(api, error_object, "anything", &.{}));
 
     try std.testing.expectEqual(api.falseObj, send(api, api.nilObj, "isError", &.{}));
