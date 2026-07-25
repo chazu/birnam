@@ -612,10 +612,9 @@ remain the next implementation slices.
 
 - `afcde0c` adds Rust `module_init` and the exported `IsolateVt`, `Isolate`,
   `IsolateHandleVt`, and `IsolateFailureVt` family shapes with the frozen
-  payload/layout and failure selectors. Until the process registry, spawn,
-  timeout, and termination owners are ported, `start:selector:image:` and
-  handle requests return a structured `rustWorkerHostPending` failure; no
-  canonical host switch is claimed.
+  payload/layout and failure selectors. The bridge initially returned a
+  structured `rustWorkerHostPending` failure while the host lifecycle was
+  still absent; no canonical host switch was claimed.
 - The installed probe now verifies module initialization, family exports, and
   the structured pending failure in Debug and ReleaseSafe. The Rust worker
   transport/error corpus remains green; host lifecycle parity and canonical
@@ -624,6 +623,19 @@ remain the next implementation slices.
   Isolate target pinned at `3` tests. The optimized verify boundary and the
   two accepted comparator crossings are unchanged: `query.aggregate +5.8%`
   and `compile.stage1-stdlib +11.9%`.
+
+### R3.14 Rust Isolate host-registry checkpoint (2026-07-24)
+
+- The Rust bridge now owns a process-local registry with opaque handle payloads,
+  Unix socketpair launch, inherited worker-fd setup, ready-handshake
+  validation, bounded request transport, stop/reap, finalizer orphaning, and
+  drain/shutdown cleanup. Requests reconstruct replies through the frozen
+  `IdApi`; no receiver, selector, or borrowed OOP is retained in the registry.
+- The focused Debug and ReleaseSafe probe now rejects a missing image with the
+  concrete `imageUnavailable` boot failure instead of the placeholder
+  `rustWorkerHostPending`. A valid-image end-to-end host/worker corpus and
+  canonical Rust selection remain the next gates; the current probe still
+  exercises the Rust worker driver directly.
 
 ## 8. Phase R4 — Relational
 

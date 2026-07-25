@@ -186,14 +186,14 @@ test "Rust Isolate exports the exact BISO header probe" {
     inline for (.{ "IsolateVt", "Isolate", "IsolateHandleVt", "IsolateFailureVt" }) |name| {
         try std.testing.expectEqual(@as(c_int, 1), api.isExported(name));
     }
-    const pending = api.send(
+    const missing_image = api.send(
         api.import("Isolate"),
         api.intern("start:selector:image:"),
         &[_]idapi.Oop{ api.intern("Receiver"), api.intern("echo:"), api.mkString("image", 5) },
         3,
     );
-    try std.testing.expectEqual(api.trueObj, api.send(pending, api.intern("isError"), &.{}, 0));
-    try std.testing.expectEqual(api.intern("rustWorkerHostPending"), api.send(pending, api.intern("kind"), &.{}, 0));
+    try std.testing.expectEqual(api.trueObj, api.send(missing_image, api.intern("isError"), &.{}, 0));
+    try std.testing.expectEqual(api.intern("imageUnavailable"), api.send(missing_image, api.intern("kind"), &.{}, 0));
 
     const raw_encode = api.dlsym(handle, "birnam_isolate_rust_encode_header") orelse
         return error.RustIsolateHeaderEncoderMissing;

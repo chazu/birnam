@@ -1,18 +1,26 @@
 //! Wire and worker primitives for the Isolate wire-v1 protocol.
 //!
-//! The Rust rung owns only the copied-value transport and worker-side dispatch;
-//! process launch, handles, and policy remain in the host/`isolate.birnam`
-//! layer. Every floor object crossing this boundary is reconstructed through
-//! the frozen `IdApi` and is never retained by Rust after a call returns.
+//! The Rust rung owns copied-value transport, worker dispatch, and the
+//! process-local host registry. Every floor object crossing this boundary is
+//! reconstructed through the frozen `IdApi`; only opaque process handles and
+//! owned wire buffers survive between host calls.
 
 use birnam_abi::{IdApi, Oop};
-use std::ffi::{CStr, c_char, c_int, c_void};
+use std::collections::HashMap;
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::mem::ManuallyDrop;
-use std::os::fd::{FromRawFd, RawFd};
+use std::os::fd::{FromRawFd, IntoRawFd, RawFd};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+#[cfg(unix)]
+use std::os::unix::process::{CommandExt, ExitStatusExt};
+use std::process::{Child, Command};
 use std::ptr;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 pub const MAGIC: &[u8; 4] = b"BISO";
 pub const VERSION: u16 = 1;
@@ -944,6 +952,12 @@ fn decode_oop_value(api: &IdApi, bytes: &[u8]) -> Result<Oop, CodecError> {
     Ok(value)
 }
 
+fn encode_oop_value(api: &IdApi, value: Oop) -> Result<Vec<u8>, CodecError> {
+    let mut encoder = OopEncoder::new(api);
+    encoder.value(value, 0)?;
+    Ok(encoder.bytes)
+}
+
 fn oop_error_record(
     api: &IdApi,
     schema: &[u8],
@@ -1028,6 +1042,229 @@ struct Runtime {
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
+#[repr(C)]
+struct Handle {
+    token: u64,
+}
+
+#[cfg(unix)]
+const WORKER_FD: i32 = 198;
+
+#[cfg(unix)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lifecycle {
+    Starting,
+    Ready,
+    Busy,
+    Stopping,
+    ReapPending,
+    Exited,
+}
+
+#[cfg(unix)]
+struct Entry {
+    child: Child,
+    channel: Option<UnixStream>,
+    state: Lifecycle,
+    next_request: u64,
+    exit_status: Option<u32>,
+    orphaned: bool,
+}
+
+#[cfg(unix)]
+static REGISTRY: OnceLock<Mutex<HashMap<u64, Entry>>> = OnceLock::new();
+#[cfg(unix)]
+static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(unix)]
+fn registry() -> &'static Mutex<HashMap<u64, Entry>> {
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(unix)]
+fn registry_lock() -> std::sync::MutexGuard<'static, HashMap<u64, Entry>> {
+    registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(unix)]
+fn status_value(status: std::process::ExitStatus) -> u32 {
+    if let Some(code) = status.code() {
+        return code.max(0) as u32;
+    }
+    status
+        .signal()
+        .map(|signal| 128u32.saturating_add(signal as u32))
+        .unwrap_or(1)
+}
+
+#[cfg(unix)]
+fn status_of(entry: &mut Entry) -> Option<u32> {
+    if entry.state == Lifecycle::Exited {
+        return entry.exit_status;
+    }
+    match entry.child.try_wait() {
+        Ok(Some(status)) => {
+            let value = status_value(status);
+            entry.exit_status = Some(value);
+            entry.state = Lifecycle::Exited;
+            entry.channel.take();
+            Some(value)
+        }
+        Ok(None) | Err(_) => None,
+    }
+}
+
+#[cfg(unix)]
+fn terminate_entry(entry: &mut Entry) {
+    if status_of(entry).is_some() {
+        return;
+    }
+    entry.channel.take();
+    let _ = entry.child.kill();
+    match entry.child.wait() {
+        Ok(status) => {
+            entry.exit_status = Some(status_value(status));
+            entry.state = Lifecycle::Exited;
+        }
+        Err(_) => entry.state = Lifecycle::ReapPending,
+    }
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HostTransportError {
+    Timeout,
+    Io,
+    Protocol,
+}
+
+#[cfg(unix)]
+fn host_timeout(stream: &UnixStream, timeout_ms: u32) -> Result<(), HostTransportError> {
+    let timeout = Duration::from_millis(timeout_ms as u64);
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(|_| HostTransportError::Io)?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(|_| HostTransportError::Io)
+}
+
+#[cfg(unix)]
+fn host_read_frame(stream: &mut UnixStream, timeout_ms: u32) -> Result<Frame, HostTransportError> {
+    host_timeout(stream, timeout_ms)?;
+    let mut header = [0u8; HEADER_LEN];
+    stream.read_exact(&mut header).map_err(|error| {
+        if error.kind() == io::ErrorKind::TimedOut {
+            HostTransportError::Timeout
+        } else {
+            HostTransportError::Io
+        }
+    })?;
+    let decoded = decode_header(&header).map_err(|_| HostTransportError::Protocol)?;
+    let mut bytes = header.to_vec();
+    let payload_len = decoded.payload_len as usize;
+    let start = bytes.len();
+    bytes.resize(start + payload_len, 0);
+    stream.read_exact(&mut bytes[start..]).map_err(|error| {
+        if error.kind() == io::ErrorKind::TimedOut {
+            HostTransportError::Timeout
+        } else {
+            HostTransportError::Io
+        }
+    })?;
+    Frame::decode(&bytes).map_err(|_| HostTransportError::Protocol)
+}
+
+#[cfg(unix)]
+fn host_write_frame(
+    stream: &mut UnixStream,
+    frame: &Frame,
+    timeout_ms: u32,
+) -> Result<(), HostTransportError> {
+    host_timeout(stream, timeout_ms)?;
+    let bytes = frame.encode().map_err(|_| HostTransportError::Protocol)?;
+    stream.write_all(&bytes).map_err(|error| {
+        if error.kind() == io::ErrorKind::TimedOut {
+            HostTransportError::Timeout
+        } else {
+            HostTransportError::Io
+        }
+    })
+}
+
+#[cfg(unix)]
+fn spawn_host_worker(
+    image: &[u8],
+    receiver: &[u8],
+    selector: &[u8],
+) -> Result<Entry, &'static str> {
+    let image = std::str::from_utf8(image).map_err(|_| "invalidImageEncoding")?;
+    let receiver = std::str::from_utf8(receiver).map_err(|_| "invalidReceiverEncoding")?;
+    let selector = std::str::from_utf8(selector).map_err(|_| "invalidSelectorEncoding")?;
+    let image = std::fs::canonicalize(image).map_err(|_| "imageUnavailable")?;
+    let executable = std::env::current_exe().map_err(|_| "executableUnavailable")?;
+    let (host, worker) = UnixStream::pair().map_err(|_| "socketPairFailed")?;
+    let host_fd = host.into_raw_fd();
+    let worker_fd = worker.into_raw_fd();
+    let mut command = Command::new(executable);
+    command.args([
+        "--worker",
+        image.to_str().ok_or("invalidImageEncoding")?,
+        receiver,
+        selector,
+        "--channel-fd",
+        &WORKER_FD.to_string(),
+    ]);
+    unsafe {
+        command.pre_exec(move || {
+            unsafe extern "C" {
+                fn close(fd: c_int) -> c_int;
+                fn dup2(oldfd: c_int, newfd: c_int) -> c_int;
+            }
+            if dup2(worker_fd, WORKER_FD) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if host_fd != WORKER_FD {
+                close(host_fd);
+            }
+            if worker_fd != WORKER_FD {
+                close(worker_fd);
+            }
+            Ok(())
+        });
+    }
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            unsafe {
+                let _ = close_fd(host_fd);
+                let _ = close_fd(worker_fd);
+            }
+            return Err("spawnFailed");
+        }
+    };
+    unsafe { close_fd(worker_fd) };
+    let channel = unsafe { UnixStream::from_raw_fd(host_fd) };
+    Ok(Entry {
+        child,
+        channel: Some(channel),
+        state: Lifecycle::Starting,
+        next_request: 1,
+        exit_status: None,
+        orphaned: false,
+    })
+}
+
+#[cfg(unix)]
+unsafe fn close_fd(fd: c_int) -> c_int {
+    unsafe extern "C" {
+        fn close(fd: c_int) -> c_int;
+    }
+    unsafe { close(fd) }
+}
+
 fn runtime_api() -> &'static IdApi {
     let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
     // SAFETY: module_init records the process-owned IdApi pointer for the
@@ -1065,13 +1302,177 @@ fn make_failure(api: &IdApi, class: &[u8], kind: &[u8], message: &[u8]) -> Oop {
     value
 }
 
-unsafe extern "C" fn isolate_start(_: Oop, _: *const Oop, _: usize) -> Oop {
-    make_failure(
-        runtime_api(),
-        b"boot",
-        b"rustWorkerHostPending",
-        b"Rust Isolate worker is available as an explicit fixture; host lifecycle is not ported yet",
-    )
+fn oop_text(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
+    if value.is_null() {
+        return None;
+    }
+    let vtable = unsafe { (api.vtableOf)(value) };
+    if vtable == api.symbol_vt {
+        let pointer = unsafe { (api.symbolName)(value) };
+        if pointer.is_null() {
+            return None;
+        }
+        // SAFETY: `symbolName` returns a live NUL-terminated symbol name.
+        return Some(unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec());
+    }
+    if vtable == api.string_vt {
+        let mut length = 0usize;
+        let pointer = unsafe { (api.stringBytes)(value, &mut length) };
+        if length != 0 && pointer.is_null() {
+            return None;
+        }
+        // SAFETY: `stringBytes` returns a readable extent for this call.
+        return Some(if length == 0 {
+            Vec::new()
+        } else {
+            unsafe { std::slice::from_raw_parts(pointer, length) }.to_vec()
+        });
+    }
+    None
+}
+
+fn selector_arity_one(selector: &[u8]) -> bool {
+    let colons = selector.iter().filter(|byte| **byte == b':').count();
+    if colons != 0 {
+        return colons == 1;
+    }
+    selector
+        .first()
+        .is_some_and(|byte| !byte.is_ascii_alphabetic())
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn finalise_handle(value: Oop) {
+    if value.is_null() {
+        return;
+    }
+    // SAFETY: the finalizer is installed only on `Handle` payloads.
+    let token = unsafe { (&*(value as *const Handle)).token };
+    let mut entries = registry_lock();
+    if let Some(entry) = entries.get_mut(&token) {
+        entry.orphaned = true;
+    }
+}
+
+#[cfg(unix)]
+fn handle_object(value: Oop) -> &'static mut Handle {
+    // SAFETY: callers pass only instances allocated from `handle_vt`.
+    unsafe { &mut *(value as *mut Handle) }
+}
+
+#[cfg(unix)]
+fn new_handle(api: &IdApi, mut entry: Entry) -> Oop {
+    let token = NEXT_TOKEN.fetch_add(1, Ordering::Relaxed);
+    if token == 0 {
+        terminate_entry(&mut entry);
+        return make_failure(
+            api,
+            b"exit",
+            b"tokenExhausted",
+            b"isolate handle token space exhausted",
+        );
+    }
+    let mut entries = registry_lock();
+    entries.insert(token, entry);
+    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
+    let value = unsafe { (api.alloc)(runtime.handle_vt as Oop, std::mem::size_of::<Handle>()) };
+    if value.is_null() {
+        if let Some(mut entry) = entries.remove(&token) {
+            terminate_entry(&mut entry);
+        }
+        return api.nilObj;
+    }
+    handle_object(value).token = token;
+    unsafe { (api.setFinalizer)(value, finalise_handle) };
+    value
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn isolate_start(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = runtime_api();
+    let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidArguments",
+            b"start expects three arguments",
+        );
+    };
+    if args.len() != 3 {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidArguments",
+            b"start expects three arguments",
+        );
+    }
+    let Some(receiver) = oop_text(api, args[0]) else {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidReceiver",
+            b"receiver must be a Symbol or String",
+        );
+    };
+    let Some(selector) = oop_text(api, args[1]) else {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidSelector",
+            b"selector must be a Symbol or String",
+        );
+    };
+    let Some(image) = oop_text(api, args[2]) else {
+        return make_failure(api, b"encode", b"invalidImage", b"image must be a String");
+    };
+    if receiver.contains(&0) || selector.contains(&0) || image.contains(&0) {
+        return make_failure(
+            api,
+            b"encode",
+            b"embeddedNul",
+            b"worker names and image path may not contain NUL",
+        );
+    }
+    if !selector_arity_one(&selector) {
+        return make_failure(
+            api,
+            b"boot",
+            b"wrongArity",
+            b"worker selector must have arity one",
+        );
+    }
+    let mut entry = match spawn_host_worker(&image, &receiver, &selector) {
+        Ok(entry) => entry,
+        Err(kind) => return make_failure(api, b"boot", kind.as_bytes(), kind.as_bytes()),
+    };
+    let ready = match entry
+        .channel
+        .as_mut()
+        .ok_or(HostTransportError::Io)
+        .and_then(|channel| host_read_frame(channel, 10_000))
+    {
+        Ok(frame) => frame,
+        Err(error) => {
+            terminate_entry(&mut entry);
+            let kind = match error {
+                HostTransportError::Timeout => b"handshakeTimeout".as_slice(),
+                HostTransportError::Protocol => b"invalidReady".as_slice(),
+                HostTransportError::Io => b"handshakeFailed".as_slice(),
+            };
+            return make_failure(
+                api,
+                b"boot",
+                kind,
+                b"worker did not complete the ready handshake",
+            );
+        }
+    };
+    if ready.header.kind != FrameKind::Ready {
+        terminate_entry(&mut entry);
+        return make_failure(api, b"boot", b"expectedReady", b"worker did not send ready");
+    }
+    entry.state = Lifecycle::Ready;
+    new_handle(api, entry)
 }
 
 unsafe extern "C" fn isolate_sleep(_: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1086,21 +1487,219 @@ unsafe extern "C" fn isolate_crash(_: Oop, _: *const Oop, _: usize) -> Oop {
     std::process::abort()
 }
 
-unsafe extern "C" fn handle_request(_: Oop, _: *const Oop, _: usize) -> Oop {
-    make_failure(
-        runtime_api(),
-        b"stopped",
-        b"rustWorkerHostPending",
-        b"Rust Isolate host request lifecycle is not ported yet",
-    )
+#[cfg(unix)]
+unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = runtime_api();
+    let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidArguments",
+            b"request expects value and timeout",
+        );
+    };
+    if args.len() != 2 {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidArguments",
+            b"request expects value and timeout",
+        );
+    }
+    if unsafe { (api.isSmallInt)(args[1]) } == 0 || unsafe { (api.smallIntValue)(args[1]) } < 0 {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidTimeout",
+            b"timeout must be a nonnegative Integer",
+        );
+    }
+    let timeout = (unsafe { (api.smallIntValue)(args[1]) } as u64).min(u32::MAX as u64) as u32;
+    let argument = match encode_oop_value(api, args[0]) {
+        Ok(argument) => argument,
+        Err(error) => {
+            return make_failure(api, b"encode", b"nonTransferable", codec_error_name(error));
+        }
+    };
+    let token = handle_object(self_oop).token;
+    let mut entries = registry_lock();
+    let Some(entry) = entries.get_mut(&token) else {
+        return make_failure(api, b"stopped", b"unknownHandle", b"unknown isolate handle");
+    };
+    if entry.state != Lifecycle::Ready {
+        return make_failure(api, b"stopped", b"notReady", b"isolate is not ready");
+    }
+    let request_id = entry.next_request;
+    if request_id == 0 || request_id > i64::MAX as u64 {
+        entry.state = Lifecycle::Stopping;
+        terminate_entry(entry);
+        return make_failure(
+            api,
+            b"protocol",
+            b"requestIdExhausted",
+            b"request id space exhausted",
+        );
+    }
+    entry.next_request += 1;
+    entry.state = Lifecycle::Busy;
+    let request = Frame {
+        header: Header {
+            kind: FrameKind::Request,
+            request_id,
+            payload_len: 0,
+        },
+        payload: argument,
+    };
+    let result = (|| {
+        let channel = entry.channel.as_mut().ok_or(HostTransportError::Io)?;
+        host_write_frame(channel, &request, timeout)?;
+        host_read_frame(channel, timeout)
+    })();
+    let reply = match result {
+        Ok(reply) => reply,
+        Err(error) => {
+            entry.state = Lifecycle::Stopping;
+            terminate_entry(entry);
+            let kind: &[u8] = match error {
+                HostTransportError::Timeout => b"deadline",
+                HostTransportError::Protocol => b"invalidReply",
+                HostTransportError::Io => b"transport",
+            };
+            return make_failure(api, b"timeout", kind, b"request transport failed");
+        }
+    };
+    if reply.header.request_id != request_id {
+        entry.state = Lifecycle::Stopping;
+        terminate_entry(entry);
+        return make_failure(
+            api,
+            b"protocol",
+            b"mismatchedRequestId",
+            b"reply request id did not match",
+        );
+    }
+    match reply.header.kind {
+        FrameKind::ReplyOk => match decode_oop_value(api, &reply.payload) {
+            Ok(value) => {
+                entry.state = Lifecycle::Ready;
+                value
+            }
+            Err(error) => {
+                entry.state = Lifecycle::Stopping;
+                terminate_entry(entry);
+                make_failure(api, b"protocol", b"invalidReply", codec_error_name(error))
+            }
+        },
+        FrameKind::ReplyError => {
+            entry.state = Lifecycle::Ready;
+            make_failure(
+                api,
+                b"application",
+                b"remoteError",
+                b"worker returned an application error",
+            )
+        }
+        _ => {
+            entry.state = Lifecycle::Stopping;
+            terminate_entry(entry);
+            make_failure(
+                api,
+                b"protocol",
+                b"unexpectedReply",
+                b"unexpected reply frame",
+            )
+        }
+    }
 }
 
+#[cfg(unix)]
+unsafe extern "C" fn handle_request_default(self_oop: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = runtime_api();
+    let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidArguments",
+            b"request expects one argument",
+        );
+    };
+    if args.len() != 1 {
+        return make_failure(
+            api,
+            b"encode",
+            b"invalidArguments",
+            b"request expects one argument",
+        );
+    }
+    let timeout = unsafe { (api.mkSmallInt)(5_000) };
+    let packed = [args[0], timeout];
+    unsafe { handle_request(self_oop, packed.as_ptr(), 2) }
+}
+
+#[cfg(unix)]
 unsafe extern "C" fn handle_stop(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    let api = runtime_api();
+    let token = handle_object(self_oop).token;
+    let mut entries = registry_lock();
+    let Some(entry) = entries.get_mut(&token) else {
+        return self_oop;
+    };
+    if entry.state == Lifecycle::Exited {
+        return self_oop;
+    }
+    if entry.state != Lifecycle::Ready {
+        return make_failure(api, b"busy", b"notReady", b"isolate is not ready");
+    }
+    let request_id = entry.next_request;
+    entry.next_request += 1;
+    entry.state = Lifecycle::Stopping;
+    let stop = Frame {
+        header: Header {
+            kind: FrameKind::Stop,
+            request_id,
+            payload_len: 0,
+        },
+        payload: Vec::new(),
+    };
+    if let Some(channel) = entry.channel.as_mut() {
+        let _ = host_write_frame(channel, &stop, 2_000);
+        if let Ok(reply) = host_read_frame(channel, 2_000)
+            && (reply.header.kind != FrameKind::Stopped || reply.header.request_id != request_id)
+        {
+            terminate_entry(entry);
+            return make_failure(
+                api,
+                b"protocol",
+                b"invalidStopReply",
+                b"invalid stopped reply",
+            );
+        }
+    }
+    terminate_entry(entry);
     self_oop
 }
 
-unsafe extern "C" fn handle_state(_: Oop, _: *const Oop, _: usize) -> Oop {
-    unsafe { (runtime_api().intern)(c"stopped".as_ptr()) }
+#[cfg(unix)]
+unsafe extern "C" fn handle_state(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
+    let api = runtime_api();
+    let token = handle_object(self_oop).token;
+    let mut entries = registry_lock();
+    let state = entries
+        .get_mut(&token)
+        .map(|entry| {
+            let _ = status_of(entry);
+            match entry.state {
+                Lifecycle::Starting => "starting",
+                Lifecycle::Ready => "ready",
+                Lifecycle::Busy => "busy",
+                Lifecycle::Stopping => "stopping",
+                Lifecycle::ReapPending => "reapPending",
+                Lifecycle::Exited => "exited",
+            }
+        })
+        .unwrap_or("stopped");
+    let name = CString::new(state).expect("state symbol");
+    unsafe { (api.intern)(name.as_ptr()) }
 }
 
 unsafe extern "C" fn failure_is_error(_: Oop, _: *const Oop, _: usize) -> Oop {
@@ -1203,7 +1802,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
         (api_ref.method)(
             handle_vt,
             (api_ref.intern)(c"request:".as_ptr()),
-            handle_request,
+            handle_request_default,
         );
         (api_ref.method)(handle_vt, (api_ref.intern)(c"stop".as_ptr()), handle_stop);
         (api_ref.method)(handle_vt, (api_ref.intern)(c"state".as_ptr()), handle_state);
@@ -1430,13 +2029,33 @@ pub unsafe extern "C" fn birnam_isolate_worker_boot_error(
     let _ = write_frame(borrowed_file(&mut channel), &frame);
 }
 
-/// The pre-lifecycle Rust fixture has no host-side registry to drain.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_isolate_drain() {}
+pub extern "C" fn birnam_isolate_drain() {
+    #[cfg(unix)]
+    {
+        let mut entries = registry_lock();
+        for entry in entries.values_mut() {
+            if entry.orphaned && entry.state != Lifecycle::Exited {
+                terminate_entry(entry);
+            } else {
+                let _ = status_of(entry);
+            }
+        }
+    }
+}
 
-/// The pre-lifecycle Rust fixture has no host-side registry to shut down.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_isolate_shutdown() {}
+pub extern "C" fn birnam_isolate_shutdown() {
+    #[cfg(unix)]
+    {
+        let mut entries = registry_lock();
+        for entry in entries.values_mut() {
+            if entry.state != Lifecycle::Exited {
+                terminate_entry(entry);
+            }
+        }
+    }
+}
 
 /// Stable identity for the first Rust Isolate dynamic artifact.
 #[unsafe(no_mangle)]
