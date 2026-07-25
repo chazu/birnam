@@ -17,6 +17,7 @@ pub enum CodegenError {
     InvalidAggregateIndex { index: usize },
     TopLevelArray,
     UnsupportedAggregateShim { index: usize },
+    InvalidAggregateField { aggregate: usize, field: usize },
 }
 
 impl fmt::Display for CodegenError {
@@ -39,6 +40,12 @@ impl fmt::Display for CodegenError {
                 write!(
                     formatter,
                     "aggregate {index} requires aggregate marshalling"
+                )
+            }
+            Self::InvalidAggregateField { aggregate, field } => {
+                write!(
+                    formatter,
+                    "aggregate {aggregate} field {field} is not ABI-marshalable"
                 )
             }
         }
@@ -150,6 +157,141 @@ pub fn emit_scalar_shim(
     Ok(source)
 }
 
+/// Emit shape-checked Vector-to-C and C-to-Vector helpers for every aggregate
+/// in a signature. The eventual wrapper can return nil when an unmarshal shape
+/// check fails, rather than corrupting a native stack frame.
+pub fn emit_aggregate_support(signature: &Signature) -> Result<String, CodegenError> {
+    validate_aggregate_fields(signature)?;
+    let mut source = String::new();
+    for (index, aggregate) in signature.aggregates.iter().enumerate() {
+        source.push_str("static int __unm");
+        source.push_str(&index.to_string());
+        source.push_str("(void* v, __S");
+        source.push_str(&index.to_string());
+        source.push_str("* out){\n");
+        source.push_str(
+            "if (birnam_smallIntValue(birnam_send(v, birnam_intern(\"size\"), 0, 0L)) != ",
+        );
+        source.push_str(&aggregate.fields.len().to_string());
+        source.push_str("L) return 0;\nvoid* e;\n");
+        for (field_index, field) in aggregate.fields.iter().enumerate() {
+            source.push_str(
+                "e = birnam_send(v, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(",
+            );
+            source.push_str(&field_index.to_string());
+            source.push_str(")}, 1L);\n");
+            emit_unmarshal_field(&mut source, field, field_index)?;
+        }
+        source.push_str("return 1;\n}\n");
+    }
+    for (index, aggregate) in signature.aggregates.iter().enumerate() {
+        source.push_str("static void* __mk");
+        source.push_str(&index.to_string());
+        source.push_str("(__S");
+        source.push_str(&index.to_string());
+        source.push_str("* v){\nvoid* r = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L);\nvoid* e;\n");
+        for (field_index, field) in aggregate.fields.iter().enumerate() {
+            emit_marshal_field(&mut source, field, field_index)?;
+            source.push_str("r = birnam_send(r, birnam_intern(\"add:\"), (void*[]){e}, 1L);\n");
+        }
+        source.push_str("return r;\n}\n");
+    }
+    Ok(source)
+}
+
+fn validate_aggregate_fields(signature: &Signature) -> Result<(), CodegenError> {
+    for (aggregate_index, aggregate) in signature.aggregates.iter().enumerate() {
+        for (field_index, field) in aggregate.fields.iter().enumerate() {
+            match field {
+                Type::Scalar(Scalar::StringPointer | Scalar::Void)
+                | Type::Array {
+                    element: Scalar::StringPointer | Scalar::Void,
+                    ..
+                } => {
+                    return Err(CodegenError::InvalidAggregateField {
+                        aggregate: aggregate_index,
+                        field: field_index,
+                    });
+                }
+                Type::Aggregate(index) => {
+                    validate_aggregate_index(*index, signature.aggregates.len())?
+                }
+                Type::Scalar(_) | Type::Array { .. } => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn emit_unmarshal_field(
+    source: &mut String,
+    field: &Type,
+    field_index: usize,
+) -> Result<(), CodegenError> {
+    match field {
+        Type::Scalar(scalar) => {
+            source.push_str(scalar_c_type(*scalar).expect("validated field scalar"));
+            source.push_str(" out->f");
+            source.push_str(&field_index.to_string());
+            source.push_str(" = ");
+            emit_unbox(source, *scalar, "e");
+            source.push_str(";\n");
+        }
+        Type::Aggregate(index) => {
+            source.push_str("if (!__unm");
+            source.push_str(&index.to_string());
+            source.push_str("(e, &out->f");
+            source.push_str(&field_index.to_string());
+            source.push_str(")) return 0;\n");
+        }
+        Type::Array { count, element } => {
+            source.push_str(
+                "if (birnam_smallIntValue(birnam_send(e, birnam_intern(\"size\"), 0, 0L)) != ",
+            );
+            source.push_str(&count.to_string());
+            source.push_str("L) return 0;\n{ long __k; for (__k = 0; __k < ");
+            source.push_str(&count.to_string());
+            source.push_str("L; __k++) {\nvoid* __ae = birnam_send(e, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(__k)}, 1L);\n");
+            source.push_str(scalar_c_type(*element).expect("validated array element"));
+            source.push_str(" out->f");
+            source.push_str(&field_index.to_string());
+            source.push_str("[__k] = ");
+            emit_unbox(source, *element, "__ae");
+            source.push_str(";\n} }\n");
+        }
+    }
+    Ok(())
+}
+
+fn emit_marshal_field(
+    source: &mut String,
+    field: &Type,
+    field_index: usize,
+) -> Result<(), CodegenError> {
+    match field {
+        Type::Scalar(scalar) => {
+            source.push_str("e = ");
+            emit_box_expr(source, *scalar, &format!("v->f{field_index}"));
+            source.push_str(";\n");
+        }
+        Type::Aggregate(index) => {
+            source.push_str("e = __mk");
+            source.push_str(&index.to_string());
+            source.push_str("(&v->f");
+            source.push_str(&field_index.to_string());
+            source.push_str(");\n");
+        }
+        Type::Array { count, element } => {
+            source.push_str("{ void* s = birnam_send((void*)__vecFactory, birnam_intern(\"new\"), 0, 0L); long __k;\nfor (__k = 0; __k < ");
+            source.push_str(&count.to_string());
+            source.push_str("L; __k++) {\nvoid* __ae = ");
+            emit_box_expr(source, *element, &format!("v->f{field_index}[__k]"));
+            source.push_str(";\ns = birnam_send(s, birnam_intern(\"add:\"), (void*[]){__ae}, 1L);\n} e = s; }\n");
+        }
+    }
+    Ok(())
+}
+
 fn reject_aggregate_shim(signature: &Signature) -> Result<(), CodegenError> {
     for ty in signature
         .arguments
@@ -217,6 +359,38 @@ fn emit_unbox(source: &mut String, scalar: Scalar, expression: &str) {
             source.push(')');
         }
         Scalar::Void => unreachable!("void cannot be an argument"),
+    }
+}
+
+fn emit_box_expr(source: &mut String, scalar: Scalar, expression: &str) {
+    match scalar {
+        Scalar::Int | Scalar::Long => {
+            source.push_str("birnam_mkSmallInt((long)(");
+            source.push_str(expression);
+            source.push(')')
+        }
+        Scalar::UnsignedLong => {
+            source.push_str("(((unsigned long)(");
+            source.push_str(expression);
+            source.push_str(") >> 63) ? birnam_mkWord((unsigned long)(");
+            source.push_str(expression);
+            source.push_str(") : birnam_mkSmallInt((long)(");
+            source.push_str(expression);
+            source.push_str(")))")
+        }
+        Scalar::Double | Scalar::Float => {
+            source.push_str("birnam_mkFloat((double)(");
+            source.push_str(expression);
+            source.push_str("))")
+        }
+        Scalar::Pointer => {
+            source.push_str("birnam_mkWord((unsigned long)(");
+            source.push_str(expression);
+            source.push_str("))")
+        }
+        Scalar::StringPointer | Scalar::Void => {
+            unreachable!("aggregate validation rejects string and void fields")
+        }
     }
 }
 
@@ -406,6 +580,37 @@ mod tests {
         assert_eq!(
             emit_scalar_shim(b"birnam_div", &signature),
             Err(CodegenError::UnsupportedAggregateShim { index: 0 })
+        );
+    }
+
+    #[test]
+    fn emits_shape_checked_nested_and_array_vector_helpers() {
+        let signature = parse_signature(b"{l3i} {{dd}{dd}}").unwrap();
+        let source = emit_aggregate_support(&signature).unwrap();
+        assert!(source.contains("static int __unm0(void* v, __S0* out)"));
+        assert!(source.contains("out->f1[__k] = (int)birnam_smallIntValue(__ae);"));
+        assert!(source.contains("static void* __mk0(__S0* v)"));
+        assert!(source.contains("static int __unm2(void* v, __S2* out)"));
+        assert!(source.contains("static int __unm3(void* v, __S3* out)"));
+        assert!(source.contains("if (!__unm1(e, &out->f0)) return 0;"));
+        assert!(source.contains("e = __mk2(&v->f1);"));
+    }
+
+    #[test]
+    fn rejects_string_and_void_aggregate_fields_before_emission() {
+        let malformed = Signature {
+            return_type: Type::Aggregate(0),
+            arguments: Vec::new(),
+            aggregates: vec![Aggregate {
+                fields: vec![Type::Scalar(Scalar::StringPointer)],
+            }],
+        };
+        assert_eq!(
+            emit_aggregate_support(&malformed),
+            Err(CodegenError::InvalidAggregateField {
+                aggregate: 0,
+                field: 0
+            })
         );
     }
 }
