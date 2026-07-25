@@ -42,8 +42,10 @@ const WorkerClient = struct {
     result: *c_int,
 };
 
-fn echoArgument(_: idapi.Oop, args: [*]const idapi.Oop, count: usize) callconv(.c) idapi.Oop {
+fn echoArgument(self: idapi.Oop, args: [*]const idapi.Oop, count: usize) callconv(.c) idapi.Oop {
     if (count != 1) return null;
+    if (floor.api().isSmallInt(args[0]) != 0 and floor.api().smallIntValue(args[0]) == 99)
+        return self;
     return args[0];
 }
 
@@ -84,17 +86,65 @@ fn workerClientImpl(fd: std.posix.fd_t) !c_int {
     try readExact(fd, &payload);
     if (payload[8] != 7) return error.InvalidPayload;
 
+    std.mem.writeInt(u64, request[8..16], 3, .big);
+    request[28] = 99;
+    try writeAll(fd, &request);
+    try readExact(fd, &header);
+    if (header[6] != 5 or std.mem.readInt(u64, header[8..16], .big) != 3)
+        return error.InvalidApplicationError;
+    const error_len = std.mem.readInt(u32, header[16..20], .big);
+    if (error_len > 256) return error.ErrorRecordTooLarge;
+    var error_payload: [256]u8 = undefined;
+    try readExact(fd, error_payload[0..error_len]);
+    const error_bytes = error_payload[0..error_len];
+    if (std.mem.indexOf(u8, error_bytes, "birnam.application-error.v1") == null or
+        std.mem.indexOf(u8, error_bytes, "encodeFailed") == null or
+        std.mem.indexOf(u8, error_bytes, "NonTransferable") == null)
+        return error.InvalidApplicationError;
+
     var stop: [20]u8 = undefined;
     @memcpy(stop[0..4], "BISO");
     std.mem.writeInt(u16, stop[4..6], 1, .big);
     stop[6] = 6;
     stop[7] = 0;
-    std.mem.writeInt(u64, stop[8..16], 3, .big);
+    std.mem.writeInt(u64, stop[8..16], 4, .big);
     std.mem.writeInt(u32, stop[16..20], 0, .big);
     try writeAll(fd, &stop);
     try readExact(fd, &header);
-    if (header[6] != 7 or std.mem.readInt(u64, header[8..16], .big) != 3 or
+    if (header[6] != 7 or std.mem.readInt(u64, header[8..16], .big) != 4 or
         std.mem.readInt(u32, header[16..20], .big) != 0) return error.InvalidStop;
+    return 0;
+}
+
+fn runMalformedWorkerClient(client: WorkerClient) void {
+    client.result.* = malformedWorkerClientImpl(client.fd) catch -1;
+}
+
+fn malformedWorkerClientImpl(fd: std.posix.fd_t) !c_int {
+    var header: [20]u8 = undefined;
+    try readExact(fd, &header);
+    if (header[6] != 1) return error.InvalidReady;
+    var request: [21]u8 = undefined;
+    @memcpy(request[0..4], "BISO");
+    std.mem.writeInt(u16, request[4..6], 1, .big);
+    request[6] = 3;
+    request[7] = 0;
+    std.mem.writeInt(u64, request[8..16], 1, .big);
+    std.mem.writeInt(u32, request[16..20], 1, .big);
+    request[20] = 0xff;
+    try writeAll(fd, &request);
+    try readExact(fd, &header);
+    if (header[6] != 8 or std.mem.readInt(u64, header[8..16], .big) != 1)
+        return error.InvalidProtocolError;
+    const error_len = std.mem.readInt(u32, header[16..20], .big);
+    if (error_len > 256) return error.ErrorRecordTooLarge;
+    var payload: [256]u8 = undefined;
+    try readExact(fd, payload[0..error_len]);
+    const bytes = payload[0..error_len];
+    if (std.mem.indexOf(u8, bytes, "birnam.protocol-error.v1") == null or
+        std.mem.indexOf(u8, bytes, "invalidPayload") == null or
+        std.mem.indexOf(u8, bytes, "UnknownTag") == null)
+        return error.InvalidProtocolError;
     return 0;
 }
 
@@ -428,5 +478,34 @@ test "Rust Isolate worker dispatches copied values and stops" {
     const driver_result = driver(api, sockets[1], receiver, selector);
     client.join();
     try std.testing.expectEqual(@as(c_int, 0), driver_result);
+    try std.testing.expectEqual(@as(c_int, 0), client_result);
+}
+
+test "Rust Isolate worker rejects malformed request payloads" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_ISOLATE_DYLIB") orelse
+        return error.MissingRustIsolateDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustIsolateDlopenFailed;
+    const raw_driver = api.dlsym(handle, "birnam_isolate_worker_driver") orelse
+        return error.RustIsolateWorkerDriverMissing;
+    const driver: WorkerDriver = @ptrCast(@alignCast(raw_driver));
+
+    var sockets: [2]std.posix.fd_t = undefined;
+    if (std.c.socketpair(std.c.AF.UNIX, std.c.SOCK.STREAM, 0, &sockets) != 0)
+        return error.SocketPairFailed;
+    defer {
+        std.posix.close(sockets[0]);
+        std.posix.close(sockets[1]);
+    }
+    var client_result: c_int = -1;
+    const client = try std.Thread.spawn(.{}, runMalformedWorkerClient, .{WorkerClient{
+        .fd = sockets[0],
+        .result = &client_result,
+    }});
+    const driver_result = driver(api, sockets[1], null, null);
+    client.join();
+    try std.testing.expectEqual(@as(c_int, 1), driver_result);
     try std.testing.expectEqual(@as(c_int, 0), client_result);
 }
