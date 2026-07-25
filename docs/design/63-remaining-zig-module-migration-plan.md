@@ -236,6 +236,11 @@ Implementation checkpoints (2026-07-24):
   depth, replacement, symbol conversion, and integer/number parsing. The
   expanded StringBuilder/Collection cross-language target and full R6 gate
   remained green at `44/44`; benchmark crossings are unchanged.
+- The pre-switch Rust Collection selection smoke also passes with
+  `-Dfloor=rust -Dcollection-impl=rust`: `test-rust-collection`,
+  `test-collection`, `test-collection-gc`, and `test-gc-layout-mark` are green.
+  The repository default remains Zig Collection until the R1 observation and
+  canonical-selection commit.
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;

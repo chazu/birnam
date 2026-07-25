@@ -253,3 +253,7 @@ R1 first implementation checkpoint (2026-07-24):
   equality, indexing/slicing, split/trim/search, bracket depth, replacement,
   symbol conversion, and numeric parsing. The expanded target and full R6
   acceptance remained green at `44/44`.
+- The explicit Rust Collection selection smoke is green for the Rust floor:
+  `test-rust-collection`, `test-collection`, `test-collection-gc`, and
+  `test-gc-layout-mark` all pass with `-Dcollection-impl=rust`; Zig remains
+  the repository default pending the R1 observation window.
