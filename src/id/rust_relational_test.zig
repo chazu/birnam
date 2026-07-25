@@ -30,6 +30,7 @@ const ProjectPredicateLive = *const fn (Oop, u8, ProjectPattern, u8, u8, Oop, ?[
 const ProjectNegatedLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectDisjunctionLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectRecursiveLive = *const fn (Oop, u8, ProjectPattern, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const AggregateLive = *const fn (Oop, u8, ProjectPattern, u8, ?*Classified) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -497,4 +498,56 @@ test "Rust Relational kernel reaches a finite recursive edge fixpoint" {
             &written,
         ),
     );
+}
+
+test "Rust Relational kernel folds distinct aggregate values" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const aggregate_raw = api.dlsym(relation_handle, "birnam_relational_rust_aggregate_live") orelse
+        return error.RustRelationalAggregateMissing;
+    const aggregate: AggregateLive = @ptrCast(@alignCast(aggregate_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const alice = api.intern("rust_relational_aggregate_alice");
+    const bob = api.intern("rust_relational_aggregate_bob");
+    const carol = api.intern("rust_relational_aggregate_carol");
+    const dave = api.intern("rust_relational_aggregate_dave");
+    const age = api.intern("rust_relational_aggregate_age");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, age, api.mkSmallInt(18) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, age, api.mkSmallInt(30) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ carol, age, api.mkSmallInt(40) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ dave, age, api.mkSmallInt(30) }, 3);
+
+    const pattern = ProjectPattern{ .entity = null, .attribute = age, .value = null };
+    var output: Classified = undefined;
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 0, pattern, 0, &output));
+    try std.testing.expectEqual(@as(u8, 1), output.tag);
+    try std.testing.expectEqual(@as(i64, 4), output.integer);
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 2, pattern, 0, &output));
+    try std.testing.expectEqual(@as(i64, 3), output.integer);
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 2, pattern, 1, &output));
+    try std.testing.expectEqual(@as(i64, 88), output.integer);
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 2, pattern, 2, &output));
+    try std.testing.expectEqual(@as(i64, 18), output.integer);
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 2, pattern, 3, &output));
+    try std.testing.expectEqual(@as(i64, 40), output.integer);
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 2, pattern, 4, &output));
+    try std.testing.expectEqual(@as(i64, 29), output.integer);
+
+    const missing = ProjectPattern{ .entity = null, .attribute = api.intern("rust_relational_aggregate_missing"), .value = null };
+    try std.testing.expectEqual(@as(c_int, 0), aggregate(store, 2, missing, 1, &output));
+    try std.testing.expectEqual(@as(i64, 0), output.integer);
+    try std.testing.expectEqual(@as(c_int, -8), aggregate(store, 2, missing, 2, &output));
+    try std.testing.expectEqual(@as(c_int, -7), aggregate(store, 2, pattern, 9, &output));
+
+    const city = api.intern("rust_relational_aggregate_city");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, city, api.intern("Boston") }, 3);
+    const nonnumeric = ProjectPattern{ .entity = null, .attribute = city, .value = null };
+    try std.testing.expectEqual(@as(c_int, -4), aggregate(store, 2, nonnumeric, 2, &output));
 }

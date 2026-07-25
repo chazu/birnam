@@ -747,6 +747,48 @@ unsafe fn project_recursive_live(
     0
 }
 
+unsafe fn aggregate_live(
+    store: Oop,
+    projection: u8,
+    pattern: ProjectPattern,
+    operation: u8,
+    output: *mut ClassifiedValue,
+) -> i32 {
+    if output.is_null() || store.is_null() {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let Some(operation) = AggregateOp::from_u8(operation) else {
+        return -7;
+    };
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let terms = match unsafe { project_terms(api, pattern) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let values = project(&facts, &[Clause(terms)], projection as u32);
+    let value = match aggregate_values(&values, operation) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            // `min`, `max`, and `avg` preserve the Zig aggregate surface's
+            // nil on empty input. The caller gets an explicit status rather
+            // than an ambiguous pointer-free identity-zero record.
+            return -8;
+        }
+        Err(AggregateError::UnsupportedValue | AggregateError::Overflow) => return -4,
+    };
+    // SAFETY: output is non-null and points to caller-owned result storage.
+    unsafe { ptr::write(output, record(value)) };
+    0
+}
+
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
 /// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
@@ -984,6 +1026,28 @@ pub unsafe extern "C" fn birnam_relational_rust_project_recursive_live(
     unsafe { project_recursive_live(store, projection, edge, root, output, capacity, written) }
 }
 
+/// Aggregate one projected variable from a single triple pattern. Operations
+/// are `0 count`, `1 sum`, `2 min`, `3 max`, and `4 avg`. Results are copied into
+/// `ClassifiedValue`; count/sum return integer zero for empty input, while
+/// min/max/avg return `-8` for the Zig-compatible empty nil result. This is an
+/// explicit migration probe, not canonical Store aggregate installation.
+///
+/// # Safety
+///
+/// `store` and any non-null pattern term must remain live for the synchronous
+/// call. `output` must point to caller-owned writable result storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_aggregate_live(
+    store: Oop,
+    projection: u8,
+    pattern: ProjectPattern,
+    operation: u8,
+    output: *mut ClassifiedValue,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffer.
+    unsafe { aggregate_live(store, projection, pattern, operation, output) }
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
 ///
 /// # Safety
@@ -1069,6 +1133,36 @@ impl CompareOp {
             3 => Self::GreaterEqual,
             4 => Self::Equal,
             5 => Self::NotEqual,
+            _ => return None,
+        })
+    }
+}
+
+/// The bounded aggregate vocabulary used by the migration probe.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum AggregateOp {
+    Count = 0,
+    Sum = 1,
+    Min = 2,
+    Max = 3,
+    Average = 4,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AggregateError {
+    UnsupportedValue,
+    Overflow,
+}
+
+impl AggregateOp {
+    fn from_u8(value: u8) -> Option<Self> {
+        Some(match value {
+            0 => Self::Count,
+            1 => Self::Sum,
+            2 => Self::Min,
+            3 => Self::Max,
+            4 => Self::Average,
             _ => return None,
         })
     }
@@ -1270,6 +1364,76 @@ pub fn project_recursive(facts: &[Triple], edge: &Clause, root: &Value, result: 
     values
 }
 
+/// Fold distinct projected values with the frozen aggregate law. Count and
+/// empty sum return integer zero. Min/max/average return `None` on empty input
+/// (the caller maps that to the explicit nil status) and reject nonnumeric
+/// values rather than inventing a cross-floor coercion.
+pub fn aggregate_values(
+    values: &[Value],
+    operation: AggregateOp,
+) -> Result<Option<Value>, AggregateError> {
+    match operation {
+        AggregateOp::Count => Ok(Some(Value::Integer(values.len() as i64))),
+        AggregateOp::Sum | AggregateOp::Average => {
+            if values.is_empty() {
+                return Ok(Some(Value::Integer(0)));
+            }
+            let has_float = values.iter().any(|value| matches!(value, Value::Float(_)));
+            if has_float {
+                let mut sum = 0.0;
+                for value in values {
+                    sum += match value {
+                        Value::Integer(integer) => *integer as f64,
+                        Value::Float(float) => *float,
+                        _ => return Err(AggregateError::UnsupportedValue),
+                    };
+                }
+                if operation == AggregateOp::Average {
+                    Ok(Some(Value::Float(sum / values.len() as f64)))
+                } else {
+                    Ok(Some(Value::Float(sum)))
+                }
+            } else {
+                let mut sum = 0i64;
+                for value in values {
+                    let Value::Integer(integer) = value else {
+                        return Err(AggregateError::UnsupportedValue);
+                    };
+                    sum = sum.checked_add(*integer).ok_or(AggregateError::Overflow)?;
+                }
+                if operation == AggregateOp::Average {
+                    Ok(Some(Value::Integer(sum / values.len() as i64)))
+                } else {
+                    Ok(Some(Value::Integer(sum)))
+                }
+            }
+        }
+        AggregateOp::Min | AggregateOp::Max => {
+            let mut best: Option<&Value> = None;
+            for value in values {
+                if !matches!(value, Value::Integer(_) | Value::Float(_)) {
+                    return Err(AggregateError::UnsupportedValue);
+                }
+                let replace = match best {
+                    None => true,
+                    Some(current) => {
+                        let op = if operation == AggregateOp::Min {
+                            CompareOp::Less
+                        } else {
+                            CompareOp::Greater
+                        };
+                        value.compares(op, current)
+                    }
+                };
+                if replace {
+                    best = Some(value);
+                }
+            }
+            Ok(best.cloned())
+        }
+    }
+}
+
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
     let Clause(terms) = clause;
     facts.iter().any(|triple| {
@@ -1302,8 +1466,8 @@ pub fn project_negated(
 #[cfg(test)]
 mod tests {
     use super::{
-        Clause, CompareOp, Term, Triple, Value, project, project_disjunction, project_negated,
-        project_predicate, project_recursive,
+        AggregateOp, Clause, CompareOp, Term, Triple, Value, aggregate_values, project,
+        project_disjunction, project_negated, project_predicate, project_recursive,
     };
 
     fn id(value: u64) -> Value {
@@ -1529,5 +1693,47 @@ mod tests {
         assert!(values[0].matches(&id(2)));
         assert!(values[1].matches(&id(3)));
         assert!(values[2].matches(&id(4)));
+    }
+
+    #[test]
+    fn aggregates_preserve_distinct_numeric_and_empty_laws() {
+        let values = [integer(18), integer(30), integer(40)];
+        assert!(
+            aggregate_values(&values, AggregateOp::Count)
+                .unwrap()
+                .unwrap()
+                .matches(&integer(3))
+        );
+        assert!(
+            aggregate_values(&values, AggregateOp::Sum)
+                .unwrap()
+                .unwrap()
+                .matches(&integer(88))
+        );
+        assert!(
+            aggregate_values(&values, AggregateOp::Min)
+                .unwrap()
+                .unwrap()
+                .matches(&integer(18))
+        );
+        assert!(
+            aggregate_values(&values, AggregateOp::Max)
+                .unwrap()
+                .unwrap()
+                .matches(&integer(40))
+        );
+        assert!(
+            aggregate_values(&values, AggregateOp::Average)
+                .unwrap()
+                .unwrap()
+                .matches(&integer(29))
+        );
+        assert!(
+            aggregate_values(&[], AggregateOp::Sum)
+                .unwrap()
+                .unwrap()
+                .matches(&integer(0))
+        );
+        assert!(aggregate_values(&[], AggregateOp::Min).unwrap().is_none());
     }
 }
