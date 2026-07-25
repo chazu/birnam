@@ -541,6 +541,18 @@ remain the next implementation slices.
   `mise run r6-acceptance` also passes at `49/49`; the verify exception and
   two benchmark crossings remain unchanged.
 
+### R3.8 scalar OOP bridge checkpoint (2026-07-24)
+
+- `b2cac5f` adds a pointer-audited `IdApi` scalar encoder. It maps nil,
+  booleans, Integer, Float, String, and Symbol OOPs to the exact BISO scalar
+  records, retaining no floor pointers and returning `NonTransferable` for
+  unsupported object types. The caller-owned output buffer reports its needed
+  size before a short-buffer failure.
+- The dynamic corpus covers signed integer bits, negative zero, embedded-NUL
+  strings, symbols, unsupported vtables, and short buffers. Debug/ReleaseSafe
+  probes plus the nine Rust unit tests and clippy pass; vectors/maps and worker
+  request dispatch remain the next seam.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

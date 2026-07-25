@@ -366,3 +366,12 @@ R3.7 installed host-symbol checkpoint (2026-07-24):
 - Debug and ReleaseSafe probes pass; request dispatch remains intentionally
   unimplemented pending the IdApi/OOP bridge. The subsequent full R6 rerun
   remains green at `49/49` with the existing verify and benchmark boundaries.
+
+R3.8 scalar OOP bridge checkpoint (2026-07-24):
+
+- `b2cac5f` adds the Rust `IdApi` scalar encoder for nil/booleans, Integer,
+  Float, String, and Symbol, with caller-owned output sizing and fail-closed
+  unsupported-vtable behavior.
+- The dynamic corpus covers signed bits, negative zero, embedded-NUL strings,
+  symbols, unsupported objects, and short buffers. Vectors/maps and request
+  dispatch are explicitly not covered yet.
