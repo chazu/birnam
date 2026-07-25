@@ -1825,6 +1825,18 @@ post-switch image/project observation window closes.
   Larger hostile ABI matrices, callback shape parity, and child-abort coverage
   remain in the R5 exit work.
 
+### R5.20 Rust Alien hostile-callback checkpoint (2026-07-25)
+
+- `8737309` adds live callback failure coverage for string returns, malformed,
+  empty, and unclosed signatures, plus the canonical `nil` object as a block.
+  The last case fixed a real boundary gap: Rust previously rejected only a
+  null pointer, not the host's nil Oop. All cases now answer kinded errors and
+  never enter TCC or generated callback code.
+- `5b02793` raises the sequential Rust Alien R6 sub-gate to `8/8`. Debug and
+  ReleaseSafe pass, the focused matrix remains `80/80`, and full R6 continues
+  to accept only the two recorded benchmark crossings. Child-abort and wider
+  callback ABI-shape coverage remain in the R5 exit work.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
