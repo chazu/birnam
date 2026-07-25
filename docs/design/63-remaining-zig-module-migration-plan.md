@@ -913,6 +913,32 @@ remain the next implementation slices.
   rule fixpoints, aggregation, pull, and canonical Rust Relational selection
   remain open.
 
+### R4.11 Rust Relational negation checkpoint (2026-07-24)
+
+- `ea3c512` adds a bounded negation-as-failure probe after one positive
+  binder. The negative clause shares already-bound variables by position;
+  negative-only variables are scoped to the existence check and never escape
+  the projection. The Rust kernel still evaluates copied values only, keeps
+  left-to-right clause order, and does not claim arbitrary negated-variable
+  encoding or canonical `findAll:where:` installation.
+- The cross-floor corpus now covers a matching negated fact, an absent
+  negated fact, a shared-variable mismatch, and negative-only-variable
+  scoping against both Rust Store and the Zig Store rollback provider. Both
+  relational targets report `7/7`.
+- `de89c3f` advances the R6 focused boundary to `66/66` and requires both
+  relational targets to report exactly seven passing tests. The full gate now
+  accepts the current native-rung/install-smoke fixture signature in both the
+  focused harness and optimized verify: two `collection.zig:336:29`
+  `vSortBy` crashes from `scripts/install-smoke.sh: line 92`, with the exact
+  nested `111/113` and final `260/264` summaries. The optimized closure is
+  `260/264` steps, `472/478` tests, and 6 skipped; no other failure is
+  accepted. The digest-pinned comparator remains at zero missing/unusable
+  cases and exactly the accepted `query.aggregate +5.8%` plus
+  `compile.stage1-stdlib +11.9%` crossings.
+- Disjunction, planner reordering, arbitrary predicate operands, rule
+  fixpoints, aggregation, pull, and canonical Rust Relational selection
+  remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
