@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Keep R6 acceptance aligned with the latest N0.5 test set. The checker is
+# Keep R6 acceptance aligned with the latest Rust replacement test set. The checker is
 # fail-closed and validates the semantic fixtures, accepted result pair, and
 # artifact-inspector baseline before the raw comparator is run below.
 python3 scripts/check-native-rung-baseline.py
@@ -35,6 +35,7 @@ latest_tests=(
   test-rust-codegen-zig-store
   test-rust-prelude
   test-rust-prelude-io
+  test-rust-collection
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
@@ -52,9 +53,9 @@ cat "$functional"
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 43/43 tests passed$' "$functional" || true)
+focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 44/44 tests passed$' "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
-  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 43/43 passing tests" >&2
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 44/44 passing tests" >&2
   exit 1
 }
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)

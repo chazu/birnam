@@ -41,6 +41,7 @@ pub fn build(b: *std.Build) void {
     ) orelse .rust;
     const RungImpl = enum { zig, rust };
     const PreludeImpl = enum { zig, rust };
+    const CollectionImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
@@ -51,6 +52,11 @@ pub fn build(b: *std.Build) void {
         "prelude-impl",
         "Primitive prelude implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
+    const selected_collection = b.option(
+        CollectionImpl,
+        "collection-impl",
+        "Collection implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .zig;
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
     else
@@ -849,6 +855,34 @@ pub fn build(b: *std.Build) void {
         "Exercise Rust Prelude readLine/println through a subprocess stdin/stdout boundary",
     );
     test_rust_prelude_io_step.dependOn(&run_rust_prelude_io_probe.step);
+
+    const rust_collection_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_collection_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_collection_tests = b.addTest(.{ .root_module = rust_collection_test_mod });
+    const run_rust_collection_tests = b.addRunArtifact(rust_collection_tests);
+    run_rust_collection_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_collection_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_collection_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_COLLECTION_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_collection.dylib", .{rust_floor_profile})),
+    );
+    run_rust_collection_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_PRELUDE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_prelude_rust.dylib"),
+    );
+    run_rust_collection_tests.step.dependOn(&rust_floor_build.step);
+    const test_rust_collection_step = b.step(
+        "test-rust-collection",
+        "Exercise the explicit Rust Collection vector protocol through IdApi",
+    );
+    test_rust_collection_step.dependOn(&run_rust_collection_tests.step);
+    test_step.dependOn(&run_rust_collection_tests.step);
 
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(
@@ -1713,6 +1747,40 @@ pub fn build(b: *std.Build) void {
                 });
                 b.getInstallStep().dependOn(&install_zig_prelude_selected.step);
                 bootstrap_install.dependOn(&install_zig_prelude_selected.step);
+            }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_collection")) {
+            const install_zig_collection = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_collection_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_collection.step);
+            bootstrap_install.dependOn(&install_zig_collection.step);
+            const install_rust_collection = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_collection.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_collection_rust.dylib",
+            );
+            install_rust_collection.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_collection.step);
+            bootstrap_install.dependOn(&install_rust_collection.step);
+            if (selected_collection == .rust) {
+                const install_rust_collection_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_collection.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_collection.dylib",
+                );
+                install_rust_collection_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_collection_selected.step);
+                bootstrap_install.dependOn(&install_rust_collection_selected.step);
+            } else {
+                const install_zig_collection_selected = b.addInstallArtifact(lib, .{});
+                b.getInstallStep().dependOn(&install_zig_collection_selected.step);
+                bootstrap_install.dependOn(&install_zig_collection_selected.step);
             }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});

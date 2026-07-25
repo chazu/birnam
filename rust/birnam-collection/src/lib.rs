@@ -6,8 +6,16 @@
 //! immutable append operation.  The dynamic protocol wrapper is added only
 //! after this kernel's sharing and boundary behavior is characterized.
 
+#![allow(clippy::missing_safety_doc)]
+
 use std::array;
 use std::sync::Arc;
+
+use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use core::ffi::{c_char, c_void};
+use core::mem::size_of;
+use core::ptr;
+use std::sync::OnceLock;
 
 const BITS: usize = 5;
 const WIDTH: usize = 1 << BITS;
@@ -189,6 +197,480 @@ impl<T: Clone> PersistentVector<T> {
             .filter_map(|index| self.get(index).cloned())
             .collect()
     }
+}
+
+// -- IdApi Vector fixture ---------------------------------------------------
+
+const RUST_COLLECTION_IDENTITY: &[u8] = b"rust-collection-r1-vector\0";
+const COLLECTION_NAME: &[u8] = b"Collection\0";
+const COLLECTION_VT_NAME: &[u8] = b"CollectionVt\0";
+const VECTOR_NAME: &[u8] = b"Vector\0";
+const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
+const VECTOR_NODE_NAME: &[u8] = b"VectorNode\0";
+
+#[repr(C)]
+struct VecPayload {
+    count: usize,
+    shift: usize,
+    root: Oop,
+    tail: Oop,
+    tail_len: usize,
+}
+
+#[derive(Clone, Copy)]
+struct Runtime {
+    api: usize,
+    collection_vt: usize,
+    vector_vt: usize,
+    vector_proto: usize,
+    node_vt: usize,
+    value1: usize,
+    print_string: usize,
+}
+
+static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static VECTOR_LAYOUT: [u8; 5] = [
+    birnam_abi::SLOT_RAW,
+    birnam_abi::SLOT_RAW,
+    birnam_abi::SLOT_OOP,
+    birnam_abi::SLOT_OOP,
+    birnam_abi::SLOT_RAW,
+];
+
+fn abort(message: &str) -> ! {
+    eprintln!("birnam Rust Collection: {message}");
+    std::process::abort();
+}
+
+fn runtime() -> &'static Runtime {
+    RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("module_init was not called"))
+}
+
+unsafe fn api_ref() -> &'static IdApi {
+    // SAFETY: module_init records the process-owned table for the process
+    // lifetime; the host retains it while every dynamic rung is live.
+    unsafe { &*(runtime().api as *const IdApi) }
+}
+
+unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
+    // SAFETY: selectors are static NUL-terminated byte strings.
+    unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
+}
+
+unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
+    // SAFETY: names are static NUL-terminated byte strings.
+    unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+}
+
+unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
+    // SAFETY: the host owns this carrier for the duration of the method call.
+    unsafe { borrowed_oop_args(args, count)?.first().copied() }
+}
+
+unsafe fn vec_payload(object: Oop) -> *mut VecPayload {
+    if object.is_null() {
+        abort("Vector method received a null receiver");
+    }
+    // SAFETY: Vector instances are allocated with the exact VecPayload layout.
+    object.cast::<VecPayload>()
+}
+
+unsafe fn node_slots(object: Oop) -> *mut [Oop; WIDTH] {
+    if object.is_null() {
+        abort("Vector node was null");
+    }
+    // SAFETY: VectorNode payloads are allocated as WIDTH consecutive OOP slots.
+    object.cast::<[Oop; WIDTH]>()
+}
+
+unsafe fn new_node(api: &IdApi, node_vt: Oop) -> Oop {
+    // SAFETY: the vtable has an all-OOP layout and the requested payload is
+    // exactly one vector trie node.
+    let node = unsafe { (api.alloc)(node_vt, size_of::<[Oop; WIDTH]>()) };
+    if node.is_null() {
+        abort("VectorNode allocation failed");
+    }
+    node
+}
+
+unsafe fn copy_node(api: &IdApi, node_vt: Oop, source: Oop) -> Oop {
+    let destination = unsafe { new_node(api, node_vt) };
+    // SAFETY: both payloads have the exact WIDTH-slot node extent.
+    unsafe { (*node_slots(destination)).copy_from_slice(&*node_slots(source)) };
+    destination
+}
+
+unsafe fn oop_new_path(api: &IdApi, node_vt: Oop, level: usize, node: Oop) -> Oop {
+    if level == 0 {
+        return node;
+    }
+    let result = unsafe { new_node(api, node_vt) };
+    unsafe { (*node_slots(result))[0] = oop_new_path(api, node_vt, level - BITS, node) };
+    result
+}
+
+unsafe fn oop_push_tail(
+    api: &IdApi,
+    node_vt: Oop,
+    old_count: usize,
+    level: usize,
+    parent: Oop,
+    tail: Oop,
+) -> Oop {
+    let subindex = ((old_count - 1) >> level) & MASK;
+    let result = unsafe { copy_node(api, node_vt, parent) };
+    let child = if level == BITS {
+        tail
+    } else {
+        let existing = unsafe { (*node_slots(parent))[subindex] };
+        if existing.is_null() {
+            unsafe { oop_new_path(api, node_vt, level - BITS, tail) }
+        } else {
+            unsafe { oop_push_tail(api, node_vt, old_count, level - BITS, existing, tail) }
+        }
+    };
+    unsafe { (*node_slots(result))[subindex] = child };
+    result
+}
+
+unsafe fn empty_vector(api: &IdApi, runtime: &Runtime) -> Oop {
+    let root = unsafe { new_node(api, runtime.node_vt as Oop) };
+    let tail = unsafe { new_node(api, runtime.node_vt as Oop) };
+    // SAFETY: the vtable's layout matches VecPayload exactly.
+    let vector = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
+    if vector.is_null() {
+        abort("Vector allocation failed");
+    }
+    unsafe {
+        *vec_payload(vector) = VecPayload {
+            count: 0,
+            shift: BITS,
+            root,
+            tail,
+            tail_len: 0,
+        };
+    }
+    vector
+}
+
+unsafe fn oop_array_for(vector: *const VecPayload, index: usize) -> Oop {
+    if index >= unsafe { (*vector).count } {
+        return ptr::null_mut();
+    }
+    if index >= unsafe { (*vector).count - (*vector).tail_len } {
+        return unsafe { (*vector).tail };
+    }
+    let mut node = unsafe { (*vector).root };
+    let mut level = unsafe { (*vector).shift };
+    while level > 0 {
+        let child = unsafe { (*node_slots(node))[(index >> level) & MASK] };
+        if child.is_null() {
+            return ptr::null_mut();
+        }
+        node = child;
+        level -= BITS;
+    }
+    node
+}
+
+unsafe fn vector_at(vector: *const VecPayload, index: usize) -> Oop {
+    let leaf = unsafe { oop_array_for(vector, index) };
+    if leaf.is_null() {
+        return ptr::null_mut();
+    }
+    unsafe { (*node_slots(leaf))[index & MASK] }
+}
+
+unsafe fn vector_push(api: &IdApi, runtime: &Runtime, vector: Oop, value: Oop) -> Oop {
+    let source = unsafe { vec_payload(vector) };
+    let source_count = unsafe { (*source).count };
+    let source_shift = unsafe { (*source).shift };
+    let source_root = unsafe { (*source).root };
+    let source_tail = unsafe { (*source).tail };
+    let source_tail_len = unsafe { (*source).tail_len };
+    let mut tail = unsafe { copy_node(api, runtime.node_vt as Oop, source_tail) };
+    if source_tail_len < WIDTH {
+        unsafe { (*node_slots(tail))[source_tail_len] = value };
+        let result = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
+        if result.is_null() {
+            abort("Vector allocation failed");
+        }
+        unsafe {
+            *vec_payload(result) = VecPayload {
+                count: source_count + 1,
+                shift: source_shift,
+                root: source_root,
+                tail,
+                tail_len: source_tail_len + 1,
+            };
+        }
+        return result;
+    }
+
+    let tail_node = source_tail;
+    let root;
+    let mut shift = source_shift;
+    if (source_count >> BITS) > (1usize << source_shift) {
+        root = unsafe { new_node(api, runtime.node_vt as Oop) };
+        unsafe {
+            (*node_slots(root))[0] = source_root;
+            (*node_slots(root))[1] =
+                oop_new_path(api, runtime.node_vt as Oop, source_shift, tail_node);
+        }
+        shift += BITS;
+    } else {
+        root = unsafe {
+            oop_push_tail(
+                api,
+                runtime.node_vt as Oop,
+                source_count,
+                source_shift,
+                source_root,
+                tail_node,
+            )
+        };
+    }
+
+    tail = unsafe { new_node(api, runtime.node_vt as Oop) };
+    unsafe { (*node_slots(tail))[0] = value };
+    let result = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
+    if result.is_null() {
+        abort("Vector allocation failed");
+    }
+    unsafe {
+        *vec_payload(result) = VecPayload {
+            count: source_count + 1,
+            shift,
+            root,
+            tail,
+            tail_len: 1,
+        };
+    }
+    result
+}
+
+unsafe extern "C" fn vector_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)((*vec_payload(self_object)).count as i64) }
+}
+
+unsafe extern "C" fn vector_at_method(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(index) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(index) } == 0 {
+        return api.nilObj;
+    }
+    let index = unsafe { (api.smallIntValue)(index) };
+    if index < 0 {
+        return api.nilObj;
+    }
+    let value = unsafe { vector_at(vec_payload(self_object), index as usize) };
+    if value.is_null() { api.nilObj } else { value }
+}
+
+unsafe extern "C" fn vector_add(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    unsafe { vector_push(api, runtime(), self_object, value) }
+}
+
+unsafe extern "C" fn vector_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(block) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let selector = runtime().value1 as Oop;
+    let total = unsafe { (*vec_payload(self_object)).count };
+    for index in 0..total {
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        let arguments = [value];
+        // SAFETY: the argument carrier is stack-local and the send is
+        // synchronous; no Rust borrow is held across re-entry.
+        unsafe { (api.send)(block, selector, arguments.as_ptr(), arguments.len()) };
+    }
+    self_object
+}
+
+unsafe extern "C" fn vector_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let selector = runtime().print_string as Oop;
+    let total = unsafe { (*vec_payload(self_object)).count };
+    let mut output = Vec::from(&b"#["[..]);
+    for index in 0..total {
+        if index != 0 {
+            output.push(b' ');
+        }
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        let printed = unsafe { (api.send)(value, selector, ptr::null(), 0) };
+        if printed.is_null() {
+            return api.nilObj;
+        }
+        let mut length = 0;
+        let bytes = unsafe { (api.stringBytes)(printed, &mut length) };
+        if bytes.is_null() {
+            return api.nilObj;
+        }
+        // SAFETY: stringBytes returns a stable borrowed extent for this send.
+        output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
+    }
+    output.push(b']');
+    // SAFETY: the floor copies this transient byte buffer into a String.
+    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+}
+
+unsafe extern "C" fn vector_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(other) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.vtableOf)(other) } != runtime().vector_vt as Oop {
+        return api.nilObj;
+    }
+    let mut result = self_object;
+    let total = unsafe { (*vec_payload(other)).count };
+    for index in 0..total {
+        let value = unsafe { vector_at(vec_payload(other), index) };
+        result = unsafe { vector_push(api, runtime(), result, value) };
+    }
+    result
+}
+
+unsafe fn bring_up(api_pointer: *mut IdApi) {
+    if api_pointer.is_null() {
+        abort("module_init received a null IdApi");
+    }
+    let api = unsafe { &*api_pointer };
+    let runtime = *RUNTIME.get_or_init(|| {
+        let reloading = unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) != 0 };
+        let (collection_vt, node_vt, vector_vt, vector_proto) = if reloading {
+            (
+                unsafe { import(api, COLLECTION_VT_NAME) },
+                unsafe { import(api, VECTOR_NODE_NAME) },
+                unsafe { import(api, VECTOR_VT_NAME) },
+                unsafe { import(api, VECTOR_NAME) },
+            )
+        } else {
+            let collection_vt = unsafe { (api.proto)(api.object_vt) };
+            let node_vt = unsafe { (api.proto)(api.object_vt) };
+            let vector_vt = unsafe { (api.proto)(collection_vt) };
+            (collection_vt, node_vt, vector_vt, ptr::null_mut())
+        };
+        if [collection_vt, node_vt, vector_vt]
+            .iter()
+            .any(|value| value.is_null())
+        {
+            abort("Rust Collection exports were incomplete");
+        }
+        let vector_proto = if vector_proto.is_null() {
+            unsafe {
+                empty_vector(
+                    api,
+                    &Runtime {
+                        api: api_pointer as usize,
+                        collection_vt: collection_vt as usize,
+                        vector_vt: vector_vt as usize,
+                        vector_proto: 0,
+                        node_vt: node_vt as usize,
+                        value1: 0,
+                        print_string: 0,
+                    },
+                )
+            }
+        } else {
+            vector_proto
+        };
+        Runtime {
+            api: api_pointer as usize,
+            collection_vt: collection_vt as usize,
+            vector_vt: vector_vt as usize,
+            vector_proto: vector_proto as usize,
+            node_vt: node_vt as usize,
+            value1: unsafe { intern(api, b"value:\0") } as usize,
+            print_string: unsafe { intern(api, b"printString\0") } as usize,
+        }
+    });
+    unsafe {
+        (api.setLayout)(runtime.node_vt as Oop, ptr::null(), 0, birnam_abi::SLOT_OOP);
+        (api.setLayout)(
+            runtime.vector_vt as Oop,
+            VECTOR_LAYOUT.as_ptr(),
+            VECTOR_LAYOUT.len(),
+            birnam_abi::SLOT_RAW,
+        );
+        (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"size\0"),
+            vector_size,
+        );
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"at:\0"),
+            vector_at_method,
+        );
+        (api.method)(runtime.vector_vt as Oop, intern(api, b"add:\0"), vector_add);
+        (api.method)(runtime.vector_vt as Oop, intern(api, b"do:\0"), vector_do);
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"printString\0"),
+            vector_print_string,
+        );
+        (api.method)(runtime.vector_vt as Oop, intern(api, b",\0"), vector_comma);
+    }
+    if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
+        unsafe {
+            (api.setOwner)(runtime.vector_vt as Oop, runtime.vector_proto as Oop);
+            let _ = (api.exportObj)(
+                COLLECTION_VT_NAME.as_ptr().cast(),
+                runtime.collection_vt as Oop,
+            );
+            let _ = (api.exportObj)(
+                COLLECTION_NAME.as_ptr().cast(),
+                runtime.collection_vt as Oop,
+            );
+            let _ = (api.exportObj)(VECTOR_VT_NAME.as_ptr().cast(), runtime.vector_vt as Oop);
+            let _ = (api.exportObj)(VECTOR_NAME.as_ptr().cast(), runtime.vector_proto as Oop);
+            let _ = (api.exportObj)(VECTOR_NODE_NAME.as_ptr().cast(), runtime.node_vt as Oop);
+        }
+    }
+}
+
+/// Identifies this explicit Rust Collection vector fixture.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_collection_rust_identity() -> *const c_char {
+    RUST_COLLECTION_IDENTITY.as_ptr().cast()
+}
+
+/// Initialize the Rust Collection vector protocol against the process floor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
+    let _ = state;
+    unsafe { bring_up(api) };
+    ptr::null_mut()
 }
 
 #[cfg(test)]
