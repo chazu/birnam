@@ -284,5 +284,7 @@ R2 standalone Error implementation checkpoint (2026-07-24):
   both orders retaining one family and stable export/payload identity.
 - `3edc2b6` added both Rust Error preload-order runs to the R6 latest-tests pin
   and requires both root-level integration results.
-- The latest full R6 run remains green at `46/46`, with the exact recorded
+- `8b363f9` added the Rust Prelude/Rust Error-owner run, including the Rust
+  identity assertion, to the R6 latest-tests pin.
+- The latest full R6 run remains green at `48/48`, with the exact recorded
   verify exception and the two accepted benchmark crossings unchanged.

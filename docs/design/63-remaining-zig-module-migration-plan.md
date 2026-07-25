@@ -381,7 +381,10 @@ post-switch observation are recorded.
   orders, rejecting duplicate-family behavior in either supported order.
 - `3edc2b6` added both Rust Error preload-order runs to the R6 latest-tests
   pin and hardened the gate to require both root-level integration results.
-- A fresh `mise run r6-acceptance` passed at `46/46`; optimized verify still
+- `8b363f9` added an explicit Rust Prelude run against
+  `libbirnam_id_error_rust.dylib`, asserting `rust-error-r2-core`; the R6 pin
+  now includes the Rust Error owner matrix.
+- A fresh `mise run r6-acceptance` passed at `48/48`; optimized verify still
   matches only the recorded `sortedModules` fixture exception, and the
   comparator still reports exactly the accepted `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` crossings.
