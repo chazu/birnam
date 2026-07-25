@@ -384,3 +384,15 @@ R3.9 collection OOP bridge checkpoint (2026-07-24):
 - The probe loads the Rust Collection fixture and verifies exact vector/map
   bytes in both optimization modes. Decode-to-OOP and worker request dispatch
   remain unimplemented.
+
+R3.10 OOP decode bridge checkpoint (2026-07-24):
+
+- `c2baa52` adds the Rust BISO-to-floor decoder through the frozen `IdApi`.
+  Scalars use canonical constructors/interning; Vector and Map values are
+  rebuilt through the live Collection selectors rather than a Rust-private
+  representation. Depth, node, container, map-key, duplicate-key, malformed,
+  and trailing-byte failures remain fail-closed.
+- The installed dynamic corpus covers scalar, embedded-NUL String, Symbol,
+  Vector, Map, trailing-byte, and unknown-tag cases in Debug and ReleaseSafe.
+  Rust unit tests and clippy pass. Worker request dispatch, hostile-child
+  lifecycle behavior, and canonical Rust selection remain pending.

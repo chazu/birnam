@@ -565,6 +565,19 @@ remain the next implementation slices.
   The Rust nine-test/clippy suite remains green; decode-to-OOP and worker
   request dispatch are still pending.
 
+### R3.10 OOP decode bridge checkpoint (2026-07-24)
+
+- `c2baa52` adds the pointer-audited Rust decoder from BISO values back into
+  live floor OOPs through the frozen `IdApi`. Scalars reconstruct with the
+  canonical constructors/intern table; vectors and maps are rebuilt only via
+  the live Collection selectors, with bounded depth/node/container counts,
+  map-key validation, duplicate rejection, and trailing-byte rejection.
+- The installed probe covers Integer, Float, embedded-NUL String, Symbol,
+  Vector, Map, malformed trailing bytes, and unknown tags. Rust unit tests,
+  clippy, and Debug/ReleaseSafe dynamic Isolate probes pass. Worker request
+  dispatch, hostile-child lifecycle behavior, and canonical Rust selection
+  remain pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
