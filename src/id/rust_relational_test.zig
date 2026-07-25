@@ -23,6 +23,7 @@ const ClassifiedTriple = extern struct {
 };
 const CollectLive = *const fn (Oop, ?[*]ClassifiedTriple, usize, *usize) callconv(.c) c_int;
 const CollectWindow = *const fn (Oop, u8, u64, u64, ?[*]ClassifiedTriple, usize, *usize) callconv(.c) c_int;
+const ProjectLive = *const fn (Oop, u8, Oop, Oop, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -70,7 +71,7 @@ test "Rust Relational classifier copies scalar values and preserves identities" 
     const identity_raw = api.dlsym(handle, "birnam_relational_rust_identity") orelse
         return error.RustRelationalIdentityMissing;
     const identity: Identity = @ptrCast(@alignCast(identity_raw));
-    try std.testing.expectEqualStrings("rust-relational-r4.4-bridge", std.mem.span(identity()));
+    try std.testing.expectEqualStrings("rust-relational-r4.5-project", std.mem.span(identity()));
 
     const classify_raw = api.dlsym(handle, "birnam_relational_rust_classify") orelse
         return error.RustRelationalClassifyMissing;
@@ -180,4 +181,47 @@ test "Rust Relational callback preserves Store transaction windows" {
     );
     try std.testing.expect(hasTriple(records[0..written], entity, attribute, 22));
     try std.testing.expectEqual(@as(c_int, -7), collect(store, 9, 0, 0, &records, records.len, &written));
+}
+
+test "Rust Relational kernel projects a Store pattern across the ABI" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const project_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_live") orelse
+        return error.RustRelationalProjectMissing;
+    const project: ProjectLive = @ptrCast(@alignCast(project_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const entity = api.intern("rust_relational_project_entity");
+    const attribute = api.intern("rust_relational_project_attribute");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, api.mkSmallInt(123) }, 3);
+
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        project(store, 0, null, attribute, api.mkSmallInt(123), &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@as(u8, 0), values[0].tag);
+    try std.testing.expectEqual(@intFromPtr(entity), @as(usize, @intCast(values[0].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, -5),
+        project(store, 0, null, attribute, api.mkSmallInt(123), null, 0, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        project(store, 0, null, attribute, api.mkSmallInt(999), &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 0), written);
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        project(store, 3, null, attribute, api.mkSmallInt(123), &values, values.len, &written),
+    );
 }

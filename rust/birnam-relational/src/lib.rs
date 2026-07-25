@@ -3,7 +3,8 @@
 //! This first R4 slice evaluates a left-to-right conjunction over a borrowed
 //! Store snapshot. It owns neither facts nor IdApi objects: the caller supplies
 //! the current (or historical) live triples, and receives projected bindings.
-//! The dynamic module/Store callback wrapper is deliberately a later slice.
+//! The dynamic module/Store callback wrapper is deliberately still a probe;
+//! canonical `findAll:where:` installation remains a later slice.
 
 pub mod oop;
 
@@ -14,7 +15,7 @@ use core::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.4-bridge\0";
+const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.5-project\0";
 static API: OnceLock<usize> = OnceLock::new();
 static ACTIVE_PROBE_BLOCK: AtomicUsize = AtomicUsize::new(0);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
@@ -166,6 +167,12 @@ struct ProbeCollector {
     status: i32,
 }
 
+struct ProjectCollector {
+    api: *const IdApi,
+    facts: Vec<Triple>,
+    status: i32,
+}
+
 unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     if self_object.is_null() {
         return ptr::null_mut();
@@ -221,6 +228,64 @@ unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, cou
         );
     }
     collector.written += 1;
+    api.nilObj
+}
+
+unsafe extern "C" fn collect_project_triple(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    if self_object.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: the callback vtable has one raw payload slot containing the
+    // synchronous collector address installed by project_live.
+    let collector_pointer = unsafe { *(self_object.cast::<*mut ProjectCollector>()) };
+    if collector_pointer.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: project_live keeps this stack collector alive until Store's send
+    // and every callback have returned.
+    let collector = unsafe { &mut *collector_pointer };
+    if collector.status != 0 {
+        return unsafe { (*collector.api).nilObj };
+    }
+    if count != 3 {
+        collector.status = -3;
+        return unsafe { (*collector.api).nilObj };
+    }
+    let Some(args) = (unsafe { borrowed_oop_args(args, count) }) else {
+        collector.status = -3;
+        return unsafe { (*collector.api).nilObj };
+    };
+    // Keep the bridge bounded even when a caller supplies a tiny result
+    // buffer: the Store remains authoritative, but a malformed/unbounded
+    // callback stream cannot grow a Rust-side snapshot without limit.
+    const MAX_PROJECT_FACTS: usize = 1_000_000;
+    if collector.facts.len() >= MAX_PROJECT_FACTS {
+        collector.status = -5;
+        return unsafe { (*collector.api).nilObj };
+    }
+    // SAFETY: module_init records the process-owned IdApi for the module life.
+    let api = unsafe { &*collector.api };
+    let Some(entity) = (unsafe { oop::classify(api, args[0]) }) else {
+        collector.status = -4;
+        return api.nilObj;
+    };
+    let Some(attribute) = (unsafe { oop::classify(api, args[1]) }) else {
+        collector.status = -4;
+        return api.nilObj;
+    };
+    let Some(value) = (unsafe { oop::classify(api, args[2]) }) else {
+        collector.status = -4;
+        return api.nilObj;
+    };
+    collector.facts.push(Triple {
+        entity,
+        attribute,
+        value,
+    });
     api.nilObj
 }
 
@@ -305,6 +370,99 @@ unsafe fn collect_window(
     collector.status
 }
 
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_live(
+    store: Oop,
+    projection: u8,
+    entity: Oop,
+    attribute: Oop,
+    value: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) || store.is_null() {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let Some(api_address) = API.get() else {
+        return -2;
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let callback_vt = unsafe { (api.proto)(api.object_vt) };
+    if callback_vt.is_null() {
+        return -6;
+    }
+    let callback_selector = unsafe { (api.intern)(c"value:value:value:".as_ptr()) };
+    // SAFETY: the callback object has one raw payload slot holding a stack
+    // collector address and never exposes a Rust reference to the floor.
+    unsafe {
+        (api.setLayout)(callback_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        (api.method)(callback_vt, callback_selector, collect_project_triple);
+    }
+    let mut collector = ProjectCollector {
+        api: api as *const IdApi,
+        facts: Vec::new(),
+        status: 0,
+    };
+    let callback = unsafe { (api.alloc)(callback_vt, size_of::<*mut ProjectCollector>()) };
+    if callback.is_null() {
+        return -6;
+    }
+    // SAFETY: callback payload was allocated with exactly one raw pointer slot.
+    unsafe { ptr::write(callback.cast::<*mut ProjectCollector>(), &mut collector) };
+    ACTIVE_PROBE_BLOCK.store(callback as usize, Ordering::Release);
+    let selector = unsafe { (api.intern)(c"liveTriplesDo:".as_ptr()) };
+    let arguments = [callback];
+    // SAFETY: Store owns the frozen liveTriplesDo: selector and synchronously
+    // invokes value:value:value: on the callback object.
+    unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    if collector.status != 0 {
+        return collector.status;
+    }
+
+    let term = |object: Oop, variable: u32| -> Result<Term, i32> {
+        if object.is_null() {
+            return Ok(Term::Variable(variable));
+        }
+        // SAFETY: object is borrowed from the caller for this synchronous call.
+        unsafe { oop::classify(api, object) }
+            .map(Term::Constant)
+            .ok_or(-4)
+    };
+    let terms = [
+        match term(entity, 0) {
+            Ok(term) => term,
+            Err(status) => return status,
+        },
+        match term(attribute, 1) {
+            Ok(term) => term,
+            Err(status) => return status,
+        },
+        match term(value, 2) {
+            Ok(term) => term,
+            Err(status) => return status,
+        },
+    ];
+    let projected = project(&collector.facts, &[Clause(terms)], projection as u32);
+    if projected.len() > capacity {
+        return -5;
+    }
+    // SAFETY: the caller supplied capacity elements of writable output storage;
+    // the length check above bounds every write.
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    // `written` is the number of projected values, not the callback snapshot.
+    unsafe { *written = projected_len };
+    0
+}
+
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
 /// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
@@ -351,6 +509,39 @@ pub unsafe extern "C" fn birnam_relational_rust_collect_window(
 ) -> i32 {
     // SAFETY: the caller supplies the frozen Store object and output buffers.
     unsafe { collect_window(store, mode, lower, upper, output, capacity, written) }
+}
+
+/// Project one triple-pattern variable from the current Store snapshot. A null
+/// term is a variable (entity/attribute/value positions use variable ids 0/1/2);
+/// non-null terms are classified constants. This is an explicit migration probe,
+/// not yet the canonical Store `findAll:where:` method.
+///
+/// Return values: `0` success, `-2` before `module_init`, `-3` invalid pointers
+/// or Store, `-4` malformed terms, `-5` insufficient output capacity, `-6`
+/// callback allocation failure, and `-7` invalid projection index.
+///
+/// # Safety
+///
+/// `store` and any non-null term must remain live for the synchronous call.
+/// `output` and `written` must point to caller-owned writable storage for the
+/// declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_live(
+    store: Oop,
+    projection: u8,
+    entity: Oop,
+    attribute: Oop,
+    value: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe {
+        project_live(
+            store, projection, entity, attribute, value, output, capacity, written,
+        )
+    }
 }
 
 /// Initialize the explicit Rust Relational probe against the process IdApi.
