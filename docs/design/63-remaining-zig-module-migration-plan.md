@@ -1898,8 +1898,27 @@ post-switch image/project observation window closes.
 - `98adc7d` installs explicit Zig and Rust Image fixtures, and `1aac0d7`
   adds the Debug/ReleaseSafe live shape gate (`1/1`). `82f13ab` makes that
   target a required focused R6 input. Rust Image is not canonical; the next
-  slice ports report state and the atomic save transaction behind this exact
-  surface.
+  slice ports the atomic save transaction behind this exact surface.
+
+### R6.2 Rust Image report-state checkpoint (2026-07-25)
+
+- `ffc71b4` replaces the shell's constant `never`/zero/empty report with a
+  process-owned, mutex-protected `SaveReport` state matching the frozen
+  `ImageSaveReport` selectors and status vocabulary. `saveImage:` now validates
+  arity, argument-buffer shape, and String-path type before it fails closed;
+  each rejection resets counters and records a bounded diagnostic detail.
+  A well-typed path still rejects with `Rust Image save orchestration is not
+  installed`, because this slice does not yet have authority to walk the heap,
+  write v4 records, or publish a replacement image.
+- The Rust Image live gate now proves both malformed-input and well-typed
+  fail-closed report transitions in Debug and ReleaseSafe. The Rust unit suite
+  remains green (`13/13`). Rust Image is still not canonical; no filesystem
+  mutation is introduced by this slice.
+
+The next R6 slice may add the temp-file/atomic-publish transaction only after
+the Rust implementation has a real v4 writer and preflight authority. It must
+retain this report state on every rejection and leave an existing destination
+byte-for-byte unchanged when preflight or publication fails.
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
