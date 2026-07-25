@@ -553,6 +553,18 @@ remain the next implementation slices.
   probes plus the nine Rust unit tests and clippy pass; vectors/maps and worker
   request dispatch remain the next seam.
 
+### R3.9 collection OOP bridge checkpoint (2026-07-24)
+
+- `f9b5774` extends the Rust encoder through the frozen Collection protocol:
+  `VectorVt`/`MapVt`, `size`, `at:`, `keys`, and `at:put:`. It retains only an
+  active-address stack for cycle detection, bounds every container at the
+  wire limit, validates map keys, and never introduces a Rust-private
+  collection representation.
+- The dynamic probe explicitly loads the Rust Collection fixture, then checks
+  exact vector and map bytes alongside scalar cases in Debug and ReleaseSafe.
+  The Rust nine-test/clippy suite remains green; decode-to-OOP and worker
+  request dispatch are still pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

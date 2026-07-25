@@ -375,3 +375,12 @@ R3.8 scalar OOP bridge checkpoint (2026-07-24):
 - The dynamic corpus covers signed bits, negative zero, embedded-NUL strings,
   symbols, unsupported objects, and short buffers. Vectors/maps and request
   dispatch are explicitly not covered yet.
+
+R3.9 collection OOP bridge checkpoint (2026-07-24):
+
+- `f9b5774` traverses live `VectorVt`/`MapVt` objects only through the frozen
+  `size`/`at:`/`keys`/`at:put:` selectors, with bounded counts, map-key checks,
+  and active-address cycle rejection.
+- The probe loads the Rust Collection fixture and verifies exact vector/map
+  bytes in both optimization modes. Decode-to-OOP and worker request dispatch
+  remain unimplemented.
