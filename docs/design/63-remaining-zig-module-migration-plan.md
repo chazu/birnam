@@ -94,9 +94,11 @@ Every phase below inherits these rules.
    nil/Error result or abort only where the existing contract requires an
    invariant abort. Partial activation is rolled back.
 9. **Oracle and observation.** The Zig implementation remains loadable and
-   testable through a clean-process selection. A Rust implementation is not
-   canonical until focused behavior, forced-GC, cold bootstrap, relocation,
-   full verify, R6 performance, and an observation window all pass.
+   testable through a clean-process selection. After focused behavior,
+   forced-GC, cold bootstrap, relocation, full verify, and R6 performance pass
+   as pre-switch acceptance, one focused commit may make Rust canonical. The
+   Zig oracle cannot be retired until the post-switch observation window meets
+   Design 62 §5.4.
 
 ## 3. Phase R0 — inventory and contract freeze
 
@@ -404,9 +406,13 @@ allowances.
    second runtime preflight authority.
 4. Run two independent clean Rust bootstraps with no Birnam artifact, full
    verify, installed relocation, R6, declared embedded bootstrap-source
-   recovery only, images, isolates, and release rollback. Runtime resolution
-   must never fall back to a checkout, cwd, source tree, or manifest.
-5. Remove Zig implementations only after the Rust observation window and the
+   recovery only, images, isolates, and release rollback as the pre-switch
+   acceptance. Runtime resolution must never fall back to a checkout, cwd,
+   source tree, or manifest.
+5. Make one focused Rust-host canonical-switch commit. Then run the
+   post-switch release, installed/project, image, isolate, and rollback
+   observation window under Design 62 §5.4.
+6. Remove Zig host implementations only after that observation window and the
    Design 61 R8 closure. Retain frozen compatibility dylibs where required for
    old images and rollback.
 
