@@ -8,13 +8,13 @@
 
 #![allow(clippy::missing_safety_doc)]
 
-use crate::codegen::emit_shim;
+use crate::codegen::{emit_callback, emit_shim};
 use crate::loader::{LibraryRegistry, LoaderError};
 use crate::parse_signature;
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, Once, OnceLock};
 
 const RUST_ALIEN_IDENTITY: &[u8] = b"rust-alien-r5-loader\0";
 const ALIEN_VT_NAME: &[u8] = b"AlienVt\0";
@@ -23,12 +23,25 @@ const ALIEN_NAME: &[u8] = b"Alien\0";
 static API: OnceLock<usize> = OnceLock::new();
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static REGISTRY: OnceLock<Mutex<LibraryRegistry>> = OnceLock::new();
+static CALLBACKS: OnceLock<Mutex<Vec<CallbackEntry>>> = OnceLock::new();
+static CALLBACK_ROOTS: Once = Once::new();
 
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
     alien_vt: usize,
     alien_obj: usize,
+}
+
+/// A live callback keeps both the block it dispatches to and the TCC unit that
+/// owns its executable code alive.  Raw Oops are stored as integer addresses so
+/// this registry can be protected by a process-wide mutex without inventing a
+/// Rust ownership authority for heap objects.
+#[derive(Clone, Copy)]
+struct CallbackEntry {
+    block: usize,
+    unit: usize,
+    address: usize,
 }
 
 fn abort(message: &str) -> ! {
@@ -107,11 +120,46 @@ fn registry() -> &'static Mutex<LibraryRegistry> {
     REGISTRY.get_or_init(|| Mutex::new(LibraryRegistry::default()))
 }
 
-unsafe extern "C" fn alien_library_dir(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+fn callbacks() -> &'static Mutex<Vec<CallbackEntry>> {
+    CALLBACKS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+unsafe extern "C" fn callback_roots(mark: MarkFn) {
+    let roots = callbacks()
+        .lock()
+        .unwrap_or_else(|_| abort("Alien callback registry was poisoned"))
+        .iter()
+        .flat_map(|entry| [entry.block, entry.unit])
+        .collect::<Vec<_>>();
+    // Do not hold the registry lock across the host mark callback.  The mark
+    // function currently only queues addresses, but this keeps the boundary
+    // valid if the collector grows re-entrant bookkeeping later.
+    for root in roots {
+        // SAFETY: every entry was copied from a live Oop supplied by the host;
+        // the root provider is called synchronously by that same collector.
+        unsafe { mark(root as Oop) };
+    }
+}
+
+unsafe fn ensure_callback_roots(api: &IdApi) {
+    CALLBACK_ROOTS.call_once(|| {
+        // SAFETY: the host IdApi retains this process-owned root provider for
+        // the lifetime of the floor. Registration occurs once per process.
+        unsafe { (api.gcRegisterRootProvider)(callback_roots) };
+    });
+}
+
+unsafe fn address_value(api: &IdApi, value: Oop) -> Option<usize> {
+    if unsafe { (api.isWord)(value) } != 0 {
+        return Some(unsafe { (api.wordValue)(value) } as usize);
+    }
+    if unsafe { (api.isSmallInt)(value) } != 0 {
+        return Some(unsafe { (api.smallIntValue)(value) } as usize);
+    }
+    None
+}
+
+unsafe extern "C" fn alien_library_dir(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         return api.nilObj;
@@ -131,11 +179,7 @@ unsafe extern "C" fn alien_library_dir(
     self_object
 }
 
-unsafe extern "C" fn alien_dlopen(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn alien_dlopen(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         return api.nilObj;
@@ -155,11 +199,7 @@ unsafe extern "C" fn alien_dlopen(
     }
 }
 
-unsafe extern "C" fn alien_dlclose(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn alien_dlclose(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         return api.nilObj;
@@ -181,11 +221,7 @@ unsafe extern "C" fn alien_dlclose(
     }
 }
 
-unsafe extern "C" fn alien_wrap(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     let (function_object, signature_object, selector, target) = {
         let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
@@ -208,9 +244,7 @@ unsafe extern "C" fn alien_wrap(
             return make_error(api, b"badSignature\0", error.to_string().as_bytes());
         },
     };
-    if !signature.aggregates.is_empty()
-        && unsafe { (api.import)(c"Vector".as_ptr()) }.is_null()
-    {
+    if !signature.aggregates.is_empty() && unsafe { (api.import)(c"Vector".as_ptr()) }.is_null() {
         return unsafe {
             make_error(
                 api,
@@ -251,14 +285,21 @@ unsafe extern "C" fn alien_wrap(
     if source_object.is_null()
         || unsafe { (api.send)(unit, compile_selector, &source_object, 1) } == api.nilObj
     {
-        return unsafe { make_error(api, b"compileFailed\0", b"the generated shim C did not compile") };
+        return unsafe {
+            make_error(
+                api,
+                b"compileFailed\0",
+                b"the generated shim C did not compile",
+            )
+        };
     }
     let bind_selector = unsafe { intern(api, b"bindRuntime\0") };
     if unsafe { (api.send)(unit, bind_selector, ptr::null(), 0) } == api.nilObj {
         return unsafe { make_error(api, b"compileFailed\0", b"TCC runtime binding failed") };
     }
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
-    let function_name_object = unsafe { (api.mkString)(function_name.as_ptr(), function_name.len()) };
+    let function_name_object =
+        unsafe { (api.mkString)(function_name.as_ptr(), function_name.len()) };
     let address_object = unsafe { (api.mkSmallInt)(address as i64) };
     let symbol_arguments = [function_name_object, address_object];
     if unsafe {
@@ -270,7 +311,13 @@ unsafe extern "C" fn alien_wrap(
         )
     } == api.nilObj
     {
-        return unsafe { make_error(api, b"compileFailed\0", b"the wrapped symbol could not be bound") };
+        return unsafe {
+            make_error(
+                api,
+                b"compileFailed\0",
+                b"the wrapped symbol could not be bound",
+            )
+        };
     }
     if !signature.aggregates.is_empty() {
         let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
@@ -286,7 +333,9 @@ unsafe extern "C" fn alien_wrap(
             )
         } == api.nilObj
         {
-            return unsafe { make_error(api, b"compileFailed\0", b"Vector factory binding failed") };
+            return unsafe {
+                make_error(api, b"compileFailed\0", b"Vector factory binding failed")
+            };
         }
     }
     let relocate_selector = unsafe { intern(api, b"relocate\0") };
@@ -305,9 +354,199 @@ unsafe extern "C" fn alien_wrap(
         )
     };
     if installed == api.nilObj {
-        return unsafe { make_error(api, b"compileFailed\0", b"the shim method could not be installed") };
+        return unsafe {
+            make_error(
+                api,
+                b"compileFailed\0",
+                b"the shim method could not be installed",
+            )
+        };
     }
     installed
+}
+
+unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let (block, signature_object) = {
+        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+            return api.nilObj;
+        };
+        if arguments.len() != 2 {
+            return api.nilObj;
+        }
+        (arguments[0], arguments[1])
+    };
+    if block.is_null() {
+        return unsafe { make_error(api, b"typeMismatch\0", b"callback needs a live block") };
+    }
+    let Some(signature_bytes) = (unsafe { string_bytes(api, signature_object) }) else {
+        return unsafe {
+            make_error(
+                api,
+                b"typeMismatch\0",
+                b"callback signature must be a String",
+            )
+        };
+    };
+    let signature = match parse_signature(&signature_bytes) {
+        Ok(signature) => signature,
+        Err(error) => unsafe {
+            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
+        },
+    };
+    if matches!(
+        signature.return_type,
+        crate::Type::Scalar(crate::Scalar::StringPointer)
+    ) {
+        return unsafe { make_error(api, b"badSignature\0", b"a callback cannot return a string") };
+    }
+    if !signature.aggregates.is_empty() && unsafe { (api.import)(c"Vector".as_ptr()) }.is_null() {
+        return unsafe {
+            make_error(
+                api,
+                b"moduleNotLoaded\0",
+                b"a struct signature needs the collection module",
+            )
+        };
+    }
+    let source = match emit_callback(&signature) {
+        Ok(source) => source,
+        Err(error) => unsafe {
+            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
+        },
+    };
+    let tcc = unsafe { (api.import)(c"Tcc".as_ptr()) };
+    if tcc.is_null() {
+        return unsafe { make_error(api, b"moduleNotLoaded\0", b"Tcc is not loaded") };
+    }
+    // SAFETY: this is the same synchronous TCC send sequence used by wrappers;
+    // no Rust borrow survives any send.
+    let unit = unsafe { (api.send)(tcc, intern(api, b"new\0"), ptr::null(), 0) };
+    if unit.is_null() || unit == api.nilObj {
+        return unsafe { make_error(api, b"compileFailed\0", b"could not create a callback unit") };
+    }
+    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    if source_object.is_null()
+        || unsafe { (api.send)(unit, intern(api, b"compile:\0"), &source_object, 1) } == api.nilObj
+    {
+        return unsafe {
+            make_error(
+                api,
+                b"compileFailed\0",
+                b"the generated callback C did not compile",
+            )
+        };
+    }
+    if unsafe { (api.send)(unit, intern(api, b"bindRuntime\0"), ptr::null(), 0) } == api.nilObj {
+        return unsafe { make_error(api, b"compileFailed\0", b"TCC runtime binding failed") };
+    }
+    let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
+    let block_name = unsafe { (api.mkString)(c"__cbBlock".as_ptr().cast(), 9) };
+    let block_address = unsafe { (api.mkSmallInt)(block as usize as i64) };
+    let block_arguments = [block_name, block_address];
+    if unsafe {
+        (api.send)(
+            unit,
+            add_symbol_selector,
+            block_arguments.as_ptr(),
+            block_arguments.len(),
+        )
+    } == api.nilObj
+    {
+        return unsafe { make_error(api, b"compileFailed\0", b"callback block binding failed") };
+    }
+    if !signature.aggregates.is_empty() {
+        let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
+        let vector_name = unsafe { (api.mkString)(c"__vecFactory".as_ptr().cast(), 12) };
+        let vector_address = unsafe { (api.mkSmallInt)(vector as usize as i64) };
+        let vector_arguments = [vector_name, vector_address];
+        if unsafe {
+            (api.send)(
+                unit,
+                add_symbol_selector,
+                vector_arguments.as_ptr(),
+                vector_arguments.len(),
+            )
+        } == api.nilObj
+        {
+            return unsafe {
+                make_error(api, b"compileFailed\0", b"Vector factory binding failed")
+            };
+        }
+    }
+    if unsafe { (api.send)(unit, intern(api, b"relocate\0"), ptr::null(), 0) } == api.nilObj {
+        return unsafe { make_error(api, b"relocateFailed\0", b"could not relocate the callback") };
+    }
+    let symbol_name = unsafe { (api.mkString)(c"__cb".as_ptr().cast(), 4) };
+    let callback_address = unsafe { (api.send)(unit, intern(api, b"symbol:\0"), &symbol_name, 1) };
+    let Some(address) = (unsafe { address_value(api, callback_address) }) else {
+        return unsafe {
+            make_error(
+                api,
+                b"symbolNotFound\0",
+                b"the callback entry symbol was not found",
+            )
+        };
+    };
+    callbacks()
+        .lock()
+        .unwrap_or_else(|_| abort("Alien callback registry was poisoned"))
+        .push(CallbackEntry {
+            block: block as usize,
+            unit: unit as usize,
+            address,
+        });
+    callback_address
+}
+
+unsafe extern "C" fn alien_release_callback(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(address) = (unsafe { address_value(api, value) }) else {
+        return unsafe {
+            make_error(
+                api,
+                b"typeMismatch\0",
+                b"releaseCallback: needs a callback address",
+            )
+        };
+    };
+    let entry = {
+        let mut live = callbacks()
+            .lock()
+            .unwrap_or_else(|_| abort("Alien callback registry was poisoned"));
+        let Some(index) = live.iter().position(|entry| entry.address == address) else {
+            return unsafe {
+                make_error(
+                    api,
+                    b"notFound\0",
+                    b"releaseCallback: no live callback at that address",
+                )
+            };
+        };
+        live.swap_remove(index)
+    };
+    // The caller's explicit release is an unsafe contract: it promises that C
+    // will never invoke the address again. Marking the unit disposable lets the
+    // host reclaim its executable pages once the unit is otherwise unreachable.
+    let _ = unsafe {
+        (api.send)(
+            entry.unit as Oop,
+            intern(api, b"disposable\0"),
+            ptr::null(),
+            0,
+        )
+    };
+    api.trueObj
 }
 
 unsafe fn bring_up(api_pointer: *mut IdApi) {
@@ -323,6 +562,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         }
     }
     let api = unsafe { &*api_pointer };
+    unsafe { ensure_callback_roots(api) };
     let reloading = unsafe { (api.isExported)(ALIEN_NAME.as_ptr().cast()) } != 0;
     let (alien_vt, alien_obj) = if reloading {
         let alien_vt = unsafe { (api.import)(ALIEN_VT_NAME.as_ptr().cast()) };
@@ -364,6 +604,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.alien_vt as Oop,
             intern(api, b"wrap:signature:as:on:\0"),
             alien_wrap,
+        );
+        (api.method)(
+            runtime.alien_vt as Oop,
+            intern(api, b"callback:signature:\0"),
+            alien_callback,
+        );
+        (api.method)(
+            runtime.alien_vt as Oop,
+            intern(api, b"releaseCallback:\0"),
+            alien_release_callback,
         );
     }
     if !reloading {

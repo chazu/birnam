@@ -18,6 +18,7 @@ pub enum CodegenError {
     TopLevelArray,
     UnsupportedAggregateShim { index: usize },
     InvalidAggregateField { aggregate: usize, field: usize },
+    UnsupportedCallbackReturn,
 }
 
 impl fmt::Display for CodegenError {
@@ -47,6 +48,9 @@ impl fmt::Display for CodegenError {
                     formatter,
                     "aggregate {aggregate} field {field} is not ABI-marshalable"
                 )
+            }
+            Self::UnsupportedCallbackReturn => {
+                formatter.write_str("a callback cannot return a string")
             }
         }
     }
@@ -291,6 +295,124 @@ pub fn emit_shim(function_name: &[u8], signature: &Signature) -> Result<String, 
         source.push_str("(&__r);\n");
     } else if let Type::Scalar(scalar) = &signature.return_type {
         emit_box_return(&mut source, *scalar);
+    }
+    source.push_str("}\n");
+    Ok(source)
+}
+
+/// Emit a complete C callback for a signature read from the C side.
+///
+/// The generated function boxes each native argument, sends `value` (or its
+/// arity-matched keyword form) to the process-owned `__cbBlock`, then unboxes
+/// the answer for the C caller.  The block address is patched by the live
+/// runtime before relocation; no Rust pointer or lock is captured by this C
+/// code.  String returns are rejected because there is no ownership contract
+/// for a C caller to free them.
+pub fn emit_callback(signature: &Signature) -> Result<String, CodegenError> {
+    if matches!(signature.return_type, Type::Scalar(Scalar::StringPointer)) {
+        return Err(CodegenError::UnsupportedCallbackReturn);
+    }
+    validate_aggregate_fields(signature)?;
+    let mut source = runtime_preamble();
+    source.push_str("extern void* birnam_send(void*, void*, void**, long);\n");
+    source.push_str("extern void* birnam_intern(const char*);\n");
+    source.push_str("extern char __cbBlock[];\n");
+    if !signature.aggregates.is_empty() {
+        source.push_str("extern char __vecFactory[];\n");
+    }
+    for (index, aggregate) in signature.aggregates.iter().enumerate() {
+        emit_aggregate(&mut source, index, aggregate, signature.aggregates.len())?;
+    }
+    source.push_str(&emit_aggregate_support(signature)?);
+    source.push('\n');
+    emit_type(
+        &mut source,
+        &signature.return_type,
+        signature.aggregates.len(),
+    )?;
+    source.push_str(" __cb(");
+    if signature.arguments.is_empty() {
+        source.push_str("void");
+    } else {
+        for (index, argument) in signature.arguments.iter().enumerate() {
+            if index != 0 {
+                source.push_str(", ");
+            }
+            emit_type(&mut source, argument, signature.aggregates.len())?;
+            source.push_str(" a");
+            source.push_str(&index.to_string());
+        }
+    }
+    source.push_str("){\n");
+    for (index, argument) in signature.arguments.iter().enumerate() {
+        source.push_str("void* b");
+        source.push_str(&index.to_string());
+        source.push_str(" = ");
+        match argument {
+            Type::Scalar(Scalar::StringPointer) => {
+                source.push('a');
+                source.push_str(&index.to_string());
+                source.push_str(" ? birnam_mkString(a");
+                source.push_str(&index.to_string());
+                source.push_str(", strlen(a");
+                source.push_str(&index.to_string());
+                source.push_str(")) : birnam_nil()");
+            }
+            Type::Scalar(scalar) => {
+                emit_box_expr(&mut source, *scalar, &format!("a{index}"));
+            }
+            Type::Aggregate(aggregate) => {
+                source.push_str("__mk");
+                source.push_str(&aggregate.to_string());
+                source.push_str("(&a");
+                source.push_str(&index.to_string());
+                source.push(')');
+            }
+            Type::Array { .. } => return Err(CodegenError::TopLevelArray),
+        }
+        source.push_str(";\n");
+    }
+    source.push_str("void* r = birnam_send((void*)__cbBlock, birnam_intern(\"");
+    if signature.arguments.is_empty() {
+        source.push_str("value");
+    } else {
+        for _ in &signature.arguments {
+            source.push_str("value:");
+        }
+    }
+    source.push_str("\"), ");
+    if signature.arguments.is_empty() {
+        source.push_str("0, 0L);\n");
+    } else {
+        source.push_str("(void*[]){");
+        for (index, _) in signature.arguments.iter().enumerate() {
+            if index != 0 {
+                source.push_str(", ");
+            }
+            source.push('b');
+            source.push_str(&index.to_string());
+        }
+        source.push_str("}, ");
+        source.push_str(&signature.arguments.len().to_string());
+        source.push_str("L);\n");
+    }
+    match &signature.return_type {
+        Type::Scalar(Scalar::Void) => source.push_str("(void)r;\nreturn;\n"),
+        Type::Scalar(Scalar::Int) => source.push_str("return (int)birnam_smallIntValue(r);\n"),
+        Type::Scalar(Scalar::Long) => source.push_str("return birnam_smallIntValue(r);\n"),
+        Type::Scalar(Scalar::UnsignedLong) => source.push_str("return birnam_uintValue(r);\n"),
+        Type::Scalar(Scalar::Double) => source.push_str("return birnam_floatValue(r);\n"),
+        Type::Scalar(Scalar::Float) => source.push_str("return (float)birnam_floatValue(r);\n"),
+        Type::Scalar(Scalar::Pointer) => source.push_str("return (void*)birnam_wordValue(r);\n"),
+        Type::Scalar(Scalar::StringPointer) => unreachable!("rejected above"),
+        Type::Aggregate(index) => {
+            source.push_str("__S");
+            source.push_str(&index.to_string());
+            source.push_str(" __out = {0};\n__unm");
+            source.push_str(&index.to_string());
+            source.push_str("(r, &__out);\nreturn __out;\n");
+        }
+        Type::Array { .. } => return Err(CodegenError::TopLevelArray),
     }
     source.push_str("}\n");
     Ok(source)
@@ -717,6 +839,32 @@ mod tests {
         assert!(source.contains("if (!__unm1(self, &a0)) return birnam_nil();"));
         assert!(source.contains("__S0 __r = birnam_div(a0, a1);"));
         assert!(source.contains("return __mk0(&__r);"));
+    }
+
+    #[test]
+    fn emits_scalar_callback_dispatch_and_rejects_string_returns() {
+        let signature = parse_signature(b"l l").unwrap();
+        let source = emit_callback(&signature).unwrap();
+        assert!(source.contains("extern char __cbBlock[];"));
+        assert!(source.contains("long __cb(long a0)"));
+        assert!(source.contains("birnam_send((void*)__cbBlock, birnam_intern(\"value:\")"));
+        assert!(source.contains("return birnam_smallIntValue(r);"));
+        let string_return = parse_signature(b"s l").unwrap();
+        assert_eq!(
+            emit_callback(&string_return),
+            Err(CodegenError::UnsupportedCallbackReturn)
+        );
+    }
+
+    #[test]
+    fn emits_aggregate_callback_marshalling_in_both_directions() {
+        let signature = parse_signature(b"{ll} l").unwrap();
+        let source = emit_callback(&signature).unwrap();
+        assert!(source.contains("extern char __vecFactory[];"));
+        assert!(source.contains("static void* __mk0(__S0* v)"));
+        assert!(source.contains("void* b0 = birnam_mkSmallInt((long)(a0));"));
+        assert!(source.contains("__S0 __out = {0};"));
+        assert!(source.contains("__unm0(r, &__out);"));
     }
 
     #[test]

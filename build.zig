@@ -1629,6 +1629,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const rust_alien_live_tests = b.addTest(.{ .root_module = rust_alien_live_mod });
+    rust_alien_live_tests.rdynamic = true;
     rust_alien_live_tests.linkLibC();
     const run_rust_alien_live = b.addRunArtifact(rust_alien_live_tests);
     run_rust_alien_live.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
@@ -1649,7 +1650,7 @@ pub fn build(b: *std.Build) void {
     run_rust_alien_live.step.dependOn(bootstrap_install);
     const test_rust_alien_live_step = b.step(
         "test-rust-alien-live",
-        "Run the Rust Alien loader and generated-wrapper live-owner proof",
+        "Run the Rust Alien loader, wrapper, and callback live-owner proof",
     );
     test_rust_alien_live_step.dependOn(&run_rust_alien_live.step);
     test_step.dependOn(&run_rust_alien_live.step);

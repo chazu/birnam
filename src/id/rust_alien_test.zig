@@ -19,6 +19,26 @@ const RTLD_LOCAL: c_int = 0x4;
 extern fn dlopen(path: [*:0]const u8, mode: c_int) ?*anyopaque;
 extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
 
+const LivePoint = extern struct { x: c_long, y: c_long };
+
+export fn birnam_rust_alien_apply(
+    callback: *const fn (c_long) callconv(.c) c_long,
+    value: c_long,
+) c_long {
+    return callback(value);
+}
+
+export fn birnam_rust_alien_apply_point(
+    callback: *const fn (LivePoint) callconv(.c) c_long,
+) c_long {
+    return callback(.{ .x = 20, .y = 22 });
+}
+
+fn retainExportedFixtures() void {
+    const fixtures = .{ &birnam_rust_alien_apply, &birnam_rust_alien_apply_point };
+    inline for (fixtures) |fixture| std.mem.doNotOptimizeAway(fixture);
+}
+
 var retained_handles: [3]?*anyopaque = .{ null, null, null };
 var retained_count: usize = 0;
 
@@ -50,7 +70,49 @@ fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
     return api.mkString(bytes.ptr, bytes.len);
 }
 
+var live_api: *idapi.IdApi = undefined;
+
+fn liveResponder(api: *idapi.IdApi, selector: [*:0]const u8, method: idapi.Method) Oop {
+    live_api = api;
+    const vt = api.proto(api.object_vt);
+    api.method(vt, api.intern(selector), method);
+    return api.alloc(vt, 0);
+}
+
+fn liveDouble(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    return live_api.mkSmallInt(live_api.smallIntValue(args[0]) * 2);
+}
+
+fn livePointSum(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    const vector = args[0];
+    const size = live_api.smallIntValue(live_api.send(
+        vector,
+        live_api.intern("size"),
+        &[_]Oop{},
+        0,
+    ));
+    if (size != 2) return live_api.nilObj;
+    const x = live_api.smallIntValue(live_api.send(
+        vector,
+        live_api.intern("at:"),
+        &[_]Oop{live_api.mkSmallInt(0)},
+        1,
+    ));
+    const y = live_api.smallIntValue(live_api.send(
+        vector,
+        live_api.intern("at:"),
+        &[_]Oop{live_api.mkSmallInt(1)},
+        1,
+    ));
+    return live_api.mkSmallInt(x + y);
+}
+
 test "Rust Alien owns loader state and installs a generated scalar wrapper" {
+    retainExportedFixtures();
     const api = floor.api();
     loadModule(
         api,
@@ -128,4 +190,64 @@ test "Rust Alien owns loader state and installs a generated scalar wrapper" {
         &[_]Oop{api.mkSmallInt(1)},
         1,
     )));
+}
+
+test "Rust Alien owns callback code, aggregate marshalling, GC roots, and release" {
+    retainExportedFixtures();
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const callback = api.send(
+        alien,
+        api.intern("callback:signature:"),
+        &[_]Oop{ liveResponder(api, "value:", &liveDouble), str(api, "l l") },
+        2,
+    );
+    try std.testing.expect(callback != api.nilObj);
+
+    _ = api.send(
+        alien,
+        api.intern("wrap:signature:as:on:"),
+        &[_]Oop{ str(api, "birnam_rust_alien_apply"), str(api, "l p l"), api.intern("rustApply:"), api.smallint_vt },
+        4,
+    );
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    var index: usize = 0;
+    while (index < 10_000) : (index += 1) _ = api.mkString("callback-churn", 14);
+    _ = api.gcCollect();
+    const doubled = api.send(
+        callback,
+        api.intern("rustApply:"),
+        &[_]Oop{api.mkSmallInt(21)},
+        1,
+    );
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(doubled));
+
+    const point_callback = api.send(
+        alien,
+        api.intern("callback:signature:"),
+        &[_]Oop{ liveResponder(api, "value:", &livePointSum), str(api, "l {ll}") },
+        2,
+    );
+    try std.testing.expect(point_callback != api.nilObj);
+    _ = api.send(
+        alien,
+        api.intern("wrap:signature:as:on:"),
+        &[_]Oop{ str(api, "birnam_rust_alien_apply_point"), str(api, "l p"), api.intern("rustApplyPoint"), api.smallint_vt },
+        4,
+    );
+    const point_sum = api.send(
+        point_callback,
+        api.intern("rustApplyPoint"),
+        &[_]Oop{},
+        0,
+    );
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(point_sum));
+
+    try std.testing.expect(
+        api.send(alien, api.intern("releaseCallback:"), &[_]Oop{callback}, 1) == api.trueObj,
+    );
+    try std.testing.expect(
+        api.send(alien, api.intern("releaseCallback:"), &[_]Oop{callback}, 1) != api.trueObj,
+    );
 }
