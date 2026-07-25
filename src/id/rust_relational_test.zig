@@ -1032,6 +1032,13 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
         return error.RustRelationalStoreRuleMissing;
     const store_rule: ProjectRuleStoreLive = @ptrCast(@alignCast(store_rule_raw));
     _ = api.send(store, api.intern("rebuildRules"), &empty_args, 0);
+    const canonical_rule_call = makeVector(api, &.{ api.intern("rule"), canonical_rule, tom, y });
+    const canonical_rule_body = makeVector(api, &.{canonical_rule_call});
+    const canonical_rule_query = api.send(store, api.intern("findAll:where:"), &.{ y, canonical_rule_body }, 2);
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(canonical_rule_query, api.intern("size"), &.{}, 0)));
+    try std.testing.expect(api.send(canonical_rule_query, api.intern("at:"), &.{api.mkSmallInt(0)}, 1) == bob);
+    try std.testing.expect(api.send(canonical_rule_query, api.intern("at:"), &.{api.mkSmallInt(1)}, 1) == ann);
+    try std.testing.expect(api.send(canonical_rule_query, api.intern("at:"), &.{api.mkSmallInt(2)}, 1) == kim);
     try std.testing.expectEqual(
         @as(c_int, 0),
         store_rule(store, canonical_rule, &query_terms, query_terms.len, 1, &values, values.len, &written),
