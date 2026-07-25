@@ -32,6 +32,20 @@ const ProjectDisjunctionLive = *const fn (Oop, u8, ProjectPattern, ProjectPatter
 const ProjectRecursiveLive = *const fn (Oop, u8, ProjectPattern, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const AggregateLive = *const fn (Oop, u8, ProjectPattern, u8, ?*Classified) callconv(.c) c_int;
 const ProjectWindowLive = *const fn (Oop, u8, u64, u64, u8, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const PullSpecNode = extern struct {
+    attribute: Oop,
+    kind: u8,
+    reserved: [7]u8,
+    child_start: u32,
+    child_len: u32,
+};
+const PulledRecord = extern struct {
+    depth: u8,
+    reserved: [7]u8,
+    path: [4]Classified,
+    value: Classified,
+};
+const PullLive = *const fn (Oop, Oop, ?[*]const PullSpecNode, usize, usize, ?[*]PulledRecord, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -616,5 +630,62 @@ test "Rust Relational kernel projects Store transaction windows" {
     try std.testing.expectEqual(
         @as(c_int, -7),
         window(store, 1, 0, std.math.maxInt(u64), 2, pattern, &values, values.len, &written),
+    );
+}
+
+test "Rust Relational pull flattens Store cardinality and nested references" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const pull_raw = api.dlsym(relation_handle, "birnam_relational_rust_pull_live") orelse
+        return error.RustRelationalPullMissing;
+    const pull: PullLive = @ptrCast(@alignCast(pull_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const alice = api.intern("rust_relational_pull_alice");
+    const bob = api.intern("rust_relational_pull_bob");
+    const carol = api.intern("rust_relational_pull_carol");
+    const friend = api.intern("rust_relational_pull_friend");
+    const name = api.intern("rust_relational_pull_name");
+    const bob_name = api.intern("rust_relational_pull_bob_name");
+    const carol_name = api.intern("rust_relational_pull_carol_name");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ friend, api.intern("cardinality"), api.intern("many") }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, friend, bob }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, friend, carol }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, name, bob_name }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ carol, name, carol_name }, 3);
+
+    const nodes = [_]PullSpecNode{
+        .{ .attribute = friend, .kind = 1, .reserved = [_]u8{0} ** 7, .child_start = 1, .child_len = 1 },
+        .{ .attribute = name, .kind = 0, .reserved = [_]u8{0} ** 7, .child_start = 0, .child_len = 0 },
+    };
+    var records: [8]PulledRecord = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        pull(store, alice, &nodes, 1, nodes.len, &records, records.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 2), written);
+    for (records[0..written]) |record| {
+        try std.testing.expectEqual(@as(u8, 2), record.depth);
+        try std.testing.expectEqual(@intFromPtr(friend), @as(usize, @intCast(record.path[0].identity)));
+        try std.testing.expectEqual(@intFromPtr(name), @as(usize, @intCast(record.path[1].identity)));
+        try std.testing.expect(record.value.identity == @intFromPtr(bob_name) or record.value.identity == @intFromPtr(carol_name));
+    }
+    try std.testing.expectEqual(
+        @as(c_int, -5),
+        pull(store, alice, &nodes, 1, nodes.len, null, 0, &written),
+    );
+
+    var malformed = nodes;
+    malformed[0].kind = 2;
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        pull(store, alice, &malformed, 1, malformed.len, &records, records.len, &written),
     );
 }

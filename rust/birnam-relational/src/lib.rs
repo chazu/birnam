@@ -184,6 +184,35 @@ pub struct ProjectPattern {
     pub value: Oop,
 }
 
+/// One node in the pointer-free pull specification supplied by the explicit
+/// migration probe. `kind == 0` is a leaf attribute and `kind == 1` is a
+/// reference whose child nodes form the nested pull spec. Child ranges are
+/// indexes into the same flat node array; the caller supplies the number of
+/// top-level nodes separately from the total node count.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PullSpecNode {
+    pub attribute: Oop,
+    pub kind: u8,
+    pub reserved: [u8; 7],
+    pub child_start: u32,
+    pub child_len: u32,
+}
+
+/// A pointer-free flattened leaf produced by the explicit pull probe. `path`
+/// contains the attribute path from the requested root to the leaf, in source
+/// spec order. The fixed bound keeps the C ABI independent of Rust allocations.
+pub const PULL_MAX_DEPTH: usize = 4;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PulledRecord {
+    pub depth: u8,
+    pub reserved: [u8; 7],
+    pub path: [ClassifiedValue; PULL_MAX_DEPTH],
+    pub value: ClassifiedValue,
+}
+
 unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     if self_object.is_null() {
         return ptr::null_mut();
@@ -1160,6 +1189,42 @@ pub unsafe extern "C" fn birnam_relational_rust_aggregate_live(
     unsafe { aggregate_live(store, projection, pattern, operation, output) }
 }
 
+/// Flatten a nested pull specification over the current Store snapshot. The
+/// node array is pointer-free and uses explicit child ranges; cardinality is
+/// read from Store's `cardinality:` schema for each attribute. This is an
+/// explicit migration probe, not the canonical `pull:spec:` installation.
+///
+/// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store,
+/// root, spec, or output pointers, `-4` malformed Oops/schema, `-5` output
+/// capacity too small, `-6` Store callback failure, and `-7` malformed shape,
+/// unknown node kind, excessive depth, or excessive node count.
+///
+/// # Safety
+///
+/// `store`, `root`, and every non-null spec attribute must remain live for the
+/// synchronous call. `nodes` must point to `node_count` caller-owned records;
+/// `root_count` names the top-level prefix of that array. `output` and
+/// `written` must point to caller-owned writable storage for the declared
+/// capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_pull_live(
+    store: Oop,
+    root: Oop,
+    nodes: *const PullSpecNode,
+    root_count: usize,
+    node_count: usize,
+    output: *mut PulledRecord,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store, spec, and output contracts.
+    unsafe {
+        pull_live(
+            store, root, nodes, root_count, node_count, output, capacity, written,
+        )
+    }
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
 ///
 /// # Safety
@@ -1215,6 +1280,29 @@ pub enum Term {
 
 #[derive(Clone, Debug)]
 pub struct Clause(pub [Term; 3]);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PullKind {
+    Leaf,
+    Reference,
+}
+
+/// Owned, authority-free pull specification used by the pure kernel. The FFI
+/// adapter builds this tree from borrowed Oops and immediately copies every
+/// attribute into a `Value`.
+#[derive(Clone, Debug)]
+pub struct PullSpec {
+    pub attribute: Value,
+    pub kind: PullKind,
+    pub many: bool,
+    pub children: Vec<PullSpec>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PullRecord {
+    pub path: Vec<Value>,
+    pub value: Value,
+}
 
 #[derive(Clone, Debug)]
 pub struct Binding {
@@ -1546,6 +1634,217 @@ pub fn aggregate_values(
     }
 }
 
+const MAX_PULL_NODES: usize = 4_096;
+
+fn pull_values(facts: &[Triple], entity: &Value, attribute: &Value) -> Vec<Value> {
+    let mut values: Vec<Value> = Vec::new();
+    for triple in facts {
+        if !triple.entity.matches(entity) || !triple.attribute.matches(attribute) {
+            continue;
+        }
+        if !values.iter().any(|seen| seen.matches(&triple.value)) {
+            values.push(triple.value.clone());
+        }
+    }
+    values
+}
+
+fn pull_into(
+    facts: &[Triple],
+    entity: &Value,
+    specs: &[PullSpec],
+    path: &mut Vec<Value>,
+    output: &mut Vec<PullRecord>,
+) {
+    for spec in specs {
+        let values = pull_values(facts, entity, &spec.attribute);
+        if values.is_empty() {
+            continue;
+        }
+        path.push(spec.attribute.clone());
+        match spec.kind {
+            PullKind::Leaf => {
+                let selected = if spec.many {
+                    values.into_iter().collect::<Vec<_>>()
+                } else {
+                    values.into_iter().take(1).collect::<Vec<_>>()
+                };
+                for value in selected {
+                    output.push(PullRecord {
+                        path: path.clone(),
+                        value,
+                    });
+                }
+            }
+            PullKind::Reference => {
+                let selected = if spec.many {
+                    values.into_iter().collect::<Vec<_>>()
+                } else {
+                    values.into_iter().take(1).collect::<Vec<_>>()
+                };
+                for reference in selected {
+                    // The FFI parser bounds this tree to PULL_MAX_DEPTH. The
+                    // guard also makes the pure helper total if called directly
+                    // by a future Rust consumer with a malformed tree.
+                    if path.len() >= PULL_MAX_DEPTH {
+                        continue;
+                    }
+                    pull_into(facts, &reference, &spec.children, path, output);
+                }
+            }
+        }
+        path.pop();
+    }
+}
+
+/// Flatten a nested pull specification over a copied Store snapshot. This is
+/// the authority-free kernel seam for the later canonical `pull:spec:` method:
+/// facts remain Store-owned, cardinality is supplied by the adapter, and the
+/// result owns only copied values and attribute paths.
+pub fn pull(facts: &[Triple], root: &Value, specs: &[PullSpec]) -> Vec<PullRecord> {
+    let mut output = Vec::new();
+    let mut path = Vec::new();
+    pull_into(facts, root, specs, &mut path, &mut output);
+    output
+}
+
+unsafe fn parse_pull_specs(
+    api: &IdApi,
+    store: Oop,
+    nodes: &[PullSpecNode],
+    start: usize,
+    length: usize,
+    depth: usize,
+) -> Result<Vec<PullSpec>, i32> {
+    if depth >= PULL_MAX_DEPTH || length > nodes.len().saturating_sub(start) {
+        return Err(-7);
+    }
+    let cardinality_selector = unsafe { (api.intern)(c"cardinality:".as_ptr()) };
+    let many_symbol = unsafe { (api.intern)(c"many".as_ptr()) };
+    let mut specs = Vec::with_capacity(length);
+    for node in &nodes[start..start + length] {
+        if node.kind > 1 {
+            return Err(-7);
+        }
+        let child_start = node.child_start as usize;
+        let child_len = node.child_len as usize;
+        if child_len > nodes.len().saturating_sub(child_start) {
+            return Err(-7);
+        }
+        if node.kind == 0 && child_len != 0 {
+            return Err(-7);
+        }
+        if node.attribute.is_null() {
+            return Err(-4);
+        }
+        // SAFETY: the spec attribute is borrowed for this synchronous call.
+        let Some(attribute) = (unsafe { oop::classify(api, node.attribute) }) else {
+            return Err(-4);
+        };
+        let arguments = [node.attribute];
+        // SAFETY: Store owns the frozen cardinality: selector and returns a
+        // borrowed schema symbol for this synchronous query.
+        let cardinality = unsafe { (api.send)(store, cardinality_selector, arguments.as_ptr(), 1) };
+        if cardinality.is_null() {
+            return Err(-4);
+        }
+        let children = if node.kind == 1 {
+            // SAFETY: child_start/child_len were checked against the same
+            // caller-owned flat array; recursive depth is bounded above.
+            unsafe { parse_pull_specs(api, store, nodes, child_start, child_len, depth + 1)? }
+        } else {
+            Vec::new()
+        };
+        specs.push(PullSpec {
+            attribute,
+            kind: if node.kind == 0 {
+                PullKind::Leaf
+            } else {
+                PullKind::Reference
+            },
+            many: cardinality == many_symbol,
+            children,
+        });
+    }
+    Ok(specs)
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn pull_live(
+    store: Oop,
+    root: Oop,
+    nodes: *const PullSpecNode,
+    root_count: usize,
+    node_count: usize,
+    output: *mut PulledRecord,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if store.is_null()
+        || root.is_null()
+        || written.is_null()
+        || (node_count != 0 && nodes.is_null())
+        || (capacity != 0 && output.is_null())
+    {
+        return -3;
+    }
+    if node_count > MAX_PULL_NODES || root_count > node_count {
+        return -7;
+    }
+    let Some(api_address) = API.get() else {
+        return -2;
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let (facts, collected_api) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    debug_assert_eq!(*api_address as *const IdApi, collected_api);
+    // SAFETY: the caller validated the pointer/count pair above and retains the
+    // flat specification for this synchronous call.
+    let nodes: &[PullSpecNode] = if node_count == 0 {
+        &[]
+    } else {
+        // SAFETY: the pointer/count pair was validated above.
+        unsafe { std::slice::from_raw_parts(nodes, node_count) }
+    };
+    let specs = match unsafe { parse_pull_specs(api, store, nodes, 0, root_count, 0) } {
+        Ok(specs) => specs,
+        Err(status) => return status,
+    };
+    // SAFETY: root is borrowed from the caller for this synchronous call.
+    let Some(root) = (unsafe { oop::classify(api, root) }) else {
+        return -4;
+    };
+    let records = pull(&facts, &root, &specs);
+    if records.len() > capacity {
+        return -5;
+    }
+    let blank = record(Value::Identity(0));
+    for (slot, pulled) in records.iter().enumerate() {
+        let mut path = [blank; PULL_MAX_DEPTH];
+        for (index, attribute) in pulled.path.iter().enumerate() {
+            path[index] = record(attribute.clone());
+        }
+        // SAFETY: the caller supplied capacity records and the length check
+        // above bounds every write.
+        unsafe {
+            ptr::write(
+                output.add(slot),
+                PulledRecord {
+                    depth: pulled.path.len() as u8,
+                    reserved: [0; 7],
+                    path,
+                    value: record(pulled.value.clone()),
+                },
+            )
+        };
+    }
+    unsafe { *written = records.len() };
+    0
+}
+
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
     let Clause(terms) = clause;
     facts.iter().any(|triple| {
@@ -1578,8 +1877,8 @@ pub fn project_negated(
 #[cfg(test)]
 mod tests {
     use super::{
-        AggregateOp, Clause, CompareOp, Term, Triple, Value, aggregate_values, project,
-        project_disjunction, project_negated, project_predicate, project_recursive,
+        AggregateOp, Clause, CompareOp, PullKind, PullSpec, Term, Triple, Value, aggregate_values,
+        project, project_disjunction, project_negated, project_predicate, project_recursive, pull,
     };
 
     fn id(value: u64) -> Value {
@@ -1847,5 +2146,50 @@ mod tests {
                 .matches(&integer(0))
         );
         assert!(aggregate_values(&[], AggregateOp::Min).unwrap().is_none());
+    }
+
+    #[test]
+    fn pull_flattens_many_references_and_preserves_spec_order() {
+        let facts = [
+            Triple {
+                entity: id(1),
+                attribute: id(10),
+                value: id(2),
+            },
+            Triple {
+                entity: id(1),
+                attribute: id(10),
+                value: id(3),
+            },
+            Triple {
+                entity: id(2),
+                attribute: id(20),
+                value: Value::String(b"Bob".to_vec()),
+            },
+            Triple {
+                entity: id(3),
+                attribute: id(20),
+                value: Value::String(b"Carol".to_vec()),
+            },
+        ];
+        let specs = [PullSpec {
+            attribute: id(10),
+            kind: PullKind::Reference,
+            many: true,
+            children: vec![PullSpec {
+                attribute: id(20),
+                kind: PullKind::Leaf,
+                many: false,
+                children: Vec::new(),
+            }],
+        }];
+
+        let records = pull(&facts, &id(1), &specs);
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].path.len(), 2);
+        assert!(records[0].path[0].matches(&id(10)));
+        assert!(records[0].path[1].matches(&id(20)));
+        assert!(records[0].value.matches(&Value::String(b"Bob".to_vec())));
+        assert!(records[1].value.matches(&Value::String(b"Carol".to_vec())));
     }
 }
