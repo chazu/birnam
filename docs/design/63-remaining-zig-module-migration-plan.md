@@ -1138,6 +1138,21 @@ remain the next implementation slices.
   semantics, canonical grouped/pull result materialization, and canonical
   Rust Relational selection remain open.
 
+### R4.21 Rust Relational predicate-rule descriptor checkpoint (2026-07-25)
+
+- `d3938a8` adds bounded `RuleClauseNode.kind == 2` predicate decoding. The
+  descriptor maps the six frozen comparison symbols by interned identity and
+  evaluates the predicate only after earlier body clauses have bound its
+  operands; malformed operators and arities fail closed.
+- The existing recursive/mutual cross-floor fixture now also defines a numeric
+  threshold rule against both Rust Store and Zig Store. Both dynamic targets
+  remain `14/14`; the Rust pure corpus remains `17/17`, and the accepted R6
+  boundary stays `80/80`, `14/14`, optimized `486/492`.
+- Descriptor forms for nested negation/disjunction, canonical Store rule-fact
+  reification, image-triggered cache rebuild wiring, arbitrary parameter
+  semantics, canonical grouped/pull materialization, and canonical Rust
+  Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
