@@ -20,6 +20,7 @@ extern fn dlopen(path: [*:0]const u8, mode: c_int) ?*anyopaque;
 extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
 
 const LivePoint = extern struct { x: c_long, y: c_long };
+const LiveLine = extern struct { base: c_long, values: [3]c_int };
 
 export fn birnam_rust_alien_apply(
     callback: *const fn (c_long) callconv(.c) c_long,
@@ -34,8 +35,36 @@ export fn birnam_rust_alien_apply_point(
     return callback(.{ .x = 20, .y = 22 });
 }
 
+export fn birnam_rust_alien_identity_long(value: c_long) c_long {
+    return value;
+}
+
+export fn birnam_rust_alien_identity_pointer(value: ?*anyopaque) ?*anyopaque {
+    return value;
+}
+
+export fn birnam_rust_alien_sum_double(left: f64, right: f64) f64 {
+    return left + right;
+}
+
+export fn birnam_rust_alien_void(value: c_long) void {
+    _ = value;
+}
+
+export fn birnam_rust_alien_sum_line(line: LiveLine) c_long {
+    return line.base + line.values[0] + line.values[1] + line.values[2];
+}
+
 fn retainExportedFixtures() void {
-    const fixtures = .{ &birnam_rust_alien_apply, &birnam_rust_alien_apply_point };
+    const fixtures = .{
+        &birnam_rust_alien_apply,
+        &birnam_rust_alien_apply_point,
+        &birnam_rust_alien_identity_long,
+        &birnam_rust_alien_identity_pointer,
+        &birnam_rust_alien_sum_double,
+        &birnam_rust_alien_sum_line,
+        &birnam_rust_alien_void,
+    };
     inline for (fixtures) |fixture| std.mem.doNotOptimizeAway(fixture);
 }
 
@@ -261,7 +290,7 @@ test "Rust Alien owns raw buffer allocation and typed access" {
     const poke_int = api.send(
         buffer,
         api.intern("pokeInt:at:"),
-        &[_]Oop{api.mkSmallInt(-42), api.mkSmallInt(0)},
+        &[_]Oop{ api.mkSmallInt(-42), api.mkSmallInt(0) },
         2,
     );
     try std.testing.expect(poke_int == buffer);
@@ -271,7 +300,7 @@ test "Rust Alien owns raw buffer allocation and typed access" {
     _ = api.send(
         buffer,
         api.intern("pokeDouble:at:"),
-        &[_]Oop{api.mkFloat(3.5), api.mkSmallInt(16)},
+        &[_]Oop{ api.mkFloat(3.5), api.mkSmallInt(16) },
         2,
     );
     const peek_double = api.send(buffer, api.intern("peekDoubleAt:"), &[_]Oop{api.mkSmallInt(16)}, 1);
@@ -282,7 +311,7 @@ test "Rust Alien owns raw buffer allocation and typed access" {
         _ = api.send(
             buffer,
             api.intern("pokeByte:at:"),
-            &[_]Oop{api.mkSmallInt(byte), api.mkSmallInt(@intCast(32 + index))},
+            &[_]Oop{ api.mkSmallInt(byte), api.mkSmallInt(@intCast(32 + index)) },
             2,
         );
     }
@@ -295,11 +324,75 @@ test "Rust Alien owns raw buffer allocation and typed access" {
     _ = api.send(
         buffer,
         api.intern("pokePtr:at:"),
-        &[_]Oop{pointer_value, api.mkSmallInt(48)},
+        &[_]Oop{ pointer_value, api.mkSmallInt(48) },
         2,
     );
     const peek_pointer = api.send(buffer, api.intern("peekPtrAt:"), &[_]Oop{api.mkSmallInt(48)}, 1);
     try std.testing.expectEqual(api.wordValue(pointer_value), api.wordValue(peek_pointer));
 
     try std.testing.expect(api.send(buffer, api.intern("free"), &[_]Oop{}, 0) == api.nilObj);
+}
+
+fn makeVector(api: *idapi.IdApi, elements: []const Oop) Oop {
+    const factory = api.import("Vector") orelse return api.nilObj;
+    var result = api.send(factory, api.intern("new"), &[_]Oop{}, 0);
+    for (elements) |element| {
+        result = api.send(result, api.intern("add:"), &[_]Oop{element}, 1);
+    }
+    return result;
+}
+
+test "Rust Alien live ABI corpus covers scalar, pointer, void, and fixed-array aggregate" {
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const wrap_selector = api.intern("wrap:signature:as:on:");
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_identity_long"), str(api, "l l"), api.intern("rustIdentity"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    const identity = api.send(api.mkSmallInt(-9), api.intern("rustIdentity"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, -9), api.smallIntValue(identity));
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_identity_pointer"), str(api, "p p"), api.intern("rustPointer"), api.word_vt },
+        4,
+    ) != api.nilObj);
+    const pointer = api.mkWord(0x1234);
+    const pointer_result = api.send(pointer, api.intern("rustPointer"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(u64, 0x1234), api.wordValue(pointer_result));
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_sum_double"), str(api, "d d d"), api.intern("rustAdd:"), api.float_vt },
+        4,
+    ) != api.nilObj);
+    const sum = api.send(api.mkFloat(1.25), api.intern("rustAdd:"), &[_]Oop{api.mkFloat(2.75)}, 1);
+    try std.testing.expectEqual(@as(f64, 4.0), api.floatValue(sum));
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_void"), str(api, "v l"), api.intern("rustVoid"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    try std.testing.expect(api.send(api.mkSmallInt(3), api.intern("rustVoid"), &[_]Oop{}, 0) == api.nilObj);
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_sum_line"), str(api, "l {l3i}"), api.intern("rustLine"), api.import("VectorVt").? },
+        4,
+    ) != api.nilObj);
+    const line = makeVector(api, &[_]Oop{
+        api.mkSmallInt(7),
+        makeVector(api, &[_]Oop{ api.mkSmallInt(1), api.mkSmallInt(2), api.mkSmallInt(3) }),
+    });
+    const line_sum = api.send(line, api.intern("rustLine"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 13), api.smallIntValue(line_sum));
 }
