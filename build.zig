@@ -912,11 +912,29 @@ pub fn build(b: *std.Build) void {
     );
     run_rust_error_tests.step.dependOn(bootstrap_install);
     run_rust_error_tests.step.dependOn(&rust_floor_build.step);
+    const run_rust_error_reverse_tests = b.addRunArtifact(rust_error_tests);
+    run_rust_error_reverse_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_error_reverse_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_error_reverse_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_ERROR_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_error.dylib", .{rust_floor_profile})),
+    );
+    run_rust_error_reverse_tests.setEnvironmentVariable(
+        "BIRNAM_ZIG_ERROR_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_error_zig.dylib"),
+    );
+    run_rust_error_reverse_tests.setEnvironmentVariable("BIRNAM_ERROR_PRELOAD_ORDER", "zig-rust");
+    run_rust_error_reverse_tests.step.dependOn(bootstrap_install);
+    run_rust_error_reverse_tests.step.dependOn(&rust_floor_build.step);
     const test_rust_error_step = b.step(
         "test-rust-error",
         "Exercise the explicit Rust standalone Error rung",
     );
     test_rust_error_step.dependOn(&run_rust_error_tests.step);
+    test_rust_error_step.dependOn(&run_rust_error_reverse_tests.step);
 
     if (selected_floor == .rust) {
         const install_rust_floor = b.addInstallFileWithDir(

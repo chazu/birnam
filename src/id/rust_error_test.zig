@@ -29,9 +29,19 @@ fn stringEquals(api: *idapi.IdApi, object: Oop, expected: []const u8) !void {
 
 test "Rust Error preserves the standalone family and DNU contract" {
     const api = floor.api();
-    const path = std.posix.getenv("BIRNAM_RUST_ERROR_DYLIB") orelse
+    const rust_path = std.posix.getenv("BIRNAM_RUST_ERROR_DYLIB") orelse
         return error.MissingRustErrorDylib;
-    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    const zig_path = std.posix.getenv("BIRNAM_ZIG_ERROR_DYLIB") orelse
+        return error.MissingZigErrorDylib;
+    const order = std.posix.getenv("BIRNAM_ERROR_PRELOAD_ORDER") orelse "rust-zig";
+    if (!std.mem.eql(u8, order, "rust-zig") and !std.mem.eql(u8, order, "zig-rust")) {
+        return error.InvalidErrorPreloadOrder;
+    }
+    if (std.mem.eql(u8, order, "zig-rust")) {
+        try loadModule(api, zig_path);
+    }
+
+    const path_z = try std.heap.c_allocator.dupeZ(u8, rust_path);
     defer std.heap.c_allocator.free(path_z);
     const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustErrorDlopenFailed;
 
@@ -70,16 +80,14 @@ test "Rust Error preserves the standalone family and DNU contract" {
     try stringEquals(api, send(api, missed, "message", &.{}), "does not understand #frobnicate");
     try std.testing.expectEqual(missed, send(api, missed, "stillMissing", &.{}));
 
-    const rust_path = std.posix.getenv("BIRNAM_RUST_ERROR_DYLIB") orelse
-        return error.MissingRustErrorDylib;
     try loadModule(api, rust_path);
     try std.testing.expectEqual(error_vt, api.import("ErrorVt"));
     try std.testing.expectEqual(factory_vt, api.import("ErrorFactoryVt"));
     try std.testing.expectEqual(factory, api.import("Error"));
 
-    const zig_path = std.posix.getenv("BIRNAM_ZIG_ERROR_DYLIB") orelse
-        return error.MissingZigErrorDylib;
-    try loadModule(api, zig_path);
+    if (std.mem.eql(u8, order, "rust-zig")) {
+        try loadModule(api, zig_path);
+    }
     try std.testing.expectEqual(error_vt, api.import("ErrorVt"));
     try std.testing.expectEqual(factory_vt, api.import("ErrorFactoryVt"));
     try std.testing.expectEqual(factory, api.import("Error"));
