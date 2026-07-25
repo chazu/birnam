@@ -1367,6 +1367,16 @@ remain the next implementation slices.
   parameter/variable-scope semantics, and the single canonical Rust selection
   commit remain open.
 
+### R4.36 Pull auto-GC stress checkpoint (2026-07-25)
+
+- `05463b3` runs the nested Rust `pull:spec:` bridge with automatic GC enabled
+  and allocation pressure before the materialization call. Both dynamic
+  targets remain `14/14`, proving the current callback/root seam survives this
+  bounded pull stress case.
+- This does not close all reentry/GC obligations: larger result vectors,
+  grouped Map growth, callback reentry, and image-triggered rule-cache rebuild
+  still need dedicated stress fixtures before canonical selection.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
