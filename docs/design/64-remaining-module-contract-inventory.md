@@ -237,3 +237,7 @@ R1 first implementation checkpoint (2026-07-24):
   `inject:into:`, value-aware `indexOf:`, bounded `copyFrom:to:`, and
   `reversed` now run through the Rust wrapper. The subsequent R6 run remained
   green at `44/44`.
+- `cc6cb7c` added the Rust Range family with the exact two-raw-word payload,
+  `Range`/`RangeVt` ownership and exports, `Integer to:`, and all inventory
+  selectors. The cross-language acceptance test covers ascending and empty
+  descending ranges; `mise run r6-acceptance` remained green at `44/44`.

@@ -216,6 +216,12 @@ Implementation checkpoints (2026-07-24):
   `inject:into:`, value-aware `indexOf:`, bounded `copyFrom:to:`, and
   `reversed`, with Rust/Zig floor selection and the locked Rust tests still
   green. A fresh R6 run passed at `44/44` after this change.
+- `cc6cb7c` added the Rust Range family: the exact two-raw-word payload and
+  layout, owned `Range`/`RangeVt` exports, `Integer to:`, and the complete
+  native Range protocol (`size`, `includes:`, `do:`, `inject:into:`, `at:`,
+  `reversed`, `printString`, and `,`). The cross-language test now covers
+  ascending and empty descending ranges, and `mise run r6-acceptance` passed
+  at `44/44` with only the two recorded benchmark crossings.
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;
