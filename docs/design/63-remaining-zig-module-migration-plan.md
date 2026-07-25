@@ -1812,6 +1812,19 @@ post-switch image/project observation window closes.
   obligations, while broader platform ABI shapes and child-abort coverage stay
   in the R5 exit work.
 
+### R5.19 Rust Alien broader ABI-shape checkpoint (2026-07-25)
+
+- `f430ab2` extends the live corpus with homogeneous float and double pairs,
+  a mixed integer/double aggregate, and a large three-word aggregate return.
+  These cases exercise Vector marshalling across HFA/general aggregate classes
+  and the platform-sensitive by-value return path while leaving layout,
+  alignment, and hidden return-parameter decisions to TCC.
+- The Debug and ReleaseSafe live targets pass `7/7`; `dbf8880` raises the
+  sequential R6 Rust Alien requirement accordingly. The focused matrix remains
+  `80/80`, with full R6 still limited to the two accepted benchmark tradeoffs.
+  Larger hostile ABI matrices, callback shape parity, and child-abort coverage
+  remain in the R5 exit work.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
