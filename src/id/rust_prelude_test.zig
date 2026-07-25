@@ -72,6 +72,19 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const init: ModuleInit = @ptrCast(@alignCast(raw_init));
     _ = init(api, null);
 
+    // Error owns its representation and the Object DNU swap. The Rust Prelude
+    // must consume that standalone rung rather than minting a private family.
+    const error_path = std.posix.getenv("BIRNAM_ERROR_DYLIB") orelse
+        return error.MissingErrorDylib;
+    const error_path_z = try std.heap.c_allocator.dupeZ(u8, error_path);
+    defer std.heap.c_allocator.free(error_path_z);
+    const error_handle = api.dlopen(error_path_z.ptr, 1) orelse return error.ErrorDlopenFailed;
+    const error_raw_init = api.dlsym(error_handle, "module_init") orelse
+        return error.ErrorModuleInitMissing;
+    const error_init: ModuleInit = @ptrCast(@alignCast(error_raw_init));
+    _ = error_init(api, null);
+    try std.testing.expect(api.import("Error") != null);
+
     const three = api.mkSmallInt(3);
     const five = api.mkSmallInt(5);
     try std.testing.expectEqual(@as(i64, 8), api.smallIntValue(send(api, three, "+", &.{five})));
@@ -196,6 +209,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var saw_read_file = false;
     var saw_write_file = false;
     var saw_get_env = false;
+    var saw_load = false;
     var saw_load_module = false;
     var saw_read_line = false;
     var saw_gc = false;
@@ -209,6 +223,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         saw_read_file = saw_read_file or std.mem.eql(u8, name, "readFile:");
         saw_write_file = saw_write_file or std.mem.eql(u8, name, "writeFile:contents:");
         saw_get_env = saw_get_env or std.mem.eql(u8, name, "getEnv:");
+        saw_load = saw_load or std.mem.eql(u8, name, "load:");
         saw_load_module = saw_load_module or std.mem.eql(u8, name, "loadModule:");
         saw_read_line = saw_read_line or std.mem.eql(u8, name, "readLine");
         saw_gc = saw_gc or std.mem.eql(u8, name, "gc");
@@ -221,6 +236,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expect(saw_read_file);
     try std.testing.expect(saw_write_file);
     try std.testing.expect(saw_get_env);
+    try std.testing.expect(saw_load);
     try std.testing.expect(saw_load_module);
     try std.testing.expect(saw_read_line);
     try std.testing.expect(saw_gc);
@@ -232,6 +248,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.nilObj, send(api, system, "readFile:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "getEnv:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "load:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "loadModule:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "readLine", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "gc", &.{api.trueObj}));
