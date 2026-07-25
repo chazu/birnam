@@ -1168,6 +1168,26 @@ remain the next implementation slices.
   arbitrary parameter semantics, canonical grouped/pull materialization, and
   canonical Rust Relational selection remain open.
 
+### R4.23 Rust Relational Store-rule reification checkpoint (2026-07-25)
+
+- `570f74a` adds an explicit Store-facing rule probe. It snapshots
+  `__rule-name__` facts alongside triples, walks each canonical pair's
+  parameter/body Vectors through the frozen `size`/`at:` protocol, maps live
+  LogicVars by their `name`, and rebuilds Rust-owned definitions before
+  querying. The probe supports stored triple, recursive call, and predicate
+  clauses; malformed vectors, missing LogicVar exports, unsupported body forms,
+  and invalid operators fail closed. No Store facts or Rust cache survive the
+  synchronous call.
+- The cross-floor corpus now creates two `defineRule:` definitions and proves
+  the reified recursive result against both Rust Store and Zig Store. Both
+  dynamic targets remain `14/14`; the Rust pure corpus remains `17/17`, and R6
+  remains pinned at `80/80`, `14/14`, optimized `486/492`.
+- Nested tree descriptors cover richer explicit bodies separately. Canonical
+  Rust Store method installation, image-triggered reification/rebuild wiring,
+  arbitrary stored negation/disjunction parameter semantics, canonical
+  grouped/pull materialization, and canonical Rust Relational selection remain
+  open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
