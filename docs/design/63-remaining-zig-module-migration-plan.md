@@ -1236,6 +1236,22 @@ remain the next implementation slices.
   grouped/pull materialization, and canonical Rust Relational selection remain
   open.
 
+### R4.27 Rust Relational query-body projection checkpoint (2026-07-25)
+
+- `5a56ade` exposes a pure `project_rule_body` seam that rebuilds a
+  query-scoped rule cache from the supplied Store snapshot, evaluates a mixed
+  body (triple, rule call, predicate, negation, and disjunction), and projects
+  distinct results in body order. The cache is discarded after the call, so
+  Rust still owns no durable facts or independent rule authority.
+- The Rust unit corpus remains `17/17`; this slice changes no dynamic target
+  count and does not claim canonical `findAll:where:` ownership. The next
+  adapter work must parse the live LogicVar/Vector query shape, preserve the
+  Zig planner's binder-before-predicate behavior, and materialize the result
+  through the shared Vector protocol before any selector override.
+- Canonical `findAll:`/full Store method installation, image-triggered rebuild,
+  arbitrary parameter/variable-scope semantics, canonical grouped/pull
+  materialization, and canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
