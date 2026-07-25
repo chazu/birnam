@@ -253,6 +253,13 @@ R1 first implementation checkpoint (2026-07-24):
   equality, indexing/slicing, split/trim/search, bracket depth, replacement,
   symbol conversion, and numeric parsing. The expanded target and full R6
   acceptance remained green at `44/44`.
+- `eb3f97f` completed the Rust Collection bootstrap Object/nil protocol:
+  Object `isNil`/`notNil`, nil overrides, and nil `printString` now match the
+  Zig contract, with all five behaviors asserted by the cross-language test.
+- `f7cf658` hardened the R6 gate to require `test-rust-collection` and its one
+  passing integration test, not just the aggregate `44/44` result. The fresh
+  full acceptance run passed with the existing exact verify exception and the
+  two accepted benchmark crossings unchanged.
 - The explicit Rust Collection selection smoke is green for the Rust floor:
   `test-rust-collection`, `test-collection`, `test-collection-gc`, and
   `test-gc-layout-mark` all pass with `-Dcollection-impl=rust`; Zig remains

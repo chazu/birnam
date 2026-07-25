@@ -236,6 +236,15 @@ Implementation checkpoints (2026-07-24):
   depth, replacement, symbol conversion, and integer/number parsing. The
   expanded StringBuilder/Collection cross-language target and full R6 gate
   remained green at `44/44`; benchmark crossings are unchanged.
+- `eb3f97f` completed the bootstrap Object/nil protocol in the Rust Collection
+  rung: Object now answers `isNil`/`notNil`, nil overrides both and renders as
+  `"nil"`, and the cross-language corpus asserts all five behaviors. The
+  Rust crate tests, clippy, and Debug/ReleaseSafe collection targets passed.
+- `f7cf658` hardened `scripts/r6-acceptance.sh` to require the Rust Collection
+  target and its single passing integration test in addition to the aggregate
+  `44/44` pin. A fresh full R6 run passed with the exact recorded verify
+  exception and unchanged `query.aggregate +5.8%` / `compile.stage1-stdlib
+  +11.9%` crossings.
 - The pre-switch Rust Collection selection smoke also passes with
   `-Dfloor=rust -Dcollection-impl=rust`: `test-rust-collection`,
   `test-collection`, `test-collection-gc`, and `test-gc-layout-mark` are green.
