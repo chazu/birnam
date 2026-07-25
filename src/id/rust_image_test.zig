@@ -252,6 +252,7 @@ test "Rust Image live probe accepts Zig Codegen authority without publishing" {
     try std.testing.expect(!pathExists(path));
     try std.testing.expect(api.send(system, api.intern("saveImage:"), &.{api.mkString(path.ptr, path.len)}, 1) == api.nilObj);
     try std.testing.expectEqual(api.intern("rejected"), api.send(report, api.intern("status"), &.{}, 0));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(report, api.intern("codeUnits"), &.{}, 0)));
     var detail_len: usize = 0;
     const detail = api.stringBytes(api.send(report, api.intern("detail"), &.{}, 0), &detail_len);
     try std.testing.expectEqualStrings(

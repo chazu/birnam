@@ -1065,6 +1065,7 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static CODE_CAPTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct FactCollection {
     writer: FactsWriter,
@@ -1398,6 +1399,46 @@ unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST
     authority_digest_from_bytes(bytes)
 }
 
+/// Ask the existing Codegen authority for one compiled generation unit and
+/// copy the resulting bytes before deleting the temporary file. This is a
+/// capture-only seam: the Rust Image owner does not load, map, or publish the
+/// unit, and Codegen remains responsible for generation binding and TCC.
+unsafe fn capture_generation_code(
+    api: &IdApi,
+    _digest: &[u8; AUTHORITY_DIGEST_LEN],
+) -> Option<Vec<u8>> {
+    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    if codegen.is_null() || codegen == api.nilObj {
+        return None;
+    }
+    let sequence = CODE_CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-rust-image-code-{}-{}.dylib",
+        std::process::id(),
+        sequence
+    ));
+    let path_text = path.to_str()?;
+    let path_oop = unsafe { (api.mkString)(path_text.as_ptr(), path_text.len()) };
+    if path_oop.is_null() {
+        return None;
+    }
+    let result = unsafe {
+        (api.send)(
+            codegen,
+            intern(api, b"compileImageCode:\0"),
+            &path_oop as *const Oop,
+            1,
+        )
+    };
+    if result.is_null() || result == api.nilObj {
+        let _ = std::fs::remove_file(&path);
+        return None;
+    }
+    let bytes = std::fs::read(&path).ok();
+    let _ = std::fs::remove_file(&path);
+    bytes.filter(|bytes| !bytes.is_empty())
+}
+
 unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
@@ -1477,10 +1518,16 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
         return api.nilObj;
     }
     // The shell deliberately has no authority to mutate or publish an image.
-    // Later R6 slices install the codec-backed save transaction here.
+    // Capture the generation unit only; later R6 slices install mapping and
+    // codec-backed save publication here.
+    let authority_digest = unsafe { current_generation_digest(api) };
+    let captured_code = authority_digest
+        .as_ref()
+        .and_then(|digest| unsafe { capture_generation_code(api, digest) });
     let (kept, rejected, heap_ok, recovered_slots, rejected_slots, writer_ok) =
         unsafe { collect_store_facts(api) };
-    let authority_available = unsafe { current_generation_digest(api) }.is_some();
+    let authority_available = authority_digest.is_some();
+    let code_captured = captured_code.is_some();
     reject_save(if !heap_ok {
         "Rust Image heap preflight rejected unsupported layout"
     } else if rejected != 0 {
@@ -1489,10 +1536,19 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
         "Rust Image writer rejected preflight payload"
     } else if !authority_available {
         "Rust Image generation authority is not available"
+    } else if !code_captured {
+        "Rust Image code capture failed"
     } else {
-        "Rust Image code capture/rebuild orchestration is not installed"
+        "Rust Image code mapping/rebuild orchestration is not installed"
     });
     record_fact_counts(kept, rejected, recovered_slots, rejected_slots);
+    {
+        let mut report = runtime()
+            .report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        report.code_units = u32::from(code_captured);
+    }
     api.nilObj
 }
 
