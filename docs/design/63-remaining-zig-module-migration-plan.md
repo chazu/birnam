@@ -735,6 +735,18 @@ remain the next implementation slices.
   without retaining borrowed pointers and must continue to source all facts
   from Store's `liveTriples*` protocol.
 
+### R4.3 IdApi classification checkpoint (2026-07-25)
+
+- `e873dc9` adds the one-way classifier used by the future adapter. It copies
+  SmallInt, Float, and String payloads into `Value` classes, maps all other
+  non-null Oops to identity addresses, treats null as identity zero, and
+  rejects malformed string buffers before copying. The IdApi table is neither
+  retained nor crossed by a returned Rust reference.
+- The classifier compiles through the workspace and the Rust-default R6 gate
+  remains green at `93/93` and `52/52`, with relocated install and native-rung
+  harness passing. A dynamic Rust Relational module and Store callback bridge
+  are still intentionally pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
