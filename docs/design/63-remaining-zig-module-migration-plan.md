@@ -747,6 +747,28 @@ remain the next implementation slices.
   harness passing. A dynamic Rust Relational module and Store callback bridge
   are still intentionally pending.
 
+### R4.4 Rust Relational probe and current R6 pin (2026-07-25)
+
+- `a508683` adds the explicit Rust Relational `cdylib` probe. The installed
+  boundary calls `module_init` twice, checks identity
+  `rust-relational-r4.3-kernel`, and verifies live `SmallInt`, `Float`, and
+  byte-string classification, short-output rejection, symbol identity, and
+  null-output rejection. The Zig Relational dylib remains canonical; the Rust
+  dylib is an explicit rollback/probe artifact until the Store callback bridge
+  is complete.
+- The R6 gate revision `2a61a8b` advances the focused aggregate to `53/53`
+  and pins the current optimized closure at `259/262` steps, `459/465` tests,
+  and 6 skipped. Its only accepted failure remains the existing
+  `modules/run-tests.birnam` `collection.zig:336:29` `vSortBy` segmentation
+  fault; the current output is pinned to the preceding native-Rust assertion,
+  so a changed command, stack, assertion, summary, or additional failure
+  fails closed.
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes from this
+  checkpoint. The digest-pinned comparator still reports zero missing or
+  unusable cases and only the accepted `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` crossings. The Store callback bridge and
+  canonical Rust Relational selection remain pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
