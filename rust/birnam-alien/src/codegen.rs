@@ -199,6 +199,103 @@ pub fn emit_aggregate_support(signature: &Signature) -> Result<String, CodegenEr
     Ok(source)
 }
 
+/// Emit the complete wrapper for scalar and aggregate signatures.
+pub fn emit_shim(function_name: &[u8], signature: &Signature) -> Result<String, CodegenError> {
+    if signature.aggregates.is_empty() {
+        return emit_scalar_shim(function_name, signature);
+    }
+    validate_identifier(function_name)?;
+    validate_aggregate_fields(signature)?;
+    let mut source = runtime_preamble();
+    source.push_str("extern void* birnam_send(void*, void*, void**, long);\n");
+    source.push_str("extern void* birnam_intern(const char*);\n");
+    source.push_str("extern char __vecFactory[];\n");
+    source.push_str(&emit_prototype(function_name, signature)?);
+    source.push_str(&emit_aggregate_support(signature)?);
+    source.push_str("void* __shim(void* self, void** args, long n){\n");
+    let expected = signature.arguments.len().saturating_sub(1);
+    source.push_str("if (n != ");
+    source.push_str(&expected.to_string());
+    source.push_str("L) return birnam_nil();\n");
+    for (index, ty) in signature.arguments.iter().enumerate() {
+        let expression = if index == 0 {
+            "self".to_owned()
+        } else {
+            format!("args[{}]", index - 1)
+        };
+        match ty {
+            Type::Scalar(scalar) => {
+                source.push_str(scalar_c_type(*scalar).expect("scalar has a C spelling"));
+                source.push_str(" a");
+                source.push_str(&index.to_string());
+                source.push_str(" = ");
+                emit_unbox(&mut source, *scalar, &expression);
+                source.push_str(";\n");
+            }
+            Type::Aggregate(aggregate) => {
+                source.push_str("__S");
+                source.push_str(&aggregate.to_string());
+                source.push_str(" a");
+                source.push_str(&index.to_string());
+                source.push_str(";\nif (!__unm");
+                source.push_str(&aggregate.to_string());
+                source.push('(');
+                source.push_str(&expression);
+                source.push_str(", &a");
+                source.push_str(&index.to_string());
+                source.push_str(")) return birnam_nil();\n");
+            }
+            Type::Array { .. } => return Err(CodegenError::TopLevelArray),
+        }
+    }
+
+    let return_type = match &signature.return_type {
+        Type::Scalar(scalar) => {
+            source.push_str("  ");
+            if *scalar == Scalar::Void {
+                source.push_str("(void)");
+            } else {
+                source.push_str(scalar_c_type(*scalar).expect("scalar has a C spelling"));
+                source.push_str(" __r = ");
+            }
+            None
+        }
+        Type::Aggregate(index) => {
+            source.push_str("  __S");
+            source.push_str(&index.to_string());
+            source.push_str(" __r = ");
+            Some(*index)
+        }
+        Type::Array { .. } => return Err(CodegenError::TopLevelArray),
+    };
+    source.push_str(std::str::from_utf8(function_name).expect("C identifier is ASCII"));
+    source.push('(');
+    for (index, _) in signature.arguments.iter().enumerate() {
+        if index != 0 {
+            source.push_str(", ");
+        }
+        source.push('a');
+        source.push_str(&index.to_string());
+    }
+    source.push_str(");\n");
+    for (index, ty) in signature.arguments.iter().enumerate() {
+        if *ty == Type::Scalar(Scalar::StringPointer) {
+            source.push_str("birnam_free_cstr(a");
+            source.push_str(&index.to_string());
+            source.push_str(");\n");
+        }
+    }
+    if let Some(index) = return_type {
+        source.push_str("return __mk");
+        source.push_str(&index.to_string());
+        source.push_str("(&__r);\n");
+    } else if let Type::Scalar(scalar) = &signature.return_type {
+        emit_box_return(&mut source, *scalar);
+    }
+    source.push_str("}\n");
+    Ok(source)
+}
+
 fn validate_aggregate_fields(signature: &Signature) -> Result<(), CodegenError> {
     for (aggregate_index, aggregate) in signature.aggregates.iter().enumerate() {
         for (field_index, field) in aggregate.fields.iter().enumerate() {
@@ -612,5 +709,15 @@ mod tests {
                 field: 0
             })
         );
+    }
+
+    #[test]
+    fn composes_aggregate_helpers_into_receiver_first_wrapper() {
+        let signature = parse_signature(b"{ii} {ii} i").unwrap();
+        let source = emit_shim(b"birnam_div", &signature).unwrap();
+        assert!(source.contains("if (n != 1L) return birnam_nil();"));
+        assert!(source.contains("if (!__unm1(self, &a0)) return birnam_nil();"));
+        assert!(source.contains("__S0 __r = birnam_div(a0, a1);"));
+        assert!(source.contains("return __mk0(&__r);"));
     }
 }
