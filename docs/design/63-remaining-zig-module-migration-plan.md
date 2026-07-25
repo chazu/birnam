@@ -714,9 +714,9 @@ remain the next implementation slices.
   query bindings and never crosses an IdApi callback or stores a second fact
   authority.
 - The first corpus covers constant matching, shared-variable joins, repeated
-  variables, empty results, result-order preservation, and no invented
-  bindings. Scalar value-aware matching and the dynamic `module_init` wrapper
-  remain subsequent slices.
+  variables, empty results, result-order preservation, no invented bindings,
+  and scalar integer equality/deduplication. Classification of live Oops and
+  the dynamic `module_init` wrapper remain subsequent slices.
 - `3d3739a` updates the relocated Cargo-manifest acceptance for the new member;
   the subsequent Rust-default R6 rerun passes `93/93` build steps and `52/52`
   focused tests with the existing benchmark allowances unchanged. The full
