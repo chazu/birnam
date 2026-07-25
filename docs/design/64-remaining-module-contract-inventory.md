@@ -408,3 +408,7 @@ R3.11 worker request-dispatch checkpoint (2026-07-24):
   owner-thread request/reply exchanges plus stop/stopped in Debug and
   ReleaseSafe. Hostile-child lifecycle, timeout/termination parity, and
   canonical Rust selection remain unimplemented.
+- `10d0876` pins the R6 focused aggregate to the current two-test Isolate
+  target (`50/50`). A fresh full R6 run passes with the existing exact verify
+  exception and only the accepted `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` benchmark crossings.

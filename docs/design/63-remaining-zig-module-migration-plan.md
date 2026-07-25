@@ -591,6 +591,11 @@ remain the next implementation slices.
   helper thread because the floor rejects foreign-thread API entry. Rust
   tests/clippy and Debug/ReleaseSafe probes pass. Hostile-child lifecycle,
   timeout/termination parity, and canonical Rust selection remain pending.
+- `10d0876` updates the R6 lifecycle pins for the two-test Isolate target and
+  the resulting focused aggregate `50/50`. A fresh `mise run r6-acceptance`
+  passes; optimized verify retains only the exact recorded fixture exception,
+  and the comparator remains at the two accepted crossings
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
 ## 8. Phase R4 — Relational
 
