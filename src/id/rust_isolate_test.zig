@@ -21,6 +21,13 @@ const WorkerBootError = *const fn (
     usize,
 ) callconv(.c) void;
 const Lifecycle = *const fn () callconv(.c) void;
+const EncodeOop = *const fn (
+    ?*anyopaque,
+    ?*anyopaque,
+    ?[*]u8,
+    usize,
+    ?*usize,
+) callconv(.c) c_int;
 
 test "Rust Isolate exports the exact BISO header probe" {
     const api = floor.api();
@@ -86,8 +93,58 @@ test "Rust Isolate exports the exact BISO header probe" {
     const boot_error: WorkerBootError = @ptrCast(@alignCast(raw_boot_error));
     const drain: Lifecycle = @ptrCast(@alignCast(raw_drain));
     const shutdown: Lifecycle = @ptrCast(@alignCast(raw_shutdown));
+    const raw_encode_oop = api.dlsym(handle, "birnam_isolate_rust_encode_oop") orelse
+        return error.RustIsolateOopEncoderMissing;
+    const encode_oop: EncodeOop = @ptrCast(@alignCast(raw_encode_oop));
     _ = driver;
     _ = boot_error;
     drain();
     shutdown();
+
+    var oop_bytes: [64]u8 = undefined;
+    var oop_len: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        encode_oop(api, api.mkSmallInt(-42), &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqual(@as(usize, 9), oop_len);
+    try std.testing.expectEqualSlices(u8, &.{
+        3, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xd6,
+    }, oop_bytes[0..oop_len]);
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        encode_oop(api, api.mkFloat(-0.0), &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqual(@as(usize, 9), oop_len);
+    try std.testing.expectEqualSlices(u8, &.{
+        4, 0x80, 0, 0, 0, 0, 0, 0, 0,
+    }, oop_bytes[0..oop_len]);
+
+    const string_bytes = [_]u8{ 'a', 0, 'b' };
+    const string = api.mkString(&string_bytes, string_bytes.len);
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        encode_oop(api, string, &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqual(@as(usize, 8), oop_len);
+    try std.testing.expectEqualSlices(u8, &.{ 5, 0, 0, 0, 3, 'a', 0, 'b' }, oop_bytes[0..oop_len]);
+
+    const symbol = api.intern("hello");
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        encode_oop(api, symbol, &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqual(@as(usize, 10), oop_len);
+    try std.testing.expectEqualSlices(u8, &.{ 6, 0, 0, 0, 5, 'h', 'e', 'l', 'l', 'o' }, oop_bytes[0..oop_len]);
+
+    try std.testing.expectEqual(
+        @as(c_int, 19),
+        encode_oop(api, api.object_vt, &oop_bytes, oop_bytes.len, &oop_len),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -2),
+        encode_oop(api, api.mkSmallInt(1), oop_bytes[0..1], 1, &oop_len),
+    );
+    try std.testing.expectEqual(@as(usize, 9), oop_len);
 }

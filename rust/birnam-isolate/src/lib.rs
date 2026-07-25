@@ -529,6 +529,125 @@ fn error_record(schema: &[u8], kind: &[u8], message: &[u8]) -> Result<Vec<u8>, C
     Ok(payload)
 }
 
+struct OopEncoder<'a> {
+    api: &'a IdApi,
+    bytes: Vec<u8>,
+    nodes: usize,
+}
+
+impl<'a> OopEncoder<'a> {
+    fn new(api: &'a IdApi) -> Self {
+        Self {
+            api,
+            bytes: Vec::new(),
+            nodes: 0,
+        }
+    }
+
+    fn reserve(&self, additional: usize) -> Result<(), CodecError> {
+        let end = self
+            .bytes
+            .len()
+            .checked_add(additional)
+            .ok_or(CodecError::FrameTooLarge)?;
+        if end > MAX_FRAME {
+            return Err(CodecError::FrameTooLarge);
+        }
+        Ok(())
+    }
+
+    fn byte(&mut self, value: u8) -> Result<(), CodecError> {
+        self.reserve(1)?;
+        self.bytes.push(value);
+        Ok(())
+    }
+
+    fn sized(&mut self, bytes: &[u8]) -> Result<(), CodecError> {
+        if bytes.len() > u32::MAX as usize {
+            return Err(CodecError::FrameTooLarge);
+        }
+        self.reserve(4 + bytes.len())?;
+        self.bytes
+            .extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+        self.bytes.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    fn count_node(&mut self, depth: usize) -> Result<(), CodecError> {
+        if depth > MAX_DEPTH {
+            return Err(CodecError::TooDeep);
+        }
+        if self.nodes == MAX_NODES {
+            return Err(CodecError::TooManyNodes);
+        }
+        self.nodes += 1;
+        Ok(())
+    }
+
+    fn value(&mut self, value: Oop, depth: usize) -> Result<(), CodecError> {
+        self.count_node(depth)?;
+        if value == self.api.nilObj {
+            return self.byte(TAG_NIL);
+        }
+        if value == self.api.falseObj {
+            return self.byte(TAG_FALSE);
+        }
+        if value == self.api.trueObj {
+            return self.byte(TAG_TRUE);
+        }
+        if value.is_null() {
+            return Err(CodecError::NonTransferable);
+        }
+        if unsafe { (self.api.isSmallInt)(value) } != 0 {
+            self.byte(TAG_INT)?;
+            let integer = unsafe { (self.api.smallIntValue)(value) };
+            self.reserve(8)?;
+            self.bytes
+                .extend_from_slice(&(integer as u64).to_be_bytes());
+            return Ok(());
+        }
+        if unsafe { (self.api.isFloat)(value) } != 0 {
+            self.byte(TAG_FLOAT)?;
+            let float = unsafe { (self.api.floatValue)(value) };
+            self.reserve(8)?;
+            self.bytes.extend_from_slice(&float.to_bits().to_be_bytes());
+            return Ok(());
+        }
+        let vtable = unsafe { (self.api.vtableOf)(value) };
+        if vtable == self.api.string_vt {
+            let mut length = 0usize;
+            let pointer = unsafe { (self.api.stringBytes)(value, &mut length) };
+            if length != 0 && pointer.is_null() {
+                return Err(CodecError::InvalidRecord);
+            }
+            self.byte(TAG_STRING)?;
+            let bytes = if length == 0 {
+                &[]
+            } else {
+                // SAFETY: the floor promises `stringBytes`'s returned extent
+                // remains readable for this synchronous call.
+                unsafe { std::slice::from_raw_parts(pointer, length) }
+            };
+            return self.sized(bytes);
+        }
+        if vtable == self.api.symbol_vt {
+            let pointer = unsafe { (self.api.symbolName)(value) };
+            if pointer.is_null() {
+                return Err(CodecError::InvalidRecord);
+            }
+            // SAFETY: symbolName returns the interned NUL-terminated symbol
+            // text for a live symbol object.
+            let bytes = unsafe { CStr::from_ptr(pointer) }.to_bytes();
+            if std::str::from_utf8(bytes).is_err() {
+                return Err(CodecError::InvalidUtf8);
+            }
+            self.byte(TAG_SYMBOL)?;
+            return self.sized(bytes);
+        }
+        Err(CodecError::NonTransferable)
+    }
+}
+
 fn write_frame<W: Write>(writer: &mut W, frame: &Frame) -> Result<(), CodecError> {
     let bytes = frame.encode()?;
     writer
@@ -745,6 +864,45 @@ pub unsafe extern "C" fn birnam_isolate_rust_decode_header(
         *request_id_out = header.request_id;
         *payload_len_out = header.payload_len;
     }
+    0
+}
+
+/// Encode one floor OOP through the scalar portion of the BISO value codec.
+/// Collection traversal is intentionally deferred until its dynamic selector
+/// contract is ported; unsupported objects return `NonTransferable` (19).
+///
+/// # Safety
+///
+/// `api` must point to the live process-owned IdApi table. `value` must be a
+/// live floor OOP for the duration of the call. `out` must point to at least
+/// `out_cap` writable bytes and `out_len` must point to writable `usize`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_isolate_rust_encode_oop(
+    api: *mut IdApi,
+    value: Oop,
+    out: *mut u8,
+    out_cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    if api.is_null() || out.is_null() || out_len.is_null() {
+        return -1;
+    }
+    // SAFETY: the caller promises a live IdApi table for this synchronous
+    // conversion; the null check above establishes a valid reference.
+    let api = unsafe { &*api };
+    let mut encoder = OopEncoder::new(api);
+    let bytes = match encoder.value(value, 0) {
+        Ok(()) => encoder.bytes,
+        Err(error) => return error_code(error),
+    };
+    // SAFETY: the caller promises writable `usize` storage.
+    unsafe { *out_len = bytes.len() };
+    if out_cap < bytes.len() {
+        return -2;
+    }
+    // SAFETY: the caller promises `out_cap` writable bytes and the capacity
+    // check above proves the encoded slice fits.
+    unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), out, bytes.len()) };
     0
 }
 
