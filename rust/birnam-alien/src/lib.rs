@@ -6,6 +6,7 @@
 //! testable before any foreign state is introduced.
 
 pub mod abi;
+pub mod codegen;
 pub mod loader;
 
 use core::fmt;
