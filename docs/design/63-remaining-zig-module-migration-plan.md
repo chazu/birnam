@@ -723,6 +723,18 @@ remain the next implementation slices.
   workspace Cargo test still has the pre-existing deep-codegen stack-overflow
   abort; the new crate's locked offline test and clippy gates are green.
 
+### R4.2 relational value-law checkpoint (2026-07-25)
+
+- `f1fa537` upgrades kernel terms and triples to classified identity, integer,
+  float, and byte-string values. Matching is identity-only for objects and
+  value-based for scalar classes; projected results retain Store order while
+  deduplicating by that same law. The corpus is now `6/6` tests green under
+  locked offline Cargo test and clippy.
+- The switched-default R6 rerun remains green at `93/93` and `52/52`; no
+  benchmark allowance changed. The pending adapter must classify live Oops
+  without retaining borrowed pointers and must continue to source all facts
+  from Store's `liveTriples*` protocol.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
