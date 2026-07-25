@@ -788,6 +788,10 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_ERROR_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_error.dylib"),
     );
+    run_rust_prelude_tests.setEnvironmentVariable(
+        "BIRNAM_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc.dylib"),
+    );
     run_rust_prelude_tests.step.dependOn(bootstrap_install);
     const test_rust_prelude_step = b.step(
         "test-rust-prelude",

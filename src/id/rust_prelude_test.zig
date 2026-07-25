@@ -2,6 +2,13 @@
 
 const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
+const artifact = @import("artifact_inspector.zig");
+const store = @import("store.zig");
+const peg = @import("peg.zig");
+const lang = @import("lang.zig");
+const codegen = @import("codegen.zig");
+const collection = @import("collection.zig");
+const errmod = @import("error.zig");
 const idapi = @import("idapi.zig");
 
 const Oop = idapi.Oop;
@@ -23,6 +30,15 @@ var loop_nil: Oop = undefined;
 var loop_error: Oop = undefined;
 var condition_calls: usize = 0;
 var body_calls: usize = 0;
+
+fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.ModuleDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.ModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+}
 
 fn loopCondition(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
     _ = _self;
@@ -359,4 +375,44 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const error_condition = api.alloc(error_condition_vt, 0);
     api.method(error_condition_vt, api.intern("value"), &loopConditionError);
     try std.testing.expectEqual(error_object, send(api, error_condition, "whileTrue:", &.{body}));
+}
+
+test "Rust Prelude System load: uses the Codegen source-file protocol" {
+    const api = floor.api();
+
+    // Assemble the same dependency order as the host, while keeping the
+    // prelude itself as the dynamically loaded Rust candidate under test.
+    artifact.bringUp(api);
+    store.bringUp(api);
+    peg.bringUp(api);
+    lang.bringUp(api);
+    const tcc_path = std.posix.getenv("BIRNAM_TCC_DYLIB") orelse
+        return error.MissingTccDylib;
+    try loadModule(api, tcc_path);
+    codegen.bringUp(api);
+    const rust_prelude_path = std.posix.getenv("BIRNAM_RUST_PRELUDE_DYLIB") orelse
+        return error.MissingRustPreludeDylib;
+    try loadModule(api, rust_prelude_path);
+    collection.bringUp(api);
+    errmod.bringUp(api);
+
+    const system = api.import("System") orelse return error.SystemMissing;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const allocator = std.heap.c_allocator;
+    const directory = try temporary.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(directory);
+    const source_path = try std.fs.path.join(allocator, &.{ directory, "load.birnam" });
+    defer allocator.free(source_path);
+    try temporary.dir.writeFile(.{ .sub_path = "load.birnam", .data = "[1 + 2]" });
+
+    const loaded = send(api, system, "load:", &.{api.mkString(source_path.ptr, source_path.len)});
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(loaded));
+
+    try temporary.dir.writeFile(.{ .sub_path = "broken.birnam", .data = "let x := [3 +" });
+    const broken_path = try std.fs.path.join(allocator, &.{ directory, "broken.birnam" });
+    defer allocator.free(broken_path);
+    const broken = send(api, system, "load:", &.{api.mkString(broken_path.ptr, broken_path.len)});
+    try std.testing.expectEqual(api.trueObj, send(api, broken, "isError", &.{}));
+    try std.testing.expectEqual(api.intern("syntaxError"), send(api, broken, "kind", &.{}));
 }
