@@ -1582,6 +1582,21 @@ post-switch image/project observation window closes.
   gate's workspace inventory without weakening any floor, MOP, Store, ABI, GC,
   or dynamic-library invariant.
 
+### R5.5 Deterministic generated-C declaration checkpoint (2026-07-25)
+
+- `275917b` adds a pure Rust generator for post-order aggregate typedefs and
+  C function prototypes. It emits valid scalar, pointer, nested-aggregate,
+  and fixed-array field syntax with stable formatting, while rejecting invalid
+  C identifiers, malformed aggregate references, and top-level arrays before
+  TCC is called.
+- This slice emits declarations only. It introduces no IdApi pointers,
+  allocator, TCC state, wrapper address, callback, or GC authority; TCC remains
+  responsible for the platform ABI and hidden sret convention. Twelve locked
+  offline crate tests plus `clippy -D warnings` pass.
+- The next R5 step can add the runtime preamble and wrapper body against this
+  stable declaration output, then compile it through the existing Rust TCC
+  boundary.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
