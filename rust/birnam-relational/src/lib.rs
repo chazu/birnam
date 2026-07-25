@@ -1310,6 +1310,46 @@ pub unsafe extern "C" fn birnam_relational_rust_group_aggregate_live(
     }
 }
 
+/// Evaluate a bounded set of positive/recursive rule definitions over the
+/// current Store snapshot and project one query-rule variable. Definitions and
+/// derived tuples are caller-scoped Rust data; this explicit probe does not
+/// install a second Store rule cache or the canonical `defineRule:` selectors.
+///
+/// # Safety
+///
+/// All input arrays and Oops are borrowed for this synchronous call. Output and
+/// count pointers must name caller-owned storage for `capacity` records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_rule_live(
+    store: Oop,
+    definitions: *const RuleDefinitionNode,
+    definition_count: usize,
+    query_name: Oop,
+    query_terms: *const RuleTermNode,
+    query_term_count: usize,
+    result_variable: u32,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store, rule descriptors, and
+    // output contracts.
+    unsafe {
+        project_rule_live(
+            store,
+            definitions,
+            definition_count,
+            query_name,
+            query_terms,
+            query_term_count,
+            result_variable,
+            output,
+            capacity,
+            written,
+        )
+    }
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
 ///
 /// # Safety
@@ -1393,6 +1433,54 @@ pub struct PullRecord {
 pub struct GroupedAggregate {
     pub group: Value,
     pub aggregate: Option<Value>,
+}
+
+/// Pointer-free input records for the bounded rule-engine probe. A term is a
+/// constant when `kind == 0` (and `object` is classified) or a local variable
+/// when `kind == 1` (using `variable`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RuleTermNode {
+    pub object: Oop,
+    pub variable: u32,
+    pub kind: u8,
+    pub reserved: [u8; 3],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RuleClauseNode {
+    pub kind: u8,
+    pub reserved: [u8; 3],
+    pub name: Oop,
+    pub terms: *const RuleTermNode,
+    pub term_count: u32,
+    pub reserved_tail: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RuleDefinitionNode {
+    pub name: Oop,
+    pub params: *const u32,
+    pub param_count: u32,
+    pub reserved_params: u32,
+    pub body: *const RuleClauseNode,
+    pub body_count: u32,
+    pub reserved_body: u32,
+}
+
+#[derive(Clone, Debug)]
+pub enum RuleClause {
+    Triple(Clause),
+    Call { name: Value, args: Vec<Term> },
+}
+
+#[derive(Clone, Debug)]
+pub struct RuleDefinition {
+    pub name: Value,
+    pub params: Vec<u32>,
+    pub body: Vec<RuleClause>,
 }
 
 #[derive(Clone, Debug)]
@@ -1838,6 +1926,223 @@ pub fn group_aggregate(
         .collect()
 }
 
+fn extend_rule_solution(
+    solution: &[Binding],
+    terms: &[Term],
+    values: &[Value],
+) -> Option<Vec<Binding>> {
+    if terms.len() != values.len() {
+        return None;
+    }
+    let mut extended = solution.to_vec();
+    for (term, value) in terms.iter().zip(values) {
+        match term {
+            Term::Constant(expected) if !expected.matches(value) => return None,
+            Term::Constant(_) => {}
+            Term::Variable(variable) => {
+                if let Some(existing) = lookup(&extended, *variable) {
+                    if !existing.matches(value) {
+                        return None;
+                    }
+                } else {
+                    extended.push(Binding {
+                        variable: *variable,
+                        value: value.clone(),
+                    });
+                }
+            }
+        }
+    }
+    Some(extended)
+}
+
+#[derive(Clone, Debug)]
+struct DerivedRelation {
+    name: Value,
+    rows: Vec<Vec<Value>>,
+}
+
+fn relation_rows<'a>(relations: &'a [DerivedRelation], name: &Value) -> &'a [Vec<Value>] {
+    relations
+        .iter()
+        .find(|relation| relation.name.matches(name))
+        .map_or(&[], |relation| relation.rows.as_slice())
+}
+
+fn evaluate_rule_body(
+    facts: &[Triple],
+    relations: &[DerivedRelation],
+    body: &[RuleClause],
+) -> Vec<Vec<Binding>> {
+    let mut solutions = vec![Vec::new()];
+    for clause in body {
+        let mut next = Vec::new();
+        for solution in &solutions {
+            match clause {
+                RuleClause::Triple(Clause(terms)) => {
+                    for fact in facts {
+                        let values = [&fact.entity, &fact.attribute, &fact.value];
+                        let owned: Vec<Value> =
+                            values.iter().map(|value| (*value).clone()).collect();
+                        if let Some(extended) = extend_rule_solution(solution, terms, &owned) {
+                            next.push(extended);
+                        }
+                    }
+                }
+                RuleClause::Call { name, args } => {
+                    for row in relation_rows(relations, name) {
+                        if let Some(extended) = extend_rule_solution(solution, args, row) {
+                            next.push(extended);
+                        }
+                    }
+                }
+            }
+        }
+        solutions = next;
+        if solutions.is_empty() {
+            break;
+        }
+    }
+    solutions
+}
+
+fn relation_contains(rows: &[Vec<Value>], candidate: &[Value]) -> bool {
+    rows.iter().any(|row| {
+        row.len() == candidate.len()
+            && row
+                .iter()
+                .zip(candidate)
+                .all(|(left, right)| left.matches(right))
+    })
+}
+
+/// Materialize all rule definitions to a finite least fixpoint. Definitions
+/// with the same name form a union; body calls read the current partial
+/// relations, so mutual recursion converges without host recursion or a second
+/// Store authority.
+pub fn materialize_rules(facts: &[Triple], definitions: &[RuleDefinition]) -> Vec<Vec<Value>> {
+    let mut relations: Vec<DerivedRelation> = Vec::new();
+    for definition in definitions {
+        if !relations
+            .iter()
+            .any(|relation| relation.name.matches(&definition.name))
+        {
+            relations.push(DerivedRelation {
+                name: definition.name.clone(),
+                rows: Vec::new(),
+            });
+        }
+    }
+    const MAX_ITERATIONS: usize = 1_000;
+    for _ in 0..MAX_ITERATIONS {
+        let mut changed = false;
+        for definition in definitions {
+            let candidates = evaluate_rule_body(facts, &relations, &definition.body);
+            let mut rows = Vec::new();
+            for solution in candidates {
+                let Some(tuple) = definition
+                    .params
+                    .iter()
+                    .map(|variable| lookup(&solution, *variable).cloned())
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    continue;
+                };
+                if !relation_contains(&rows, &tuple) {
+                    rows.push(tuple);
+                }
+            }
+            let relation = relations
+                .iter_mut()
+                .find(|relation| relation.name.matches(&definition.name))
+                .expect("rule relation was seeded above");
+            for row in rows {
+                if !relation_contains(&relation.rows, &row) {
+                    relation.rows.push(row);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    relations
+        .into_iter()
+        .flat_map(|relation| relation.rows)
+        .collect()
+}
+
+/// Query one materialized rule relation with a positional call pattern and
+/// project one bound variable. The result is distinct and deterministic.
+pub fn query_rule(
+    facts: &[Triple],
+    definitions: &[RuleDefinition],
+    name: &Value,
+    args: &[Term],
+    result_variable: u32,
+) -> Vec<Value> {
+    let mut relations: Vec<DerivedRelation> = Vec::new();
+    for definition in definitions {
+        if !relations
+            .iter()
+            .any(|relation| relation.name.matches(&definition.name))
+        {
+            relations.push(DerivedRelation {
+                name: definition.name.clone(),
+                rows: Vec::new(),
+            });
+        }
+    }
+    const MAX_ITERATIONS: usize = 1_000;
+    for _ in 0..MAX_ITERATIONS {
+        let mut changed = false;
+        for definition in definitions {
+            let candidates = evaluate_rule_body(facts, &relations, &definition.body);
+            let mut rows = Vec::new();
+            for solution in candidates {
+                let Some(tuple) = definition
+                    .params
+                    .iter()
+                    .map(|variable| lookup(&solution, *variable).cloned())
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    continue;
+                };
+                if !relation_contains(&rows, &tuple) {
+                    rows.push(tuple);
+                }
+            }
+            let relation = relations
+                .iter_mut()
+                .find(|relation| relation.name.matches(&definition.name))
+                .expect("rule relation was seeded above");
+            for row in rows {
+                if !relation_contains(&relation.rows, &row) {
+                    relation.rows.push(row);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut values: Vec<Value> = Vec::new();
+    for row in relation_rows(&relations, name) {
+        let Some(solution) = extend_rule_solution(&[], args, row) else {
+            continue;
+        };
+        let Some(value) = lookup(&solution, result_variable) else {
+            continue;
+        };
+        if !values.iter().any(|seen| seen.matches(value)) {
+            values.push(value.clone());
+        }
+    }
+    values
+}
+
 unsafe fn parse_pull_specs(
     api: &IdApi,
     store: Oop,
@@ -2043,6 +2348,180 @@ unsafe fn group_aggregate_live(
     0
 }
 
+const MAX_RULE_DEFINITIONS: usize = 128;
+const MAX_RULE_BODY_CLAUSES: usize = 512;
+const MAX_RULE_TERMS: usize = 8;
+
+unsafe fn parse_rule_term(api: &IdApi, node: RuleTermNode) -> Result<Term, i32> {
+    match node.kind {
+        0 => {
+            if node.object.is_null() {
+                return Err(-4);
+            }
+            // SAFETY: constants are borrowed for this synchronous call.
+            unsafe { oop::classify(api, node.object) }
+                .map(Term::Constant)
+                .ok_or(-4)
+        }
+        1 => Ok(Term::Variable(node.variable)),
+        _ => Err(-7),
+    }
+}
+
+unsafe fn parse_rule_terms(
+    api: &IdApi,
+    nodes: *const RuleTermNode,
+    count: usize,
+) -> Result<Vec<Term>, i32> {
+    if count > MAX_RULE_TERMS || (count != 0 && nodes.is_null()) {
+        return Err(-7);
+    }
+    let nodes = if count == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller validated the pointer/count pair above.
+        unsafe { std::slice::from_raw_parts(nodes, count) }
+    };
+    nodes
+        .iter()
+        .copied()
+        .map(|node| unsafe { parse_rule_term(api, node) })
+        .collect()
+}
+
+unsafe fn parse_rule_definitions(
+    api: &IdApi,
+    nodes: *const RuleDefinitionNode,
+    count: usize,
+) -> Result<Vec<RuleDefinition>, i32> {
+    if count > MAX_RULE_DEFINITIONS || (count != 0 && nodes.is_null()) {
+        return Err(-7);
+    }
+    let nodes = if count == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller validated the pointer/count pair above.
+        unsafe { std::slice::from_raw_parts(nodes, count) }
+    };
+    let mut definitions = Vec::with_capacity(count);
+    for definition in nodes {
+        if definition.name.is_null()
+            || definition.param_count as usize > MAX_RULE_TERMS
+            || (definition.param_count != 0 && definition.params.is_null())
+            || definition.body_count as usize > MAX_RULE_BODY_CLAUSES
+            || (definition.body_count != 0 && definition.body.is_null())
+        {
+            return Err(-7);
+        }
+        // SAFETY: rule names and parameter/body arrays are borrowed for this
+        // synchronous call.
+        let Some(name) = (unsafe { oop::classify(api, definition.name) }) else {
+            return Err(-4);
+        };
+        let params = if definition.param_count == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: the pointer/count pair was validated above.
+            unsafe {
+                std::slice::from_raw_parts(definition.params, definition.param_count as usize)
+                    .to_vec()
+            }
+        };
+        let body_nodes = if definition.body_count == 0 {
+            &[]
+        } else {
+            // SAFETY: the pointer/count pair was validated above.
+            unsafe { std::slice::from_raw_parts(definition.body, definition.body_count as usize) }
+        };
+        let mut body = Vec::with_capacity(body_nodes.len());
+        for clause in body_nodes {
+            let terms = unsafe { parse_rule_terms(api, clause.terms, clause.term_count as usize)? };
+            match clause.kind {
+                0 if terms.len() == 3 => body.push(RuleClause::Triple(Clause([
+                    terms[0].clone(),
+                    terms[1].clone(),
+                    terms[2].clone(),
+                ]))),
+                1 => {
+                    if clause.name.is_null() {
+                        return Err(-4);
+                    }
+                    // SAFETY: rule call names are borrowed for this synchronous
+                    // parse.
+                    let Some(call_name) = (unsafe { oop::classify(api, clause.name) }) else {
+                        return Err(-4);
+                    };
+                    body.push(RuleClause::Call {
+                        name: call_name,
+                        args: terms,
+                    });
+                }
+                0 => return Err(-7),
+                _ => return Err(-7),
+            }
+        }
+        definitions.push(RuleDefinition { name, params, body });
+    }
+    Ok(definitions)
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_rule_live(
+    store: Oop,
+    definitions: *const RuleDefinitionNode,
+    definition_count: usize,
+    query_name: Oop,
+    query_terms: *const RuleTermNode,
+    query_term_count: usize,
+    result_variable: u32,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if store.is_null()
+        || query_name.is_null()
+        || written.is_null()
+        || (capacity != 0 && output.is_null())
+    {
+        return -3;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let definitions = match unsafe { parse_rule_definitions(api, definitions, definition_count) } {
+        Ok(definitions) => definitions,
+        Err(status) => return status,
+    };
+    // SAFETY: query name and terms are borrowed for this synchronous call.
+    let Some(query_name) = (unsafe { oop::classify(api, query_name) }) else {
+        return -4;
+    };
+    let query_terms = match unsafe { parse_rule_terms(api, query_terms, query_term_count) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let values = query_rule(
+        &facts,
+        &definitions,
+        &query_name,
+        &query_terms,
+        result_variable,
+    );
+    if values.len() > capacity {
+        return -5;
+    }
+    for (slot, value) in values.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity records and the length check
+        // above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = values.len() };
+    0
+}
+
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
     let Clause(terms) = clause;
     facts.iter().any(|triple| {
@@ -2075,9 +2554,9 @@ pub fn project_negated(
 #[cfg(test)]
 mod tests {
     use super::{
-        AggregateOp, Clause, CompareOp, PullKind, PullSpec, Term, Triple, Value, aggregate_values,
-        group_aggregate, project, project_disjunction, project_negated, project_predicate,
-        project_recursive, pull,
+        AggregateOp, Clause, CompareOp, PullKind, PullSpec, RuleClause, RuleDefinition, Term,
+        Triple, Value, aggregate_values, group_aggregate, project, project_disjunction,
+        project_negated, project_predicate, project_recursive, pull, query_rule,
     };
 
     fn id(value: u64) -> Value {
@@ -2451,5 +2930,116 @@ mod tests {
         let counts = group_aggregate(&facts, &clauses, 1, 0, AggregateOp::Count).unwrap();
         assert!(counts[0].aggregate.as_ref().unwrap().matches(&integer(2)));
         assert!(counts[1].aggregate.as_ref().unwrap().matches(&integer(2)));
+    }
+
+    #[test]
+    fn recursive_rules_reach_a_least_fixpoint_in_definition_order() {
+        let facts = [fact(1, 10, 2), fact(2, 10, 3), fact(3, 10, 4)];
+        let ancestor = id(99);
+        let definitions = [
+            RuleDefinition {
+                name: ancestor.clone(),
+                params: vec![0, 1],
+                body: vec![RuleClause::Triple(Clause([
+                    Term::Variable(0),
+                    Term::Constant(id(10)),
+                    Term::Variable(1),
+                ]))],
+            },
+            RuleDefinition {
+                name: ancestor.clone(),
+                params: vec![0, 1],
+                body: vec![
+                    RuleClause::Triple(Clause([
+                        Term::Variable(0),
+                        Term::Constant(id(10)),
+                        Term::Variable(2),
+                    ])),
+                    RuleClause::Call {
+                        name: ancestor.clone(),
+                        args: vec![Term::Variable(2), Term::Variable(1)],
+                    },
+                ],
+            },
+        ];
+        let values = query_rule(
+            &facts,
+            &definitions,
+            &ancestor,
+            &[Term::Constant(id(1)), Term::Variable(1)],
+            1,
+        );
+        assert_eq!(values.len(), 3);
+        assert!(values[0].matches(&id(2)));
+        assert!(values[1].matches(&id(3)));
+        assert!(values[2].matches(&id(4)));
+    }
+
+    #[test]
+    fn mutually_recursive_rules_converge_without_host_recursion() {
+        let zero = id(1);
+        let one = id(2);
+        let two = id(3);
+        let three = id(4);
+        let four = id(5);
+        let facts = [
+            fact(1, 20, 30),
+            fact(1, 30, 2),
+            fact(2, 30, 3),
+            fact(3, 30, 4),
+            fact(4, 30, 5),
+        ];
+        let even = id(100);
+        let odd = id(101);
+        let even_defs = [
+            RuleDefinition {
+                name: even.clone(),
+                params: vec![0],
+                body: vec![RuleClause::Triple(Clause([
+                    Term::Variable(0),
+                    Term::Constant(id(20)),
+                    Term::Constant(id(30)),
+                ]))],
+            },
+            RuleDefinition {
+                name: even.clone(),
+                params: vec![0],
+                body: vec![
+                    RuleClause::Triple(Clause([
+                        Term::Variable(1),
+                        Term::Constant(id(30)),
+                        Term::Variable(0),
+                    ])),
+                    RuleClause::Call {
+                        name: odd.clone(),
+                        args: vec![Term::Variable(1)],
+                    },
+                ],
+            },
+        ];
+        let odd_def = RuleDefinition {
+            name: odd.clone(),
+            params: vec![0],
+            body: vec![
+                RuleClause::Triple(Clause([
+                    Term::Variable(1),
+                    Term::Constant(id(30)),
+                    Term::Variable(0),
+                ])),
+                RuleClause::Call {
+                    name: even.clone(),
+                    args: vec![Term::Variable(1)],
+                },
+            ],
+        };
+        let mut definitions = even_defs.to_vec();
+        definitions.push(odd_def);
+        let values = query_rule(&facts, &definitions, &even, &[Term::Variable(0)], 0);
+        assert_eq!(values.len(), 3);
+        assert!(values[0].matches(&zero));
+        assert!(values[1].matches(&two));
+        assert!(values[2].matches(&four));
+        let _ = one;
+        let _ = three;
     }
 }

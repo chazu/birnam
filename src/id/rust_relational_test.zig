@@ -62,6 +62,30 @@ const GroupedPattern = extern struct {
     reserved: u32,
 };
 const GroupAggregateLive = *const fn (Oop, GroupedPattern, GroupedPattern, u32, u32, u8, ?[*]GroupedRecord, usize, *usize) callconv(.c) c_int;
+const RuleTermNode = extern struct {
+    object: Oop,
+    variable: u32,
+    kind: u8,
+    reserved: [3]u8,
+};
+const RuleClauseNode = extern struct {
+    kind: u8,
+    reserved: [3]u8,
+    name: Oop,
+    terms: ?[*]const RuleTermNode,
+    term_count: u32,
+    reserved_tail: u32,
+};
+const RuleDefinitionNode = extern struct {
+    name: Oop,
+    params: ?[*]const u32,
+    param_count: u32,
+    reserved_params: u32,
+    body: ?[*]const RuleClauseNode,
+    body_count: u32,
+    reserved_body: u32,
+};
+const ProjectRuleLive = *const fn (Oop, ?[*]const RuleDefinitionNode, usize, Oop, ?[*]const RuleTermNode, usize, u32, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -92,6 +116,14 @@ fn hasTriple(
         }
     }
     return false;
+}
+
+fn ruleVar(variable: u32) RuleTermNode {
+    return .{ .object = null, .variable = variable, .kind = 1, .reserved = [_]u8{0} ** 3 };
+}
+
+fn ruleConst(object: Oop) RuleTermNode {
+    return .{ .object = object, .variable = 0, .kind = 0, .reserved = [_]u8{0} ** 3 };
 }
 
 test "Rust Relational classifier copies scalar values and preserves identities" {
@@ -780,5 +812,109 @@ test "Rust Relational grouped aggregate preserves group order and distinct value
     try std.testing.expectEqual(
         @as(c_int, -7),
         grouped(store, city_pattern, age_pattern, 1, 2, 9, &records, records.len, &written),
+    );
+}
+
+test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const rule_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_rule_live") orelse
+        return error.RustRelationalRuleMissing;
+    const rule: ProjectRuleLive = @ptrCast(@alignCast(rule_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const ancestor = api.intern("rust_relational_rule_ancestor");
+    const tom = api.intern("rust_relational_rule_tom");
+    const bob = api.intern("rust_relational_rule_bob");
+    const ann = api.intern("rust_relational_rule_ann");
+    const kim = api.intern("rust_relational_rule_kim");
+    const parent = api.intern("rust_relational_rule_parent");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ tom, parent, bob }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, parent, ann }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ ann, parent, kim }, 3);
+
+    const ancestor_params = [_]u32{ 0, 1 };
+    const base_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(parent), ruleVar(1) };
+    const base_body = [_]RuleClauseNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &base_terms, .term_count = 3, .reserved_tail = 0 },
+    };
+    const rec_triple_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(parent), ruleVar(2) };
+    const rec_call_terms = [_]RuleTermNode{ ruleVar(2), ruleVar(1) };
+    const rec_body = [_]RuleClauseNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &rec_triple_terms, .term_count = 3, .reserved_tail = 0 },
+        .{ .kind = 1, .reserved = [_]u8{0} ** 3, .name = ancestor, .terms = &rec_call_terms, .term_count = 2, .reserved_tail = 0 },
+    };
+    const definitions = [_]RuleDefinitionNode{
+        .{ .name = ancestor, .params = &ancestor_params, .param_count = 2, .reserved_params = 0, .body = &base_body, .body_count = 1, .reserved_body = 0 },
+        .{ .name = ancestor, .params = &ancestor_params, .param_count = 2, .reserved_params = 0, .body = &rec_body, .body_count = 2, .reserved_body = 0 },
+    };
+    const query_terms = [_]RuleTermNode{ ruleConst(tom), ruleVar(1) };
+    var values: [16]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        rule(store, &definitions, definitions.len, ancestor, &query_terms, query_terms.len, 1, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 3), written);
+    try std.testing.expectEqual(@intFromPtr(bob), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(ann), @as(usize, @intCast(values[1].identity)));
+    try std.testing.expectEqual(@intFromPtr(kim), @as(usize, @intCast(values[2].identity)));
+
+    const even = api.intern("rust_relational_rule_even");
+    const odd = api.intern("rust_relational_rule_odd");
+    const is_zero = api.intern("rust_relational_rule_isZero");
+    const yes = api.intern("rust_relational_rule_yes");
+    const succ = api.intern("rust_relational_rule_succ");
+    const n0 = api.intern("rust_relational_rule_n0");
+    const n1 = api.intern("rust_relational_rule_n1");
+    const n2 = api.intern("rust_relational_rule_n2");
+    const n3 = api.intern("rust_relational_rule_n3");
+    const n4 = api.intern("rust_relational_rule_n4");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ n0, is_zero, yes }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ n0, succ, n1 }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ n1, succ, n2 }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ n2, succ, n3 }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ n3, succ, n4 }, 3);
+
+    const one_param = [_]u32{0};
+    const even_base_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(is_zero), ruleConst(yes) };
+    const even_base_body = [_]RuleClauseNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &even_base_terms, .term_count = 3, .reserved_tail = 0 },
+    };
+    const even_rec_triple = [_]RuleTermNode{ ruleVar(1), ruleConst(succ), ruleVar(0) };
+    const even_rec_call = [_]RuleTermNode{ ruleVar(1) };
+    const even_rec_body = [_]RuleClauseNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &even_rec_triple, .term_count = 3, .reserved_tail = 0 },
+        .{ .kind = 1, .reserved = [_]u8{0} ** 3, .name = odd, .terms = &even_rec_call, .term_count = 1, .reserved_tail = 0 },
+    };
+    const odd_triple = [_]RuleTermNode{ ruleVar(1), ruleConst(succ), ruleVar(0) };
+    const odd_call = [_]RuleTermNode{ ruleVar(1) };
+    const odd_body = [_]RuleClauseNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &odd_triple, .term_count = 3, .reserved_tail = 0 },
+        .{ .kind = 1, .reserved = [_]u8{0} ** 3, .name = even, .terms = &odd_call, .term_count = 1, .reserved_tail = 0 },
+    };
+    const mutual_definitions = [_]RuleDefinitionNode{
+        .{ .name = even, .params = &one_param, .param_count = 1, .reserved_params = 0, .body = &even_base_body, .body_count = 1, .reserved_body = 0 },
+        .{ .name = even, .params = &one_param, .param_count = 1, .reserved_params = 0, .body = &even_rec_body, .body_count = 2, .reserved_body = 0 },
+        .{ .name = odd, .params = &one_param, .param_count = 1, .reserved_params = 0, .body = &odd_body, .body_count = 2, .reserved_body = 0 },
+    };
+    const even_query = [_]RuleTermNode{ruleVar(0)};
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        rule(store, &mutual_definitions, mutual_definitions.len, even, &even_query, even_query.len, 0, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 3), written);
+    try std.testing.expectEqual(@intFromPtr(n0), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(n2), @as(usize, @intCast(values[1].identity)));
+    try std.testing.expectEqual(@intFromPtr(n4), @as(usize, @intCast(values[2].identity)));
+    try std.testing.expectEqual(
+        @as(c_int, -5),
+        rule(store, &mutual_definitions, mutual_definitions.len, even, &even_query, even_query.len, 0, null, 0, &written),
     );
 }
