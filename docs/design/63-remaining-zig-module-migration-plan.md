@@ -2152,6 +2152,19 @@ image authority fixture, and retain the Rust shell's no-publication boundary.
   the pre-switch Image observation boundary; it does not select Rust Image as
   canonical or add publication authority.
 
+### R6.18 Rust Image canonical record-order checkpoint (2026-07-25)
+
+- `c9892a0` changes the pure Rust complete-image composer to emit records in
+  the canonical Zig order: authority, heap, facts, then code. The generic
+  writer remains payload-order agnostic for preflight, but every complete
+  composed image now matches the established v4 save ordering without changing
+  framing, authority binding, or publication behavior.
+- The Image codec suite remains `19/19`; Image-only clippy and the live Rust
+  Image shell pass. A full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance`
+  rerun remains green at `141/141` focused steps and `81/81` tests, with Rust
+  Image CLI save proving both profiles and the existing two benchmark
+  allowances unchanged.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
