@@ -906,6 +906,10 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_ERROR_DYLIB",
         b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_error.dylib", .{rust_floor_profile})),
     );
+    run_rust_error_tests.setEnvironmentVariable(
+        "BIRNAM_ZIG_ERROR_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_error_zig.dylib"),
+    );
     run_rust_error_tests.step.dependOn(bootstrap_install);
     run_rust_error_tests.step.dependOn(&rust_floor_build.step);
     const test_rust_error_step = b.step(

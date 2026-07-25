@@ -12,6 +12,15 @@ fn send(api: *idapi.IdApi, receiver: Oop, selector: [*:0]const u8, args: []const
     return api.send(receiver, api.intern(selector), args.ptr, args.len);
 }
 
+fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.ModuleDlopenFailed;
+    const raw_init = api.dlsym(handle, "module_init") orelse return error.ModuleInitMissing;
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+}
+
 fn stringEquals(api: *idapi.IdApi, object: Oop, expected: []const u8) !void {
     var length: usize = 0;
     const bytes = api.stringBytes(object, &length);
@@ -60,4 +69,20 @@ test "Rust Error preserves the standalone family and DNU contract" {
     try std.testing.expectEqual(api.intern("doesNotUnderstand"), send(api, missed, "kind", &.{}));
     try stringEquals(api, send(api, missed, "message", &.{}), "does not understand #frobnicate");
     try std.testing.expectEqual(missed, send(api, missed, "stillMissing", &.{}));
+
+    const rust_path = std.posix.getenv("BIRNAM_RUST_ERROR_DYLIB") orelse
+        return error.MissingRustErrorDylib;
+    try loadModule(api, rust_path);
+    try std.testing.expectEqual(error_vt, api.import("ErrorVt"));
+    try std.testing.expectEqual(factory_vt, api.import("ErrorFactoryVt"));
+    try std.testing.expectEqual(factory, api.import("Error"));
+
+    const zig_path = std.posix.getenv("BIRNAM_ZIG_ERROR_DYLIB") orelse
+        return error.MissingZigErrorDylib;
+    try loadModule(api, zig_path);
+    try std.testing.expectEqual(error_vt, api.import("ErrorVt"));
+    try std.testing.expectEqual(factory_vt, api.import("ErrorFactoryVt"));
+    try std.testing.expectEqual(factory, api.import("Error"));
+    try std.testing.expectEqual(error_vt, api.vtableOf(error_object));
+    try std.testing.expectEqual(@as(usize, 16), api.objectPayloadSize(error_object));
 }
