@@ -1627,6 +1627,20 @@ post-switch image/project observation window closes.
   seam is composing these helpers into a complete aggregate wrapper and then
   compiling generated C through the existing TCC boundary.
 
+### R5.8 Complete generated wrapper composition checkpoint (2026-07-25)
+
+- `c440d9c` adds `emit_shim`, composing the scalar method-ABI body with the
+  aggregate `__unmN`/`__mkN` helpers. Receiver-first arguments, exact method
+  arity, scalar temporary cleanup, aggregate shape failure-to-nil, and
+  aggregate return construction are now represented in one deterministic
+  generated unit.
+- The source still only declares the frozen `birnam_*`/Vector protocol; it is
+  not installed as an Alien dylib and does not own IdApi, TCC, callback, or GC
+  state. Seventeen locked offline crate tests and `clippy -D warnings` pass.
+- The next bounded step is compiling this generated unit through the existing
+  Rust TCC crate and checking the returned `__shim` address, before any
+  callback or live IdApi method installation is attempted.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
