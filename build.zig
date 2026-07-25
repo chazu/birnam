@@ -1923,6 +1923,9 @@ pub fn build(b: *std.Build) void {
                 bootstrap_install.dependOn(&install_zig_error_selected.step);
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_isolate")) {
+            const install_zig_isolate = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_isolate.step);
+            bootstrap_install.dependOn(&install_zig_isolate.step);
             const install_rust_isolate = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_isolate.dylib",
