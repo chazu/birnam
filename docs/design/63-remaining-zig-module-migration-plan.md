@@ -374,6 +374,9 @@ post-switch observation are recorded.
 - `867a68a` reconciled install metadata and required dylib fixtures for the
   new workspace member. `test-install` and `test-native-rung-harness` pass with
   the Rust Error fixtures present.
+- `79a84cd` extended the Rust Error corpus to reload Rust twice and then load
+  the Zig Error fixture, asserting stable `ErrorVt`, `ErrorFactoryVt`, factory,
+  payload size, and export identity across the mixed reload path.
 - A fresh `mise run r6-acceptance` passed at `44/44`; optimized verify still
   matches only the recorded `sortedModules` fixture exception, and the
   comparator still reports exactly the accepted `query.aggregate +5.8%` and

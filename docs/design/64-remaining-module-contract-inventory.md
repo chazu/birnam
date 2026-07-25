@@ -277,5 +277,8 @@ R2 standalone Error implementation checkpoint (2026-07-24):
 - `867a68a` updated the relocated install smoke for the new Cargo package and
   both Rust/Zig Error fixture dylibs. `test-install` and
   `test-native-rung-harness` pass.
+- `79a84cd` extended the Rust Error corpus through Rust reload and Rust→Zig
+  reload, proving the existing `ErrorVt`, factory, two-OOP payload, and exports
+  are retained rather than duplicated.
 - The latest full R6 run remains green at `44/44`, with the exact recorded
   verify exception and the two accepted benchmark crossings unchanged.
