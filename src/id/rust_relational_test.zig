@@ -46,6 +46,22 @@ const PulledRecord = extern struct {
     value: Classified,
 };
 const PullLive = *const fn (Oop, Oop, ?[*]const PullSpecNode, usize, usize, ?[*]PulledRecord, usize, *usize) callconv(.c) c_int;
+const GroupedRecord = extern struct {
+    group: Classified,
+    aggregate: Classified,
+    aggregate_status: u8,
+    reserved: [7]u8,
+};
+const GroupedPattern = extern struct {
+    entity: Oop,
+    attribute: Oop,
+    value: Oop,
+    entity_variable: u32,
+    attribute_variable: u32,
+    value_variable: u32,
+    reserved: u32,
+};
+const GroupAggregateLive = *const fn (Oop, GroupedPattern, GroupedPattern, u32, u32, u8, ?[*]GroupedRecord, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -687,5 +703,82 @@ test "Rust Relational pull flattens Store cardinality and nested references" {
     try std.testing.expectEqual(
         @as(c_int, -7),
         pull(store, alice, &malformed, 1, malformed.len, &records, records.len, &written),
+    );
+}
+
+test "Rust Relational grouped aggregate preserves group order and distinct values" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const grouped_raw = api.dlsym(relation_handle, "birnam_relational_rust_group_aggregate_live") orelse
+        return error.RustRelationalGroupedAggregateMissing;
+    const grouped: GroupAggregateLive = @ptrCast(@alignCast(grouped_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const city = api.intern("rust_relational_group_city");
+    const age = api.intern("rust_relational_group_age");
+    const boston = api.intern("rust_relational_group_boston");
+    const denver = api.intern("rust_relational_group_denver");
+    const one = api.intern("rust_relational_group_one");
+    const two = api.intern("rust_relational_group_two");
+    const three = api.intern("rust_relational_group_three");
+    const four = api.intern("rust_relational_group_four");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ one, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ one, age, api.mkSmallInt(20) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ two, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ two, age, api.mkSmallInt(40) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ three, city, denver }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ three, age, api.mkSmallInt(30) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ four, city, denver }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ four, age, api.mkSmallInt(30) }, 3);
+
+    const city_pattern = GroupedPattern{
+        .entity = null,
+        .attribute = city,
+        .value = null,
+        .entity_variable = 0,
+        .attribute_variable = 3,
+        .value_variable = 1,
+        .reserved = 0,
+    };
+    const age_pattern = GroupedPattern{
+        .entity = null,
+        .attribute = age,
+        .value = null,
+        .entity_variable = 0,
+        .attribute_variable = 4,
+        .value_variable = 2,
+        .reserved = 0,
+    };
+    var records: [8]GroupedRecord = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        grouped(store, city_pattern, age_pattern, 1, 2, 1, &records, records.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 2), written);
+    try std.testing.expectEqual(@intFromPtr(boston), @as(usize, @intCast(records[0].group.identity)));
+    try std.testing.expectEqual(@as(i64, 60), records[0].aggregate.integer);
+    try std.testing.expectEqual(@intFromPtr(denver), @as(usize, @intCast(records[1].group.identity)));
+    try std.testing.expectEqual(@as(i64, 30), records[1].aggregate.integer);
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        grouped(store, city_pattern, age_pattern, 1, 0, 0, &records, records.len, &written),
+    );
+    try std.testing.expectEqual(@as(i64, 2), records[0].aggregate.integer);
+    try std.testing.expectEqual(@as(i64, 2), records[1].aggregate.integer);
+    try std.testing.expectEqual(
+        @as(c_int, -5),
+        grouped(store, city_pattern, age_pattern, 1, 2, 1, null, 0, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        grouped(store, city_pattern, age_pattern, 1, 2, 9, &records, records.len, &written),
     );
 }

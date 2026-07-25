@@ -184,6 +184,22 @@ pub struct ProjectPattern {
     pub value: Oop,
 }
 
+/// A grouped-query pattern with explicit variable identities. The older
+/// `ProjectPattern` intentionally derives variable ids from positions; grouped
+/// joins need two value positions to remain distinct (for example city versus
+/// age), so this probe carries the ids beside each nullable term.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GroupedPattern {
+    pub entity: Oop,
+    pub attribute: Oop,
+    pub value: Oop,
+    pub entity_variable: u32,
+    pub attribute_variable: u32,
+    pub value_variable: u32,
+    pub reserved: u32,
+}
+
 /// One node in the pointer-free pull specification supplied by the explicit
 /// migration probe. `kind == 0` is a leaf attribute and `kind == 1` is a
 /// reference whose child nodes form the nested pull spec. Child ranges are
@@ -211,6 +227,18 @@ pub struct PulledRecord {
     pub reserved: [u8; 7],
     pub path: [ClassifiedValue; PULL_MAX_DEPTH],
     pub value: ClassifiedValue,
+}
+
+/// One pointer-free grouped aggregate result. `aggregate_status == 0` carries
+/// `aggregate`; `aggregate_status == 1` represents the language-level nil
+/// result for an empty min/max/avg group.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GroupedRecord {
+    pub group: ClassifiedValue,
+    pub aggregate: ClassifiedValue,
+    pub aggregate_status: u8,
+    pub reserved: [u8; 7],
 }
 
 unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -508,6 +536,24 @@ unsafe fn project_terms(api: &IdApi, pattern: ProjectPattern) -> Result<[Term; 3
         term(pattern.entity, 0)?,
         term(pattern.attribute, 1)?,
         term(pattern.value, 2)?,
+    ])
+}
+
+unsafe fn grouped_terms(api: &IdApi, pattern: GroupedPattern) -> Result<[Term; 3], i32> {
+    let term = |object: Oop, variable: u32| -> Result<Term, i32> {
+        if object.is_null() {
+            return Ok(Term::Variable(variable));
+        }
+        // SAFETY: grouped pattern objects are borrowed for this synchronous
+        // call.
+        unsafe { oop::classify(api, object) }
+            .map(Term::Constant)
+            .ok_or(-4)
+    };
+    Ok([
+        term(pattern.entity, pattern.entity_variable)?,
+        term(pattern.attribute, pattern.attribute_variable)?,
+        term(pattern.value, pattern.value_variable)?,
     ])
 }
 
@@ -1225,6 +1271,45 @@ pub unsafe extern "C" fn birnam_relational_rust_pull_live(
     }
 }
 
+/// Group two positive triple-pattern clauses and fold distinct values by
+/// `operation` (`0 count`, `1 sum`, `2 min`, `3 max`, `4 avg`). Group order is
+/// first appearance and the result is a caller-owned flat array rather than a
+/// Rust Map, so this remains an explicit migration probe.
+///
+/// # Safety
+///
+/// `store`, any non-null pattern terms, and the output/count pointers must obey
+/// the same synchronous borrowed-object and capacity contracts as the other
+/// relational probes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_group_aggregate_live(
+    store: Oop,
+    first: GroupedPattern,
+    second: GroupedPattern,
+    group_variable: u32,
+    value_variable: u32,
+    operation: u8,
+    output: *mut GroupedRecord,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store, patterns, and output
+    // contracts.
+    unsafe {
+        group_aggregate_live(
+            store,
+            first,
+            second,
+            group_variable,
+            value_variable,
+            operation,
+            output,
+            capacity,
+            written,
+        )
+    }
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
 ///
 /// # Safety
@@ -1302,6 +1387,12 @@ pub struct PullSpec {
 pub struct PullRecord {
     pub path: Vec<Value>,
     pub value: Value,
+}
+
+#[derive(Clone, Debug)]
+pub struct GroupedAggregate {
+    pub group: Value,
+    pub aggregate: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -1708,6 +1799,45 @@ pub fn pull(facts: &[Triple], root: &Value, specs: &[PullSpec]) -> Vec<PullRecor
     output
 }
 
+/// Group the solutions of two positive clauses by one bound variable and fold
+/// distinct values of another. This is the bounded kernel seam for the later
+/// canonical `groupBy:aggregate:of:where:` method: group order follows first
+/// appearance, values use the same value law, and facts remain Store-owned.
+pub fn group_aggregate(
+    facts: &[Triple],
+    clauses: &[Clause],
+    group_variable: u32,
+    value_variable: u32,
+    operation: AggregateOp,
+) -> Result<Vec<GroupedAggregate>, AggregateError> {
+    let solutions = evaluate_clauses(facts, clauses);
+    let mut groups: Vec<(Value, Vec<Value>)> = Vec::new();
+    for solution in solutions {
+        let (Some(group), Some(value)) = (
+            lookup(&solution, group_variable),
+            lookup(&solution, value_variable),
+        ) else {
+            continue;
+        };
+        let Some(existing) = groups.iter_mut().find(|(seen, _)| seen.matches(group)) else {
+            groups.push((group.clone(), vec![value.clone()]));
+            continue;
+        };
+        if !existing.1.iter().any(|seen| seen.matches(value)) {
+            existing.1.push(value.clone());
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(group, values)| {
+            Ok(GroupedAggregate {
+                group,
+                aggregate: aggregate_values(&values, operation)?,
+            })
+        })
+        .collect()
+}
+
 unsafe fn parse_pull_specs(
     api: &IdApi,
     store: Oop,
@@ -1845,6 +1975,74 @@ unsafe fn pull_live(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
+unsafe fn group_aggregate_live(
+    store: Oop,
+    first: GroupedPattern,
+    second: GroupedPattern,
+    group_variable: u32,
+    value_variable: u32,
+    operation: u8,
+    output: *mut GroupedRecord,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if store.is_null() || written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    let Some(operation) = AggregateOp::from_u8(operation) else {
+        return -7;
+    };
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let first_terms = match unsafe { grouped_terms(api, first) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let second_terms = match unsafe { grouped_terms(api, second) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let grouped = match group_aggregate(
+        &facts,
+        &[Clause(first_terms), Clause(second_terms)],
+        group_variable,
+        value_variable,
+        operation,
+    ) {
+        Ok(grouped) => grouped,
+        Err(AggregateError::UnsupportedValue | AggregateError::Overflow) => return -4,
+    };
+    if grouped.len() > capacity {
+        return -5;
+    }
+    for (slot, result) in grouped.iter().enumerate() {
+        let (aggregate, aggregate_status) = match &result.aggregate {
+            Some(value) => (record(value.clone()), 0),
+            None => (record(Value::Identity(0)), 1),
+        };
+        // SAFETY: the caller supplied capacity records and the length check
+        // above bounds every write.
+        unsafe {
+            ptr::write(
+                output.add(slot),
+                GroupedRecord {
+                    group: record(result.group.clone()),
+                    aggregate,
+                    aggregate_status,
+                    reserved: [0; 7],
+                },
+            )
+        };
+    }
+    unsafe { *written = grouped.len() };
+    0
+}
+
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
     let Clause(terms) = clause;
     facts.iter().any(|triple| {
@@ -1878,7 +2076,8 @@ pub fn project_negated(
 mod tests {
     use super::{
         AggregateOp, Clause, CompareOp, PullKind, PullSpec, Term, Triple, Value, aggregate_values,
-        project, project_disjunction, project_negated, project_predicate, project_recursive, pull,
+        group_aggregate, project, project_disjunction, project_negated, project_predicate,
+        project_recursive, pull,
     };
 
     fn id(value: u64) -> Value {
@@ -2191,5 +2390,66 @@ mod tests {
         assert!(records[0].path[1].matches(&id(20)));
         assert!(records[0].value.matches(&Value::String(b"Bob".to_vec())));
         assert!(records[1].value.matches(&Value::String(b"Carol".to_vec())));
+    }
+
+    #[test]
+    fn grouped_aggregate_preserves_group_order_and_distinct_values() {
+        let facts = [
+            Triple {
+                entity: id(1),
+                attribute: id(10),
+                value: id(100),
+            },
+            Triple {
+                entity: id(1),
+                attribute: id(20),
+                value: integer(20),
+            },
+            Triple {
+                entity: id(2),
+                attribute: id(10),
+                value: id(100),
+            },
+            Triple {
+                entity: id(2),
+                attribute: id(20),
+                value: integer(40),
+            },
+            Triple {
+                entity: id(3),
+                attribute: id(10),
+                value: id(200),
+            },
+            Triple {
+                entity: id(3),
+                attribute: id(20),
+                value: integer(30),
+            },
+            Triple {
+                entity: id(4),
+                attribute: id(10),
+                value: id(200),
+            },
+            Triple {
+                entity: id(4),
+                attribute: id(20),
+                value: integer(30),
+            },
+        ];
+        let clauses = [
+            Clause([Term::Variable(0), Term::Constant(id(10)), Term::Variable(1)]),
+            Clause([Term::Variable(0), Term::Constant(id(20)), Term::Variable(2)]),
+        ];
+
+        let sums = group_aggregate(&facts, &clauses, 1, 2, AggregateOp::Sum).unwrap();
+        assert_eq!(sums.len(), 2);
+        assert!(sums[0].group.matches(&id(100)));
+        assert!(sums[0].aggregate.as_ref().unwrap().matches(&integer(60)));
+        assert!(sums[1].group.matches(&id(200)));
+        assert!(sums[1].aggregate.as_ref().unwrap().matches(&integer(30)));
+
+        let counts = group_aggregate(&facts, &clauses, 1, 0, AggregateOp::Count).unwrap();
+        assert!(counts[0].aggregate.as_ref().unwrap().matches(&integer(2)));
+        assert!(counts[1].aggregate.as_ref().unwrap().matches(&integer(2)));
     }
 }
