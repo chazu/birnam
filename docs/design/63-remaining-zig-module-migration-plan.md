@@ -1218,6 +1218,24 @@ remain the next implementation slices.
   arbitrary parameter/variable-scope semantics, canonical grouped/pull
   materialization, and canonical Rust Relational selection remain open.
 
+### R4.26 Rust Relational entity-method bridge checkpoint (2026-07-25)
+
+- `e11cb9d` installs the Rust `entity` callback on the live Store vtable when
+  Rust Relational is loaded after Store. It reuses the exported `EntityVt`
+  when present, publishes an equivalent empty-payload vtable only for a
+  Store-first load without one, and allocates each result through the frozen
+  IdApi. A classifier-only load before Store remains a deliberate no-op; it
+  does not invent a private Store authority or require load-order changes.
+- The cross-floor rule corpus now asserts that two Rust-installed `entity`
+  sends produce distinct live objects. Both dynamic targets remain `14/14`;
+  the Rust pure corpus remains `17/17`, and the accepted R6 boundary remains
+  `80/80`, `14/14`, optimized `486/492` with only the two existing benchmark
+  allowances.
+- Canonical Rust `findAll:`/full Store method installation, image-triggered
+  rebuild, arbitrary parameter/variable-scope semantics, canonical
+  grouped/pull materialization, and canonical Rust Relational selection remain
+  open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
