@@ -1270,6 +1270,18 @@ remain the next implementation slices.
   grouped, pull, image-triggered rebuild, arbitrary parameter/variable-scope
   semantics, and the canonical Rust Relational switch remain open.
 
+### R4.29 R6 acceptance after the `findAll:where:` bridge (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after
+  `7f7676f`: `100/100` build steps and `80/80` focused tests, with both Rust
+  Relational dynamic targets at `14/14`.
+- The optimized comparator reported exactly the two existing allowances:
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`; all other
+  benchmark cases were accepted. No gate threshold was broadened.
+- This acceptance closes the current bridge observation seam, but not the R4
+  exit gate. The remaining method family and canonical-selection work must
+  retain this same R6 boundary and rollback evidence.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
