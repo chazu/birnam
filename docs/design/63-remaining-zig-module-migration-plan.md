@@ -2165,6 +2165,25 @@ image authority fixture, and retain the Rust shell's no-publication boundary.
   Image CLI save proving both profiles and the existing two benchmark
   allowances unchanged.
 
+### R6.19 Rust Image live Zig-Codegen authority checkpoint (2026-07-25)
+
+- `66e1b02` adds a mixed-runtime test that brings up the Zig Codegen authority
+  over the selected Rust floor, records/evaluates `modules`, `stdlib`,
+  `compiledUnit`, and a fixture module, initializes `DispatchGeneration`, and
+  accepts only the live 64-byte `currentGenerationDigest` String result. The
+  test also calls the Rust Image `saveImage:` boundary and proves the rejected
+  report leaves its target path absent; the current live Store is intentionally
+  rejected at fact preflight before code capture or publication.
+- `0f7d9b7` updates the R6 gate to require the Rust Image shell target's exact
+  `2/2` tests and the focused matrix's exact `82/82` passing tests. The full
+  `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passed, including
+  optimized verify/install/harness legs, Rust Alien live `9/9`, both Rust Image
+  CLI save profile receipts, and zero missing or unusable cases.
+- The comparator remains unchanged: only `query.aggregate` `+5.8%` and
+  `compile.stage1-stdlib` `+11.9%` are accepted. This checkpoint proves live
+  authority observation and preserves Rust Image's no-publication boundary; it
+  does not make Rust Image canonical or install code-capture/rebuild authority.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
