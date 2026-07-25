@@ -2089,6 +2089,23 @@ canonical generation and the code record has a real mapped/rebuild contract.
   allowance was added for the Rust Image writer-preflight bridge. `saveImage:`
   remains fail-closed and performs no filesystem mutation.
 
+### R6.13 Rust Image complete-composer checkpoint (2026-07-25)
+
+- `672f41a` adds the pure `compose_complete_image` seam. It accepts already
+  preflighted facts/heap payloads plus explicit architecture, ABI, authority
+  digest, code checksum, and code-unit inputs; it emits a complete checked v4
+  byte vector through `ImageWriter::finish`. The seam does not derive authority,
+  inspect runtime objects, or publish bytes, so the dynamic shell's authority
+  boundary is unchanged.
+- The parser-compatibility test now exercises this complete-composer path with a
+  synthetic digest and code unit; the Rust codec suite remains green (`19/19`).
+  `saveImage:` still stops before this seam until the canonical generation and
+  mapped/rebuild code-unit contract are available.
+
+The next bounded step should derive an authority digest from the live generation
+without publishing, then compare that digest against the existing Zig image
+authority fixture. A synthetic digest must remain test-only.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
