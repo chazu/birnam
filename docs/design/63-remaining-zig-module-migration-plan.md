@@ -537,7 +537,9 @@ remain the next implementation slices.
   by the Rust unit tests.
 - Debug and ReleaseSafe dynamic probes pass. This closes symbol-surface drift
   before the next slice ports the IdApi/OOP value bridge; it does not select
-  the Rust Isolate or claim worker request parity.
+  the Rust Isolate or claim worker request parity. A fresh full
+  `mise run r6-acceptance` also passes at `49/49`; the verify exception and
+  two benchmark crossings remain unchanged.
 
 ## 8. Phase R4 — Relational
 

@@ -364,4 +364,5 @@ R3.7 installed host-symbol checkpoint (2026-07-24):
 - `b12ef26` makes the dynamic probe require the four frozen host symbols and
   invokes the lifecycle entry points without selecting the Rust rung.
 - Debug and ReleaseSafe probes pass; request dispatch remains intentionally
-  unimplemented pending the IdApi/OOP bridge.
+  unimplemented pending the IdApi/OOP bridge. The subsequent full R6 rerun
+  remains green at `49/49` with the existing verify and benchmark boundaries.
