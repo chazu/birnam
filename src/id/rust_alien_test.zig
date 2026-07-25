@@ -448,3 +448,26 @@ test "Rust Alien hostile signatures fail closed with kinded errors" {
     try std.testing.expect(isError(api, embedded_nul));
     try std.testing.expectEqual(api.intern("typeMismatch"), errorKind(api, embedded_nul));
 }
+
+test "Rust Alien refuses to unload a library retained by a live wrapper" {
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const system_name = if (@import("builtin").os.tag == .macos)
+        "libSystem.B.dylib"
+    else
+        "libc.so.6";
+
+    try std.testing.expect(api.send(
+        alien,
+        api.intern("wrap:signature:as:on:"),
+        &[_]Oop{ str(api, "strlen"), str(api, "l s"), api.intern("unloadGuard"), api.string_vt },
+        4,
+    ) != api.nilObj);
+
+    try std.testing.expect(
+        api.send(alien, api.intern("dlopen:"), &[_]Oop{str(api, system_name)}, 1) == api.trueObj,
+    );
+    const close = api.send(alien, api.intern("dlclose:"), &[_]Oop{str(api, system_name)}, 1);
+    try std.testing.expect(isError(api, close));
+    try std.testing.expectEqual(api.intern("inUse"), errorKind(api, close));
+}

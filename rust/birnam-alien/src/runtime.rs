@@ -1,10 +1,9 @@
 //! Live Alien owner seam over the frozen IdApi.
 //!
-//! This first integrated slice owns the `AlienVt`/`Alien` family and the
-//! closeable dynamic-library protocol. Signature parsing, generated C, and
-//! loader mechanics remain separately testable; wrapper installation and
-//! callbacks are deliberately added only after this object/loader boundary is
-//! proven.
+//! The integrated Rust owner keeps the `AlienVt`/`Alien` family, dynamic-library
+//! protocol, generated wrappers, callbacks, and raw-buffer boundary over the
+//! frozen IdApi. TCC remains the compiler/relocation authority and the host
+//! remains the object, collection, and GC authority.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -14,6 +13,7 @@ use crate::parse_signature;
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, Once, OnceLock};
 
 unsafe extern "C" {
@@ -30,6 +30,7 @@ static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static REGISTRY: OnceLock<Mutex<LibraryRegistry>> = OnceLock::new();
 static CALLBACKS: OnceLock<Mutex<Vec<CallbackEntry>>> = OnceLock::new();
 static CALLBACK_ROOTS: Once = Once::new();
+static LIVE_WRAPPERS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -453,6 +454,16 @@ unsafe extern "C" fn alien_dlclose(_self_object: Oop, args: *const Oop, count: u
     let mut registry = registry()
         .lock()
         .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
+    if LIVE_WRAPPERS.load(Ordering::Relaxed) != 0 && registry.open_count(&path) != 0 {
+        drop(registry);
+        return unsafe {
+            make_error(
+                api,
+                b"inUse\0",
+                b"dlclose: a live wrapper may still call this library",
+            )
+        };
+    }
     let result = registry.close(&path);
     drop(registry);
     match result {
@@ -601,6 +612,9 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
                 b"the shim method could not be installed",
             )
         };
+    }
+    if installed != api.nilObj {
+        LIVE_WRAPPERS.fetch_add(1, Ordering::Relaxed);
     }
     installed
 }
