@@ -837,6 +837,31 @@ remain the next implementation slices.
 - Full query parity, recursive/pull/aggregate cross-floor coverage beyond the
   Store-window bridge, and canonical Rust Relational selection remain open.
 
+### R4.8 Rust Relational one-clause projection checkpoint (2026-07-25)
+
+- `94272c9` adds an explicit, non-canonical Rust Relational probe that gathers
+  the current `liveTriplesDo:` stream from Store, classifies it into owned Rust
+  values, evaluates one triple clause through the authority-free kernel, and
+  returns a caller-owned classified projection. Null term positions represent
+  distinct logic variables; non-null terms use the frozen identity/scalar value
+  law. The callback snapshot is bounded, synchronous, and never retained as a
+  second Store authority.
+- The cross-floor corpus now covers a matching identity projection, scalar
+  constant matching, distinct empty results, output-capacity rejection, and an
+  invalid projection index against both Rust Store and the Zig Store rollback
+  provider. Both targets pass `4/4`; the probe identity is
+  `rust-relational-r4.5-project`, while canonical `findAll:where:` installation
+  remains deliberately pending.
+- `a0d4dea` advances the R6 focused boundary to `60/60` and requires both
+  relational targets to report exactly `4` passing tests. The full gate passes
+  with optimized verify pinned at `260/263` steps, `466/472` tests, and 6
+  skipped, accepting only the existing `run-tests.birnam`/`vSortBy` fixture;
+  the digest-pinned comparator still reports zero missing/unusable cases and
+  exactly `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`.
+- Multi-clause joins, predicates/negation/disjunction, rule fixpoints,
+  aggregation, pull, historical query windows, and canonical Rust Relational
+  selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
