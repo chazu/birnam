@@ -18,6 +18,53 @@ pub const AUTHORITY_DIGEST_LEN: usize = 64;
 pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
 pub const FIELD_LENGTH_PREFIX: usize = 4;
 
+const IMAGE_ARCH_TAG: u32 = if cfg!(target_arch = "aarch64") {
+    1
+} else if cfg!(target_arch = "x86_64") {
+    2
+} else {
+    0
+};
+const RUNTIME_ABI_VERSION: u32 = 2;
+const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
+    b"birnam_send",
+    b"birnam_intern",
+    b"birnam_mkSmallInt",
+    b"birnam_smallIntValue",
+    b"birnam_mkFloat",
+    b"birnam_floatValue",
+    b"birnam_mkString",
+    b"birnam_nil",
+    b"birnam_true",
+    b"birnam_false",
+    b"birnam_objectVt",
+    b"birnam_proto",
+    b"birnam_method",
+    b"birnam_alloc",
+    b"birnam_cstr",
+    b"birnam_free_cstr",
+    b"birnam_layoutAllOops",
+    b"birnam_global",
+    b"birnam_candidate_validate_binding",
+];
+
+fn runtime_abi_hash() -> u64 {
+    let mut hash = 0xcbf29ce484222325;
+    for name in RUNTIME_SHIM_NAMES {
+        for byte in *name {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    let mut version = RUNTIME_ABI_VERSION;
+    for _ in 0..4 {
+        hash ^= u64::from((version & 0xff) as u8);
+        hash = hash.wrapping_mul(0x100000001b3);
+        version >>= 8;
+    }
+    hash
+}
+
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fs;
@@ -1288,14 +1335,19 @@ fn record_fact_counts(kept: u32, rejected: u32, recovered_slots: u32, rejected_s
     report.rejected_slots = rejected_slots;
 }
 
-unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32) {
+fn preflight_writer_accepts(facts: &[u8], heap: &[u8]) -> bool {
+    let mut writer = ImageWriter::new(IMAGE_ARCH_TAG, runtime_abi_hash());
+    writer.facts(facts).is_ok() && writer.heap(heap).is_ok()
+}
+
+unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
-        return (0, 0, true, 0, 0);
+        return (0, 0, true, 0, 0, false);
     }
     let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
     if collector_vt.is_null() {
-        return (0, 0, false, 0, 0);
+        return (0, 0, false, 0, 0, false);
     }
     let basis_object = unsafe { (api.send)(store, intern(api, b"basis\0"), ptr::null(), 0) };
     let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
@@ -1305,7 +1357,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32) {
     };
     let collector = unsafe { (api.alloc)(collector_vt, 0) };
     if collector.is_null() {
-        return (0, 0, false, 0, 0);
+        return (0, 0, false, 0, 0, false);
     }
     {
         let mut collection = FACT_COLLECTION
@@ -1332,18 +1384,23 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
     let Some(mut collection) = collection else {
-        return (0, 0, false, 0, 0);
+        return (0, 0, false, 0, 0, false);
     };
-    let heap_ok = unsafe { collection.heap.finish(api).is_some() };
-    let counts = (
+    let facts_payload = collection.writer.finish();
+    let heap_payload = unsafe { collection.heap.finish(api) };
+    let heap_ok = heap_payload.is_some();
+    let writer_ok = heap_payload
+        .as_deref()
+        .map(|heap| preflight_writer_accepts(&facts_payload, heap))
+        .unwrap_or(false);
+    (
         collection.kept,
         collection.rejected,
         heap_ok,
         collection.heap.recovered_slots,
         collection.heap.rejected_slots,
-    );
-    let _payload = collection.writer.finish();
-    counts
+        writer_ok,
+    )
 }
 
 unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1363,14 +1420,16 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     }
     // The shell deliberately has no authority to mutate or publish an image.
     // Later R6 slices install the codec-backed save transaction here.
-    let (kept, rejected, heap_ok, recovered_slots, rejected_slots) =
+    let (kept, rejected, heap_ok, recovered_slots, rejected_slots, writer_ok) =
         unsafe { collect_store_facts(api) };
     reject_save(if !heap_ok {
         "Rust Image heap preflight rejected unsupported layout"
     } else if rejected != 0 {
         "Rust Image fact preflight rejected unsupported values"
+    } else if !writer_ok {
+        "Rust Image writer rejected preflight payload"
     } else {
-        "Rust Image writer/publisher orchestration is not installed"
+        "Rust Image authority/code orchestration is not installed"
     });
     record_fact_counts(kept, rejected, recovered_slots, rejected_slots);
     api.nilObj

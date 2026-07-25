@@ -121,7 +121,6 @@ test "Rust Image shell preserves report layout and selector surface" {
     const rejected_entity = api.intern("rust_image_rejected_entity");
     const rejected_attribute = api.intern("rust_image_rejected_value");
     _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ rejected_entity, rejected_attribute, rejected_parent });
-    defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ rejected_entity, rejected_attribute, rejected_parent });
 
     const identity = send(api, system, "imageCompositionIdentity", &.{});
     var identity_len: usize = 0;
@@ -149,6 +148,13 @@ test "Rust Image shell preserves report layout and selector surface" {
     } else {
         try std.testing.expectEqualStrings("Rust Image fact preflight rejected unsupported values", shell_detail[0..detail_len]);
     }
+    _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ rejected_entity, rejected_attribute, rejected_parent });
+    try std.testing.expect(send(api, system, "saveImage:", &.{str(api, "shell.image")}) == api.nilObj);
+    try std.testing.expectEqualStrings("rejected", std.mem.span(api.symbolName(send(api, report, "status", &.{}))));
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, report, "rejectedSlots", &.{})));
+    detail_len = 0;
+    const writer_detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
+    try std.testing.expectEqualStrings("Rust Image authority/code orchestration is not installed", writer_detail[0..detail_len]);
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, "shell.image")}) == api.nilObj);
     try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, "shell.image"), api.trueObj }) == api.nilObj);
     try std.testing.expect(send(api, system, "bakeExe:", &.{str(api, "shell-exe")}) == api.nilObj);
