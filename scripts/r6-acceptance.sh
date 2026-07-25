@@ -37,6 +37,7 @@ latest_tests=(
   test-rust-codegen-zig-store
   test-rust-ffi-abort
   test-rust-image-shell
+  test-rust-image-save
   test-rust-prelude
   test-rust-prelude-rust-error
   test-relational-selection
@@ -143,6 +144,16 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
 [ "$rust_image_shell_test_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Image shell target no longer has 1 passing test" >&2
+  exit 1
+}
+rust_image_save_success_count=$(grep -Fc 'test-rust-image-save success' "$functional" || true)
+[ "$rust_image_save_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Image CLI save target was not executed" >&2
+  exit 1
+}
+rust_image_save_profile_count=$(grep -Ec '^rust-image-save: (debug|release) selected [0-9a-f]{64}$' "$functional" || true)
+[ "$rust_image_save_profile_count" -eq 2 ] || {
+  echo "r6-acceptance: Rust Image CLI save target no longer proves both debug and release profiles" >&2
   exit 1
 }
 rust_prelude_success_count=$(grep -Fc 'test-rust-prelude success' "$functional" || true)
