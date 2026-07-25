@@ -701,6 +701,52 @@ unsafe fn project_disjunction_live(
     0
 }
 
+unsafe fn project_recursive_live(
+    store: Oop,
+    projection: u8,
+    edge: ProjectPattern,
+    root: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) || root.is_null() {
+        return -3;
+    }
+    if projection != 0 && projection != 2 {
+        return -7;
+    }
+    if !edge.entity.is_null() || edge.attribute.is_null() || !edge.value.is_null() {
+        return -7;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let edge_terms = match unsafe { project_terms(api, edge) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    // SAFETY: root is borrowed from the caller for this synchronous call.
+    let Some(root) = (unsafe { oop::classify(api, root) }) else {
+        return -4;
+    };
+    let projected = project_recursive(&facts, &Clause(edge_terms), &root, projection as u32);
+    if projected.len() > capacity {
+        return -5;
+    }
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity elements of writable output
+        // storage; the length check above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = projected_len };
+    0
+}
+
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
 /// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
@@ -909,6 +955,33 @@ pub unsafe extern "C" fn birnam_relational_rust_project_disjunction_live(
 ) -> i32 {
     // SAFETY: the caller supplies the frozen Store object and output buffers.
     unsafe { project_disjunction_live(store, projection, first, second, output, capacity, written) }
+}
+
+/// Project a root or reachable target from the transitive closure of one
+/// positive edge pattern. The bounded probe requires a variable entity and
+/// value with a constant attribute; it computes a deterministic finite
+/// fixpoint over the copied Store snapshot. Projection `0` returns the root
+/// side and projection `2` returns reachable targets. This is an explicit
+/// migration probe, not rule registration, rule-cache persistence, mutual
+/// recursion, or canonical Store `findAll:where:` installation.
+///
+/// # Safety
+///
+/// `store`, `root`, and the non-null edge attribute must remain live for the
+/// synchronous call. `output` and `written` must point to caller-owned writable
+/// storage for the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_recursive_live(
+    store: Oop,
+    projection: u8,
+    edge: ProjectPattern,
+    root: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe { project_recursive_live(store, projection, edge, root, output, capacity, written) }
 }
 
 /// Initialize the explicit Rust Relational probe against the process IdApi.
@@ -1146,6 +1219,57 @@ pub fn project_disjunction(facts: &[Triple], branches: &[Clause], result: u32) -
     values
 }
 
+/// Compute the transitive closure of a bounded binary edge clause. The clause
+/// must bind variables `0` and `2`; its middle term is the edge attribute. New
+/// `(source, target)` pairs are appended in deterministic breadth-first
+/// fixpoint order and compared by the existing value law. The result projects
+/// either side for rows whose source equals `root`.
+pub fn project_recursive(facts: &[Triple], edge: &Clause, root: &Value, result: u32) -> Vec<Value> {
+    if result != 0 && result != 2 {
+        return Vec::new();
+    }
+    let solutions = evaluate_clauses(facts, std::slice::from_ref(edge));
+    let mut edges: Vec<(Value, Value)> = Vec::new();
+    for solution in solutions {
+        let (Some(source), Some(target)) = (lookup(&solution, 0), lookup(&solution, 2)) else {
+            continue;
+        };
+        if !edges.iter().any(|(seen_source, seen_target)| {
+            seen_source.matches(source) && seen_target.matches(target)
+        }) {
+            edges.push((source.clone(), target.clone()));
+        }
+    }
+
+    let mut cursor = 0;
+    while cursor < edges.len() {
+        let (source, middle) = edges[cursor].clone();
+        for (next_source, target) in edges.clone() {
+            if !middle.matches(&next_source)
+                || edges.iter().any(|(seen_source, seen_target)| {
+                    seen_source.matches(&source) && seen_target.matches(&target)
+                })
+            {
+                continue;
+            }
+            edges.push((source.clone(), target));
+        }
+        cursor += 1;
+    }
+
+    let mut values: Vec<Value> = Vec::new();
+    for (source, target) in edges {
+        if !source.matches(root) {
+            continue;
+        }
+        let value = if result == 0 { source } else { target };
+        if !values.iter().any(|seen| seen.matches(&value)) {
+            values.push(value);
+        }
+    }
+    values
+}
+
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
     let Clause(terms) = clause;
     facts.iter().any(|triple| {
@@ -1179,7 +1303,7 @@ pub fn project_negated(
 mod tests {
     use super::{
         Clause, CompareOp, Term, Triple, Value, project, project_disjunction, project_negated,
-        project_predicate,
+        project_predicate, project_recursive,
     };
 
     fn id(value: u64) -> Value {
@@ -1393,5 +1517,17 @@ mod tests {
         assert!(values[0].matches(&id(1)));
         assert!(values[1].matches(&id(2)));
         assert!(values[2].matches(&id(3)));
+    }
+
+    #[test]
+    fn recursive_edge_projection_reaches_a_finite_fixpoint_in_order() {
+        let facts = [fact(1, 10, 2), fact(2, 10, 3), fact(3, 10, 4)];
+        let edge = Clause([Term::Variable(0), Term::Constant(id(10)), Term::Variable(2)]);
+
+        let values = project_recursive(&facts, &edge, &id(1), 2);
+        assert_eq!(values.len(), 3);
+        assert!(values[0].matches(&id(2)));
+        assert!(values[1].matches(&id(3)));
+        assert!(values[2].matches(&id(4)));
     }
 }

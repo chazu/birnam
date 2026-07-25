@@ -29,6 +29,7 @@ const ProjectJoinLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]
 const ProjectPredicateLive = *const fn (Oop, u8, ProjectPattern, u8, u8, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectNegatedLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectDisjunctionLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectRecursiveLive = *const fn (Oop, u8, ProjectPattern, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -431,5 +432,69 @@ test "Rust Relational kernel unions two disjunction branches" {
     try std.testing.expectEqual(
         @as(c_int, -7),
         disjunction(store, 3, boston_or_denver, denver_branch, &values, values.len, &written),
+    );
+}
+
+test "Rust Relational kernel reaches a finite recursive edge fixpoint" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const recursive_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_recursive_live") orelse
+        return error.RustRelationalRecursiveMissing;
+    const recursive: ProjectRecursiveLive = @ptrCast(@alignCast(recursive_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const tom = api.intern("rust_relational_recursive_tom");
+    const bob = api.intern("rust_relational_recursive_bob");
+    const ann = api.intern("rust_relational_recursive_ann");
+    const kim = api.intern("rust_relational_recursive_kim");
+    const parent = api.intern("rust_relational_recursive_parent");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ tom, parent, bob }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, parent, ann }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ ann, parent, kim }, 3);
+
+    const edge = ProjectPattern{ .entity = null, .attribute = parent, .value = null };
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        recursive(store, 2, edge, tom, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 3), written);
+    try std.testing.expectEqual(@intFromPtr(bob), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(ann), @as(usize, @intCast(values[1].identity)));
+    try std.testing.expectEqual(@intFromPtr(kim), @as(usize, @intCast(values[2].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        recursive(store, 0, edge, tom, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@intFromPtr(tom), @as(usize, @intCast(values[0].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, -5),
+        recursive(store, 2, edge, tom, null, 0, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        recursive(store, 1, edge, tom, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        recursive(
+            store,
+            2,
+            .{ .entity = tom, .attribute = parent, .value = null },
+            tom,
+            &values,
+            values.len,
+            &written,
+        ),
     );
 }
