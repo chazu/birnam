@@ -2029,6 +2029,35 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
     &bytes[start..end]
 }
 
+unsafe extern "C" fn object_is_nil(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count == 0 { api.falseObj } else { api.nilObj }
+}
+
+unsafe extern "C" fn object_not_nil(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count == 0 { api.trueObj } else { api.nilObj }
+}
+
+unsafe extern "C" fn nil_is_nil(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count == 0 { api.trueObj } else { api.nilObj }
+}
+
+unsafe extern "C" fn nil_not_nil(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count == 0 { api.falseObj } else { api.nilObj }
+}
+
+unsafe extern "C" fn nil_print_string(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count == 0 {
+        unsafe { (api.mkString)(b"nil".as_ptr(), 3) }
+    } else {
+        api.nilObj
+    }
+}
+
 unsafe fn range_payload(object: Oop) -> *mut RangePayload {
     if object.is_null() {
         abort("Range method received a null receiver");
@@ -2465,6 +2494,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             birnam_abi::SLOT_RAW,
         );
         (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
+        (api.method)(api.object_vt, intern(api, b"isNil\0"), object_is_nil);
+        (api.method)(api.object_vt, intern(api, b"notNil\0"), object_not_nil);
+        let nil_vt = (api.vtableOf)(api.nilObj);
+        (api.method)(nil_vt, intern(api, b"isNil\0"), nil_is_nil);
+        (api.method)(nil_vt, intern(api, b"notNil\0"), nil_not_nil);
+        (api.method)(nil_vt, intern(api, b"printString\0"), nil_print_string);
         (api.method)(api.string_vt, intern(api, b",\0"), string_comma);
         (api.method)(
             api.string_vt,

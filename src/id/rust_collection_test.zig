@@ -296,6 +296,14 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(api, api.mkString(" 42 ", 4), "asInteger", &.{})));
     try std.testing.expectEqual(@as(f64, 1.5), api.floatValue(send(api, api.mkString("1.5", 3), "asNumber", &.{})));
 
+    try std.testing.expectEqual(api.falseObj, send(api, api.mkSmallInt(1), "isNil", &.{}));
+    try std.testing.expectEqual(api.trueObj, send(api, api.mkSmallInt(1), "notNil", &.{}));
+    try std.testing.expectEqual(api.trueObj, send(api, api.nilObj, "isNil", &.{}));
+    try std.testing.expectEqual(api.falseObj, send(api, api.nilObj, "notNil", &.{}));
+    var nil_print_len: usize = 0;
+    const nil_print = api.stringBytes(send(api, api.nilObj, "printString", &.{}), &nil_print_len);
+    try std.testing.expectEqualStrings("nil", nil_print[0..nil_print_len]);
+
     const empty_range = send(api, api.mkSmallInt(5), "to:", &.{api.mkSmallInt(3)});
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_range, "size", &.{})));
     try std.testing.expectEqual(api.falseObj, send(api, empty_range, "includes:", &.{api.mkSmallInt(4)}));
