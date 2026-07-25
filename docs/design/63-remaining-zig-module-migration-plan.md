@@ -1428,6 +1428,27 @@ remain the next implementation slices.
   with zero missing or unusable cases. The gate continues to accept the
   existing fixture exception without threshold broadening.
 
+### R4.42 Relational canonical-selection checkpoint (2026-07-25)
+
+- `fbf2ec9` adds the fail-closed `-Drelational=rust|zig` build choice. Both
+  implementations are installed under explicit `_rust`/`_zig` fixture names,
+  and the selected implementation is copied to canonical
+  `libbirnam_id_relational.dylib`; Zig remains the default rollback choice.
+- `test-relational-selection` builds both choices in isolated prefixes and
+  verifies receipt identity, byte-for-byte canonical/fixture equality, and
+  rejection of unknown implementations. No runtime Store authority is changed
+  by the selection smoke.
+
+### R4.43 R6 acceptance after Relational canonical-selection coverage (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after `8fc1697`:
+  `103/103` focused build steps, `80/80` focused tests, and both Rust
+  Relational dynamic targets at `14/14`.
+- The optimized comparator remains the exact accepted snapshot: only
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` regressions,
+  with zero missing or unusable cases. The new selection target is now part of
+  the fail-closed R6 boundary; no benchmark threshold was broadened.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
