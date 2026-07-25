@@ -516,6 +516,19 @@ remain the next implementation slices.
 - Seven isolated Rust tests and clippy pass. This is the transport seam for
   the upcoming worker loop; no `IdApi` or process state is introduced yet.
 
+### R3.6 control-plane skeleton checkpoint (2026-07-24)
+
+- `bc69774` adds the frozen `birnam-abi` dependency and exports the audited
+  worker symbols with the exact C-shaped signatures. The Rust control-plane
+  skeleton sends `ready`, accepts one `stop` and replies `stopped`, and emits
+  the exact `birnam.boot-error.v1` record without retaining channel or payload
+  ownership. `drain` and `shutdown` are explicit no-ops because this fixture
+  has no host-side registry yet.
+- Nine Rust unit tests and clippy pass, including socketpair handshake,
+  stop/reply, and boot-error record tests. Request frames intentionally fail
+  closed until the IdApi/OOP value bridge is ported; the crate remains
+  unselected and has no canonical-switch claim.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

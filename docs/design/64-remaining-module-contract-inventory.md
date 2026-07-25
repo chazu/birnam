@@ -348,3 +348,13 @@ R3.5 owned frame transport checkpoint (2026-07-24):
   are copied across the transport seam.
 - Seven Rust unit tests and clippy pass. The worker still has no `IdApi` or
   process lifecycle implementation at this checkpoint.
+
+R3.6 control-plane skeleton checkpoint (2026-07-24):
+
+- `bc69774` adds the frozen `birnam-abi` dependency and the four audited Rust
+  host symbols. The skeleton performs ready/stop/stopped framing and exact
+  boot-error record encoding; `drain`/`shutdown` are no-ops while its registry
+  is empty.
+- Nine Rust unit tests and clippy pass, including socketpair control-plane
+  and boot-error tests. Request dispatch remains fail-closed until the OOP
+  value bridge is ported; this is not a worker-parity or selection checkpoint.
