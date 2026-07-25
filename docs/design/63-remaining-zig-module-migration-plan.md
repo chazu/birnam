@@ -1725,6 +1725,26 @@ post-switch image/project observation window closes.
   replay records, forced-GC roots, unload safety for installed wrappers, or the
   pre-switch/full R6 acceptance required by the R5 exit gate.
 
+### R5.14 Rust Alien callback ownership checkpoint (2026-07-25)
+
+- `f0a72ca` adds deterministic Rust callback generation. The generated C boxes
+  each C argument, sends the arity-matched `value` selector to a patched
+  `__cbBlock`, and unboxes scalar or aggregate results. Aggregate callbacks
+  reuse the same Vector `__mkN`/`__unmN` helpers as wrappers; string returns are
+  rejected because their C-side ownership is undefined.
+- The Rust live owner registers one process-wide IdApi GC root provider and
+  stores only integer addresses for each `(block, TCC unit, callback address)`
+  entry. The provider copies roots before marking, and no registry lock or Rust
+  borrow crosses a callback/reentrant `send`. `releaseCallback:` removes the
+  entry before marking its TCC unit `disposable`; callers explicitly promise not
+  to invoke the released address again.
+- The live fixture exports scalar and aggregate callback harnesses, forces GC
+  churn, verifies callback dispatch and Vector marshalling, then checks release
+  and double-release failure. It passes `2/2` tests with Zig/Debug and
+  Rust/ReleaseSafe selected floors. Rust callback identity remains the existing
+  `rust-alien-r5-loader` fixture identity until the complete Alien owner is
+  ready for canonical selection.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
