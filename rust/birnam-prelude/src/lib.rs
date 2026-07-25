@@ -306,6 +306,113 @@ unsafe extern "C" fn integer_as_float(
     unsafe { (api.mkFloat)(value as f64) }
 }
 
+unsafe extern "C" fn integer_to_do(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(values) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(start) = (unsafe { integer(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(end) = (unsafe { integer(api, values[0]) }) else {
+        return api.nilObj;
+    };
+    let block = values[1];
+    let mut value = start;
+    while value <= end {
+        let argument = unsafe { (api.mkSmallInt)(value) };
+        let result = unsafe { send_args(api, block, b"value:\0", &[argument]) };
+        if unsafe { is_error(api, result) } {
+            return result;
+        }
+        if value == i64::MAX {
+            break;
+        }
+        value += 1;
+    }
+    self_object
+}
+
+unsafe fn word_value(api: &IdApi, value: Oop) -> Option<u64> {
+    if value.is_null() || unsafe { (api.isWord)(value) } == 0 {
+        return None;
+    }
+    Some(unsafe { (api.wordValue)(value) })
+}
+
+unsafe extern "C" fn word_print_string(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { word_value(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let text = format!("0x{value:x}");
+    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+}
+
+unsafe extern "C" fn word_eq(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(left) = (unsafe { word_value(api, self_object) }) else {
+        return api.nilObj;
+    };
+    let Some(right_object) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(right) = (unsafe { word_value(api, right_object) }) else {
+        return api.falseObj;
+    };
+    if left == right { api.trueObj } else { api.falseObj }
+}
+
+unsafe extern "C" fn word_as_integer(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { word_value(api, self_object) }) else {
+        return api.nilObj;
+    };
+    if value > i64::MAX as u64 {
+        return unsafe { numeric_error(api, b"overflow\0", b"word out of Integer range") };
+    }
+    unsafe { (api.mkSmallInt)(value as i64) }
+}
+
+unsafe extern "C" fn word_is_null(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { word_value(api, self_object) }) else {
+        return api.nilObj;
+    };
+    if value == 0 { api.trueObj } else { api.falseObj }
+}
+
 unsafe fn float_self(api: &IdApi, value: Oop) -> Option<f64> {
     if value.is_null() || unsafe { (api.isFloat)(value) } == 0 {
         return None;
@@ -1288,6 +1395,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b">=\0", integer_ge),
         (b"printString\0", integer_print_string),
         (b"asFloat\0", integer_as_float),
+        (b"to:do:\0", integer_to_do),
     ];
     for (selector, method) in methods {
         let symbol = unsafe { intern(api, selector) };
@@ -1317,6 +1425,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let symbol = unsafe { intern(api, selector) };
         // SAFETY: float_vt and each method are live for the process lifetime.
         unsafe { (api.method)(api.float_vt, symbol, *method) };
+    }
+    let word_methods: &[(&[u8], birnam_abi::Method)] = &[
+        (b"printString\0", word_print_string),
+        (b"=\0", word_eq),
+        (b"asInteger\0", word_as_integer),
+        (b"isNull\0", word_is_null),
+    ];
+    for (selector, method) in word_methods {
+        let symbol = unsafe { intern(api, selector) };
+        // SAFETY: word_vt and each callback are process-lifetime values.
+        unsafe { (api.method)(api.word_vt, symbol, *method) };
     }
     let boolean_vt = unsafe { (api.vtableOf)(api.trueObj) };
     let boolean_methods: &[(&[u8], birnam_abi::Method)] = &[
