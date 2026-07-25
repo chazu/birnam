@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+
 [lib]
 name = "birnam_relational"
 

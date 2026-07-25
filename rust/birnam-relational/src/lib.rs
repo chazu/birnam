@@ -5,6 +5,8 @@
 //! the current (or historical) live triples, and receives projected bindings.
 //! The dynamic module/Store callback wrapper is deliberately a later slice.
 
+pub mod oop;
+
 /// A value classified by the IdApi adapter before entering the query kernel.
 /// Identity values compare by pointer identity; scalar values compare by value,
 /// matching the Zig relational `valEq` law.

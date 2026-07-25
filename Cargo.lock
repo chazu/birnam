@@ -83,6 +83,9 @@ dependencies = [
 [[package]]
 name = "birnam-relational"
 version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
 
 [[package]]
 name = "birnam-store"
