@@ -319,3 +319,15 @@ R3.2 host ABI checkpoint (2026-07-24):
   for the synchronous call; boot-error strings are borrowed, not retained;
   drain/shutdown are host-side idempotent registry lifecycle operations. The
   Rust rung must preserve this ABI and ownership model exactly.
+
+R3.3 wire probe and R6 gate checkpoint (2026-07-24):
+
+- `831a6f9` adds the installed Rust Isolate `cdylib` identity/header probe,
+  including exact BISO bytes and fail-closed invalid-input cases.
+- `ff07369` adds the Rust Isolate package and fixture to relocated install
+  metadata; `f6cb648` keeps the canonical Zig Isolate dylib installed beside
+  the explicit Rust fixture so clean prefixes retain both rollback paths.
+- Clean-prefix install/selection/native-rung checks and the full R6 wrapper
+  pass. The focused boundary is pinned at `49/49`, with the existing exact
+  verify exception and only the two accepted benchmark crossings; no Isolate
+  worker lifecycle or canonical-switch claim is made by this probe.

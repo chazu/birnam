@@ -474,6 +474,29 @@ owns termination/reaping of every remaining registry process and fd. Rust may
 change implementation details, but not these symbols, call conventions,
 ownership, lifetime, or reentry rules.
 
+### R3.3 wire probe and R6 gate checkpoint (2026-07-24)
+
+- `831a6f9` added the first installed Rust Isolate `cdylib` probe. The Zig
+  integration test loads the Rust fixture through the floor adapter, asserts
+  identity `rust-isolate-r3-codec`, and verifies the exported header encoder's
+  exact BISO bytes, invalid request-id rejection, and null-output rejection.
+- `ff07369` added the Rust Isolate fixture to relocated Cargo metadata and
+  install-smoke expectations. `f6cb648` restored the canonical Zig
+  `libbirnam_id_isolate.dylib` alongside the explicit Rust fixture after a
+  clean-prefix run caught the missing Zig install; both implementations are
+  now present in every install/bootstrap surface.
+- Clean-prefix `test-install`, `test-lang-selection`, and the optimized
+  native-rung harness pass. The revised `mise run r6-acceptance` passes with
+  exactly `49/49` focused tests, including the one-test Rust Isolate target;
+  optimized verify still matches only the recorded sortedModules fixture
+  exception, and the digest-pinned benchmark comparison still reports exactly
+  the accepted `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
+  crossings with zero missing or unusable cases.
+
+R3 remains pre-switch: the Rust fixture is probeable and installable, while
+worker lifecycle behavior, hostile-child coverage, and canonical selection
+remain the next implementation slices.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
