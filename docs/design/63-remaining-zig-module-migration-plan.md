@@ -636,6 +636,9 @@ remain the next implementation slices.
   exercise Rust host `start`, ready state, one copied-value request, and
   `stop`/exit against a live worker. The probe still uses the installed Zig
   worker as the child while canonical Rust selection remains a later gate.
+- The focused R6 aggregate consequently advances from `51/51` to `52/52`,
+  with the Isolate target pinned at `4` tests; the benchmark and optimized
+  verify boundaries remain unchanged.
 
 ## 8. Phase R4 — Relational
 
