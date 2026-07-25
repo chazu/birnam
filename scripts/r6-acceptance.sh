@@ -36,6 +36,7 @@ latest_tests=(
   test-rust-prelude
   test-rust-prelude-io
   test-rust-collection
+  test-rust-error
 )
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 trap 'rm -f "$functional"' EXIT
@@ -53,9 +54,9 @@ cat "$functional"
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 44/44 tests passed$' "$functional" || true)
+focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 46/46 tests passed$' "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
-  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 44/44 passing tests" >&2
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 46/46 passing tests" >&2
   exit 1
 }
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
@@ -104,6 +105,21 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
 [ "$rust_collection_test_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Collection integration target no longer has 1 passing test" >&2
+  exit 1
+}
+rust_error_success_count=$(grep -Fc 'test-rust-error success' "$functional" || true)
+[ "$rust_error_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Error target was not executed" >&2
+  exit 1
+}
+rust_error_test_count=$(awk '
+/^test-rust-error success$/ { seen=1; next }
+seen && /^\+- run test 1 passed / { count += 1 }
+seen && /^[^ |+]/ { exit }
+END { print count + 0 }
+' "$functional")
+[ "$rust_error_test_count" -eq 2 ] || {
+  echo "r6-acceptance: Rust Error preload-order matrix no longer has 2 passing tests" >&2
   exit 1
 }
 
