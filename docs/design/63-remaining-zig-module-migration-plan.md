@@ -2078,6 +2078,17 @@ placeholder to exercise `ImageWriter::finish` entirely in memory. The dynamic
 selector must remain fail-closed until that authority is derived from the
 canonical generation and the code record has a real mapped/rebuild contract.
 
+### R6.12 R6 acceptance after Rust Image writer preflight (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after `ed440f2`
+  and `fb2b741`. The focused matrix remains `81/81`, Rust Alien live remains
+  `9/9`, the optimized verify/install/harness legs pass, and the full acceptance
+  reports no missing or unusable cases.
+- The comparator still has exactly the two existing snapshot allowances:
+  `query.aggregate` `+5.8%` and `compile.stage1-stdlib` `+11.9%`. No new
+  allowance was added for the Rust Image writer-preflight bridge. `saveImage:`
+  remains fail-closed and performs no filesystem mutation.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
