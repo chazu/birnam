@@ -20,6 +20,10 @@ extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
 
 const LivePoint = extern struct { x: c_long, y: c_long };
 const LiveLine = extern struct { base: c_long, values: [3]c_int };
+const LiveFloatPair = extern struct { left: f32, right: f32 };
+const LiveDoublePair = extern struct { left: f64, right: f64 };
+const LiveMixed = extern struct { base: c_long, scale: f64 };
+const LiveLarge = extern struct { first: c_long, second: c_long, total: c_long };
 
 export fn birnam_rust_alien_apply(
     callback: *const fn (c_long) callconv(.c) c_long,
@@ -54,6 +58,22 @@ export fn birnam_rust_alien_sum_line(line: LiveLine) c_long {
     return line.base + line.values[0] + line.values[1] + line.values[2];
 }
 
+export fn birnam_rust_alien_sum_float_pair(pair: LiveFloatPair) c_long {
+    return @intFromFloat(pair.left + pair.right);
+}
+
+export fn birnam_rust_alien_sum_double_pair(pair: LiveDoublePair) f64 {
+    return pair.left + pair.right;
+}
+
+export fn birnam_rust_alien_sum_mixed(pair: LiveMixed) c_long {
+    return pair.base + @as(c_long, @intFromFloat(pair.scale));
+}
+
+export fn birnam_rust_alien_make_large(first: c_long, second: c_long) LiveLarge {
+    return .{ .first = first, .second = second, .total = first + second };
+}
+
 fn retainExportedFixtures() void {
     const fixtures = .{
         &birnam_rust_alien_apply,
@@ -61,6 +81,10 @@ fn retainExportedFixtures() void {
         &birnam_rust_alien_identity_long,
         &birnam_rust_alien_identity_pointer,
         &birnam_rust_alien_sum_double,
+        &birnam_rust_alien_sum_double_pair,
+        &birnam_rust_alien_sum_float_pair,
+        &birnam_rust_alien_sum_mixed,
+        &birnam_rust_alien_make_large,
         &birnam_rust_alien_sum_line,
         &birnam_rust_alien_void,
     };
@@ -400,6 +424,87 @@ test "Rust Alien live ABI corpus covers scalar, pointer, void, and fixed-array a
     });
     const line_sum = api.send(line, api.intern("rustLine"), &[_]Oop{}, 0);
     try std.testing.expectEqual(@as(i64, 13), api.smallIntValue(line_sum));
+}
+
+test "Rust Alien live ABI corpus covers HFA, mixed, and large aggregates" {
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const wrap_selector = api.intern("wrap:signature:as:on:");
+    const vector_vt = api.import("VectorVt").?;
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_sum_float_pair"), str(api, "l {ff}"), api.intern("rustFloatPair"), vector_vt },
+        4,
+    ) != api.nilObj);
+    const float_sum = api.send(
+        makeVector(api, &[_]Oop{ api.mkFloat(1.25), api.mkFloat(2.75) }),
+        api.intern("rustFloatPair"),
+        &[_]Oop{},
+        0,
+    );
+    try std.testing.expectEqual(@as(i64, 4), api.smallIntValue(float_sum));
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_sum_double_pair"), str(api, "d {dd}"), api.intern("rustDoublePair"), vector_vt },
+        4,
+    ) != api.nilObj);
+    const double_sum = api.send(
+        makeVector(api, &[_]Oop{ api.mkFloat(1.5), api.mkFloat(2.25) }),
+        api.intern("rustDoublePair"),
+        &[_]Oop{},
+        0,
+    );
+    try std.testing.expectEqual(@as(f64, 3.75), api.floatValue(double_sum));
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_sum_mixed"), str(api, "l {ld}"), api.intern("rustMixed"), vector_vt },
+        4,
+    ) != api.nilObj);
+    const mixed_sum = api.send(
+        makeVector(api, &[_]Oop{ api.mkSmallInt(7), api.mkFloat(2.5) }),
+        api.intern("rustMixed"),
+        &[_]Oop{},
+        0,
+    );
+    try std.testing.expectEqual(@as(i64, 9), api.smallIntValue(mixed_sum));
+
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_make_large"), str(api, "{lll} l l"), api.intern("rustLarge:"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    const large = api.send(
+        api.mkSmallInt(3),
+        api.intern("rustLarge:"),
+        &[_]Oop{api.mkSmallInt(4)},
+        1,
+    );
+    try std.testing.expect(api.vtableOf(large) == vector_vt);
+    try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(api.send(
+        large,
+        api.intern("at:"),
+        &[_]Oop{api.mkSmallInt(0)},
+        1,
+    )));
+    try std.testing.expectEqual(@as(i64, 4), api.smallIntValue(api.send(
+        large,
+        api.intern("at:"),
+        &[_]Oop{api.mkSmallInt(1)},
+        1,
+    )));
+    try std.testing.expectEqual(@as(i64, 7), api.smallIntValue(api.send(
+        large,
+        api.intern("at:"),
+        &[_]Oop{api.mkSmallInt(2)},
+        1,
+    )));
 }
 
 fn isError(api: *idapi.IdApi, value: Oop) bool {
