@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "scope": "R0 migration metadata; diagnostic/test selection only, never runtime fallback",
+  "allowed_install_roots": ["<prefix>/lib"],
+  "load_order": [
+    "libbirnam_id_prelude.dylib",
+    "libbirnam_id_collection.dylib",
+    "libbirnam_id_error.dylib",
+    "libbirnam_id_isolate.dylib",
+    "libbirnam_id_relational.dylib",
+    "libbirnam_id_alien.dylib",
+    "libbirnam_id_image.dylib"
+  ],
+  "rungs": [
+    {
+      "id": "prelude",
+      "source": "src/id/prelude.zig",
+      "canonical_dylib": "libbirnam_id_prelude.dylib",
+      "zig_fixture": "libbirnam_id_prelude_zig.dylib",
+      "rust_fixture": "libbirnam_id_prelude_rust.dylib",
+      "status": "zig-canonical-rust-opt-in",
+      "identity": {"zig": "zig-prelude-oracle-v1", "rust": "rust-prelude-n7.1-core"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid", "libbirnam_id_codegen", "libbirnam_id_error-lazy"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_prelude.dylib", "<prefix>/lib/libbirnam_id_prelude_zig.dylib", "<prefix>/lib/libbirnam_id_prelude_rust.dylib"]
+    },
+    {
+      "id": "collection",
+      "source": "src/id/collection.zig",
+      "canonical_dylib": "libbirnam_id_collection.dylib",
+      "zig_fixture": "libbirnam_id_collection_zig.dylib",
+      "rust_fixture": "libbirnam_id_collection_rust.dylib",
+      "status": "zig-canonical-rust-pending",
+      "identity": {"zig": "zig-collection-oracle-v1", "rust": "rust-collection-r1"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_collection.dylib", "<prefix>/lib/libbirnam_id_collection_zig.dylib", "<prefix>/lib/libbirnam_id_collection_rust.dylib"]
+    },
+    {
+      "id": "error",
+      "source": "src/id/error.zig",
+      "canonical_dylib": "libbirnam_id_error.dylib",
+      "zig_fixture": "libbirnam_id_error_zig.dylib",
+      "rust_fixture": "libbirnam_id_error_rust.dylib",
+      "status": "zig-canonical-rust-pending",
+      "identity": {"zig": "zig-error-oracle-v1", "rust": "rust-error-r2"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_error.dylib", "<prefix>/lib/libbirnam_id_error_zig.dylib", "<prefix>/lib/libbirnam_id_error_rust.dylib"]
+    },
+    {
+      "id": "isolate",
+      "source": "src/id/isolate.zig",
+      "canonical_dylib": "libbirnam_id_isolate.dylib",
+      "zig_fixture": "libbirnam_id_isolate_zig.dylib",
+      "rust_fixture": "libbirnam_id_isolate_rust.dylib",
+      "status": "zig-canonical-rust-pending",
+      "identity": {"zig": "zig-isolate-oracle-v1", "rust": "rust-isolate-r3"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid", "libbirnam_id_collection", "libbirnam_id_error"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_isolate.dylib", "<prefix>/lib/libbirnam_id_isolate_zig.dylib", "<prefix>/lib/libbirnam_id_isolate_rust.dylib"]
+    },
+    {
+      "id": "relational",
+      "source": "src/id/relational.zig",
+      "canonical_dylib": "libbirnam_id_relational.dylib",
+      "zig_fixture": "libbirnam_id_relational_zig.dylib",
+      "rust_fixture": "libbirnam_id_relational_rust.dylib",
+      "status": "zig-canonical-rust-pending",
+      "identity": {"zig": "zig-relational-oracle-v1", "rust": "rust-relational-r4"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid", "libbirnam_store", "libbirnam_id_collection"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_relational.dylib", "<prefix>/lib/libbirnam_id_relational_zig.dylib", "<prefix>/lib/libbirnam_id_relational_rust.dylib"]
+    },
+    {
+      "id": "alien",
+      "source": "src/id/alien.zig",
+      "canonical_dylib": "libbirnam_id_alien.dylib",
+      "zig_fixture": "libbirnam_id_alien_zig.dylib",
+      "rust_fixture": "libbirnam_id_alien_rust.dylib",
+      "status": "zig-canonical-rust-pending",
+      "identity": {"zig": "zig-alien-oracle-v1", "rust": "rust-alien-r5"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid", "libbirnam_id_tcc", "libbirnam_store", "libbirnam_id_collection", "libbirnam_id_error"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_alien.dylib", "<prefix>/lib/libbirnam_id_alien_zig.dylib", "<prefix>/lib/libbirnam_id_alien_rust.dylib"]
+    },
+    {
+      "id": "image",
+      "source": "src/id/image.zig",
+      "canonical_dylib": "libbirnam_id_image.dylib",
+      "zig_fixture": "libbirnam_id_image_zig.dylib",
+      "rust_fixture": "libbirnam_id_image_rust.dylib",
+      "status": "zig-canonical-rust-pending",
+      "identity": {"zig": "zig-image-oracle-v1", "rust": "rust-image-r6"},
+      "abi_digest_source": "installed dylib sha256 plus abi/native-rungs-v1.json surface_sha256",
+      "dependency_identities": ["libid", "libbirnam_store", "libbirnam_id_codegen", "libbirnam_id_prelude", "libbirnam_id_error"],
+      "allowed_install_paths": ["<prefix>/lib/libbirnam_id_image.dylib", "<prefix>/lib/libbirnam_id_image_zig.dylib", "<prefix>/lib/libbirnam_id_image_rust.dylib"]
+    }
+  ]
+}

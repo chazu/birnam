@@ -141,6 +141,17 @@ pub fn build(b: *std.Build) void {
     test_native_rung_inventory_step.dependOn(&native_rung_inventory.step);
     test_step.dependOn(&native_rung_inventory.step);
 
+    const remaining_rung_manifest = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-remaining-rung-manifest.py",
+    });
+    const test_remaining_rung_manifest_step = b.step(
+        "test-remaining-rung-manifest",
+        "Verify the Design 63 remaining-rung identity and install manifest",
+    );
+    test_remaining_rung_manifest_step.dependOn(&remaining_rung_manifest.step);
+    test_step.dependOn(&remaining_rung_manifest.step);
+
     const native_rung_selection_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/native-rung-selection-smoke.sh",
