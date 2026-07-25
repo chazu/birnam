@@ -815,6 +815,12 @@ impl<'a> OopDecoder<'a> {
         ))
     }
 
+    fn u16(&mut self) -> Result<u16, CodecError> {
+        Ok(u16::from_be_bytes(
+            self.take(2)?.try_into().expect("u16 slice"),
+        ))
+    }
+
     fn u64(&mut self) -> Result<u64, CodecError> {
         Ok(u64::from_be_bytes(
             self.take(8)?.try_into().expect("u64 slice"),
@@ -956,6 +962,35 @@ fn encode_oop_value(api: &IdApi, value: Oop) -> Result<Vec<u8>, CodecError> {
     let mut encoder = OopEncoder::new(api);
     encoder.value(value, 0)?;
     Ok(encoder.bytes)
+}
+
+fn decode_oop_error_record(
+    api: &IdApi,
+    schema: &[u8],
+    bytes: &[u8],
+) -> Result<(Oop, Oop), CodecError> {
+    let mut decoder = OopDecoder::new(api, bytes);
+    if decoder.byte()? != TAG_RECORD {
+        return Err(CodecError::InvalidRecord);
+    }
+    let schema_len = decoder.u16()? as usize;
+    if decoder.take(schema_len)? != schema {
+        return Err(CodecError::UnknownRecordSchema);
+    }
+    if decoder.u16()? != 2 {
+        return Err(CodecError::InvalidRecord);
+    }
+    let kind = decoder.value(1)?;
+    let message = decoder.value(1)?;
+    if unsafe { (api.vtableOf)(kind) } != api.symbol_vt
+        || unsafe { (api.vtableOf)(message) } != api.string_vt
+    {
+        return Err(CodecError::InvalidRecord);
+    }
+    if decoder.position != bytes.len() {
+        return Err(CodecError::TrailingBytes);
+    }
+    Ok((kind, message))
 }
 
 fn oop_error_record(
@@ -1141,6 +1176,14 @@ enum HostTransportError {
 }
 
 #[cfg(unix)]
+fn is_timeout(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+    )
+}
+
+#[cfg(unix)]
 fn host_timeout(stream: &UnixStream, timeout_ms: u32) -> Result<(), HostTransportError> {
     let timeout = Duration::from_millis(timeout_ms as u64);
     stream
@@ -1156,7 +1199,7 @@ fn host_read_frame(stream: &mut UnixStream, timeout_ms: u32) -> Result<Frame, Ho
     host_timeout(stream, timeout_ms)?;
     let mut header = [0u8; HEADER_LEN];
     stream.read_exact(&mut header).map_err(|error| {
-        if error.kind() == io::ErrorKind::TimedOut {
+        if is_timeout(&error) {
             HostTransportError::Timeout
         } else {
             HostTransportError::Io
@@ -1168,7 +1211,7 @@ fn host_read_frame(stream: &mut UnixStream, timeout_ms: u32) -> Result<Frame, Ho
     let start = bytes.len();
     bytes.resize(start + payload_len, 0);
     stream.read_exact(&mut bytes[start..]).map_err(|error| {
-        if error.kind() == io::ErrorKind::TimedOut {
+        if is_timeout(&error) {
             HostTransportError::Timeout
         } else {
             HostTransportError::Io
@@ -1186,7 +1229,7 @@ fn host_write_frame(
     host_timeout(stream, timeout_ms)?;
     let bytes = frame.encode().map_err(|_| HostTransportError::Protocol)?;
     stream.write_all(&bytes).map_err(|error| {
-        if error.kind() == io::ErrorKind::TimedOut {
+        if is_timeout(&error) {
             HostTransportError::Timeout
         } else {
             HostTransportError::Io
@@ -1280,6 +1323,27 @@ fn failure_object(value: Oop) -> &'static mut Failure {
     unsafe { &mut *(value as *mut Failure) }
 }
 
+fn make_failure_objects(
+    api: &IdApi,
+    class: Oop,
+    kind: Oop,
+    message: Oop,
+    exit_status: Oop,
+    request_id: Oop,
+) -> Oop {
+    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
+    let value = unsafe { (api.alloc)(runtime.failure_vt as Oop, std::mem::size_of::<Failure>()) };
+    if value.is_null() {
+        return api.nilObj;
+    }
+    failure_object(value).class = class;
+    failure_object(value).kind = kind;
+    failure_object(value).message = message;
+    failure_object(value).exit_status = exit_status;
+    failure_object(value).request_id = request_id;
+    value
+}
+
 fn make_failure(api: &IdApi, class: &[u8], kind: &[u8], message: &[u8]) -> Oop {
     let class_z = class
         .iter()
@@ -1294,14 +1358,7 @@ fn make_failure(api: &IdApi, class: &[u8], kind: &[u8], message: &[u8]) -> Oop {
     let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
     let kind_o = unsafe { (api.intern)(kind_z.as_ptr().cast()) };
     let message_o = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
-    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
-    let value = unsafe { (api.alloc)(runtime.failure_vt as Oop, std::mem::size_of::<Failure>()) };
-    failure_object(value).class = class_o;
-    failure_object(value).kind = kind_o;
-    failure_object(value).message = message_o;
-    failure_object(value).exit_status = api.nilObj;
-    failure_object(value).request_id = api.nilObj;
-    value
+    make_failure_objects(api, class_o, kind_o, message_o, api.nilObj, api.nilObj)
 }
 
 fn oop_text(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
@@ -1562,12 +1619,28 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
         Err(error) => {
             entry.state = Lifecycle::Stopping;
             terminate_entry(entry);
-            let kind: &[u8] = match error {
-                HostTransportError::Timeout => b"deadline",
-                HostTransportError::Protocol => b"invalidReply",
-                HostTransportError::Io => b"transport",
+            let (class, kind, message): (&[u8], &[u8], &[u8]) = match error {
+                HostTransportError::Timeout => (
+                    b"timeout",
+                    b"deadline",
+                    b"request deadline expired before a reply arrived",
+                ),
+                HostTransportError::Protocol => (
+                    b"protocol",
+                    b"invalidReply",
+                    b"worker returned an invalid reply frame",
+                ),
+                HostTransportError::Io => (
+                    if entry.exit_status.is_some() {
+                        b"exit"
+                    } else {
+                        b"transport"
+                    },
+                    b"transport",
+                    b"request transport failed",
+                ),
             };
-            return make_failure(api, b"timeout", kind, b"request transport failed");
+            return make_failure(api, class, kind, message);
         }
     };
     if reply.header.request_id != request_id {
@@ -1593,13 +1666,24 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
             }
         },
         FrameKind::ReplyError => {
-            entry.state = Lifecycle::Ready;
-            make_failure(
-                api,
-                b"application",
-                b"remoteError",
-                b"worker returned an application error",
-            )
+            match decode_oop_error_record(api, APPLICATION_ERROR_SCHEMA, &reply.payload) {
+                Ok((kind, message)) => {
+                    entry.state = Lifecycle::Ready;
+                    let request = unsafe { (api.mkSmallInt)(request_id as i64) };
+                    let class = unsafe { (api.intern)(c"application".as_ptr()) };
+                    make_failure_objects(api, class, kind, message, api.nilObj, request)
+                }
+                Err(error) => {
+                    entry.state = Lifecycle::Stopping;
+                    terminate_entry(entry);
+                    make_failure(
+                        api,
+                        b"protocol",
+                        b"invalidApplicationError",
+                        codec_error_name(error),
+                    )
+                }
+            }
         }
         _ => {
             entry.state = Lifecycle::Stopping;

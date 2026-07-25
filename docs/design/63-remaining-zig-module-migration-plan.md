@@ -643,6 +643,18 @@ remain the next implementation slices.
   scoped target pins green and the accepted comparator crossings unchanged:
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
+### R3.15 Rust Isolate host error-parity checkpoint (2026-07-24)
+
+- Rust host replies now decode the frozen `birnam.application-error.v1`
+  record back into the original floor `kind`/`message`, preserve the request
+  id, and distinguish deadline, protocol, transport, and child-exit failures.
+  Socket timeout handling treats both timed-out and nonblocking retry errors
+  as the same bounded deadline condition.
+- The lifecycle corpus now starts the installed fixture, round-trips a value,
+  stops it, then starts the built-in sleep worker and asserts the exact
+  `timeout/deadline` failure and exited state in Debug and ReleaseSafe. An
+  abrupt-child exit corpus and canonical Rust selection remain pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
