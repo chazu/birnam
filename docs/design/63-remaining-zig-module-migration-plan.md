@@ -862,6 +862,31 @@ remain the next implementation slices.
   aggregation, pull, historical query windows, and canonical Rust Relational
   selection remain open.
 
+### R4.9 Rust Relational two-clause join checkpoint (2026-07-24)
+
+- `daa22d5` extends the explicit, non-canonical projection probe to a bounded
+  two-clause conjunction. Both clauses are evaluated left-to-right against the
+  synchronous, owned Store snapshot; null positions use the same position-based
+  logic variables across clauses, so a shared entity joins the two patterns.
+  The Rust kernel remains the only evaluator and the Store remains the sole
+  authority; the callback snapshot is not retained or exposed as a second
+  Store.
+- The cross-floor corpus now proves one matching two-clause join against both
+  the Rust Store and the Zig Store rollback provider. Each relational target
+  reports `5/5`, including the prior single-clause projection, scalar,
+  empty-result, capacity, and invalid-index cases. The probe is intentionally
+  bounded and does not claim arbitrary query-variable encoding or canonical
+  `findAll:where:` selection.
+- `f3b68d9` advances the R6 focused boundary to `62/62` and requires both
+  relational targets to report exactly five passing tests. The full gate passes
+  with optimized verify pinned at `260/263` steps, `468/474` tests, and 6
+  skipped, accepting only the existing `run-tests.birnam`/`vSortBy` fixture;
+  the digest-pinned comparator still reports zero missing/unusable cases and
+  exactly `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`.
+- Predicates/negation/disjunction, rule fixpoints, aggregation, pull,
+  arbitrary query-variable encoding, and canonical Rust Relational selection
+  remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
