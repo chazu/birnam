@@ -22,9 +22,10 @@ python3 scripts/check-native-rung-baseline.py
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
 # canonical/rollback selection checks (including Relational), optimized
 # native-rung harness, and the explicit Rust Codegen runtime and Rust-only
-# Store callback boundaries. The full optimized verify below remains the
-# cross-layer acceptance gate; the focused set keeps failures attributable to
-# the latest replacement rung.
+# Store callback boundaries. The live Rust Alien callback/buffer fixture runs
+# just below as a sequential target to avoid Cargo/clean-prefix contention.
+# The full optimized verify below remains the cross-layer acceptance gate; the
+# focused set keeps failures attributable to the latest replacement rung.
 latest_tests=(
   test-rust-lang
   test-rust-lang-parity
@@ -48,7 +49,8 @@ isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
-trap 'rm -f "$functional"' EXIT
+live=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-alien-live.XXXXXX")
+trap 'rm -f "$functional" "$live"' EXIT
 
 set +e
 zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe --summary all >"$functional" 2>&1
@@ -223,8 +225,30 @@ END { print count + 0 }
   exit 1
 }
 
+# Run the live Rust Alien callback/buffer fixture as its own build invocation.
+# Keeping it out of the large parallel command avoids making its Cargo install
+# race the clean-prefix selection scripts, while still making the new R5
+# boundary a required R6 acceptance input.
+set +e
+zig build test-rust-alien-live "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe --summary all >"$live" 2>&1
+live_status=$?
+set -e
+cat "$live"
+[ "$live_status" -eq 0 ] || {
+  echo "r6-acceptance: Rust Alien live callback/buffer gate failed" >&2
+  exit 1
+}
+grep -Fqx 'test-rust-alien-live success' "$live" || {
+  echo "r6-acceptance: Rust Alien live target was not executed" >&2
+  exit 1
+}
+grep -Eq '^\+- run test 3 passed ' "$live" || {
+  echo "r6-acceptance: Rust Alien live target no longer reports 3 passing tests" >&2
+  exit 1
+}
+
 verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
-trap 'rm -f "$functional" "$verify"' EXIT
+trap 'rm -f "$functional" "$live" "$verify"' EXIT
 
 set +e
 zig build verify "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe --summary all >"$verify" 2>&1
@@ -293,7 +317,7 @@ verify_result "$zig_result" "$zig_result_sha256"
 verify_result "$rust_result" "$rust_result_sha256"
 
 comparison=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-acceptance.XXXXXX")
-trap 'rm -f "$functional" "$verify" "$comparison"' EXIT
+trap 'rm -f "$functional" "$live" "$verify" "$comparison"' EXIT
 
 set +e
 ./scripts/bench-compare.sh "$zig_result" "$rust_result" >"$comparison" 2>&1
