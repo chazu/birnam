@@ -1767,6 +1767,22 @@ post-switch image/project observation window closes.
   selection scripts. With the canonical Zig Alien install restored, full R6
   passes with only the two already-recorded benchmark tradeoffs.
 
+### R5.16 Rust Alien live ABI-corpus checkpoint (2026-07-25)
+
+- `649bb94` extends the live Rust Alien fixture with an initial ABI corpus:
+  signed scalar identity, opaque pointer identity, floating-point addition,
+  void return, and a fixed-array aggregate (`{l3i}`) returned through a real
+  Vector value. The fixtures are retained explicitly so ReleaseSafe cannot
+  dead-strip the exported symbols. This complements the existing scalar,
+  aggregate, callback, GC-churn, and raw-buffer cases without changing the
+  frozen receiver-first ABI or moving compiler/Vector authority into Rust.
+- The Rust-floor live target passes `4/4` tests in ReleaseSafe. `f05925d`
+  updates R6 to assert that exact count in its sequential Rust Alien sub-gate;
+  the focused matrix remains `80/80`, and the full R6 acceptance continues to
+  pass with the existing benchmark tradeoffs. The corpus is intentionally an
+  initial parity slice; hostile signatures, broader platform ABI shapes,
+  unload-after-wrapper, and child-abort coverage remain in the R5 exit work.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
