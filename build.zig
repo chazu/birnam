@@ -2168,6 +2168,28 @@ pub fn build(b: *std.Build) void {
             install_rust_alien_selected.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_alien_selected.step);
             bootstrap_install.dependOn(&install_rust_alien_selected.step);
+        } else if (std.mem.eql(u8, m.name, "birnam_id_image")) {
+            const install_zig_image = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_image_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_image.step);
+            bootstrap_install.dependOn(&install_zig_image.step);
+            const install_rust_image = b.addInstallFileWithDir(
+                b.path(b.fmt(
+                    ".cargo-target/{s}/libbirnam_image.dylib",
+                    .{rust_floor_profile},
+                )),
+                .lib,
+                "libbirnam_id_image_rust.dylib",
+            );
+            install_rust_image.step.dependOn(&rust_floor_build.step);
+            b.getInstallStep().dependOn(&install_rust_image.step);
+            bootstrap_install.dependOn(&install_rust_image.step);
+            // Zig remains the canonical Image owner until the Rust
+            // orchestration cross-product and post-switch R6 gate pass.
+            const install_zig_image_selected = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_image_selected.step);
+            bootstrap_install.dependOn(&install_zig_image_selected.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
