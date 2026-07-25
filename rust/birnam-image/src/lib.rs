@@ -911,9 +911,9 @@ pub fn compose_complete_image(
     code_unit: &[u8],
 ) -> Result<Vec<u8>, EncodeError> {
     let mut writer = ImageWriter::new(architecture, abi_hash);
-    writer.facts(facts)?;
-    writer.heap(heap)?;
     writer.authority(authority_digest)?;
+    writer.heap(heap)?;
+    writer.facts(facts)?;
     writer.code(code_checksum, authority_digest, code_unit)?;
     writer.finish()
 }
@@ -1927,9 +1927,9 @@ mod tests {
         assert_eq!(
             kinds,
             vec![
-                RecordKind::Facts,
-                RecordKind::Heap,
                 RecordKind::Authority,
+                RecordKind::Heap,
+                RecordKind::Facts,
                 RecordKind::Code
             ]
         );
