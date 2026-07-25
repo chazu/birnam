@@ -1671,6 +1671,24 @@ post-switch image/project observation window closes.
   integration, wrapper installation, callbacks, and canonical Alien selection
   are still future R5 steps.
 
+### R5.11 Rust Alien live loader-owner checkpoint (2026-07-25)
+
+- `57fd716` converts `birnam-alien` to a `cdylib`/`rlib` over the frozen
+  `birnam-abi` and adds its first live module boundary. `module_init` now
+  creates or reloads the canonical `AlienVt`/`Alien` family, installs
+  `libraryDir:`, `dlopen:`, and balanced `dlclose:` selectors, exports the
+  Rust identity, and keeps the object authority in the process IdApi.
+- The runtime owns one process registry for native handles, uses the pure
+  loader's explicit bare-name directory policy, answers successful opens and
+  closes with the canonical booleans, and maps close failures to the existing
+  Error factory when that family is present. It does not yet install generated
+  TCC wrappers, callbacks, raw buffers, or a second GC/Store authority.
+- Native loader handles are stored as opaque addresses behind a mutex rather
+  than asserting Rust `Send` for `NonNull<c_void>`; the platform remains the
+  sole owner of their semantics. Nineteen locked offline tests, release build,
+  and `clippy -D warnings` pass. The next seam is wiring the generated shim
+  into this live owner while retaining the existing Rust TCC authority.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
