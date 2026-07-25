@@ -5,6 +5,7 @@
 //! callback dependency: parsing must be deterministic and independently
 //! testable before any foreign state is introduced.
 
+pub mod abi;
 pub mod loader;
 
 use core::fmt;
