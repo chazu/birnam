@@ -2005,6 +2005,24 @@ including full layout validation and relocation discovery. It must not be
 enabled for `saveImage:` until the object walk and its rejection accounting are
 complete.
 
+### R6.8 Rust Image raw-heap preflight checkpoint (2026-07-25)
+
+- `ed712e6` adds a relocation-aware `HeapPreflight` for the first supported
+  shape: objects whose vtable (or owned parent vtable) is exported and whose
+  payload contains only exact raw/code slots. It validates payload alignment,
+  slot descriptors, vtable relinking names, and relocation ids, then emits the
+  frozen heap payload for inspection. Unsupported or pointer-bearing layouts
+  reject the whole fact before any image bytes are published.
+- The Rust Image live test exports a zero-payload fixture vtable, stores a real
+  fixture object, and drives the Rust collector through Store. Debug and
+  ReleaseSafe pass; the codec suite remains green (`19/19`). The produced heap
+  and facts payloads are still discarded because authority binding, full Oop
+  graph traversal, and writer/publisher orchestration are not yet connected.
+
+The next bounded step should extend this preflight to one exact Oop-slot shape,
+including recursive relocation discovery and cycle termination, while keeping
+unknown layouts and unsupported capabilities fail-closed.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
