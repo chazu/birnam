@@ -331,3 +331,12 @@ R3.3 wire probe and R6 gate checkpoint (2026-07-24):
   pass. The focused boundary is pinned at `49/49`, with the existing exact
   verify exception and only the two accepted benchmark crossings; no Isolate
   worker lifecycle or canonical-switch claim is made by this probe.
+
+R3.4 dynamic frame-validation checkpoint (2026-07-24):
+
+- `333fecd` adds the pointer-checked Rust `birnam_isolate_rust_decode_header`
+  export and extends the Zig probe with successful field decoding, bad-magic,
+  and null-input cases.
+- Rust unit/clippy checks and Debug/ReleaseSafe dynamic Isolate probes pass;
+  this remains codec/ABI evidence only and does not claim worker lifecycle
+  parity or a canonical Rust Isolate selection.

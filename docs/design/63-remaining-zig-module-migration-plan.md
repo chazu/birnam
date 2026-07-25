@@ -497,6 +497,16 @@ R3 remains pre-switch: the Rust fixture is probeable and installable, while
 worker lifecycle behavior, hostile-child coverage, and canonical selection
 remain the next implementation slices.
 
+### R3.4 dynamic frame-validation checkpoint (2026-07-24)
+
+- `333fecd` extends the installed Rust Isolate probe with a pointer-checked
+  `birnam_isolate_rust_decode_header` C ABI. It returns decoded kind,
+  request-id, and payload length through caller-owned storage and maps the
+  existing fail-closed codec errors without borrowing or retaining input.
+- The cross-language probe now covers exact round-trip fields, bad magic, and
+  null input rejection. Rust unit tests, package clippy, and Debug/ReleaseSafe
+  `test-rust-isolate` all pass; the R6 focused boundary remains `49/49`.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
