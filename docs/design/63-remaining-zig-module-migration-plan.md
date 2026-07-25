@@ -1354,6 +1354,19 @@ remain the next implementation slices.
   canonical Rust Relational selection remain open; pull GC/reentry stress must
   still be added before the R4 exit gate.
 
+### R4.35 R6 acceptance after Relational selector-family bridge (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after
+  `5bd0e57`: `100/100` build steps, `80/80` focused tests, and both Rust
+  Relational dynamic targets at `14/14`.
+- The optimized comparator remains unchanged from the prior accepted
+  snapshot: only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
+  regressions, with no new missing or unusable cases. The gate thresholds were
+  not broadened.
+- Relational GC/reentry stress, image-triggered rule-cache rebuild, arbitrary
+  parameter/variable-scope semantics, and the single canonical Rust selection
+  commit remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
