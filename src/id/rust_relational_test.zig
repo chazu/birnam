@@ -1010,6 +1010,10 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const gc_grouped = api.send(store, api.intern("groupBy:aggregate:of:where:"), &.{ x, api.intern("sum"), score_variable, gc_group_body }, 4);
     api.gcSetAuto(0);
     try std.testing.expectEqual(@as(i64, 64), api.smallIntValue(api.send(gc_grouped, api.intern("size"), &.{}, 0)));
+    api.gcSetAuto(1);
+    const gc_query = api.send(store, api.intern("findAll:where:"), &.{ x, gc_group_body }, 2);
+    api.gcSetAuto(0);
+    try std.testing.expectEqual(@as(i64, 64), api.smallIntValue(api.send(gc_query, api.intern("size"), &.{}, 0)));
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});
