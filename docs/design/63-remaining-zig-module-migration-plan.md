@@ -1986,6 +1986,25 @@ The next bounded slice should introduce that explicit preflight classification
 for one store fact at a time, with rejection reasons mapped into `SaveReport`
 before any writer or publisher call.
 
+### R6.7 Rust Image store-fact preflight checkpoint (2026-07-25)
+
+- `527f89e` wires the Rust Image collector to the existing `Store
+  imageFactsInto:` protocol for preflight only. It classifies null/singleton,
+  integer, float-bit, symbol, string, and exported-object values through the
+  Rust field encoder; unsupported compound values are rejected as whole facts.
+  Accepted/rejected counts are reflected in `ImageSaveReport`, while the
+  encoded facts are discarded until heap authority exists.
+- The live Rust Image gate now brings up the Store, drives a real fact stream,
+  and proves nonzero preflight accounting in Debug and ReleaseSafe. The Rust
+  codec suite remains green (`19/19`). `saveImage:` still never writes or
+  renames a file: it reports either unsupported fact values or the missing
+  Rust heap preflight authority.
+
+The next bounded slice is heap preflight for one exported-vtable object shape,
+including full layout validation and relocation discovery. It must not be
+enabled for `saveImage:` until the object walk and its rejection accounting are
+complete.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
