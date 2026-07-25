@@ -222,6 +222,11 @@ Implementation checkpoints (2026-07-24):
   `reversed`, `printString`, and `,`). The cross-language test now covers
   ascending and empty descending ranges, and `mise run r6-acceptance` passed
   at `44/44` with only the two recorded benchmark crossings.
+- `781b909` added the persistent Rust HAMT Map family with the exact raw-header
+  plus OOP-entry node shape, mixed `Map` layout, value-aware key equality and
+  stable hashing, constructors, folds, key/value iteration, absent fallback,
+  and rendering. The expanded cross-language target and a fresh R6 run passed
+  at `44/44`; optimized verify and comparator results remained unchanged.
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;

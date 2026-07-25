@@ -241,3 +241,7 @@ R1 first implementation checkpoint (2026-07-24):
   `Range`/`RangeVt` ownership and exports, `Integer to:`, and all inventory
   selectors. The cross-language acceptance test covers ascending and empty
   descending ranges; `mise run r6-acceptance` remained green at `44/44`.
+- `781b909` added the persistent Rust HAMT Map family with the exact
+  raw-header/OOP-entry node shape, mixed Map layout, constructors, key/value
+  equality and hashing, folds, iteration, absent fallback, and rendering. The
+  expanded target and full R6 acceptance remained green at `44/44`.
