@@ -2039,6 +2039,26 @@ The next bounded step should add a cycle fixture and make heap rejection counts
 explicit in `SaveReport` before connecting the complete preflight byte vector to
 the writer.
 
+### R6.10 Rust Image cycle/rejection-accounting checkpoint (2026-07-25)
+
+- `c9ed401` makes heap preflight slot accounting explicit. Code slots increment
+  `recoveredSlots`; a nested Oop that cannot be encoded increments
+  `rejectedSlots`; and both counters are copied into the stateful
+  `ImageSaveReport` alongside the fact counts. Root objects that have no
+  serializable vtable remain whole-fact rejections, while a serializable parent
+  with an unsupported nested child reports the rejected heap slot and fails
+  closed.
+- The live Rust Image fixture now includes a two-object Oop cycle and an
+  exported parent pointing at an unexported child. The cycle proves relocation
+  assignment-before-recursion terminates; the rejected child proves the report
+  exposes nonzero heap rejection accounting and the exact heap-preflight detail.
+  Debug and ReleaseSafe focused gates pass, and the Rust codec suite remains
+  green (`19/19`). `saveImage:` still does not write or rename a file.
+
+The next bounded step can connect the complete preflight facts/heap byte vectors
+to `ImageWriter` without publication. It must preserve these counters and keep
+the writer input immutable until authority and code records are available.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
