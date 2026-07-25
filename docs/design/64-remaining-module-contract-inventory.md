@@ -299,3 +299,12 @@ R2 canonical switch checkpoint (2026-07-24):
   passed at `48/48`; no new verify failure or benchmark crossing appeared.
 - `test-cross-floor-errors`, `test-cross-floor-images`, and
   `test-remaining-rung-cross-floor` also passed after the switch.
+
+R3.1 implementation checkpoint (2026-07-24):
+
+- `e9d7f96` added the pointer-free Rust BISO wire-v1 header and
+  scalar/vector/map codec as an `rlib`, with six focused tests and clippy
+  clean under the frozen workspace lock.
+- The unrelated whole-workspace Cargo run still aborts in the existing
+  `birnam-codegen` unbounded-depth stress test; the new Isolate crate remains
+  green in isolation.

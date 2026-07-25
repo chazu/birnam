@@ -436,6 +436,19 @@ the boundary, deterministic failure/termination, relocated install pass,
 pre-switch full verify/R6, one canonical switch commit, and post-switch
 observation.
 
+### R3.1 implementation checkpoint (2026-07-24)
+
+- `e9d7f96` added `rust/birnam-isolate` as a pointer-free `rlib` owning the
+  exact BISO wire-v1 header and scalar/vector/map value codec. It preserves
+  network byte order, request-id rules, float bits, UTF-8/symbol checks,
+  map-key restrictions, duplicate detection, depth/node/container limits, and
+  fail-closed malformed input errors without depending on `IdApi` or worker
+  state.
+- The crate's six unit tests, formatting check, locked offline test, and
+  clippy `-D warnings` pass. A whole-workspace Cargo test still reaches the
+  pre-existing `birnam-codegen` stack-overflow stress test; that failure is
+  outside this Isolate slice.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
