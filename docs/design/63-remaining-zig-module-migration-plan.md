@@ -2023,6 +2023,22 @@ The next bounded step should extend this preflight to one exact Oop-slot shape,
 including recursive relocation discovery and cycle termination, while keeping
 unknown layouts and unsupported capabilities fail-closed.
 
+### R6.9 Rust Image recursive Oop-slot checkpoint (2026-07-25)
+
+- `36e3a1b` extends `HeapPreflight` to exact Oop slots. It assigns relocation
+  ids before descending, recognizes inline scalar/name values, recursively
+  discovers nested exported-vtable objects, and emits tagged Oop fields while
+  preserving cycle termination through the relocation map. Raw and code slots
+  retain their prior layout rules; unknown slot kinds still reject.
+- The live Rust Image fixture now stores a one-slot parent pointing at the
+  exported zero-payload fixture, proving recursive discovery in Debug and
+  ReleaseSafe. The codec suite remains green (`19/19`), and no file is written
+  because writer/publisher authority is still deliberately disconnected.
+
+The next bounded step should add a cycle fixture and make heap rejection counts
+explicit in `SaveReport` before connecting the complete preflight byte vector to
+the writer.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
