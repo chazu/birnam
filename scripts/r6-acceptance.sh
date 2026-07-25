@@ -92,6 +92,20 @@ rust_prelude_io_success_count=$(grep -Ec '^test-rust-prelude-io (success|cached)
   echo "r6-acceptance: Rust Prelude subprocess I/O target was not executed" >&2
   exit 1
 }
+rust_collection_success_count=$(grep -Fc 'test-rust-collection success' "$functional" || true)
+[ "$rust_collection_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Collection target was not executed" >&2
+  exit 1
+}
+rust_collection_test_count=$(awk '
+/^test-rust-collection success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
+[ "$rust_collection_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Collection integration target no longer has 1 passing test" >&2
+  exit 1
+}
 
 verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
 trap 'rm -f "$functional" "$verify"' EXIT
