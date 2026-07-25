@@ -5,6 +5,9 @@
 //! the later dynamic rung can put orchestration around a stable, independently
 //! tested codec.
 
+use std::ffi::c_char;
+use std::ptr;
+
 pub const MAGIC: &[u8; 4] = b"BISO";
 pub const VERSION: u16 = 1;
 pub const HEADER_LEN: usize = 20;
@@ -414,6 +417,70 @@ pub fn decode_value(bytes: &[u8]) -> Result<Value, CodecError> {
         return Err(CodecError::TrailingBytes);
     }
     Ok(value)
+}
+
+fn error_code(error: CodecError) -> i32 {
+    match error {
+        CodecError::BadMagic => 1,
+        CodecError::BadVersion => 2,
+        CodecError::BadFlags => 3,
+        CodecError::UnknownKind => 4,
+        CodecError::InvalidRequestId => 5,
+        CodecError::FrameTooLarge => 6,
+        CodecError::Truncated => 7,
+        CodecError::TrailingBytes => 8,
+        CodecError::UnknownTag => 9,
+        CodecError::TooDeep => 10,
+        CodecError::TooManyNodes => 11,
+        CodecError::ContainerTooLarge => 12,
+        CodecError::InvalidUtf8 => 13,
+        CodecError::InvalidMapKey => 14,
+        CodecError::DuplicateMapKey => 15,
+        CodecError::UnknownRecordSchema => 16,
+        CodecError::InvalidRecord => 17,
+        CodecError::CyclicValue => 18,
+        CodecError::NonTransferable => 19,
+        CodecError::OutOfMemory => 20,
+    }
+}
+
+/// Stable identity for the first Rust Isolate dynamic artifact.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_isolate_rust_identity() -> *const c_char {
+    c"rust-isolate-r3-codec".as_ptr()
+}
+
+/// Encode a BISO header into caller-owned storage. This probe is deliberately
+/// smaller than the eventual worker ABI: it lets the Zig corpus compare the
+/// exact wire bytes before process orchestration is ported.
+///
+/// # Safety
+///
+/// `out` must be non-null and point to at least `HEADER_LEN` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_isolate_rust_encode_header(
+    kind: u8,
+    request_id: u64,
+    payload_len: u32,
+    out: *mut u8,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let Some(kind) = FrameKind::parse(kind).ok() else {
+        return error_code(CodecError::UnknownKind);
+    };
+    let header = match encode_header(Header {
+        kind,
+        request_id,
+        payload_len,
+    }) {
+        Ok(header) => header,
+        Err(error) => return error_code(error),
+    };
+    // SAFETY: the caller promises a writable HEADER_LEN-byte destination.
+    unsafe { ptr::copy_nonoverlapping(header.as_ptr(), out, HEADER_LEN) };
+    0
 }
 
 fn valid_map_key(value: &Value) -> bool {

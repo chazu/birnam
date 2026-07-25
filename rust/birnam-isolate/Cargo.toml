@@ -6,7 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [lints]
 workspace = true

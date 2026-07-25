@@ -859,6 +859,30 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_prelude_rust_error_step.dependOn(&run_rust_prelude_rust_error_tests.step);
 
+    const rust_isolate_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_isolate_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_isolate_tests = b.addTest(.{ .root_module = rust_isolate_test_mod });
+    const run_rust_isolate_tests = b.addRunArtifact(rust_isolate_tests);
+    run_rust_isolate_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_isolate_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_isolate_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_ISOLATE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_isolate.dylib", .{rust_floor_profile})),
+    );
+    run_rust_isolate_tests.step.dependOn(bootstrap_install);
+    run_rust_isolate_tests.step.dependOn(&rust_floor_build.step);
+    const test_rust_isolate_step = b.step(
+        "test-rust-isolate",
+        "Exercise the Rust Isolate wire-v1 header probe",
+    );
+    test_rust_isolate_step.dependOn(&run_rust_isolate_tests.step);
+
     const rust_prelude_io_probe_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_prelude_io_probe.zig"),
         .target = target,

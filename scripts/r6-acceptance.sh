@@ -35,6 +35,7 @@ latest_tests=(
   test-rust-codegen-zig-store
   test-rust-prelude
   test-rust-prelude-rust-error
+  test-rust-isolate
   test-rust-prelude-io
   test-rust-collection
   test-rust-error
@@ -55,9 +56,9 @@ cat "$functional"
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 48/48 tests passed$' "$functional" || true)
+focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 49/49 tests passed$' "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
-  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 48/48 passing tests" >&2
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 49/49 passing tests" >&2
   exit 1
 }
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
@@ -101,6 +102,20 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec '^\+- run test 2 passed ' || true)
 [ "$rust_prelude_rust_error_test_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Prelude/Rust Error test set no longer has 2 passing tests" >&2
+  exit 1
+}
+rust_isolate_success_count=$(grep -Fc 'test-rust-isolate success' "$functional" || true)
+[ "$rust_isolate_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Isolate target was not executed" >&2
+  exit 1
+}
+rust_isolate_test_count=$(awk '
+/^test-rust-isolate success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
+[ "$rust_isolate_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Isolate test set no longer has 1 passing test" >&2
   exit 1
 }
 rust_prelude_io_success_count=$(grep -Ec '^test-rust-prelude-io (success|cached)$' "$functional" || true)
