@@ -18,6 +18,7 @@ pub const AUTHORITY_DIGEST_LEN: usize = 64;
 pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
 pub const FIELD_LENGTH_PREFIX: usize = 4;
 
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fs;
 use std::io::{self, Write};
@@ -995,11 +996,95 @@ static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
 struct FactCollection {
     writer: FactsWriter,
+    heap: HeapPreflight,
     kept: u32,
     rejected: u32,
 }
 
 static FACT_COLLECTION: Mutex<Option<FactCollection>> = Mutex::new(None);
+
+struct HeapPreflight {
+    objects: Vec<usize>,
+    relocations: HashMap<usize, u32>,
+}
+
+impl HeapPreflight {
+    fn new() -> Self {
+        Self {
+            objects: Vec::new(),
+            relocations: HashMap::new(),
+        }
+    }
+
+    unsafe fn intern(&mut self, api: &IdApi, object: Oop) -> Option<u32> {
+        let key = object as usize;
+        if let Some(id) = self.relocations.get(&key) {
+            return Some(*id);
+        }
+        let vtable = unsafe { (api.vtableOf)(object) };
+        if vtable.is_null() {
+            return None;
+        }
+        let has_exported_vtable = unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.is_some();
+        let owned_parent = unsafe { (api.vtableOwner)(vtable) } == object;
+        let parent = unsafe { (api.vtableParent)(vtable) };
+        let has_exported_parent = owned_parent
+            && !parent.is_null()
+            && unsafe { c_string_bytes((api.exportedNameOf)(parent)) }.is_some();
+        if !has_exported_vtable && !has_exported_parent {
+            return None;
+        }
+        let payload_size = unsafe { (api.objectPayloadSize)(object) };
+        if !payload_size.is_multiple_of(core::mem::size_of::<usize>()) {
+            return None;
+        }
+        let words = payload_size / core::mem::size_of::<usize>();
+        for index in 0..words {
+            let kind = unsafe { (api.slotKind)(vtable, index) };
+            if kind != birnam_abi::SLOT_RAW && kind != birnam_abi::SLOT_CODE {
+                return None;
+            }
+        }
+        let id = u32::try_from(self.objects.len()).ok()?;
+        self.relocations.insert(key, id);
+        self.objects.push(key);
+        Some(id)
+    }
+
+    unsafe fn finish(&self, api: &IdApi) -> Option<Vec<u8>> {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&u32::try_from(self.objects.len()).ok()?.to_le_bytes());
+        for object in &self.objects {
+            let object = *object as Oop;
+            let vtable = unsafe { (api.vtableOf)(object) };
+            let (vtable, name) =
+                if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(vtable)) } {
+                    (vtable, name)
+                } else {
+                    let parent = unsafe { (api.vtableParent)(vtable) };
+                    let name = unsafe { c_string_bytes((api.exportedNameOf)(parent)) }?;
+                    (parent, name)
+                };
+            let payload_size = unsafe { (api.objectPayloadSize)(object) };
+            let words = payload_size / core::mem::size_of::<usize>();
+            payload.extend_from_slice(&u32::try_from(name.len()).ok()?.to_le_bytes());
+            payload.extend_from_slice(name);
+            payload.extend_from_slice(&u32::try_from(words).ok()?.to_le_bytes());
+            for index in 0..words {
+                let kind = unsafe { (api.slotKind)(vtable, index) };
+                if kind == birnam_abi::SLOT_CODE {
+                    continue;
+                }
+                let address =
+                    (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
+                // SAFETY: the preflight checked payload size and raw/code layout.
+                let word = unsafe { core::ptr::read_unaligned(address.cast::<u64>()) };
+                payload.extend_from_slice(&word.to_le_bytes());
+            }
+        }
+        Some(payload)
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Default)]
@@ -1083,7 +1168,12 @@ unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
     Some(unsafe { CStr::from_ptr(pointer) }.to_bytes())
 }
 
-unsafe fn encode_runtime_oop(api: &IdApi, encoder: &mut FieldEncoder, object: Oop) -> bool {
+unsafe fn encode_runtime_oop(
+    api: &IdApi,
+    encoder: &mut FieldEncoder,
+    object: Oop,
+    heap: &mut HeapPreflight,
+) -> bool {
     if object.is_null() {
         encoder.null_oop();
         return true;
@@ -1132,7 +1222,11 @@ unsafe fn encode_runtime_oop(api: &IdApi, encoder: &mut FieldEncoder, object: Oo
         };
         return encoder.string(bytes).is_ok();
     }
-    false
+    let Some(id) = (unsafe { heap.intern(api, object) }) else {
+        return false;
+    };
+    encoder.heap_ref(id);
+    true
 }
 
 fn record_fact_counts(kept: u32, rejected: u32) {
@@ -1144,14 +1238,14 @@ fn record_fact_counts(kept: u32, rejected: u32) {
     report.rejected_facts = rejected;
 }
 
-unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32) {
+unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool) {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
-        return (0, 0);
+        return (0, 0, true);
     }
     let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
     if collector_vt.is_null() {
-        return (0, 0);
+        return (0, 0, false);
     }
     let basis_object = unsafe { (api.send)(store, intern(api, b"basis\0"), ptr::null(), 0) };
     let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
@@ -1161,7 +1255,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32) {
     };
     let collector = unsafe { (api.alloc)(collector_vt, 0) };
     if collector.is_null() {
-        return (0, 0);
+        return (0, 0, false);
     }
     {
         let mut collection = FACT_COLLECTION
@@ -1169,6 +1263,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32) {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         *collection = Some(FactCollection {
             writer: FactsWriter::new(basis),
+            heap: HeapPreflight::new(),
             kept: 0,
             rejected: 0,
         });
@@ -1187,9 +1282,11 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
     let Some(collection) = collection else {
-        return (0, 0);
+        return (0, 0, false);
     };
-    let counts = (collection.kept, collection.rejected);
+    let counts = (collection.kept, collection.rejected, unsafe {
+        collection.heap.finish(api).is_some()
+    });
     let _payload = collection.writer.finish();
     counts
 }
@@ -1211,11 +1308,13 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     }
     // The shell deliberately has no authority to mutate or publish an image.
     // Later R6 slices install the codec-backed save transaction here.
-    let (kept, rejected) = unsafe { collect_store_facts(api) };
-    reject_save(if rejected == 0 {
-        "Rust Image heap preflight is not installed"
-    } else {
+    let (kept, rejected, heap_ok) = unsafe { collect_store_facts(api) };
+    reject_save(if !heap_ok {
+        "Rust Image heap preflight rejected unsupported layout"
+    } else if rejected != 0 {
         "Rust Image fact preflight rejected unsupported values"
+    } else {
+        "Rust Image writer/publisher orchestration is not installed"
     });
     record_fact_counts(kept, rejected);
     api.nilObj
@@ -1420,17 +1519,17 @@ unsafe extern "C" fn collector_collect(_self_object: Oop, _args: *const Oop, cou
         }
         return api.nilObj;
     }
-    let mut fields = FieldEncoder::new();
-    let encoded = unsafe {
-        encode_runtime_oop(api, &mut fields, arguments[0])
-            && encode_runtime_oop(api, &mut fields, arguments[1])
-            && encode_runtime_oop(api, &mut fields, arguments[2])
-    };
     let mut collection = FACT_COLLECTION
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(collection) = collection.as_mut() else {
         return api.nilObj;
+    };
+    let mut fields = FieldEncoder::new();
+    let encoded = unsafe {
+        encode_runtime_oop(api, &mut fields, arguments[0], &mut collection.heap)
+            && encode_runtime_oop(api, &mut fields, arguments[1], &mut collection.heap)
+            && encode_runtime_oop(api, &mut fields, arguments[2], &mut collection.heap)
     };
     if !encoded
         || collection

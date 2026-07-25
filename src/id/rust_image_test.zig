@@ -81,6 +81,14 @@ test "Rust Image shell preserves report layout and selector surface" {
     try std.testing.expectEqual(@as(usize, 0), detail_len);
 
     const system = api.import("System") orelse return error.SystemMissing;
+    const fixture_vt = api.proto(api.object_vt);
+    api.setLayout(fixture_vt, null, 0, idapi.slot_raw);
+    _ = api.exportObj("RustImageFixtureVt", fixture_vt);
+    const fixture = api.alloc(fixture_vt, 0);
+    const fixture_entity = api.intern("rust_image_fixture_entity");
+    const fixture_attribute = api.intern("rust_image_fixture_value");
+    _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ fixture_entity, fixture_attribute, fixture });
+    defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ fixture_entity, fixture_attribute, fixture });
     const identity = send(api, system, "imageCompositionIdentity", &.{});
     var identity_len: usize = 0;
     const identity_bytes = api.stringBytes(identity, &identity_len);
@@ -99,7 +107,7 @@ test "Rust Image shell preserves report layout and selector surface" {
     const saved_facts = api.smallIntValue(send(api, report, "savedFacts", &.{}));
     try std.testing.expect(saved_facts + rejected_facts > 0);
     if (rejected_facts == 0) {
-        try std.testing.expectEqualStrings("Rust Image heap preflight is not installed", shell_detail[0..detail_len]);
+        try std.testing.expectEqualStrings("Rust Image writer/publisher orchestration is not installed", shell_detail[0..detail_len]);
     } else {
         try std.testing.expectEqualStrings("Rust Image fact preflight rejected unsupported values", shell_detail[0..detail_len]);
     }
