@@ -1837,6 +1837,19 @@ post-switch image/project observation window closes.
   to accept only the two recorded benchmark crossings. Child-abort and wider
   callback ABI-shape coverage remain in the R5 exit work.
 
+### R5.21 Rust Alien callback ABI-shape checkpoint (2026-07-25)
+
+- `09d8411` adds a live callback corpus for double and float scalar
+  marshalling, `void` returns, and aggregate returns. The fixtures route
+  through generated TCC callbacks and the existing Rust registry, so the
+  coverage exercises native ABI classification in both directions rather than
+  only testing parser/code-generator strings.
+- The Rust Alien live target passes `9/9` in both Debug and ReleaseSafe;
+  `4264760` raises the sequential R6 requirement to that exact count. The
+  focused matrix remains `80/80`, and the existing two benchmark allowances
+  are unchanged. Child-abort coverage remains the final explicit R5 exit
+  seam before the pre-switch acceptance run.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
