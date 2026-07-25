@@ -1204,6 +1204,20 @@ remain the next implementation slices.
   grouped/pull materialization, and canonical Rust Relational selection remain
   open.
 
+### R4.25 Store rule-cache rebuild regression checkpoint (2026-07-25)
+
+- `3a0202f` extends the Store-facing rule corpus to invoke the canonical Zig
+  `rebuildRules` selector before both Rust reification queries. Recursive and
+  nested stored definitions still produce the same results, proving the Rust
+  probe reconstructs from durable rule facts rather than depending on Zig's
+  in-memory cache.
+- Both dynamic targets remain `14/14`; no R6 count change is required. The
+  latest accepted boundary remains `80/80`, `14/14`, optimized `486/492`, with
+  only the existing two benchmark allowances.
+- Image-load-triggered rebuild, canonical Rust Store method installation,
+  arbitrary parameter/variable-scope semantics, canonical grouped/pull
+  materialization, and canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
