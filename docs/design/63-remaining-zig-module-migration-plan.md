@@ -578,6 +578,20 @@ remain the next implementation slices.
   dispatch, hostile-child lifecycle behavior, and canonical Rust selection
   remain pending.
 
+### R3.11 worker request-dispatch checkpoint (2026-07-24)
+
+- `4f98d8b` replaces the one-frame Rust control skeleton with the frozen worker
+  loop: repeated Request frames decode one copied argument, dispatch through
+  the borrowed process-local receiver/selector, and emit exact `ReplyOk`,
+  `ReplyError`, or `ProtocolError` records before continuing or stopping.
+  The channel descriptor remains caller-owned and no OOP or byte buffer is
+  retained after the synchronous call.
+- The dynamic corpus loads the Rust Prelude and Error owners, then exercises
+  two owner-thread requests plus `stop/stopped`; the socket client runs on a
+  helper thread because the floor rejects foreign-thread API entry. Rust
+  tests/clippy and Debug/ReleaseSafe probes pass. Hostile-child lifecycle,
+  timeout/termination parity, and canonical Rust selection remain pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

@@ -396,3 +396,15 @@ R3.10 OOP decode bridge checkpoint (2026-07-24):
   Vector, Map, trailing-byte, and unknown-tag cases in Debug and ReleaseSafe.
   Rust unit tests and clippy pass. Worker request dispatch, hostile-child
   lifecycle behavior, and canonical Rust selection remain pending.
+
+R3.11 worker request-dispatch checkpoint (2026-07-24):
+
+- `4f98d8b` replaces the Rust one-frame control skeleton with a repeated worker
+  loop. Request payloads decode into floor OOPs, dispatch through the borrowed
+  receiver/selector, and return exact `ReplyOk`, `ReplyError`, or
+  `ProtocolError` frames; stop returns `Stopped`. Rust owns no process handle,
+  channel descriptor, receiver, selector, or transport buffer after return.
+- The dynamic probe loads Rust Prelude and Error owners and verifies two
+  owner-thread request/reply exchanges plus stop/stopped in Debug and
+  ReleaseSafe. Hostile-child lifecycle, timeout/termination parity, and
+  canonical Rust selection remain unimplemented.
