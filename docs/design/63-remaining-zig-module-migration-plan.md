@@ -1311,6 +1311,21 @@ remain the next implementation slices.
   rebuild, arbitrary parameter/variable-scope semantics, and canonical Rust
   Relational selection remain open.
 
+### R4.32 Rust Relational scalar-aggregate bridge checkpoint (2026-07-25)
+
+- `dd10317` installs Rust `count:where:`, `sum:where:`, `min:where:`,
+  `max:where:`, and `avg:where:`. The adapter queries through the same
+  Store-owned Vector path, copies values through the frozen classifier, and
+  applies the pure Rust aggregate law; it does not depend on prelude `+` or `/`
+  selectors being installed in the host floor.
+- The cross-floor corpus exercises all five selectors over a predicate-first
+  query and preserves the expected distinct result (`count 1`, numeric value
+  `20` for the other four). Rust unit tests remain `17/17`; both dynamic
+  targets remain `14/14`.
+- Grouped aggregate, pull, image-triggered rebuild, arbitrary
+  parameter/variable-scope semantics, and canonical Rust Relational selection
+  remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
