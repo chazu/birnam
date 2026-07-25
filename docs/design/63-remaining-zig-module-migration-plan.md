@@ -1797,6 +1797,21 @@ post-switch image/project observation window closes.
   tradeoffs. Broader platform ABI shapes, unload-after-wrapper, and
   child-abort coverage remain in the R5 exit work.
 
+### R5.18 Rust Alien unload-safety checkpoint (2026-07-25)
+
+- `2eb82f7` records installed Rust wrappers as live native-code users. When a
+  tracked library has any live wrapper, `dlclose:` refuses to release that
+  handle with `#inUse` instead of leaving a TCC trampoline pointing into
+  unmapped code. The guard is deliberately conservative because a wrapper's
+  process-owned `dlsym(RTLD_DEFAULT)` lookup does not expose a portable
+  library identity; it never closes an unrelated handle by guessing.
+- The live fixture proves the guard by opening the platform C library after a
+  `strlen` wrapper is installed and requiring the kinded refusal. Debug and
+  ReleaseSafe pass `6/6`; `3855938` makes that count an R6 requirement. The
+  existing explicit unsafe buffer/callback release contracts remain caller
+  obligations, while broader platform ABI shapes and child-abort coverage stay
+  in the R5 exit work.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
