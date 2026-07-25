@@ -996,6 +996,20 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     api.gcSetAuto(0);
     const nested_friend = api.send(nested_pulled, api.intern("at:"), &.{friend_attribute}, 1);
     try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(api.send(nested_friend, api.intern("at:"), &.{score_attribute}, 1)));
+    const gc_group_attribute = api.intern("rust_relational_rule_gc_group_attribute");
+    for (0..64) |index| {
+        _ = api.send(store, api.intern("assert:attr:value:"), &.{
+            api.mkSmallInt(@intCast(1000 + index)),
+            gc_group_attribute,
+            api.mkSmallInt(@intCast(index + 1)),
+        }, 3);
+    }
+    const gc_group_clause = makeVector(api, &.{ x, gc_group_attribute, score_variable });
+    const gc_group_body = makeVector(api, &.{gc_group_clause});
+    api.gcSetAuto(1);
+    const gc_grouped = api.send(store, api.intern("groupBy:aggregate:of:where:"), &.{ x, api.intern("sum"), score_variable, gc_group_body }, 4);
+    api.gcSetAuto(0);
+    try std.testing.expectEqual(@as(i64, 64), api.smallIntValue(api.send(gc_grouped, api.intern("size"), &.{}, 0)));
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});
