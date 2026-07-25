@@ -1468,6 +1468,24 @@ remain the next implementation slices.
   closes the current R4 acceptance seam; post-switch project/image observation
   remains the next Relational checkpoint.
 
+### R4.45 Rust Relational canonical switch and first observation (2026-07-25)
+
+- `8c0fd13` changes the default `-Drelational` mapping to Rust. The explicit
+  `-Drelational=zig` rollback path and installed
+  `libbirnam_id_relational_zig.dylib` fixture remain available; the canonical
+  install still carries both implementation receipts.
+- The default-path ReleaseSafe `zig build verify -Disolate-impl=rust
+  -Dfloor=rust` passes without a relational override: `266/266` build steps,
+  `486/492` tests with the documented six skips, the 343-test self-hosted
+  suite, project/image/REPL and relocation smokes, Rust/Zig lower-rung
+  matrices, and relational/prelude/TCC selection smokes. No new benchmark
+  allowance was introduced; the R6 comparator remains pinned to its two
+  accepted crossings.
+- This begins the Relational post-switch observation window. Keep the Zig
+  Relational and Store fixtures explicit in cross-floor image/project tests;
+  do not retire either rollback artifact until the observation requirements in
+  Design 62 §5.4 are met.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
