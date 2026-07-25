@@ -887,6 +887,32 @@ remain the next implementation slices.
   arbitrary query-variable encoding, and canonical Rust Relational selection
   remain open.
 
+### R4.10 Rust Relational numeric-predicate checkpoint (2026-07-24)
+
+- `94f976f` adds a bounded predicate probe after one triple binder. It filters
+  a position-based bound variable with a constant right operand, supports the
+  six frozen comparison operators (`<`, `<=`, `>`, `>=`, `=`, `~=`), promotes
+  Integer/Float pairs for ordering, and keeps equality type-strict. The Rust
+  kernel evaluates copied values only; it does not send borrowed Oops or retain
+  a floor reference. Unsupported ordering operands simply drop the row, as the
+  existing relational predicate path does for comparison faults.
+- The cross-floor corpus covers integer ordering, mixed numeric promotion,
+  strict Integer-versus-Float equality, invalid operators, and rejection of a
+  constant predicate position against both Rust Store and the Zig Store
+  rollback provider. Both relational targets report `6/6`. This remains an
+  explicit probe: the right operand is constant, the binder precedes the
+  predicate, and no planner reordering, arbitrary operand shapes, or canonical
+  `findAll:where:` installation is claimed.
+- `eacd5e1` advances the R6 focused boundary to `64/64` and requires both
+  relational targets to report exactly six passing tests. The full gate passes
+  with optimized verify pinned at `260/263` steps, `470/476` tests, and 6
+  skipped, accepting only the existing `run-tests.birnam`/`vSortBy` fixture;
+  the digest-pinned comparator still reports zero missing/unusable cases and
+  exactly `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`.
+- Negation, disjunction, planner reordering, arbitrary predicate operands,
+  rule fixpoints, aggregation, pull, and canonical Rust Relational selection
+  remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
