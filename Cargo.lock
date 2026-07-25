@@ -28,6 +28,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-collection"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-id"
 version = "0.0.0"
 dependencies = [
