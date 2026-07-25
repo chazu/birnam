@@ -2441,6 +2441,31 @@ unsafe fn parse_rule_terms(
         .collect()
 }
 
+unsafe fn parse_rule_compare_op(api: &IdApi, name: Oop) -> Result<CompareOp, i32> {
+    if name.is_null() {
+        return Err(-4);
+    }
+    // SAFETY: operator symbols are interned in the process symbol table and
+    // compared by the same identity law as the Zig relational selector.
+    let intern = |bytes: &'static [u8]| unsafe { (api.intern)(bytes.as_ptr().cast()) };
+    let operation = if name == intern(b"<\0") {
+        CompareOp::Less
+    } else if name == intern(b"<=\0") {
+        CompareOp::LessEqual
+    } else if name == intern(b">\0") {
+        CompareOp::Greater
+    } else if name == intern(b">=\0") {
+        CompareOp::GreaterEqual
+    } else if name == intern(b"=\0") {
+        CompareOp::Equal
+    } else if name == intern(b"!=\0") {
+        CompareOp::NotEqual
+    } else {
+        return Err(-7);
+    };
+    Ok(operation)
+}
+
 unsafe fn parse_rule_definitions(
     api: &IdApi,
     nodes: *const RuleDefinitionNode,
@@ -2508,6 +2533,11 @@ unsafe fn parse_rule_definitions(
                         args: terms,
                     });
                 }
+                2 if terms.len() == 2 => body.push(RuleClause::Predicate {
+                    left: terms[0].clone(),
+                    operation: unsafe { parse_rule_compare_op(api, clause.name)? },
+                    right: terms[1].clone(),
+                }),
                 0 => return Err(-7),
                 _ => return Err(-7),
             }

@@ -866,6 +866,30 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     try std.testing.expectEqual(@intFromPtr(ann), @as(usize, @intCast(values[1].identity)));
     try std.testing.expectEqual(@intFromPtr(kim), @as(usize, @intCast(values[2].identity)));
 
+    const threshold_rule = api.intern("rust_relational_rule_threshold");
+    const high = api.intern("rust_relational_rule_high");
+    const low = api.intern("rust_relational_rule_low");
+    const score = api.intern("rust_relational_rule_score");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ high, score, api.mkSmallInt(20) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ low, score, api.mkSmallInt(5) }, 3);
+    const threshold_params = [_]u32{0};
+    const threshold_triple = [_]RuleTermNode{ ruleVar(0), ruleConst(score), ruleVar(1) };
+    const threshold_predicate = [_]RuleTermNode{ ruleVar(1), ruleConst(api.mkSmallInt(10)) };
+    const threshold_body = [_]RuleClauseNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &threshold_triple, .term_count = 3, .reserved_tail = 0 },
+        .{ .kind = 2, .reserved = [_]u8{0} ** 3, .name = api.intern(">"), .terms = &threshold_predicate, .term_count = 2, .reserved_tail = 0 },
+    };
+    const threshold_definition = [_]RuleDefinitionNode{
+        .{ .name = threshold_rule, .params = &threshold_params, .param_count = 1, .reserved_params = 0, .body = &threshold_body, .body_count = threshold_body.len, .reserved_body = 0 },
+    };
+    const threshold_query = [_]RuleTermNode{ruleVar(0)};
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        rule(store, &threshold_definition, threshold_definition.len, threshold_rule, &threshold_query, threshold_query.len, 0, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@intFromPtr(high), @as(usize, @intCast(values[0].identity)));
+
     const even = api.intern("rust_relational_rule_even");
     const odd = api.intern("rust_relational_rule_odd");
     const is_zero = api.intern("rust_relational_rule_isZero");
