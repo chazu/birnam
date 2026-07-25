@@ -1008,6 +1008,27 @@ remain the next implementation slices.
 - Grouped aggregation, query time-window composition, pull, full rule
   semantics, and canonical Rust Relational selection remain open.
 
+### R4.15 Rust Relational query-window checkpoint (2026-07-24)
+
+- `0615ac7` adds a bounded projection probe over the frozen Store transaction
+  selectors: current, `asOf`, `since`, and half-open `between`. It reuses the
+  synchronous rooted callback bridge and feeds each copied snapshot through
+  the same authority-free one-clause kernel; history remains Store policy, so
+  the fixture explicitly opts the overwritten attribute into `history=true`.
+- The cross-floor corpus covers an earlier value at `asOf`, the changed value
+  at `since`, the same half-open interval at `between`, invalid modes, and
+  SmallInt-bound rejection against both Rust Store and the Zig Store rollback
+  provider. Both relational targets report `11/11`.
+- `8629a91` advances the R6 focused boundary to `74/74` and requires both
+  relational targets to report exactly eleven passing tests. The full gate
+  passes with optimized verify pinned at `260/264` steps, `480/486` tests,
+  and 6 skipped, accepting only the two exact `install-smoke.sh: line 92`
+  `collection.zig:336:29` fixture crashes. The digest-pinned comparator remains
+  at zero missing/unusable cases and exactly the accepted
+  `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%` crossings.
+- Pull composition, grouped aggregation, full rule-definition semantics, and
+  canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
