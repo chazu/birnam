@@ -1121,6 +1121,23 @@ remain the next implementation slices.
   cache is intentionally rebuilt per supplied snapshot and is not persisted
   as a second authority.
 
+### R4.20 Rust Relational rule-body semantics checkpoint (2026-07-25)
+
+- `7032f71` extends the pure rule kernel with ordered predicate filters,
+  negation-as-failure, and disjunction branches. Nested rule bodies reuse the
+  same left-to-right binding discipline and current partial relation cache;
+  predicates never invent bindings, negated variables never escape, and branch
+  order remains deterministic.
+- The Rust unit corpus now reports `17/17`, including a mixed predicate,
+  negation, and disjunction rule that returns only the expected entities in
+  source order. The dynamic FFI remains intentionally bounded to the existing
+  triple/call descriptor kinds, so the cross-floor targets stay `14/14` and R6
+  remains pinned at `80/80`, `14/14`, and optimized `486/492`.
+- Canonical Store rule-fact reification, descriptor support for these richer
+  body forms, image-triggered cache rebuild wiring, arbitrary parameter
+  semantics, canonical grouped/pull result materialization, and canonical
+  Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
