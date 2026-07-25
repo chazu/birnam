@@ -384,6 +384,9 @@ post-switch observation are recorded.
 - `8b363f9` added an explicit Rust Prelude run against
   `libbirnam_id_error_rust.dylib`, asserting `rust-error-r2-core`; the R6 pin
   now includes the Rust Error owner matrix.
+- `329efca` extended both Rust Error preload-order runs with five-deep
+  propagation and precise-GC churn, retaining the same vtable, kind, and
+  message after collection.
 - A fresh `mise run r6-acceptance` passed at `48/48`; optimized verify still
   matches only the recorded `sortedModules` fixture exception, and the
   comparator still reports exactly the accepted `query.aggregate +5.8%` and

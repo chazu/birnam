@@ -286,5 +286,7 @@ R2 standalone Error implementation checkpoint (2026-07-24):
   and requires both root-level integration results.
 - `8b363f9` added the Rust Prelude/Rust Error-owner run, including the Rust
   identity assertion, to the R6 latest-tests pin.
+- `329efca` added five-deep Error propagation and precise-GC retention checks
+  to both preload-order runs.
 - The latest full R6 run remains green at `48/48`, with the exact recorded
   verify exception and the two accepted benchmark crossings unchanged.
