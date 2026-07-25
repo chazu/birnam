@@ -65,7 +65,10 @@ impl std::error::Error for LoaderError {}
 struct OpenLibrary {
     requested: Vec<u8>,
     resolved: Vec<u8>,
-    handle: NonNull<c_void>,
+    // A loader handle is process-owned opaque state. Store its address as an
+    // integer so the registry can be protected by a Rust mutex without
+    // pretending that platform handles carry Rust thread-safety semantics.
+    handle: usize,
 }
 
 /// One process-local owner of Alien's native library handles.
@@ -99,7 +102,7 @@ impl LibraryRegistry {
         self.open.push(OpenLibrary {
             requested: requested.to_vec(),
             resolved,
-            handle,
+            handle: handle.as_ptr() as usize,
         });
         Ok(())
     }
@@ -126,7 +129,7 @@ impl LibraryRegistry {
         };
         // SAFETY: the handle is retained by `self` and `name` is a live C
         // string for the duration of the lookup.
-        let symbol = unsafe { system_dlsym(entry.handle.as_ptr(), name.as_ptr()) };
+        let symbol = unsafe { system_dlsym(entry.handle as *mut c_void, name.as_ptr()) };
         NonNull::new(symbol).ok_or(LoaderError::SymbolNotFound)
     }
 
@@ -163,7 +166,7 @@ impl LibraryRegistry {
         let entry = self.open.swap_remove(index);
         // SAFETY: this entry owns one successful `dlopen` reference and has
         // not previously been closed.
-        let _ = unsafe { system_dlclose(entry.handle.as_ptr()) };
+        let _ = unsafe { system_dlclose(entry.handle as *mut c_void) };
         Ok(())
     }
 
@@ -207,7 +210,7 @@ impl Drop for LibraryRegistry {
             // SAFETY: every drained entry owns one successful `dlopen`
             // reference and no other method can observe the registry during
             // `drop`.
-            let _ = unsafe { system_dlclose(entry.handle.as_ptr()) };
+            let _ = unsafe { system_dlclose(entry.handle as *mut c_void) };
         }
     }
 }

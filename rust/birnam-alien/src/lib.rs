@@ -1,13 +1,14 @@
-//! Authority-free Alien/FFI signature grammar.
+//! Rust Alien/FFI rung.
 //!
-//! The dynamic Alien rung will use this parsed tree to emit the existing TCC
-//! shims.  This crate deliberately has no `IdApi`, allocator, loader, or C
-//! callback dependency: parsing must be deterministic and independently
-//! testable before any foreign state is introduced.
+//! The parser, ABI classifier, code generator, and loader remain independently
+//! testable. The live runtime module owns only the frozen Alien family and the
+//! closeable dynamic-library protocol in this checkpoint; TCC wrappers and
+//! callbacks are added in later bounded slices.
 
 pub mod abi;
 pub mod codegen;
 pub mod loader;
+pub mod runtime;
 
 use core::fmt;
 
