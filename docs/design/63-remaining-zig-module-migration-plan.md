@@ -1029,6 +1029,33 @@ remain the next implementation slices.
 - Pull composition, grouped aggregation, full rule-definition semantics, and
   canonical Rust Relational selection remain open.
 
+### R4.16 Rust Relational pull probe checkpoint (2026-07-25)
+
+- `eccd004` adds an authority-free Rust pull kernel and dynamic probe. The
+  adapter snapshots Store through the existing rooted callback, reads each
+  attribute's `cardinality:` schema through the frozen Store protocol, and
+  copies a bounded flat pull specification into Rust-owned values. Nested
+  references and `:many` leaves are returned as caller-owned flattened
+  attribute paths, not Rust Map/Vector objects, so the probe does not create a
+  second collection or fact authority. Malformed node kinds, child ranges,
+  nulls, excessive depth, and insufficient output capacity fail closed.
+- The pure kernel corpus covers deterministic nested `:many` reference order,
+  path preservation, and scalar value copying. The cross-floor dynamic corpus
+  covers the same nested pull against Rust Store and the Zig Store rollback
+  provider, capacity rejection, and malformed-spec rejection. Both relational
+  targets report `12/12`.
+- `aa14450` advances the R6 focused boundary to `76/76` and requires both
+  relational targets to report exactly twelve passing tests. The full
+  `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` gate passes with the
+  focused aggregate at `100/100` steps and `76/76` tests; optimized verify is
+  green, and the benchmark comparator remains at zero missing/unusable cases
+  with exactly `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
+  accepted for this snapshot.
+- Canonical `pull:spec:` installation, grouped aggregation, full
+  rule-definition semantics, and canonical Rust Relational selection remain
+  open. This probe deliberately preserves the Zig Relational implementation as
+  the behavioral authority and rollback path.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
