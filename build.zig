@@ -40,11 +40,17 @@ pub fn build(b: *std.Build) void {
         "Language parser implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
     const RungImpl = enum { zig, rust };
+    const PreludeImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
         "Artifact-inspector implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
+    const selected_prelude = b.option(
+        PreludeImpl,
+        "prelude-impl",
+        "Primitive prelude implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .zig;
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
     else
@@ -195,6 +201,17 @@ pub fn build(b: *std.Build) void {
     );
     test_lang_selection_step.dependOn(&lang_selection_smoke.step);
     test_step.dependOn(&lang_selection_smoke.step);
+
+    const prelude_selection_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/prelude-selection-smoke.sh",
+    });
+    const test_prelude_selection_step = b.step(
+        "test-prelude-selection",
+        "Verify canonical Rust Prelude selection, Zig rollback, and fail-closed choices",
+    );
+    test_prelude_selection_step.dependOn(&prelude_selection_smoke.step);
+    test_step.dependOn(&prelude_selection_smoke.step);
 
     // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
     // only to this test module; runtime, install, and artifact-selection code do
@@ -1667,11 +1684,6 @@ pub fn build(b: *std.Build) void {
             });
             b.getInstallStep().dependOn(&install_zig_prelude.step);
             bootstrap_install.dependOn(&install_zig_prelude.step);
-            const install_zig_prelude_selected = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_prelude.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_prelude_selected.step);
-            bootstrap_install.dependOn(&install_zig_prelude_selected.step);
             const install_rust_prelude = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_prelude.dylib",
@@ -1683,6 +1695,25 @@ pub fn build(b: *std.Build) void {
             install_rust_prelude.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_prelude.step);
             bootstrap_install.dependOn(&install_rust_prelude.step);
+            if (selected_prelude == .rust) {
+                const install_rust_prelude_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_prelude.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_prelude.dylib",
+                );
+                install_rust_prelude_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_prelude_selected.step);
+                bootstrap_install.dependOn(&install_rust_prelude_selected.step);
+            } else {
+                const install_zig_prelude_selected = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_prelude.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_prelude_selected.step);
+                bootstrap_install.dependOn(&install_zig_prelude_selected.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
