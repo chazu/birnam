@@ -1297,6 +1297,20 @@ remain the next implementation slices.
   parameter/variable-scope semantics, image-triggered rebuild, and canonical
   Rust Relational selection remain open.
 
+### R4.31 Rust Relational query-window bridge checkpoint (2026-07-25)
+
+- `8aae48d` generalizes the Rust `findAll:where:` adapter across the frozen
+  Store history selectors: `asOf:`, `since:`, and `between:and:`. It validates
+  nonnegative SmallInt watermarks and bounds, reads the corresponding
+  Store-owned live/history callback, reifies rules from that same window, and
+  returns the shared Vector result family.
+- The cross-floor window probe observes the expected 2/1/1 as-of/since/between
+  cardinalities. Rust unit tests remain `17/17`; both dynamic targets remain
+  `14/14`; the R6 benchmark allowances and thresholds are unchanged.
+- Aggregate/count/sum/min/max/avg, grouped aggregate, pull, image-triggered
+  rebuild, arbitrary parameter/variable-scope semantics, and canonical Rust
+  Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
