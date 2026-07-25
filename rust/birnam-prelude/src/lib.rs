@@ -898,7 +898,13 @@ unsafe fn block_loop(
         let is_true = condition == api.trueObj;
         let is_false = condition == api.falseObj;
         if !is_true && !is_false {
-            return api.nilObj;
+            return unsafe {
+                numeric_error(
+                    api,
+                    b"mustBeBoolean\0",
+                    b"while loop condition must answer true or false",
+                )
+            };
         }
         if is_true != continue_on_true {
             return api.nilObj;
