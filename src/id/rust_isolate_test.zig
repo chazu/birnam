@@ -37,6 +37,85 @@ const DecodeOop = *const fn (
 ) callconv(.c) c_int;
 const ModuleInit = *const fn (?*anyopaque, ?*anyopaque) callconv(.c) ?*anyopaque;
 
+const WorkerClient = struct {
+    fd: std.posix.fd_t,
+    result: *c_int,
+};
+
+fn echoArgument(_: idapi.Oop, args: [*]const idapi.Oop, count: usize) callconv(.c) idapi.Oop {
+    if (count != 1) return null;
+    return args[0];
+}
+
+fn runWorkerClient(client: WorkerClient) void {
+    client.result.* = workerClientImpl(client.fd) catch -1;
+}
+
+fn workerClientImpl(fd: std.posix.fd_t) !c_int {
+    var header: [20]u8 = undefined;
+    try readExact(fd, &header);
+    if (!std.mem.eql(u8, &header, &.{
+        'B', 'I', 'S', 'O', 0, 1, 1, 0,
+        0,   0,   0,   0,   0, 0, 0, 0,
+        0,   0,   0,   0,
+    })) return error.InvalidReady;
+
+    var request: [29]u8 = undefined;
+    @memcpy(request[0..4], "BISO");
+    std.mem.writeInt(u16, request[4..6], 1, .big);
+    request[6] = 3;
+    request[7] = 0;
+    std.mem.writeInt(u64, request[8..16], 1, .big);
+    std.mem.writeInt(u32, request[16..20], 9, .big);
+    request[20..].* = .{ 3, 0, 0, 0, 0, 0, 0, 0, 23 };
+    try writeAll(fd, &request);
+    try readExact(fd, &header);
+    if (header[6] != 4 or std.mem.readInt(u64, header[8..16], .big) != 1 or
+        std.mem.readInt(u32, header[16..20], .big) != 9) return error.InvalidReply;
+    var payload: [9]u8 = undefined;
+    try readExact(fd, &payload);
+    if (!std.mem.eql(u8, &payload, &.{ 3, 0, 0, 0, 0, 0, 0, 0, 23 })) return error.InvalidPayload;
+
+    std.mem.writeInt(u64, request[8..16], 2, .big);
+    request[28] = 7;
+    try writeAll(fd, &request);
+    try readExact(fd, &header);
+    if (header[6] != 4 or std.mem.readInt(u64, header[8..16], .big) != 2) return error.InvalidReply;
+    try readExact(fd, &payload);
+    if (payload[8] != 7) return error.InvalidPayload;
+
+    var stop: [20]u8 = undefined;
+    @memcpy(stop[0..4], "BISO");
+    std.mem.writeInt(u16, stop[4..6], 1, .big);
+    stop[6] = 6;
+    stop[7] = 0;
+    std.mem.writeInt(u64, stop[8..16], 3, .big);
+    std.mem.writeInt(u32, stop[16..20], 0, .big);
+    try writeAll(fd, &stop);
+    try readExact(fd, &header);
+    if (header[6] != 7 or std.mem.readInt(u64, header[8..16], .big) != 3 or
+        std.mem.readInt(u32, header[16..20], .big) != 0) return error.InvalidStop;
+    return 0;
+}
+
+fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
+    var offset: usize = 0;
+    while (offset < bytes.len) {
+        const wrote = try std.posix.write(fd, bytes[offset..]);
+        if (wrote == 0) return error.WriteFailed;
+        offset += wrote;
+    }
+}
+
+fn readExact(fd: std.posix.fd_t, bytes: []u8) !void {
+    var offset: usize = 0;
+    while (offset < bytes.len) {
+        const got = try std.posix.read(fd, bytes[offset..]);
+        if (got == 0) return error.EndOfStream;
+        offset += got;
+    }
+}
+
 test "Rust Isolate exports the exact BISO header probe" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_ISOLATE_DYLIB") orelse
@@ -296,4 +375,58 @@ test "Rust Isolate exports the exact BISO header probe" {
         decode_oop(api, &unknown_tag, unknown_tag.len, &decoded),
     );
     try std.testing.expectEqual(@as(idapi.Oop, null), decoded);
+}
+
+test "Rust Isolate worker dispatches copied values and stops" {
+    const api = floor.api();
+    const path = std.posix.getenv("BIRNAM_RUST_ISOLATE_DYLIB") orelse
+        return error.MissingRustIsolateDylib;
+    const path_z = try std.heap.c_allocator.dupeZ(u8, path);
+    defer std.heap.c_allocator.free(path_z);
+    const handle = api.dlopen(path_z.ptr, 1) orelse return error.RustIsolateDlopenFailed;
+    const raw_driver = api.dlsym(handle, "birnam_isolate_worker_driver") orelse
+        return error.RustIsolateWorkerDriverMissing;
+    const driver: WorkerDriver = @ptrCast(@alignCast(raw_driver));
+    const prelude_path = std.posix.getenv("BIRNAM_RUST_PRELUDE_DYLIB") orelse
+        return error.MissingRustPreludeDylib;
+    const prelude_path_z = try std.heap.c_allocator.dupeZ(u8, prelude_path);
+    defer std.heap.c_allocator.free(prelude_path_z);
+    const prelude_handle = api.dlopen(prelude_path_z.ptr, 1) orelse
+        return error.RustPreludeDlopenFailed;
+    const raw_prelude_init = api.dlsym(prelude_handle, "module_init") orelse
+        return error.RustPreludeModuleInitMissing;
+    const prelude_init: ModuleInit = @ptrCast(@alignCast(raw_prelude_init));
+    _ = prelude_init(api, null);
+    const error_path = std.posix.getenv("BIRNAM_ERROR_DYLIB") orelse
+        return error.MissingRustErrorDylib;
+    const error_path_z = try std.heap.c_allocator.dupeZ(u8, error_path);
+    defer std.heap.c_allocator.free(error_path_z);
+    const error_handle = api.dlopen(error_path_z.ptr, 1) orelse
+        return error.RustErrorDlopenFailed;
+    const raw_error_init = api.dlsym(error_handle, "module_init") orelse
+        return error.RustErrorModuleInitMissing;
+    const error_init: ModuleInit = @ptrCast(@alignCast(raw_error_init));
+    _ = error_init(api, null);
+
+    const receiver_vt = api.proto(api.object_vt);
+    const selector = api.intern("echo:");
+    api.method(receiver_vt, selector, &echoArgument);
+    const receiver = api.alloc(receiver_vt, 0);
+
+    var sockets: [2]std.posix.fd_t = undefined;
+    if (std.c.socketpair(std.c.AF.UNIX, std.c.SOCK.STREAM, 0, &sockets) != 0)
+        return error.SocketPairFailed;
+    defer {
+        std.posix.close(sockets[0]);
+        std.posix.close(sockets[1]);
+    }
+    var client_result: c_int = -1;
+    const client = try std.Thread.spawn(.{}, runWorkerClient, .{WorkerClient{
+        .fd = sockets[0],
+        .result = &client_result,
+    }});
+    const driver_result = driver(api, sockets[1], receiver, selector);
+    client.join();
+    try std.testing.expectEqual(@as(c_int, 0), driver_result);
+    try std.testing.expectEqual(@as(c_int, 0), client_result);
 }

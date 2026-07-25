@@ -1,9 +1,9 @@
-//! Pointer-free primitives for the Isolate wire-v1 protocol.
+//! Wire and worker primitives for the Isolate wire-v1 protocol.
 //!
-//! This first R3 slice deliberately owns no `IdApi` values, worker handles, or
-//! process state. It mirrors the byte-level contract in `src/id/isolate.zig` so
-//! the later dynamic rung can put orchestration around a stable, independently
-//! tested codec.
+//! The Rust rung owns only the copied-value transport and worker-side dispatch;
+//! process launch, handles, and policy remain in the host/`isolate.birnam`
+//! layer. Every floor object crossing this boundary is reconstructed through
+//! the frozen `IdApi` and is never retained by Rust after a call returns.
 
 use birnam_abi::{IdApi, Oop};
 use std::ffi::{CStr, c_char, c_int};
@@ -504,6 +504,8 @@ fn error_code(error: CodecError) -> i32 {
 }
 
 const BOOT_ERROR_SCHEMA: &[u8] = b"birnam.boot-error.v1";
+const APPLICATION_ERROR_SCHEMA: &[u8] = b"birnam.application-error.v1";
+const PROTOCOL_ERROR_SCHEMA: &[u8] = b"birnam.protocol-error.v1";
 
 fn error_record(schema: &[u8], kind: &[u8], message: &[u8]) -> Result<Vec<u8>, CodecError> {
     if schema.len() > u16::MAX as usize || kind.len() > MAX_FRAME || message.len() > MAX_FRAME {
@@ -527,6 +529,31 @@ fn error_record(schema: &[u8], kind: &[u8], message: &[u8]) -> Result<Vec<u8>, C
         return Err(CodecError::FrameTooLarge);
     }
     Ok(payload)
+}
+
+fn codec_error_name(error: CodecError) -> &'static [u8] {
+    match error {
+        CodecError::BadMagic => b"BadMagic",
+        CodecError::BadVersion => b"BadVersion",
+        CodecError::BadFlags => b"BadFlags",
+        CodecError::UnknownKind => b"UnknownKind",
+        CodecError::InvalidRequestId => b"InvalidRequestId",
+        CodecError::FrameTooLarge => b"FrameTooLarge",
+        CodecError::Truncated => b"Truncated",
+        CodecError::TrailingBytes => b"TrailingBytes",
+        CodecError::UnknownTag => b"UnknownTag",
+        CodecError::TooDeep => b"TooDeep",
+        CodecError::TooManyNodes => b"TooManyNodes",
+        CodecError::ContainerTooLarge => b"ContainerTooLarge",
+        CodecError::InvalidUtf8 => b"InvalidUtf8",
+        CodecError::InvalidMapKey => b"InvalidMapKey",
+        CodecError::DuplicateMapKey => b"DuplicateMapKey",
+        CodecError::UnknownRecordSchema => b"UnknownRecordSchema",
+        CodecError::InvalidRecord => b"InvalidRecord",
+        CodecError::CyclicValue => b"CyclicValue",
+        CodecError::NonTransferable => b"NonTransferable",
+        CodecError::OutOfMemory => b"OutOfMemory",
+    }
 }
 
 struct OopEncoder<'a> {
@@ -904,6 +931,54 @@ impl<'a> OopDecoder<'a> {
     }
 }
 
+fn decode_oop_value(api: &IdApi, bytes: &[u8]) -> Result<Oop, CodecError> {
+    if bytes.len() > MAX_FRAME {
+        return Err(CodecError::FrameTooLarge);
+    }
+    let mut decoder = OopDecoder::new(api, bytes);
+    let value = decoder.value(0)?;
+    if decoder.position != bytes.len() {
+        return Err(CodecError::TrailingBytes);
+    }
+    Ok(value)
+}
+
+fn oop_error_record(
+    api: &IdApi,
+    schema: &[u8],
+    kind: Oop,
+    message: Oop,
+) -> Result<Vec<u8>, CodecError> {
+    if kind.is_null() || message.is_null() {
+        return Err(CodecError::InvalidRecord);
+    }
+    if unsafe { (api.vtableOf)(kind) } != api.symbol_vt
+        || unsafe { (api.vtableOf)(message) } != api.string_vt
+    {
+        return Err(CodecError::InvalidRecord);
+    }
+    let kind_pointer = unsafe { (api.symbolName)(kind) };
+    if kind_pointer.is_null() {
+        return Err(CodecError::InvalidRecord);
+    }
+    // SAFETY: `symbolName` returns a live NUL-terminated symbol name for the
+    // synchronous call, as required by the frozen IdApi contract.
+    let kind_bytes = unsafe { CStr::from_ptr(kind_pointer) }.to_bytes();
+    let mut message_len = 0usize;
+    let message_pointer = unsafe { (api.stringBytes)(message, &mut message_len) };
+    if message_len != 0 && message_pointer.is_null() {
+        return Err(CodecError::InvalidRecord);
+    }
+    let message_bytes = if message_len == 0 {
+        &[]
+    } else {
+        // SAFETY: `stringBytes` returns a readable extent for the live String
+        // object throughout this synchronous encoding call.
+        unsafe { std::slice::from_raw_parts(message_pointer, message_len) }
+    };
+    error_record(schema, kind_bytes, message_bytes)
+}
+
 fn write_frame<W: Write>(writer: &mut W, frame: &Frame) -> Result<(), CodecError> {
     let bytes = frame.encode()?;
     writer
@@ -933,12 +1008,12 @@ fn borrowed_file(file: &mut ManuallyDrop<File>) -> &mut File {
     unsafe { &mut *(file as *mut ManuallyDrop<File> as *mut File) }
 }
 
-/// Run the Rust control-plane worker skeleton over an inherited channel.
+/// Run the Rust worker loop over an inherited channel.
 ///
-/// The skeleton owns no `IdApi` object conversion yet: it sends `ready`,
-/// accepts `stop` and sends `stopped`, and rejects request frames. This keeps
-/// the frozen ABI and shutdown handshake testable without pretending that
-/// Rust can dispatch Birnam OOPs before the value bridge is ported.
+/// Requests contain one copied BISO value. The worker decodes it through the
+/// process-local `IdApi`, sends it to the borrowed receiver/selector, then
+/// encodes either the result or the exact application/protocol error record.
+/// The receiver and selector never cross the channel and are not retained.
 ///
 /// # Safety
 ///
@@ -947,10 +1022,10 @@ fn borrowed_file(file: &mut ManuallyDrop<File>) -> &mut File {
 /// ownership remains with the caller and is not closed here.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_isolate_worker_driver(
-    _api: *mut IdApi,
+    api: *mut IdApi,
     fd: c_int,
-    _receiver: Oop,
-    _selector: Oop,
+    receiver: Oop,
+    selector: Oop,
 ) -> c_int {
     // SAFETY: the caller supplies a live descriptor and retains ownership;
     // ManuallyDrop prevents File from closing it on return.
@@ -966,28 +1041,113 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
     if write_frame(borrowed_file(&mut channel), &ready).is_err() {
         return 1;
     }
-    let frame = match read_frame(borrowed_file(&mut channel)) {
-        Ok(frame) => frame,
-        Err(_) => return 1,
-    };
-    match frame.header.kind {
-        FrameKind::Stop => {
-            let stopped = Frame {
-                header: Header {
-                    kind: FrameKind::Stopped,
-                    request_id: frame.header.request_id,
-                    payload_len: 0,
-                },
-                payload: Vec::new(),
-            };
-            if write_frame(borrowed_file(&mut channel), &stopped).is_ok() {
-                0
-            } else {
-                1
+    loop {
+        let frame = match read_frame(borrowed_file(&mut channel)) {
+            Ok(frame) => frame,
+            Err(_) => return 1,
+        };
+        match frame.header.kind {
+            FrameKind::Stop => {
+                let stopped = Frame {
+                    header: Header {
+                        kind: FrameKind::Stopped,
+                        request_id: frame.header.request_id,
+                        payload_len: 0,
+                    },
+                    payload: Vec::new(),
+                };
+                return if write_frame(borrowed_file(&mut channel), &stopped).is_ok() {
+                    0
+                } else {
+                    1
+                };
             }
+            FrameKind::Request => {
+                let Some(api) = (!api.is_null()).then(|| unsafe { &*api }) else {
+                    return 1;
+                };
+                let argument = match decode_oop_value(api, &frame.payload) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let payload = match error_record(
+                            PROTOCOL_ERROR_SCHEMA,
+                            b"invalidPayload",
+                            codec_error_name(error),
+                        ) {
+                            Ok(payload) => payload,
+                            Err(_) => return 1,
+                        };
+                        let protocol_error = Frame {
+                            header: Header {
+                                kind: FrameKind::ProtocolError,
+                                request_id: frame.header.request_id,
+                                payload_len: 0,
+                            },
+                            payload,
+                        };
+                        let _ = write_frame(borrowed_file(&mut channel), &protocol_error);
+                        return 1;
+                    }
+                };
+                let result = unsafe { (api.send)(receiver, selector, &argument, 1) };
+                if !result.is_null()
+                    && unsafe {
+                        (api.send)(result, (api.intern)(c"isError".as_ptr()), ptr::null(), 0)
+                    } == api.trueObj
+                {
+                    let kind = unsafe {
+                        (api.send)(result, (api.intern)(c"kind".as_ptr()), ptr::null(), 0)
+                    };
+                    let message = unsafe {
+                        (api.send)(result, (api.intern)(c"message".as_ptr()), ptr::null(), 0)
+                    };
+                    let payload =
+                        match oop_error_record(api, APPLICATION_ERROR_SCHEMA, kind, message) {
+                            Ok(payload) => payload,
+                            Err(_) => return 1,
+                        };
+                    let reply = Frame {
+                        header: Header {
+                            kind: FrameKind::ReplyError,
+                            request_id: frame.header.request_id,
+                            payload_len: 0,
+                        },
+                        payload,
+                    };
+                    if write_frame(borrowed_file(&mut channel), &reply).is_err() {
+                        return 1;
+                    }
+                } else {
+                    let mut encoder = OopEncoder::new(api);
+                    let (kind, payload) = match encoder.value(result, 0) {
+                        Ok(()) => (FrameKind::ReplyOk, encoder.bytes),
+                        Err(error) => {
+                            let payload = match error_record(
+                                APPLICATION_ERROR_SCHEMA,
+                                b"encodeFailed",
+                                codec_error_name(error),
+                            ) {
+                                Ok(payload) => payload,
+                                Err(_) => return 1,
+                            };
+                            (FrameKind::ReplyError, payload)
+                        }
+                    };
+                    let reply = Frame {
+                        header: Header {
+                            kind,
+                            request_id: frame.header.request_id,
+                            payload_len: 0,
+                        },
+                        payload,
+                    };
+                    if write_frame(borrowed_file(&mut channel), &reply).is_err() {
+                        return 1;
+                    }
+                }
+            }
+            _ => return 1,
         }
-        FrameKind::Request => 1,
-        _ => 1,
     }
 }
 
@@ -1191,14 +1351,10 @@ pub unsafe extern "C" fn birnam_isolate_rust_decode_oop(
     // SAFETY: the caller promises writable OOP storage; initialize it before
     // decoding so failures cannot expose stale caller data.
     unsafe { *out = ptr::null_mut() };
-    let mut decoder = OopDecoder::new(api, bytes);
-    let value = match decoder.value(0) {
+    let value = match decode_oop_value(api, bytes) {
         Ok(value) => value,
         Err(error) => return error_code(error),
     };
-    if decoder.position != bytes.len() {
-        return error_code(CodecError::TrailingBytes);
-    }
     // SAFETY: the caller promises writable OOP storage; null checks above
     // establish a valid destination and the decoded value is a live OOP.
     unsafe { *out = value };
