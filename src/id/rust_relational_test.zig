@@ -950,6 +950,8 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const store_rule_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_rule_store_live") orelse
         return error.RustRelationalStoreRuleMissing;
     const store_rule: ProjectRuleStoreLive = @ptrCast(@alignCast(store_rule_raw));
+    const empty_args = [_]Oop{};
+    _ = api.send(store, api.intern("rebuildRules"), &empty_args, 0);
     try std.testing.expectEqual(
         @as(c_int, 0),
         store_rule(store, canonical_rule, &query_terms, query_terms.len, 1, &values, values.len, &written),
@@ -1024,6 +1026,7 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
         &.{ nested_store_rule, nested_params, nested_body },
         3,
     );
+    _ = api.send(store, api.intern("rebuildRules"), &empty_args, 0);
     try std.testing.expectEqual(
         @as(c_int, 0),
         store_rule(store, nested_store_rule, &threshold_query, threshold_query.len, 0, &values, values.len, &written),
