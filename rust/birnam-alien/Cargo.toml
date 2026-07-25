@@ -8,6 +8,9 @@ publish = false
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 
+[features]
+ffi-test-hooks = []
+
 [lib]
 name = "birnam_alien"
 path = "src/lib.rs"

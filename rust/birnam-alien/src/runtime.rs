@@ -55,6 +55,20 @@ fn abort(message: &str) -> ! {
     std::process::abort();
 }
 
+/// Test-only proof that an Alien panic cannot unwind across its C ABI.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_alien_test_panic_across_ffi() {
+    panic!("intentional Rust Alien FFI panic");
+}
+
+/// Test-only proof of Alien's fatal invariant boundary.
+#[cfg(feature = "ffi-test-hooks")]
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_alien_test_invariant_abort() {
+    abort("intentional Rust Alien FFI invariant failure");
+}
+
 unsafe fn api_ref() -> &'static IdApi {
     let Some(address) = API.get() else {
         abort("module_init was not called");

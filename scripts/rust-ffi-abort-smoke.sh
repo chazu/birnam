@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 target_dir="$repo/.cargo-target/ffi-test-hooks"
+alien_target_dir="$repo/.cargo-target/ffi-test-hooks-alien"
 scratch=$(mktemp -d /tmp/birnam-rust-ffi-abort.XXXXXX)
 trap 'rm -rf "$scratch"' EXIT
 
@@ -33,5 +34,19 @@ probe_profile() {
   echo "rust-ffi-abort: $profile panic, invariant, and non-owner hooks terminated with SIGABRT"
 }
 
+probe_alien_profile() {
+  local profile=$1
+  local cargo_args=(build -p birnam-alien --features ffi-test-hooks --locked --offline)
+  if [[ $profile == release ]]; then cargo_args+=(--release); fi
+  CARGO_TARGET_DIR="$alien_target_dir" cargo "${cargo_args[@]}"
+  local dylib="$alien_target_dir/$profile/libbirnam_alien.dylib"
+  test -f "$dylib"
+  expect_abort "$profile" "$dylib" birnam_alien_test_panic_across_ffi "intentional Rust Alien FFI panic"
+  expect_abort "$profile" "$dylib" birnam_alien_test_invariant_abort "intentional Rust Alien FFI invariant failure"
+  echo "rust-alien-ffi-abort: $profile panic and invariant hooks terminated with SIGABRT"
+}
+
 probe_profile debug
 probe_profile release
+probe_alien_profile debug
+probe_alien_profile release
