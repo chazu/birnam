@@ -35,6 +35,7 @@ latest_tests=(
   test-rust-codegen-runtime
   test-rust-codegen-stack
   test-rust-codegen-zig-store
+  test-rust-ffi-abort
   test-rust-prelude
   test-rust-prelude-rust-error
   test-relational-selection
@@ -111,6 +112,22 @@ END { print count + 0 }
 ' "$functional")
 [ "$rust_codegen_callback_test_count" -eq 2 ] || {
   echo "r6-acceptance: Rust Codegen callback matrix no longer has two 4-test variants" >&2
+  exit 1
+}
+
+rust_ffi_abort_success_count=$(grep -Fc 'test-rust-ffi-abort success' "$functional" || true)
+[ "$rust_ffi_abort_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust FFI child-abort target was not executed" >&2
+  exit 1
+}
+rust_alien_abort_debug_count=$(grep -Fc 'rust-alien-ffi-abort: debug panic and invariant hooks terminated with SIGABRT' "$functional" || true)
+[ "$rust_alien_abort_debug_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Alien debug child-abort hooks did not pass" >&2
+  exit 1
+}
+rust_alien_abort_release_count=$(grep -Fc 'rust-alien-ffi-abort: release panic and invariant hooks terminated with SIGABRT' "$functional" || true)
+[ "$rust_alien_abort_release_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Alien release child-abort hooks did not pass" >&2
   exit 1
 }
 rust_prelude_success_count=$(grep -Fc 'test-rust-prelude success' "$functional" || true)
