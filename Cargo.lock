@@ -55,6 +55,9 @@ version = "0.0.0"
 [[package]]
 name = "birnam-isolate"
 version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
 
 [[package]]
 name = "birnam-lang"

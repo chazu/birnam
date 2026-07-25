@@ -5,7 +5,12 @@
 //! the later dynamic rung can put orchestration around a stable, independently
 //! tested codec.
 
-use std::ffi::c_char;
+use birnam_abi::{IdApi, Oop};
+use std::ffi::{CStr, c_char, c_int};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::mem::ManuallyDrop;
+use std::os::fd::{FromRawFd, RawFd};
 use std::ptr;
 
 pub const MAGIC: &[u8; 4] = b"BISO";
@@ -498,6 +503,171 @@ fn error_code(error: CodecError) -> i32 {
     }
 }
 
+const BOOT_ERROR_SCHEMA: &[u8] = b"birnam.boot-error.v1";
+
+fn error_record(schema: &[u8], kind: &[u8], message: &[u8]) -> Result<Vec<u8>, CodecError> {
+    if schema.len() > u16::MAX as usize || kind.len() > MAX_FRAME || message.len() > MAX_FRAME {
+        return Err(CodecError::FrameTooLarge);
+    }
+    if std::str::from_utf8(kind).is_err() || kind.contains(&0) {
+        return Err(CodecError::InvalidUtf8);
+    }
+    let mut payload = Vec::new();
+    payload.push(TAG_RECORD);
+    payload.extend_from_slice(&(schema.len() as u16).to_be_bytes());
+    payload.extend_from_slice(schema);
+    payload.extend_from_slice(&2u16.to_be_bytes());
+    payload.push(TAG_SYMBOL);
+    payload.extend_from_slice(&(kind.len() as u32).to_be_bytes());
+    payload.extend_from_slice(kind);
+    payload.push(TAG_STRING);
+    payload.extend_from_slice(&(message.len() as u32).to_be_bytes());
+    payload.extend_from_slice(message);
+    if payload.len() > MAX_FRAME {
+        return Err(CodecError::FrameTooLarge);
+    }
+    Ok(payload)
+}
+
+fn write_frame<W: Write>(writer: &mut W, frame: &Frame) -> Result<(), CodecError> {
+    let bytes = frame.encode()?;
+    writer
+        .write_all(&bytes)
+        .map_err(|_| CodecError::InvalidRecord)
+}
+
+fn read_frame<R: Read>(reader: &mut R) -> Result<Frame, CodecError> {
+    let mut header = [0u8; HEADER_LEN];
+    reader
+        .read_exact(&mut header)
+        .map_err(|_| CodecError::Truncated)?;
+    let decoded = decode_header(&header)?;
+    let mut bytes = header.to_vec();
+    let payload_len = decoded.payload_len as usize;
+    let start = bytes.len();
+    bytes.resize(start + payload_len, 0);
+    reader
+        .read_exact(&mut bytes[start..])
+        .map_err(|_| CodecError::Truncated)?;
+    Frame::decode(&bytes)
+}
+
+fn borrowed_file(file: &mut ManuallyDrop<File>) -> &mut File {
+    // SAFETY: `ManuallyDrop<T>` has the same representation as `T`; the
+    // wrapper only suppresses `File`'s destructor and does not move it.
+    unsafe { &mut *(file as *mut ManuallyDrop<File> as *mut File) }
+}
+
+/// Run the Rust control-plane worker skeleton over an inherited channel.
+///
+/// The skeleton owns no `IdApi` object conversion yet: it sends `ready`,
+/// accepts `stop` and sends `stopped`, and rejects request frames. This keeps
+/// the frozen ABI and shutdown handshake testable without pretending that
+/// Rust can dispatch Birnam OOPs before the value bridge is ported.
+///
+/// # Safety
+///
+/// `api`, `receiver`, and `selector` follow the frozen host ABI and are only
+/// borrowed for this call. `fd` must be a live inherited channel descriptor;
+/// ownership remains with the caller and is not closed here.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_isolate_worker_driver(
+    _api: *mut IdApi,
+    fd: c_int,
+    _receiver: Oop,
+    _selector: Oop,
+) -> c_int {
+    // SAFETY: the caller supplies a live descriptor and retains ownership;
+    // ManuallyDrop prevents File from closing it on return.
+    let mut channel = ManuallyDrop::new(unsafe { File::from_raw_fd(fd as RawFd) });
+    let ready = Frame {
+        header: Header {
+            kind: FrameKind::Ready,
+            request_id: 0,
+            payload_len: 0,
+        },
+        payload: Vec::new(),
+    };
+    if write_frame(borrowed_file(&mut channel), &ready).is_err() {
+        return 1;
+    }
+    let frame = match read_frame(borrowed_file(&mut channel)) {
+        Ok(frame) => frame,
+        Err(_) => return 1,
+    };
+    match frame.header.kind {
+        FrameKind::Stop => {
+            let stopped = Frame {
+                header: Header {
+                    kind: FrameKind::Stopped,
+                    request_id: frame.header.request_id,
+                    payload_len: 0,
+                },
+                payload: Vec::new(),
+            };
+            if write_frame(borrowed_file(&mut channel), &stopped).is_ok() {
+                0
+            } else {
+                1
+            }
+        }
+        FrameKind::Request => 1,
+        _ => 1,
+    }
+}
+
+/// Write a frozen `birnam.boot-error.v1` frame to an inherited channel.
+///
+/// # Safety
+///
+/// `api` is borrowed for ABI compatibility but is not retained. `kind_z` must
+/// be a valid NUL-terminated string, and `message_ptr` must reference
+/// `message_len` readable bytes. `fd` remains owned by the caller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_isolate_worker_boot_error(
+    _api: *mut IdApi,
+    fd: c_int,
+    kind_z: *const c_char,
+    message_ptr: *const u8,
+    message_len: usize,
+) {
+    if kind_z.is_null() || (message_ptr.is_null() && message_len != 0) {
+        return;
+    }
+    // SAFETY: the caller promises a valid NUL-terminated kind string.
+    let kind = unsafe { CStr::from_ptr(kind_z) }.to_bytes();
+    // SAFETY: the null/count check above establishes the readable message
+    // range; an empty message is represented without dereferencing null.
+    let message = if message_len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(message_ptr, message_len) }
+    };
+    let Ok(payload) = error_record(BOOT_ERROR_SCHEMA, kind, message) else {
+        return;
+    };
+    let frame = Frame {
+        header: Header {
+            kind: FrameKind::BootError,
+            request_id: 0,
+            payload_len: 0,
+        },
+        payload,
+    };
+    // SAFETY: the caller supplies a live descriptor and retains ownership;
+    // ManuallyDrop prevents File from closing it on return.
+    let mut channel = ManuallyDrop::new(unsafe { File::from_raw_fd(fd as RawFd) });
+    let _ = write_frame(borrowed_file(&mut channel), &frame);
+}
+
+/// The pre-lifecycle Rust fixture has no host-side registry to drain.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_isolate_drain() {}
+
+/// The pre-lifecycle Rust fixture has no host-side registry to shut down.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_isolate_shutdown() {}
+
 /// Stable identity for the first Rust Isolate dynamic artifact.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_isolate_rust_identity() -> *const c_char {
@@ -674,6 +844,73 @@ mod tests {
             payload: vec![TAG_NIL],
         };
         assert_eq!(ready.encode(), Err(CodecError::InvalidRecord));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn worker_control_plane_handshakes_and_stops() {
+        use std::io::Write;
+        use std::os::fd::IntoRawFd;
+        use std::os::unix::net::UnixStream;
+        use std::thread;
+
+        let (mut host, worker) = UnixStream::pair().expect("socketpair");
+        let worker_fd = worker.into_raw_fd();
+        let join = thread::spawn(move || unsafe {
+            birnam_isolate_worker_driver(
+                ptr::null_mut(),
+                worker_fd as c_int,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        });
+        let ready = read_frame(&mut host).expect("ready");
+        assert_eq!(ready.header.kind, FrameKind::Ready);
+        assert_eq!(ready.header.request_id, 0);
+        let stop = Frame {
+            header: Header {
+                kind: FrameKind::Stop,
+                request_id: 1,
+                payload_len: 0,
+            },
+            payload: Vec::new(),
+        };
+        host.write_all(&stop.encode().expect("stop encode"))
+            .expect("stop write");
+        let stopped = read_frame(&mut host).expect("stopped");
+        assert_eq!(stopped.header.kind, FrameKind::Stopped);
+        assert_eq!(stopped.header.request_id, 1);
+        assert_eq!(join.join().expect("worker join"), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn worker_boot_error_uses_frozen_record_schema() {
+        use std::ffi::CString;
+        use std::os::fd::IntoRawFd;
+        use std::os::unix::net::UnixStream;
+        use std::thread;
+
+        let (mut host, worker) = UnixStream::pair().expect("socketpair");
+        let worker_fd = worker.into_raw_fd();
+        let kind = CString::new("missingImage").expect("kind");
+        let message = b"image unavailable";
+        let join = thread::spawn(move || unsafe {
+            birnam_isolate_worker_boot_error(
+                ptr::null_mut(),
+                worker_fd as c_int,
+                kind.as_ptr(),
+                message.as_ptr(),
+                message.len(),
+            );
+        });
+        let frame = read_frame(&mut host).expect("boot error");
+        assert_eq!(frame.header.kind, FrameKind::BootError);
+        assert_eq!(
+            frame.payload,
+            error_record(BOOT_ERROR_SCHEMA, b"missingImage", message).expect("record")
+        );
+        join.join().expect("boot-error join");
     }
 
     #[test]
