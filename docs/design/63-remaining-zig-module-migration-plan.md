@@ -2106,6 +2106,25 @@ The next bounded step should derive an authority digest from the live generation
 without publishing, then compare that digest against the existing Zig image
 authority fixture. A synthetic digest must remain test-only.
 
+### R6.14 Rust Image live-authority probe checkpoint (2026-07-25)
+
+- `506e3b8` adds a fail-closed probe for the canonical `Codegen
+  currentGenerationDigest` selector. It accepts only the live String form with
+  exactly 64 bytes, copies no process pointer into Rust state, and uses the
+  result only to distinguish “generation authority unavailable” from the later
+  code-capture/rebuild boundary. Missing `Codegen`, noncanonical generations,
+  wrong vtables, malformed lengths, and null byte buffers all remain rejected.
+- The focused Rust Image test now proves the no-Codegen path reports
+  `Rust Image generation authority is not available` after a supported
+  facts/heap preflight. The pure composer test also checks exact 64-byte digest
+  validation; Debug and ReleaseSafe pass and the codec suite remains green
+  (`19/19`). No digest is exposed as a new selector, and `saveImage:` still
+  performs no filesystem mutation.
+
+The next bounded step should exercise this probe in a setup with the canonical
+Zig Codegen generation initialized, compare the returned bytes with the Zig
+image authority fixture, and retain the Rust shell's no-publication boundary.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
