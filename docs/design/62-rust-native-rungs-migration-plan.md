@@ -2252,6 +2252,15 @@ rerun passed at 42/42 with no benchmark allowance change. Source loading,
 process controls, self-hosted handlers, and canonical prelude cutover remain
 open.
 
+The Rust `loadModule:` slice now resolves a String path through the frozen
+`dlopen`/`dlsym` IdApi hooks, rejects invalid paths and dylibs without
+`module_init` with kinded Errors, and invokes a valid module initializer with
+the process-owned IdApi. The focused dynamic test covers selector
+installation, self-loading the Rust prelude, and a missing-path `ioError`; the
+full R6 rerun passed at 42/42 with no benchmark allowance change. Source
+loading, process controls, self-hosted handlers, and canonical prelude cutover
+remain open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

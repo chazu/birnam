@@ -196,6 +196,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var saw_read_file = false;
     var saw_write_file = false;
     var saw_get_env = false;
+    var saw_load_module = false;
     var saw_gc = false;
     var saw_live_objects = false;
     var saw_auto_gc = false;
@@ -207,6 +208,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         saw_read_file = saw_read_file or std.mem.eql(u8, name, "readFile:");
         saw_write_file = saw_write_file or std.mem.eql(u8, name, "writeFile:contents:");
         saw_get_env = saw_get_env or std.mem.eql(u8, name, "getEnv:");
+        saw_load_module = saw_load_module or std.mem.eql(u8, name, "loadModule:");
         saw_gc = saw_gc or std.mem.eql(u8, name, "gc");
         saw_live_objects = saw_live_objects or std.mem.eql(u8, name, "liveObjects");
         saw_auto_gc = saw_auto_gc or std.mem.eql(u8, name, "autoGc:");
@@ -217,6 +219,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expect(saw_read_file);
     try std.testing.expect(saw_write_file);
     try std.testing.expect(saw_get_env);
+    try std.testing.expect(saw_load_module);
     try std.testing.expect(saw_gc);
     try std.testing.expect(saw_live_objects);
     try std.testing.expect(saw_auto_gc);
@@ -226,6 +229,7 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     try std.testing.expectEqual(api.nilObj, send(api, system, "readFile:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "getEnv:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "loadModule:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "gc", &.{api.trueObj}));
     try std.testing.expect(api.isSmallInt(send(api, system, "gc", &.{})) != 0);
     try std.testing.expect(api.isSmallInt(send(api, system, "liveObjects", &.{})) != 0);
@@ -248,6 +252,18 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const rust_prelude_env_bytes = api.stringBytes(rust_prelude_env, &rust_prelude_env_len);
     try std.testing.expect(rust_prelude_env_len > 0);
     try std.testing.expect(rust_prelude_env_bytes[0] != 0);
+    const rust_prelude_module_path = api.mkString(
+        rust_prelude_env_bytes[0..rust_prelude_env_len].ptr,
+        rust_prelude_env_len,
+    );
+    try std.testing.expectEqual(
+        system,
+        send(api, system, "loadModule:", &.{rust_prelude_module_path}),
+    );
+    const not_a_module_path_bytes = "/definitely/missing/birnam-module.dylib";
+    const not_a_module_path = api.mkString(not_a_module_path_bytes.ptr, not_a_module_path_bytes.len);
+    const not_a_module_error = send(api, system, "loadModule:", &.{not_a_module_path});
+    try std.testing.expectEqual(api.intern("ioError"), send(api, not_a_module_error, "kind", &.{}));
     const missing_env_name = "BIRNAM_RUST_PRELUDE_MISSING";
     try std.testing.expectEqual(
         api.nilObj,

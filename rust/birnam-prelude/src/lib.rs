@@ -7,11 +7,11 @@
 
 #![allow(clippy::missing_safety_doc)]
 
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -1093,6 +1093,41 @@ unsafe extern "C" fn system_get_env(
     }
 }
 
+unsafe extern "C" fn system_load_module(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    const RTLD_LAZY: i32 = 1;
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(path_object) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let Some(path_bytes) = (unsafe { string_bytes(api, path_object) }) else {
+        return api.nilObj;
+    };
+    let Ok(path) = CString::new(path_bytes) else {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not load module dylib") };
+    };
+    let handle = unsafe { (api.dlopen)(path.as_ptr(), RTLD_LAZY) };
+    if handle.is_null() {
+        return unsafe { numeric_error(api, b"ioError\0", b"could not load module dylib") };
+    }
+    let symbol = unsafe { (api.dlsym)(handle, c"module_init".as_ptr()) };
+    if symbol.is_null() {
+        return unsafe { numeric_error(api, b"notAModule\0", b"dylib has no module_init") };
+    }
+    // SAFETY: dlsym returned the module_init symbol from a live handle; all
+    // Birnam module initializers share this frozen C ABI and receive the
+    // process-owned IdApi with no state payload for this loader path.
+    let init: ModuleInitFn = unsafe { core::mem::transmute(symbol) };
+    unsafe { init(runtime().api as *mut IdApi, ptr::null_mut()) };
+    self_object
+}
+
 unsafe extern "C" fn system_gc(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
@@ -1204,6 +1239,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
     let read_file = unsafe { intern(api, b"readFile:\0") };
     let write_file = unsafe { intern(api, b"writeFile:contents:\0") };
     let get_env = unsafe { intern(api, b"getEnv:\0") };
+    let load_module = unsafe { intern(api, b"loadModule:\0") };
     let gc = unsafe { intern(api, b"gc\0") };
     let live_objects = unsafe { intern(api, b"liveObjects\0") };
     let auto_gc = unsafe { intern(api, b"autoGc:\0") };
@@ -1216,6 +1252,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
         (api.method)(system_vt, read_file, system_read_file);
         (api.method)(system_vt, write_file, system_write_file);
         (api.method)(system_vt, get_env, system_get_env);
+        (api.method)(system_vt, load_module, system_load_module);
         (api.method)(system_vt, gc, system_gc);
         (api.method)(system_vt, live_objects, system_live_objects);
         (api.method)(system_vt, auto_gc, system_auto_gc);

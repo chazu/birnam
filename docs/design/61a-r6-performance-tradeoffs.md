@@ -461,3 +461,11 @@ controls, and answer the System singleton. Focused selector, safe no-stack
 collection, and toggle checks passed at 1/1; the complete R6 rerun remained
 42/42 with no benchmark allowance change. Source loading, process controls,
 self-hosted handlers, and canonical prelude cutover remain open.
+
+The Rust `loadModule:` slice now resolves a String path through the frozen
+`dlopen`/`dlsym` IdApi hooks, rejects invalid paths and dylibs without
+`module_init` with kinded Errors, and invokes a valid module initializer with
+the process-owned IdApi. Focused self-load and missing-path checks passed at
+1/1; the full R6 rerun remained 42/42 with no benchmark allowance change.
+Source loading, process controls, self-hosted handlers, and canonical prelude
+cutover remain open.
