@@ -422,3 +422,13 @@ R3.12 worker error-corpus checkpoint (2026-07-24):
 - `daccb77` pins the R6 focused aggregate to `51/51` and the Rust Isolate
   target to three tests. Full R6 passes with the prior exact verify exception
   and only the two accepted benchmark crossings.
+
+R3.13 Rust Isolate module-family checkpoint (2026-07-24):
+
+- `afcde0c` adds Rust `module_init`, the four exported Isolate family names,
+  their frozen layouts/selectors, and structured `rustWorkerHostPending`
+  failures. The Rust fixture remains non-canonical: process registry, spawn,
+  timeout, stop/reap, and termination ownership still belong to the Zig rung.
+- Dynamic Debug/ReleaseSafe probes verify initialization, family exports, and
+  pending-failure shape. Worker transport/error tests remain green; host
+  lifecycle parity and canonical selection are not yet implemented.

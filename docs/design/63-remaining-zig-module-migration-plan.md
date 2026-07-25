@@ -608,6 +608,19 @@ remain the next implementation slices.
   verify exception and only `query.aggregate +5.8%` plus
   `compile.stage1-stdlib +11.9%` accepted in the benchmark comparator.
 
+### R3.13 Rust Isolate module-family checkpoint (2026-07-24)
+
+- `afcde0c` adds Rust `module_init` and the exported `IsolateVt`, `Isolate`,
+  `IsolateHandleVt`, and `IsolateFailureVt` family shapes with the frozen
+  payload/layout and failure selectors. Until the process registry, spawn,
+  timeout, and termination owners are ported, `start:selector:image:` and
+  handle requests return a structured `rustWorkerHostPending` failure; no
+  canonical host switch is claimed.
+- The installed probe now verifies module initialization, family exports, and
+  the structured pending failure in Debug and ReleaseSafe. The Rust worker
+  transport/error corpus remains green; host lifecycle parity and canonical
+  selection are still pending.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
