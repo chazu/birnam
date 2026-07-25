@@ -1655,6 +1655,22 @@ post-switch image/project observation window closes.
   source remains source-tested only until a Vector/IdApi integration fixture
   supplies the real factory and runtime shims.
 
+### R5.10 Aggregate Rust-TCC validation checkpoint (2026-07-25)
+
+- `bc88dda` extends the non-production Rust-TCC bridge test to a complete
+  aggregate wrapper. The generated nested Vector unmarshal/marshal helpers,
+  receiver-first aggregate call, scalar argument, and aggregate result now
+  compile, relocate, and expose `__shim` through the same embedded TCC owner.
+- This test caught and fixed two generator defects before the checkpoint was
+  accepted: aggregate field unmarshal emitted an invalid declaration instead
+  of an assignment, and integer aggregate boxing omitted a closing parenthesis.
+  The source generator now has a real compile/relocate check rather than only
+  substring assertions for this path.
+- Nineteen locked offline Alien tests, the Rust TCC tests, and both crates'
+  `clippy -D warnings` pass. The bridge remains test-only; live Vector/IdApi
+  integration, wrapper installation, callbacks, and canonical Alien selection
+  are still future R5 steps.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
