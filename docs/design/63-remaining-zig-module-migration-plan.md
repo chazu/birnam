@@ -1056,6 +1056,28 @@ remain the next implementation slices.
   open. This probe deliberately preserves the Zig Relational implementation as
   the behavioral authority and rollback path.
 
+### R4.17 Rust Relational grouped-aggregate checkpoint (2026-07-25)
+
+- `6341cbc` adds the authority-free grouped aggregate kernel and dynamic probe.
+  Grouped probe patterns carry explicit variable identities so independent
+  group/value positions cannot be conflated by the earlier position-based
+  projection ABI. The adapter copies a synchronous Store snapshot, evaluates
+  two positive clauses left-to-right, preserves first group appearance, dedups
+  values under the frozen value law, and returns a flat caller-owned result
+  array rather than a Rust Map.
+- The pure kernel and cross-floor corpus cover distinct `sum` and `count`
+  results for two groups, duplicate values, deterministic group order,
+  capacity rejection, and invalid aggregate operation. Both Rust Store and Zig
+  Store rollback targets report `13/13`.
+- `560af6f` advances the R6 focused boundary to `78/78` and requires both
+  relational targets to report exactly thirteen passing tests. The full R6 gate
+  passes with optimized verify green, and the comparator remains at zero
+  missing/unusable cases with exactly `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` accepted.
+- Canonical grouped `Map` materialization, full rule-definition semantics, and
+  canonical Rust Relational selection remain open; no Store or collection
+  authority has moved in this probe.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
