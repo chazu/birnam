@@ -1340,6 +1340,20 @@ remain the next implementation slices.
   parameter/variable-scope semantics, and canonical Rust Relational selection
   remain open.
 
+### R4.34 Rust Relational pull-materialization checkpoint (2026-07-25)
+
+- `5bd0e57` installs `pull:spec:`. The adapter parses the shared Vector pull
+  tree, resolves `:many` through Store's `cardinality:`, copies the Store
+  snapshot once, and recursively materializes leaf and reference results using
+  the shared Map/Vector families. It does not retain a Rust snapshot or bypass
+  Store authority.
+- The cross-floor corpus now verifies a scalar leaf and a nested reference
+  pull (`planner_high` score `20`, nested friend score `5`). Rust unit tests
+  remain `17/17`; both dynamic targets remain `14/14`.
+- Image-triggered rebuild, arbitrary parameter/variable-scope semantics, and
+  canonical Rust Relational selection remain open; pull GC/reentry stress must
+  still be added before the R4 exit gate.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
