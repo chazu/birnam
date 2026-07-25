@@ -1597,6 +1597,22 @@ post-switch image/project observation window closes.
   stable declaration output, then compile it through the existing Rust TCC
   boundary.
 
+### R5.6 Scalar wrapper-shim checkpoint (2026-07-25)
+
+- `0b8e09c` extends the deterministic generator with scalar-only method-ABI
+  bodies. The generated shim maps the receiver to the first C argument,
+  indexes remaining arguments, checks exact method arity, unboxes the frozen
+  scalar classes, frees temporary string arguments after the call, and boxes
+  integer/unsigned/float/string/pointer/void results through the existing
+  `birnam_*` runtime declarations.
+- Aggregate arguments and returns fail explicitly with
+  `UnsupportedAggregateShim`; no Vector layout, IdApi pointer, callback, or GC
+  authority has been introduced. Fourteen locked offline crate tests and
+  `clippy -D warnings` pass.
+- The generated body is still not installed or selected as Alien runtime code.
+  Aggregate Vector marshalling and compilation through the existing Rust TCC
+  boundary remain the next R5 seams.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
