@@ -1613,6 +1613,20 @@ post-switch image/project observation window closes.
   Aggregate Vector marshalling and compilation through the existing Rust TCC
   boundary remain the next R5 seams.
 
+### R5.7 Aggregate Vector marshalling checkpoint (2026-07-25)
+
+- `6bd52ee` adds deterministic generated-C helpers for every parsed aggregate:
+  `__unmN` checks Vector `size` and each `at:` element before untagging nested
+  structs, scalar fields, or fixed arrays; `__mkN` builds fresh Vectors through
+  `new`/`add:` and recursively handles nested aggregates and arrays.
+- Aggregate fields containing StringPointer or Void are rejected before code
+  emission, and aggregate references are validated against the parsed
+  post-order table. The helper source carries no IdApi, allocator, callback,
+  or GC state; a wrapper will still decide how a failed unmarshal answers nil.
+- Sixteen locked offline crate tests and `clippy -D warnings` pass. The next
+  seam is composing these helpers into a complete aggregate wrapper and then
+  compiling generated C through the existing TCC boundary.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
