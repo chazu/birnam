@@ -1008,6 +1008,22 @@ struct HeapPreflight {
     relocations: HashMap<usize, u32>,
 }
 
+unsafe fn runtime_oop_is_inline(api: &IdApi, object: Oop) -> bool {
+    if object.is_null()
+        || object == api.nilObj
+        || object == api.trueObj
+        || object == api.falseObj
+        || unsafe { (api.isSmallInt)(object) } != 0
+        || unsafe { (api.isFloat)(object) } != 0
+    {
+        return true;
+    }
+    let vtable = unsafe { (api.vtableOf)(object) };
+    vtable == api.symbol_vt
+        || vtable == api.string_vt
+        || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
+}
+
 impl HeapPreflight {
     fn new() -> Self {
         Self {
@@ -1041,21 +1057,36 @@ impl HeapPreflight {
         let words = payload_size / core::mem::size_of::<usize>();
         for index in 0..words {
             let kind = unsafe { (api.slotKind)(vtable, index) };
-            if kind != birnam_abi::SLOT_RAW && kind != birnam_abi::SLOT_CODE {
+            if kind != birnam_abi::SLOT_RAW
+                && kind != birnam_abi::SLOT_OOP
+                && kind != birnam_abi::SLOT_CODE
+            {
                 return None;
             }
         }
         let id = u32::try_from(self.objects.len()).ok()?;
         self.relocations.insert(key, id);
         self.objects.push(key);
+        for index in 0..words {
+            if unsafe { (api.slotKind)(vtable, index) } != birnam_abi::SLOT_OOP {
+                continue;
+            }
+            let address = (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
+            // SAFETY: the layout marks this initialized payload word as an Oop.
+            let child = unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
+            if unsafe { runtime_oop_is_inline(api, child) } {
+                continue;
+            }
+            unsafe { self.intern(api, child) }?;
+        }
         Some(id)
     }
 
-    unsafe fn finish(&self, api: &IdApi) -> Option<Vec<u8>> {
+    unsafe fn finish(&mut self, api: &IdApi) -> Option<Vec<u8>> {
         let mut payload = Vec::new();
         payload.extend_from_slice(&u32::try_from(self.objects.len()).ok()?.to_le_bytes());
-        for object in &self.objects {
-            let object = *object as Oop;
+        for object_index in 0..self.objects.len() {
+            let object = self.objects[object_index] as Oop;
             let vtable = unsafe { (api.vtableOf)(object) };
             let (vtable, name) =
                 if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(vtable)) } {
@@ -1077,9 +1108,20 @@ impl HeapPreflight {
                 }
                 let address =
                     (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
-                // SAFETY: the preflight checked payload size and raw/code layout.
-                let word = unsafe { core::ptr::read_unaligned(address.cast::<u64>()) };
-                payload.extend_from_slice(&word.to_le_bytes());
+                if kind == birnam_abi::SLOT_OOP {
+                    // SAFETY: the preflight checked payload size and Oop layout.
+                    let child =
+                        unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
+                    let mut field = FieldEncoder::new();
+                    if !unsafe { encode_runtime_oop(api, &mut field, child, self) } {
+                        return None;
+                    }
+                    payload.extend_from_slice(field.as_bytes());
+                } else {
+                    // SAFETY: the preflight checked payload size and raw layout.
+                    let word = unsafe { core::ptr::read_unaligned(address.cast::<usize>()) } as u64;
+                    payload.extend_from_slice(&word.to_le_bytes());
+                }
             }
         }
         Some(payload)
@@ -1281,7 +1323,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
-    let Some(collection) = collection else {
+    let Some(mut collection) = collection else {
         return (0, 0, false);
     };
     let counts = (collection.kept, collection.rejected, unsafe {

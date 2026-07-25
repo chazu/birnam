@@ -89,6 +89,17 @@ test "Rust Image shell preserves report layout and selector surface" {
     const fixture_attribute = api.intern("rust_image_fixture_value");
     _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ fixture_entity, fixture_attribute, fixture });
     defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ fixture_entity, fixture_attribute, fixture });
+    const nested_vt = api.proto(api.object_vt);
+    const nested_kinds = [_]u8{idapi.slot_oop};
+    api.setLayout(nested_vt, &nested_kinds, nested_kinds.len, idapi.slot_raw);
+    _ = api.exportObj("RustImageNestedFixtureVt", nested_vt);
+    const nested = api.alloc(nested_vt, @sizeOf(usize));
+    const nested_words: [*]usize = @ptrCast(@alignCast(nested));
+    nested_words[0] = @intFromPtr(fixture.?);
+    const nested_entity = api.intern("rust_image_nested_fixture_entity");
+    const nested_attribute = api.intern("rust_image_nested_fixture_value");
+    _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ nested_entity, nested_attribute, nested });
+    defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ nested_entity, nested_attribute, nested });
     const identity = send(api, system, "imageCompositionIdentity", &.{});
     var identity_len: usize = 0;
     const identity_bytes = api.stringBytes(identity, &identity_len);
