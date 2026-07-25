@@ -67,7 +67,7 @@ if [ "$functional_status" -ne 0 ]; then
     "Build Summary: 111/113 steps succeeded; 1 failed"
     "test-install transitive failure"
     "test-native-rung-harness transitive failure"
-    "Build Summary: 98/100 steps succeeded; 1 failed; 74/74 tests passed"
+    "Build Summary: 98/100 steps succeeded; 1 failed; 76/76 tests passed"
   )
   for marker in "${known_functional_markers[@]}"; do
     marker_count=$(grep -F -c -- "$marker" "$functional" || true)
@@ -83,9 +83,9 @@ fi
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded;( [0-9]+ failed;)? 74/74 tests passed$' "$functional" || true)
+focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded;( [0-9]+ failed;)? 76/76 tests passed$' "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
-  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 74/74 passing tests" >&2
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 76/76 passing tests" >&2
   exit 1
 }
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
@@ -159,9 +159,9 @@ rust_relational_test_count=$(awk '
 /^test-rust-relational success$/ { seen=1; next }
 seen && /^\+- run test / { print; exit }
 seen && /^[^ ]/ { exit }
-' "$functional" | grep -Ec '^\+- run test 11 passed ' || true)
+' "$functional" | grep -Ec '^\+- run test 12 passed ' || true)
 [ "$rust_relational_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Relational callback target no longer has 11 passing tests" >&2
+  echo "r6-acceptance: Rust Relational callback target no longer has 12 passing tests" >&2
   exit 1
 }
 rust_relational_zig_store_success_count=$(grep -Fc 'test-rust-relational-zig-store success' "$functional" || true)
@@ -173,9 +173,9 @@ rust_relational_zig_store_test_count=$(awk '
 /^test-rust-relational-zig-store success$/ { seen=1; next }
 seen && /^\+- run test / { print; exit }
 seen && /^[^ ]/ { exit }
-' "$functional" | grep -Ec '^\+- run test 11 passed ' || true)
+' "$functional" | grep -Ec '^\+- run test 12 passed ' || true)
 [ "$rust_relational_zig_store_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Relational × Zig Store target no longer has 11 passing tests" >&2
+  echo "r6-acceptance: Rust Relational × Zig Store target no longer has 12 passing tests" >&2
   exit 1
 }
 rust_prelude_io_success_count=$(grep -Ec '^test-rust-prelude-io (success|cached)$' "$functional" || true)
@@ -236,7 +236,7 @@ cat "$verify"
     "error: the following command exited with error code 134:"
     "Build Summary: 111/113 steps succeeded; 1 failed"
     "test-install transitive failure"
-    "Build Summary: 260/264 steps succeeded; 2 failed; 480/486 tests passed; 6 skipped"
+    "Build Summary: 260/264 steps succeeded; 2 failed; 482/488 tests passed; 6 skipped"
     "verify transitive failure"
   )
   for marker in "${known_verify_markers[@]}"; do
