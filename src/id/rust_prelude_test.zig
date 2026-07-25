@@ -124,10 +124,8 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const loop_vt = api.proto(api.object_vt);
     api.method(loop_vt, api.intern("value:"), &collectInteger);
     const loop_block = api.alloc(loop_vt, 0);
-    try std.testing.expectEqual(
-        three,
-        send(api, three, "to:do:", &.{ api.mkSmallInt(5), loop_block }),
-    );
+    const loop_result = send(api, three, "to:do:", &.{ api.mkSmallInt(5), loop_block });
+    try std.testing.expectEqual(three, loop_result);
     try std.testing.expectEqual(@as(i64, 12), integer_loop_sum);
 
     const word = api.mkWord(0xDEAD_BEEF_CAFE_F00D);
@@ -135,9 +133,12 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var word_text_len: usize = 0;
     const word_text = api.stringBytes(send(api, word, "printString", &.{}), &word_text_len);
     try std.testing.expectEqualStrings("0xdeadbeefcafef00d", word_text[0..word_text_len]);
-    try std.testing.expectEqual(api.trueObj, send(api, word, "=", &.{api.mkWord(0xDEAD_BEEF_CAFE_F00D)}));
-    try std.testing.expectEqual(api.falseObj, send(api, word, "=", &.{three}));
-    try std.testing.expectEqual(api.trueObj, send(api, api.mkWord(0), "isNull", &.{}));
+    const word_equal = send(api, word, "=", &.{api.mkWord(0xDEAD_BEEF_CAFE_F00D)});
+    const word_not_equal = send(api, word, "=", &.{three});
+    const word_null = send(api, api.mkWord(0), "isNull", &.{});
+    try std.testing.expectEqual(api.trueObj, word_equal);
+    try std.testing.expectEqual(api.falseObj, word_not_equal);
+    try std.testing.expectEqual(api.trueObj, word_null);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(send(api, api.mkWord(42), "asInteger", &.{})));
     const word_overflow = send(api, word, "asInteger", &.{});
     try std.testing.expectEqual(api.intern("overflow"), send(api, word_overflow, "kind", &.{}));
@@ -329,10 +330,8 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         rust_prelude_env_bytes[0..rust_prelude_env_len].ptr,
         rust_prelude_env_len,
     );
-    try std.testing.expectEqual(
-        system,
-        send(api, system, "loadModule:", &.{rust_prelude_module_path}),
-    );
+    const reload_result = send(api, system, "loadModule:", &.{rust_prelude_module_path});
+    try std.testing.expectEqual(system, reload_result);
     const not_a_module_path_bytes = "/definitely/missing/birnam-module.dylib";
     const not_a_module_path = api.mkString(not_a_module_path_bytes.ptr, not_a_module_path_bytes.len);
     const not_a_module_error = send(api, system, "loadModule:", &.{not_a_module_path});
@@ -397,7 +396,8 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const body = api.alloc(body_vt, 0);
     api.method(condition_vt, api.intern("value"), &loopCondition);
     api.method(body_vt, api.intern("value"), &loopBody);
-    try std.testing.expectEqual(api.nilObj, send(api, condition, "whileTrue:", &.{body}));
+    const non_boolean_condition = send(api, condition, "whileTrue:", &.{body});
+    try std.testing.expectEqual(api.intern("mustBeBoolean"), send(api, non_boolean_condition, "kind", &.{}));
     try std.testing.expectEqual(@as(usize, 3), condition_calls);
     try std.testing.expectEqual(@as(usize, 2), body_calls);
 
