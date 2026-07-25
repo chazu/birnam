@@ -282,5 +282,7 @@ R2 standalone Error implementation checkpoint (2026-07-24):
   are retained rather than duplicated.
 - `bc8c119` executes isolated Rust→Zig and Zig→Rust preload-order runs, with
   both orders retaining one family and stable export/payload identity.
-- The latest full R6 run remains green at `44/44`, with the exact recorded
+- `3edc2b6` added both Rust Error preload-order runs to the R6 latest-tests pin
+  and requires both root-level integration results.
+- The latest full R6 run remains green at `46/46`, with the exact recorded
   verify exception and the two accepted benchmark crossings unchanged.

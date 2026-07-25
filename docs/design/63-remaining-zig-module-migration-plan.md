@@ -379,7 +379,9 @@ post-switch observation are recorded.
   payload size, and export identity across the mixed reload path.
 - `bc8c119` runs the same corpus in isolated Rust→Zig and Zig→Rust preload
   orders, rejecting duplicate-family behavior in either supported order.
-- A fresh `mise run r6-acceptance` passed at `44/44`; optimized verify still
+- `3edc2b6` added both Rust Error preload-order runs to the R6 latest-tests
+  pin and hardened the gate to require both root-level integration results.
+- A fresh `mise run r6-acceptance` passed at `46/46`; optimized verify still
   matches only the recorded `sortedModules` fixture exception, and the
   comparator still reports exactly the accepted `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` crossings.
