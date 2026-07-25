@@ -1647,6 +1647,10 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_COLLECTION_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_collection_rust.dylib"),
     );
+    run_rust_alien_live.setEnvironmentVariable(
+        "BIRNAM_RUST_ERROR_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_error_rust.dylib"),
+    );
     run_rust_alien_live.step.dependOn(bootstrap_install);
     const test_rust_alien_live_step = b.step(
         "test-rust-alien-live",

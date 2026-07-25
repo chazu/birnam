@@ -111,7 +111,8 @@ fn loader_error(api: &IdApi, error: LoaderError, operation: &[u8]) -> Oop {
         | LoaderError::EmbeddedNul
         | LoaderError::EmptySymbol
         | LoaderError::SymbolEmbeddedNul => b"typeMismatch\0".as_slice(),
-        LoaderError::OpenFailed | LoaderError::SymbolNotFound => b"loadFailed\0".as_slice(),
+        LoaderError::OpenFailed => b"loadFailed\0".as_slice(),
+        LoaderError::SymbolNotFound => b"symbolNotFound\0".as_slice(),
     };
     let mut message = Vec::with_capacity(operation.len() + 32);
     message.extend_from_slice(operation);

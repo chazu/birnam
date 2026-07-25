@@ -1,9 +1,8 @@
 //! Focused live-owner proof for the Rust Alien R5 slices.
 //!
-//! This is intentionally narrower than the full Zig Alien corpus: the Rust
-//! implementation currently owns loader state and generated wrapper
-//! installation, while callbacks, raw buffers, and image replay remain later
-//! migration slices.
+//! This remains narrower than the full Zig Alien corpus, but covers the live
+//! loader, generated wrappers, callbacks, raw buffers, ABI corpus, and
+//! kinded hostile-input failures owned by the Rust implementation.
 
 const std = @import("std");
 const floor = @import("floor_adapter_test.zig");
@@ -68,7 +67,7 @@ fn retainExportedFixtures() void {
     inline for (fixtures) |fixture| std.mem.doNotOptimizeAway(fixture);
 }
 
-var retained_handles: [3]?*anyopaque = .{ null, null, null };
+var retained_handles: [4]?*anyopaque = .{ null, null, null, null };
 var retained_count: usize = 0;
 
 fn loadModule(
@@ -154,6 +153,12 @@ test "Rust Alien owns loader state and installs a generated scalar wrapper" {
         "BIRNAM_RUST_COLLECTION_DYLIB",
         "birnam_collection_rust_identity",
         "rust-collection-r1-vector",
+    );
+    loadModule(
+        api,
+        "BIRNAM_RUST_ERROR_DYLIB",
+        "birnam_error_rust_identity",
+        "rust-error-r2-core",
     );
     loadModule(
         api,
@@ -395,4 +400,51 @@ test "Rust Alien live ABI corpus covers scalar, pointer, void, and fixed-array a
     });
     const line_sum = api.send(line, api.intern("rustLine"), &[_]Oop{}, 0);
     try std.testing.expectEqual(@as(i64, 13), api.smallIntValue(line_sum));
+}
+
+fn isError(api: *idapi.IdApi, value: Oop) bool {
+    return api.send(value, api.intern("isError"), &[_]Oop{}, 0) == api.trueObj;
+}
+
+fn errorKind(api: *idapi.IdApi, value: Oop) Oop {
+    return api.send(value, api.intern("kind"), &[_]Oop{}, 0);
+}
+
+test "Rust Alien hostile signatures fail closed with kinded errors" {
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const wrap_selector = api.intern("wrap:signature:as:on:");
+    const object_vt = api.proto(api.object_vt);
+
+    const malformed = [_][]const u8{ "l q", "", "l {ll", "l {s}", "l 3i" };
+    for (malformed, 0..) |signature, index| {
+        var selector_buf: [32]u8 = undefined;
+        const selector = try std.fmt.bufPrintZ(&selector_buf, "badRustAlien{d}", .{index});
+        const result = api.send(
+            alien,
+            wrap_selector,
+            &[_]Oop{ str(api, "strlen"), str(api, signature), api.intern(selector), object_vt },
+            4,
+        );
+        try std.testing.expect(isError(api, result));
+        try std.testing.expectEqual(api.intern("badSignature"), errorKind(api, result));
+    }
+
+    const missing = api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_missing"), str(api, "l l"), api.intern("missingRustAlien"), object_vt },
+        4,
+    );
+    try std.testing.expect(isError(api, missing));
+    try std.testing.expectEqual(api.intern("symbolNotFound"), errorKind(api, missing));
+
+    const embedded_nul = api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "strlen\x00ignored"), str(api, "l s"), api.intern("nulRustAlien"), object_vt },
+        4,
+    );
+    try std.testing.expect(isError(api, embedded_nul));
+    try std.testing.expectEqual(api.intern("typeMismatch"), errorKind(api, embedded_nul));
 }
