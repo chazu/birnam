@@ -2150,6 +2150,13 @@ pub fn build(b: *std.Build) void {
             install_rust_alien.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_alien.step);
             bootstrap_install.dependOn(&install_rust_alien.step);
+            // Zig remains the canonical Alien owner until the complete R5
+            // callback/buffer/ABI exit gate authorizes a Rust switch. Rust
+            // floor installs still need this canonical name while the Rust
+            // Alien remains an explicit rollback/probe fixture.
+            const install_zig_alien_selected = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_alien_selected.step);
+            bootstrap_install.dependOn(&install_zig_alien_selected.step);
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
