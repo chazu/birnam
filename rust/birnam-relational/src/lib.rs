@@ -7,14 +7,17 @@
 
 pub mod oop;
 
-use birnam_abi::{IdApi, Oop};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.3-kernel\0";
+const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.4-bridge\0";
 static API: OnceLock<usize> = OnceLock::new();
+static ACTIVE_PROBE_BLOCK: AtomicUsize = AtomicUsize::new(0);
+static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Relational: {message}");
@@ -36,6 +39,7 @@ unsafe fn bring_up(api: *mut IdApi) {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct ClassifiedValue {
     pub tag: u8,
     pub reserved: [u8; 7],
@@ -47,6 +51,60 @@ pub struct ClassifiedValue {
 
 const _: () = assert!(size_of::<ClassifiedValue>() == 40);
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ClassifiedTriple {
+    pub entity: ClassifiedValue,
+    pub attribute: ClassifiedValue,
+    pub value: ClassifiedValue,
+}
+
+const _: () = assert!(size_of::<ClassifiedTriple>() == 120);
+
+fn record(value: Value) -> ClassifiedValue {
+    let mut record = ClassifiedValue {
+        tag: 0,
+        reserved: [0; 7],
+        integer: 0,
+        float: 0.0,
+        identity: 0,
+        byte_len: 0,
+    };
+    match value {
+        Value::Identity(identity) => record.identity = identity,
+        Value::Integer(integer) => {
+            record.tag = 1;
+            record.integer = integer;
+        }
+        Value::Float(float) => {
+            record.tag = 2;
+            record.float = float;
+        }
+        Value::String(string) => {
+            record.tag = 3;
+            record.byte_len = string.len();
+        }
+    }
+    record
+}
+
+unsafe extern "C" fn mark_probe_root(mark: MarkFn) {
+    let block = ACTIVE_PROBE_BLOCK.load(Ordering::Acquire);
+    if block != 0 {
+        // SAFETY: the callback block is allocated by the live IdApi and remains
+        // active until the synchronous Store send returns.
+        unsafe { mark(block as Oop) };
+    }
+}
+
+fn register_probe_root(api: &IdApi) {
+    ROOT_REGISTERED.get_or_init(|| unsafe {
+        // SAFETY: the process floor owns this root-provider registration for the
+        // lifetime of the loaded Rust Relational module.
+        (api.gcRegisterRootProvider)(mark_probe_root);
+    });
+}
+
 /// Identifies the explicit Rust Relational probe; it is not canonical yet.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_relational_rust_identity() -> *const c_char {
@@ -57,6 +115,12 @@ pub extern "C" fn birnam_relational_rust_identity() -> *const c_char {
 ///
 /// Return values: `0` success, `-1` null output, `-2` before `module_init`,
 /// `-3` malformed/unsupported object, and `-4` output byte capacity too small.
+///
+/// # Safety
+///
+/// `object` must be a live Oop for the duration of the call. On success,
+/// `output` must point to writable `ClassifiedValue` storage and `bytes` must
+/// point to `capacity` writable bytes when a nonempty String is classified.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_relational_rust_classify(
     object: Oop,
@@ -76,48 +140,163 @@ pub unsafe extern "C" fn birnam_relational_rust_classify(
     let Some(value) = (unsafe { oop::classify(api, object) }) else {
         return -3;
     };
-    let mut record = ClassifiedValue {
-        tag: 0,
-        reserved: [0; 7],
-        integer: 0,
-        float: 0.0,
-        identity: 0,
-        byte_len: 0,
-    };
-    match value {
-        Value::Identity(identity) => {
-            record.identity = identity;
-        }
-        Value::Integer(integer) => {
-            record.tag = 1;
-            record.integer = integer;
-        }
-        Value::Float(float) => {
-            record.tag = 2;
-            record.float = float;
-        }
+    match &value {
+        Value::Identity(_) | Value::Integer(_) | Value::Float(_) => {}
         Value::String(string) => {
-            if string.len() > capacity || (string.len() != 0 && bytes.is_null()) {
+            if string.len() > capacity || (!string.is_empty() && bytes.is_null()) {
                 return -4;
             }
             // SAFETY: the caller supplied a writable buffer of `capacity` bytes;
             // the length check above bounds this copy.
             unsafe { ptr::copy_nonoverlapping(string.as_ptr(), bytes, string.len()) };
-            record.tag = 3;
-            record.byte_len = string.len();
         }
     }
+    let record = record(value);
     // SAFETY: output is non-null and points to caller-owned storage for the
     // frozen record layout.
     unsafe { ptr::write(output, record) };
     0
 }
 
+struct ProbeCollector {
+    api: *const IdApi,
+    output: *mut ClassifiedTriple,
+    capacity: usize,
+    written: usize,
+    status: i32,
+}
+
+unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    if self_object.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: the callback vtable has one raw payload slot containing the
+    // synchronous collector address installed by collect_live.
+    let collector_pointer = unsafe { *(self_object.cast::<*mut ProbeCollector>()) };
+    if collector_pointer.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: collect_live keeps this stack collector alive until Store's send
+    // and every callback have returned.
+    let collector = unsafe { &mut *collector_pointer };
+    if collector.status != 0 {
+        return unsafe { (*collector.api).nilObj };
+    }
+    // SAFETY: the frozen Store callback supplies exactly three readable Oops.
+    if count != 3 {
+        collector.status = -3;
+        return unsafe { (*collector.api).nilObj };
+    }
+    let Some(args) = (unsafe { borrowed_oop_args(args, count) }) else {
+        collector.status = -3;
+        return unsafe { (*collector.api).nilObj };
+    };
+    if collector.written >= collector.capacity {
+        collector.status = -5;
+        return unsafe { (*collector.api).nilObj };
+    }
+    // SAFETY: module_init records the process-owned IdApi for the module life.
+    let api = unsafe { &*collector.api };
+    let Some(entity) = (unsafe { oop::classify(api, args[0]) }) else {
+        collector.status = -4;
+        return api.nilObj;
+    };
+    let Some(attribute) = (unsafe { oop::classify(api, args[1]) }) else {
+        collector.status = -4;
+        return api.nilObj;
+    };
+    let Some(value) = (unsafe { oop::classify(api, args[2]) }) else {
+        collector.status = -4;
+        return api.nilObj;
+    };
+    // SAFETY: collect_live validates output/capacity before entering Store.
+    unsafe {
+        ptr::write(
+            collector.output.add(collector.written),
+            ClassifiedTriple {
+                entity: record(entity),
+                attribute: record(attribute),
+                value: record(value),
+            },
+        );
+    }
+    collector.written += 1;
+    api.nilObj
+}
+
+/// Enumerate the current Store snapshot through the frozen callback protocol.
+///
+/// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
+/// output pointers, `-4` an unsupported/malformed Oop, `-5` insufficient output
+/// capacity, and `-6` failure to allocate the temporary callback object.
+///
+/// # Safety
+///
+/// `store` must be a live Store object whose `liveTriplesDo:` callback follows
+/// the frozen IdApi protocol. `output` and `written` must point to caller-owned
+/// writable storage for the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_collect_live(
+    store: Oop,
+    output: *mut ClassifiedTriple,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) || store.is_null() {
+        return -3;
+    }
+    let Some(api_address) = API.get() else {
+        return -2;
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let callback_vt = unsafe { (api.proto)(api.object_vt) };
+    if callback_vt.is_null() {
+        return -6;
+    }
+    let callback_selector = unsafe { (api.intern)(c"value:value:value:".as_ptr()) };
+    // SAFETY: the callback object has one raw payload slot holding a stack
+    // collector address and never exposes a Rust reference to the floor.
+    unsafe {
+        (api.setLayout)(callback_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        (api.method)(callback_vt, callback_selector, collect_live_triple);
+    }
+    let mut collector = ProbeCollector {
+        api: api as *const IdApi,
+        output,
+        capacity,
+        written: 0,
+        status: 0,
+    };
+    let callback = unsafe { (api.alloc)(callback_vt, size_of::<*mut ProbeCollector>()) };
+    if callback.is_null() {
+        return -6;
+    }
+    // SAFETY: callback payload was allocated with exactly one raw pointer slot.
+    unsafe { ptr::write(callback.cast::<*mut ProbeCollector>(), &mut collector) };
+    ACTIVE_PROBE_BLOCK.store(callback as usize, Ordering::Release);
+    let selector = unsafe { (api.intern)(c"liveTriplesDo:".as_ptr()) };
+    let arguments = [callback];
+    // SAFETY: Store owns the frozen liveTriplesDo: selector and synchronously
+    // invokes value:value:value: on the callback object.
+    unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    unsafe { *written = collector.written };
+    collector.status
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
+///
+/// # Safety
+///
+/// `api` must be the process-owned IdApi table supplied by the host, and the
+/// host must keep that table and its floor dylib alive for the module lifetime.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
     unsafe { bring_up(api) };
+    // SAFETY: module_init received the same process-owned IdApi recorded above.
+    register_probe_root(unsafe { &*api });
     ptr::null_mut()
 }
 

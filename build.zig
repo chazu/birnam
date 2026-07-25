@@ -919,11 +919,15 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_RELATIONAL_DYLIB",
         b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_relational.dylib", .{rust_floor_profile})),
     );
+    run_rust_relational_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
     run_rust_relational_tests.step.dependOn(bootstrap_install);
     run_rust_relational_tests.step.dependOn(&rust_floor_build.step);
     const test_rust_relational_step = b.step(
         "test-rust-relational",
-        "Exercise the explicit Rust Relational IdApi value-classification probe",
+        "Exercise the explicit Rust Relational IdApi and Store callback probes",
     );
     test_rust_relational_step.dependOn(&run_rust_relational_tests.step);
     test_step.dependOn(&run_rust_relational_tests.step);
