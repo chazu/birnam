@@ -1664,9 +1664,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    rust_image_shell_mod.addImport("tcc_build_options", rust_tcc_test_options.createModule());
+    rust_image_shell_mod.addIncludePath(b.path("vendor/libtcc-src"));
     const rust_image_shell_tests = b.addTest(.{ .root_module = rust_image_shell_mod });
     rust_image_shell_tests.rdynamic = true;
     rust_image_shell_tests.linkLibC();
+    rust_image_shell_tests.linkLibrary(libtcc_lib);
     const run_rust_image_shell = b.addRunArtifact(rust_image_shell_tests);
     run_rust_image_shell.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_rust_image_shell.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
