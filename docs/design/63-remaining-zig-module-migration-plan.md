@@ -1252,6 +1252,24 @@ remain the next implementation slices.
   arbitrary parameter/variable-scope semantics, canonical grouped/pull
   materialization, and canonical Rust Relational selection remain open.
 
+### R4.28 Rust Relational `findAll:where:` bridge checkpoint (2026-07-25)
+
+- `7f7676f` installs a bounded Rust `findAll:where:` callback alongside the
+  Rust `entity` bridge once Store, Collection, and LogicVar contracts are
+  present. The callback parses the live LogicVar/Vector query shape, copies
+  current Store triples and durable `__rule-name__` facts, rebuilds its
+  query-scoped rule cache, and materializes results through the shared Vector
+  `new`/`add:` protocol. The growing result Vector is rooted across floor sends;
+  no Rust fact or rule cache survives the call.
+- The cross-floor canonical query probe covers a three-edge parent query and
+  preserves Store order. Both dynamic targets remain `14/14`; the Rust pure
+  corpus remains `17/17`, and the accepted R6 boundary remains `80/80`,
+  `14/14`, optimized `486/492` with only the two existing benchmark
+  allowances.
+- This is not full Relational selection: `asOf`/`since`/`between`, aggregate,
+  grouped, pull, image-triggered rebuild, arbitrary parameter/variable-scope
+  semantics, and the canonical Rust Relational switch remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
