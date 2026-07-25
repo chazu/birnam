@@ -29,6 +29,12 @@ const EncodeOop = *const fn (
     usize,
     ?*usize,
 ) callconv(.c) c_int;
+const DecodeOop = *const fn (
+    ?*anyopaque,
+    ?[*]const u8,
+    usize,
+    ?*idapi.Oop,
+) callconv(.c) c_int;
 const ModuleInit = *const fn (?*anyopaque, ?*anyopaque) callconv(.c) ?*anyopaque;
 
 test "Rust Isolate exports the exact BISO header probe" {
@@ -98,6 +104,9 @@ test "Rust Isolate exports the exact BISO header probe" {
     const raw_encode_oop = api.dlsym(handle, "birnam_isolate_rust_encode_oop") orelse
         return error.RustIsolateOopEncoderMissing;
     const encode_oop: EncodeOop = @ptrCast(@alignCast(raw_encode_oop));
+    const raw_decode_oop = api.dlsym(handle, "birnam_isolate_rust_decode_oop") orelse
+        return error.RustIsolateOopDecoderMissing;
+    const decode_oop: DecodeOop = @ptrCast(@alignCast(raw_decode_oop));
     _ = driver;
     _ = boot_error;
     drain();
@@ -150,6 +159,42 @@ test "Rust Isolate exports the exact BISO header probe" {
     );
     try std.testing.expectEqual(@as(usize, 9), oop_len);
 
+    var decoded: idapi.Oop = null;
+    const scalar_int_wire = [_]u8{ 3, 0, 0, 0, 0, 0, 0, 0, 23 };
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode_oop(api, &scalar_int_wire, scalar_int_wire.len, &decoded),
+    );
+    try std.testing.expect(api.isSmallInt(decoded) != 0);
+    try std.testing.expectEqual(@as(i64, 23), api.smallIntValue(decoded));
+
+    const scalar_string_wire = [_]u8{ 5, 0, 0, 0, 3, 'a', 0, 'b' };
+    decoded = null;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode_oop(api, &scalar_string_wire, scalar_string_wire.len, &decoded),
+    );
+    var decoded_string_len: usize = 0;
+    const decoded_string_bytes = api.stringBytes(decoded, &decoded_string_len);
+    try std.testing.expectEqualSlices(u8, "a\x00b", decoded_string_bytes[0..decoded_string_len]);
+
+    const scalar_symbol_wire = [_]u8{ 6, 0, 0, 0, 5, 'h', 'e', 'l', 'l', 'o' };
+    decoded = null;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode_oop(api, &scalar_symbol_wire, scalar_symbol_wire.len, &decoded),
+    );
+    try std.testing.expectEqualStrings("hello", std.mem.span(api.symbolName(decoded)));
+
+    const scalar_float_wire = [_]u8{ 4, 0x3f, 0xf8, 0, 0, 0, 0, 0, 0 };
+    decoded = null;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode_oop(api, &scalar_float_wire, scalar_float_wire.len, &decoded),
+    );
+    try std.testing.expect(api.isFloat(decoded) != 0);
+    try std.testing.expectEqual(@as(f64, 1.5), api.floatValue(decoded));
+
     const collection_path = std.posix.getenv("BIRNAM_RUST_COLLECTION_DYLIB") orelse
         return error.MissingRustCollectionDylib;
     const collection_path_z = try std.heap.c_allocator.dupeZ(u8, collection_path);
@@ -176,6 +221,31 @@ test "Rust Isolate exports the exact BISO header probe" {
         0,   0, 0, 2,  'o',
         'k',
     }, oop_bytes[0..oop_len]);
+    decoded = null;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode_oop(api, oop_bytes[0..oop_len].ptr, oop_len, &decoded),
+    );
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(api.send(
+        decoded,
+        api.intern("size"),
+        &.{},
+        0,
+    )));
+    const vector_zero = [_]idapi.Oop{api.mkSmallInt(0)};
+    try std.testing.expectEqual(@as(i64, 11), api.smallIntValue(api.send(
+        decoded,
+        api.intern("at:"),
+        &vector_zero,
+        1,
+    )));
+    const vector_one = [_]idapi.Oop{api.mkSmallInt(1)};
+    var decoded_vector_string_len: usize = 0;
+    const decoded_vector_string = api.stringBytes(
+        api.send(decoded, api.intern("at:"), &vector_one, 1),
+        &decoded_vector_string_len,
+    );
+    try std.testing.expectEqualSlices(u8, "ok", decoded_vector_string[0..decoded_vector_string_len]);
 
     const map_global = api.import("Map");
     var map = api.send(map_global, api.intern("new"), &.{}, 0);
@@ -192,4 +262,38 @@ test "Rust Isolate exports the exact BISO header probe" {
         'r', 3,   0,   0,   0,
         0,   0,   0,   0,   42,
     }, oop_bytes[0..oop_len]);
+    decoded = null;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        decode_oop(api, oop_bytes[0..oop_len].ptr, oop_len, &decoded),
+    );
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(
+        decoded,
+        api.intern("size"),
+        &.{},
+        0,
+    )));
+    const decoded_key = api.intern("answer");
+    const decoded_key_args = [_]idapi.Oop{decoded_key};
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(api.send(
+        decoded,
+        api.intern("at:"),
+        &decoded_key_args,
+        1,
+    )));
+
+    oop_bytes[oop_len] = 0xff;
+    decoded = null;
+    try std.testing.expectEqual(
+        @as(c_int, 8),
+        decode_oop(api, oop_bytes[0 .. oop_len + 1].ptr, oop_len + 1, &decoded),
+    );
+    try std.testing.expectEqual(@as(idapi.Oop, null), decoded);
+
+    const unknown_tag = [_]u8{0xff};
+    try std.testing.expectEqual(
+        @as(c_int, 9),
+        decode_oop(api, &unknown_tag, unknown_tag.len, &decoded),
+    );
+    try std.testing.expectEqual(@as(idapi.Oop, null), decoded);
 }
