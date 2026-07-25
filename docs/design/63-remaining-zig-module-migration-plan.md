@@ -1783,6 +1783,20 @@ post-switch image/project observation window closes.
   initial parity slice; hostile signatures, broader platform ABI shapes,
   unload-after-wrapper, and child-abort coverage remain in the R5 exit work.
 
+### R5.17 Rust Alien hostile-input checkpoint (2026-07-25)
+
+- `c1ad6b4` loads the standalone Rust Error owner into the Rust Alien live
+  fixture and exercises malformed/empty/unclosed/unsupported signatures,
+  missing symbols, and embedded-NUL names. Every failure is checked as a
+  non-crashing, kinded Error (`badSignature`, `symbolNotFound`, or
+  `typeMismatch`). The missing-symbol mapping was corrected to preserve the
+  established Alien distinction from `loadFailed`.
+- `9b9f4c7` raises the sequential R6 Rust Alien sub-gate to `5/5`. Debug and
+  ReleaseSafe live targets pass, while the focused matrix remains `80/80` and
+  the full R6 comparator still records only the two accepted benchmark
+  tradeoffs. Broader platform ABI shapes, unload-after-wrapper, and
+  child-abort coverage remain in the R5 exit work.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
