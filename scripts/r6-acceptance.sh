@@ -20,10 +20,11 @@ python3 scripts/check-native-rung-baseline.py
 
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
-# canonical/rollback selection checks, optimized native-rung harness, and the
-# explicit Rust Codegen runtime and Rust-only Store callback boundaries. The full optimized verify below
-# remains the cross-layer acceptance gate; the focused set keeps failures
-# attributable to the latest replacement rung.
+# canonical/rollback selection checks (including Relational), optimized
+# native-rung harness, and the explicit Rust Codegen runtime and Rust-only
+# Store callback boundaries. The full optimized verify below remains the
+# cross-layer acceptance gate; the focused set keeps failures attributable to
+# the latest replacement rung.
 latest_tests=(
   test-rust-lang
   test-rust-lang-parity
@@ -35,6 +36,7 @@ latest_tests=(
   test-rust-codegen-zig-store
   test-rust-prelude
   test-rust-prelude-rust-error
+  test-relational-selection
   test-rust-isolate
   test-rust-relational
   test-rust-relational-zig-store
@@ -67,7 +69,7 @@ if [ "$functional_status" -ne 0 ]; then
     "Build Summary: 111/113 steps succeeded; 1 failed"
     "test-install transitive failure"
     "test-native-rung-harness transitive failure"
-    "Build Summary: 98/100 steps succeeded; 1 failed; 80/80 tests passed"
+    "Build Summary: 102/103 steps succeeded; 1 failed; 80/80 tests passed"
   )
   for marker in "${known_functional_markers[@]}"; do
     marker_count=$(grep -F -c -- "$marker" "$functional" || true)
@@ -136,6 +138,13 @@ seen && /^[^ ]/ { exit }
   echo "r6-acceptance: Rust Prelude/Rust Error test set no longer has 2 passing tests" >&2
   exit 1
 }
+
+relational_selection_success_count=$(grep -Ec '^test-relational-selection (success|cached)$' "$functional" || true)
+[ "$relational_selection_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Relational canonical-selection target was not executed" >&2
+  exit 1
+}
+
 rust_isolate_success_count=$(grep -Fc 'test-rust-isolate success' "$functional" || true)
 [ "$rust_isolate_success_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Isolate target was not executed" >&2
@@ -236,7 +245,7 @@ cat "$verify"
     "error: the following command exited with error code 134:"
     "Build Summary: 111/113 steps succeeded; 1 failed"
     "test-install transitive failure"
-    "Build Summary: 260/264 steps succeeded; 2 failed; 486/492 tests passed; 6 skipped"
+    "Build Summary: 263/267 steps succeeded; 2 failed; 486/492 tests passed; 6 skipped"
     "verify transitive failure"
   )
   for marker in "${known_verify_markers[@]}"; do
