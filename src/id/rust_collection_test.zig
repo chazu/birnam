@@ -37,6 +37,23 @@ fn addInteger(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
     return api.mkSmallInt(api.smallIntValue(args[0]) + api.smallIntValue(args[1]));
 }
 
+fn defaultInteger(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _args;
+    _ = _count;
+    return floor.api().mkSmallInt(777);
+}
+
+var key_value_sum: i64 = 0;
+
+fn addKeyAndValue(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    const api = floor.api();
+    key_value_sum += api.smallIntValue(args[0]) + api.smallIntValue(args[1]);
+    return api.nilObj;
+}
+
 test "Rust Collection vector protocol preserves persistent indexed values" {
     const api = floor.api();
     const path = std.posix.getenv("BIRNAM_RUST_COLLECTION_DYLIB") orelse
@@ -64,12 +81,20 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const node_vt = api.import("VectorNode") orelse return error.VectorNodeMissing;
     const range = api.import("Range") orelse return error.RangeMissing;
     const range_vt = api.import("RangeVt") orelse return error.RangeVtMissing;
+    const map = api.import("Map") orelse return error.MapMissing;
+    const map_vt = api.import("MapVt") orelse return error.MapVtMissing;
+    const map_node_vt = api.import("MapNode") orelse return error.MapNodeVtMissing;
     try std.testing.expectEqual(vector_vt, api.vtableOf(vector));
     try std.testing.expectEqual(range_vt, api.vtableOf(range));
+    try std.testing.expectEqual(map_vt, api.vtableOf(map));
     const probe_node = api.alloc(node_vt, 32) orelse return error.VectorNodeAllocationFailed;
     try std.testing.expectEqual(@as(usize, 32), api.objectPayloadSize(probe_node));
     const probe_range = api.alloc(range_vt, 16) orelse return error.RangeAllocationFailed;
     try std.testing.expectEqual(@as(usize, 16), api.objectPayloadSize(probe_range));
+    const probe_map = api.alloc(map_vt, 16) orelse return error.MapAllocationFailed;
+    try std.testing.expectEqual(@as(usize, 16), api.objectPayloadSize(probe_map));
+    const probe_map_node = api.alloc(map_node_vt, 32) orelse return error.MapNodeAllocationFailed;
+    try std.testing.expectEqual(@as(usize, 32), api.objectPayloadSize(probe_map_node));
 
     const first = send(api, vector, "add:", &.{api.mkSmallInt(10)});
     const second = send(api, first, "add:", &.{api.mkSmallInt(20)});
@@ -154,6 +179,63 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const range_joined = send(api, integer_range, ",", &.{second});
     try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(send(api, range_joined, "size", &.{})));
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, range_joined, "at:", &.{api.mkSmallInt(4)})));
+
+    const empty_map = send(api, map, "new", &.{});
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_map, "size", &.{})));
+    const map_one = send(api, empty_map, "at:put:", &.{ api.mkSmallInt(1), api.mkSmallInt(10) });
+    const map_two = send(api, map_one, "at:put:", &.{ api.mkSmallInt(2), api.mkSmallInt(20) });
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_map, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, map_one, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(send(api, map_two, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, map_two, "at:", &.{api.mkSmallInt(2)})));
+    try std.testing.expectEqual(api.trueObj, send(api, map_two, "includesKey:", &.{api.mkSmallInt(1)}));
+    try std.testing.expectEqual(api.falseObj, send(api, map_two, "includesKey:", &.{api.mkSmallInt(3)}));
+
+    const fallback_vt = api.proto(api.object_vt);
+    api.method(fallback_vt, api.intern("value"), &defaultInteger);
+    const fallback = api.alloc(fallback_vt, 0);
+    try std.testing.expectEqual(@as(i64, 777), api.smallIntValue(send(api, map_two, "at:ifAbsent:", &.{ api.mkSmallInt(99), fallback })));
+
+    const replaced = send(api, map_two, "at:put:", &.{ api.mkSmallInt(2), api.mkSmallInt(200) });
+    try std.testing.expectEqual(@as(i64, 2), api.smallIntValue(send(api, replaced, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, map_two, "at:", &.{api.mkSmallInt(2)})));
+    try std.testing.expectEqual(@as(i64, 200), api.smallIntValue(send(api, replaced, "at:", &.{api.mkSmallInt(2)})));
+
+    var many = empty_map;
+    var map_value: i64 = 0;
+    while (map_value < 50) : (map_value += 1) {
+        many = send(api, many, "at:put:", &.{ api.mkSmallInt(map_value), api.mkSmallInt(map_value * 10) }) orelse
+            return error.MapAssociationFailed;
+    }
+    try std.testing.expectEqual(@as(i64, 50), api.smallIntValue(send(api, many, "size", &.{})));
+    try std.testing.expectEqual(@as(i64, 490), api.smallIntValue(send(api, many, "at:", &.{api.mkSmallInt(49)})));
+    const map_keys = send(api, many, "keys", &.{});
+    const map_values = send(api, many, "values", &.{});
+    try std.testing.expect(send(api, map_keys, "indexOf:", &.{api.mkSmallInt(0)}) != api.nilObj);
+    try std.testing.expect(send(api, map_values, "indexOf:", &.{api.mkSmallInt(490)}) != api.nilObj);
+
+    sum = 0;
+    const map_block_vt = api.proto(api.object_vt);
+    api.method(map_block_vt, api.intern("value:"), &collectInteger);
+    const map_block = api.alloc(map_block_vt, 0);
+    try std.testing.expectEqual(many, send(api, many, "do:", &.{map_block}));
+    try std.testing.expectEqual(@as(i64, 12250), sum);
+    const map_fold = send(api, many, "inject:into:", &.{ api.mkSmallInt(0), fold_block });
+    try std.testing.expectEqual(@as(i64, 12250), api.smallIntValue(map_fold));
+
+    key_value_sum = 0;
+    const kv_block_vt = api.proto(api.object_vt);
+    api.method(kv_block_vt, api.intern("value:value:"), &addKeyAndValue);
+    const kv_block = api.alloc(kv_block_vt, 0);
+    try std.testing.expectEqual(many, send(api, many, "keysAndValuesDo:", &.{kv_block}));
+    try std.testing.expectEqual(@as(i64, 1225 + 12250), key_value_sum);
+
+    const map_rendered = send(api, map_two, "printString", &.{});
+    var map_rendered_len: usize = 0;
+    const map_rendered_bytes = api.stringBytes(map_rendered, &map_rendered_len);
+    try std.testing.expect(map_rendered_bytes[0] == '{' and map_rendered_bytes[map_rendered_len - 1] == '}');
+    try std.testing.expect(std.mem.indexOf(u8, map_rendered_bytes[0..map_rendered_len], "1 -> 10") != null);
+    try std.testing.expect(std.mem.indexOf(u8, map_rendered_bytes[0..map_rendered_len], "2 -> 20") != null);
 
     const empty_range = send(api, api.mkSmallInt(5), "to:", &.{api.mkSmallInt(3)});
     try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, empty_range, "size", &.{})));

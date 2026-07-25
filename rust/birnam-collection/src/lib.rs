@@ -12,10 +12,11 @@ use std::array;
 use std::sync::Arc;
 
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
+use core::ffi::{CStr, c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const BITS: usize = 5;
 const WIDTH: usize = 1 << BITS;
@@ -209,6 +210,9 @@ const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
 const VECTOR_NODE_NAME: &[u8] = b"VectorNode\0";
 const RANGE_NAME: &[u8] = b"Range\0";
 const RANGE_VT_NAME: &[u8] = b"RangeVt\0";
+const MAP_NAME: &[u8] = b"Map\0";
+const MAP_VT_NAME: &[u8] = b"MapVt\0";
+const MAP_NODE_NAME: &[u8] = b"MapNode\0";
 
 #[repr(C)]
 struct VecPayload {
@@ -226,6 +230,26 @@ struct RangePayload {
 }
 
 static RANGE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
+static MAP_LAYOUT: [u8; 2] = [birnam_abi::SLOT_OOP, birnam_abi::SLOT_RAW];
+static HNODE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
+
+const HNODE_BITMAP: u32 = 0;
+const HNODE_COLLISION: u32 = 1;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct HNodeHeader {
+    tag: u32,
+    n: u32,
+    hash: u32,
+    pad: u32,
+}
+
+#[repr(C)]
+struct MapPayload {
+    root: Oop,
+    count: usize,
+}
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -236,6 +260,10 @@ struct Runtime {
     node_vt: usize,
     range_vt: usize,
     range_proto: usize,
+    map_vt: usize,
+    map_proto: usize,
+    map_node_vt: usize,
+    value: usize,
     value1: usize,
     value2: usize,
     print_string: usize,
@@ -698,6 +726,737 @@ unsafe extern "C" fn vector_comma(self_object: Oop, args: *const Oop, count: usi
     result
 }
 
+unsafe fn map_payload(object: Oop) -> *mut MapPayload {
+    if object.is_null() {
+        abort("Map method received a null receiver");
+    }
+    object.cast::<MapPayload>()
+}
+
+unsafe fn hnode_header(object: Oop) -> *mut HNodeHeader {
+    if object.is_null() {
+        abort("Map node was null");
+    }
+    object.cast::<HNodeHeader>()
+}
+
+unsafe fn hnode_header_value(object: Oop) -> HNodeHeader {
+    unsafe { ptr::read(hnode_header(object)) }
+}
+
+fn hnode_slot_count(header: HNodeHeader) -> usize {
+    if header.tag == HNODE_BITMAP {
+        2 * header.n.count_ones() as usize
+    } else {
+        2 * header.n as usize
+    }
+}
+
+unsafe fn hnode_slot(object: Oop, index: usize) -> Oop {
+    let slots = unsafe {
+        object
+            .cast::<u8>()
+            .add(size_of::<HNodeHeader>())
+            .cast::<Oop>()
+    };
+    unsafe { slots.add(index).read() }
+}
+
+unsafe fn set_hnode_slot(object: Oop, index: usize, value: Oop) {
+    let slots = unsafe {
+        object
+            .cast::<u8>()
+            .add(size_of::<HNodeHeader>())
+            .cast::<Oop>()
+    };
+    unsafe { slots.add(index).write(value) };
+}
+
+unsafe fn new_hnode(
+    api: &IdApi,
+    runtime: &Runtime,
+    tag: u32,
+    n: u32,
+    hash: u32,
+    slot_count: usize,
+) -> Oop {
+    let size = size_of::<HNodeHeader>() + slot_count * size_of::<Oop>();
+    let node = unsafe { (api.alloc)(runtime.map_node_vt as Oop, size) };
+    if node.is_null() {
+        abort("MapNode allocation failed");
+    }
+    unsafe {
+        ptr::write(
+            hnode_header(node),
+            HNodeHeader {
+                tag,
+                n,
+                hash,
+                pad: 0,
+            },
+        );
+        for index in 0..slot_count {
+            set_hnode_slot(node, index, ptr::null_mut());
+        }
+    }
+    node
+}
+
+unsafe fn copy_hnode(api: &IdApi, runtime: &Runtime, source: Oop) -> Oop {
+    let header = unsafe { hnode_header_value(source) };
+    let slot_count = hnode_slot_count(header);
+    let destination =
+        unsafe { new_hnode(api, runtime, header.tag, header.n, header.hash, slot_count) };
+    for index in 0..slot_count {
+        let value = unsafe { hnode_slot(source, index) };
+        unsafe { set_hnode_slot(destination, index, value) };
+    }
+    destination
+}
+
+unsafe fn empty_map(api: &IdApi, runtime: &Runtime) -> Oop {
+    let map = unsafe { (api.alloc)(runtime.map_vt as Oop, size_of::<MapPayload>()) };
+    if map.is_null() {
+        abort("Map allocation failed");
+    }
+    unsafe {
+        ptr::write(
+            map_payload(map),
+            MapPayload {
+                root: ptr::null_mut(),
+                count: 0,
+            },
+        );
+    }
+    map
+}
+
+fn map_mix(mut value: u64) -> u32 {
+    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    (value ^ (value >> 31)) as u32
+}
+
+fn map_fnv1a(bytes: &[u8]) -> u32 {
+    let mut hash = 2_166_136_261u32;
+    for byte in bytes {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    hash
+}
+
+fn map_chunk(hash: u32, shift: usize) -> u32 {
+    (hash >> shift.min(31)) & MASK as u32
+}
+
+fn map_bit(hash: u32, shift: usize) -> u32 {
+    1u32 << map_chunk(hash, shift)
+}
+
+fn map_sparse_index(bitmap: u32, bit: u32) -> usize {
+    (bitmap & bit.wrapping_sub(1)).count_ones() as usize
+}
+
+unsafe fn map_key_hash(api: &IdApi, key: Oop) -> u32 {
+    if unsafe { (api.isSmallInt)(key) } != 0 {
+        return map_mix(unsafe { (api.smallIntValue)(key) } as u64);
+    }
+    let value_type = unsafe { (api.vtableOf)(key) };
+    if value_type == api.string_vt {
+        let mut length = 0;
+        let bytes = unsafe { (api.stringBytes)(key, &mut length) };
+        if length == 0 {
+            return map_fnv1a(&[]);
+        }
+        if bytes.is_null() {
+            return 0;
+        }
+        return map_fnv1a(unsafe { core::slice::from_raw_parts(bytes, length) });
+    }
+    if value_type == api.symbol_vt {
+        let name = unsafe { (api.symbolName)(key) };
+        if name.is_null() {
+            return 0;
+        }
+        return map_fnv1a(unsafe { CStr::from_ptr(name) }.to_bytes());
+    }
+    if value_type == api.float_vt {
+        let value = unsafe { (api.floatValue)(key) };
+        let bits = if value == 0.0 { 0 } else { value.to_bits() };
+        return map_mix(bits);
+    }
+    map_mix(key as usize as u64)
+}
+
+unsafe fn map_key_equal(api: &IdApi, left: Oop, right: Oop) -> bool {
+    unsafe { same_value(api, left, right) }
+}
+
+unsafe fn map_find(node: Oop, shift: usize, hash: u32, key: Oop, api: &IdApi) -> Oop {
+    if node.is_null() {
+        return ptr::null_mut();
+    }
+    let header = unsafe { hnode_header_value(node) };
+    if header.tag == HNODE_BITMAP {
+        let bit = map_bit(hash, shift);
+        if header.n & bit == 0 {
+            return ptr::null_mut();
+        }
+        let index = 2 * map_sparse_index(header.n, bit);
+        let stored_key = unsafe { hnode_slot(node, index) };
+        if stored_key.is_null() {
+            let child = unsafe { hnode_slot(node, index + 1) };
+            return unsafe { map_find(child, shift + BITS, hash, key, api) };
+        }
+        if unsafe { map_key_equal(api, stored_key, key) } {
+            return unsafe { hnode_slot(node, index + 1) };
+        }
+        return ptr::null_mut();
+    }
+    if hash != header.hash {
+        return ptr::null_mut();
+    }
+    for entry in 0..header.n as usize {
+        let index = 2 * entry;
+        let stored_key = unsafe { hnode_slot(node, index) };
+        if unsafe { map_key_equal(api, stored_key, key) } {
+            return unsafe { hnode_slot(node, index + 1) };
+        }
+    }
+    ptr::null_mut()
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn map_merge_two(
+    api: &IdApi,
+    runtime: &Runtime,
+    shift: usize,
+    first_key: Oop,
+    first_hash: u32,
+    first_value: Oop,
+    second_key: Oop,
+    second_hash: u32,
+    second_value: Oop,
+) -> Oop {
+    if first_hash == second_hash {
+        let node = unsafe { new_hnode(api, runtime, HNODE_COLLISION, 2, first_hash, 4) };
+        unsafe {
+            set_hnode_slot(node, 0, first_key);
+            set_hnode_slot(node, 1, first_value);
+            set_hnode_slot(node, 2, second_key);
+            set_hnode_slot(node, 3, second_value);
+        }
+        return node;
+    }
+    let first_chunk = map_chunk(first_hash, shift);
+    let second_chunk = map_chunk(second_hash, shift);
+    if first_chunk == second_chunk {
+        let child = unsafe {
+            map_merge_two(
+                api,
+                runtime,
+                shift + BITS,
+                first_key,
+                first_hash,
+                first_value,
+                second_key,
+                second_hash,
+                second_value,
+            )
+        };
+        let node = unsafe { new_hnode(api, runtime, HNODE_BITMAP, 1u32 << first_chunk, 0, 2) };
+        unsafe {
+            set_hnode_slot(node, 0, ptr::null_mut());
+            set_hnode_slot(node, 1, child);
+        }
+        return node;
+    }
+    let node = unsafe {
+        new_hnode(
+            api,
+            runtime,
+            HNODE_BITMAP,
+            (1u32 << first_chunk) | (1u32 << second_chunk),
+            0,
+            4,
+        )
+    };
+    if first_chunk < second_chunk {
+        unsafe {
+            set_hnode_slot(node, 0, first_key);
+            set_hnode_slot(node, 1, first_value);
+            set_hnode_slot(node, 2, second_key);
+            set_hnode_slot(node, 3, second_value);
+        }
+    } else {
+        unsafe {
+            set_hnode_slot(node, 0, second_key);
+            set_hnode_slot(node, 1, second_value);
+            set_hnode_slot(node, 2, first_key);
+            set_hnode_slot(node, 3, first_value);
+        }
+    }
+    node
+}
+
+static MAP_ADDED: AtomicBool = AtomicBool::new(false);
+
+unsafe fn map_assoc(
+    api: &IdApi,
+    runtime: &Runtime,
+    node: Oop,
+    shift: usize,
+    hash: u32,
+    key: Oop,
+    value: Oop,
+) -> Oop {
+    if node.is_null() {
+        MAP_ADDED.store(true, Ordering::Relaxed);
+        let result = unsafe { new_hnode(api, runtime, HNODE_BITMAP, map_bit(hash, shift), 0, 2) };
+        unsafe {
+            set_hnode_slot(result, 0, key);
+            set_hnode_slot(result, 1, value);
+        }
+        return result;
+    }
+    let header = unsafe { hnode_header_value(node) };
+    if header.tag == HNODE_BITMAP {
+        let bit = map_bit(hash, shift);
+        let index = 2 * map_sparse_index(header.n, bit);
+        if header.n & bit != 0 {
+            let stored_key = unsafe { hnode_slot(node, index) };
+            if stored_key.is_null() {
+                let child = unsafe { hnode_slot(node, index + 1) };
+                let replacement =
+                    unsafe { map_assoc(api, runtime, child, shift + BITS, hash, key, value) };
+                if replacement == child {
+                    return node;
+                }
+                let result = unsafe { copy_hnode(api, runtime, node) };
+                unsafe { set_hnode_slot(result, index + 1, replacement) };
+                return result;
+            }
+            if unsafe { map_key_equal(api, stored_key, key) } {
+                let old_value = unsafe { hnode_slot(node, index + 1) };
+                if old_value == value {
+                    return node;
+                }
+                let result = unsafe { copy_hnode(api, runtime, node) };
+                unsafe { set_hnode_slot(result, index + 1, value) };
+                return result;
+            }
+            MAP_ADDED.store(true, Ordering::Relaxed);
+            let child = unsafe {
+                map_merge_two(
+                    api,
+                    runtime,
+                    shift + BITS,
+                    stored_key,
+                    map_key_hash(api, stored_key),
+                    hnode_slot(node, index + 1),
+                    key,
+                    hash,
+                    value,
+                )
+            };
+            let result = unsafe { copy_hnode(api, runtime, node) };
+            unsafe {
+                set_hnode_slot(result, index, ptr::null_mut());
+                set_hnode_slot(result, index + 1, child);
+            }
+            return result;
+        }
+        MAP_ADDED.store(true, Ordering::Relaxed);
+        let old_count = header.n.count_ones() as usize;
+        let result = unsafe {
+            new_hnode(
+                api,
+                runtime,
+                HNODE_BITMAP,
+                header.n | bit,
+                0,
+                2 * (old_count + 1),
+            )
+        };
+        for old_index in 0..2 * old_count {
+            let destination = if old_index < 2 * map_sparse_index(header.n, bit) {
+                old_index
+            } else {
+                old_index + 2
+            };
+            unsafe { set_hnode_slot(result, destination, hnode_slot(node, old_index)) };
+        }
+        let insertion = 2 * map_sparse_index(header.n, bit);
+        unsafe {
+            set_hnode_slot(result, insertion, key);
+            set_hnode_slot(result, insertion + 1, value);
+        }
+        return result;
+    }
+    if hash == header.hash {
+        for entry in 0..header.n as usize {
+            let index = 2 * entry;
+            let stored_key = unsafe { hnode_slot(node, index) };
+            if unsafe { map_key_equal(api, stored_key, key) } {
+                let old_value = unsafe { hnode_slot(node, index + 1) };
+                if old_value == value {
+                    return node;
+                }
+                let result = unsafe { copy_hnode(api, runtime, node) };
+                unsafe { set_hnode_slot(result, index + 1, value) };
+                return result;
+            }
+        }
+        MAP_ADDED.store(true, Ordering::Relaxed);
+        let old_count = header.n as usize;
+        let result = unsafe {
+            new_hnode(
+                api,
+                runtime,
+                HNODE_COLLISION,
+                header.n + 1,
+                header.hash,
+                2 * (old_count + 1),
+            )
+        };
+        for index in 0..2 * old_count {
+            unsafe { set_hnode_slot(result, index, hnode_slot(node, index)) };
+        }
+        unsafe {
+            set_hnode_slot(result, 2 * old_count, key);
+            set_hnode_slot(result, 2 * old_count + 1, value);
+        }
+        return result;
+    }
+    let wrapper = unsafe {
+        new_hnode(
+            api,
+            runtime,
+            HNODE_BITMAP,
+            map_bit(header.hash, shift),
+            0,
+            2,
+        )
+    };
+    unsafe {
+        set_hnode_slot(wrapper, 0, ptr::null_mut());
+        set_hnode_slot(wrapper, 1, node);
+    }
+    unsafe { map_assoc(api, runtime, wrapper, shift, hash, key, value) }
+}
+
+unsafe fn map_collect_values(
+    api: &IdApi,
+    runtime: &Runtime,
+    node: Oop,
+    mut result: Oop,
+    keys: bool,
+) -> Oop {
+    if node.is_null() {
+        return result;
+    }
+    let header = unsafe { hnode_header_value(node) };
+    let slots = hnode_slot_count(header);
+    for index in (0..slots).step_by(2) {
+        let key = unsafe { hnode_slot(node, index) };
+        if key.is_null() {
+            let child = unsafe { hnode_slot(node, index + 1) };
+            result = unsafe { map_collect_values(api, runtime, child, result, keys) };
+        } else {
+            let item = if keys {
+                key
+            } else {
+                unsafe { hnode_slot(node, index + 1) }
+            };
+            result = unsafe { vector_push(api, runtime, result, item) };
+        }
+    }
+    result
+}
+
+unsafe fn map_walk_keys_and_values_do(node: Oop, block: Oop, api: &IdApi) {
+    if node.is_null() {
+        return;
+    }
+    let header = unsafe { hnode_header_value(node) };
+    let slots = hnode_slot_count(header);
+    let selector = runtime().value2 as Oop;
+    for index in (0..slots).step_by(2) {
+        let key = unsafe { hnode_slot(node, index) };
+        if key.is_null() {
+            unsafe { map_walk_keys_and_values_do(hnode_slot(node, index + 1), block, api) };
+        } else {
+            let value = unsafe { hnode_slot(node, index + 1) };
+            let arguments = [key, value];
+            unsafe { (api.send)(block, selector, arguments.as_ptr(), 2) };
+        }
+    }
+}
+
+unsafe fn map_append_print(api: &IdApi, node: Oop, output: &mut Vec<u8>, first: &mut bool) -> bool {
+    if node.is_null() {
+        return true;
+    }
+    let header = unsafe { hnode_header_value(node) };
+    let slots = hnode_slot_count(header);
+    let selector = runtime().print_string as Oop;
+    for index in (0..slots).step_by(2) {
+        let key = unsafe { hnode_slot(node, index) };
+        if key.is_null() {
+            if !unsafe { map_append_print(api, hnode_slot(node, index + 1), output, first) } {
+                return false;
+            }
+            continue;
+        }
+        if !*first {
+            output.extend_from_slice(b", ");
+        }
+        *first = false;
+        let value = unsafe { hnode_slot(node, index + 1) };
+        for (position, object) in [key, value].into_iter().enumerate() {
+            let printed = unsafe { (api.send)(object, selector, ptr::null(), 0) };
+            if printed.is_null() {
+                return false;
+            }
+            let mut length = 0;
+            let bytes = unsafe { (api.stringBytes)(printed, &mut length) };
+            if bytes.is_null() {
+                return false;
+            }
+            output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
+            if position == 0 {
+                output.extend_from_slice(b" -> ");
+            }
+        }
+    }
+    true
+}
+
+unsafe extern "C" fn vector_new(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { empty_vector(api, runtime()) }
+}
+
+unsafe extern "C" fn map_new(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { empty_map(api, runtime()) }
+}
+
+unsafe extern "C" fn map_at_put(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let key = arguments[0];
+    let value = arguments[1];
+    if key.is_null() || value.is_null() {
+        return api.nilObj;
+    }
+    let payload = unsafe { map_payload(self_object) };
+    let root = unsafe { (*payload).root };
+    MAP_ADDED.store(false, Ordering::Relaxed);
+    let replacement =
+        unsafe { map_assoc(api, runtime(), root, 0, map_key_hash(api, key), key, value) };
+    if replacement == root {
+        return self_object;
+    }
+    let old_count = unsafe { (*payload).count };
+    let map = unsafe { (api.alloc)(runtime().map_vt as Oop, size_of::<MapPayload>()) };
+    if map.is_null() {
+        abort("Map allocation failed");
+    }
+    unsafe {
+        ptr::write(
+            map_payload(map),
+            MapPayload {
+                root: replacement,
+                count: old_count + usize::from(MAP_ADDED.load(Ordering::Relaxed)),
+            },
+        );
+    }
+    map
+}
+
+unsafe extern "C" fn map_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(key) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let value = unsafe {
+        map_find(
+            (*map_payload(self_object)).root,
+            0,
+            map_key_hash(api, key),
+            key,
+            api,
+        )
+    };
+    if value.is_null() { api.nilObj } else { value }
+}
+
+unsafe extern "C" fn map_at_if_absent(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let key = arguments[0];
+    let fallback = arguments[1];
+    let value = unsafe {
+        map_find(
+            (*map_payload(self_object)).root,
+            0,
+            map_key_hash(api, key),
+            key,
+            api,
+        )
+    };
+    if !value.is_null() {
+        return value;
+    }
+    unsafe { (api.send)(fallback, runtime().value as Oop, ptr::null(), 0) }
+}
+
+unsafe extern "C" fn map_includes_key(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(key) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let value = unsafe {
+        map_find(
+            (*map_payload(self_object)).root,
+            0,
+            map_key_hash(api, key),
+            key,
+            api,
+        )
+    };
+    if value.is_null() {
+        api.falseObj
+    } else {
+        api.trueObj
+    }
+}
+
+unsafe extern "C" fn map_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)((*map_payload(self_object)).count as i64) }
+}
+
+unsafe extern "C" fn map_keys(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let result = unsafe { empty_vector(api, runtime()) };
+    unsafe {
+        map_collect_values(
+            api,
+            runtime(),
+            (*map_payload(self_object)).root,
+            result,
+            true,
+        )
+    }
+}
+
+unsafe extern "C" fn map_values(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let result = unsafe { empty_vector(api, runtime()) };
+    unsafe {
+        map_collect_values(
+            api,
+            runtime(),
+            (*map_payload(self_object)).root,
+            result,
+            false,
+        )
+    }
+}
+
+unsafe extern "C" fn map_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    if count != 1 {
+        return unsafe { api_ref() }.nilObj;
+    }
+    let values = unsafe { map_values(self_object, ptr::null(), 0) };
+    let result = unsafe { vector_do(values, args, count) };
+    if result.is_null() {
+        return result;
+    }
+    self_object
+}
+
+unsafe extern "C" fn map_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    if count != 2 {
+        return unsafe { api_ref() }.nilObj;
+    }
+    let values = unsafe { map_values(self_object, ptr::null(), 0) };
+    unsafe { vector_inject(values, args, count) }
+}
+
+unsafe extern "C" fn map_keys_and_values_do(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(block) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    unsafe { map_walk_keys_and_values_do((*map_payload(self_object)).root, block, api) };
+    self_object
+}
+
+unsafe extern "C" fn map_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let mut output = Vec::from(&b"{"[..]);
+    let mut first = true;
+    let ok = unsafe {
+        map_append_print(
+            api,
+            (*map_payload(self_object)).root,
+            &mut output,
+            &mut first,
+        )
+    };
+    if !ok {
+        return api.nilObj;
+    }
+    output.push(b'}');
+    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+}
+
 unsafe fn range_payload(object: Oop) -> *mut RangePayload {
     if object.is_null() {
         abort("Range method received a null receiver");
@@ -909,8 +1668,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
         let reloading = unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) != 0 };
-        let (collection_vt, node_vt, vector_vt, vector_proto, range_vt, range_proto) = if reloading
-        {
+        let (
+            collection_vt,
+            node_vt,
+            vector_vt,
+            vector_proto,
+            range_vt,
+            range_proto,
+            map_vt,
+            map_proto,
+            map_node_vt,
+        ) = if reloading {
             (
                 unsafe { import(api, COLLECTION_VT_NAME) },
                 unsafe { import(api, VECTOR_NODE_NAME) },
@@ -918,12 +1686,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                 unsafe { import(api, VECTOR_NAME) },
                 unsafe { import(api, RANGE_VT_NAME) },
                 unsafe { import(api, RANGE_NAME) },
+                unsafe { import(api, MAP_VT_NAME) },
+                unsafe { import(api, MAP_NAME) },
+                unsafe { import(api, MAP_NODE_NAME) },
             )
         } else {
             let collection_vt = unsafe { (api.proto)(api.object_vt) };
             let node_vt = unsafe { (api.proto)(api.object_vt) };
             let vector_vt = unsafe { (api.proto)(collection_vt) };
             let range_vt = unsafe { (api.proto)(collection_vt) };
+            let map_vt = unsafe { (api.proto)(collection_vt) };
+            let map_node_vt = unsafe { (api.proto)(api.object_vt) };
             (
                 collection_vt,
                 node_vt,
@@ -931,11 +1704,21 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                 ptr::null_mut(),
                 range_vt,
                 ptr::null_mut(),
+                map_vt,
+                ptr::null_mut(),
+                map_node_vt,
             )
         };
-        if [collection_vt, node_vt, vector_vt, range_vt]
-            .iter()
-            .any(|value| value.is_null())
+        if [
+            collection_vt,
+            node_vt,
+            vector_vt,
+            range_vt,
+            map_vt,
+            map_node_vt,
+        ]
+        .iter()
+        .any(|value| value.is_null())
         {
             abort("Rust Collection exports were incomplete");
         }
@@ -951,6 +1734,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         node_vt: node_vt as usize,
                         range_vt: range_vt as usize,
                         range_proto: 0,
+                        map_vt: map_vt as usize,
+                        map_proto: 0,
+                        map_node_vt: map_node_vt as usize,
+                        value: 0,
                         value1: 0,
                         value2: 0,
                         print_string: 0,
@@ -972,6 +1759,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         node_vt: node_vt as usize,
                         range_vt: range_vt as usize,
                         range_proto: 0,
+                        map_vt: map_vt as usize,
+                        map_proto: 0,
+                        map_node_vt: map_node_vt as usize,
+                        value: 0,
                         value1: 0,
                         value2: 0,
                         print_string: 0,
@@ -983,6 +1774,31 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         } else {
             range_proto
         };
+        let map_proto = if map_proto.is_null() {
+            unsafe {
+                empty_map(
+                    api,
+                    &Runtime {
+                        api: api_pointer as usize,
+                        collection_vt: collection_vt as usize,
+                        vector_vt: vector_vt as usize,
+                        vector_proto: vector_proto as usize,
+                        node_vt: node_vt as usize,
+                        range_vt: range_vt as usize,
+                        range_proto: range_proto as usize,
+                        map_vt: map_vt as usize,
+                        map_proto: 0,
+                        map_node_vt: map_node_vt as usize,
+                        value: 0,
+                        value1: 0,
+                        value2: 0,
+                        print_string: 0,
+                    },
+                )
+            }
+        } else {
+            map_proto
+        };
         Runtime {
             api: api_pointer as usize,
             collection_vt: collection_vt as usize,
@@ -991,6 +1807,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             node_vt: node_vt as usize,
             range_vt: range_vt as usize,
             range_proto: range_proto as usize,
+            map_vt: map_vt as usize,
+            map_proto: map_proto as usize,
+            map_node_vt: map_node_vt as usize,
+            value: unsafe { intern(api, b"value\0") } as usize,
             value1: unsafe { intern(api, b"value:\0") } as usize,
             value2: unsafe { intern(api, b"value:value:\0") } as usize,
             print_string: unsafe { intern(api, b"printString\0") } as usize,
@@ -1008,6 +1828,18 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.range_vt as Oop,
             RANGE_LAYOUT.as_ptr(),
             RANGE_LAYOUT.len(),
+            birnam_abi::SLOT_RAW,
+        );
+        (api.setLayout)(
+            runtime.map_node_vt as Oop,
+            HNODE_LAYOUT.as_ptr(),
+            HNODE_LAYOUT.len(),
+            birnam_abi::SLOT_OOP,
+        );
+        (api.setLayout)(
+            runtime.map_vt as Oop,
+            MAP_LAYOUT.as_ptr(),
+            MAP_LAYOUT.len(),
             birnam_abi::SLOT_RAW,
         );
         (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
@@ -1049,6 +1881,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"reversed\0"),
             vector_reversed,
         );
+        (api.method)(runtime.vector_vt as Oop, intern(api, b"new\0"), vector_new);
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"clone\0"),
+            vector_new,
+        );
         (api.method)(runtime.range_vt as Oop, intern(api, b"size\0"), range_size);
         (api.method)(
             runtime.range_vt as Oop,
@@ -1074,6 +1912,39 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(runtime.range_vt as Oop, intern(api, b",\0"), range_comma);
         (api.method)(api.smallint_vt, intern(api, b"to:\0"), integer_to);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"new\0"), map_new);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"clone\0"), map_new);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"at:put:\0"), map_at_put);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"at:\0"), map_at);
+        (api.method)(
+            runtime.map_vt as Oop,
+            intern(api, b"at:ifAbsent:\0"),
+            map_at_if_absent,
+        );
+        (api.method)(
+            runtime.map_vt as Oop,
+            intern(api, b"includesKey:\0"),
+            map_includes_key,
+        );
+        (api.method)(runtime.map_vt as Oop, intern(api, b"size\0"), map_size);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"keys\0"), map_keys);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"values\0"), map_values);
+        (api.method)(runtime.map_vt as Oop, intern(api, b"do:\0"), map_do);
+        (api.method)(
+            runtime.map_vt as Oop,
+            intern(api, b"inject:into:\0"),
+            map_inject,
+        );
+        (api.method)(
+            runtime.map_vt as Oop,
+            intern(api, b"keysAndValuesDo:\0"),
+            map_keys_and_values_do,
+        );
+        (api.method)(
+            runtime.map_vt as Oop,
+            intern(api, b"printString\0"),
+            map_print_string,
+        );
     }
     if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
@@ -1092,6 +1963,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             (api.setOwner)(runtime.range_vt as Oop, runtime.range_proto as Oop);
             let _ = (api.exportObj)(RANGE_VT_NAME.as_ptr().cast(), runtime.range_vt as Oop);
             let _ = (api.exportObj)(RANGE_NAME.as_ptr().cast(), runtime.range_proto as Oop);
+            (api.setOwner)(runtime.map_vt as Oop, runtime.map_proto as Oop);
+            let _ = (api.exportObj)(MAP_VT_NAME.as_ptr().cast(), runtime.map_vt as Oop);
+            let _ = (api.exportObj)(MAP_NAME.as_ptr().cast(), runtime.map_proto as Oop);
+            let _ = (api.exportObj)(MAP_NODE_NAME.as_ptr().cast(), runtime.map_node_vt as Oop);
         }
     }
 }
