@@ -1689,6 +1689,27 @@ post-switch image/project observation window closes.
   and `clippy -D warnings` pass. The next seam is wiring the generated shim
   into this live owner while retaining the existing Rust TCC authority.
 
+### R5.12 Rust Alien live wrapper checkpoint (2026-07-25)
+
+- `a6f46c8` drives the existing TCC object through IdApi for
+  `wrap:signature:as:on:`: Rust Alien copies the signature/function names out
+  of host Strings, parses and generates the deterministic unit, resolves the
+  function through its loader registry, then performs `new`, `compile:`,
+  `bindRuntime`, `addSymbol:value:`, `relocate`, and `install:as:on:`. TCC
+  remains the sole compiler, relocation, and platform-ABI authority.
+- The generated scalar/aggregate paths preserve receiver-first method ABI,
+  exact arity, Vector-factory binding, and shape-failure-to-nil behavior. Error
+  construction is attempted only through the exported Error factory; missing
+  Error remains fail-closed. Loader locks and borrowed argument/string spans
+  are released or copied before any reentrant IdApi send.
+- `b0672a1` adds the `test-rust-alien-live` fixture gate and installs the Rust
+  Alien dylib under an explicit `libbirnam_id_alien_rust.dylib` name while Zig
+  remains the canonical Alien fixture. The gate loads Rust TCC and Rust Alien,
+  balances a real platform `dlopen`/`dlclose`, wraps libc `strlen`, and dispatches
+  the generated method successfully on both Zig/Debug and Rust/ReleaseSafe
+  selected floors. The full Alien callback, buffer, replay, GC-lifetime, and
+  canonical-selection gates remain future R5 work.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
