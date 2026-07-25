@@ -986,6 +986,28 @@ remain the next implementation slices.
   arbitrary recursive bodies, aggregation, pull, and canonical Rust
   Relational selection remain open.
 
+### R4.14 Rust Relational aggregate checkpoint (2026-07-24)
+
+- `8961d37` adds a bounded aggregate probe over one triple-pattern projection.
+  It folds the already-distinct value stream with `count`, `sum`, `min`,
+  `max`, and `avg`, preserves Integer/Float promotion for numeric sums and
+  averages, keeps strict value typing, and rejects unsupported/non-numeric
+  folds. Empty count/sum return integer zero; empty min/max/avg return an
+  explicit nil status rather than an ambiguous identity record.
+- The cross-floor corpus covers count over entities and distinct scalar
+  values, distinct sum, min/max/average, empty count/sum, empty nil behavior,
+  invalid operation, and nonnumeric rejection against both Rust Store and the
+  Zig Store rollback provider. Both relational targets report `10/10`.
+- `c5ca8be` advances the R6 focused boundary to `72/72` and requires both
+  relational targets to report exactly ten passing tests. The full gate passes
+  with optimized verify pinned at `260/264` steps, `478/484` tests, and 6
+  skipped, accepting only the two exact `install-smoke.sh: line 92`
+  `collection.zig:336:29` fixture crashes. The digest-pinned comparator remains
+  at zero missing/unusable cases and exactly the accepted
+  `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%` crossings.
+- Grouped aggregation, query time-window composition, pull, full rule
+  semantics, and canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
