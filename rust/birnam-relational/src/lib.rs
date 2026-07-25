@@ -2799,49 +2799,77 @@ unsafe fn parse_store_rule_body(
     variables: &mut Vec<Oop>,
 ) -> Result<Vec<RuleClause>, i32> {
     let clauses = unsafe { vector_elements(api, body)? };
-    let rule_symbol = unsafe { (api.intern)(c"rule".as_ptr()) };
     let mut parsed = Vec::with_capacity(clauses.len());
     for clause in clauses {
-        let terms = unsafe { vector_elements(api, clause)? };
-        if terms.len() == 3 {
-            let left =
-                unsafe { parse_store_term(api, terms[0], logicvar_vt, name_selector, variables)? };
-            let middle =
-                unsafe { parse_store_term(api, terms[1], logicvar_vt, name_selector, variables)? };
-            let right =
-                unsafe { parse_store_term(api, terms[2], logicvar_vt, name_selector, variables)? };
-            if let Term::Constant(operator) = &middle {
-                // Predicate operators are symbols; recover their original Oop
-                // identity from the source slot for the exact selector law.
-                let _ = operator;
-                if let Ok(operation) = unsafe { parse_rule_compare_op(api, terms[1]) } {
-                    parsed.push(RuleClause::Predicate {
-                        left,
-                        operation,
-                        right,
-                    });
-                    continue;
-                }
-            }
-            parsed.push(RuleClause::Triple(Clause([left, middle, right])));
-            continue;
-        }
-        if terms.len() >= 2 && terms[0] == rule_symbol {
-            let Some(name) = (unsafe { oop::classify(api, terms[1]) }) else {
-                return Err(-4);
-            };
-            let mut args = Vec::with_capacity(terms.len() - 2);
-            for term in &terms[2..] {
-                args.push(unsafe {
-                    parse_store_term(api, *term, logicvar_vt, name_selector, variables)?
-                });
-            }
-            parsed.push(RuleClause::Call { name, args });
-            continue;
-        }
-        return Err(-7);
+        parsed.push(unsafe {
+            parse_store_rule_clause(api, clause, logicvar_vt, name_selector, variables)?
+        });
     }
     Ok(parsed)
+}
+
+unsafe fn parse_store_rule_clause(
+    api: &IdApi,
+    clause: Oop,
+    logicvar_vt: Oop,
+    name_selector: Oop,
+    variables: &mut Vec<Oop>,
+) -> Result<RuleClause, i32> {
+    let terms = unsafe { vector_elements(api, clause)? };
+    let rule_symbol = unsafe { (api.intern)(c"rule".as_ptr()) };
+    let not_symbol = unsafe { (api.intern)(c"not".as_ptr()) };
+    let or_symbol = unsafe { (api.intern)(c"or".as_ptr()) };
+    if terms.len() == 3
+        && terms[0] != rule_symbol
+        && terms[0] != not_symbol
+        && terms[0] != or_symbol
+    {
+        let left =
+            unsafe { parse_store_term(api, terms[0], logicvar_vt, name_selector, variables)? };
+        let middle =
+            unsafe { parse_store_term(api, terms[1], logicvar_vt, name_selector, variables)? };
+        let right =
+            unsafe { parse_store_term(api, terms[2], logicvar_vt, name_selector, variables)? };
+        if let Ok(operation) = unsafe { parse_rule_compare_op(api, terms[1]) } {
+            return Ok(RuleClause::Predicate {
+                left,
+                operation,
+                right,
+            });
+        }
+        return Ok(RuleClause::Triple(Clause([left, middle, right])));
+    }
+    if terms.len() >= 2 && terms[0] == rule_symbol {
+        let Some(name) = (unsafe { oop::classify(api, terms[1]) }) else {
+            return Err(-4);
+        };
+        let mut args = Vec::with_capacity(terms.len() - 2);
+        for term in &terms[2..] {
+            args.push(unsafe {
+                parse_store_term(api, *term, logicvar_vt, name_selector, variables)?
+            });
+        }
+        return Ok(RuleClause::Call { name, args });
+    }
+    if terms.first().is_some_and(|term| *term == not_symbol) {
+        let mut inner = Vec::with_capacity(terms.len().saturating_sub(1));
+        for term in &terms[1..] {
+            inner.push(unsafe {
+                parse_store_rule_clause(api, *term, logicvar_vt, name_selector, variables)?
+            });
+        }
+        return Ok(RuleClause::Negated(inner));
+    }
+    if terms.first().is_some_and(|term| *term == or_symbol) {
+        let mut branches = Vec::with_capacity(terms.len().saturating_sub(1));
+        for term in &terms[1..] {
+            branches.push(vec![unsafe {
+                parse_store_rule_clause(api, *term, logicvar_vt, name_selector, variables)?
+            }]);
+        }
+        return Ok(RuleClause::Disjunction(branches));
+    }
+    Err(-7)
 }
 
 unsafe fn parse_store_rule_definitions(

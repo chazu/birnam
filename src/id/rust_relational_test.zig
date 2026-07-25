@@ -1006,6 +1006,31 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     try std.testing.expectEqual(@as(usize, 1), written);
     try std.testing.expectEqual(@intFromPtr(clean), @as(usize, @intCast(values[0].identity)));
 
+    const nested_store_rule = api.intern("rust_relational_rule_store_nested");
+    const nx = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_nested_x")}, 1);
+    const nv = api.send(logic_var, named, &.{api.intern("rust_relational_rule_store_nested_v")}, 1);
+    const nested_params = makeVector(api, &.{nx});
+    const nested_score = makeVector(api, &.{ nx, score, nv });
+    const nested_predicate = makeVector(api, &.{ nv, api.intern(">"), api.mkSmallInt(10) });
+    const nested_not_inner = makeVector(api, &.{ nx, blocked, api.intern("yes") });
+    const nested_not = makeVector(api, &.{ api.intern("not"), nested_not_inner });
+    const nested_or_alpha = makeVector(api, &.{ nx, class, alpha });
+    const nested_or_beta = makeVector(api, &.{ nx, class, beta });
+    const nested_or = makeVector(api, &.{ api.intern("or"), nested_or_alpha, nested_or_beta });
+    const nested_body = makeVector(api, &.{ nested_score, nested_predicate, nested_not, nested_or });
+    _ = api.send(
+        store,
+        api.intern("defineRule:params:body:"),
+        &.{ nested_store_rule, nested_params, nested_body },
+        3,
+    );
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        store_rule(store, nested_store_rule, &threshold_query, threshold_query.len, 0, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@intFromPtr(clean), @as(usize, @intCast(values[0].identity)));
+
     const even = api.intern("rust_relational_rule_even");
     const odd = api.intern("rust_relational_rule_odd");
     const is_zero = api.intern("rust_relational_rule_isZero");
