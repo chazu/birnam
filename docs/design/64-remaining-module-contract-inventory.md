@@ -297,3 +297,5 @@ R2 canonical switch checkpoint (2026-07-24):
   explicit Zig rollback fixture and option.
 - Post-switch focused Prelude/Error, selection, install, and full R6 checks
   passed at `48/48`; no new verify failure or benchmark crossing appeared.
+- `test-cross-floor-errors`, `test-cross-floor-images`, and
+  `test-remaining-rung-cross-floor` also passed after the switch.

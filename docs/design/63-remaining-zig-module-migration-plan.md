@@ -401,6 +401,9 @@ post-switch observation are recorded.
   checks passed. A fresh `mise run r6-acceptance` remained green at `48/48`,
   with the exact existing verify exception and the two accepted benchmark
   crossings unchanged.
+- The explicit post-switch `test-cross-floor-errors`,
+  `test-cross-floor-images`, and `test-remaining-rung-cross-floor` cells all
+  passed, including mapped/rebuilt image boots under both floors.
 
 ## 7. Phase R3 — Isolate
 
