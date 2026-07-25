@@ -808,6 +808,35 @@ remain the next implementation slices.
   missing/unusable with only the two recorded crossings. Full query parity,
   historical windows, and canonical Rust Relational selection remain open.
 
+### R4.7 Rust Relational historical-window checkpoint (2026-07-25)
+
+- `720c31b` adds the Rust `liveTriplesAsOf:do:`, `liveTriplesSince:do:`, and
+  `liveTriplesBetween:and:do:` bridge. The adapter validates modes and
+  SmallInt transaction bounds, preserves the synchronous rooted callback
+  lifetime, and returns pointer-free classified records without taking Store
+  ownership. The corpus now checks snapshot, lower-bound, half-open interval,
+  and invalid-mode behavior.
+- The Zig Store bridge fixture exposed a boolean ABI mismatch: its history
+  policy compared against interned `"true"`/`"false"` symbols even though the
+  frozen IdApi supplies canonical `trueObj`/`falseObj`. `720c31b` aligns the
+  Store markers with those singletons, and `f35c0d9` updates the Zig relational
+  history fixture to assert `trueObj`. This preserves one boolean family across
+  Rust and Zig providers and makes both Store implementations obey the same
+  history contract.
+- Both callback processes pass `3/3` in Debug/ReleaseSafe, including the
+  historical corpus; Zig Store remains an explicit rollback provider and is
+  never loaded with Rust Store in one process. The full Rust crate checks,
+  tests, and clippy gates are green.
+- `f35c0d9` advances the focused R6 boundary to `58/58`; `3c665a9` pins both
+  focused and optimized verify invocations to `-Dfloor=rust` so prior explicit
+  Zig-floor cache state cannot alter the selected floor. The accepted optimized
+  closure is exactly `260/263` steps, `464/470` tests, and 6 skipped, with only
+  the recorded `run-tests.birnam`/`vSortBy` fixture exception. The digest-pinned
+  comparator remains at zero missing/unusable cases and exactly the accepted
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` crossings.
+- Full query parity, recursive/pull/aggregate cross-floor coverage beyond the
+  Store-window bridge, and canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
