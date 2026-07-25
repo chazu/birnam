@@ -449,6 +449,31 @@ observation.
   pre-existing `birnam-codegen` stack-overflow stress test; that failure is
   outside this Isolate slice.
 
+### R3.2 host ABI checkpoint (2026-07-24)
+
+The existing Zig Isolate exports are frozen for the Rust port with the
+following C-shaped signatures (`Oop` is the nullable object pointer carried by
+the frozen `IdApi` ABI):
+
+```c
+int  birnam_isolate_worker_driver(IdApi *api, int fd, Oop receiver, Oop selector);
+void birnam_isolate_worker_boot_error(
+    IdApi *api, int fd, const char *kind_z, const uint8_t *message, size_t message_len);
+void birnam_isolate_drain(void);
+void birnam_isolate_shutdown(void);
+```
+
+`worker_driver` owns the inherited channel fd and runs until stop, protocol
+failure, or transport failure; `receiver` and `selector` are process-local
+OOPs borrowed for the call and never cross the channel. `worker_boot_error`
+borrows the NUL-terminated kind and byte message only for synchronous record
+encoding; it does not retain either pointer or close the fd. `drain` is a
+host-thread, idempotent sweep of orphaned/reap-pending registry entries and may
+be called before ordinary sends. `shutdown` is host teardown, idempotent, and
+owns termination/reaping of every remaining registry process and fd. Rust may
+change implementation details, but not these symbols, call conventions,
+ownership, lifetime, or reentry rules.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

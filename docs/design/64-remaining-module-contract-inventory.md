@@ -308,3 +308,14 @@ R3.1 implementation checkpoint (2026-07-24):
 - The unrelated whole-workspace Cargo run still aborts in the existing
   `birnam-codegen` unbounded-depth stress test; the new Isolate crate remains
   green in isolation.
+
+R3.2 host ABI checkpoint (2026-07-24):
+
+- Frozen declarations are `int birnam_isolate_worker_driver(IdApi*, int,
+  Oop, Oop)`, `void birnam_isolate_worker_boot_error(IdApi*, int, const char*,
+  const uint8_t*, size_t)`, `void birnam_isolate_drain(void)`, and `void
+  birnam_isolate_shutdown(void)`.
+- The worker owns its inherited channel and borrowed process-local OOPs only
+  for the synchronous call; boot-error strings are borrowed, not retained;
+  drain/shutdown are host-side idempotent registry lifecycle operations. The
+  Rust rung must preserve this ABI and ownership model exactly.
