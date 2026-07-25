@@ -597,6 +597,17 @@ remain the next implementation slices.
   and the comparator remains at the two accepted crossings
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
+### R3.12 worker error-corpus checkpoint (2026-07-24)
+
+- `0e3041b` extends the owner-thread worker probe with an unsupported-result
+  `ReplyError` record and a malformed request `ProtocolError` record, checking
+  the application/protocol schemas, kinds, and codec error names before the
+  worker terminates. Debug and ReleaseSafe probes pass.
+- `daccb77` advances the R6 pins to the current focused aggregate `51/51` and
+  Isolate target `3` tests. A fresh full R6 run passes with the same exact
+  verify exception and only `query.aggregate +5.8%` plus
+  `compile.stage1-stdlib +11.9%` accepted in the benchmark comparator.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

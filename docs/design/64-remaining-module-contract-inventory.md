@@ -412,3 +412,13 @@ R3.11 worker request-dispatch checkpoint (2026-07-24):
   target (`50/50`). A fresh full R6 run passes with the existing exact verify
   exception and only the accepted `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` benchmark crossings.
+
+R3.12 worker error-corpus checkpoint (2026-07-24):
+
+- `0e3041b` adds dynamic coverage for unsupported-result `ReplyError` records
+  and malformed-request `ProtocolError` records, including their frozen
+  schemas, kind labels, and codec error names. Debug and ReleaseSafe probes
+  pass.
+- `daccb77` pins the R6 focused aggregate to `51/51` and the Rust Isolate
+  target to three tests. Full R6 passes with the prior exact verify exception
+  and only the two accepted benchmark crossings.
