@@ -1916,9 +1916,28 @@ post-switch image/project observation window closes.
   mutation is introduced by this slice.
 
 The next R6 slice may add the temp-file/atomic-publish transaction only after
-the Rust implementation has a real v4 writer and preflight authority. It must
-retain this report state on every rejection and leave an existing destination
-byte-for-byte unchanged when preflight or publication fails.
+the Rust implementation has heap/fact preflight authority. It must retain this
+report state on every rejection and leave an existing destination byte-for-byte
+unchanged when preflight or publication fails.
+
+### R6.3 Rust Image v4 writer checkpoint (2026-07-25)
+
+- `bc41140` adds `ImageWriter`, a checked allocation-owning framing layer over
+  the frozen v4 bytes. It emits the canonical header plus caller-encoded facts,
+  heap, authority, and code records; enforces one authority, authority-before-
+  code, one code record, and generation-digest equality; and refuses to finish
+  without an authority. The code record retains the existing checksum field and
+  does not recompute or weaken it.
+- The writer round-trips through the borrowed `Image::parse` path, and the
+  ordering/error corpus is covered by the Rust unit suite (`15/15`). It does
+  not walk the live heap, resolve exports, mutate Store state, write files, or
+  publish an image. `saveImage:` therefore remains the report-state shell and
+  still fails closed.
+
+The next bounded slice can connect this writer to a pure preflight result (with
+no heap mutation) and then exercise temp-file publication against a preserved
+destination. Only after those checks are live should `saveImage:` gain file
+authority.
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
