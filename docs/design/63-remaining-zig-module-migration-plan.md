@@ -1418,6 +1418,16 @@ remain the next implementation slices.
   `14/14`; callback reentry and canonical Rust Relational selection remain
   open hardening work.
 
+### R4.41 R6 acceptance after query-result Vector auto-GC coverage (2026-07-25)
+
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after `188124d`:
+  `100/100` focused build steps, `80/80` focused tests, and both Rust
+  Relational dynamic targets at `14/14`.
+- The optimized comparator remains unchanged: exactly the accepted
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` regressions,
+  with zero missing or unusable cases. The gate continues to accept the
+  existing fixture exception without threshold broadening.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
