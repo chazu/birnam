@@ -1473,7 +1473,17 @@ pub struct RuleDefinitionNode {
 #[derive(Clone, Debug)]
 pub enum RuleClause {
     Triple(Clause),
-    Call { name: Value, args: Vec<Term> },
+    Call {
+        name: Value,
+        args: Vec<Term>,
+    },
+    Predicate {
+        left: Term,
+        operation: CompareOp,
+        right: Term,
+    },
+    Negated(Vec<RuleClause>),
+    Disjunction(Vec<Vec<RuleClause>>),
 }
 
 #[derive(Clone, Debug)]
@@ -1969,12 +1979,19 @@ fn relation_rows<'a>(relations: &'a [DerivedRelation], name: &Value) -> &'a [Vec
         .map_or(&[], |relation| relation.rows.as_slice())
 }
 
-fn evaluate_rule_body(
+fn term_value(solution: &[Binding], term: &Term) -> Option<Value> {
+    match term {
+        Term::Constant(value) => Some(value.clone()),
+        Term::Variable(variable) => lookup(solution, *variable).cloned(),
+    }
+}
+
+fn evaluate_rule_body_from_solutions(
     facts: &[Triple],
     relations: &[DerivedRelation],
     body: &[RuleClause],
+    mut solutions: Vec<Vec<Binding>>,
 ) -> Vec<Vec<Binding>> {
-    let mut solutions = vec![Vec::new()];
     for clause in body {
         let mut next = Vec::new();
         for solution in &solutions {
@@ -1996,6 +2013,42 @@ fn evaluate_rule_body(
                         }
                     }
                 }
+                RuleClause::Predicate {
+                    left,
+                    operation,
+                    right,
+                } => {
+                    let (Some(left), Some(right)) =
+                        (term_value(solution, left), term_value(solution, right))
+                    else {
+                        continue;
+                    };
+                    if left.compares(*operation, &right) {
+                        next.push(solution.clone());
+                    }
+                }
+                RuleClause::Negated(inner) => {
+                    let nested = evaluate_rule_body_from_solutions(
+                        facts,
+                        relations,
+                        inner,
+                        vec![solution.clone()],
+                    );
+                    if nested.is_empty() {
+                        next.push(solution.clone());
+                    }
+                }
+                RuleClause::Disjunction(branches) => {
+                    for branch in branches {
+                        let nested = evaluate_rule_body_from_solutions(
+                            facts,
+                            relations,
+                            branch,
+                            vec![solution.clone()],
+                        );
+                        next.extend(nested);
+                    }
+                }
             }
         }
         solutions = next;
@@ -2004,6 +2057,14 @@ fn evaluate_rule_body(
         }
     }
     solutions
+}
+
+fn evaluate_rule_body(
+    facts: &[Triple],
+    relations: &[DerivedRelation],
+    body: &[RuleClause],
+) -> Vec<Vec<Binding>> {
+    evaluate_rule_body_from_solutions(facts, relations, body, vec![Vec::new()])
 }
 
 fn relation_contains(rows: &[Vec<Value>], candidate: &[Value]) -> bool {
@@ -3060,5 +3121,78 @@ mod tests {
         let second_values = cache.query(&ancestor, &[Term::Constant(id(1)), Term::Variable(1)], 1);
         assert_eq!(second_values.len(), 1);
         assert!(second_values[0].matches(&id(3)));
+    }
+
+    #[test]
+    fn rule_body_preserves_predicate_negation_and_disjunction_order() {
+        let eligible = id(100);
+        let score = id(10);
+        let blocked = id(11);
+        let class = id(12);
+        let yes = id(20);
+        let alpha = id(21);
+        let beta = id(22);
+        let facts = [
+            Triple {
+                entity: id(1),
+                attribute: score.clone(),
+                value: Value::Integer(20),
+            },
+            Triple {
+                entity: id(2),
+                attribute: score.clone(),
+                value: Value::Integer(5),
+            },
+            Triple {
+                entity: id(3),
+                attribute: score.clone(),
+                value: Value::Integer(20),
+            },
+            Triple {
+                entity: id(4),
+                attribute: score.clone(),
+                value: Value::Integer(20),
+            },
+            fact(3, 11, 20),
+            fact(1, 12, 21),
+            fact(4, 12, 22),
+        ];
+        let definitions = [RuleDefinition {
+            name: eligible.clone(),
+            params: vec![0],
+            body: vec![
+                RuleClause::Triple(Clause([
+                    Term::Variable(0),
+                    Term::Constant(score),
+                    Term::Variable(1),
+                ])),
+                RuleClause::Predicate {
+                    left: Term::Variable(1),
+                    operation: CompareOp::Greater,
+                    right: Term::Constant(Value::Integer(10)),
+                },
+                RuleClause::Negated(vec![RuleClause::Triple(Clause([
+                    Term::Variable(0),
+                    Term::Constant(blocked),
+                    Term::Constant(yes),
+                ]))]),
+                RuleClause::Disjunction(vec![
+                    vec![RuleClause::Triple(Clause([
+                        Term::Variable(0),
+                        Term::Constant(class.clone()),
+                        Term::Constant(alpha),
+                    ]))],
+                    vec![RuleClause::Triple(Clause([
+                        Term::Variable(0),
+                        Term::Constant(class),
+                        Term::Constant(beta),
+                    ]))],
+                ]),
+            ],
+        }];
+        let values = query_rule(&facts, &definitions, &eligible, &[Term::Variable(0)], 0);
+        assert_eq!(values.len(), 2);
+        assert!(values[0].matches(&id(1)));
+        assert!(values[1].matches(&id(4)));
     }
 }
