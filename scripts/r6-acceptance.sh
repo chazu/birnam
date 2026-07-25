@@ -36,6 +36,7 @@ latest_tests=(
   test-rust-codegen-stack
   test-rust-codegen-zig-store
   test-rust-ffi-abort
+  test-rust-image-shell
   test-rust-prelude
   test-rust-prelude-rust-error
   test-relational-selection
@@ -128,6 +129,20 @@ rust_alien_abort_debug_count=$(grep -Fc 'rust-alien-ffi-abort: debug panic and i
 rust_alien_abort_release_count=$(grep -Fc 'rust-alien-ffi-abort: release panic and invariant hooks terminated with SIGABRT' "$functional" || true)
 [ "$rust_alien_abort_release_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Alien release child-abort hooks did not pass" >&2
+  exit 1
+}
+rust_image_shell_success_count=$(grep -Fc 'test-rust-image-shell success' "$functional" || true)
+[ "$rust_image_shell_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Image shell target was not executed" >&2
+  exit 1
+}
+rust_image_shell_test_count=$(awk '
+/^test-rust-image-shell success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
+[ "$rust_image_shell_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Image shell target no longer has 1 passing test" >&2
   exit 1
 }
 rust_prelude_success_count=$(grep -Fc 'test-rust-prelude success' "$functional" || true)
