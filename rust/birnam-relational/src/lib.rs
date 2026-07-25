@@ -13,14 +13,20 @@ use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
-use std::sync::OnceLock;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.5-project\0";
 static API: OnceLock<usize> = OnceLock::new();
 static ACTIVE_PROBE_BLOCK: AtomicUsize = AtomicUsize::new(0);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static ENTITY_VT: OnceLock<usize> = OnceLock::new();
+static LOGICVAR_VT: OnceLock<usize> = OnceLock::new();
+static LOGICVAR_FACTORY_VT: OnceLock<usize> = OnceLock::new();
+static LOGICVAR_FACTORY: OnceLock<usize> = OnceLock::new();
+static REL_COLLECTOR_VT: OnceLock<usize> = OnceLock::new();
+static LOGICVARS: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Relational: {message}");
@@ -100,12 +106,185 @@ unsafe extern "C" fn mark_probe_root(mark: MarkFn) {
     }
 }
 
+unsafe extern "C" fn mark_relational_roots(mark: MarkFn) {
+    unsafe { mark_probe_root(mark) };
+    let Some(cache) = LOGICVARS.get() else {
+        return;
+    };
+    let Ok(cache) = cache.lock() else {
+        abort("Rust Relational logic-variable cache was poisoned");
+    };
+    for value in cache.values() {
+        // SAFETY: every cached value was allocated through this process's IdApi
+        // and remains live for the duration of collection.
+        unsafe { mark(*value as Oop) };
+    }
+}
+
 fn register_probe_root(api: &IdApi) {
     ROOT_REGISTERED.get_or_init(|| unsafe {
         // SAFETY: the process floor owns this root-provider registration for the
         // lifetime of the loaded Rust Relational module.
-        (api.gcRegisterRootProvider)(mark_probe_root);
+        (api.gcRegisterRootProvider)(mark_relational_roots);
     });
+}
+
+unsafe extern "C" fn rust_logicvar_named(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 1 || arguments[0].is_null() {
+        return api.nilObj;
+    }
+    let cache = LOGICVARS.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = arguments[0] as usize;
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(|_| abort("Rust Relational logic-variable cache was poisoned"));
+    if let Some(value) = cache.get(&key) {
+        return *value as Oop;
+    }
+    let Some(vtable) = LOGICVAR_VT.get() else {
+        return api.nilObj;
+    };
+    let value = unsafe { (api.alloc)(*vtable as Oop, size_of::<Oop>()) };
+    if value.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: LogicVar's frozen payload is one Oop containing its interned name.
+    unsafe { ptr::write(value.cast::<Oop>(), arguments[0]) };
+    cache.insert(key, value as usize);
+    value
+}
+
+unsafe extern "C" fn rust_logicvar_name(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    if count != 0 || self_object.is_null() {
+        return api.nilObj;
+    }
+    // SAFETY: callers only dispatch this method on the exact LogicVar family.
+    unsafe { *self_object.cast::<Oop>() }
+}
+
+unsafe extern "C" fn rust_logicvar_print_string(
+    self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    if count != 0 || self_object.is_null() {
+        return api.nilObj;
+    }
+    let name = unsafe { rust_logicvar_name(self_object, ptr::null(), 0) };
+    if name.is_null() {
+        return api.nilObj;
+    }
+    let name = unsafe { std::ffi::CStr::from_ptr((api.symbolName)(name)) }.to_bytes();
+    let mut text = Vec::with_capacity(name.len() + 1);
+    text.push(b'?');
+    text.extend_from_slice(name);
+    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+}
+
+unsafe fn ensure_relational_contract(api: &IdApi) {
+    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    let logicvar_vt = if logicvar_vt.is_null() {
+        let created = unsafe { (api.proto)(api.object_vt) };
+        if created.is_null() {
+            abort("Rust Relational could not create LogicVarVt");
+        }
+        unsafe { (api.exportObj)(c"LogicVarVt".as_ptr(), created) };
+        created
+    } else {
+        logicvar_vt
+    };
+    let _ = LOGICVAR_VT.set(logicvar_vt as usize);
+
+    let factory_vt = unsafe { (api.import)(c"LogicVarFactoryVt".as_ptr()) };
+    let factory_vt = if factory_vt.is_null() {
+        let created = unsafe { (api.proto)(api.object_vt) };
+        if created.is_null() {
+            abort("Rust Relational could not create LogicVarFactoryVt");
+        }
+        unsafe { (api.exportObj)(c"LogicVarFactoryVt".as_ptr(), created) };
+        created
+    } else {
+        factory_vt
+    };
+    let _ = LOGICVAR_FACTORY_VT.set(factory_vt as usize);
+
+    let factory = unsafe { (api.import)(c"LogicVar".as_ptr()) };
+    let factory = if factory.is_null() {
+        let created = unsafe { (api.alloc)(factory_vt, 0) };
+        if created.is_null() {
+            abort("Rust Relational could not create LogicVar factory");
+        }
+        unsafe { (api.exportObj)(c"LogicVar".as_ptr(), created) };
+        created
+    } else {
+        factory
+    };
+    let _ = LOGICVAR_FACTORY.set(factory as usize);
+
+    let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
+    let entity_vt = if entity_vt.is_null() {
+        let created = unsafe { (api.proto)(api.object_vt) };
+        if created.is_null() {
+            abort("Rust Relational could not create EntityVt");
+        }
+        unsafe { (api.exportObj)(c"EntityVt".as_ptr(), created) };
+        created
+    } else {
+        entity_vt
+    };
+    let _ = ENTITY_VT.set(entity_vt as usize);
+
+    let collector_vt = unsafe { (api.import)(c"RelCollectorVt".as_ptr()) };
+    let collector_vt = if collector_vt.is_null() {
+        let created = unsafe { (api.proto)(api.object_vt) };
+        if created.is_null() {
+            abort("Rust Relational could not create RelCollectorVt");
+        }
+        unsafe { (api.exportObj)(c"RelCollectorVt".as_ptr(), created) };
+        created
+    } else {
+        collector_vt
+    };
+    let _ = REL_COLLECTOR_VT.set(collector_vt as usize);
+
+    unsafe {
+        (api.setLayout)(logicvar_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
+        (api.method)(
+            factory_vt,
+            (api.intern)(c"named:".as_ptr()),
+            rust_logicvar_named,
+        );
+        (api.method)(
+            logicvar_vt,
+            (api.intern)(c"name".as_ptr()),
+            rust_logicvar_name,
+        );
+        (api.method)(
+            logicvar_vt,
+            (api.intern)(c"printString".as_ptr()),
+            rust_logicvar_print_string,
+        );
+        (api.exportObj)(c"LogicVarVt".as_ptr(), logicvar_vt);
+        (api.exportObj)(c"LogicVarFactoryVt".as_ptr(), factory_vt);
+        (api.exportObj)(c"LogicVar".as_ptr(), factory);
+        (api.exportObj)(c"EntityVt".as_ptr(), entity_vt);
+        (api.exportObj)(c"RelCollectorVt".as_ptr(), collector_vt);
+    }
 }
 
 unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
@@ -652,10 +831,6 @@ unsafe fn install_entity_method(api: &IdApi) {
     if store.is_null() {
         return;
     }
-    // The canonical Relational module publishes the Store under `db`; the
-    // self-hosted compiled-unit and runtime modules use that shared name for
-    // all imperative and relational reads. Keep Store as the sole authority.
-    unsafe { (api.exportObj)(c"db".as_ptr(), store) };
     let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
     let entity_vt = if entity_vt.is_null() {
         // SAFETY: the new vtable delegates to the process Object vtable and
@@ -675,7 +850,6 @@ unsafe fn install_entity_method(api: &IdApi) {
     // has the frozen IdApi callback ABI.
     unsafe { (api.method)(store_vt, selector, rust_entity) };
     if unsafe { (api.import)(c"Vector".as_ptr()) }.is_null()
-        || unsafe { (api.import)(c"LogicVarVt".as_ptr()) }.is_null()
         || unsafe { (api.import)(c"Map".as_ptr()) }.is_null()
     {
         return;
@@ -703,6 +877,10 @@ unsafe fn install_entity_method(api: &IdApi) {
             rust_group_by,
         );
         (api.method)(store_vt, (api.intern)(c"pull:spec:".as_ptr()), rust_pull);
+        // Publish the shared Store as `db` only after the complete relational
+        // and collection contract is available. A partial export would force
+        // Zig rollback Relational down its reload path with missing vtables.
+        (api.exportObj)(c"db".as_ptr(), store);
     }
 }
 
@@ -2065,6 +2243,9 @@ pub unsafe extern "C" fn birnam_relational_rust_project_rule_store_live(
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
     unsafe { bring_up(api) };
+    // Publish the complete shared relational object contract before exposing
+    // the Store as `db`; this is safe to repeat across reloads.
+    unsafe { ensure_relational_contract(&*api) };
     // SAFETY: module_init received the process-owned IdApi used to install the
     // Store-facing entity constructor.
     unsafe { install_entity_method(&*api) };

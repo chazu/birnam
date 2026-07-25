@@ -1231,7 +1231,12 @@ pub fn bringUp(api: *idapi.IdApi) void {
     s_assert = api.intern("assert:attr:value:");
     s_rule_name = api.intern("__rule-name__");
 
-    const reloading = api.isExported("db") != 0;
+    // `db` is published only after Store and collection dependencies are ready.
+    // A Rust Relational module can therefore publish the LogicVar contract first
+    // and leave `db` absent while the Zig rollback fixture is loaded.  Treat the
+    // shared LogicVar family as the reload marker too; otherwise this bring-up
+    // would mint a second vtable family and split `LogicVar` from `LogicVarVt`.
+    const reloading = api.isExported("db") != 0 or api.isExported("LogicVar") != 0;
     if (reloading) {
         logicvar_vt = api.import("LogicVarVt");
         logicvar_factory_vt = api.import("LogicVarFactoryVt");
