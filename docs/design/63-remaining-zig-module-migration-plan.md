@@ -194,16 +194,24 @@ GC without changing the floor.
 
 ### R1.1 Rust crate and payload model
 
-Implementation checkpoint (2026-07-24): `1d0c72e` added the
-`rust/birnam-collection` crate and characterized its first owned family as a
-pure persistent-storage kernel. `PersistentVector<T>` uses the durable
-32-way path-copied trie plus a short tail, preserves old versions on append,
-and covers empty/bounds behavior, tail promotion, structural sharing, and
-growth beyond the first root overflow. The crate is both `rlib` and `cdylib`,
-depends only on the frozen `birnam-abi`, and passes locked offline tests and
-clippy. It is not selectable by the runtime yet; the next R1 slice adds the
-OOP payload wrapper, exact layout registration, and explicit Rust/Zig fixture
-selection.
+Implementation checkpoints (2026-07-24):
+
+- `1d0c72e` added the `rust/birnam-collection` crate and characterized its
+  first owned family as a pure persistent-storage kernel. `PersistentVector<T>`
+  uses the durable 32-way path-copied trie plus a short tail, preserves old
+  versions on append, and covers empty/bounds behavior, tail promotion,
+  structural sharing, and growth beyond the first root overflow. The crate is
+  both `rlib` and `cdylib`, depends only on the frozen `birnam-abi`, and passes
+  locked offline tests and clippy.
+- `f7c3934` added the live `IdApi` wrapper and `test-rust-collection`. The Rust
+  rung allocates the exact `Vector`/`VectorNode` OOP payloads, registers the
+  mixed raw/OOP layouts, exports the family, and exercises persistent indexed
+  values, the 32-element tail boundary, `do:`, `printString`, and `,` in
+  Debug/ReleaseSafe. The explicit `-Dcollection-impl=zig|rust` install choice
+  is present, with Zig still canonical for now.
+- `75a49af` reconciled the relocated install smoke with the new workspace
+  member. The post-change `mise run r6-acceptance` passed at `44/44` focused
+  tests; full optimized verify matched only the recorded fixture exception.
 
 1. Add `rust/birnam-collection` as a `cdylib` over the frozen `birnam-abi`.
    Its production install name is the canonical `libbirnam_id_collection.dylib`;

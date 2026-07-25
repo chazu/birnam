@@ -226,7 +226,10 @@ R1 first implementation checkpoint (2026-07-24):
   crate and implemented the persistent 32-way vector storage kernel. Tests
   cover empty/bounds behavior, immutable append, tail-to-trie promotion,
   structural sharing, and deep growth through a root expansion.
-- This kernel has no foreign callback or OOP allocation surface yet. The next
-  checkpoint must add the exact `Vector`/`VectorNode` payload layouts and
-  `IdApi` method/export protocol before any Rust collection selection is
-  enabled.
+- `f7c3934` added the exact `Vector`/`VectorNode` OOP payload layouts,
+  `IdApi` method/export protocol, explicit `collection-impl` install choice,
+  and the one-test Rust Collection acceptance target. The Rust wrapper is
+  still an explicit fixture; Zig remains the canonical Collection owner.
+- `75a49af` updated the relocated install smoke for the new workspace member.
+  The post-change R6 focused aggregate is `44/44`, with full optimized verify
+  and the two previously accepted benchmark crossings unchanged.
