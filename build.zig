@@ -152,6 +152,17 @@ pub fn build(b: *std.Build) void {
     test_remaining_rung_manifest_step.dependOn(&remaining_rung_manifest.step);
     test_step.dependOn(&remaining_rung_manifest.step);
 
+    const remaining_rung_clean_prefix = b.addSystemCommand(&.{
+        "bash",
+        "scripts/remaining-rung-clean-prefix.sh",
+    });
+    const test_remaining_rung_clean_prefix_step = b.step(
+        "test-remaining-rung-clean-prefix",
+        "Prove remaining-rung runtime resolution is isolated from cwd and checkout paths",
+    );
+    test_remaining_rung_clean_prefix_step.dependOn(&remaining_rung_clean_prefix.step);
+    test_step.dependOn(&remaining_rung_clean_prefix.step);
+
     const native_rung_selection_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/native-rung-selection-smoke.sh",

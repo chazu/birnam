@@ -168,5 +168,9 @@ manifest.
       not an OOP payload.
 - [x] Dynamic dependencies and host C symbols are explicit.
 - [x] Focused test corpora and cross-floor gates are named.
-- [ ] Generate the machine-readable identity/dependency manifest and add the
-      side-by-side clean-prefix harness (next R0 step).
+- [x] Generate `abi/remaining-rungs-v1.json` and validate its canonical names,
+      diagnostic identities, dependency identities, digest source, and isolated
+      install paths with `test-remaining-rung-manifest`.
+- [x] Add `test-remaining-rung-clean-prefix`: a relocated install run from an
+      unrelated cwd containing decoy dylibs; runtime resolution ignores cwd,
+      checkout, and ambient loader paths.
