@@ -1,0 +1,172 @@
+# Remaining module contract inventory
+
+Status: R0 execution checkpoint for
+[`63 — Remaining Zig-module migration plan`](63-remaining-zig-module-migration-plan.md).
+
+This is the frozen inventory for the Zig production owners that remain after
+the Rust floor/compiler slices. It records the current dynamic boundary, object
+families, payload/layout contract, roots/finalizers, foreign dependencies, and
+behavior corpus. A Rust replacement must match this inventory before its
+canonical-switch gate; a selector not listed here is not silently inferred from
+the implementation.
+
+## Inventory rules
+
+- `module_init` is the only production entry point for a dynamic rung. The
+  module must be loaded through the declared dependency closure; a test may use
+  an explicit side-by-side fixture name, but production may not use that name.
+- `OOP` means an exact traced slot; `raw` means an exact non-traced word or
+  native allocation. `null` in a layout registration means every payload word
+  uses the default kind supplied by the module.
+- A selector is **native** only when this inventory assigns it to a vtable. A
+  selector implemented by `stdlib.birnam` remains derived and is not ported as
+  a second native method.
+- Negative behavior (invalid arity/type, nil versus Error, and invariant abort)
+  is part of each module's focused test corpus.
+
+## `src/id/prelude.zig`
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | Zig Prelude rung; `module_init`; current Rust candidate is opt-in and must not own Error |
+| Exported objects/vtables | `Block`, `BlockVt`, `System`, `SystemVt`; Boolean is floor-owned; Error is imported lazily |
+| Payload/layout | Block instances: captured OOP slots (`slot_oop`); System: zero payload; numeric/word payloads remain floor-owned |
+| Roots/finalizers | No module root provider or finalizer; callbacks are bounded by the active send/GC root contract |
+| Foreign dependencies | `Codegen` for `load:`, `sourceRevisionOf:`, `recordModuleSource:named:`, `evalPersisting:from:`, `lastError`; `Module` for `markLoaded:`; `dlopen`/`dlsym` for `loadModule:`; filesystem, environment, stdin/stdout, GC API |
+| Native symbols | `module_init`; `loadModule:` resolves a foreign `module_init` and keeps the handle live |
+| Tests | `src/id/prelude_test.zig`, `src/id/rust_prelude_test.zig`, numeric/Boolean/block/error tests, subprocess/bootstrap/project and R6 gates |
+
+Native selectors by owner:
+
+```text
+Integer: + - * / mod: = < <= > >= printString asFloat to:do:
+Float:   + - * / = < <= > >= negated asInteger abs floor ceiling rounded sqrt printString
+Word:    printString = asInteger isNull
+Object:  printString asString
+Symbol:  printString
+Boolean: ifTrue:ifFalse: ifTrue: ifFalse: & | and: or: not printString
+Block:   whileTrue: whileFalse:
+System:  print: println: readFile: writeFile:contents: getEnv: load:
+         loadModule: readLine gc liveObjects autoGc: preciseGc:
+```
+
+The Rust Prelude’s current Error-compatible helpers are test scaffolding only.
+The production Error family remains the standalone Error rung below.
+
+## `src/id/collection.zig`
+
+| Family/export | Payload and layout | Native selectors |
+| --- | --- | --- |
+| `Collection`/`CollectionVt` | abstract shared parent; no instances; no payload | derived higher-order protocol is installed by `stdlib.birnam` over native folds |
+| `Vector`/`VectorVt` | `Vec = {count: raw usize, shift: raw usize, root: OOP, tail: OOP, tail_len: raw usize}`; exact kinds `[raw, raw, OOP, OOP, raw]` | `size`, `at:`, `add:`, `do:`, `inject:into:`, `printString`, `,`, `sortBy:`, `indexOf:`, `copyFrom:to:`, `reversed` |
+| `VectorNode` | trie node; all payload slots are OOP | no public selector; traced node storage |
+| `Range`/`RangeVt` | `Range = {start: raw i64, end: raw i64}`; all raw | `size`, `includes:`, `do:`, `inject:into:`, `at:`, `reversed`, `printString`, `,` |
+| `Map`/`MapVt` | `Map = {root: OOP, count: raw usize}`; kinds `[OOP, raw]` | `at:put:`, `at:`, `at:ifAbsent:`, `includesKey:`, `size`, `keys`, `values`, `do:`, `inject:into:`, `keysAndValuesDo:`, `printString` |
+| `MapNode` | `HNode` starts with raw `{tag:u32,n:u32,hash:u32,pad:u32}` (16 bytes), followed by `2*k` OOP entry slots; header is never traced | no public selector; bitmap/collision HAMT storage |
+| `StringBuilder`/`StringBuilderVt` | `SbState = {ptr: raw native buffer, len: raw usize, cap: raw usize}`; all raw; `sbFinalize` frees the buffer exactly once | `new`, `clone`, `add:`, `addByte:`, `size`, `asString`, `printString` |
+| floor Object/nil/String/Integer extensions | no new payload | Object/nil `isNil`, `notNil`, nil `printString`; Integer `to:`; String `,`, `printString`, `replace:with:`, `asSymbol`, `=`, `size`, `at:`, `byteAt:`, `copyFrom:to:`, `split:`, `trimmed`, `indexOf:`, `bracketDepth`, `asInteger`, `asNumber` |
+
+Exports are the prototypes and vtables listed above. Constructors/owners are
+part of the contract: `Vector`, `Map`, and `Range` export their prototype and
+own their family; `Collection` is the abstract family handle; StringBuilder is
+an ephemeral raw-buffer owner and does not participate in collection folding.
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | Zig collection rung; `module_init`; production Rust name is `libbirnam_id_collection.dylib`; test fixtures use explicit `_zig`/`_rust` names |
+| Roots/finalizers | temporary trie/map nodes are rooted across callbacks; StringBuilder uses `sbFinalize`; no collection-wide root provider |
+| Foreign dependencies | floor `Integer`, `String`, `Symbol`, `Block`, `Error`, `System`, and GC/layout APIs |
+| Tests | `collection_test.zig`, `collection_gc_test.zig`, `gc_layout_mark_test.zig`, conformance/null-args tests, image/store/codegen/relocation and R6 gates |
+
+## `src/id/error.zig`
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | standalone Error rung; `module_init`; future Rust production name `libbirnam_id_error.dylib` |
+| Exports | `ErrorVt`, `ErrorFactoryVt`, `Error` factory object; reload imports the existing family instead of minting it |
+| Payload/layout | Error payload is exactly two OOPs `{kind, message}`; `ErrorVt` uses OOP default layout |
+| Native selectors | `ErrorVt`: `doesNotUnderstand:`, `isError`, `kind`, `message`; factory: `kind:message:`, `kind:`, `message:`; floor Object: `isError`, `doesNotUnderstand:` |
+| Roots/finalizers | no module root provider or native finalizer |
+| Foreign dependencies | floor Object/symbol/string/intern/send and canonical `Error` family consumers |
+| Native symbols | `module_init` |
+| Tests | `error_test.zig`, DNU/numeric-fault/loop propagation, image/source/bootstrap, reload and preload-order gates |
+
+## `src/id/isolate.zig`
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | Isolate rung; `module_init` plus four host C ABI exports |
+| Exports | `IsolateVt`, `Isolate`, `IsolateHandleVt`, `IsolateFailureVt` |
+| Payload/layout | `Handle = {token: raw u64}`; `Failure = {class, kind, message, exit_status, request_id}` (five OOPs); Isolate is zero payload |
+| Native selectors | Isolate: `start:selector:image:`, private `_isolateSleep:`, `_isolateCrash:`; Handle: `request:timeout:`, `request:`, `stop`, `state`; Failure: `isError`, `class`, `kind`, `message`, `exitStatus`, `requestId` |
+| Roots/finalizers | process registry is native state; `finaliseHandle` marks a handle entry orphaned; registry entries own pid/fd lifecycle |
+| Foreign dependencies | Vector/Map codecs, Error family, process/pipe/wait/clock APIs, image path and worker executable policy |
+| C ABI symbols | `birnam_isolate_worker_driver`, `birnam_isolate_worker_boot_error`, `birnam_isolate_drain`, `birnam_isolate_shutdown`; signatures, ownership, reentry, and worker/host lifetimes are frozen before Rust port |
+| Wire contract | `BISO` wire-v1; 20-byte header; max frame 16 MiB, depth 64, container 65,536, nodes 1,000,000; exact `CodecError` enum and transferable-value rules |
+| Tests | `isolate_test.zig`, wire corpus, malformed/hostile child, timeout/stop/reap, forced termination, relocation, and R6/verify gates |
+
+## `src/id/relational.zig`
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | Relational rung; `module_init` |
+| Exports | `LogicVarVt`, `LogicVarFactoryVt`, `LogicVar`, `EntityVt`, `RelCollectorVt`, `db` (the Store object) |
+| Payload/layout | LogicVar: one OOP name symbol; RelCollector: one raw pointer to the native triple list; Entity and factory are zero payload |
+| Native selectors | Store: `entity`, `findAll:where:`, `findAll:where:asOf:`, `findAll:where:since:`, `findAll:where:between:and:`, `count:where:`, `sum:where:`, `min:where:`, `max:where:`, `avg:where:`, `groupBy:aggregate:of:where:`, `defineRule:params:body:`, `rebuildRules`, `pull:spec:`; LogicVar factory `named:`; LogicVar `name`, `printString`; Entity `printString`; collector `value:value:value:` |
+| Roots/finalizers | `gcRegisterRootProvider(&gcRoots)` pins the canonical logic-variable cache; collector callback state is rooted for the send lifetime; no native finalizer |
+| Foreign dependencies | frozen Store object/message protocol (`Store`, `StoreVt`, live-triple callbacks), Vector/Map factories and vtables, canonical Integer/String/Symbol/Error |
+| Native symbols | `module_init` |
+| Tests | `relational_test.zig`, Store/MOP tests, image rule-cache rebuild, GC/reentry, query benchmark, Rust/Zig Store rollback matrix and R6 gates |
+
+## `src/id/alien.zig`
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | Alien/FFI rung; `module_init`; TCC remains a declared dynamic dependency |
+| Exports/layout | `AlienVt`, `Alien` (zero payload); Word is floor-owned and receives raw-buffer methods |
+| Native selectors | Alien: `wrap:signature:as:on:`, `callback:signature:`, `releaseCallback:`, `libraryDir:`, `dlopen:`, `dlclose:`, `alloc:`; Word: `free`, `peekIntAt:`, `peekByteAt:`, `peekPtrAt:`, `peekDoubleAt:`, `peekStringAt:`, `pokeInt:at:`, `pokeByte:at:`, `pokePtr:at:`, `pokeDouble:at:` |
+| Roots/finalizers | `gcRegisterRootProvider(&cbRoots)` pins callback `(block, unit)` pairs; TCC units use their disposable finalizer; library handles/path bytes are native tracked state |
+| Foreign dependencies | `Tcc`, `Error`, `Vector`, `Store`, platform `dlopen`/`dlsym`/`dlclose`, libtcc generated C shims and platform ABI classifier |
+| Native symbols | `module_init`; generated wrapper/callback C retains frozen `birnam_*` runtime symbols |
+| Tests | `alien_test.zig`, ABI-shape/signature corpus, callback lifetime/release, GC, unload, hostile C, relocation and R6/verify gates |
+
+## `src/id/image.zig`
+
+| Field | Current contract |
+| --- | --- |
+| Dynamic identity | Image orchestration rung; `module_init`; Rust codec primitives remain a separate lower dependency |
+| Exports | `ImageSaveReportVt`, `ImageSaveReport`; System methods are installed on imported `SystemVt` |
+| Payload/layout | `ImageSaveReport` is a zero-payload family object; native `SaveReport` is process-global `{status, saved/recovered/rejected fact/slot counters, code_units, bounded detail}`; collector proto has one native callback and is not a durable heap family |
+| Native selectors | System: `saveImage:`, `imageSaveReport`, `loadImage:`, `loadImage:rebuild:`, `imageCompositionIdentity`, `bakeExe:`; report: `status`, `savedFacts`, `recoveredFacts`, `rejectedFacts`, `recoveredSlots`, `rejectedSlots`, `codeUnits`, `detail`; collector: `e:a:v:tx:op:` |
+| Roots/finalizers | heap walk roots are supplied by the floor/image transaction; no module root provider or finalizer; mapped code/dylib handles obey the image quiescence/rollback transaction |
+| Foreign dependencies | `SystemVt`, `Store`, `Codegen`, `ErrorVt`, `Globals`, `IsolateHandleVt`, floor allocation/layout/global/send APIs, Rust/Zig image-v4 codec |
+| Native symbols | `module_init`; image ABI retains the declared `birnam_*` floor helpers and image-v4 framing |
+| Tests | `image_test.zig`, image heap/layout/swizzle/corrupt/rebuild/mapped-code cross-products, Store/Codegen/relocation, bake, and R6 gates |
+
+## Host and helper owners
+
+`src/id/main.zig` is not a dynamic rung and exports no `module_init`. It owns
+the one raw floor `dlopen`/`id_init` startup, ordered runtime-module loading,
+stack anchor, REPL/CLI/project dispatch, source/bootstrap recovery, image
+boot, project check/build/install/test orchestration, and release resource
+resolution. It imports `Artifact`, `Codegen`, `Alien`, `Store`, `Globals`, and
+the project-policy bridges through the frozen object/message protocol.
+
+`project.zig`, `project_build.zig`, `project_check.zig`, and
+`runtime_resources.zig` are host-side helpers, not new runtime authorities:
+they own filesystem/TOML/project resolution, artifact closure checks, install
+paths, and declared embedded resources. Their focused tests are
+`test-project-check`, install/relocation, source/bootstrap, and R6/verify.
+Runtime lookup may not fall back to cwd, checkout source, or an unpinned
+manifest.
+
+## R0 acceptance record
+
+- [x] Every remaining module has a checked-in export/vtable/selector inventory.
+- [x] Payload sizes and mixed raw/OOP layout shapes are recorded.
+- [x] Root providers and finalizers are named, including native state that is
+      not an OOP payload.
+- [x] Dynamic dependencies and host C symbols are explicit.
+- [x] Focused test corpora and cross-floor gates are named.
+- [ ] Generate the machine-readable identity/dependency manifest and add the
+      side-by-side clean-prefix harness (next R0 step).
