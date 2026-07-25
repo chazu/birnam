@@ -245,3 +245,7 @@ R1 first implementation checkpoint (2026-07-24):
   raw-header/OOP-entry node shape, mixed Map layout, constructors, key/value
   equality and hashing, folds, iteration, absent fallback, and rendering. The
   expanded target and full R6 acceptance remained green at `44/44`.
+- `b5b2448` added Rust StringBuilder with exact all-raw `{ptr, len, cap}`
+  state, one-shot finalization, constructors, append/byte/size, and
+  materialization/printing. Its cross-language coverage and full R6 acceptance
+  remained green at `44/44`.
