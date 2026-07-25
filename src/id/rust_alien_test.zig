@@ -38,6 +38,32 @@ export fn birnam_rust_alien_apply_point(
     return callback(.{ .x = 20, .y = 22 });
 }
 
+export fn birnam_rust_alien_apply_double(
+    callback: *const fn (f64) callconv(.c) f64,
+) f64 {
+    return callback(21.5);
+}
+
+export fn birnam_rust_alien_apply_float(
+    callback: *const fn (f32) callconv(.c) f32,
+) f32 {
+    return callback(20.5);
+}
+
+export fn birnam_rust_alien_apply_void(
+    callback: *const fn (c_long) callconv(.c) void,
+) c_long {
+    callback(42);
+    return 42;
+}
+
+export fn birnam_rust_alien_apply_return_point(
+    callback: *const fn (c_long) callconv(.c) LivePoint,
+) c_long {
+    const point = callback(21);
+    return point.x + point.y;
+}
+
 export fn birnam_rust_alien_identity_long(value: c_long) c_long {
     return value;
 }
@@ -78,6 +104,10 @@ fn retainExportedFixtures() void {
     const fixtures = .{
         &birnam_rust_alien_apply,
         &birnam_rust_alien_apply_point,
+        &birnam_rust_alien_apply_double,
+        &birnam_rust_alien_apply_float,
+        &birnam_rust_alien_apply_void,
+        &birnam_rust_alien_apply_return_point,
         &birnam_rust_alien_identity_long,
         &birnam_rust_alien_identity_pointer,
         &birnam_rust_alien_sum_double,
@@ -161,6 +191,29 @@ fn livePointSum(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop 
         1,
     ));
     return live_api.mkSmallInt(x + y);
+}
+
+fn liveFloatDouble(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    return live_api.mkFloat(live_api.floatValue(args[0]) * 2.0);
+}
+
+fn liveVoid(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _args;
+    _ = _count;
+    return live_api.nilObj;
+}
+
+fn livePointReturn(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    const value = live_api.smallIntValue(args[0]);
+    return makeVector(live_api, &[_]Oop{
+        live_api.mkSmallInt(value),
+        live_api.mkSmallInt(value + 1),
+    });
 }
 
 test "Rust Alien owns loader state and installs a generated scalar wrapper" {
@@ -308,6 +361,84 @@ test "Rust Alien owns callback code, aggregate marshalling, GC roots, and releas
     try std.testing.expect(
         api.send(alien, api.intern("releaseCallback:"), &[_]Oop{callback}, 1) != api.trueObj,
     );
+}
+
+test "Rust Alien callback ABI corpus covers float, double, void, and aggregate return" {
+    retainExportedFixtures();
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const callback_selector = api.intern("callback:signature:");
+    const wrap_selector = api.intern("wrap:signature:as:on:");
+
+    const double_callback = api.send(
+        alien,
+        callback_selector,
+        &[_]Oop{ liveResponder(api, "value:", &liveFloatDouble), str(api, "d d") },
+        2,
+    );
+    try std.testing.expect(double_callback != api.nilObj);
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_apply_double"), str(api, "d p"), api.intern("rustApplyDouble"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    const doubled = api.send(double_callback, api.intern("rustApplyDouble"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(f64, 43.0), api.floatValue(doubled));
+
+    const float_callback = api.send(
+        alien,
+        callback_selector,
+        &[_]Oop{ liveResponder(api, "value:", &liveFloatDouble), str(api, "f f") },
+        2,
+    );
+    try std.testing.expect(float_callback != api.nilObj);
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_apply_float"), str(api, "f p"), api.intern("rustApplyFloat"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    const float_doubled = api.send(float_callback, api.intern("rustApplyFloat"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(f64, 41.0), api.floatValue(float_doubled));
+
+    const void_callback = api.send(
+        alien,
+        callback_selector,
+        &[_]Oop{ liveResponder(api, "value:", &liveVoid), str(api, "v l") },
+        2,
+    );
+    try std.testing.expect(void_callback != api.nilObj);
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_apply_void"), str(api, "l p"), api.intern("rustApplyVoid"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    const void_result = api.send(void_callback, api.intern("rustApplyVoid"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(void_result));
+
+    const aggregate_callback = api.send(
+        alien,
+        callback_selector,
+        &[_]Oop{ liveResponder(api, "value:", &livePointReturn), str(api, "{ll} l") },
+        2,
+    );
+    try std.testing.expect(aggregate_callback != api.nilObj);
+    try std.testing.expect(api.send(
+        alien,
+        wrap_selector,
+        &[_]Oop{ str(api, "birnam_rust_alien_apply_return_point"), str(api, "l p"), api.intern("rustApplyReturnPoint"), api.smallint_vt },
+        4,
+    ) != api.nilObj);
+    const point_sum = api.send(aggregate_callback, api.intern("rustApplyReturnPoint"), &[_]Oop{}, 0);
+    try std.testing.expectEqual(@as(i64, 43), api.smallIntValue(point_sum));
+
+    for ([_]Oop{ double_callback, float_callback, void_callback, aggregate_callback }) |callback| {
+        try std.testing.expect(
+            api.send(alien, api.intern("releaseCallback:"), &[_]Oop{callback}, 1) == api.trueObj,
+        );
+    }
 }
 
 test "Rust Alien owns raw buffer allocation and typed access" {
