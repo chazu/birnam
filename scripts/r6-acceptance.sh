@@ -59,9 +59,9 @@ cat "$functional"
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 56/56 tests passed$' "$functional" || true)
+focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded; 58/58 tests passed$' "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
-  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 56/56 passing tests" >&2
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 58/58 passing tests" >&2
   exit 1
 }
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
@@ -135,9 +135,9 @@ rust_relational_test_count=$(awk '
 /^test-rust-relational success$/ { seen=1; next }
 seen && /^\+- run test / { print; exit }
 seen && /^[^ ]/ { exit }
-' "$functional" | grep -Ec '^\+- run test 2 passed ' || true)
+' "$functional" | grep -Ec '^\+- run test 3 passed ' || true)
 [ "$rust_relational_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Relational callback target no longer has 2 passing tests" >&2
+  echo "r6-acceptance: Rust Relational callback target no longer has 3 passing tests" >&2
   exit 1
 }
 rust_relational_zig_store_success_count=$(grep -Fc 'test-rust-relational-zig-store success' "$functional" || true)
@@ -149,9 +149,9 @@ rust_relational_zig_store_test_count=$(awk '
 /^test-rust-relational-zig-store success$/ { seen=1; next }
 seen && /^\+- run test / { print; exit }
 seen && /^[^ ]/ { exit }
-' "$functional" | grep -Ec '^\+- run test 2 passed ' || true)
+' "$functional" | grep -Ec '^\+- run test 3 passed ' || true)
 [ "$rust_relational_zig_store_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Relational × Zig Store target no longer has 2 passing tests" >&2
+  echo "r6-acceptance: Rust Relational × Zig Store target no longer has 3 passing tests" >&2
   exit 1
 }
 rust_prelude_io_success_count=$(grep -Ec '^test-rust-prelude-io (success|cached)$' "$functional" || true)
@@ -213,7 +213,7 @@ cat "$verify"
     "ok   Rust floor is not a higher native crate"
     "Segmentation fault at address"
     "/src/id/collection.zig:336:29:"
-    "Build Summary: 260/263 steps succeeded; 1 failed; 462/468 tests passed; 6 skipped"
+    "Build Summary: 260/263 steps succeeded; 1 failed; 464/470 tests passed; 6 skipped"
     "verify transitive failure"
   )
   for marker in "${known_verify_markers[@]}"; do

@@ -530,7 +530,7 @@ test "relational: asOf: reflects a value CHANGE on a history-on :one attribute" 
 
     // Opt the city attribute into history (default-off would overwrite in place,
     // discarding the past — D6); then a person in Boston moves to Denver.
-    _ = s3(db, "assert:attr:value:", api.intern("city"), api.intern("history"), api.intern("true"));
+    _ = s3(db, "assert:attr:value:", api.intern("city"), api.intern("history"), api.trueObj);
     const p = s0(db, "entity");
     _ = s3(db, "assert:attr:value:", p, api.intern("city"), api.intern("Boston"));
     const basis = s0(db, "basis");
