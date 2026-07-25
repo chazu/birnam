@@ -26,6 +26,7 @@ const CollectWindow = *const fn (Oop, u8, u64, u64, ?[*]ClassifiedTriple, usize,
 const ProjectLive = *const fn (Oop, u8, Oop, Oop, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectPattern = extern struct { entity: Oop, attribute: Oop, value: Oop };
 const ProjectJoinLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectPredicateLive = *const fn (Oop, u8, ProjectPattern, u8, u8, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -269,4 +270,54 @@ test "Rust Relational kernel joins two Store patterns" {
     try std.testing.expectEqual(@as(usize, 1), written);
     try std.testing.expectEqual(@as(u8, 0), values[0].tag);
     try std.testing.expectEqual(@intFromPtr(entity), @as(usize, @intCast(values[0].identity)));
+}
+
+test "Rust Relational kernel filters a bound value with a numeric predicate" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const predicate_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_predicate_live") orelse
+        return error.RustRelationalPredicateMissing;
+    const predicate: ProjectPredicateLive = @ptrCast(@alignCast(predicate_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const young = api.intern("rust_relational_predicate_young");
+    const mid = api.intern("rust_relational_predicate_mid");
+    const fractional = api.intern("rust_relational_predicate_fractional");
+    const age = api.intern("rust_relational_predicate_age");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ young, age, api.mkSmallInt(18) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ mid, age, api.mkSmallInt(30) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ fractional, age, api.mkFloat(30.5) }, 3);
+
+    const pattern = ProjectPattern{ .entity = null, .attribute = age, .value = null };
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        predicate(store, 0, pattern, 2, 2, api.mkSmallInt(18), &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 2), written);
+    try std.testing.expectEqual(@intFromPtr(mid), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(fractional), @as(usize, @intCast(values[1].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        predicate(store, 0, pattern, 2, 4, api.mkSmallInt(30), &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@intFromPtr(mid), @as(usize, @intCast(values[0].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        predicate(store, 0, pattern, 2, 9, api.mkSmallInt(18), &values, values.len, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        predicate(store, 0, pattern, 1, 2, api.mkSmallInt(18), &values, values.len, &written),
+    );
 }

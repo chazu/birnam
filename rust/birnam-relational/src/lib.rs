@@ -543,6 +543,69 @@ unsafe fn project_join_live(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_predicate_live(
+    store: Oop,
+    projection: u8,
+    pattern: ProjectPattern,
+    predicate_position: u8,
+    operator: u8,
+    rhs: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    if projection > 2 || predicate_position > 2 {
+        return -7;
+    }
+    let Some(op) = CompareOp::from_u8(operator) else {
+        return -7;
+    };
+    if rhs.is_null() {
+        return -4;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let terms = match unsafe { project_terms(api, pattern) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let predicate_variable = match &terms[predicate_position as usize] {
+        Term::Variable(variable) => *variable,
+        Term::Constant(_) => return -7,
+    };
+    // SAFETY: rhs is borrowed from the caller for this synchronous call.
+    let Some(rhs) = (unsafe { oop::classify(api, rhs) }) else {
+        return -4;
+    };
+    let projected = project_predicate(
+        &facts,
+        &Clause(terms),
+        predicate_variable,
+        op,
+        &rhs,
+        projection as u32,
+    );
+    if projected.len() > capacity {
+        return -5;
+    }
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity elements of writable output
+        // storage; the length check above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = projected_len };
+    0
+}
+
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
 /// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
@@ -649,6 +712,51 @@ pub unsafe extern "C" fn birnam_relational_rust_project_join_live(
     unsafe { project_join_live(store, projection, first, second, output, capacity, written) }
 }
 
+/// Project one variable from a triple pattern after a numeric predicate on one
+/// of its variable positions. The predicate has a constant right operand and
+/// runs after the single binder; this is an explicit migration probe, not the
+/// canonical Store `findAll:where:` method.
+///
+/// Return values: `0` success, `-2` before `module_init`, `-3` invalid pointers
+/// or Store, `-4` malformed terms or right operand, `-5` insufficient output
+/// capacity, `-6` callback allocation failure, and `-7` invalid projection,
+/// predicate position/operator, or a predicate position that is constant.
+/// Operators are `0 <`, `1 <=`, `2 >`, `3 >=`, `4 =`, and `5 ~=`, with the
+/// frozen Prelude numeric promotion/equality law.
+///
+/// # Safety
+///
+/// `store`, any non-null pattern term, and `rhs` must remain live for the
+/// synchronous call. `output` and `written` must point to caller-owned writable
+/// storage for the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_predicate_live(
+    store: Oop,
+    projection: u8,
+    pattern: ProjectPattern,
+    predicate_position: u8,
+    operator: u8,
+    rhs: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe {
+        project_predicate_live(
+            store,
+            projection,
+            pattern,
+            predicate_position,
+            operator,
+            rhs,
+            output,
+            capacity,
+            written,
+        )
+    }
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
 ///
 /// # Safety
@@ -711,6 +819,67 @@ pub struct Binding {
     pub value: Value,
 }
 
+/// The bounded comparison vocabulary used by the predicate migration probe.
+/// Ordering follows the Prelude numeric law: Integer/Float pairs promote to
+/// Float for ordering, while equality remains type-strict.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum CompareOp {
+    Less = 0,
+    LessEqual = 1,
+    Greater = 2,
+    GreaterEqual = 3,
+    Equal = 4,
+    NotEqual = 5,
+}
+
+impl CompareOp {
+    fn from_u8(value: u8) -> Option<Self> {
+        Some(match value {
+            0 => Self::Less,
+            1 => Self::LessEqual,
+            2 => Self::Greater,
+            3 => Self::GreaterEqual,
+            4 => Self::Equal,
+            5 => Self::NotEqual,
+            _ => return None,
+        })
+    }
+}
+
+impl Value {
+    /// Apply one Prelude-shaped comparison without sending a borrowed Oop
+    /// across the Rust boundary. Unknown/non-numeric ordering operands fail the
+    /// row, matching the relational filter's error-to-no-row behavior.
+    pub fn compares(&self, op: CompareOp, other: &Self) -> bool {
+        match op {
+            CompareOp::Equal => self.matches(other),
+            CompareOp::NotEqual => !self.matches(other),
+            CompareOp::Less
+            | CompareOp::LessEqual
+            | CompareOp::Greater
+            | CompareOp::GreaterEqual => {
+                let ordering = match (self, other) {
+                    (Self::Integer(left), Self::Integer(right)) => left.partial_cmp(right),
+                    (Self::Integer(left), Self::Float(right)) => (*left as f64).partial_cmp(right),
+                    (Self::Float(left), Self::Integer(right)) => left.partial_cmp(&(*right as f64)),
+                    (Self::Float(left), Self::Float(right)) => left.partial_cmp(right),
+                    _ => None,
+                };
+                matches!(
+                    (op, ordering),
+                    (CompareOp::Less, Some(std::cmp::Ordering::Less))
+                        | (CompareOp::LessEqual, Some(std::cmp::Ordering::Less))
+                        | (CompareOp::LessEqual, Some(std::cmp::Ordering::Equal))
+                        | (CompareOp::Greater, Some(std::cmp::Ordering::Greater))
+                        | (CompareOp::GreaterEqual, Some(std::cmp::Ordering::Greater))
+                        | (CompareOp::GreaterEqual, Some(std::cmp::Ordering::Equal))
+                )
+            }
+        }
+    }
+}
+
 fn lookup(solution: &[Binding], variable: u32) -> Option<&Value> {
     solution
         .iter()
@@ -737,13 +906,7 @@ fn match_term(solution: &[Binding], fresh: &mut Vec<Binding>, term: &Term, value
     }
 }
 
-/// Evaluate a left-to-right conjunction and project one variable.
-///
-/// Fact order is preserved and projected values are set-like: the first
-/// occurrence wins, matching the existing relational surface's deterministic
-/// result order and distinct projection semantics. No query result borrows the
-/// input snapshot.
-pub fn project(facts: &[Triple], clauses: &[Clause], result: u32) -> Vec<Value> {
+fn evaluate_clauses(facts: &[Triple], clauses: &[Clause]) -> Vec<Vec<Binding>> {
     let mut solutions: Vec<Vec<Binding>> = vec![Vec::new()];
     for Clause(terms) in clauses {
         let mut next = Vec::new();
@@ -767,7 +930,10 @@ pub fn project(facts: &[Triple], clauses: &[Clause], result: u32) -> Vec<Value> 
             break;
         }
     }
+    solutions
+}
 
+fn project_solutions(solutions: Vec<Vec<Binding>>, result: u32) -> Vec<Value> {
     let mut result_values: Vec<Value> = Vec::new();
     for solution in solutions {
         let Some(value) = lookup(&solution, result) else {
@@ -780,9 +946,38 @@ pub fn project(facts: &[Triple], clauses: &[Clause], result: u32) -> Vec<Value> 
     result_values
 }
 
+/// Evaluate a left-to-right conjunction and project one variable.
+///
+/// Fact order is preserved and projected values are set-like: the first
+/// occurrence wins, matching the existing relational surface's deterministic
+/// result order and distinct projection semantics. No query result borrows the
+/// input snapshot.
+pub fn project(facts: &[Triple], clauses: &[Clause], result: u32) -> Vec<Value> {
+    project_solutions(evaluate_clauses(facts, clauses), result)
+}
+
+/// Evaluate one triple clause, filter its bound variable with a comparison,
+/// and project another variable. This is deliberately narrower than the
+/// canonical query protocol: the predicate is constant-rhs, runs after the
+/// single binder, and does not reorder or bind solutions.
+pub fn project_predicate(
+    facts: &[Triple],
+    clause: &Clause,
+    predicate_variable: u32,
+    op: CompareOp,
+    rhs: &Value,
+    result: u32,
+) -> Vec<Value> {
+    let solutions = evaluate_clauses(facts, std::slice::from_ref(clause));
+    let filtered = solutions.into_iter().filter(|solution| {
+        lookup(solution, predicate_variable).is_some_and(|left| left.compares(op, rhs))
+    });
+    project_solutions(filtered.collect(), result)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Clause, Term, Triple, Value, project};
+    use super::{Clause, CompareOp, Term, Triple, Value, project, project_predicate};
 
     fn id(value: u64) -> Value {
         Value::Identity(value)
@@ -790,6 +985,10 @@ mod tests {
 
     fn integer(value: i64) -> Value {
         Value::Integer(value)
+    }
+
+    fn float(value: f64) -> Value {
+        Value::Float(value)
     }
 
     fn fact(entity: u64, attribute: u64, value: u64) -> Triple {
@@ -906,5 +1105,44 @@ mod tests {
         let values = project(&facts, &clauses, 1);
         assert_eq!(values.len(), 1);
         assert!(values[0].matches(&integer(7)));
+    }
+
+    #[test]
+    fn predicate_filters_after_binding_with_numeric_promotion_and_strict_equality() {
+        let facts = [
+            Triple {
+                entity: id(1),
+                attribute: id(10),
+                value: integer(18),
+            },
+            Triple {
+                entity: id(2),
+                attribute: id(10),
+                value: integer(30),
+            },
+            Triple {
+                entity: id(3),
+                attribute: id(10),
+                value: float(30.0),
+            },
+        ];
+        let clause = Clause([Term::Variable(0), Term::Constant(id(10)), Term::Variable(1)]);
+
+        let over_eighteen =
+            project_predicate(&facts, &clause, 1, CompareOp::Greater, &integer(18), 0);
+        assert_eq!(over_eighteen.len(), 2);
+        assert!(over_eighteen[0].matches(&id(2)));
+        assert!(over_eighteen[1].matches(&id(3)));
+
+        let exact_integer =
+            project_predicate(&facts, &clause, 1, CompareOp::Equal, &integer(30), 0);
+        assert_eq!(exact_integer.len(), 1);
+        assert!(exact_integer[0].matches(&id(2)));
+
+        let not_integer =
+            project_predicate(&facts, &clause, 1, CompareOp::NotEqual, &integer(30), 0);
+        assert_eq!(not_integer.len(), 2);
+        assert!(not_integer[0].matches(&id(1)));
+        assert!(not_integer[1].matches(&id(3)));
     }
 }
