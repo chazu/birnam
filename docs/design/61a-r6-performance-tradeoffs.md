@@ -453,3 +453,11 @@ delegates through `printString`, and System output renders non-String values
 through that protocol. Focused representation checks and the full 42/42 R6
 rerun passed with no benchmark allowance change. Source loading, process
 controls, self-hosted handlers, and canonical prelude cutover remain open.
+
+The Rust System GC-control slice landed after that checkpoint: `gc` and
+`liveObjects` expose the frozen IdApi counters, while `autoGc:` and
+`preciseGc:` validate Boolean operands, toggle the corresponding runtime
+controls, and answer the System singleton. Focused selector, safe no-stack
+collection, and toggle checks passed at 1/1; the complete R6 rerun remained
+42/42 with no benchmark allowance change. Source loading, process controls,
+self-hosted handlers, and canonical prelude cutover remain open.

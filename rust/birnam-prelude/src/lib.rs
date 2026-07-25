@@ -1093,6 +1093,60 @@ unsafe extern "C" fn system_get_env(
     }
 }
 
+unsafe extern "C" fn system_gc(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)((api.gcCollect)() as i64) }
+}
+
+unsafe extern "C" fn system_live_objects(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)((api.gcLiveCount)() as i64) }
+}
+
+unsafe extern "C" fn system_auto_gc(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if value != api.trueObj && value != api.falseObj {
+        return api.nilObj;
+    }
+    unsafe { (api.gcSetAuto)(if value == api.trueObj { 1 } else { 0 }) };
+    self_object
+}
+
+unsafe extern "C" fn system_precise_gc(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if value != api.trueObj && value != api.falseObj {
+        return api.nilObj;
+    }
+    unsafe { (api.gcSetPrecise)(if value == api.trueObj { 1 } else { 0 }) };
+    self_object
+}
+
 unsafe fn system_output(
     self_object: Oop,
     args: *const Oop,
@@ -1150,6 +1204,10 @@ unsafe fn install_system_protocol(api: &IdApi) {
     let read_file = unsafe { intern(api, b"readFile:\0") };
     let write_file = unsafe { intern(api, b"writeFile:contents:\0") };
     let get_env = unsafe { intern(api, b"getEnv:\0") };
+    let gc = unsafe { intern(api, b"gc\0") };
+    let live_objects = unsafe { intern(api, b"liveObjects\0") };
+    let auto_gc = unsafe { intern(api, b"autoGc:\0") };
+    let precise_gc = unsafe { intern(api, b"preciseGc:\0") };
     // SAFETY: the System vtable and callback addresses are process-lifetime
     // values. The singleton is retained by the exported family.
     unsafe {
@@ -1158,6 +1216,10 @@ unsafe fn install_system_protocol(api: &IdApi) {
         (api.method)(system_vt, read_file, system_read_file);
         (api.method)(system_vt, write_file, system_write_file);
         (api.method)(system_vt, get_env, system_get_env);
+        (api.method)(system_vt, gc, system_gc);
+        (api.method)(system_vt, live_objects, system_live_objects);
+        (api.method)(system_vt, auto_gc, system_auto_gc);
+        (api.method)(system_vt, precise_gc, system_precise_gc);
     }
     let _ = system_object;
 }

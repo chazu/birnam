@@ -2241,6 +2241,17 @@ through that protocol. The focused dynamic test covers Object, Symbol, and
 allowance change. Source loading, process controls, self-hosted handlers, and
 canonical prelude cutover remain open.
 
+The Rust System GC-control slice now installs `gc`, `liveObjects`, `autoGc:`,
+and `preciseGc:` against the frozen IdApi. Collection answers the runtime
+reclaimed count (and is safe when no stack anchor is configured), live-object
+count answers the current heap count, and the two toggles accept only Boolean
+operands before changing runtime state and answering System. The focused
+dynamic test covers selector installation, safe collection/count results,
+valid toggles, and invalid operands; Cargo check/test/clippy and the full R6
+rerun passed at 42/42 with no benchmark allowance change. Source loading,
+process controls, self-hosted handlers, and canonical prelude cutover remain
+open.
+
 The Rust artifact loader now enforces declared Birnam module requirements
 before `__birnam_unit_init` or `__ev` can run. A missing `Module` policy surface
 or unloaded requirement fails closed, closes the `dlopen` handle, and leaves

@@ -196,6 +196,10 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     var saw_read_file = false;
     var saw_write_file = false;
     var saw_get_env = false;
+    var saw_gc = false;
+    var saw_live_objects = false;
+    var saw_auto_gc = false;
+    var saw_precise_gc = false;
     while (api.vtableSelectorAt(system_vt, system_selector_count)) |selector| : (system_selector_count += 1) {
         const name = std.mem.span(api.symbolName(selector));
         saw_print = saw_print or std.mem.eql(u8, name, "print:");
@@ -203,17 +207,34 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
         saw_read_file = saw_read_file or std.mem.eql(u8, name, "readFile:");
         saw_write_file = saw_write_file or std.mem.eql(u8, name, "writeFile:contents:");
         saw_get_env = saw_get_env or std.mem.eql(u8, name, "getEnv:");
+        saw_gc = saw_gc or std.mem.eql(u8, name, "gc");
+        saw_live_objects = saw_live_objects or std.mem.eql(u8, name, "liveObjects");
+        saw_auto_gc = saw_auto_gc or std.mem.eql(u8, name, "autoGc:");
+        saw_precise_gc = saw_precise_gc or std.mem.eql(u8, name, "preciseGc:");
     }
     try std.testing.expect(saw_print);
     try std.testing.expect(saw_println);
     try std.testing.expect(saw_read_file);
     try std.testing.expect(saw_write_file);
     try std.testing.expect(saw_get_env);
+    try std.testing.expect(saw_gc);
+    try std.testing.expect(saw_live_objects);
+    try std.testing.expect(saw_auto_gc);
+    try std.testing.expect(saw_precise_gc);
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "print:", &.{ api.trueObj, api.nilObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "readFile:", &.{api.trueObj}));
     try std.testing.expectEqual(api.nilObj, send(api, system, "writeFile:contents:", &.{ api.trueObj, api.trueObj }));
     try std.testing.expectEqual(api.nilObj, send(api, system, "getEnv:", &.{api.trueObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "gc", &.{api.trueObj}));
+    try std.testing.expect(api.isSmallInt(send(api, system, "gc", &.{})) != 0);
+    try std.testing.expect(api.isSmallInt(send(api, system, "liveObjects", &.{})) != 0);
+    try std.testing.expectEqual(system, send(api, system, "autoGc:", &.{api.falseObj}));
+    try std.testing.expectEqual(system, send(api, system, "autoGc:", &.{api.trueObj}));
+    try std.testing.expectEqual(system, send(api, system, "preciseGc:", &.{api.trueObj}));
+    try std.testing.expectEqual(system, send(api, system, "preciseGc:", &.{api.falseObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "autoGc:", &.{api.nilObj}));
+    try std.testing.expectEqual(api.nilObj, send(api, system, "preciseGc:", &.{api.nilObj}));
 
     const rust_prelude_env_name = "BIRNAM_RUST_PRELUDE_DYLIB";
     const rust_prelude_env = send(
