@@ -36,6 +36,7 @@
     { "path": "src/id/membership_bench.zig", "kind": "test-support", "owner": "N11" },
     { "path": "src/id/peg.zig", "kind": "native-rung", "owner": "peg" },
     { "path": "src/id/prelude.zig", "kind": "native-rung", "owner": "prelude" },
+    { "path": "src/id/rust_prelude_io_probe.zig", "kind": "test-support", "owner": "N11" },
     { "path": "src/id/project.zig", "kind": "host", "owner": "N9" },
     { "path": "src/id/project_build.zig", "kind": "host", "owner": "N9" },
     { "path": "src/id/project_check.zig", "kind": "host", "owner": "N9" },
