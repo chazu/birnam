@@ -862,6 +862,12 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const rule: ProjectRuleLive = @ptrCast(@alignCast(rule_raw));
 
     const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const empty_args = [_]Oop{};
+    const first_entity = api.send(store, api.intern("entity"), &empty_args, 0);
+    const second_entity = api.send(store, api.intern("entity"), &empty_args, 0);
+    try std.testing.expect(first_entity != null);
+    try std.testing.expect(second_entity != null);
+    try std.testing.expect(first_entity != second_entity);
     const ancestor = api.intern("rust_relational_rule_ancestor");
     const tom = api.intern("rust_relational_rule_tom");
     const bob = api.intern("rust_relational_rule_bob");
@@ -950,7 +956,6 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const store_rule_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_rule_store_live") orelse
         return error.RustRelationalStoreRuleMissing;
     const store_rule: ProjectRuleStoreLive = @ptrCast(@alignCast(store_rule_raw));
-    const empty_args = [_]Oop{};
     _ = api.send(store, api.intern("rebuildRules"), &empty_args, 0);
     try std.testing.expectEqual(
         @as(c_int, 0),

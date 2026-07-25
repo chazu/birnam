@@ -19,6 +19,7 @@ const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.5-project\0";
 static API: OnceLock<usize> = OnceLock::new();
 static ACTIVE_PROBE_BLOCK: AtomicUsize = AtomicUsize::new(0);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
+static ENTITY_VT: OnceLock<usize> = OnceLock::new();
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Relational: {message}");
@@ -104,6 +105,47 @@ fn register_probe_root(api: &IdApi) {
         // lifetime of the loaded Rust Relational module.
         (api.gcRegisterRootProvider)(mark_probe_root);
     });
+}
+
+unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let Some(vtable) = ENTITY_VT.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: the canonical EntityVt has an empty payload and the returned
+    // object is owned by the live floor heap.
+    unsafe { (api.alloc)(*vtable as Oop, 0) }
+}
+
+unsafe fn install_entity_method(api: &IdApi) {
+    let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
+    if store_vt.is_null() {
+        // The classifier-only probe may load this dylib before Store. The
+        // canonical bridge is installed once StoreVt is available.
+        return;
+    }
+    let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
+    let entity_vt = if entity_vt.is_null() {
+        // SAFETY: the new vtable delegates to the process Object vtable and
+        // carries no payload, matching the Zig EntityVt contract.
+        let created = unsafe { (api.proto)(api.object_vt) };
+        if created.is_null() {
+            abort("Rust Relational could not create EntityVt");
+        }
+        unsafe { (api.exportObj)(c"EntityVt".as_ptr(), created) };
+        created
+    } else {
+        entity_vt
+    };
+    let _ = ENTITY_VT.set(entity_vt as usize);
+    let selector = unsafe { (api.intern)(c"entity".as_ptr()) };
+    // SAFETY: the Store vtable and selector are process-owned and the method
+    // has the frozen IdApi callback ABI.
+    unsafe { (api.method)(store_vt, selector, rust_entity) };
 }
 
 /// Identifies the explicit Rust Relational probe; it is not canonical yet.
@@ -1464,6 +1506,9 @@ pub unsafe extern "C" fn birnam_relational_rust_project_rule_store_live(
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
     unsafe { bring_up(api) };
+    // SAFETY: module_init received the process-owned IdApi used to install the
+    // Store-facing entity constructor.
+    unsafe { install_entity_method(&*api) };
     // SAFETY: module_init received the same process-owned IdApi recorded above.
     register_probe_root(unsafe { &*api });
     ptr::null_mut()
