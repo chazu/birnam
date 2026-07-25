@@ -676,8 +676,8 @@ remain the next implementation slices.
   canonical Rust install smoke and the Rust Isolate corpus pass in Debug and
   ReleaseSafe, including Rust host plus Rust worker, timeout, and crash paths.
 - This is a selection/rollback checkpoint, not yet the canonical switch:
-  full `-Disolate-impl=rust` install relocation and R6 matrix acceptance remain
-  before changing the default.
+   full `-Disolate-impl=rust` install relocation and R6 matrix acceptance were
+   the remaining pre-switch evidence and are recorded in R3.18 below.
 
 ### R3.18 Rust Isolate canonical-R6 acceptance checkpoint (2026-07-24)
 
@@ -689,9 +689,22 @@ remain the next implementation slices.
   `compile.stage1-stdlib +11.9%`).
 - The gate accepts the latest lifecycle corpus through the same explicit
   implementation selector used by the install matrix. This closes the
-  pre-switch Rust Isolate acceptance evidence; the canonical default remains
-  Zig until the separate default-switch commit and its post-switch observation
-  window are complete.
+  pre-switch Rust Isolate acceptance evidence.
+
+### R3.19 Rust Isolate canonical switch and observation checkpoint (2026-07-24)
+
+- `ec9d58b` makes Rust Isolate the default canonical implementation for
+  `libbirnam_id_isolate.dylib`; the Zig implementation remains installed as
+  `libbirnam_id_isolate_zig.dylib` and selectable with
+  `-Disolate-impl=zig` for rollback.
+- The switched default passes relocated `test-install` (`113/113` steps) and
+  the full default `mise run r6-acceptance`: `93/93` build steps, `52/52`
+  focused tests, Rust Isolate `4/4`, optimized verify, and the exact accepted
+  benchmark crossings (`query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`) with no additional regressions.
+- The host/project/image observation window is therefore closed for the
+  Isolate switch; future R3 work retains the explicit Zig artifact and the
+  implementation selector as the rollback seam.
 
 ## 8. Phase R4 — Relational
 
