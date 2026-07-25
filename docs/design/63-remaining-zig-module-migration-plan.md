@@ -1282,6 +1282,21 @@ remain the next implementation slices.
   exit gate. The remaining method family and canonical-selection work must
   retain this same R6 boundary and rollback evidence.
 
+### R4.30 Rust Relational binder-planner parity checkpoint (2026-07-25)
+
+- `6231e6a` adds the binding-aware clause planner to the Rust rule/query body
+  evaluator. Predicates and negations are deferred until all mentioned
+  variables are bound; binders retain source order among ready clauses, and a
+  no-ready fallback matches the Zig behavior. The cross-floor canonical probe
+  deliberately writes `gt` before its score triple and still returns only the
+  high-scoring entity.
+- Rust unit tests remain `17/17`; both dynamic targets remain `14/14`. This
+  preserves the R6 boundary recorded in R4.29; no benchmark allowance or gate
+  threshold changed.
+- Window selectors, aggregate/group/pull method bridges, arbitrary
+  parameter/variable-scope semantics, image-triggered rebuild, and canonical
+  Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
