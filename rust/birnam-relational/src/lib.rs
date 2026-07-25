@@ -2016,61 +2016,108 @@ fn relation_contains(rows: &[Vec<Value>], candidate: &[Value]) -> bool {
     })
 }
 
+/// A query-scoped derived-relation cache. It is deliberately separate from
+/// Store: callers rebuild it from an authoritative snapshot and definitions,
+/// then discard it when the snapshot changes. This mirrors the Zig rule-cache
+/// lifecycle without allowing Rust to retain a second fact authority.
+#[derive(Clone, Debug, Default)]
+pub struct RuleCache {
+    relations: Vec<DerivedRelation>,
+}
+
+impl RuleCache {
+    /// Replace every cached relation and materialize the supplied definitions
+    /// to their finite least fixpoint in definition order.
+    pub fn rebuild(&mut self, facts: &[Triple], definitions: &[RuleDefinition]) {
+        self.relations.clear();
+        for definition in definitions {
+            if !self
+                .relations
+                .iter()
+                .any(|relation| relation.name.matches(&definition.name))
+            {
+                self.relations.push(DerivedRelation {
+                    name: definition.name.clone(),
+                    rows: Vec::new(),
+                });
+            }
+        }
+
+        self.materialize(facts, definitions);
+    }
+
+    fn materialize(&mut self, facts: &[Triple], definitions: &[RuleDefinition]) {
+        const MAX_ITERATIONS: usize = 1_000;
+        for _ in 0..MAX_ITERATIONS {
+            let mut changed = false;
+            for definition in definitions {
+                let candidates = evaluate_rule_body(facts, &self.relations, &definition.body);
+                let mut rows = Vec::new();
+                for solution in candidates {
+                    let Some(tuple) = definition
+                        .params
+                        .iter()
+                        .map(|variable| lookup(&solution, *variable).cloned())
+                        .collect::<Option<Vec<_>>>()
+                    else {
+                        continue;
+                    };
+                    if !relation_contains(&rows, &tuple) {
+                        rows.push(tuple);
+                    }
+                }
+                let relation = self
+                    .relations
+                    .iter_mut()
+                    .find(|relation| relation.name.matches(&definition.name))
+                    .expect("rule relation was seeded above");
+                for row in rows {
+                    if !relation_contains(&relation.rows, &row) {
+                        relation.rows.push(row);
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    /// Query one cached relation with a positional call pattern and project
+    /// one bound variable. Results are distinct and retain relation order.
+    pub fn query(&self, name: &Value, args: &[Term], result_variable: u32) -> Vec<Value> {
+        let mut values: Vec<Value> = Vec::new();
+        for row in relation_rows(&self.relations, name) {
+            let Some(solution) = extend_rule_solution(&[], args, row) else {
+                continue;
+            };
+            let Some(value) = lookup(&solution, result_variable) else {
+                continue;
+            };
+            if !values.iter().any(|seen| seen.matches(value)) {
+                values.push(value.clone());
+            }
+        }
+        values
+    }
+
+    fn rows(&self) -> Vec<Vec<Value>> {
+        self.relations
+            .iter()
+            .flat_map(|relation| relation.rows.iter().cloned())
+            .collect()
+    }
+}
+
 /// Materialize all rule definitions to a finite least fixpoint. Definitions
 /// with the same name form a union; body calls read the current partial
-/// relations, so mutual recursion converges without host recursion or a second
-/// Store authority.
+/// relations, so mutual recursion converges without host recursion or a
+/// second Store authority.
 pub fn materialize_rules(facts: &[Triple], definitions: &[RuleDefinition]) -> Vec<Vec<Value>> {
-    let mut relations: Vec<DerivedRelation> = Vec::new();
-    for definition in definitions {
-        if !relations
-            .iter()
-            .any(|relation| relation.name.matches(&definition.name))
-        {
-            relations.push(DerivedRelation {
-                name: definition.name.clone(),
-                rows: Vec::new(),
-            });
-        }
-    }
-    const MAX_ITERATIONS: usize = 1_000;
-    for _ in 0..MAX_ITERATIONS {
-        let mut changed = false;
-        for definition in definitions {
-            let candidates = evaluate_rule_body(facts, &relations, &definition.body);
-            let mut rows = Vec::new();
-            for solution in candidates {
-                let Some(tuple) = definition
-                    .params
-                    .iter()
-                    .map(|variable| lookup(&solution, *variable).cloned())
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    continue;
-                };
-                if !relation_contains(&rows, &tuple) {
-                    rows.push(tuple);
-                }
-            }
-            let relation = relations
-                .iter_mut()
-                .find(|relation| relation.name.matches(&definition.name))
-                .expect("rule relation was seeded above");
-            for row in rows {
-                if !relation_contains(&relation.rows, &row) {
-                    relation.rows.push(row);
-                    changed = true;
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    relations
-        .into_iter()
-        .flat_map(|relation| relation.rows)
-        .collect()
+    let mut cache = RuleCache::default();
+    cache.rebuild(facts, definitions);
+    cache.rows()
 }
 
 /// Query one materialized rule relation with a positional call pattern and
@@ -2082,65 +2129,9 @@ pub fn query_rule(
     args: &[Term],
     result_variable: u32,
 ) -> Vec<Value> {
-    let mut relations: Vec<DerivedRelation> = Vec::new();
-    for definition in definitions {
-        if !relations
-            .iter()
-            .any(|relation| relation.name.matches(&definition.name))
-        {
-            relations.push(DerivedRelation {
-                name: definition.name.clone(),
-                rows: Vec::new(),
-            });
-        }
-    }
-    const MAX_ITERATIONS: usize = 1_000;
-    for _ in 0..MAX_ITERATIONS {
-        let mut changed = false;
-        for definition in definitions {
-            let candidates = evaluate_rule_body(facts, &relations, &definition.body);
-            let mut rows = Vec::new();
-            for solution in candidates {
-                let Some(tuple) = definition
-                    .params
-                    .iter()
-                    .map(|variable| lookup(&solution, *variable).cloned())
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    continue;
-                };
-                if !relation_contains(&rows, &tuple) {
-                    rows.push(tuple);
-                }
-            }
-            let relation = relations
-                .iter_mut()
-                .find(|relation| relation.name.matches(&definition.name))
-                .expect("rule relation was seeded above");
-            for row in rows {
-                if !relation_contains(&relation.rows, &row) {
-                    relation.rows.push(row);
-                    changed = true;
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    let mut values: Vec<Value> = Vec::new();
-    for row in relation_rows(&relations, name) {
-        let Some(solution) = extend_rule_solution(&[], args, row) else {
-            continue;
-        };
-        let Some(value) = lookup(&solution, result_variable) else {
-            continue;
-        };
-        if !values.iter().any(|seen| seen.matches(value)) {
-            values.push(value.clone());
-        }
-    }
-    values
+    let mut cache = RuleCache::default();
+    cache.rebuild(facts, definitions);
+    cache.query(name, args, result_variable)
 }
 
 unsafe fn parse_pull_specs(
@@ -2554,8 +2545,8 @@ pub fn project_negated(
 #[cfg(test)]
 mod tests {
     use super::{
-        AggregateOp, Clause, CompareOp, PullKind, PullSpec, RuleClause, RuleDefinition, Term,
-        Triple, Value, aggregate_values, group_aggregate, project, project_disjunction,
+        AggregateOp, Clause, CompareOp, PullKind, PullSpec, RuleCache, RuleClause, RuleDefinition,
+        Term, Triple, Value, aggregate_values, group_aggregate, project, project_disjunction,
         project_negated, project_predicate, project_recursive, pull, query_rule,
     };
 
@@ -3041,5 +3032,33 @@ mod tests {
         assert!(values[2].matches(&four));
         let _ = one;
         let _ = three;
+    }
+
+    #[test]
+    fn rule_cache_rebuild_discards_stale_snapshot_rows() {
+        let ancestor = id(100);
+        let parent = id(10);
+        let definitions = [RuleDefinition {
+            name: ancestor.clone(),
+            params: vec![0, 1],
+            body: vec![RuleClause::Triple(Clause([
+                Term::Variable(0),
+                Term::Constant(parent.clone()),
+                Term::Variable(1),
+            ]))],
+        }];
+        let first = [fact(1, 10, 2)];
+        let second = [fact(1, 10, 3)];
+        let mut cache = RuleCache::default();
+
+        cache.rebuild(&first, &definitions);
+        let first_values = cache.query(&ancestor, &[Term::Constant(id(1)), Term::Variable(1)], 1);
+        assert_eq!(first_values.len(), 1);
+        assert!(first_values[0].matches(&id(2)));
+
+        cache.rebuild(&second, &definitions);
+        let second_values = cache.query(&ancestor, &[Term::Constant(id(1)), Term::Variable(1)], 1);
+        assert_eq!(second_values.len(), 1);
+        assert!(second_values[0].matches(&id(3)));
     }
 }
