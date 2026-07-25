@@ -1862,6 +1862,18 @@ post-switch image/project observation window closes.
   This closes the explicit child-abort seam; the remaining R5 work is the
   pre-switch full verify/R6 acceptance and canonical selection decision.
 
+### R5.23 Rust Alien canonical selection (2026-07-25)
+
+- `7ff15fe` makes the Rust Alien dylib the installed canonical
+  `libbirnam_id_alien.dylib`. The Zig implementation remains available as
+  `libbirnam_id_alien_zig.dylib`, while the Rust fixture remains independently
+  addressable as `libbirnam_id_alien_rust.dylib`; rollback therefore does not
+  require rebuilding either owner.
+- Post-switch focused observation passes: the existing Alien corpus is
+  `43/43` and the Rust live-owner corpus is `9/9` in ReleaseSafe. The full
+  cross-layer verify/R6 run is the next required observation boundary; no
+  benchmark allowance or threshold is changed by the selection.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
