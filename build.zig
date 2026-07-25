@@ -582,6 +582,35 @@ pub fn build(b: *std.Build) void {
     // ordinary install step can depend on compiled production units without a
     // dependency cycle.
     const bootstrap_install = b.step("bootstrap-install", "Install the native floor and compiler host needed to build compiled units");
+
+    const remaining_rung_cross_floor_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/remaining_rung_cross_floor_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const remaining_rung_cross_floor_tests = b.addTest(.{ .root_module = remaining_rung_cross_floor_mod });
+    const run_remaining_rung_cross_floor_zig = b.addRunArtifact(remaining_rung_cross_floor_tests);
+    run_remaining_rung_cross_floor_zig.setEnvironmentVariable("BIRNAM_ID_DYLIB", b.getInstallPath(.lib, "libbirnam_id_zig.dylib"));
+    run_remaining_rung_cross_floor_zig.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", "zig-id-v1");
+    run_remaining_rung_cross_floor_zig.setEnvironmentVariable("BIRNAM_PRELUDE_IMPL", "zig");
+    run_remaining_rung_cross_floor_zig.setEnvironmentVariable("BIRNAM_PRELUDE_DYLIB", b.getInstallPath(.lib, "libbirnam_id_prelude_zig.dylib"));
+    run_remaining_rung_cross_floor_zig.step.dependOn(bootstrap_install);
+
+    const run_remaining_rung_cross_floor_rust = b.addRunArtifact(remaining_rung_cross_floor_tests);
+    run_remaining_rung_cross_floor_rust.setEnvironmentVariable("BIRNAM_ID_DYLIB", b.getInstallPath(.lib, "libbirnam_id.dylib"));
+    run_remaining_rung_cross_floor_rust.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", "rust-id-v1");
+    run_remaining_rung_cross_floor_rust.setEnvironmentVariable("BIRNAM_PRELUDE_IMPL", "rust");
+    run_remaining_rung_cross_floor_rust.setEnvironmentVariable("BIRNAM_PRELUDE_DYLIB", b.getInstallPath(.lib, "libbirnam_id_prelude_rust.dylib"));
+    run_remaining_rung_cross_floor_rust.step.dependOn(bootstrap_install);
+
+    const test_remaining_rung_cross_floor_step = b.step(
+        "test-remaining-rung-cross-floor",
+        "Run one remaining-rung Prelude corpus against Zig and Rust in separate processes",
+    );
+    test_remaining_rung_cross_floor_step.dependOn(&run_remaining_rung_cross_floor_zig.step);
+    test_remaining_rung_cross_floor_step.dependOn(&run_remaining_rung_cross_floor_rust.step);
+    test_step.dependOn(&run_remaining_rung_cross_floor_zig.step);
+    test_step.dependOn(&run_remaining_rung_cross_floor_rust.step);
     const installed_zig_oracle = b.getInstallPath(.lib, "libbirnam_id_zig.dylib");
     scalar_conformance_smoke.setEnvironmentVariable(
         "BIRNAM_ZIG_ID_DYLIB",

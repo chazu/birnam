@@ -174,3 +174,7 @@ manifest.
 - [x] Add `test-remaining-rung-clean-prefix`: a relocated install run from an
       unrelated cwd containing decoy dylibs; runtime resolution ignores cwd,
       checkout, and ambient loader paths.
+- [x] Add `test-remaining-rung-cross-floor`: the same current Prelude parity
+      corpus runs in separate Zig-selected and Rust-selected processes. The
+      missing Rust `load:` surface remains an explicit R0.5 completion item,
+      not an erased requirement.
