@@ -1659,6 +1659,30 @@ pub fn build(b: *std.Build) void {
     test_rust_alien_live_step.dependOn(&run_rust_alien_live.step);
     test_step.dependOn(&run_rust_alien_live.step);
 
+    const rust_image_shell_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_image_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_image_shell_tests = b.addTest(.{ .root_module = rust_image_shell_mod });
+    rust_image_shell_tests.rdynamic = true;
+    rust_image_shell_tests.linkLibC();
+    const run_rust_image_shell = b.addRunArtifact(rust_image_shell_tests);
+    run_rust_image_shell.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_image_shell.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_image_shell.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_image_shell.setEnvironmentVariable(
+        "BIRNAM_RUST_IMAGE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_image_rust.dylib"),
+    );
+    run_rust_image_shell.step.dependOn(bootstrap_install);
+    const test_rust_image_shell_step = b.step(
+        "test-rust-image-shell",
+        "Run the Rust Image family and selector shell proof",
+    );
+    test_rust_image_shell_step.dependOn(&run_rust_image_shell.step);
+    test_step.dependOn(&run_rust_image_shell.step);
+
     const rust_tcc_image_mod = b.createModule(.{
         .root_source_file = b.path("src/id/image_test.zig"),
         .target = target,

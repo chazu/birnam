@@ -1,0 +1,95 @@
+//! Focused live proof for the Rust Image dynamic shell.
+//!
+//! This slice checks the frozen family/layout and selector surface before the
+//! v4 save/load orchestration is moved across. The shell's mutating selectors
+//! must remain fail-closed until those later authorities are installed.
+
+const std = @import("std");
+const floor = @import("floor_adapter_test.zig");
+const idapi = @import("idapi.zig");
+const prelude = @import("prelude.zig");
+
+const Oop = idapi.Oop;
+const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
+const Identity = *const fn () callconv(.c) [*:0]const u8;
+
+const RTLD_NOW: c_int = 0x2;
+const RTLD_LOCAL: c_int = 0x4;
+
+extern fn dlopen(path: [*:0]const u8, mode: c_int) ?*anyopaque;
+extern fn dlsym(handle: ?*anyopaque, name: [*:0]const u8) ?*anyopaque;
+
+fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
+    return api.mkString(bytes.ptr, bytes.len);
+}
+
+fn send(api: *idapi.IdApi, receiver: Oop, selector: [*:0]const u8, args: []const Oop) Oop {
+    return api.send(receiver, api.intern(selector), args.ptr, args.len);
+}
+
+fn loadImageModule(api: *idapi.IdApi) void {
+    const path = std.posix.getenv("BIRNAM_RUST_IMAGE_DYLIB") orelse
+        std.debug.panic("BIRNAM_RUST_IMAGE_DYLIB must select the Rust Image shell", .{});
+    const handle = dlopen(path.ptr, RTLD_NOW | RTLD_LOCAL) orelse
+        std.debug.panic("could not load Rust Image shell", .{});
+    const raw_identity = dlsym(handle, "birnam_image_rust_identity") orelse
+        std.debug.panic("Rust Image shell has no identity export", .{});
+    const identity: Identity = @ptrCast(@alignCast(raw_identity));
+    tryIdentity(identity);
+    const raw_init = dlsym(handle, "module_init") orelse
+        std.debug.panic("Rust Image shell has no module_init", .{});
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
+}
+
+fn tryIdentity(identity: Identity) void {
+    if (!std.mem.eql(u8, std.mem.span(identity()), "rust-image-r6-shell")) {
+        std.debug.panic("Rust Image shell identity mismatch", .{});
+    }
+}
+
+test "Rust Image shell preserves report layout and selector surface" {
+    const api = floor.api();
+    prelude.bringUp(api);
+    loadImageModule(api);
+
+    const report_vt = api.import("ImageSaveReportVt") orelse return error.ImageReportVtMissing;
+    const report = api.import("ImageSaveReport") orelse return error.ImageReportMissing;
+    try std.testing.expectEqual(report_vt, api.vtableOf(report));
+    try std.testing.expectEqual(@as(usize, 0), api.objectPayloadSize(report));
+    try std.testing.expectEqualStrings("ImageSaveReportVt", std.mem.span(api.exportedNameOf(report_vt).?));
+    try std.testing.expectEqualStrings("ImageSaveReport", std.mem.span(api.exportedNameOf(report).?));
+
+    const status = send(api, report, "status", &.{});
+    try std.testing.expectEqualStrings("never", std.mem.span(api.symbolName(status)));
+    for ([_][*:0]const u8{
+        "savedFacts",
+        "recoveredFacts",
+        "rejectedFacts",
+        "recoveredSlots",
+        "rejectedSlots",
+        "codeUnits",
+    }) |selector| {
+        const value = api.send(report, api.intern(selector), &.{}, 0);
+        try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(value));
+    }
+    const detail = send(api, report, "detail", &.{});
+    var detail_len: usize = 0;
+    _ = api.stringBytes(detail, &detail_len);
+    try std.testing.expectEqual(@as(usize, 0), detail_len);
+
+    const system = api.import("System") orelse return error.SystemMissing;
+    const identity = send(api, system, "imageCompositionIdentity", &.{});
+    var identity_len: usize = 0;
+    const identity_bytes = api.stringBytes(identity, &identity_len);
+    try std.testing.expectEqualStrings("rust-image-r6-shell", identity_bytes[0..identity_len]);
+    try std.testing.expect(send(api, system, "imageSaveReport", &.{}) == report);
+    try std.testing.expect(send(api, system, "saveImage:", &.{str(api, "shell.image")}) == api.nilObj);
+    try std.testing.expect(send(api, system, "loadImage:", &.{str(api, "shell.image")}) == api.nilObj);
+    try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, "shell.image"), api.trueObj }) == api.nilObj);
+    try std.testing.expect(send(api, system, "bakeExe:", &.{str(api, "shell-exe")}) == api.nilObj);
+
+    const collector_vt = api.import("ImageCollectorVt") orelse return error.ImageCollectorVtMissing;
+    const collector = api.alloc(collector_vt, 0);
+    try std.testing.expect(send(api, collector, "e:a:v:tx:op:", &.{ api.nilObj, api.nilObj, api.nilObj, api.mkSmallInt(0), api.mkSmallInt(0) }) == api.nilObj);
+}
