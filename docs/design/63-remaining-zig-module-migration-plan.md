@@ -507,6 +507,15 @@ remain the next implementation slices.
   null input rejection. Rust unit tests, package clippy, and Debug/ReleaseSafe
   `test-rust-isolate` all pass; the R6 focused boundary remains `49/49`.
 
+### R3.5 owned frame transport checkpoint (2026-07-24)
+
+- `b372c59` adds the owned Rust `Frame` transport wrapper around the frozen
+  header codec. It enforces exact payload length, empty-payload rules for
+  ready/stop/stopped frames, truncation/trailing rejection, and copies payload
+  bytes so no worker can retain a borrowed transport buffer.
+- Seven isolated Rust tests and clippy pass. This is the transport seam for
+  the upcoming worker loop; no `IdApi` or process state is introduced yet.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

@@ -340,3 +340,11 @@ R3.4 dynamic frame-validation checkpoint (2026-07-24):
 - Rust unit/clippy checks and Debug/ReleaseSafe dynamic Isolate probes pass;
   this remains codec/ABI evidence only and does not claim worker lifecycle
   parity or a canonical Rust Isolate selection.
+
+R3.5 owned frame transport checkpoint (2026-07-24):
+
+- `b372c59` adds an owned Rust `Frame` wrapper with exact payload-length,
+  empty-control-frame, truncation, and trailing-byte validation; payload bytes
+  are copied across the transport seam.
+- Seven Rust unit tests and clippy pass. The worker still has no `IdApi` or
+  process lifecycle implementation at this checkpoint.
