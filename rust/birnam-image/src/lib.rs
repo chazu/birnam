@@ -1074,6 +1074,17 @@ struct FactCollection {
     rejected: u32,
 }
 
+struct FactPreflight {
+    kept: u32,
+    rejected: u32,
+    facts_payload: Vec<u8>,
+    heap_payload: Option<Vec<u8>>,
+    heap_ok: bool,
+    recovered_slots: u32,
+    rejected_slots: u32,
+    writer_ok: bool,
+}
+
 static FACT_COLLECTION: Mutex<Option<FactCollection>> = Mutex::new(None);
 
 struct HeapPreflight {
@@ -1439,14 +1450,32 @@ unsafe fn capture_generation_code(
     bytes.filter(|bytes| !bytes.is_empty())
 }
 
-unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
+unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
-        return (0, 0, true, 0, 0, false);
+        return FactPreflight {
+            kept: 0,
+            rejected: 0,
+            facts_payload: Vec::new(),
+            heap_payload: Some(Vec::new()),
+            heap_ok: true,
+            recovered_slots: 0,
+            rejected_slots: 0,
+            writer_ok: false,
+        };
     }
     let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
     if collector_vt.is_null() {
-        return (0, 0, false, 0, 0, false);
+        return FactPreflight {
+            kept: 0,
+            rejected: 0,
+            facts_payload: Vec::new(),
+            heap_payload: None,
+            heap_ok: false,
+            recovered_slots: 0,
+            rejected_slots: 0,
+            writer_ok: false,
+        };
     }
     let basis_object = unsafe { (api.send)(store, intern(api, b"basis\0"), ptr::null(), 0) };
     let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
@@ -1456,7 +1485,16 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
     };
     let collector = unsafe { (api.alloc)(collector_vt, 0) };
     if collector.is_null() {
-        return (0, 0, false, 0, 0, false);
+        return FactPreflight {
+            kept: 0,
+            rejected: 0,
+            facts_payload: Vec::new(),
+            heap_payload: None,
+            heap_ok: false,
+            recovered_slots: 0,
+            rejected_slots: 0,
+            writer_ok: false,
+        };
     }
     {
         let mut collection = FACT_COLLECTION
@@ -1483,7 +1521,16 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
     let Some(mut collection) = collection else {
-        return (0, 0, false, 0, 0, false);
+        return FactPreflight {
+            kept: 0,
+            rejected: 0,
+            facts_payload: Vec::new(),
+            heap_payload: None,
+            heap_ok: false,
+            recovered_slots: 0,
+            rejected_slots: 0,
+            writer_ok: false,
+        };
     };
     let facts_payload = collection.writer.finish();
     let heap_payload = unsafe { collection.heap.finish(api) };
@@ -1492,14 +1539,16 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32, bool) {
         .as_deref()
         .map(|heap| preflight_writer_accepts(&facts_payload, heap))
         .unwrap_or(false);
-    (
-        collection.kept,
-        collection.rejected,
+    FactPreflight {
+        kept: collection.kept,
+        rejected: collection.rejected,
+        facts_payload,
+        heap_payload,
         heap_ok,
-        collection.heap.recovered_slots,
-        collection.heap.rejected_slots,
+        recovered_slots: collection.heap.recovered_slots,
+        rejected_slots: collection.heap.rejected_slots,
         writer_ok,
-    )
+    }
 }
 
 unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1524,24 +1573,51 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     let captured_code = authority_digest
         .as_ref()
         .and_then(|digest| unsafe { capture_generation_code(api, digest) });
-    let (kept, rejected, heap_ok, recovered_slots, rejected_slots, writer_ok) =
-        unsafe { collect_store_facts(api) };
+    let preflight = unsafe { collect_store_facts(api) };
     let authority_available = authority_digest.is_some();
     let code_captured = captured_code.is_some();
-    reject_save(if !heap_ok {
+    let composed = match (
+        authority_digest.as_ref(),
+        captured_code.as_ref(),
+        preflight.heap_payload.as_deref(),
+    ) {
+        (Some(digest), Some(code), Some(heap))
+            if preflight.rejected == 0 && preflight.heap_ok && preflight.writer_ok =>
+        {
+            compose_complete_image(
+                IMAGE_ARCH_TAG,
+                runtime_abi_hash(),
+                &preflight.facts_payload,
+                heap,
+                digest,
+                wyhash(0, code),
+                code,
+            )
+            .ok()
+        }
+        _ => None,
+    };
+    reject_save(if !preflight.heap_ok {
         "Rust Image heap preflight rejected unsupported layout"
-    } else if rejected != 0 {
+    } else if preflight.rejected != 0 {
         "Rust Image fact preflight rejected unsupported values"
-    } else if !writer_ok {
+    } else if !preflight.writer_ok {
         "Rust Image writer rejected preflight payload"
     } else if !authority_available {
         "Rust Image generation authority is not available"
     } else if !code_captured {
         "Rust Image code capture failed"
+    } else if composed.is_none() {
+        "Rust Image code record composition failed"
     } else {
         "Rust Image code mapping/rebuild orchestration is not installed"
     });
-    record_fact_counts(kept, rejected, recovered_slots, rejected_slots);
+    record_fact_counts(
+        preflight.kept,
+        preflight.rejected,
+        preflight.recovered_slots,
+        preflight.rejected_slots,
+    );
     {
         let mut report = runtime()
             .report
