@@ -1188,6 +1188,22 @@ remain the next implementation slices.
   grouped/pull materialization, and canonical Rust Relational selection remain
   open.
 
+### R4.24 Rust Relational nested Store-rule checkpoint (2026-07-25)
+
+- `a9cbf27` extends canonical Store reification to recursively parse stored
+  `#not` and `#or` clauses in addition to triples, predicates, and rule calls.
+  Special-form dispatch precedes three-term predicate/triple decoding so
+  `[#or ...]` cannot be misclassified as a triple; nested branches reuse the
+  same variable map and fail closed on malformed shapes.
+- The cross-floor corpus defines and queries a stored rule combining a numeric
+  predicate, negation, and disjunction. Both dynamic targets remain `14/14`;
+  the Rust pure corpus remains `17/17`, and the current R6 acceptance remains
+  `80/80`, `14/14`, optimized `486/492`.
+- Image-triggered cache rebuild wiring, canonical Rust Store method
+  installation, arbitrary parameter/variable-scope semantics, canonical
+  grouped/pull materialization, and canonical Rust Relational selection remain
+  open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
