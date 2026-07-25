@@ -829,6 +829,36 @@ pub fn build(b: *std.Build) void {
     test_rust_prelude_step.dependOn(&run_rust_prelude_tests.step);
     test_step.dependOn(&run_rust_prelude_tests.step);
 
+    const run_rust_prelude_rust_error_tests = b.addRunArtifact(rust_prelude_tests);
+    run_rust_prelude_rust_error_tests.setEnvironmentVariable("BIRNAM_ID_DYLIB", rust_prelude_floor_path);
+    run_rust_prelude_rust_error_tests.setEnvironmentVariable(
+        "BIRNAM_ID_FLOOR_IDENTITY",
+        if (selected_floor == .zig) "zig-id-v1" else "rust-id-v1",
+    );
+    run_rust_prelude_rust_error_tests.setEnvironmentVariable(
+        "BIRNAM_RUST_PRELUDE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_prelude_rust.dylib"),
+    );
+    run_rust_prelude_rust_error_tests.setEnvironmentVariable(
+        "BIRNAM_ERROR_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_error_rust.dylib"),
+    );
+    run_rust_prelude_rust_error_tests.setEnvironmentVariable(
+        "BIRNAM_ERROR_EXPECTED_IDENTITY",
+        "rust-error-r2-core",
+    );
+    run_rust_prelude_rust_error_tests.setEnvironmentVariable(
+        "BIRNAM_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc.dylib"),
+    );
+    run_rust_prelude_rust_error_tests.step.dependOn(bootstrap_install);
+    run_rust_prelude_rust_error_tests.step.dependOn(&rust_floor_build.step);
+    const test_rust_prelude_rust_error_step = b.step(
+        "test-rust-prelude-rust-error",
+        "Exercise Rust Prelude against the standalone Rust Error owner",
+    );
+    test_rust_prelude_rust_error_step.dependOn(&run_rust_prelude_rust_error_tests.step);
+
     const rust_prelude_io_probe_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_prelude_io_probe.zig"),
         .target = target,

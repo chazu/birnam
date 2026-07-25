@@ -108,6 +108,12 @@ test "Rust Prelude N7.1 installs integer protocol through a dynamic rung" {
     const error_init: ModuleInit = @ptrCast(@alignCast(error_raw_init));
     _ = error_init(api, null);
     try std.testing.expect(api.import("Error") != null);
+    if (std.posix.getenv("BIRNAM_ERROR_EXPECTED_IDENTITY")) |expected| {
+        const raw_error_identity = api.dlsym(error_handle, "birnam_error_rust_identity") orelse
+            return error.ErrorIdentityMissing;
+        const error_identity: Identity = @ptrCast(@alignCast(raw_error_identity));
+        try std.testing.expectEqualStrings(expected, std.mem.span(error_identity()));
+    }
 
     const three = api.mkSmallInt(3);
     const five = api.mkSmallInt(5);
