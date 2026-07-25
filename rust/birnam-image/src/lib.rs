@@ -1006,6 +1006,8 @@ static FACT_COLLECTION: Mutex<Option<FactCollection>> = Mutex::new(None);
 struct HeapPreflight {
     objects: Vec<usize>,
     relocations: HashMap<usize, u32>,
+    recovered_slots: u32,
+    rejected_slots: u32,
 }
 
 unsafe fn runtime_oop_is_inline(api: &IdApi, object: Oop) -> bool {
@@ -1029,6 +1031,8 @@ impl HeapPreflight {
         Self {
             objects: Vec::new(),
             relocations: HashMap::new(),
+            recovered_slots: 0,
+            rejected_slots: 0,
         }
     }
 
@@ -1104,6 +1108,7 @@ impl HeapPreflight {
             for index in 0..words {
                 let kind = unsafe { (api.slotKind)(vtable, index) };
                 if kind == birnam_abi::SLOT_CODE {
+                    self.recovered_slots = self.recovered_slots.saturating_add(1);
                     continue;
                 }
                 let address =
@@ -1114,6 +1119,7 @@ impl HeapPreflight {
                         unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
                     let mut field = FieldEncoder::new();
                     if !unsafe { encode_runtime_oop(api, &mut field, child, self) } {
+                        self.rejected_slots = self.rejected_slots.saturating_add(1);
                         return None;
                     }
                     payload.extend_from_slice(field.as_bytes());
@@ -1271,23 +1277,25 @@ unsafe fn encode_runtime_oop(
     true
 }
 
-fn record_fact_counts(kept: u32, rejected: u32) {
+fn record_fact_counts(kept: u32, rejected: u32, recovered_slots: u32, rejected_slots: u32) {
     let mut report = runtime()
         .report
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     report.saved_facts = kept;
     report.rejected_facts = rejected;
+    report.recovered_slots = recovered_slots;
+    report.rejected_slots = rejected_slots;
 }
 
-unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool) {
+unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool, u32, u32) {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
-        return (0, 0, true);
+        return (0, 0, true, 0, 0);
     }
     let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
     if collector_vt.is_null() {
-        return (0, 0, false);
+        return (0, 0, false, 0, 0);
     }
     let basis_object = unsafe { (api.send)(store, intern(api, b"basis\0"), ptr::null(), 0) };
     let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
@@ -1297,7 +1305,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool) {
     };
     let collector = unsafe { (api.alloc)(collector_vt, 0) };
     if collector.is_null() {
-        return (0, 0, false);
+        return (0, 0, false, 0, 0);
     }
     {
         let mut collection = FACT_COLLECTION
@@ -1324,11 +1332,16 @@ unsafe fn collect_store_facts(api: &IdApi) -> (u32, u32, bool) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
     let Some(mut collection) = collection else {
-        return (0, 0, false);
+        return (0, 0, false, 0, 0);
     };
-    let counts = (collection.kept, collection.rejected, unsafe {
-        collection.heap.finish(api).is_some()
-    });
+    let heap_ok = unsafe { collection.heap.finish(api).is_some() };
+    let counts = (
+        collection.kept,
+        collection.rejected,
+        heap_ok,
+        collection.heap.recovered_slots,
+        collection.heap.rejected_slots,
+    );
     let _payload = collection.writer.finish();
     counts
 }
@@ -1350,7 +1363,8 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     }
     // The shell deliberately has no authority to mutate or publish an image.
     // Later R6 slices install the codec-backed save transaction here.
-    let (kept, rejected, heap_ok) = unsafe { collect_store_facts(api) };
+    let (kept, rejected, heap_ok, recovered_slots, rejected_slots) =
+        unsafe { collect_store_facts(api) };
     reject_save(if !heap_ok {
         "Rust Image heap preflight rejected unsupported layout"
     } else if rejected != 0 {
@@ -1358,7 +1372,7 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     } else {
         "Rust Image writer/publisher orchestration is not installed"
     });
-    record_fact_counts(kept, rejected);
+    record_fact_counts(kept, rejected, recovered_slots, rejected_slots);
     api.nilObj
 }
 

@@ -100,6 +100,29 @@ test "Rust Image shell preserves report layout and selector surface" {
     const nested_attribute = api.intern("rust_image_nested_fixture_value");
     _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ nested_entity, nested_attribute, nested });
     defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ nested_entity, nested_attribute, nested });
+
+    const cycle_a = api.alloc(nested_vt, @sizeOf(usize));
+    const cycle_b = api.alloc(nested_vt, @sizeOf(usize));
+    const cycle_a_words: [*]usize = @ptrCast(@alignCast(cycle_a));
+    const cycle_b_words: [*]usize = @ptrCast(@alignCast(cycle_b));
+    cycle_a_words[0] = @intFromPtr(cycle_b.?);
+    cycle_b_words[0] = @intFromPtr(cycle_a.?);
+    const cycle_entity = api.intern("rust_image_cycle_entity");
+    const cycle_attribute = api.intern("rust_image_cycle_value");
+    _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ cycle_entity, cycle_attribute, cycle_a });
+    defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ cycle_entity, cycle_attribute, cycle_a });
+
+    const unsupported_vt = api.proto(api.object_vt);
+    api.setLayout(unsupported_vt, null, 0, idapi.slot_raw);
+    const unsupported = api.alloc(unsupported_vt, 0);
+    const rejected_parent = api.alloc(nested_vt, @sizeOf(usize));
+    const rejected_parent_words: [*]usize = @ptrCast(@alignCast(rejected_parent));
+    rejected_parent_words[0] = @intFromPtr(unsupported.?);
+    const rejected_entity = api.intern("rust_image_rejected_entity");
+    const rejected_attribute = api.intern("rust_image_rejected_value");
+    _ = send(api, api.import("Store").?, "assert:attr:value:", &.{ rejected_entity, rejected_attribute, rejected_parent });
+    defer _ = send(api, api.import("Store").?, "retract:attr:value:", &.{ rejected_entity, rejected_attribute, rejected_parent });
+
     const identity = send(api, system, "imageCompositionIdentity", &.{});
     var identity_len: usize = 0;
     const identity_bytes = api.stringBytes(identity, &identity_len);
@@ -116,8 +139,12 @@ test "Rust Image shell preserves report layout and selector surface" {
     const shell_detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
     const rejected_facts = api.smallIntValue(send(api, report, "rejectedFacts", &.{}));
     const saved_facts = api.smallIntValue(send(api, report, "savedFacts", &.{}));
+    const rejected_slots = api.smallIntValue(send(api, report, "rejectedSlots", &.{}));
     try std.testing.expect(saved_facts + rejected_facts > 0);
-    if (rejected_facts == 0) {
+    try std.testing.expect(rejected_slots > 0);
+    if (rejected_slots > 0) {
+        try std.testing.expectEqualStrings("Rust Image heap preflight rejected unsupported layout", shell_detail[0..detail_len]);
+    } else if (rejected_facts == 0) {
         try std.testing.expectEqualStrings("Rust Image writer/publisher orchestration is not installed", shell_detail[0..detail_len]);
     } else {
         try std.testing.expectEqualStrings("Rust Image fact preflight rejected unsupported values", shell_detail[0..detail_len]);
