@@ -2059,6 +2059,25 @@ The next bounded step can connect the complete preflight facts/heap byte vectors
 to `ImageWriter` without publication. It must preserve these counters and keep
 the writer input immutable until authority and code records are available.
 
+### R6.11 Rust Image writer-preflight checkpoint (2026-07-25)
+
+- `ed440f2` connects the collected Rust facts and heap payloads to the checked
+  `ImageWriter` in memory. The bridge uses the target architecture tag and the
+  frozen runtime-shim ABI hash, accepts facts/heap records only after the live
+  preflight has produced them, and reports a distinct writer rejection if the
+  framing layer refuses either payload. It never calls `finish` without the
+  authority record, so no incomplete image bytes are published.
+- The live focused test first proves the cycle/rejection path, retracts the
+  unsupported parent, then proves a fully supported facts/heap stream reaches
+  the writer and stops at the explicit authority/code boundary. Debug and
+  ReleaseSafe pass; the codec suite remains green (`19/19`); `saveImage:` still
+  performs no filesystem mutation.
+
+The next bounded step can introduce a pure authority digest input and code-unit
+placeholder to exercise `ImageWriter::finish` entirely in memory. The dynamic
+selector must remain fail-closed until that authority is derived from the
+canonical generation and the code record has a real mapped/rebuild contract.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
