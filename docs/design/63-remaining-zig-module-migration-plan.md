@@ -665,6 +665,20 @@ remain the next implementation slices.
   worker. Canonical Rust worker selection and a Rust-owned child boot corpus
   remain deliberately outside this fixture boundary.
 
+### R3.17 Rust Isolate canonical-selection checkpoint (2026-07-24)
+
+- `build.zig` now exposes explicit `-Disolate-impl=zig|rust` selection,
+  installs both `libbirnam_id_isolate_zig.dylib` and
+  `libbirnam_id_isolate_rust.dylib`, and maps only the selected implementation
+  to canonical `libbirnam_id_isolate.dylib`. The default remains Zig until the
+  full selection matrix is accepted.
+- Rust’s built-in `_isolateSleep:` fixture now matches the Zig timing hook;
+  canonical Rust install smoke and the Rust Isolate corpus pass in Debug and
+  ReleaseSafe, including Rust host plus Rust worker, timeout, and crash paths.
+- This is a selection/rollback checkpoint, not yet the canonical switch:
+  full `-Disolate-impl=rust` install relocation and R6 matrix acceptance remain
+  before changing the default.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

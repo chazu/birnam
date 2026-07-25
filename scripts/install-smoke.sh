@@ -62,7 +62,7 @@ required_dylibs=(
   libbirnam_id_tcc.dylib libbirnam_id_codegen.dylib libbirnam_id_codegen_rust.dylib
   libbirnam_id_prelude.dylib libbirnam_id_prelude_rust.dylib libbirnam_id_collection.dylib
   libbirnam_id_error.dylib libbirnam_id_error_rust.dylib libbirnam_id_error_zig.dylib
-  libbirnam_id_isolate.dylib libbirnam_id_isolate_rust.dylib
+  libbirnam_id_isolate.dylib libbirnam_id_isolate_zig.dylib libbirnam_id_isolate_rust.dylib
   libbirnam_id_relational.dylib libbirnam_id_alien.dylib
   libbirnam_id_image.dylib libbirnam_modules.dylib libbirnam_stdlib.dylib
   libbirnam_compiledUnit.dylib libbirnam_toml.dylib libbirnam_config.dylib

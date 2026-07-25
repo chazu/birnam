@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
     const PreludeImpl = enum { zig, rust };
     const CollectionImpl = enum { zig, rust };
     const ErrorImpl = enum { zig, rust };
+    const IsolateImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
@@ -63,6 +64,11 @@ pub fn build(b: *std.Build) void {
         "error-impl",
         "Error implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
+    const selected_isolate = b.option(
+        IsolateImpl,
+        "isolate-impl",
+        "Isolate implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .zig;
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
     else
@@ -1937,7 +1943,9 @@ pub fn build(b: *std.Build) void {
                 bootstrap_install.dependOn(&install_zig_error_selected.step);
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_isolate")) {
-            const install_zig_isolate = b.addInstallArtifact(lib, .{});
+            const install_zig_isolate = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_isolate_zig.dylib",
+            });
             b.getInstallStep().dependOn(&install_zig_isolate.step);
             bootstrap_install.dependOn(&install_zig_isolate.step);
             const install_rust_isolate = b.addInstallFileWithDir(
@@ -1951,6 +1959,23 @@ pub fn build(b: *std.Build) void {
             install_rust_isolate.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_isolate.step);
             bootstrap_install.dependOn(&install_rust_isolate.step);
+            if (selected_isolate == .rust) {
+                const install_rust_isolate_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_isolate.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_isolate.dylib",
+                );
+                install_rust_isolate_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_isolate_selected.step);
+                bootstrap_install.dependOn(&install_rust_isolate_selected.step);
+            } else {
+                const install_zig_isolate_selected = b.addInstallArtifact(lib, .{});
+                b.getInstallStep().dependOn(&install_zig_isolate_selected.step);
+                bootstrap_install.dependOn(&install_zig_isolate_selected.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);

@@ -1535,11 +1535,21 @@ unsafe extern "C" fn isolate_start(_: Oop, args: *const Oop, count: usize) -> Oo
 }
 
 unsafe extern "C" fn isolate_sleep(_: Oop, args: *const Oop, count: usize) -> Oop {
-    if count == 0 || args.is_null() {
-        return runtime_api().nilObj;
+    let api = runtime_api();
+    let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if args.is_empty() {
+        return api.nilObj;
     }
-    // SAFETY: the IdApi send contract supplies `count` readable OOP carriers.
-    unsafe { *args }
+    let value = args[0];
+    if unsafe { (api.isSmallInt)(value) } != 0 {
+        let milliseconds = unsafe { (api.smallIntValue)(value) };
+        if milliseconds > 0 {
+            std::thread::sleep(Duration::from_millis(milliseconds as u64));
+        }
+    }
+    value
 }
 
 unsafe extern "C" fn isolate_crash(_: Oop, _: *const Oop, _: usize) -> Oop {
