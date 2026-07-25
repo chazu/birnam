@@ -485,3 +485,12 @@ optimized cross-layer verify succeeds, and the comparator reports zero missing
 or unusable cases. The only regressions remain the two exact accepted crossings
 (`query.aggregate` +5.8% and `compile.stage1-stdlib` +11.9%); no new benchmark
 allowance was admitted.
+
+After adding the Rust Alien workspace member, the install acceptance list was
+updated in `6e881dd` to include `birnam-alien`. The current full
+`BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passes with
+`103/103` focused build steps, `80/80` focused tests, both Relational targets at
+`14/14`, the optimized verify and clean native-rung harness green, and
+`regressions: 2, missing: 0, unusable: 0`. The only accepted crossings remain
+`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`; no allowance was
+broadened.

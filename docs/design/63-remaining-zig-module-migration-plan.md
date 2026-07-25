@@ -1565,6 +1565,23 @@ post-switch image/project observation window closes.
   aggregate cases. TCC shim generation and IdApi integration remain separate
   R5 steps.
 
+### R5.4 R6 workspace-gate repair and acceptance (2026-07-25)
+
+- Adding `birnam-alien` to the Cargo workspace exposed a stale hard-coded
+  package list in `scripts/install-smoke.sh`. `6e881dd` updates that gate to
+  enumerate the new member; no production dylib or implementation selection
+  is implied by this workspace-only crate.
+- The corrected install target passes `114/114` steps, including relocated
+  source/closure, project, image, isolate, and missing-resource diagnostics.
+  The full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passes
+  `103/103` focused steps and `80/80` tests, with both Relational variants at
+  `14/14`, the optimized verify and clean native-rung harness green, and zero
+  missing or unusable benchmarks.
+- The comparator remains exactly the existing two accepted crossings:
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`. This repairs the
+  gate's workspace inventory without weakening any floor, MOP, Store, ABI, GC,
+  or dynamic-library invariant.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
