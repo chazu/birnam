@@ -939,6 +939,30 @@ remain the next implementation slices.
   fixpoints, aggregation, pull, and canonical Rust Relational selection
   remain open.
 
+### R4.12 Rust Relational disjunction checkpoint (2026-07-24)
+
+- `9beb696` adds a bounded two-branch disjunction probe. Each positive branch
+  evaluates from the same empty solution set over one synchronous Store
+  snapshot; branch order is preserved and projected values are deduplicated by
+  the existing value law. The kernel remains authority-free and does not
+  reorder or compose arbitrary nested branches.
+- The cross-floor corpus covers a city union, a union across different
+  attributes, branch-order preservation, projection deduplication, output
+  capacity rejection, and invalid projection rejection against both Rust
+  Store and the Zig Store rollback provider. Both relational targets report
+  `8/8`.
+- `cf7280d` advances the R6 focused boundary to `68/68` and requires both
+  relational targets to report exactly eight passing tests. The full gate
+  passes with optimized verify pinned at `260/264` steps, `474/480` tests,
+  and 6 skipped, accepting only the two exact `install-smoke.sh: line 92`
+  `collection.zig:336:29` fixture crashes recorded in R4.11. The
+  digest-pinned comparator remains at zero missing/unusable cases and exactly
+  the accepted `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`
+  crossings.
+- Planner reordering, arbitrary predicate operands, nested/compound
+  disjunctions, rule fixpoints, aggregation, pull, and canonical Rust
+  Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
