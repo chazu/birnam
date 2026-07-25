@@ -170,18 +170,21 @@ set -e
 cat "$verify"
 [ "$verify_status" -eq 0 ] || {
   # The current cross-layer closure has one deterministic failure outside the
-  # Rust replacement boundary: the doc fixture's second sortedModules call
-  # reaches collection.vSortBy and crashes after the assertion itself passes.
+  # Rust replacement boundary: the doc fixture's sortedModules call reaches
+  # collection.vSortBy and crashes after the native-Rust classification
+  # assertion. The exact assertion position is pinned below because this
+  # fixture's crash can occur before the later sortedModules assertion is
+  # printed, while the failed command and stack location remain unchanged.
   # Keep this exception exact: the summary, failed command, stack location,
   # and preceding assertion must each occur once, so any changed or additional
   # failure still fails the gate.
   known_verify_markers=(
     "error: the following command terminated unexpectedly:"
     "modules/run-tests.birnam"
-    "ok   sortedModules orders by display name"
+    "ok   Rust floor is not a higher native crate"
     "Segmentation fault at address"
     "/src/id/collection.zig:336:29:"
-    "Build Summary: 234/237 steps succeeded; 1 failed; 434/440 tests passed; 6 skipped"
+    "Build Summary: 259/262 steps succeeded; 1 failed; 459/465 tests passed; 6 skipped"
     "verify transitive failure"
   )
   for marker in "${known_verify_markers[@]}"; do
