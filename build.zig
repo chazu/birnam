@@ -44,6 +44,7 @@ pub fn build(b: *std.Build) void {
     const CollectionImpl = enum { zig, rust };
     const ErrorImpl = enum { zig, rust };
     const IsolateImpl = enum { zig, rust };
+    const RelationalImpl = enum { zig, rust };
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
@@ -69,6 +70,11 @@ pub fn build(b: *std.Build) void {
         "isolate-impl",
         "Isolate implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
+    const selected_relational = b.option(
+        RelationalImpl,
+        "relational",
+        "Relational implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .zig;
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
     else
@@ -230,6 +236,17 @@ pub fn build(b: *std.Build) void {
     );
     test_prelude_selection_step.dependOn(&prelude_selection_smoke.step);
     test_step.dependOn(&prelude_selection_smoke.step);
+
+    const relational_selection_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/relational-selection-smoke.sh",
+    });
+    const test_relational_selection_step = b.step(
+        "test-relational-selection",
+        "Verify canonical Rust Relational selection, Zig rollback, and fail-closed choices",
+    );
+    test_relational_selection_step.dependOn(&relational_selection_smoke.step);
+    test_step.dependOn(&relational_selection_smoke.step);
 
     // Build/test-only ABI evidence. The JSON manifest is deliberately exposed
     // only to this test module; runtime, install, and artifact-selection code do
@@ -2051,6 +2068,11 @@ pub fn build(b: *std.Build) void {
                 bootstrap_install.dependOn(&install_zig_isolate_selected.step);
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_relational")) {
+            const install_zig_relational_fixture = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_relational_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_relational_fixture.step);
+            bootstrap_install.dependOn(&install_zig_relational_fixture.step);
             const install_rust_relational = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_relational.dylib",
@@ -2062,9 +2084,23 @@ pub fn build(b: *std.Build) void {
             install_rust_relational.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_relational.step);
             bootstrap_install.dependOn(&install_rust_relational.step);
-            const install_zig_relational = b.addInstallArtifact(lib, .{});
-            b.getInstallStep().dependOn(&install_zig_relational.step);
-            bootstrap_install.dependOn(&install_zig_relational.step);
+            if (selected_relational == .rust) {
+                const install_rust_relational_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_relational.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_relational.dylib",
+                );
+                install_rust_relational_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_relational_selected.step);
+                bootstrap_install.dependOn(&install_rust_relational_selected.step);
+            } else {
+                const install_zig_relational_selected = b.addInstallArtifact(lib, .{});
+                b.getInstallStep().dependOn(&install_zig_relational_selected.step);
+                bootstrap_install.dependOn(&install_zig_relational_selected.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);
