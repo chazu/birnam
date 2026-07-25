@@ -446,3 +446,10 @@ owned String values for present UTF-8 variables, nil for absence, and an
 42/42 R6 rerun passed with no benchmark allowance change. Source loading,
 process controls, self-hosted handlers, and canonical prelude cutover remain
 open.
+
+The Rust Object/System stringification slice landed at `8471b64`: Object now
+answers `printString` as `anObject`, Symbols render as `#name`, `asString`
+delegates through `printString`, and System output renders non-String values
+through that protocol. Focused representation checks and the full 42/42 R6
+rerun passed with no benchmark allowance change. Source loading, process
+controls, self-hosted handlers, and canonical prelude cutover remain open.
