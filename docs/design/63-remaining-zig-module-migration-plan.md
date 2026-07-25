@@ -1549,6 +1549,22 @@ post-switch image/project observation window closes.
   slice must keep the registry alive for every patched wrapper and must not
   close a library while a live wrapper can still call it.
 
+### R5.3 ABI metadata checkpoint (2026-07-25)
+
+- `13280f1` adds pure Rust classification over the parsed signature tree:
+  frozen integer, unsigned, float, string-pointer, pointer, and void classes,
+  aggregate indices, and homogeneous-float metadata for one-to-four float or
+  double members, including nested aggregates and fixed scalar arrays.
+- The classifier does not calculate C layout, alignment, hidden sret
+  parameters, or a platform calling convention. Those decisions remain with
+  the existing TCC compiler, so Rust cannot become a second ABI authority.
+  Malformed future trees classify conservatively rather than inventing a
+  top-level array ABI.
+- Ten locked offline crate tests and `clippy -D warnings` pass across the
+  parser, loader, scalar classes, HFA cases, nested aggregates, and general
+  aggregate cases. TCC shim generation and IdApi integration remain separate
+  R5 steps.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
