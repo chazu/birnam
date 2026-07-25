@@ -251,3 +251,55 @@ test "Rust Alien owns callback code, aggregate marshalling, GC roots, and releas
         api.send(alien, api.intern("releaseCallback:"), &[_]Oop{callback}, 1) != api.trueObj,
     );
 }
+
+test "Rust Alien owns raw buffer allocation and typed access" {
+    const api = floor.api();
+    const alien = api.import("Alien") orelse return error.AlienExportMissing;
+    const buffer = api.send(alien, api.intern("alloc:"), &[_]Oop{api.mkSmallInt(64)}, 1);
+    try std.testing.expect(api.isWord(buffer) != 0);
+
+    const poke_int = api.send(
+        buffer,
+        api.intern("pokeInt:at:"),
+        &[_]Oop{api.mkSmallInt(-42), api.mkSmallInt(0)},
+        2,
+    );
+    try std.testing.expect(poke_int == buffer);
+    const peek_int = api.send(buffer, api.intern("peekIntAt:"), &[_]Oop{api.mkSmallInt(0)}, 1);
+    try std.testing.expectEqual(@as(i64, -42), api.smallIntValue(peek_int));
+
+    _ = api.send(
+        buffer,
+        api.intern("pokeDouble:at:"),
+        &[_]Oop{api.mkFloat(3.5), api.mkSmallInt(16)},
+        2,
+    );
+    const peek_double = api.send(buffer, api.intern("peekDoubleAt:"), &[_]Oop{api.mkSmallInt(16)}, 1);
+    try std.testing.expectEqual(@as(f64, 3.5), api.floatValue(peek_double));
+
+    const text = "hello";
+    for (text, 0..) |byte, index| {
+        _ = api.send(
+            buffer,
+            api.intern("pokeByte:at:"),
+            &[_]Oop{api.mkSmallInt(byte), api.mkSmallInt(@intCast(32 + index))},
+            2,
+        );
+    }
+    const copied = api.send(buffer, api.intern("peekStringAt:"), &[_]Oop{api.mkSmallInt(32)}, 1);
+    var copied_len: usize = 0;
+    const copied_bytes = api.stringBytes(copied, &copied_len);
+    try std.testing.expectEqualStrings(text, copied_bytes[0..copied_len]);
+
+    const pointer_value = api.mkWord(@intFromPtr(buffer));
+    _ = api.send(
+        buffer,
+        api.intern("pokePtr:at:"),
+        &[_]Oop{pointer_value, api.mkSmallInt(48)},
+        2,
+    );
+    const peek_pointer = api.send(buffer, api.intern("peekPtrAt:"), &[_]Oop{api.mkSmallInt(48)}, 1);
+    try std.testing.expectEqual(api.wordValue(pointer_value), api.wordValue(peek_pointer));
+
+    try std.testing.expect(api.send(buffer, api.intern("free"), &[_]Oop{}, 0) == api.nilObj);
+}

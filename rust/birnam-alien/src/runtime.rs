@@ -16,6 +16,11 @@ use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::{Mutex, Once, OnceLock};
 
+unsafe extern "C" {
+    fn malloc(size: usize) -> *mut c_void;
+    fn free(pointer: *mut c_void);
+}
+
 const RUST_ALIEN_IDENTITY: &[u8] = b"rust-alien-r5-loader\0";
 const ALIEN_VT_NAME: &[u8] = b"AlienVt\0";
 const ALIEN_NAME: &[u8] = b"Alien\0";
@@ -157,6 +162,237 @@ unsafe fn address_value(api: &IdApi, value: Oop) -> Option<usize> {
         return Some(unsafe { (api.smallIntValue)(value) } as usize);
     }
     None
+}
+
+unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Result<usize, Oop> {
+    let base = unsafe { (api.wordValue)(receiver) } as usize;
+    if base == 0 {
+        return Err(unsafe {
+            make_error(
+                api,
+                b"nullPointer\0",
+                b"cannot peek/poke through a null pointer",
+            )
+        });
+    }
+    if unsafe { (api.isSmallInt)(offset) } == 0 {
+        return Err(unsafe {
+            make_error(api, b"typeMismatch\0", b"the offset must be an Integer")
+        });
+    }
+    let signed = unsafe { (api.smallIntValue)(offset) } as u64;
+    Ok(base.wrapping_add(signed as usize))
+}
+
+unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let Some(value) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(value) } == 0 {
+        return unsafe {
+            make_error(
+                api,
+                b"typeMismatch\0",
+                b"alloc: needs an Integer byte count",
+            )
+        };
+    }
+    let size = unsafe { (api.smallIntValue)(value) };
+    if size <= 0 {
+        return unsafe { make_error(api, b"badArgument\0", b"alloc: needs a positive byte count") };
+    }
+    let pointer = unsafe { malloc(size as usize) };
+    if pointer.is_null() {
+        return unsafe { make_error(api, b"outOfMemory\0", b"alloc: malloc failed") };
+    }
+    // SAFETY: malloc returned `size` writable bytes and the slice does not
+    // escape; this is the frozen zero-initialized buffer contract.
+    unsafe { ptr::write_bytes(pointer.cast::<u8>(), 0, size as usize) };
+    unsafe { (api.mkWord)(pointer as usize as u64) }
+}
+
+unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let address = unsafe { (api.wordValue)(receiver) };
+    if address != 0 {
+        // SAFETY: the caller owns the raw address and promises it came from a
+        // compatible allocator, matching the existing unsafe Word protocol.
+        unsafe { free(address as *mut c_void) };
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn alien_peek_int(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(offset) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    // SAFETY: raw buffer operations intentionally follow the caller's C-memory
+    // contract; unaligned reads match the Zig `align(1)` implementation.
+    let value = unsafe { ptr::read_unaligned(address as *const i64) };
+    unsafe { (api.mkSmallInt)(value) }
+}
+
+unsafe extern "C" fn alien_peek_byte(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(offset) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    let value = unsafe { ptr::read(address as *const u8) };
+    unsafe { (api.mkSmallInt)(i64::from(value)) }
+}
+
+unsafe extern "C" fn alien_peek_pointer(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(offset) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    let value = unsafe { ptr::read_unaligned(address as *const usize) };
+    unsafe { (api.mkWord)(value as u64) }
+}
+
+unsafe extern "C" fn alien_peek_double(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(offset) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    let value = unsafe { ptr::read_unaligned(address as *const f64) };
+    unsafe { (api.mkFloat)(value) }
+}
+
+unsafe extern "C" fn alien_peek_string(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(offset) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    // SAFETY: this operation deliberately adopts the C NUL-terminated string
+    // contract; the result is copied into a managed Birnam String immediately.
+    let bytes = unsafe { std::ffi::CStr::from_ptr(address as *const c_char) }.to_bytes();
+    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+}
+
+unsafe extern "C" fn alien_poke_int(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 2 || unsafe { (api.isSmallInt)(arguments[0]) } == 0 {
+        return if arguments.len() == 2 {
+            unsafe { make_error(api, b"typeMismatch\0", b"pokeInt: needs an Integer value") }
+        } else {
+            api.nilObj
+        };
+    }
+    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    let value = unsafe { (api.smallIntValue)(arguments[0]) };
+    unsafe { ptr::write_unaligned(address as *mut i64, value) };
+    receiver
+}
+
+unsafe extern "C" fn alien_poke_byte(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 2 || unsafe { (api.isSmallInt)(arguments[0]) } == 0 {
+        return if arguments.len() == 2 {
+            unsafe { make_error(api, b"typeMismatch\0", b"pokeByte: needs an Integer value") }
+        } else {
+            api.nilObj
+        };
+    }
+    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    let value = unsafe { (api.smallIntValue)(arguments[0]) } as u8;
+    unsafe { ptr::write(address as *mut u8, value) };
+    receiver
+}
+
+unsafe extern "C" fn alien_poke_pointer(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 2 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { address_value(api, arguments[0]) }) else {
+        return unsafe {
+            make_error(
+                api,
+                b"typeMismatch\0",
+                b"pokePtr: needs a Word or Integer address",
+            )
+        };
+    };
+    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    unsafe { ptr::write_unaligned(address as *mut usize, value) };
+    receiver
+}
+
+unsafe extern "C" fn alien_poke_double(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 2 || unsafe { (api.isFloat)(arguments[0]) } == 0 {
+        return if arguments.len() == 2 {
+            unsafe { make_error(api, b"typeMismatch\0", b"pokeDouble: needs a Float value") }
+        } else {
+            api.nilObj
+        };
+    }
+    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
+        Ok(address) => address,
+        Err(error) => return error,
+    };
+    let value = unsafe { (api.floatValue)(arguments[0]) };
+    unsafe { ptr::write_unaligned(address as *mut f64, value) };
+    receiver
 }
 
 unsafe extern "C" fn alien_library_dir(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -615,6 +851,22 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"releaseCallback:\0"),
             alien_release_callback,
         );
+        (api.method)(
+            runtime.alien_vt as Oop,
+            intern(api, b"alloc:\0"),
+            alien_alloc,
+        );
+        let word_vt = api.word_vt;
+        (api.method)(word_vt, intern(api, b"free\0"), alien_free);
+        (api.method)(word_vt, intern(api, b"peekIntAt:\0"), alien_peek_int);
+        (api.method)(word_vt, intern(api, b"peekByteAt:\0"), alien_peek_byte);
+        (api.method)(word_vt, intern(api, b"peekPtrAt:\0"), alien_peek_pointer);
+        (api.method)(word_vt, intern(api, b"peekDoubleAt:\0"), alien_peek_double);
+        (api.method)(word_vt, intern(api, b"peekStringAt:\0"), alien_peek_string);
+        (api.method)(word_vt, intern(api, b"pokeInt:at:\0"), alien_poke_int);
+        (api.method)(word_vt, intern(api, b"pokeByte:at:\0"), alien_poke_byte);
+        (api.method)(word_vt, intern(api, b"pokePtr:at:\0"), alien_poke_pointer);
+        (api.method)(word_vt, intern(api, b"pokeDouble:at:\0"), alien_poke_double);
     }
     if !reloading {
         unsafe {
