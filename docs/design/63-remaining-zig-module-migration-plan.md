@@ -1641,6 +1641,20 @@ post-switch image/project observation window closes.
   Rust TCC crate and checking the returned `__shim` address, before any
   callback or live IdApi method installation is attempted.
 
+### R5.9 Rust-TCC generated-source validation checkpoint (2026-07-25)
+
+- `9098317` exposes the existing embedded Rust TCC owner as an `rlib` for
+  tests and adds a non-production validation bridge. It registers inert
+  runtime/foreign symbols, compiles and relocates generated scalar Alien C,
+  and verifies that TCC returns a non-null `__shim` address.
+- `birnam-alien` depends on `birnam-tcc` only under `[dev-dependencies]`; the
+  production Alien crate does not link a second TCC implementation or acquire
+  IdApi authority. The bridge is not an object selector or C export.
+- Eighteen locked offline Alien tests and `clippy -D warnings` pass, including
+  the end-to-end generated `strlen` wrapper compilation. Aggregate generated
+  source remains source-tested only until a Vector/IdApi integration fixture
+  supplies the real factory and runtime shims.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
