@@ -654,6 +654,53 @@ unsafe fn project_negated_live(
     0
 }
 
+unsafe fn project_disjunction_live(
+    store: Oop,
+    projection: u8,
+    first: ProjectPattern,
+    second: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let first_terms = match unsafe { project_terms(api, first) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let second_terms = match unsafe { project_terms(api, second) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let projected = project_disjunction(
+        &facts,
+        &[Clause(first_terms), Clause(second_terms)],
+        projection as u32,
+    );
+    if projected.len() > capacity {
+        return -5;
+    }
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity elements of writable output
+        // storage; the length check above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = projected_len };
+    0
+}
+
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
 /// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
@@ -837,6 +884,31 @@ pub unsafe extern "C" fn birnam_relational_rust_project_negated_live(
             store, projection, positive, negative, output, capacity, written,
         )
     }
+}
+
+/// Project one variable from the union of two positive triple patterns. Each
+/// branch runs against the same Store snapshot from the empty solution set;
+/// branch order and first occurrence are preserved, while projected values are
+/// deduplicated by the frozen value law. This is an explicit migration probe,
+/// not the canonical Store `findAll:where:` method.
+///
+/// # Safety
+///
+/// `store` and any non-null pattern term must remain live for the synchronous
+/// call. `output` and `written` must point to caller-owned writable storage for
+/// the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_disjunction_live(
+    store: Oop,
+    projection: u8,
+    first: ProjectPattern,
+    second: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe { project_disjunction_live(store, projection, first, second, output, capacity, written) }
 }
 
 /// Initialize the explicit Rust Relational probe against the process IdApi.
@@ -1057,6 +1129,23 @@ pub fn project_predicate(
     project_solutions(filtered.collect(), result)
 }
 
+/// Evaluate two positive branches from the same empty solution set and union
+/// their projected values. Branch order is preserved and projection remains
+/// distinct under the existing value law. The bounded FFI probe uses one
+/// triple clause per branch; the kernel keeps this helper independent of the
+/// Store and IdApi.
+pub fn project_disjunction(facts: &[Triple], branches: &[Clause], result: u32) -> Vec<Value> {
+    let mut values: Vec<Value> = Vec::new();
+    for branch in branches {
+        for value in project(facts, std::slice::from_ref(branch), result) {
+            if !values.iter().any(|seen| seen.matches(&value)) {
+                values.push(value);
+            }
+        }
+    }
+    values
+}
+
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
     let Clause(terms) = clause;
     facts.iter().any(|triple| {
@@ -1089,7 +1178,8 @@ pub fn project_negated(
 #[cfg(test)]
 mod tests {
     use super::{
-        Clause, CompareOp, Term, Triple, Value, project, project_negated, project_predicate,
+        Clause, CompareOp, Term, Triple, Value, project, project_disjunction, project_negated,
+        project_predicate,
     };
 
     fn id(value: u64) -> Value {
@@ -1283,5 +1373,25 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert!(values[0].matches(&id(2)));
         assert!(values[1].matches(&id(3)));
+    }
+
+    #[test]
+    fn disjunction_unions_branches_in_branch_order_and_deduplicates_projection() {
+        let facts = [
+            fact(1, 10, 100),
+            fact(2, 10, 100),
+            fact(2, 20, 200),
+            fact(3, 20, 200),
+        ];
+        let branches = [
+            Clause([Term::Variable(0), Term::Constant(id(10)), Term::Variable(1)]),
+            Clause([Term::Variable(0), Term::Constant(id(20)), Term::Variable(1)]),
+        ];
+
+        let values = project_disjunction(&facts, &branches, 0);
+        assert_eq!(values.len(), 3);
+        assert!(values[0].matches(&id(1)));
+        assert!(values[1].matches(&id(2)));
+        assert!(values[2].matches(&id(3)));
     }
 }

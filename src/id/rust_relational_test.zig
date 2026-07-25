@@ -28,6 +28,7 @@ const ProjectPattern = extern struct { entity: Oop, attribute: Oop, value: Oop }
 const ProjectJoinLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectPredicateLive = *const fn (Oop, u8, ProjectPattern, u8, u8, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectNegatedLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectDisjunctionLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -371,5 +372,64 @@ test "Rust Relational kernel applies negation without escaping inner bindings" {
     try std.testing.expectEqual(
         @as(c_int, -7),
         negated(store, 3, positive, negative, &values, values.len, &written),
+    );
+}
+
+test "Rust Relational kernel unions two disjunction branches" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const disjunction_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_disjunction_live") orelse
+        return error.RustRelationalDisjunctionMissing;
+    const disjunction: ProjectDisjunctionLive = @ptrCast(@alignCast(disjunction_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const alice = api.intern("rust_relational_disjunction_alice");
+    const bob = api.intern("rust_relational_disjunction_bob");
+    const carol = api.intern("rust_relational_disjunction_carol");
+    const city = api.intern("rust_relational_disjunction_city");
+    const pet = api.intern("rust_relational_disjunction_pet");
+    const boston = api.intern("rust_relational_disjunction_boston");
+    const denver = api.intern("rust_relational_disjunction_denver");
+    const cat = api.intern("rust_relational_disjunction_cat");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ carol, city, denver }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, pet, cat }, 3);
+
+    const boston_or_denver = ProjectPattern{ .entity = null, .attribute = city, .value = boston };
+    const denver_branch = ProjectPattern{ .entity = null, .attribute = city, .value = denver };
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        disjunction(store, 0, boston_or_denver, denver_branch, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 3), written);
+    try std.testing.expectEqual(@intFromPtr(alice), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(bob), @as(usize, @intCast(values[1].identity)));
+    try std.testing.expectEqual(@intFromPtr(carol), @as(usize, @intCast(values[2].identity)));
+
+    const cat_or_denver = ProjectPattern{ .entity = null, .attribute = pet, .value = cat };
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        disjunction(store, 0, cat_or_denver, denver_branch, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 2), written);
+    try std.testing.expectEqual(@intFromPtr(bob), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(carol), @as(usize, @intCast(values[1].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, -5),
+        disjunction(store, 0, boston_or_denver, denver_branch, null, 0, &written),
+    );
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        disjunction(store, 3, boston_or_denver, denver_branch, &values, values.len, &written),
     );
 }
