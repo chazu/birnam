@@ -529,6 +529,16 @@ remain the next implementation slices.
   closed until the IdApi/OOP value bridge is ported; the crate remains
   unselected and has no canonical-switch claim.
 
+### R3.7 installed host-symbol checkpoint (2026-07-24)
+
+- `b12ef26` extends the dynamic Rust Isolate probe to require all four frozen
+  host symbols: worker driver, boot-error writer, drain, and shutdown. The
+  probe invokes the lifecycle no-ops only; socketpair behavior remains covered
+  by the Rust unit tests.
+- Debug and ReleaseSafe dynamic probes pass. This closes symbol-surface drift
+  before the next slice ports the IdApi/OOP value bridge; it does not select
+  the Rust Isolate or claim worker request parity.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only

@@ -358,3 +358,10 @@ R3.6 control-plane skeleton checkpoint (2026-07-24):
 - Nine Rust unit tests and clippy pass, including socketpair control-plane
   and boot-error tests. Request dispatch remains fail-closed until the OOP
   value bridge is ported; this is not a worker-parity or selection checkpoint.
+
+R3.7 installed host-symbol checkpoint (2026-07-24):
+
+- `b12ef26` makes the dynamic probe require the four frozen host symbols and
+  invokes the lifecycle entry points without selecting the Rust rung.
+- Debug and ReleaseSafe probes pass; request dispatch remains intentionally
+  unimplemented pending the IdApi/OOP bridge.
