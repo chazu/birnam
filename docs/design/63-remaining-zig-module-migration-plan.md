@@ -791,6 +791,23 @@ remain the next implementation slices.
   `compile.stage1-stdlib +11.9%`. Canonical Rust Relational selection and
   the Zig Store rollback cross-floor fixture remain pending.
 
+### R4.6 Rust Relational × Zig Store rollback checkpoint (2026-07-25)
+
+- `53c7810` adds a separate `test-rust-relational-zig-store` process using
+  the same callback corpus against the installed `libbirnam_store_zig.dylib`.
+  The Rust Store and Zig Store providers are never loaded into one process;
+  each retains sole ownership of its Store object and callback surface.
+- Both Rust Relational processes pass `2/2`: Rust Store current-live
+  enumeration and the Zig Store rollback oracle produce the same classified
+  asserted triple, and both reject a zero-capacity output buffer. The focused
+  R6 boundary is now `100/100` build steps and `56/56` tests, including both
+  cross-floor targets.
+- The follow-up full R6 run passes with optimized verify pinned at exactly
+  `260/263` steps, `462/468` tests, and 6 skipped, still accepting only the
+  existing `run-tests.birnam`/`vSortBy` fixture. The comparator remains zero
+  missing/unusable with only the two recorded crossings. Full query parity,
+  historical windows, and canonical Rust Relational selection remain open.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
