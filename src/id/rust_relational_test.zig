@@ -24,6 +24,8 @@ const ClassifiedTriple = extern struct {
 const CollectLive = *const fn (Oop, ?[*]ClassifiedTriple, usize, *usize) callconv(.c) c_int;
 const CollectWindow = *const fn (Oop, u8, u64, u64, ?[*]ClassifiedTriple, usize, *usize) callconv(.c) c_int;
 const ProjectLive = *const fn (Oop, u8, Oop, Oop, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectPattern = extern struct { entity: Oop, attribute: Oop, value: Oop };
+const ProjectJoinLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -224,4 +226,47 @@ test "Rust Relational kernel projects a Store pattern across the ABI" {
         @as(c_int, -7),
         project(store, 3, null, attribute, api.mkSmallInt(123), &values, values.len, &written),
     );
+}
+
+test "Rust Relational kernel joins two Store patterns" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const join_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_join_live") orelse
+        return error.RustRelationalProjectJoinMissing;
+    const join: ProjectJoinLive = @ptrCast(@alignCast(join_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const entity = api.intern("rust_relational_join_entity");
+    const other = api.intern("rust_relational_join_other");
+    const city = api.intern("rust_relational_join_city");
+    const pet = api.intern("rust_relational_join_pet");
+    const boston = api.intern("rust_relational_join_boston");
+    const dog = api.intern("rust_relational_join_dog");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, pet, dog }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ other, city, boston }, 3);
+
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        join(
+            store,
+            0,
+            .{ .entity = null, .attribute = city, .value = boston },
+            .{ .entity = null, .attribute = pet, .value = dog },
+            &values,
+            values.len,
+            &written,
+        ),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@as(u8, 0), values[0].tag);
+    try std.testing.expectEqual(@intFromPtr(entity), @as(usize, @intCast(values[0].identity)));
 }

@@ -173,6 +173,17 @@ struct ProjectCollector {
     status: i32,
 }
 
+/// One three-position Store pattern for the explicit relational migration
+/// probes. A null position is a variable identified by its position (0, 1, or
+/// 2); non-null positions are classified constants.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ProjectPattern {
+    pub entity: Oop,
+    pub attribute: Oop,
+    pub value: Oop,
+}
+
 unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     if self_object.is_null() {
         return ptr::null_mut();
@@ -370,31 +381,18 @@ unsafe fn collect_window(
     collector.status
 }
 
-#[allow(clippy::too_many_arguments)]
-unsafe fn project_live(
-    store: Oop,
-    projection: u8,
-    entity: Oop,
-    attribute: Oop,
-    value: Oop,
-    output: *mut ClassifiedValue,
-    capacity: usize,
-    written: *mut usize,
-) -> i32 {
-    if written.is_null() || (capacity != 0 && output.is_null()) || store.is_null() {
-        return -3;
-    }
-    if projection > 2 {
-        return -7;
+unsafe fn collect_project_facts(store: Oop) -> Result<(Vec<Triple>, *const IdApi), i32> {
+    if store.is_null() {
+        return Err(-3);
     }
     let Some(api_address) = API.get() else {
-        return -2;
+        return Err(-2);
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
     let api = unsafe { &*(*api_address as *const IdApi) };
     let callback_vt = unsafe { (api.proto)(api.object_vt) };
     if callback_vt.is_null() {
-        return -6;
+        return Err(-6);
     }
     let callback_selector = unsafe { (api.intern)(c"value:value:value:".as_ptr()) };
     // SAFETY: the callback object has one raw payload slot holding a stack
@@ -410,7 +408,7 @@ unsafe fn project_live(
     };
     let callback = unsafe { (api.alloc)(callback_vt, size_of::<*mut ProjectCollector>()) };
     if callback.is_null() {
-        return -6;
+        return Err(-6);
     }
     // SAFETY: callback payload was allocated with exactly one raw pointer slot.
     unsafe { ptr::write(callback.cast::<*mut ProjectCollector>(), &mut collector) };
@@ -422,33 +420,67 @@ unsafe fn project_live(
     unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
     ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
     if collector.status != 0 {
-        return collector.status;
+        return Err(collector.status);
     }
+    Ok((collector.facts, collector.api))
+}
 
+unsafe fn project_terms(api: &IdApi, pattern: ProjectPattern) -> Result<[Term; 3], i32> {
     let term = |object: Oop, variable: u32| -> Result<Term, i32> {
         if object.is_null() {
             return Ok(Term::Variable(variable));
         }
-        // SAFETY: object is borrowed from the caller for this synchronous call.
+        // SAFETY: pattern objects are borrowed from the caller for this
+        // synchronous call.
         unsafe { oop::classify(api, object) }
             .map(Term::Constant)
             .ok_or(-4)
     };
-    let terms = [
-        match term(entity, 0) {
-            Ok(term) => term,
-            Err(status) => return status,
-        },
-        match term(attribute, 1) {
-            Ok(term) => term,
-            Err(status) => return status,
-        },
-        match term(value, 2) {
-            Ok(term) => term,
-            Err(status) => return status,
-        },
-    ];
-    let projected = project(&collector.facts, &[Clause(terms)], projection as u32);
+    Ok([
+        term(pattern.entity, 0)?,
+        term(pattern.attribute, 1)?,
+        term(pattern.value, 2)?,
+    ])
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_live(
+    store: Oop,
+    projection: u8,
+    entity: Oop,
+    attribute: Oop,
+    value: Oop,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+
+    let terms = match unsafe {
+        project_terms(
+            api,
+            ProjectPattern {
+                entity,
+                attribute,
+                value,
+            },
+        )
+    } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let projected = project(&facts, &[Clause(terms)], projection as u32);
     if projected.len() > capacity {
         return -5;
     }
@@ -456,6 +488,54 @@ unsafe fn project_live(
     // the length check above bounds every write.
     let projected_len = projected.len();
     for (slot, value) in projected.iter().cloned().enumerate() {
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    // `written` is the number of projected values, not the callback snapshot.
+    unsafe { *written = projected_len };
+    0
+}
+
+unsafe fn project_join_live(
+    store: Oop,
+    projection: u8,
+    first: ProjectPattern,
+    second: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let first_terms = match unsafe { project_terms(api, first) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let second_terms = match unsafe { project_terms(api, second) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let projected = project(
+        &facts,
+        &[Clause(first_terms), Clause(second_terms)],
+        projection as u32,
+    );
+    if projected.len() > capacity {
+        return -5;
+    }
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity elements of writable output
+        // storage; the length check above bounds every write.
         unsafe { ptr::write(output.add(slot), record(value)) };
     }
     // `written` is the number of projected values, not the callback snapshot.
@@ -542,6 +622,31 @@ pub unsafe extern "C" fn birnam_relational_rust_project_live(
             store, projection, entity, attribute, value, output, capacity, written,
         )
     }
+}
+
+/// Project one variable across two triple patterns from the current Store
+/// snapshot. Null positions are variables identified by their position, so a
+/// null entity in both patterns joins on the same variable 0. Non-null terms are
+/// classified constants. This remains an explicit migration probe, not the
+/// canonical Store `findAll:where:` method.
+///
+/// # Safety
+///
+/// `store` and any non-null pattern term must remain live for the synchronous
+/// call. `output` and `written` must point to caller-owned writable storage for
+/// the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_join_live(
+    store: Oop,
+    projection: u8,
+    first: ProjectPattern,
+    second: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe { project_join_live(store, projection, first, second, output, capacity, written) }
 }
 
 /// Initialize the explicit Rust Relational probe against the process IdApi.
