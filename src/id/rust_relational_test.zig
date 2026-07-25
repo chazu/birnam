@@ -27,6 +27,7 @@ const ProjectLive = *const fn (Oop, u8, Oop, Oop, Oop, ?[*]Classified, usize, *u
 const ProjectPattern = extern struct { entity: Oop, attribute: Oop, value: Oop };
 const ProjectJoinLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 const ProjectPredicateLive = *const fn (Oop, u8, ProjectPattern, u8, u8, Oop, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectNegatedLive = *const fn (Oop, u8, ProjectPattern, ProjectPattern, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -319,5 +320,56 @@ test "Rust Relational kernel filters a bound value with a numeric predicate" {
     try std.testing.expectEqual(
         @as(c_int, -7),
         predicate(store, 0, pattern, 1, 2, api.mkSmallInt(18), &values, values.len, &written),
+    );
+}
+
+test "Rust Relational kernel applies negation without escaping inner bindings" {
+    const api = floor.api();
+    try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
+    const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
+        return error.MissingRustRelationalDylib;
+    try loadModule(api, relation_path);
+    const relation_z = try std.heap.c_allocator.dupeZ(u8, relation_path);
+    defer std.heap.c_allocator.free(relation_z);
+    const relation_handle = api.dlopen(relation_z.ptr, 1) orelse return error.RustRelationalDlopenFailed;
+    const negated_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_negated_live") orelse
+        return error.RustRelationalNegatedMissing;
+    const negated: ProjectNegatedLive = @ptrCast(@alignCast(negated_raw));
+
+    const store = api.import("Store") orelse return error.RustRelationalStoreMissing;
+    const alice = api.intern("rust_relational_negated_alice");
+    const bob = api.intern("rust_relational_negated_bob");
+    const city = api.intern("rust_relational_negated_city");
+    const pet = api.intern("rust_relational_negated_pet");
+    const boston = api.intern("rust_relational_negated_boston");
+    const cat = api.intern("rust_relational_negated_cat");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ alice, pet, api.intern("rust_relational_negated_dog") }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, city, boston }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ bob, pet, cat }, 3);
+
+    const positive = ProjectPattern{ .entity = null, .attribute = city, .value = boston };
+    const negative = ProjectPattern{ .entity = null, .attribute = pet, .value = cat };
+    var values: [8]Classified = undefined;
+    var written: usize = 0;
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        negated(store, 0, positive, negative, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@intFromPtr(alice), @as(usize, @intCast(values[0].identity)));
+
+    const no_fish = ProjectPattern{ .entity = null, .attribute = pet, .value = api.intern("rust_relational_negated_fish") };
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        negated(store, 0, positive, no_fish, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 2), written);
+    try std.testing.expectEqual(@intFromPtr(alice), @as(usize, @intCast(values[0].identity)));
+    try std.testing.expectEqual(@intFromPtr(bob), @as(usize, @intCast(values[1].identity)));
+
+    try std.testing.expectEqual(
+        @as(c_int, -7),
+        negated(store, 3, positive, negative, &values, values.len, &written),
     );
 }

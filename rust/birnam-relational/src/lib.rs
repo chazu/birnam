@@ -606,6 +606,54 @@ unsafe fn project_predicate_live(
     0
 }
 
+unsafe fn project_negated_live(
+    store: Oop,
+    projection: u8,
+    positive: ProjectPattern,
+    negative: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if written.is_null() || (capacity != 0 && output.is_null()) {
+        return -3;
+    }
+    if projection > 2 {
+        return -7;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let positive_terms = match unsafe { project_terms(api, positive) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let negative_terms = match unsafe { project_terms(api, negative) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let projected = project_negated(
+        &facts,
+        &Clause(positive_terms),
+        &Clause(negative_terms),
+        projection as u32,
+    );
+    if projected.len() > capacity {
+        return -5;
+    }
+    let projected_len = projected.len();
+    for (slot, value) in projected.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity elements of writable output
+        // storage; the length check above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = projected_len };
+    0
+}
+
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
 /// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
@@ -753,6 +801,40 @@ pub unsafe extern "C" fn birnam_relational_rust_project_predicate_live(
             output,
             capacity,
             written,
+        )
+    }
+}
+
+/// Project one variable from a positive triple pattern while excluding rows
+/// for which a second pattern matches. Null positions are position-based
+/// variables shared between the patterns; variables that occur only in the
+/// negative pattern are scoped to its existence check and never bind output.
+/// This is an explicit migration probe, not the canonical Store
+/// `findAll:where:` method.
+///
+/// Return values: `0` success, `-2` before `module_init`, `-3` invalid pointers
+/// or Store, `-4` malformed terms, `-5` insufficient output capacity, `-6`
+/// callback allocation failure, and `-7` invalid projection index.
+///
+/// # Safety
+///
+/// `store` and any non-null pattern term must remain live for the synchronous
+/// call. `output` and `written` must point to caller-owned writable storage for
+/// the declared capacity and count.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_negated_live(
+    store: Oop,
+    projection: u8,
+    positive: ProjectPattern,
+    negative: ProjectPattern,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store object and output buffers.
+    unsafe {
+        project_negated_live(
+            store, projection, positive, negative, output, capacity, written,
         )
     }
 }
@@ -975,9 +1057,40 @@ pub fn project_predicate(
     project_solutions(filtered.collect(), result)
 }
 
+fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
+    let Clause(terms) = clause;
+    facts.iter().any(|triple| {
+        let values = [&triple.entity, &triple.attribute, &triple.value];
+        let mut fresh = Vec::new();
+        terms
+            .iter()
+            .zip(values)
+            .all(|(term, value)| match_term(solution, &mut fresh, term, value))
+    })
+}
+
+/// Evaluate one positive binder, then apply one negation-as-failure clause.
+/// Variables already present in the positive solution are shared by position;
+/// variables introduced only by the negative clause are scoped to its existence
+/// check and never escape into the projected result.
+pub fn project_negated(
+    facts: &[Triple],
+    positive: &Clause,
+    negative: &Clause,
+    result: u32,
+) -> Vec<Value> {
+    let solutions = evaluate_clauses(facts, std::slice::from_ref(positive));
+    let kept = solutions
+        .into_iter()
+        .filter(|solution| !clause_matches_solution(facts, solution, negative));
+    project_solutions(kept.collect(), result)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Clause, CompareOp, Term, Triple, Value, project, project_predicate};
+    use super::{
+        Clause, CompareOp, Term, Triple, Value, project, project_negated, project_predicate,
+    };
 
     fn id(value: u64) -> Value {
         Value::Identity(value)
@@ -1144,5 +1257,31 @@ mod tests {
         assert_eq!(not_integer.len(), 2);
         assert!(not_integer[0].matches(&id(1)));
         assert!(not_integer[1].matches(&id(3)));
+    }
+
+    #[test]
+    fn negation_excludes_matching_rows_without_binding_negative_variables() {
+        let facts = [
+            fact(1, 10, 100),
+            fact(1, 20, 200),
+            fact(2, 10, 100),
+            fact(2, 20, 300),
+            fact(3, 10, 100),
+        ];
+        let positive = Clause([
+            Term::Variable(0),
+            Term::Constant(id(10)),
+            Term::Constant(id(100)),
+        ]);
+        let forbidden = Clause([
+            Term::Variable(0),
+            Term::Constant(id(20)),
+            Term::Constant(id(200)),
+        ]);
+
+        let values = project_negated(&facts, &positive, &forbidden, 0);
+        assert_eq!(values.len(), 2);
+        assert!(values[0].matches(&id(2)));
+        assert!(values[1].matches(&id(3)));
     }
 }
