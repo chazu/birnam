@@ -1850,6 +1850,18 @@ post-switch image/project observation window closes.
   are unchanged. Child-abort coverage remains the final explicit R5 exit
   seam before the pre-switch acceptance run.
 
+### R5.22 Rust Alien child-abort checkpoint (2026-07-25)
+
+- `c285450` extends the established Rust FFI abort smoke to the Alien cdylib.
+  Feature-gated hooks prove that both a Rust panic and the Alien fatal-invariant
+  helper terminate in the child with SIGABRT and the required diagnostic in
+  Debug and Release profiles; production builds do not expose the hooks.
+- `b4cf834` makes `test-rust-ffi-abort` a required focused R6 target and pins
+  both Alien profile summaries. The Rust Alien live target remains `9/9`, the
+  focused semantic matrix remains `80/80`, and no benchmark allowance changed.
+  This closes the explicit child-abort seam; the remaining R5 work is the
+  pre-switch full verify/R6 acceptance and canonical selection decision.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
