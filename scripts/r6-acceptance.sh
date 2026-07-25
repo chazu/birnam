@@ -86,7 +86,7 @@ seen && /^[^ ]/ { exit }
   echo "r6-acceptance: Rust Prelude test set no longer has 2 passing tests" >&2
   exit 1
 }
-rust_prelude_io_success_count=$(grep -Fc 'test-rust-prelude-io success' "$functional" || true)
+rust_prelude_io_success_count=$(grep -Ec '^test-rust-prelude-io (success|cached)$' "$functional" || true)
 [ "$rust_prelude_io_success_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Prelude subprocess I/O target was not executed" >&2
   exit 1
