@@ -242,8 +242,8 @@ grep -Fqx 'test-rust-alien-live success' "$live" || {
   echo "r6-acceptance: Rust Alien live target was not executed" >&2
   exit 1
 }
-grep -Eq '^\+- run test 7 passed ' "$live" || {
-  echo "r6-acceptance: Rust Alien live target no longer reports 7 passing tests" >&2
+grep -Eq '^\+- run test 8 passed ' "$live" || {
+  echo "r6-acceptance: Rust Alien live target no longer reports 8 passing tests" >&2
   exit 1
 }
 
