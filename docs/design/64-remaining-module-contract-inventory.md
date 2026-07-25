@@ -195,3 +195,18 @@ Execution evidence (2026-07-24):
   unusable: 0`.
 - R0 is complete. No canonical runtime switch occurred in this phase; R0.5
   Prelude completion and its pre-switch acceptance gate are next.
+
+R0.5 implementation checkpoint (2026-07-24):
+
+- `7059b6a` removed Rust Prelude Error-family allocation and Object DNU/isError
+  ownership. Faults now call the already-exported standalone Error factory and
+  answer nil when that dynamic owner is not loaded. The same slice added the
+  Codegen-backed `System load:` protocol.
+- `8eef340` added a source-file parity corpus: valid source evaluates through
+  `evalPersisting:from:`, broken source returns `#syntaxError`, and the test
+  explicitly loads the Zig Error owner before exercising faults.
+- `e1453c7` added `test-rust-prelude-io`, a separate executable with piped
+  stdin/stdout proving `readLine` and `println:` outside the in-process test
+  runner. R6 now includes this target and pins the focused set at `43/43`.
+- Rust remains opt-in and the Zig Prelude remains canonical. The R0.5
+  pre-switch verify/R6 gate and canonical-switch commit are still pending.

@@ -19,7 +19,9 @@ The current repository already contains Rust implementations for:
 - Store/MOP and its Codegen observer/authorizer seam;
 - PEG, Lang, TCC, Codegen runtime, artifact inspection, and the image codec;
 - the opt-in N7.1 Prelude protocol through arithmetic, Boolean, Error, Block,
-  System I/O/environment/output, GC controls, `loadModule:`, and `readLine`.
+  System I/O/environment/output, GC controls, source `load:`, `loadModule:`,
+  and `readLine`. Its Error behavior delegates to the standalone Error rung;
+  it does not create an Error family.
 
 The remaining Zig-owned production modules are:
 
