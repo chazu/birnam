@@ -133,13 +133,11 @@ impl LibraryRegistry {
         NonNull::new(symbol).ok_or(LoaderError::SymbolNotFound)
     }
 
-    /// Resolve a symbol from the process-wide loader namespace. The registry
-    /// must retain at least one open entry before this is used so callers keep
-    /// the library lifetime stronger than any patched wrapper address.
+    /// Resolve a symbol from the process-wide loader namespace. Symbols from
+    /// the main executable and platform libraries are process-owned; symbols
+    /// supplied by an explicitly opened library remain protected by that
+    /// library's retained registry entry.
     pub fn symbol_default(&self, name: &[u8]) -> Result<NonNull<c_void>, LoaderError> {
-        if self.open.is_empty() {
-            return Err(LoaderError::NotOpen);
-        }
         if name.is_empty() {
             return Err(LoaderError::EmptySymbol);
         }
@@ -282,6 +280,14 @@ mod tests {
         registry.close(path).expect("second close succeeds");
         assert_eq!(registry.open_count(path), 0);
         assert_eq!(registry.close(path), Err(LoaderError::NotOpen));
+    }
+
+    #[test]
+    fn process_symbols_resolve_without_an_explicit_library_open() {
+        let registry = LibraryRegistry::default();
+        registry
+            .symbol_default(b"malloc")
+            .expect("the process loader namespace resolves libc symbols");
     }
 
     #[test]

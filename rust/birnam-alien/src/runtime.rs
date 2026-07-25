@@ -8,7 +8,9 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+use crate::codegen::emit_shim;
 use crate::loader::{LibraryRegistry, LoaderError};
+use crate::parse_signature;
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -53,7 +55,7 @@ unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
 }
 
-unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&'static [u8]> {
+unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
     if value.is_null() {
         return None;
     }
@@ -65,7 +67,7 @@ unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&'static [u8]> {
         return None;
     }
     // SAFETY: the host's stringBytes contract supplies the borrowed extent.
-    Some(unsafe { core::slice::from_raw_parts(pointer, length) })
+    Some(unsafe { core::slice::from_raw_parts(pointer, length) }.to_vec())
 }
 
 unsafe fn make_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
@@ -123,7 +125,7 @@ unsafe extern "C" fn alien_library_dir(
     let mut registry = registry()
         .lock()
         .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-    if registry.set_library_dir(path).is_err() {
+    if registry.set_library_dir(&path).is_err() {
         return api.nilObj;
     }
     self_object
@@ -147,7 +149,7 @@ unsafe extern "C" fn alien_dlopen(
     let mut registry = registry()
         .lock()
         .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-    match registry.open(path) {
+    match registry.open(&path) {
         Ok(()) => api.trueObj,
         Err(_) => api.nilObj,
     }
@@ -171,10 +173,141 @@ unsafe extern "C" fn alien_dlclose(
     let mut registry = registry()
         .lock()
         .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-    match registry.close(path) {
+    let result = registry.close(&path);
+    drop(registry);
+    match result {
         Ok(()) => api.trueObj,
         Err(error) => loader_error(api, error, b"dlclose"),
     }
+}
+
+unsafe extern "C" fn alien_wrap(
+    _self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    let (function_object, signature_object, selector, target) = {
+        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+            return api.nilObj;
+        };
+        if arguments.len() != 4 {
+            return api.nilObj;
+        }
+        (arguments[0], arguments[1], arguments[2], arguments[3])
+    };
+    let Some(function_name) = (unsafe { string_bytes(api, function_object) }) else {
+        return api.nilObj;
+    };
+    let Some(signature_bytes) = (unsafe { string_bytes(api, signature_object) }) else {
+        return api.nilObj;
+    };
+    let signature = match parse_signature(&signature_bytes) {
+        Ok(signature) => signature,
+        Err(error) => unsafe {
+            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
+        },
+    };
+    if !signature.aggregates.is_empty()
+        && unsafe { (api.import)(c"Vector".as_ptr()) }.is_null()
+    {
+        return unsafe {
+            make_error(
+                api,
+                b"moduleNotLoaded\0",
+                b"a struct signature needs the collection module",
+            )
+        };
+    }
+    let address_result = {
+        let registry = registry()
+            .lock()
+            .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
+        registry.symbol_default(&function_name)
+    };
+    let address = match address_result {
+        Ok(address) => address.as_ptr() as usize,
+        Err(error) => return loader_error(api, error, b"wrap"),
+    };
+    let source = match emit_shim(&function_name, &signature) {
+        Ok(source) => source,
+        Err(error) => unsafe {
+            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
+        },
+    };
+    let tcc = unsafe { (api.import)(c"Tcc".as_ptr()) };
+    if tcc.is_null() {
+        return unsafe { make_error(api, b"moduleNotLoaded\0", b"Tcc is not loaded") };
+    }
+    let new_selector = unsafe { intern(api, b"new\0") };
+    // SAFETY: all sends below use process-owned selectors and live Oops; no Rust
+    // borrow survives a send or crosses into generated C.
+    let unit = unsafe { (api.send)(tcc, new_selector, ptr::null(), 0) };
+    if unit.is_null() || unit == api.nilObj {
+        return unsafe { make_error(api, b"compileFailed\0", b"could not create a compile unit") };
+    }
+    let compile_selector = unsafe { intern(api, b"compile:\0") };
+    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    if source_object.is_null()
+        || unsafe { (api.send)(unit, compile_selector, &source_object, 1) } == api.nilObj
+    {
+        return unsafe { make_error(api, b"compileFailed\0", b"the generated shim C did not compile") };
+    }
+    let bind_selector = unsafe { intern(api, b"bindRuntime\0") };
+    if unsafe { (api.send)(unit, bind_selector, ptr::null(), 0) } == api.nilObj {
+        return unsafe { make_error(api, b"compileFailed\0", b"TCC runtime binding failed") };
+    }
+    let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
+    let function_name_object = unsafe { (api.mkString)(function_name.as_ptr(), function_name.len()) };
+    let address_object = unsafe { (api.mkSmallInt)(address as i64) };
+    let symbol_arguments = [function_name_object, address_object];
+    if unsafe {
+        (api.send)(
+            unit,
+            add_symbol_selector,
+            symbol_arguments.as_ptr(),
+            symbol_arguments.len(),
+        )
+    } == api.nilObj
+    {
+        return unsafe { make_error(api, b"compileFailed\0", b"the wrapped symbol could not be bound") };
+    }
+    if !signature.aggregates.is_empty() {
+        let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
+        let vector_name = unsafe { (api.mkString)(c"__vecFactory".as_ptr().cast(), 12) };
+        let vector_address = unsafe { (api.mkSmallInt)(vector as usize as i64) };
+        let vector_arguments = [vector_name, vector_address];
+        if unsafe {
+            (api.send)(
+                unit,
+                add_symbol_selector,
+                vector_arguments.as_ptr(),
+                vector_arguments.len(),
+            )
+        } == api.nilObj
+        {
+            return unsafe { make_error(api, b"compileFailed\0", b"Vector factory binding failed") };
+        }
+    }
+    let relocate_selector = unsafe { intern(api, b"relocate\0") };
+    if unsafe { (api.send)(unit, relocate_selector, ptr::null(), 0) } == api.nilObj {
+        return unsafe { make_error(api, b"relocateFailed\0", b"could not relocate the shim") };
+    }
+    let install_selector = unsafe { intern(api, b"install:as:on:\0") };
+    let shim_name = unsafe { (api.mkString)(c"__shim".as_ptr().cast(), 6) };
+    let install_arguments = [shim_name, selector, target];
+    let installed = unsafe {
+        (api.send)(
+            unit,
+            install_selector,
+            install_arguments.as_ptr(),
+            install_arguments.len(),
+        )
+    };
+    if installed == api.nilObj {
+        return unsafe { make_error(api, b"compileFailed\0", b"the shim method could not be installed") };
+    }
+    installed
 }
 
 unsafe fn bring_up(api_pointer: *mut IdApi) {
@@ -226,6 +359,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.alien_vt as Oop,
             intern(api, b"dlclose:\0"),
             alien_dlclose,
+        );
+        (api.method)(
+            runtime.alien_vt as Oop,
+            intern(api, b"wrap:signature:as:on:\0"),
+            alien_wrap,
         );
     }
     if !reloading {
