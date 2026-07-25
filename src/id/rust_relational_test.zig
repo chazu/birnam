@@ -982,6 +982,8 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("min:where:"), &.{ score_variable, planner_body }, 2)));
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("max:where:"), &.{ score_variable, planner_body }, 2)));
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(store, api.intern("avg:where:"), &.{ score_variable, planner_body }, 2)));
+    const grouped_scores = api.send(store, api.intern("groupBy:aggregate:of:where:"), &.{ x, api.intern("sum"), score_variable, planner_body }, 4);
+    try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(api.send(grouped_scores, api.intern("at:"), &.{planner_high}, 1)));
     const rule_params = makeVector(api, &.{ x, y });
     const rule_base_clause = makeVector(api, &.{ x, parent, y });
     const rule_base_body = makeVector(api, &.{rule_base_clause});

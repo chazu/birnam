@@ -339,6 +339,133 @@ unsafe extern "C" fn rust_avg(_self_object: Oop, args: *const Oop, count: usize)
     unsafe { rust_aggregate(_self_object, args, count, 4) }
 }
 
+unsafe fn parse_aggregate_kind(api: &IdApi, object: Oop) -> Option<AggregateOp> {
+    let intern = |name: &'static [u8]| unsafe { (api.intern)(name.as_ptr().cast()) };
+    Some(if object == intern(b"count\0") {
+        AggregateOp::Count
+    } else if object == intern(b"sum\0") {
+        AggregateOp::Sum
+    } else if object == intern(b"min\0") {
+        AggregateOp::Min
+    } else if object == intern(b"max\0") {
+        AggregateOp::Max
+    } else if object == intern(b"avg\0") {
+        AggregateOp::Average
+    } else {
+        return None;
+    })
+}
+
+unsafe extern "C" fn rust_group_by(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 4 {
+        return api.nilObj;
+    }
+    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    let Some(operation) = (unsafe { parse_aggregate_kind(api, arguments[1]) }) else {
+        return api.nilObj;
+    };
+    if logicvar_vt.is_null() {
+        return api.nilObj;
+    }
+    let name_selector = unsafe { (api.intern)(c"name".as_ptr()) };
+    let mut variables = Vec::new();
+    let group_variable = match unsafe {
+        parse_store_term(
+            api,
+            arguments[0],
+            logicvar_vt,
+            name_selector,
+            &mut variables,
+        )
+    } {
+        Ok(Term::Variable(variable)) => variable,
+        _ => return api.nilObj,
+    };
+    let value_variable = match unsafe {
+        parse_store_term(
+            api,
+            arguments[2],
+            logicvar_vt,
+            name_selector,
+            &mut variables,
+        )
+    } {
+        Ok(Term::Variable(variable)) => variable,
+        _ => return api.nilObj,
+    };
+    let body = match unsafe {
+        parse_store_rule_body(
+            api,
+            arguments[3],
+            logicvar_vt,
+            name_selector,
+            &mut variables,
+        )
+    } {
+        Ok(body) => body,
+        Err(_) => return api.nilObj,
+    };
+    let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
+    let (facts, pairs, _) =
+        match unsafe { collect_project_facts_and_rules(_self_object, rule_name) } {
+            Ok(snapshot) => snapshot,
+            Err(_) => return api.nilObj,
+        };
+    let definitions = match unsafe { parse_store_rule_definitions(api, &pairs) } {
+        Ok(definitions) => definitions,
+        Err(_) => return api.nilObj,
+    };
+    let grouped = match group_rule_body(
+        &facts,
+        &definitions,
+        &body,
+        group_variable,
+        value_variable,
+        operation,
+    ) {
+        Ok(grouped) => grouped,
+        Err(_) => return api.nilObj,
+    };
+    let map_factory = unsafe { (api.import)(c"Map".as_ptr()) };
+    if map_factory.is_null() {
+        return api.nilObj;
+    }
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let at_put_selector = unsafe { (api.intern)(c"at:put:".as_ptr()) };
+    let empty: [Oop; 0] = [];
+    let mut output = unsafe { (api.send)(map_factory, new_selector, empty.as_ptr(), 0) };
+    if output.is_null() {
+        return api.nilObj;
+    }
+    ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+    for result in grouped {
+        let group = unsafe { value_oop(api, result.group) };
+        let aggregate = unsafe {
+            result
+                .aggregate
+                .map(|value| value_oop(api, value))
+                .unwrap_or(api.nilObj)
+        };
+        let arguments = [group, aggregate];
+        output = unsafe { (api.send)(output, at_put_selector, arguments.as_ptr(), 2) };
+        if output.is_null() {
+            ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+            return api.nilObj;
+        }
+        ACTIVE_PROBE_BLOCK.store(output as usize, Ordering::Release);
+    }
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    output
+}
+
 unsafe fn install_entity_method(api: &IdApi) {
     let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
@@ -366,6 +493,7 @@ unsafe fn install_entity_method(api: &IdApi) {
     unsafe { (api.method)(store_vt, selector, rust_entity) };
     if unsafe { (api.import)(c"Vector".as_ptr()) }.is_null()
         || unsafe { (api.import)(c"LogicVarVt".as_ptr()) }.is_null()
+        || unsafe { (api.import)(c"Map".as_ptr()) }.is_null()
     {
         return;
     }
@@ -386,6 +514,11 @@ unsafe fn install_entity_method(api: &IdApi) {
         (api.method)(store_vt, (api.intern)(c"min:where:".as_ptr()), rust_min);
         (api.method)(store_vt, (api.intern)(c"max:where:".as_ptr()), rust_max);
         (api.method)(store_vt, (api.intern)(c"avg:where:".as_ptr()), rust_avg);
+        (api.method)(
+            store_vt,
+            (api.intern)(c"groupBy:aggregate:of:where:".as_ptr()),
+            rust_group_by,
+        );
     }
 }
 
@@ -2357,6 +2490,47 @@ pub fn group_aggregate(
         .collect()
 }
 
+/// Group a query body that may include rule calls, predicates, negation, and
+/// disjunction. Definitions are rebuilt from the same authoritative snapshot;
+/// the grouped result owns copied values and no cache survives the call.
+pub fn group_rule_body(
+    facts: &[Triple],
+    definitions: &[RuleDefinition],
+    body: &[RuleClause],
+    group_variable: u32,
+    value_variable: u32,
+    operation: AggregateOp,
+) -> Result<Vec<GroupedAggregate>, AggregateError> {
+    let mut cache = RuleCache::default();
+    cache.rebuild(facts, definitions);
+    let solutions = evaluate_rule_body(facts, &cache.relations, body);
+    let mut groups: Vec<(Value, Vec<Value>)> = Vec::new();
+    for solution in solutions {
+        let (Some(group), Some(value)) = (
+            lookup(&solution, group_variable),
+            lookup(&solution, value_variable),
+        ) else {
+            continue;
+        };
+        let Some(existing) = groups.iter_mut().find(|(seen, _)| seen.matches(group)) else {
+            groups.push((group.clone(), vec![value.clone()]));
+            continue;
+        };
+        if !existing.1.iter().any(|seen| seen.matches(value)) {
+            existing.1.push(value.clone());
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(group, values)| {
+            Ok(GroupedAggregate {
+                group,
+                aggregate: aggregate_values(&values, operation)?,
+            })
+        })
+        .collect()
+}
+
 fn extend_rule_solution(
     solution: &[Binding],
     terms: &[Term],
@@ -3601,8 +3775,9 @@ pub fn project_negated(
 mod tests {
     use super::{
         AggregateOp, Clause, CompareOp, PullKind, PullSpec, RuleCache, RuleClause, RuleDefinition,
-        Term, Triple, Value, aggregate_values, group_aggregate, project, project_disjunction,
-        project_negated, project_predicate, project_recursive, project_rule_body, pull, query_rule,
+        Term, Triple, Value, aggregate_values, group_aggregate, group_rule_body, project,
+        project_disjunction, project_negated, project_predicate, project_recursive,
+        project_rule_body, pull, query_rule,
     };
 
     fn id(value: u64) -> Value {
@@ -3976,6 +4151,15 @@ mod tests {
         let counts = group_aggregate(&facts, &clauses, 1, 0, AggregateOp::Count).unwrap();
         assert!(counts[0].aggregate.as_ref().unwrap().matches(&integer(2)));
         assert!(counts[1].aggregate.as_ref().unwrap().matches(&integer(2)));
+
+        let body = vec![
+            RuleClause::Triple(clauses[0].clone()),
+            RuleClause::Triple(clauses[1].clone()),
+        ];
+        let grouped = group_rule_body(&facts, &[], &body, 1, 2, AggregateOp::Sum).unwrap();
+        assert_eq!(grouped.len(), 2);
+        assert!(grouped[0].aggregate.as_ref().unwrap().matches(&integer(60)));
+        assert!(grouped[1].aggregate.as_ref().unwrap().matches(&integer(30)));
     }
 
     #[test]
