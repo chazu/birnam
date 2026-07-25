@@ -553,6 +553,81 @@ pub enum EncodeError {
     PayloadTooLarge,
 }
 
+/// Encoder for one or more length-delimited v4 field values.
+///
+/// The encoder only owns its output bytes. It does not resolve or retain any
+/// runtime object; callers supply the already-classified scalar, name, or
+/// relocation value.
+#[derive(Default)]
+pub struct FieldEncoder {
+    bytes: Vec<u8>,
+}
+
+impl FieldEncoder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn nil(&mut self) {
+        self.bytes.push(FieldTag::Nil as u8);
+    }
+
+    pub fn true_value(&mut self) {
+        self.bytes.push(FieldTag::True as u8);
+    }
+
+    pub fn false_value(&mut self) {
+        self.bytes.push(FieldTag::False as u8);
+    }
+
+    pub fn integer(&mut self, value: i64) {
+        self.bytes.push(FieldTag::Integer as u8);
+        self.bytes.extend_from_slice(&value.to_le_bytes());
+    }
+
+    pub fn float_bits(&mut self, bits: u64) {
+        self.bytes.push(FieldTag::FloatBits as u8);
+        self.bytes.extend_from_slice(&bits.to_le_bytes());
+    }
+
+    pub fn heap_ref(&mut self, id: u32) {
+        self.bytes.push(FieldTag::HeapRef as u8);
+        self.bytes.extend_from_slice(&id.to_le_bytes());
+    }
+
+    pub fn null_oop(&mut self) {
+        self.bytes.push(FieldTag::NullOop as u8);
+    }
+
+    pub fn symbol(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+        self.length_delimited(FieldTag::Symbol, bytes)
+    }
+
+    pub fn string(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+        self.length_delimited(FieldTag::String, bytes)
+    }
+
+    pub fn export_ref(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+        self.length_delimited(FieldTag::ExportRef, bytes)
+    }
+
+    pub fn finish(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    fn length_delimited(&mut self, tag: FieldTag, bytes: &[u8]) -> Result<(), EncodeError> {
+        let length = u32::try_from(bytes.len()).map_err(|_| EncodeError::PayloadTooLarge)?;
+        self.bytes.push(tag as u8);
+        self.bytes.extend_from_slice(&length.to_le_bytes());
+        self.bytes.extend_from_slice(bytes);
+        Ok(())
+    }
+}
+
 /// Checked, allocation-owning v4 framing writer.
 ///
 /// This type deliberately accepts already-encoded facts/heap/code payloads. It
@@ -1291,6 +1366,40 @@ mod tests {
                 RecordKind::Code
             ]
         );
+    }
+
+    #[test]
+    fn field_encoder_round_trips_every_v4_tag() {
+        let mut encoder = FieldEncoder::new();
+        encoder.nil();
+        encoder.true_value();
+        encoder.false_value();
+        encoder.integer(-7);
+        encoder.float_bits(0x7ff8_0000_0000_0042);
+        encoder.symbol(b"answer").unwrap();
+        encoder.string(b"text").unwrap();
+        encoder.heap_ref(23);
+        encoder.null_oop();
+        encoder.export_ref(b"System").unwrap();
+
+        let mut fields = Fields::new(encoder.as_bytes());
+        assert_eq!(fields.next_field().unwrap(), Some(Field::Nil));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::True));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::False));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::Integer(-7)));
+        assert_eq!(
+            fields.next_field().unwrap(),
+            Some(Field::FloatBits(0x7ff8_0000_0000_0042))
+        );
+        assert_eq!(fields.next_field().unwrap(), Some(Field::Symbol(b"answer")));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::String(b"text")));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::HeapRef(23)));
+        assert_eq!(fields.next_field().unwrap(), Some(Field::NullOop));
+        assert_eq!(
+            fields.next_field().unwrap(),
+            Some(Field::ExportRef(b"System"))
+        );
+        assert_eq!(fields.next_field().unwrap(), None);
     }
 
     #[test]
