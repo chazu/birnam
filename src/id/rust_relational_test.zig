@@ -85,7 +85,28 @@ const RuleDefinitionNode = extern struct {
     body_count: u32,
     reserved_body: u32,
 };
+const RuleBodyNode = extern struct {
+    kind: u8,
+    reserved: [3]u8,
+    name: Oop,
+    terms: ?[*]const RuleTermNode,
+    term_count: u32,
+    reserved_terms: u32,
+    children: ?[*]const RuleBodyNode,
+    child_count: u32,
+    reserved_children: u32,
+};
+const RuleTreeDefinitionNode = extern struct {
+    name: Oop,
+    params: ?[*]const u32,
+    param_count: u32,
+    reserved_params: u32,
+    body: ?[*]const RuleBodyNode,
+    body_count: u32,
+    reserved_body: u32,
+};
 const ProjectRuleLive = *const fn (Oop, ?[*]const RuleDefinitionNode, usize, Oop, ?[*]const RuleTermNode, usize, u32, ?[*]Classified, usize, *usize) callconv(.c) c_int;
+const ProjectRuleTreeLive = *const fn (Oop, ?[*]const RuleTreeDefinitionNode, usize, Oop, ?[*]const RuleTermNode, usize, u32, ?[*]Classified, usize, *usize) callconv(.c) c_int;
 
 fn loadModule(api: *idapi.IdApi, path: []const u8) !void {
     const path_z = try std.heap.c_allocator.dupeZ(u8, path);
@@ -889,6 +910,53 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     );
     try std.testing.expectEqual(@as(usize, 1), written);
     try std.testing.expectEqual(@intFromPtr(high), @as(usize, @intCast(values[0].identity)));
+
+    const tree_raw = api.dlsym(relation_handle, "birnam_relational_rust_project_rule_tree_live") orelse
+        return error.RustRelationalRuleTreeMissing;
+    const tree: ProjectRuleTreeLive = @ptrCast(@alignCast(tree_raw));
+    const clean = api.intern("rust_relational_rule_clean");
+    const blocked = api.intern("rust_relational_rule_blocked");
+    const class = api.intern("rust_relational_rule_class");
+    const alpha = api.intern("rust_relational_rule_alpha");
+    const beta = api.intern("rust_relational_rule_beta");
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ high, blocked, api.intern("yes") }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ high, class, alpha }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ clean, score, api.mkSmallInt(25) }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ clean, class, alpha }, 3);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ low, class, beta }, 3);
+    const tree_triple_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(score), ruleVar(1) };
+    const tree_predicate_terms = [_]RuleTermNode{ ruleVar(1), ruleConst(api.mkSmallInt(10)) };
+    const tree_negated_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(blocked), ruleConst(api.intern("yes")) };
+    const tree_negated_children = [_]RuleBodyNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &tree_negated_terms, .term_count = 3, .reserved_terms = 0, .children = null, .child_count = 0, .reserved_children = 0 },
+    };
+    const tree_alpha_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(class), ruleConst(alpha) };
+    const tree_beta_terms = [_]RuleTermNode{ ruleVar(0), ruleConst(class), ruleConst(beta) };
+    const tree_alpha_children = [_]RuleBodyNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &tree_alpha_terms, .term_count = 3, .reserved_terms = 0, .children = null, .child_count = 0, .reserved_children = 0 },
+    };
+    const tree_beta_children = [_]RuleBodyNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &tree_beta_terms, .term_count = 3, .reserved_terms = 0, .children = null, .child_count = 0, .reserved_children = 0 },
+    };
+    const tree_branches = [_]RuleBodyNode{
+        .{ .kind = 5, .reserved = [_]u8{0} ** 3, .name = null, .terms = null, .term_count = 0, .reserved_terms = 0, .children = &tree_alpha_children, .child_count = 1, .reserved_children = 0 },
+        .{ .kind = 5, .reserved = [_]u8{0} ** 3, .name = null, .terms = null, .term_count = 0, .reserved_terms = 0, .children = &tree_beta_children, .child_count = 1, .reserved_children = 0 },
+    };
+    const tree_body = [_]RuleBodyNode{
+        .{ .kind = 0, .reserved = [_]u8{0} ** 3, .name = null, .terms = &tree_triple_terms, .term_count = 3, .reserved_terms = 0, .children = null, .child_count = 0, .reserved_children = 0 },
+        .{ .kind = 2, .reserved = [_]u8{0} ** 3, .name = api.intern(">"), .terms = &tree_predicate_terms, .term_count = 2, .reserved_terms = 0, .children = null, .child_count = 0, .reserved_children = 0 },
+        .{ .kind = 3, .reserved = [_]u8{0} ** 3, .name = null, .terms = null, .term_count = 0, .reserved_terms = 0, .children = &tree_negated_children, .child_count = 1, .reserved_children = 0 },
+        .{ .kind = 4, .reserved = [_]u8{0} ** 3, .name = null, .terms = null, .term_count = 0, .reserved_terms = 0, .children = &tree_branches, .child_count = 2, .reserved_children = 0 },
+    };
+    const tree_definition = [_]RuleTreeDefinitionNode{
+        .{ .name = threshold_rule, .params = &threshold_params, .param_count = 1, .reserved_params = 0, .body = &tree_body, .body_count = tree_body.len, .reserved_body = 0 },
+    };
+    try std.testing.expectEqual(
+        @as(c_int, 0),
+        tree(store, &tree_definition, tree_definition.len, threshold_rule, &threshold_query, threshold_query.len, 0, &values, values.len, &written),
+    );
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@intFromPtr(clean), @as(usize, @intCast(values[0].identity)));
 
     const even = api.intern("rust_relational_rule_even");
     const odd = api.intern("rust_relational_rule_odd");

@@ -1350,6 +1350,45 @@ pub unsafe extern "C" fn birnam_relational_rust_project_rule_live(
     }
 }
 
+/// Evaluate tree-shaped rule definitions with bounded nested negation and
+/// disjunction. This remains an explicit probe; it does not install Store
+/// methods or persist a Rust-owned rule cache.
+///
+/// # Safety
+///
+/// All descriptor arrays, Oops, and output pointers are borrowed for this
+/// synchronous call and must remain valid for its duration.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_relational_rust_project_rule_tree_live(
+    store: Oop,
+    definitions: *const RuleTreeDefinitionNode,
+    definition_count: usize,
+    query_name: Oop,
+    query_terms: *const RuleTermNode,
+    query_term_count: usize,
+    result_variable: u32,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    // SAFETY: the caller supplies the frozen Store, tree descriptors, and
+    // output contracts for one synchronous probe call.
+    unsafe {
+        project_rule_tree_live(
+            store,
+            definitions,
+            definition_count,
+            query_name,
+            query_terms,
+            query_term_count,
+            result_variable,
+            output,
+            capacity,
+            written,
+        )
+    }
+}
+
 /// Initialize the explicit Rust Relational probe against the process IdApi.
 ///
 /// # Safety
@@ -1466,6 +1505,36 @@ pub struct RuleDefinitionNode {
     pub param_count: u32,
     pub reserved_params: u32,
     pub body: *const RuleClauseNode,
+    pub body_count: u32,
+    pub reserved_body: u32,
+}
+
+/// Tree-shaped rule body node used by the richer explicit probe. The original
+/// flat `RuleClauseNode` ABI remains unchanged; kind 3 is negation, kind 4 is
+/// disjunction, and kind 5 is a disjunction branch container whose children
+/// are ordinary body nodes.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RuleBodyNode {
+    pub kind: u8,
+    pub reserved: [u8; 3],
+    pub name: Oop,
+    pub terms: *const RuleTermNode,
+    pub term_count: u32,
+    pub reserved_terms: u32,
+    pub children: *const RuleBodyNode,
+    pub child_count: u32,
+    pub reserved_children: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RuleTreeDefinitionNode {
+    pub name: Oop,
+    pub params: *const u32,
+    pub param_count: u32,
+    pub reserved_params: u32,
+    pub body: *const RuleBodyNode,
     pub body_count: u32,
     pub reserved_body: u32,
 }
@@ -2403,6 +2472,7 @@ unsafe fn group_aggregate_live(
 const MAX_RULE_DEFINITIONS: usize = 128;
 const MAX_RULE_BODY_CLAUSES: usize = 512;
 const MAX_RULE_TERMS: usize = 8;
+const MAX_RULE_NESTING: usize = 16;
 
 unsafe fn parse_rule_term(api: &IdApi, node: RuleTermNode) -> Result<Term, i32> {
     match node.kind {
@@ -2464,6 +2534,140 @@ unsafe fn parse_rule_compare_op(api: &IdApi, name: Oop) -> Result<CompareOp, i32
         return Err(-7);
     };
     Ok(operation)
+}
+
+unsafe fn parse_rule_body_tree(
+    api: &IdApi,
+    nodes: *const RuleBodyNode,
+    count: usize,
+    depth: usize,
+) -> Result<Vec<RuleClause>, i32> {
+    if depth > MAX_RULE_NESTING || count > MAX_RULE_BODY_CLAUSES || (count != 0 && nodes.is_null())
+    {
+        return Err(-7);
+    }
+    let nodes = if count == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller validated the pointer/count pair above.
+        unsafe { std::slice::from_raw_parts(nodes, count) }
+    };
+    let mut body = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        let terms = unsafe { parse_rule_terms(api, node.terms, node.term_count as usize)? };
+        let children = match node.kind {
+            3 => unsafe {
+                parse_rule_body_tree(api, node.children, node.child_count as usize, depth + 1)?
+            },
+            4 => Vec::new(),
+            _ if node.child_count == 0 => Vec::new(),
+            _ => return Err(-7),
+        };
+        match node.kind {
+            0 if terms.len() == 3 && children.is_empty() => {
+                body.push(RuleClause::Triple(Clause([
+                    terms[0].clone(),
+                    terms[1].clone(),
+                    terms[2].clone(),
+                ])))
+            }
+            1 if children.is_empty() => {
+                if node.name.is_null() {
+                    return Err(-4);
+                }
+                // SAFETY: rule call names are borrowed for this synchronous parse.
+                let Some(name) = (unsafe { oop::classify(api, node.name) }) else {
+                    return Err(-4);
+                };
+                body.push(RuleClause::Call { name, args: terms });
+            }
+            2 if terms.len() == 2 && children.is_empty() => body.push(RuleClause::Predicate {
+                left: terms[0].clone(),
+                operation: unsafe { parse_rule_compare_op(api, node.name)? },
+                right: terms[1].clone(),
+            }),
+            3 if terms.is_empty() && node.name.is_null() => {
+                body.push(RuleClause::Negated(children));
+            }
+            4 if terms.is_empty() && node.name.is_null() => {
+                let branch_nodes = if node.child_count == 0 {
+                    &[]
+                } else {
+                    // SAFETY: the child pointer/count pair was validated by
+                    // the recursive parse above; branch containers are read
+                    // from the same borrowed tree for this synchronous call.
+                    unsafe { std::slice::from_raw_parts(node.children, node.child_count as usize) }
+                };
+                let mut branches = Vec::with_capacity(branch_nodes.len());
+                for branch in branch_nodes {
+                    if branch.kind != 5
+                        || !branch.terms.is_null()
+                        || branch.term_count != 0
+                        || !branch.name.is_null()
+                    {
+                        return Err(-7);
+                    }
+                    branches.push(unsafe {
+                        parse_rule_body_tree(
+                            api,
+                            branch.children,
+                            branch.child_count as usize,
+                            depth + 1,
+                        )?
+                    });
+                }
+                body.push(RuleClause::Disjunction(branches));
+            }
+            _ => return Err(-7),
+        }
+    }
+    Ok(body)
+}
+
+unsafe fn parse_rule_tree_definitions(
+    api: &IdApi,
+    nodes: *const RuleTreeDefinitionNode,
+    count: usize,
+) -> Result<Vec<RuleDefinition>, i32> {
+    if count > MAX_RULE_DEFINITIONS || (count != 0 && nodes.is_null()) {
+        return Err(-7);
+    }
+    let nodes = if count == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller validated the pointer/count pair above.
+        unsafe { std::slice::from_raw_parts(nodes, count) }
+    };
+    let mut definitions = Vec::with_capacity(count);
+    for definition in nodes {
+        if definition.name.is_null()
+            || definition.param_count as usize > MAX_RULE_TERMS
+            || (definition.param_count != 0 && definition.params.is_null())
+            || definition.body_count as usize > MAX_RULE_BODY_CLAUSES
+            || (definition.body_count != 0 && definition.body.is_null())
+        {
+            return Err(-7);
+        }
+        // SAFETY: rule names and parameter/body arrays are borrowed for this
+        // synchronous call.
+        let Some(name) = (unsafe { oop::classify(api, definition.name) }) else {
+            return Err(-4);
+        };
+        let params = if definition.param_count == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: the pointer/count pair was validated above.
+            unsafe {
+                std::slice::from_raw_parts(definition.params, definition.param_count as usize)
+                    .to_vec()
+            }
+        };
+        let body = unsafe {
+            parse_rule_body_tree(api, definition.body, definition.body_count as usize, 0)?
+        };
+        definitions.push(RuleDefinition { name, params, body });
+    }
+    Ok(definitions)
 }
 
 unsafe fn parse_rule_definitions(
@@ -2577,6 +2781,64 @@ unsafe fn project_rule_live(
         Ok(definitions) => definitions,
         Err(status) => return status,
     };
+    // SAFETY: query name and terms are borrowed for this synchronous call.
+    let Some(query_name) = (unsafe { oop::classify(api, query_name) }) else {
+        return -4;
+    };
+    let query_terms = match unsafe { parse_rule_terms(api, query_terms, query_term_count) } {
+        Ok(terms) => terms,
+        Err(status) => return status,
+    };
+    let values = query_rule(
+        &facts,
+        &definitions,
+        &query_name,
+        &query_terms,
+        result_variable,
+    );
+    if values.len() > capacity {
+        return -5;
+    }
+    for (slot, value) in values.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied capacity records and the length check
+        // above bounds every write.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = values.len() };
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn project_rule_tree_live(
+    store: Oop,
+    definitions: *const RuleTreeDefinitionNode,
+    definition_count: usize,
+    query_name: Oop,
+    query_terms: *const RuleTermNode,
+    query_term_count: usize,
+    result_variable: u32,
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if store.is_null()
+        || query_name.is_null()
+        || written.is_null()
+        || (capacity != 0 && output.is_null())
+    {
+        return -3;
+    }
+    let (facts, api_address) = match unsafe { collect_project_facts(store) } {
+        Ok(snapshot) => snapshot,
+        Err(status) => return status,
+    };
+    // SAFETY: collect_project_facts returns the process-owned IdApi address.
+    let api = unsafe { &*api_address };
+    let definitions =
+        match unsafe { parse_rule_tree_definitions(api, definitions, definition_count) } {
+            Ok(definitions) => definitions,
+            Err(status) => return status,
+        };
     // SAFETY: query name and terms are borrowed for this synchronous call.
     let Some(query_name) = (unsafe { oop::classify(api, query_name) }) else {
         return -4;
