@@ -476,3 +476,12 @@ returns `ioError` on host read failure. Its focused arity guard and selector
 check passed at 1/1 without blocking the in-process runner; the full R6 rerun
 remained 42/42 with no benchmark allowance change. Source loading, process
 controls, self-hosted handlers, and canonical prelude cutover remain open.
+
+On 2026-07-25, canonical Rust Relational selection was rerun after the mixed
+Rust/Zig rollback contract hardening at `c7d4d18`. The complete
+`BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` gate passed: the focused
+matrix reports 80/80, both Rust Relational callback targets report 14/14, the
+optimized cross-layer verify succeeds, and the comparator reports zero missing
+or unusable cases. The only regressions remain the two exact accepted crossings
+(`query.aggregate` +5.8% and `compile.stage1-stdlib` +11.9%); no new benchmark
+allowance was admitted.
