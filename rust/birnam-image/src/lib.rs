@@ -893,6 +893,27 @@ impl ImageWriter {
     }
 }
 
+/// Compose a complete v4 image from already-preflighted payloads and explicit
+/// authority/code inputs. This pure seam owns framing only: callers remain
+/// responsible for deriving the generation digest, validating the code unit,
+/// and deciding whether the returned bytes may be published.
+pub fn compose_complete_image(
+    architecture: u32,
+    abi_hash: u64,
+    facts: &[u8],
+    heap: &[u8],
+    authority_digest: &[u8; AUTHORITY_DIGEST_LEN],
+    code_checksum: u64,
+    code_unit: &[u8],
+) -> Result<Vec<u8>, EncodeError> {
+    let mut writer = ImageWriter::new(architecture, abi_hash);
+    writer.facts(facts)?;
+    writer.heap(heap)?;
+    writer.authority(authority_digest)?;
+    writer.code(code_checksum, authority_digest, code_unit)?;
+    writer.finish()
+}
+
 impl<'a> Records<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, offset: 0 }
@@ -1842,12 +1863,16 @@ mod tests {
     #[test]
     fn writer_emits_parser_compatible_v4_records() {
         let digest = [b'0'; AUTHORITY_DIGEST_LEN];
-        let mut writer = ImageWriter::new(1, 99);
-        writer.facts(b"facts").unwrap();
-        writer.heap(b"heap").unwrap();
-        writer.authority(&digest).unwrap();
-        writer.code(wyhash(0, b"unit"), &digest, b"unit").unwrap();
-        let bytes = writer.finish().unwrap();
+        let bytes = compose_complete_image(
+            1,
+            99,
+            b"facts",
+            b"heap",
+            &digest,
+            wyhash(0, b"unit"),
+            b"unit",
+        )
+        .unwrap();
 
         let image = Image::parse(&bytes).unwrap().header.require(1, 99).unwrap();
         assert_eq!(image.architecture, 1);
