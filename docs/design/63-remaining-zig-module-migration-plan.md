@@ -1939,6 +1939,22 @@ no heap mutation) and then exercise temp-file publication against a preserved
 destination. Only after those checks are live should `saveImage:` gain file
 authority.
 
+### R6.4 Rust Image atomic-publication checkpoint (2026-07-25)
+
+- `b2d9a5d` adds `publish_atomic`, which writes complete bytes to a collision-
+  safe same-directory temporary file, flushes the file, and renames it into
+  place. It never truncates the destination first; failed writes remove their
+  temporary file and preserve an existing destination. The helper accepts only
+  already-built bytes and has no runtime or heap authority.
+- The Rust unit suite now covers replacement and rename-failure cleanup
+  (`17/17`). The dynamic shell remains intentionally disconnected from this
+  helper until heap/fact preflight can produce a complete v4 byte vector.
+
+The next R6 slice should port a pure preflight result that supplies the writer
+with exact authority/facts/heap payloads. Only then may `saveImage:` call this
+publisher, with the report counters and rejection detail set before any
+publication attempt.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
