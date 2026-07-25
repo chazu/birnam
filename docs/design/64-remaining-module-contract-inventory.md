@@ -178,3 +178,20 @@ manifest.
       corpus runs in separate Zig-selected and Rust-selected processes. The
       missing Rust `load:` surface remains an explicit R0.5 completion item,
       not an erased requirement.
+
+Execution evidence (2026-07-24):
+
+- `0e76db7` froze this inventory; `347feb9` added the identity manifest;
+  `ef430d2` added the clean-prefix relocation gate; and `b050b52` added the
+  separate Zig/Rust Prelude cross-floor corpus.
+- `zig build verify -Doptimize=ReleaseSafe --summary all` passed with
+  `249/249` steps succeeded, `456/462` tests passed, and `6` existing fixture
+  skips. The new manifest, relocation, and cross-floor gates were included.
+- `mise run r6-acceptance` passed after the R0 changes: the focused aggregate
+  was `42/42`, Rust Codegen runtime was `25/25`, the stack and Zig-store
+  callback variants were `4/4` each, and Rust Prelude was `1/1`. The accepted
+  benchmark crossings remained `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`, with `regressions: 2, missing: 0,
+  unusable: 0`.
+- R0 is complete. No canonical runtime switch occurred in this phase; R0.5
+  Prelude completion and its pre-switch acceptance gate are next.
