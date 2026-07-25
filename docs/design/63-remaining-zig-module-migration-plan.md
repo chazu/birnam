@@ -1518,6 +1518,22 @@ post-switch image/project observation window closes.
 
 ## 9. Phase R5 — Alien
 
+### R5.1 Authority-free signature grammar checkpoint (2026-07-25)
+
+- `55893c6` adds the `birnam-alien` Rust crate as an authority-free parser
+  for the frozen Alien signature grammar. It accepts the scalar, pointer,
+  nested aggregate, and fixed scalar-array forms used by the Zig floor,
+  registers nested aggregates post-order, ignores only the grammar's ASCII
+  readability whitespace, and checks array counts for overflow.
+- The parser has no `IdApi`, allocator, dynamic-loader, TCC, callback, or C
+  ABI state. Five unit tests cover valid nesting and whitespace plus empty,
+  malformed, top-level-array, overflow, and non-UTF-8 inputs; locked offline
+  tests and `clippy -D warnings` pass.
+- This is deliberately only the pure grammar seam. Loader ownership,
+  classification, generated TCC shims, wrapped calls, buffers, finalizers,
+  and callbacks remain in the numbered R5 steps below and no canonical Alien
+  selection has been made.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
