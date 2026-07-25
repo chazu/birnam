@@ -1078,6 +1078,30 @@ remain the next implementation slices.
   canonical Rust Relational selection remain open; no Store or collection
   authority has moved in this probe.
 
+### R4.18 Rust Relational rule-engine checkpoint (2026-07-25)
+
+- `1aee57d` adds an authority-free bounded rule probe with pointer-free rule
+  descriptors. Triple clauses and named rule calls are copied into Rust-owned
+  values, evaluated left-to-right to a finite least fixpoint, and projected
+  into caller-owned classified values. Recursive and mutually recursive rules
+  converge without host-language recursion; duplicate tuples preserve
+  definition/order semantics. Malformed descriptors, null/count mismatches,
+  and insufficient output capacity fail closed.
+- The pure Rust corpus covers recursive ancestor reachability and a mutually
+  recursive even/odd relation. The cross-floor corpus runs the same rules
+  against Rust Store and the Zig Store rollback provider, including capacity
+  rejection. Both relational targets report `14/14`.
+- `4624e76` advances the R6 focused boundary to `80/80` and requires both
+  relational targets to report exactly fourteen passing tests. The full R6
+  gate passes with optimized verify green, and the comparator remains at zero
+  missing/unusable cases with exactly `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` accepted.
+- Canonical `defineRule:` Store reification, rule-cache rebuild/invalidation,
+  arbitrary rule-body and parameter semantics, canonical grouped/pull result
+  materialization, and canonical Rust Relational selection remain open. This
+  probe deliberately preserves the Zig Relational implementation as the
+  behavioral authority and rollback path.
+
 ## 8. Phase R4 — Relational
 
 1. Port the query engine against the frozen Store object/message protocol only
