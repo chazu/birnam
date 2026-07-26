@@ -2636,6 +2636,19 @@ allowances.
   A shipped Rust command, artifact diagnostics, and rollback observation are
   still required before canonical host selection.
 
+### R7.21 Rust host isolate-hook checkpoint (2026-07-26)
+
+- `HostRuntime` now resolves and retains the existing isolate worker,
+  boot-error, drain, and shutdown exports through `IdApi.dlopen`/`dlsym` after
+  the native stack is up. Function-pointer signatures are explicit frozen ABI
+  aliases with annotated unsafe transmutation.
+- The raw floor loader remains the only host-side system `dlopen`; isolate
+  lookup uses the selected floor callbacks and retains its module handle for
+  process lifetime. Owner-thread and channel-borrow safety are documented on
+  every hook call.
+- The focused Rust suite remains green at thirty tests with warnings denied.
+  Worker routing and process lifecycle remain later host seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

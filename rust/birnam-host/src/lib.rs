@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 use std::env;
-use std::ffi::{CStr, CString, OsStr};
+use std::ffi::{CStr, CString, OsStr, c_char, c_int, c_void};
 use std::io;
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
@@ -1143,13 +1143,85 @@ pub struct LoadedSelfHostedModule {
 pub enum RuntimeStartError {
     Floor(FloorError),
     Module(ModuleError),
+    IsolateHooks(IsolateHookError),
     MissingCodegen,
     Bootstrap(BootstrapRuntimeError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IsolateHookError {
+    EmbeddedNul,
+    OpenFailed,
+    MissingSymbol(&'static str),
+}
+
+type IsolateDriverFn =
+    unsafe extern "C" fn(*mut IdApi, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
+type IsolateBootErrorFn = unsafe extern "C" fn(*mut IdApi, c_int, *const c_char, *const u8, usize);
+type IsolateDrainFn = unsafe extern "C" fn();
+type IsolateShutdownFn = unsafe extern "C" fn();
+
+pub struct IsolateHooks {
+    handle: NonNull<c_void>,
+    driver: IsolateDriverFn,
+    boot_error: IsolateBootErrorFn,
+    drain: IsolateDrainFn,
+    shutdown: IsolateShutdownFn,
+}
+
+impl IsolateHooks {
+    pub fn handle(&self) -> NonNull<c_void> {
+        self.handle
+    }
+
+    /// # Safety
+    ///
+    /// The host must remain on the selected floor's owner thread.
+    pub unsafe fn driver(
+        &self,
+        api: *mut IdApi,
+        fd: c_int,
+        receiver: birnam_abi::Oop,
+        selector: birnam_abi::Oop,
+    ) -> c_int {
+        unsafe { (self.driver)(api, fd, receiver, selector) }
+    }
+
+    /// # Safety
+    ///
+    /// `kind` must be NUL-terminated and `message` must be readable for its
+    /// supplied length; the hook borrows them only for the synchronous send.
+    pub unsafe fn boot_error(
+        &self,
+        api: *mut IdApi,
+        fd: c_int,
+        kind: *const c_char,
+        message: *const u8,
+        length: usize,
+    ) {
+        unsafe { (self.boot_error)(api, fd, kind, message, length) }
+    }
+
+    /// # Safety
+    ///
+    /// The host must remain on the selected floor's owner thread.
+    pub unsafe fn drain(&self) {
+        unsafe { (self.drain)() };
+    }
+
+    /// # Safety
+    ///
+    /// The host must remain on the selected floor's owner thread and no later
+    /// isolate operation may use the hooks after shutdown.
+    pub unsafe fn shutdown(&self) {
+        unsafe { (self.shutdown)() };
+    }
 }
 
 pub struct HostRuntime {
     pub resources: Resources,
     pub stack: LoadedStack,
+    pub isolate: IsolateHooks,
     pub self_hosted: Vec<LoadedSelfHostedModule>,
 }
 
@@ -1636,6 +1708,53 @@ impl LoadedStack {
     }
 }
 
+fn resolve_isolate_hooks(
+    stack: &LoadedStack,
+    resources: &Resources,
+) -> Result<IsolateHooks, IsolateHookError> {
+    let path = resources.lib_dir.join("libbirnam_id_isolate.dylib");
+    let path = CString::new(path_bytes(&path)).map_err(|_| IsolateHookError::EmbeddedNul)?;
+    let api = stack.api();
+    let handle = unsafe { (api.dlopen)(path.as_ptr(), RTLD_LAZY) };
+    let Some(handle) = NonNull::new(handle) else {
+        return Err(IsolateHookError::OpenFailed);
+    };
+    let lookup = |name: &'static std::ffi::CStr| {
+        // SAFETY: the handle came from the selected floor's IdApi loader and
+        // the static symbol name remains live for this synchronous lookup.
+        unsafe { (api.dlsym)(handle.as_ptr(), name.as_ptr().cast()) }
+    };
+    let Some(driver) = NonNull::new(lookup(c"birnam_isolate_worker_driver")) else {
+        return Err(IsolateHookError::MissingSymbol(
+            "birnam_isolate_worker_driver",
+        ));
+    };
+    let Some(boot_error) = NonNull::new(lookup(c"birnam_isolate_worker_boot_error")) else {
+        return Err(IsolateHookError::MissingSymbol(
+            "birnam_isolate_worker_boot_error",
+        ));
+    };
+    let Some(drain) = NonNull::new(lookup(c"birnam_isolate_drain")) else {
+        return Err(IsolateHookError::MissingSymbol("birnam_isolate_drain"));
+    };
+    let Some(shutdown) = NonNull::new(lookup(c"birnam_isolate_shutdown")) else {
+        return Err(IsolateHookError::MissingSymbol("birnam_isolate_shutdown"));
+    };
+    Ok(IsolateHooks {
+        handle,
+        // SAFETY: each symbol is the frozen isolate hook ABI exported by the
+        // selected isolate module.
+        driver: unsafe { std::mem::transmute::<*mut c_void, IsolateDriverFn>(driver.as_ptr()) },
+        boot_error: unsafe {
+            std::mem::transmute::<*mut c_void, IsolateBootErrorFn>(boot_error.as_ptr())
+        },
+        drain: unsafe { std::mem::transmute::<*mut c_void, IsolateDrainFn>(drain.as_ptr()) },
+        shutdown: unsafe {
+            std::mem::transmute::<*mut c_void, IsolateShutdownFn>(shutdown.as_ptr())
+        },
+    })
+}
+
 /// Start the opt-in Rust host through the same floor → native stack → MOP
 /// mirror → self-hosted sequence as the Zig host. Resource resolution is kept
 /// outside this function so callers can inspect or override it before any
@@ -1656,6 +1775,8 @@ pub unsafe fn start(
     stack
         .load_script_modules(&resources)
         .map_err(RuntimeStartError::Module)?;
+    let isolate =
+        resolve_isolate_hooks(&stack, &resources).map_err(RuntimeStartError::IsolateHooks)?;
     let api = stack.api();
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store != api.nilObj {
@@ -1679,6 +1800,7 @@ pub unsafe fn start(
     Ok(HostRuntime {
         resources,
         stack,
+        isolate,
         self_hosted,
     })
 }
