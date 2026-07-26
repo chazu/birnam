@@ -1095,6 +1095,13 @@ pub const MODULE_MANAGER: SelfHostedModule = SelfHostedModule {
     source: include_bytes!("../../../src/id/modules.birnam"),
 };
 
+/// Project policy is intentionally lazy: it participates in check/build/run
+/// workflows but must not become part of ordinary runtime/image bootstrap.
+pub const PROJECT_POLICY_MODULE: SelfHostedModule = SelfHostedModule {
+    name: "projectPolicy",
+    source: include_bytes!("../../../src/id/project-policy.birnam"),
+};
+
 const KERNEL_MODULES: &[&str] = &[
     "artifact",
     "store",
@@ -1130,6 +1137,13 @@ pub enum SelfHostedLoadOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootstrapRuntimeError {
+    MissingCodegen,
+    Source(BootstrapSourceError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectPolicyError {
+    MissingCodegen,
     Source(BootstrapSourceError),
 }
 
@@ -1316,6 +1330,7 @@ pub struct HostRuntime {
     pub stack: LoadedStack,
     pub isolate: IsolateHooks,
     pub policy: StartupPolicy,
+    pub codegen: birnam_abi::Oop,
     pub self_hosted: Vec<LoadedSelfHostedModule>,
 }
 
@@ -1354,6 +1369,35 @@ impl HostRuntime {
         let result = unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
         if result == api.nilObj || send_is_error(api, result) {
             return Err(RuntimeModuleError::LoadRejected);
+        }
+        Ok(())
+    }
+
+    /// Lazily install the Birnam-owned project policy module. Filesystem
+    /// observation and the `Project` bridge remain a later host seam; this
+    /// method only makes the semantic policy available through the existing
+    /// compiled-module/source-recovery rule.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have prepared a live GC anchor and remain on the floor
+    /// owner thread for all synchronous sends.
+    pub unsafe fn load_project_policy(&self) -> Result<(), ProjectPolicyError> {
+        if unsafe { global_named(self.stack.api(), "ProjectPolicy") }.is_some() {
+            return Ok(());
+        }
+        unsafe {
+            load_self_hosted(
+                self.stack.api(),
+                self.codegen,
+                &self.resources,
+                &PROJECT_POLICY_MODULE,
+                self.policy.force_source,
+            )
+        }
+        .map_err(ProjectPolicyError::Source)?;
+        if let Some(manager) = unsafe { global_named(self.stack.api(), "Module") } {
+            unsafe { mark_module_loaded(self.stack.api(), manager, PROJECT_POLICY_MODULE.name) };
         }
         Ok(())
     }
@@ -2298,6 +2342,7 @@ pub unsafe fn start(
         stack,
         isolate,
         policy,
+        codegen,
         self_hosted,
     })
 }
@@ -2790,6 +2835,21 @@ mod tests {
                 module.name
             );
         }
+    }
+
+    #[test]
+    fn project_policy_is_embedded_but_not_ordinary_bootstrap() {
+        assert_eq!(PROJECT_POLICY_MODULE.name, "projectPolicy");
+        assert!(!PROJECT_POLICY_MODULE.source.is_empty());
+        assert_eq!(
+            self_hosted_requires(PROJECT_POLICY_MODULE.source),
+            ["stdlib"]
+        );
+        assert!(
+            SELF_HOSTED_MODULES
+                .iter()
+                .all(|module| module.name != PROJECT_POLICY_MODULE.name)
+        );
     }
 
     #[test]

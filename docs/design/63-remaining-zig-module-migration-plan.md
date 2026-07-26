@@ -2764,6 +2764,20 @@ allowances.
   were observed. No canonical executable, install tree, or rollback selection
   changed.
 
+### R7.31 Rust host lazy project-policy checkpoint (2026-07-26)
+
+- `PROJECT_POLICY_MODULE` is now embedded as a separate, lazy source-backed
+  module. `HostRuntime::load_project_policy` installs it through the same
+  exact compiled-candidate/source-recovery policy as ordinary self-hosted
+  modules, then records it with the existing Module manager.
+- Project policy is not added to ordinary startup or image bootstrap. The
+  method owns only the Birnam semantic policy availability; filesystem
+  observation, TOML/CST scanning, and the `Project` bridge remain explicit
+  host work and have not been duplicated in Rust.
+- The focused host suite advances to thirty-five tests with warnings denied.
+  No project command is routed through this method yet, and the canonical Zig
+  project adapter remains the authority until the observation bridge is ported.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
