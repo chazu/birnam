@@ -2617,17 +2617,32 @@ explicitly so the recovery surface cannot silently shrink.
   be observed as one unit, and no failed preflight can truncate or replace the
   prior image.
 - An explicit publication experiment was kept out of the gate. The live
-  bootstrap fixture currently contains 146 unsupported Store facts, so admitting
-  publication there would weaken the all-facts-admissible invariant. The next
-  writer slice must first reduce that rejection set through supported vtable,
-  slot, or registered-recovery work; it must not bypass the preflight.
-- A temporary diagnostic narrowed those rejections to SymbolVt-keyed facts whose
-  values are anonymous BlockVt closures. This matches the Zig writer's
-  `serialVtable`/`deferredFactClass` boundary: an unowned block vtable has no
-  durable restoration recipe, so it remains rejected rather than being silently
-  serialized as a heap object.
+  bootstrap fixture contains 146 SymbolVt-keyed facts whose values are
+  anonymous BlockVt closures; publication still cannot proceed until the full
+  data/heap/code recovery authority is installed, so the all-facts-admissible
+  invariant remains fail-closed.
+- Rust Image now mirrors the Zig writer's `serialVTable`/`deferredFactClass`
+  boundary for this fixture: internal `__globals__` code facts and registered
+  recovery facts are counted as recovered rather than rejected, while an
+  unowned block vtable with no durable restoration recipe remains rejected.
 - The focused matrix remains `87/87`; Rust Image shell `2/2`, mapped
   Image-to-Codegen `1/1`, durable-generation bootstrap `1/1`, cross-floor `1/1`,
   rejection `1/1`, and Rust Alien live `9/9` all pass. A fresh full R6 run also
   passed optimized verify/install/harness with only the accepted snapshot
   crossings `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+### R6.40 R6 acceptance after deferred-fact classification (2026-07-26)
+
+- The Rust Image live Zig-Codegen probe now reaches the correct mapping/rebuild
+  boundary after deferred Store facts are classified with the Zig recovery
+  rules; its rejected save still captures one code unit, creates no target, and
+  leaves any pre-existing target bytes untouched. The focused shell assertion
+  was updated to pin that observable boundary rather than the obsolete generic
+  fact-preflight diagnostic.
+- `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes with the existing
+  fail-closed pins: optimized verify/install/native-rung harness are green,
+  focused `154/154` steps and `87/87` tests pass, Rust Image shell is `2/2`,
+  mapped Image-to-Codegen/bootstrap/cross-floor/rejection are each `1/1`, and
+  Rust Alien live is `9/9`.
+- No benchmark allowance or fixture exception changed. The comparator still
+  reports exactly `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.

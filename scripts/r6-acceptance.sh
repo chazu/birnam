@@ -54,10 +54,12 @@ latest_tests=(
 )
 # Accepted on 2026-07-26 after the Rust Image-to-Rust Codegen mapped-unit proof,
 # Rust-owned durable-generation bootstrap, explicit Rust Image writer-authority
-# capture, the Zig-writer/Rust-reader cross-floor proof, and fail-closed
-# duplicate/truncated Image-record coverage: the focused matrix is 87 tests; the
-# mixed dynamic Rust Image shell remains 2 passing tests, and each isolated Image
-# proof runs as one test process.
+# capture, Zig-compatible deferred-fact classification, the Zig-writer/Rust-
+# reader cross-floor proof, and fail-closed duplicate/truncated Image-record
+# coverage: the focused matrix is 87 tests; the mixed dynamic Rust Image shell
+# remains 2 passing tests, and each isolated Image proof runs as one test
+# process. The deferred-fact change updates only the live-probe diagnostic; no
+# test-count, benchmark, or fixture exception is widened here.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
 readonly expected_focused_tests=87
 readonly expected_rust_image_shell_tests=2
