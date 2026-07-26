@@ -2679,3 +2679,20 @@ explicitly so the recovery surface cannot silently shrink.
 - The comparator remains unchanged and fail-closed: no missing or unusable
   cases, and exactly `query.aggregate +5.8%` plus
   `compile.stage1-stdlib +11.9%` accepted.
+
+### R6.43 Reverse Image cross-floor checkpoint (2026-07-26)
+
+- The isolated Image matrix now proves the reverse direction as well: Rust
+  Image publishes a complete v4 image under the explicit Rust writer and the
+  canonical Zig Image reader loads it, restoring a Store fact before returning
+  its mapped-code result. This complements the existing Zig-writer/Rust-reader
+  proof without changing the default mixed-host authority boundary.
+- The new `test-rust-image-cross-floor-reverse` target passes `1/1`; a fresh
+  `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes with focused
+  `89/89`, Image shell `2/2`, both Image cross-floor directions `1/1`, mapped
+  Image-to-Codegen/bootstrap/publication/rejection targets each `1/1`, and
+  Rust Alien live `9/9`. Optimized verify/install/native-rung checks remain
+  green.
+- The comparator remains fail-closed and unchanged: no missing or unusable
+  cases, with only `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` accepted.
