@@ -662,6 +662,13 @@ test "Rust Image publishes a complete image under explicit Rust authority" {
     const api = setupWithRustCodegen();
     try initializeRustAuthorityGeneration(api);
 
+    const runtime_store = api.import("Store") orelse return error.StoreMissing;
+    const entity = api.intern("rust_image_published_entity");
+    const attribute = api.intern("rust_image_published_attribute");
+    const value = api.mkSmallInt(818);
+    _ = send(api, runtime_store, "assert:attr:value:", &.{ entity, attribute, value });
+    defer _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+
     const system = api.import("System") orelse return error.SystemMissing;
     const report = send(api, system, "imageSaveReport", &.{});
     var tmp = std.testing.tmpDir(.{});
@@ -680,6 +687,12 @@ test "Rust Image publishes a complete image under explicit Rust authority" {
     const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, image_path, 1 << 30);
     defer std.testing.allocator.free(image);
     try std.testing.expect(std.mem.startsWith(u8, image, "BIRNAMIM"));
+
+    _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+    try std.testing.expectEqual(api.trueObj, send(api, system, "loadImage:", &.{str(api, image_path)}));
+    const recovered = send(api, runtime_store, "currentValue:attr:", &.{ entity, attribute });
+    try std.testing.expect(api.isSmallInt(recovered) != 0);
+    try std.testing.expectEqual(@as(i64, 818), api.smallIntValue(recovered));
 }
 
 test "Rust Image reads a Zig-authored v4 data image" {
