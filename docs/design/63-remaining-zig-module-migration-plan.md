@@ -2729,3 +2729,21 @@ explicitly so the recovery surface cannot silently shrink.
 - The comparator remains fail-closed and unchanged: no missing or unusable
   cases, with only `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` accepted.
+
+### R6.46 Rust Image × Zig Store cross-floor checkpoint (2026-07-26)
+
+- The Image matrix now covers the remaining compatible Store cross-product:
+  Rust Image and Rust Codegen publish an image while the canonical Zig Store
+  remains the live authority. Both Rust Image recovery and the canonical Zig
+  Image reader restore the same fact from the same v4 bytes.
+- The target uses the ordinary Zig Tcc host exports for this cell. The shared
+  Rust Image shell test module deliberately suppresses those symbols when a
+  Rust Tcc dylib is the authority; reusing that suppressed module here made
+  the staged code unit fail `dlopen` even though publication succeeded. The
+  cross-floor target therefore has its own module configuration, without
+  changing any runtime authority or production export policy.
+- The focused R6 matrix advances to `91/91`; the Zig-Store cross-floor target
+  passes `1/1`, and the existing Image shell, publication, authority-rejection,
+  reverse cross-floor, mapped Image-to-Codegen, bootstrap, rejection, and Rust
+  Alien live pins remain unchanged. The comparator remains fail-closed with
+  only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` accepted.

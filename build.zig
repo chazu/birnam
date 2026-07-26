@@ -1958,6 +1958,59 @@ pub fn build(b: *std.Build) void {
     test_rust_image_cross_floor_reverse_step.dependOn(&run_rust_image_cross_floor_reverse.step);
     test_step.dependOn(&run_rust_image_cross_floor_reverse.step);
 
+    const rust_image_zig_store_tests = b.addTest(.{
+        // This cross-floor cell intentionally keeps Zig Tcc's runtime shims
+        // exported: Rust Codegen emits a portable dylib, while Zig Store is
+        // the live authority that the staged unit must resolve against.
+        .root_module = blk: {
+            const module = b.createModule(.{
+                .root_source_file = b.path("src/id/rust_image_test.zig"),
+                .target = target,
+                .optimize = optimize,
+            });
+            module.addImport("tcc_build_options", tcc_build_options.createModule());
+            module.addIncludePath(b.path("vendor/libtcc-src"));
+            break :blk module;
+        },
+        .filters = &.{"Rust Image crosses a Zig Store authority"},
+    });
+    rust_image_zig_store_tests.rdynamic = true;
+    rust_image_zig_store_tests.linkLibC();
+    rust_image_zig_store_tests.linkLibrary(libtcc_lib);
+    const run_rust_image_zig_store = b.addRunArtifact(rust_image_zig_store_tests);
+    run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_image_zig_store.setEnvironmentVariable(
+        "BIRNAM_RUST_IMAGE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_image_rust.dylib"),
+    );
+    run_rust_image_zig_store.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_image_zig_store.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_image_zig_store.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_image_zig_store.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY", "rust");
+    run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_RUST_IMAGE_PUBLICATION", "rust");
+    run_rust_image_zig_store.step.dependOn(bootstrap_install);
+    const test_rust_image_zig_store_step = b.step(
+        "test-rust-image-zig-store",
+        "Run the Rust Image cross-floor proof over Zig Store authority",
+    );
+    test_rust_image_zig_store_step.dependOn(&run_rust_image_zig_store.step);
+    test_step.dependOn(&run_rust_image_zig_store.step);
+
     const rust_image_rejection_tests = b.addTest(.{
         .root_module = rust_image_shell_mod,
         .filters = &.{"Rust Image rejects duplicate and truncated authority before Store mutation"},
