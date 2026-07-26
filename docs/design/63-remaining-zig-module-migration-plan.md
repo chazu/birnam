@@ -2492,6 +2492,21 @@ allowances.
 - Thirteen offline Rust tests pass with warnings denied. This remains an
   opt-in library seam; no Rust executable or canonical host switch has landed.
 
+### R7.9 Rust host end-to-end startup checkpoint (2026-07-26)
+
+- `birnam-host::start` now composes the selected floor loader, IdApi-only
+  native-stack loader, Store `backfillMirror`, and manager-first self-hosted
+  bootstrap into one opt-in runtime object. Resource resolution remains an
+  explicit caller-owned input, so diagnostics can finish before any dylib is
+  opened.
+- Startup policy has two exact environment-derived flags: `BIRNAM_FORCE_SOURCE`
+  and `BIRNAM_NO_STDLIB`. The runtime does not set a GC stack bottom implicitly;
+  each owner-thread execution boundary must set its own live stack anchor, as
+  the existing Zig host does.
+- Fourteen offline Rust tests pass with warnings denied. This is still not a
+  shipped executable: command dispatch, REPL/project/image/isolate paths,
+  release rollback, and canonical-switch evidence remain before R7 closure.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

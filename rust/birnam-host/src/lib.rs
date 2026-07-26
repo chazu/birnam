@@ -194,6 +194,42 @@ pub struct LoadedSelfHostedModule {
     pub outcome: SelfHostedLoadOutcome,
 }
 
+#[derive(Debug)]
+pub enum RuntimeStartError {
+    Floor(FloorError),
+    Module(ModuleError),
+    MissingCodegen,
+    Bootstrap(BootstrapRuntimeError),
+}
+
+pub struct HostRuntime {
+    pub resources: Resources,
+    pub stack: LoadedStack,
+    pub self_hosted: Vec<LoadedSelfHostedModule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StartupPolicy {
+    pub force_source: bool,
+    pub skip_stdlib: bool,
+}
+
+impl StartupPolicy {
+    pub const fn from_flags(force_source: bool, skip_stdlib: bool) -> Self {
+        Self {
+            force_source,
+            skip_stdlib,
+        }
+    }
+
+    pub fn from_environment() -> Self {
+        Self::from_flags(
+            env::var_os("BIRNAM_FORCE_SOURCE").is_some(),
+            env::var_os("BIRNAM_NO_STDLIB").is_some(),
+        )
+    }
+}
+
 /// Scan the first `requires: #[...]` declaration using the same deliberately
 /// small source convention as the Zig host. Dependencies outside the
 /// self-hosted inventory are native/kernel modules and are already loaded.
@@ -592,6 +628,10 @@ impl LoadedStack {
         self.modules.len()
     }
 
+    pub fn api(&self) -> &IdApi {
+        self.floor.api()
+    }
+
     /// Load one higher rung through the selected floor's dynamic-loader API.
     /// No host-side `dlopen` is used after the floor has initialized.
     pub fn load_module(&mut self, path: &Path) -> Result<(), ModuleError> {
@@ -649,6 +689,53 @@ impl LoadedStack {
         }
         Ok(())
     }
+}
+
+/// Start the opt-in Rust host through the same floor → native stack → MOP
+/// mirror → self-hosted sequence as the Zig host. Resource resolution is kept
+/// outside this function so callers can inspect or override it before any
+/// dylib is opened.
+///
+/// # Safety
+///
+/// The selected floor and all module initializers must satisfy the frozen ABI;
+/// this function invokes their callbacks and synchronous Birnam sends. The
+/// returned runtime must stay on the floor's owner thread until that protocol
+/// is explicitly ported.
+pub unsafe fn start(
+    resources: Resources,
+    policy: StartupPolicy,
+) -> Result<HostRuntime, RuntimeStartError> {
+    let floor = load_selected_floor(&resources.id_dylib).map_err(RuntimeStartError::Floor)?;
+    let mut stack = LoadedStack::new(floor);
+    stack
+        .load_script_modules(&resources)
+        .map_err(RuntimeStartError::Module)?;
+    let api = stack.api();
+    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    if store != api.nilObj {
+        let selector = unsafe { (api.intern)(c"backfillMirror".as_ptr()) };
+        unsafe { (api.send)(store, selector, std::ptr::null(), 0) };
+    }
+    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    if codegen == api.nilObj {
+        return Err(RuntimeStartError::MissingCodegen);
+    }
+    let self_hosted = unsafe {
+        bootstrap_self_hosted(
+            api,
+            codegen,
+            &resources,
+            policy.force_source,
+            policy.skip_stdlib,
+        )
+    }
+    .map_err(RuntimeStartError::Bootstrap)?;
+    Ok(HostRuntime {
+        resources,
+        stack,
+        self_hosted,
+    })
 }
 
 const RTLD_LAZY: i32 = 1;
@@ -1122,6 +1209,24 @@ mod tests {
             !SELF_HOSTED_MODULES
                 .iter()
                 .any(|module| module.name == MODULE_MANAGER.name)
+        );
+    }
+
+    #[test]
+    fn startup_policy_preserves_explicit_flag_semantics() {
+        assert_eq!(
+            StartupPolicy::from_flags(true, false),
+            StartupPolicy {
+                force_source: true,
+                skip_stdlib: false,
+            }
+        );
+        assert_eq!(
+            StartupPolicy::from_flags(false, true),
+            StartupPolicy {
+                force_source: false,
+                skip_stdlib: true,
+            }
         );
     }
 }
