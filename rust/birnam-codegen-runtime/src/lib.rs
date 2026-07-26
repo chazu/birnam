@@ -186,9 +186,12 @@ static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
 static REFLECT_METHOD_COUNTER: AtomicUsize = AtomicUsize::new(REFLECT_METHOD_COUNTER_START);
 
 fn canonical_exports_requested() -> bool {
-    std::env::var_os(CANONICAL_ENABLE_ENV).is_some_and(|value| {
+    // The canonical dynamic name is the production Rust Codegen path after
+    // C1.6. Fixture tests can still exercise the private Rust surface by
+    // explicitly setting this switch to a false value.
+    std::env::var_os(CANONICAL_ENABLE_ENV).is_none_or(|value| {
         let value = value.as_encoded_bytes();
-        value == b"1" || value == b"true" || value == b"yes"
+        value != b"0" && value != b"false" && value != b"no"
     })
 }
 

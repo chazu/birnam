@@ -107,10 +107,6 @@ pub fn build(b: *std.Build) void {
             .{ @tagName(target.result.cpu.arch), @tagName(target.result.os.tag) },
         );
     }
-    if (selected_codegen == .rust) {
-        std.process.fatal("codegen-impl=rust is not yet selectable", .{});
-    }
-
     // The release version, read from the repo's VERSION file at build time so the
     // siphon's `--version` never drifts from what `scripts/release.sh` tags.
     const version = std.mem.trim(u8, @embedFile("VERSION"), " \t\r\n");
@@ -800,6 +796,7 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_CODEGEN_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
     );
+    run_rust_codegen_runtime_test.setEnvironmentVariable("BIRNAM_RUST_CODEGEN_CANONICAL", "0");
     run_rust_codegen_runtime_test.step.dependOn(bootstrap_install);
     const test_rust_codegen_runtime_step = b.step(
         "test-rust-codegen-runtime",
@@ -882,6 +879,7 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_CODEGEN_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
     );
+    run_rust_codegen_stack_test.setEnvironmentVariable("BIRNAM_RUST_CODEGEN_CANONICAL", "0");
     run_rust_codegen_stack_test.step.dependOn(bootstrap_install);
     const test_rust_codegen_stack_step = b.step(
         "test-rust-codegen-stack",
@@ -918,6 +916,7 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_CODEGEN_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
     );
+    run_rust_codegen_zig_store_test.setEnvironmentVariable("BIRNAM_RUST_CODEGEN_CANONICAL", "0");
     run_rust_codegen_zig_store_test.step.dependOn(bootstrap_install);
     const test_rust_codegen_zig_store_step = b.step(
         "test-rust-codegen-zig-store",
@@ -2405,9 +2404,23 @@ pub fn build(b: *std.Build) void {
             });
             b.getInstallStep().dependOn(&install_zig_codegen_fixture.step);
             bootstrap_install.dependOn(&install_zig_codegen_fixture.step);
-            const install_zig_codegen_selected = b.addInstallArtifact(lib, .{});
-            b.getInstallStep().dependOn(&install_zig_codegen_selected.step);
-            bootstrap_install.dependOn(&install_zig_codegen_selected.step);
+            if (selected_codegen == .rust) {
+                const install_rust_codegen_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_codegen_runtime.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_codegen.dylib",
+                );
+                install_rust_codegen_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_codegen_selected.step);
+                bootstrap_install.dependOn(&install_rust_codegen_selected.step);
+            } else {
+                const install_zig_codegen_selected = b.addInstallArtifact(lib, .{});
+                b.getInstallStep().dependOn(&install_zig_codegen_selected.step);
+                bootstrap_install.dependOn(&install_zig_codegen_selected.step);
+            }
         } else if (std.mem.eql(u8, m.name, "birnam_id_tcc")) {
             const install_zig_tcc = b.addInstallArtifact(lib, .{
                 .dest_sub_path = "libbirnam_id_tcc_zig.dylib",
