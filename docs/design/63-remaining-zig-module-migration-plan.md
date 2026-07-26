@@ -2928,6 +2928,18 @@ allowances.
   next adapter slice can combine decoded metadata with project-relative paths
   and source composition records.
 
+### R7.43 Rust host typed source-observation checkpoint (2026-07-26)
+
+- `HostRuntime::observe_project_source` now combines one Codegen metadata send
+  with host-owned project root/path/composition fields and returns a typed
+  `ProjectSourceObservation`. Source bytes are retained verbatim, requirements
+  and digests come only from Codegen, and nil legacy sources remain `None`.
+- Metadata Error, malformed-vector, read, and size failures stay distinct. The
+  operation performs no evaluation, installation, digest recomputation, or
+  dependency decision; it is ready to populate the typed snapshot serializer.
+- The focused host suite and all-target clippy remain green at thirty-seven
+  tests; full source-tree traversal and dependency closure are still pending.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

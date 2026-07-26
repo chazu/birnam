@@ -1233,7 +1233,7 @@ pub struct ProjectSourceObservation {
     pub path: String,
     pub sources: Vec<String>,
     pub project_root: String,
-    pub source: String,
+    pub source: Vec<u8>,
     pub requires: Vec<String>,
     pub source_digest: String,
     pub revision_digest: String,
@@ -1291,6 +1291,7 @@ pub enum ProjectSourceIndexError {
     TooLarge { path: PathBuf, limit: usize },
     MissingCodegen,
     MetadataRejected,
+    MetadataMalformed(ProjectMetadataError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1850,6 +1851,56 @@ impl HostRuntime {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
         Ok(ProjectSourceIndexOutcome::Metadata(metadata))
+    }
+
+    /// Combine static metadata with the host-owned source/path composition
+    /// fields needed by `ProjectPolicy` observations. Source bytes are retained
+    /// verbatim so non-UTF-8 authored content is not silently rewritten.
+    ///
+    /// # Safety
+    ///
+    /// The returned record borrows no runtime Oops. The caller must still keep
+    /// the owner-thread/GC anchor live during the underlying metadata send.
+    pub unsafe fn observe_project_source(
+        &self,
+        path: &Path,
+        project_root: &str,
+        composition: &[String],
+    ) -> Result<Option<ProjectSourceObservation>, ProjectSourceIndexError> {
+        let source = std::fs::read(path).map_err(|error| ProjectSourceIndexError::Read {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })?;
+        if source.len() > MAX_SCRIPT_BYTES {
+            return Err(ProjectSourceIndexError::TooLarge {
+                path: path.to_path_buf(),
+                limit: MAX_SCRIPT_BYTES,
+            });
+        }
+        let api = self.stack.api();
+        let codegen = unsafe { global_named(api, "Codegen") }
+            .ok_or(ProjectSourceIndexError::MissingCodegen)?;
+        let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
+        let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
+        if metadata == api.nilObj {
+            return Ok(None);
+        }
+        if send_is_error(api, metadata) {
+            return Err(ProjectSourceIndexError::MetadataRejected);
+        }
+        let metadata = unsafe { decode_project_source_metadata(api, metadata) }
+            .map_err(ProjectSourceIndexError::MetadataMalformed)?;
+        Ok(Some(ProjectSourceObservation {
+            name: metadata.name,
+            path: path.to_string_lossy().into_owned(),
+            sources: composition.to_vec(),
+            project_root: project_root.to_owned(),
+            source,
+            requires: metadata.requires,
+            source_digest: metadata.source_digest,
+            revision_digest: metadata.revision_digest,
+        }))
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
@@ -2441,6 +2492,10 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         unsafe { (self.api.mkString)(value.as_bytes().as_ptr(), value.len()) }
     }
 
+    unsafe fn bytes(&self, value: &[u8]) -> birnam_abi::Oop {
+        unsafe { (self.api.mkString)(value.as_ptr(), value.len()) }
+    }
+
     unsafe fn strings(&self, values: &[String]) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let mut vector = unsafe { self.new_vector()? };
         for value in values {
@@ -2490,7 +2545,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         item = unsafe { self.put(item, "path", self.string(&value.path))? };
         item = unsafe { self.put(item, "sources", self.strings(&value.sources)?)? };
         item = unsafe { self.put(item, "projectRoot", self.string(&value.project_root))? };
-        item = unsafe { self.put(item, "source", self.string(&value.source))? };
+        item = unsafe { self.put(item, "source", self.bytes(&value.source))? };
         item = unsafe { self.put(item, "requires", self.strings(&value.requires)?)? };
         item = unsafe { self.put(item, "sourceDigest", self.string(&value.source_digest))? };
         item = unsafe { self.put(item, "revisionDigest", self.string(&value.revision_digest))? };
