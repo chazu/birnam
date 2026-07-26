@@ -227,7 +227,7 @@ pub fn build(b: *std.Build) void {
     });
     const test_codegen_selection_refusal_step = b.step(
         "test-codegen-selection-refusal",
-        "Verify incomplete Rust Codegen selection fails closed with its exact diagnostic",
+        "Verify Rust Codegen canonical selection, retained fixtures, and unknown-choice refusal",
     );
     test_codegen_selection_refusal_step.dependOn(&codegen_selection_refusal.step);
     test_step.dependOn(&codegen_selection_refusal.step);
