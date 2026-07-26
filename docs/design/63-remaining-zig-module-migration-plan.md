@@ -3646,6 +3646,14 @@ allowances.
   closure checks. The distributed bundle now preserves the same explicit
   rollback boundary as the installed tree.
 
+### R7.100 Packaged Zig-oracle execution checkpoint (2026-07-26)
+
+- The generated `birnam-0.11.0-aarch64-macos.tar.gz` was unpacked into a
+  fresh temporary prefix and its bundled `bin/birnam-zig-oracle` executed
+  `doc time nowMillis` with explicit `BIRNAM_ID_DYLIB=libbirnam_id_zig.dylib`
+  and `zig-id-v1` identity. The oracle resolved its relocated libraries and
+  completed successfully, proving rollback survives the distributed bundle.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
