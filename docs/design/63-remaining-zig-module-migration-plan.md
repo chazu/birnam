@@ -3440,16 +3440,19 @@ allowances.
   delegate both snapshot and path selectors without a second project authority;
   R6 remains accepted at focused `91/91`.
 
-### R7.85 Rust host explicit LSP ownership checkpoint (2026-07-26)
+### R7.85 Rust host project-bridge/LSP checkpoint (2026-07-26)
 
-- The experimental Rust executable now recognizes `--lsp` as a deliberate
-  boundary and reports that the canonical Zig host owns it until the Rust
-  `Project` snapshot/path bridge is complete. It no longer presents LSP as an
-  undifferentiated unimplemented command.
-- The boundary is checked before resource/floor startup, preserving pure CLI
-  diagnostics and preventing a partial LSP boot from inventing a second
-  project-resolution authority. Rust-host formatting, 55-test suite, clippy,
-  and the explicit `--lsp` smoke all pass; R6 remains accepted at `91/91`.
+- The experimental Rust executable now routes `--lsp` through the compiled
+  `Cli`/`Lsp` modules. Rust installs a `Project` object whose
+  `pathForUri:` and `snapshotForUri:` callbacks delegate to the existing Rust
+  URI, observation, and `ProjectPolicy` pipeline; no second project graph or
+  filesystem authority is retained. The bridge pointer is cleared when the
+  owning `HostRuntime` drops.
+- The help contract now lists Rust-hosted LSP support while retaining the
+  canonical Zig host as the rollback oracle. Rust-host formatting, 55-test
+  suite, and warnings-denied clippy pass; the uninstalled-checkout LSP smoke
+  fails closed at the expected missing installed floor, and R6 remains
+  accepted at `91/91`.
 
 ## 12. Commit and review discipline
 

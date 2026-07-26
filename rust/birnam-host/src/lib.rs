@@ -13,6 +13,7 @@ use std::io::Write;
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use birnam_abi::{IdApi, IdInitFn};
 
@@ -3809,12 +3810,26 @@ pub enum RuntimeModuleError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliError {
     Module(RuntimeModuleError),
+    Policy(ProjectPolicyError),
+    Bridge(ProjectBridgeError),
     MissingCli,
     MissingVector,
     NonUtf8Argument(usize),
     ArgumentVectorRejected,
     MalformedStatus,
     Failed(i64),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectBridgeError {
+    MissingObject,
+    CloneRejected,
+    GlobalRejected,
+    InvalidArgument,
+    Uri(ProjectUriError),
+    Observation(String),
+    Snapshot(ProjectSnapshotError),
+    Policy(ProjectPolicyError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3956,6 +3971,101 @@ pub struct HostRuntime {
     pub policy: StartupPolicy,
     pub codegen: birnam_abi::Oop,
     pub self_hosted: Vec<LoadedSelfHostedModule>,
+}
+
+static PROJECT_BRIDGE_RUNTIME: AtomicPtr<HostRuntime> = AtomicPtr::new(std::ptr::null_mut());
+
+impl Drop for HostRuntime {
+    fn drop(&mut self) {
+        let _ = PROJECT_BRIDGE_RUNTIME.compare_exchange(
+            self as *mut HostRuntime,
+            std::ptr::null_mut(),
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+}
+
+unsafe fn active_project_bridge_runtime() -> Option<&'static HostRuntime> {
+    let pointer = PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire);
+    if pointer.is_null() {
+        None
+    } else {
+        // SAFETY: the host installs this pointer only for its own live
+        // HostRuntime and clears it from HostRuntime::drop.
+        Some(unsafe { &*pointer })
+    }
+}
+
+unsafe fn bridge_string(api: &IdApi, value: birnam_abi::Oop) -> Option<String> {
+    if value == api.nilObj || unsafe { (api.vtableOf)(value) } != api.string_vt {
+        return None;
+    }
+    let mut length = 0usize;
+    let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+    if bytes.is_null() {
+        return (length == 0).then(String::new);
+    }
+    Some(String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(bytes, length) }).into_owned())
+}
+
+unsafe extern "C" fn project_path_for_uri_native(
+    _: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    count: usize,
+) -> birnam_abi::Oop {
+    let Some(runtime) = (unsafe { active_project_bridge_runtime() }) else {
+        return std::ptr::null_mut();
+    };
+    let api = runtime.stack.api();
+    if count != 1 || args.is_null() {
+        return api.nilObj;
+    }
+    let argument = unsafe { *args };
+    let Some(uri) = (unsafe { bridge_string(api, argument) }) else {
+        return api.nilObj;
+    };
+    let Ok(path) = project_path_from_uri(&uri) else {
+        return api.nilObj;
+    };
+    let bytes = path_bytes(&path);
+    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+}
+
+unsafe extern "C" fn project_snapshot_for_uri_native(
+    _: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    count: usize,
+) -> birnam_abi::Oop {
+    let Some(runtime) = (unsafe { active_project_bridge_runtime() }) else {
+        return std::ptr::null_mut();
+    };
+    let api = runtime.stack.api();
+    if count != 1 || args.is_null() {
+        return api.nilObj;
+    }
+    let argument = unsafe { *args };
+    let Some(uri) = (unsafe { bridge_string(api, argument) }) else {
+        return api.nilObj;
+    };
+    let Ok(path) = project_path_from_uri(&uri) else {
+        return api.nilObj;
+    };
+    let start = if std::fs::metadata(&path)
+        .map(|metadata| metadata.is_dir())
+        .unwrap_or(false)
+    {
+        path
+    } else {
+        path.parent().map(Path::to_path_buf).unwrap_or(path)
+    };
+    let Ok(snapshot) = (unsafe { runtime.observe_project_snapshot(&start) }) else {
+        return api.nilObj;
+    };
+    let Ok(snapshot) = (unsafe { runtime.materialize_project_snapshot(&snapshot) }) else {
+        return api.nilObj;
+    };
+    unsafe { runtime.resolve_project_snapshot(snapshot) }.unwrap_or(api.nilObj)
 }
 
 impl HostRuntime {
@@ -5552,17 +5662,74 @@ impl HostRuntime {
         Ok(unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec())
     }
 
+    /// Install the host-owned `Project` bridge used by the authored LSP. The
+    /// bridge delegates URI decoding, filesystem observation, and policy
+    /// resolution to this runtime; it does not retain a second snapshot or
+    /// project graph. The pointer is cleared when this HostRuntime drops.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have prepared a live GC anchor and remain on the floor
+    /// owner thread for all synchronous sends.
+    pub unsafe fn install_project_bridge(&self) -> Result<(), ProjectBridgeError> {
+        let api = self.stack.api();
+        let project = if let Some(project) = unsafe { global_named(api, "Project") } {
+            project
+        } else {
+            let object =
+                unsafe { global_named(api, "Object") }.ok_or(ProjectBridgeError::MissingObject)?;
+            let selector = unsafe { (api.intern)(c"clone".as_ptr()) };
+            let project = unsafe { (api.send)(object, selector, std::ptr::null(), 0) };
+            if project == api.nilObj || send_is_error(api, project) {
+                return Err(ProjectBridgeError::CloneRejected);
+            }
+            project
+        };
+        let vtable = unsafe { (api.vtableOf)(project) };
+        if vtable == api.nilObj {
+            return Err(ProjectBridgeError::CloneRejected);
+        }
+        let snapshot_selector = unsafe { (api.intern)(c"snapshotForUri:".as_ptr()) };
+        let path_selector = unsafe { (api.intern)(c"pathForUri:".as_ptr()) };
+        unsafe {
+            (api.method)(vtable, snapshot_selector, project_snapshot_for_uri_native);
+            (api.method)(vtable, path_selector, project_path_for_uri_native);
+        }
+        let exported = unsafe { (api.exportObj)(c"Project".as_ptr(), project) };
+        if exported == api.nilObj {
+            return Err(ProjectBridgeError::GlobalRejected);
+        }
+        let globals =
+            unsafe { global_named(api, "Globals") }.ok_or(ProjectBridgeError::GlobalRejected)?;
+        let put_selector = unsafe { (api.intern)(c"at:put:".as_ptr()) };
+        let name = unsafe { (api.intern)(c"Project".as_ptr()) };
+        let result = unsafe { (api.send)(globals, put_selector, [name, project].as_ptr(), 2) };
+        if result == api.nilObj || send_is_error(api, result) {
+            return Err(ProjectBridgeError::GlobalRejected);
+        }
+        PROJECT_BRIDGE_RUNTIME.store(
+            self as *const HostRuntime as *mut HostRuntime,
+            Ordering::Release,
+        );
+        Ok(())
+    }
+
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
     /// module. Rust supplies opaque argv and the installed resource roots;
     /// subcommand parsing, diagnostics, and module policy remain language
-    /// owned. Project-aware LSP setup is intentionally a separate seam until
-    /// the Rust host owns the `Project` bridge.
+    /// owned. Project-aware LSP setup installs the scoped Rust `Project`
+    /// bridge before dispatch and remains on the same host observation path.
     ///
     /// # Safety
     ///
     /// The caller must have called [`HostRuntime::prepare_execution`] with a
     /// live stack anchor and remain on the floor owner thread for all sends.
     pub unsafe fn run_cli(&self, args: &[OsString]) -> Result<(), CliError> {
+        let is_lsp = args.iter().any(|argument| argument == "--lsp");
+        if is_lsp {
+            unsafe { self.load_project_policy() }.map_err(CliError::Policy)?;
+            unsafe { self.install_project_bridge() }.map_err(CliError::Bridge)?;
+        }
         unsafe { self.load_runtime_module("cli") }.map_err(CliError::Module)?;
         let api = self.stack.api();
         let Some(cli) = (unsafe { global_named(api, "Cli") }) else {
