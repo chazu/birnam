@@ -2392,6 +2392,22 @@ allowances.
   clippy with warnings denied, and the existing full R6 gate are the required
   follow-on checks before wiring this resolver into a host executable.
 
+### R7.2 Rust host floor-loader checkpoint (2026-07-26)
+
+- The host crate now owns the one raw floor-loading seam: it reads and checks
+  the selected dylib digest before `dlopen`, verifies the optional exported
+  floor identity before calling `id_init`, rejects missing symbols/null APIs,
+  and retains the successful handle for process lifetime. Higher rungs remain
+  outside this seam and must be loaded through the returned IdApi.
+- `LoadedFloor` is intentionally non-`Send`/non-`Sync` until the host port
+  explicitly models the floor's owner-thread rule. The loader has no fallback
+  search, no second floor table, and no `dlclose` on a successful floor.
+- Six offline Rust tests cover the resolver plus SHA-256 format, missing-floor
+  rejection before `dlopen`, and path/override invariants. This is still an
+  opt-in library slice; the shipped Zig host remains canonical until the Rust
+  executable has matching CLI, bootstrap, project, image, isolate, and release
+  evidence.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
