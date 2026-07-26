@@ -2220,11 +2220,6 @@ image authority fixture, and retain the Rust shell's no-publication boundary.
   missing/unusable cases. The only accepted comparator crossings remain
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
-The next bounded slice must add an explicitly supported, test-only preflight
-fixture and round-trip its live-composed bytes through the v4 parser, while
-keeping mapping/rebuild and final atomic publication outside the Rust Image
-shell.
-
 ### R6.22 Supported preflight image round-trip checkpoint (2026-07-25)
 
 - `e725023` adds a test-only supported preflight fixture with one canonical
@@ -2239,6 +2234,26 @@ shell.
   receipts, optimized verify/install/harness legs, and zero missing/unusable
   cases. The only accepted comparator crossings remain `query.aggregate
   +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+### R6.23 Rust Image report-contract checkpoint (2026-07-25)
+
+- `4033758` aligns the dynamic shell's stale no-op expectation with the
+  post-composition report contract: once facts and code are admissible but
+  mapping/rebuild is still absent, the exact detail is `Rust Image code
+  mapping/rebuild orchestration is not installed`. The test continues to prove
+  fail-closed status and no target publication for rejected live fixtures.
+- `zig fmt --check src/id/rust_image_test.zig` and the optimized Rust Image
+  shell pass (`2/2`). The full `BIRNAM_R6_ISOLATE_IMPL=rust mise run
+  r6-acceptance` rerun passed after `4033758` with focused `82/82`, Rust Alien
+  live `9/9`, both Rust Image CLI save profile receipts, optimized
+  verify/install/harness legs, and zero missing/unusable cases. The only
+  accepted comparator crossings remain `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`.
+
+The next bounded slice should add read-only image admission: path/file-size
+validation plus v4 header/record/facts preflight, with no Store mutation,
+compiled-unit mapping, source rebuild, or publication until those authorities
+are separately installed and tested.
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
