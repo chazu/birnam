@@ -693,6 +693,17 @@ test "Rust Image publishes a complete image under explicit Rust authority" {
     const recovered = send(api, runtime_store, "currentValue:attr:", &.{ entity, attribute });
     try std.testing.expect(api.isSmallInt(recovered) != 0);
     try std.testing.expectEqual(@as(i64, 818), api.smallIntValue(recovered));
+
+    // The explicit rebuild path must replay the same durable facts even when
+    // mapped code is intentionally bypassed.
+    _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+    try std.testing.expectEqual(
+        api.falseObj,
+        send(api, system, "loadImage:rebuild:", &.{ str(api, image_path), api.trueObj }),
+    );
+    const rebuilt = send(api, runtime_store, "currentValue:attr:", &.{ entity, attribute });
+    try std.testing.expect(api.isSmallInt(rebuilt) != 0);
+    try std.testing.expectEqual(@as(i64, 818), api.smallIntValue(rebuilt));
 }
 
 test "Rust Image publication rejects without explicit Rust writer authority" {
