@@ -157,6 +157,12 @@ pub enum BootstrapSourceError {
     EvaluationRejected,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfHostedLoadOutcome {
+    Precompiled,
+    Source,
+}
+
 /// Scan the first `requires: #[...]` declaration using the same deliberately
 /// small source convention as the Zig host. Dependencies outside the
 /// self-hosted inventory are native/kernel modules and are already loaded.
@@ -294,6 +300,48 @@ pub unsafe fn record_and_eval_source(
         return Err(BootstrapSourceError::EvaluationRejected);
     }
     Ok(evaluated)
+}
+
+/// Load one self-hosted module using the same optimization policy as the Zig
+/// host. The candidate is exactly `<lib_dir>/libbirnam_<name>.dylib`; the host
+/// never searches other directories or opens this dylib directly. A missing,
+/// rejected, or error-valued Codegen `load:` answer falls back to the embedded
+/// source through [`record_and_eval_source`].
+///
+/// # Safety
+///
+/// `api` and `codegen` must satisfy the safety contract of
+/// [`record_and_eval_source`] and remain live for every synchronous send.
+pub unsafe fn load_self_hosted(
+    api: &IdApi,
+    codegen: birnam_abi::Oop,
+    resources: &Resources,
+    module: &SelfHostedModule,
+    force_source: bool,
+) -> Result<SelfHostedLoadOutcome, BootstrapSourceError> {
+    if !force_source {
+        let candidate = self_hosted_candidate_path(resources, module);
+        if std::fs::metadata(&candidate).is_ok() {
+            let candidate_bytes = path_bytes(&candidate);
+            let candidate_string =
+                unsafe { (api.mkString)(candidate_bytes.as_ptr(), candidate_bytes.len()) };
+            let load_selector = unsafe { (api.intern)(c"load:".as_ptr()) };
+            let loaded =
+                unsafe { (api.send)(codegen, load_selector, [candidate_string].as_ptr(), 1) };
+            if loaded != api.nilObj && !send_is_error(api, loaded) {
+                return Ok(SelfHostedLoadOutcome::Precompiled);
+            }
+        }
+    }
+    // SAFETY: forwarded to the documented source-recovery boundary.
+    unsafe { record_and_eval_source(api, codegen, module)? };
+    Ok(SelfHostedLoadOutcome::Source)
+}
+
+fn self_hosted_candidate_path(resources: &Resources, module: &SelfHostedModule) -> PathBuf {
+    resources
+        .lib_dir
+        .join(format!("libbirnam_{}.dylib", module.name))
 }
 
 /// Process-lifetime native stack owned by the host. Higher rungs are opened
@@ -821,5 +869,19 @@ mod tests {
                 module.name
             );
         }
+    }
+
+    #[test]
+    fn self_hosted_candidate_stays_in_the_resolved_library_directory() {
+        let resources = resolve_from_exe_dir(Path::new("/opt/birnam/bin"), Overrides::default())
+            .expect("layout should resolve");
+        let module = SELF_HOSTED_MODULES
+            .iter()
+            .find(|module| module.name == "toml")
+            .expect("toml source is embedded");
+        assert_eq!(
+            self_hosted_candidate_path(&resources, module),
+            Path::new("/opt/birnam/lib/libbirnam_toml.dylib")
+        );
     }
 }

@@ -2462,6 +2462,19 @@ allowances.
 - Eleven offline Rust tests pass with warnings denied. The operation remains
   opt-in and does not change Zig host selection or the R6 gate.
 
+### R7.7 Rust host compiled-module policy checkpoint (2026-07-26)
+
+- The Rust host now has an explicit `load_self_hosted` policy for each
+  self-hosted module: candidate path is exactly
+  `<resolved-lib-dir>/libbirnam_<name>.dylib`; loading is requested through
+  Codegen `load:` and never through a second host-side dynamic-loader path.
+- A missing candidate, a nil answer, or an Error-valued answer falls back to
+  the embedded source boundary. `force_source` skips the candidate entirely;
+  no checkout, cwd, manifest, or alternate directory is searched.
+- Twelve offline Rust tests pass with warnings denied, including the exact
+  candidate-path contract. The helper is still opt-in and does not alter Zig
+  host selection or the R6 gate.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
