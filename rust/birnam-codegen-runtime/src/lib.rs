@@ -37,6 +37,12 @@ const ADAPTER_CODEGEN_VT_NAME: &[u8] = b"RustCodegenAdapterVt\0";
 const ADAPTER_REFLECT_NAME: &[u8] = b"RustReflectAdapter\0";
 const ADAPTER_REFLECT_VT_NAME: &[u8] = b"RustReflectAdapterVt\0";
 const ADAPTER_COLLECTOR_VT_NAME: &[u8] = b"RustReflectFactCollectorVt\0";
+const CANONICAL_ENABLE_ENV: &str = "BIRNAM_RUST_CODEGEN_CANONICAL";
+const CANONICAL_CODEGEN_VT_NAME: &[u8] = b"CodegenVt\0";
+const CANONICAL_CODEGEN_NAME: &[u8] = b"Codegen\0";
+const CANONICAL_REFLECT_VT_NAME: &[u8] = b"ReflectVt\0";
+const CANONICAL_REFLECT_NAME: &[u8] = b"Reflect\0";
+const CANONICAL_COLLECTOR_VT_NAME: &[u8] = b"ReflectFactCollectorVt\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
@@ -178,6 +184,13 @@ static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
 static REFLECT_METHOD_COUNTER: AtomicUsize = AtomicUsize::new(REFLECT_METHOD_COUNTER_START);
+
+fn canonical_exports_requested() -> bool {
+    std::env::var_os(CANONICAL_ENABLE_ENV).is_some_and(|value| {
+        let value = value.as_encoded_bytes();
+        value == b"1" || value == b"true" || value == b"yes"
+    })
+}
 
 const PHASE_BOOTSTRAPPING: u8 = 0;
 const PHASE_RUNNING: u8 = 1;
@@ -7171,6 +7184,26 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast(),
             runtime.adapter_collector_vt as Oop,
         );
+        if canonical_exports_requested() {
+            for (name, value) in [
+                (CANONICAL_CODEGEN_VT_NAME, runtime.adapter_codegen_vt as Oop),
+                (CANONICAL_CODEGEN_NAME, runtime.adapter_codegen as Oop),
+                (CANONICAL_REFLECT_VT_NAME, runtime.adapter_reflect_vt as Oop),
+                (CANONICAL_REFLECT_NAME, runtime.adapter_reflect as Oop),
+                (
+                    CANONICAL_COLLECTOR_VT_NAME,
+                    runtime.adapter_collector_vt as Oop,
+                ),
+            ] {
+                if (api.isExported)(name.as_ptr().cast()) != 0 {
+                    if (api.import)(name.as_ptr().cast()) != value {
+                        abort("RustCodegen canonical export conflicts with an existing authority");
+                    }
+                } else if (api.exportObj)(name.as_ptr().cast(), value).is_null() {
+                    abort("RustCodegen canonical export failed");
+                }
+            }
+        }
         if (api.isExported)(RUST_CODEGEN_NAME.as_ptr().cast()) == 0 {
             let _ = (api.exportObj)(
                 RUST_CODEGEN_VT_NAME.as_ptr().cast(),

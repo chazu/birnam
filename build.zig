@@ -813,6 +813,47 @@ pub fn build(b: *std.Build) void {
     test_codegen_contract_step.dependOn(&run_rust_codegen_runtime_test.step);
     test_step.dependOn(&run_rust_codegen_runtime_test.step);
 
+    // C1.6's canonical publication probe runs in a fresh process with the
+    // explicit environment gate. The ordinary Rust runtime test intentionally
+    // keeps Codegen/Reflect absent so C1.1's expected-rejection fixture remains
+    // meaningful until this opt-in path is selected by the build policy.
+    const rust_codegen_canonical_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/id/rust_codegen_canonical_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const rust_codegen_canonical_test = b.addTest(.{ .root_module = rust_codegen_canonical_test_mod });
+    const run_rust_codegen_canonical_test = b.addRunArtifact(rust_codegen_canonical_test);
+    run_rust_codegen_canonical_test.setEnvironmentVariable(
+        "BIRNAM_ID_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id.dylib"),
+    );
+    run_rust_codegen_canonical_test.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", "rust-id-v1");
+    run_rust_codegen_canonical_test.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_codegen_canonical_test.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_codegen_canonical_test.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_codegen_canonical_test.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_codegen_canonical_test.setEnvironmentVariable("BIRNAM_RUST_CODEGEN_CANONICAL", "1");
+    run_rust_codegen_canonical_test.step.dependOn(bootstrap_install);
+    const test_rust_codegen_canonical_step = b.step(
+        "test-rust-codegen-canonical",
+        "Verify the explicitly gated canonical Rust Codegen/Reflect families",
+    );
+    test_rust_codegen_canonical_step.dependOn(&run_rust_codegen_canonical_test.step);
+    test_step.dependOn(&run_rust_codegen_canonical_test.step);
+
     const rust_codegen_stack_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_codegen_stack_test.zig"),
         .target = target,

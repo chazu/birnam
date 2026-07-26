@@ -286,6 +286,17 @@ install names, exported `birnam_*` helpers, callback signatures, disposable
 handles, and hostile C inputs. Compare artifacts with the Zig Codegen oracle by
 identity and behavior, not by private Rust representation.
 
+C1.5/C1.6 publication probe (2026-07-26):
+
+- A separate clean process now enables `BIRNAM_RUST_CODEGEN_CANONICAL=1` and
+  verifies the frozen `CodegenVt`/`Codegen`, `ReflectVt`/`Reflect`, and
+  `ReflectFactCollectorVt` exports, exact selector sets/layout, a canonical
+  `Codegen eval:` call, and `Reflect nameOf:` behavior.
+- The ordinary Rust fixture remains fail-closed and keeps the canonical names
+  absent unless this explicit gate is present. The focused matrix is now
+  `97/97` tests (`170/170` steps); the optimized verify pin advances to
+  `512/514` with six explicit skips.
+
 ### C1.6 Exact parity and opt-in enablement
 
 Change C1.1's expected-rejection comparator to require exact Codegen, Reflect,
