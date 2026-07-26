@@ -2225,6 +2225,21 @@ fixture and round-trip its live-composed bytes through the v4 parser, while
 keeping mapping/rebuild and final atomic publication outside the Rust Image
 shell.
 
+### R6.22 Supported preflight image round-trip checkpoint (2026-07-25)
+
+- `e725023` adds a test-only supported preflight fixture with one canonical
+  fact, one exported-vtable heap object, an Oop field, and a raw word. The
+  fixture is passed through `compose_complete_image`; the test then parses and
+  validates the authority, heap layout/fields, facts basis/count, code unit,
+  checksum, and canonical record order. No runtime or file publication path is
+  changed.
+- The Rust Image codec suite is now `20/20`; image-only clippy is clean. The
+  full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passed after
+  `e725023` with Rust Alien live `9/9`, both Rust Image CLI save profile
+  receipts, optimized verify/install/harness legs, and zero missing/unusable
+  cases. The only accepted comparator crossings remain `query.aggregate
+  +5.8%` and `compile.stage1-stdlib +11.9%`.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
