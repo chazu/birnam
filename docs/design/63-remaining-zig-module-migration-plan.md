@@ -3000,6 +3000,20 @@ allowances.
   remaining project gap is assembling complete dependency-closure observations
   from manifest values and source metadata.
 
+### R7.49 Rust host TOML manifest-value decoder checkpoint (2026-07-26)
+
+- `decode_project_manifest` now consumes the already-parsed TOML Map and
+  validates the host-owned manifest surface: optional name/main, default or
+  explicit source roots, load names, module entry/parts, run defaults/modes/
+  ports, and sorted dependency names/relative paths.
+- The decoder performs no TOML parsing and no provider/dependency-policy
+  decisions. Invalid Map/Vector/String/Integer shapes, absolute paths, empty
+  roots, duplicate composition parts, invalid run modes, and invalid ports are
+  typed adapter failures.
+- The forty-test host suite and all-target clippy remain green. Wrapped/test
+  manifest sections and recursive dependency observation remain the next
+  bounded slices.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

@@ -1216,6 +1216,23 @@ pub struct ProjectRunObservation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectModulePlan {
+    pub entry: String,
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectManifestObservation {
+    pub name: String,
+    pub main: Option<String>,
+    pub source_roots: Vec<String>,
+    pub loads: Vec<String>,
+    pub modules: Vec<ProjectModulePlan>,
+    pub dependencies: Vec<ProjectDependencyObservation>,
+    pub run: ProjectRunObservation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectWrappedObservation {
     pub name: String,
     pub build: Vec<Vec<String>>,
@@ -1420,6 +1437,19 @@ pub enum ProjectMetadataError {
     InvalidRequires,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectManifestDecodeError {
+    NotMap,
+    MissingValue(&'static str),
+    InvalidString(&'static str),
+    InvalidList(&'static str),
+    InvalidMap(&'static str),
+    InvalidPath(&'static str),
+    EmptyValue(&'static str),
+    InvalidRunMode(String),
+    InvalidPort,
+}
+
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
 /// filesystem half of project observation only; it never parses the manifest
 /// or selects a module provider.
@@ -1605,6 +1635,287 @@ pub unsafe fn decode_project_source_metadata(
         requires,
         source_digest: string(item(3))?,
         revision_digest: string(item(4))?,
+    })
+}
+
+struct ProjectManifestDecoder<'a> {
+    api: &'a IdApi,
+    map_vt: birnam_abi::Oop,
+    vector_vt: birnam_abi::Oop,
+}
+
+impl<'a> ProjectManifestDecoder<'a> {
+    unsafe fn new(api: &'a IdApi) -> Result<Self, ProjectManifestDecodeError> {
+        let map_vt = unsafe { (api.import)(c"MapVt".as_ptr()) };
+        let vector_vt = unsafe { (api.import)(c"VectorVt".as_ptr()) };
+        if map_vt == api.nilObj {
+            return Err(ProjectManifestDecodeError::NotMap);
+        }
+        if vector_vt == api.nilObj {
+            return Err(ProjectManifestDecodeError::InvalidList("manifest vector"));
+        }
+        Ok(Self {
+            api,
+            map_vt,
+            vector_vt,
+        })
+    }
+
+    unsafe fn at(
+        &self,
+        map: birnam_abi::Oop,
+        key: &str,
+    ) -> Result<birnam_abi::Oop, ProjectManifestDecodeError> {
+        if map == self.api.nilObj || unsafe { (self.api.vtableOf)(map) } != self.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap("manifest map"));
+        }
+        let key_value = unsafe { (self.api.mkString)(key.as_bytes().as_ptr(), key.len()) };
+        let selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
+        Ok(unsafe { (self.api.send)(map, selector, [key_value].as_ptr(), 1) })
+    }
+
+    unsafe fn string(
+        &self,
+        value: birnam_abi::Oop,
+        field: &'static str,
+    ) -> Result<String, ProjectManifestDecodeError> {
+        if value == self.api.nilObj || unsafe { (self.api.vtableOf)(value) } != self.api.string_vt {
+            return Err(ProjectManifestDecodeError::InvalidString(field));
+        }
+        let mut length = 0usize;
+        let bytes = unsafe { (self.api.stringBytes)(value, &mut length) };
+        if bytes.is_null() {
+            return Err(ProjectManifestDecodeError::InvalidString(field));
+        }
+        Ok(
+            String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(bytes, length) })
+                .into_owned(),
+        )
+    }
+
+    unsafe fn strings(
+        &self,
+        value: birnam_abi::Oop,
+        field: &'static str,
+        allow_single: bool,
+    ) -> Result<Vec<String>, ProjectManifestDecodeError> {
+        if value == self.api.nilObj {
+            return Ok(Vec::new());
+        }
+        if allow_single && unsafe { (self.api.vtableOf)(value) } == self.api.string_vt {
+            return Ok(vec![unsafe { self.string(value, field)? }]);
+        }
+        if unsafe { (self.api.vtableOf)(value) } != self.vector_vt {
+            return Err(ProjectManifestDecodeError::InvalidList(field));
+        }
+        let size_selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
+        let size = unsafe { (self.api.send)(value, size_selector, std::ptr::null(), 0) };
+        if unsafe { (self.api.isSmallInt)(size) } == 0
+            || unsafe { (self.api.smallIntValue)(size) } < 0
+        {
+            return Err(ProjectManifestDecodeError::InvalidList(field));
+        }
+        let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
+        let mut result = Vec::with_capacity(unsafe { (self.api.smallIntValue)(size) as usize });
+        for index in 0..unsafe { (self.api.smallIntValue)(size) } {
+            let item = unsafe {
+                (self.api.send)(
+                    value,
+                    at_selector,
+                    [(self.api.mkSmallInt)(index)].as_ptr(),
+                    1,
+                )
+            };
+            result.push(unsafe { self.string(item, field)? });
+        }
+        Ok(result)
+    }
+
+    unsafe fn run(
+        &self,
+        value: birnam_abi::Oop,
+    ) -> Result<ProjectRunObservation, ProjectManifestDecodeError> {
+        if value == self.api.nilObj {
+            return Ok(ProjectRunObservation {
+                repl: "none".to_owned(),
+                socket_bind: "127.0.0.1".to_owned(),
+                socket_port: 4400,
+            });
+        }
+        if unsafe { (self.api.vtableOf)(value) } != self.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap("run"));
+        }
+        let repl_value = unsafe { self.at(value, "repl")? };
+        let repl = if repl_value == self.api.nilObj {
+            "none".to_owned()
+        } else {
+            unsafe { self.string(repl_value, "run.repl")? }
+        };
+        if !matches!(repl.as_str(), "none" | "tty" | "socket") {
+            return Err(ProjectManifestDecodeError::InvalidRunMode(repl));
+        }
+        let bind_value = unsafe { self.at(value, "socket_bind")? };
+        let socket_bind = if bind_value == self.api.nilObj {
+            "127.0.0.1".to_owned()
+        } else {
+            let bind = unsafe { self.string(bind_value, "run.socket_bind")? };
+            if bind.is_empty() {
+                return Err(ProjectManifestDecodeError::EmptyValue("run.socket_bind"));
+            }
+            bind
+        };
+        let port_value = unsafe { self.at(value, "socket_port")? };
+        let socket_port = if port_value == self.api.nilObj {
+            4400
+        } else if unsafe { (self.api.isSmallInt)(port_value) } == 0 {
+            return Err(ProjectManifestDecodeError::InvalidPort);
+        } else {
+            let port = unsafe { (self.api.smallIntValue)(port_value) };
+            if !(0..=65535).contains(&port) {
+                return Err(ProjectManifestDecodeError::InvalidPort);
+            }
+            port
+        };
+        Ok(ProjectRunObservation {
+            repl,
+            socket_bind,
+            socket_port,
+        })
+    }
+
+    unsafe fn modules(
+        &self,
+        value: birnam_abi::Oop,
+    ) -> Result<Vec<ProjectModulePlan>, ProjectManifestDecodeError> {
+        if value == self.api.nilObj {
+            return Ok(Vec::new());
+        }
+        if unsafe { (self.api.vtableOf)(value) } != self.vector_vt {
+            return Err(ProjectManifestDecodeError::InvalidList("module"));
+        }
+        let size_selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
+        let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
+        let size = unsafe { (self.api.send)(value, size_selector, std::ptr::null(), 0) };
+        if unsafe { (self.api.isSmallInt)(size) } == 0
+            || unsafe { (self.api.smallIntValue)(size) } < 0
+        {
+            return Err(ProjectManifestDecodeError::InvalidList("module"));
+        }
+        let mut result = Vec::with_capacity(unsafe { (self.api.smallIntValue)(size) as usize });
+        for index in 0..unsafe { (self.api.smallIntValue)(size) } {
+            let item = unsafe {
+                (self.api.send)(
+                    value,
+                    at_selector,
+                    [(self.api.mkSmallInt)(index)].as_ptr(),
+                    1,
+                )
+            };
+            if item == self.api.nilObj || unsafe { (self.api.vtableOf)(item) } != self.map_vt {
+                return Err(ProjectManifestDecodeError::InvalidMap("module entry"));
+            }
+            let entry = unsafe { self.string(self.at(item, "entry")?, "module.entry")? };
+            if entry.is_empty()
+                || Path::new(&entry).is_absolute()
+                || Path::new(&entry).extension() != Some(OsStr::new("birnam"))
+            {
+                return Err(ProjectManifestDecodeError::InvalidPath("module.entry"));
+            }
+            let files = unsafe { self.strings(self.at(item, "files")?, "module.files", false)? };
+            let _ = project_composition_paths(Path::new("."), &entry, &files)
+                .map_err(|_| ProjectManifestDecodeError::InvalidPath("module.files"))?;
+            result.push(ProjectModulePlan { entry, files });
+        }
+        Ok(result)
+    }
+
+    unsafe fn dependencies(
+        &self,
+        value: birnam_abi::Oop,
+    ) -> Result<Vec<ProjectDependencyObservation>, ProjectManifestDecodeError> {
+        if value == self.api.nilObj {
+            return Ok(Vec::new());
+        }
+        if unsafe { (self.api.vtableOf)(value) } != self.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap("dependencies"));
+        }
+        let keys_selector = unsafe { (self.api.intern)(c"keys".as_ptr()) };
+        let keys = unsafe { (self.api.send)(value, keys_selector, std::ptr::null(), 0) };
+        let names = unsafe { self.strings(keys, "dependency names", false)? };
+        let mut result = Vec::with_capacity(names.len());
+        for name in names {
+            let spec = unsafe { self.at(value, &name) }
+                .map_err(|_| ProjectManifestDecodeError::InvalidMap("dependency spec"))?;
+            let path = unsafe { self.string(self.at(spec, "path")?, "dependency.path")? };
+            if Path::new(&path).is_absolute() {
+                return Err(ProjectManifestDecodeError::InvalidPath("dependency.path"));
+            }
+            result.push(ProjectDependencyObservation { name, root: path });
+        }
+        result.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(result)
+    }
+}
+
+/// Decode host-owned manifest fields from a parsed TOML map. TOML syntax and
+/// semantic provider decisions remain in Birnam; this only validates the
+/// adapter's required value shapes and defaults.
+///
+/// # Safety
+///
+/// `api` and `parsed` must belong to the same live runtime, and all synchronous
+/// sends must occur on the floor owner thread with a live GC anchor.
+pub unsafe fn decode_project_manifest(
+    api: &IdApi,
+    parsed: birnam_abi::Oop,
+) -> Result<ProjectManifestObservation, ProjectManifestDecodeError> {
+    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    if parsed == api.nilObj || unsafe { (api.vtableOf)(parsed) } != decoder.map_vt {
+        return Err(ProjectManifestDecodeError::NotMap);
+    }
+    let name_value = unsafe { decoder.at(parsed, "name")? };
+    let name = if name_value == api.nilObj {
+        String::new()
+    } else {
+        unsafe { decoder.string(name_value, "name")? }
+    };
+    let main_value = unsafe { decoder.at(parsed, "main")? };
+    let main = if main_value == api.nilObj {
+        None
+    } else {
+        let main = unsafe { decoder.string(main_value, "main")? };
+        if Path::new(&main).is_absolute() {
+            return Err(ProjectManifestDecodeError::InvalidPath("main"));
+        }
+        Some(main)
+    };
+    let roots_value = unsafe { decoder.at(parsed, "source_roots")? };
+    let source_roots = if roots_value == api.nilObj {
+        vec!["src".to_owned()]
+    } else {
+        unsafe { decoder.strings(roots_value, "source_roots", false)? }
+    };
+    if source_roots.is_empty() {
+        return Err(ProjectManifestDecodeError::EmptyValue("source_roots"));
+    }
+    if source_roots
+        .iter()
+        .any(|root| Path::new(root).is_absolute())
+    {
+        return Err(ProjectManifestDecodeError::InvalidPath("source_roots"));
+    }
+    let loads = unsafe { decoder.strings(decoder.at(parsed, "load")?, "load", true)? };
+    let run = unsafe { decoder.run(decoder.at(parsed, "run")?)? };
+    let modules = unsafe { decoder.modules(decoder.at(parsed, "module")?)? };
+    let dependencies = unsafe { decoder.dependencies(decoder.at(parsed, "dependencies")?)? };
+    Ok(ProjectManifestObservation {
+        name,
+        main,
+        source_roots,
+        loads,
+        modules,
+        dependencies,
+        run,
     })
 }
 
