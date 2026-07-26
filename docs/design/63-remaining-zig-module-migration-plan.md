@@ -2540,3 +2540,15 @@ explicitly so the recovery surface cannot silently shrink.
 - The rejection target remains pinned at `1/1` and the focused aggregate stays
   `86/86`; the full R6 gate remains green with the unchanged two benchmark
   allowances.
+
+### R6.35 Rust Image zero-arity ABI hardening checkpoint (2026-07-26)
+
+- Rust Image now routes every zero-argument cross-floor send through a non-null
+  empty argument buffer. This preserves the Zig primitive method contract even
+  when the C ABI count is zero, while retaining the existing null-zero contract
+  for callers that use the public IdApi directly.
+- Rust Image shell remains `2/2`, mapped Rust Image-to-Rust Codegen remains
+  `1/1`, and the Rust Image crate remains green at `21/21` unit tests with
+  clippy warnings denied. The focused R6 aggregate and two benchmark allowances
+  remain unchanged at `86/86`, `query.aggregate +5.8%`, and
+  `compile.stage1-stdlib +11.9%`.

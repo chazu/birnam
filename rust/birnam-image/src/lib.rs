@@ -1311,6 +1311,14 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
     unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
 }
 
+unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
+    // Keep the argument pointer non-null even for a zero-argument send. Zig
+    // primitive methods use a non-null slice pointer in their native signature;
+    // passing an empty Rust slice preserves that contract across the C ABI.
+    let arguments: [Oop; 0] = [];
+    unsafe { (api.send)(receiver, intern(api, selector), arguments.as_ptr(), 0) }
+}
+
 unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
     if pointer.is_null() {
         return None;
@@ -1402,14 +1410,7 @@ unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST
     if codegen.is_null() || codegen == api.nilObj {
         return None;
     }
-    let digest = unsafe {
-        (api.send)(
-            codegen,
-            intern(api, b"currentGenerationDigest\0"),
-            ptr::null(),
-            0,
-        )
-    };
+    let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
     if digest.is_null()
         || digest == api.nilObj
         || unsafe { (api.vtableOf)(digest) } != api.string_vt
@@ -1611,9 +1612,7 @@ unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
     {
         return api.nilObj;
     }
-    if unsafe { (api.send)(codegen, intern(api, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY), ptr::null(), 0) }
-        != api.trueObj
-    {
+    if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) } != api.trueObj {
         return api.nilObj;
     }
 
@@ -1629,14 +1628,7 @@ unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
         if rebuild || !features.has_code {
             return Ok(api.falseObj);
         }
-        let derived = unsafe {
-            (api.send)(
-                codegen,
-                intern(api, RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS),
-                ptr::null(),
-                0,
-            )
-        };
+        let derived = unsafe { send0(api, codegen, RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS) };
         if derived == api.nilObj {
             return Err(());
         }
@@ -1646,14 +1638,7 @@ unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
         }
         Ok(api.trueObj)
     })();
-    let ended = unsafe {
-        (api.send)(
-            codegen,
-            intern(api, RUST_CODEGEN_END_IMAGE_RECOVERY),
-            ptr::null(),
-            0,
-        )
-    };
+    let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
     if ended != api.trueObj {
         return api.nilObj;
     }
@@ -1687,7 +1672,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
             writer_ok: false,
         };
     }
-    let basis_object = unsafe { (api.send)(store, intern(api, b"basis\0"), ptr::null(), 0) };
+    let basis_object = unsafe { send0(api, store, b"basis\0") };
     let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
         unsafe { (api.smallIntValue)(basis_object) }.max(0) as u64
     } else {
