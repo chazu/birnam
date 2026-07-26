@@ -36,7 +36,7 @@ the existing contracts and then makes the ownership metadata honest.
 | Collection | Rust `libbirnam_id_collection.dylib` | `libbirnam_id_collection_zig.dylib` | Retain both |
 | Error | Rust `libbirnam_id_error.dylib` | `libbirnam_id_error_zig.dylib` | Retain both |
 | Isolate | Rust `libbirnam_id_isolate.dylib` | `libbirnam_id_isolate_zig.dylib` | Retain both; wire-v1 remains frozen |
-| Relational | Rust `libbirnam_id_relational.dylib` | `libbirnam_id_relational_zig.dylib` | Retain both; Store remains derived |
+| Relational | Rust `libbirnam_id_relational.dylib` | `libbirnam_id_relational_zig.dylib` | Retain both; Store owns facts, MOP mirror is derived |
 | Alien | Rust `libbirnam_id_alien.dylib` | `libbirnam_id_alien_zig.dylib` | Retain both; TCC and callback ABI remain frozen |
 | Image | Rust `libbirnam_id_image.dylib` | `libbirnam_id_image_zig.dylib` | Retain both; frozen images stay compatibility evidence |
 | Codegen | Zig `libbirnam_id_codegen.dylib` | no separate Zig rollback name yet | Port Rust, then switch canonical name; install Zig as explicit rollback |
@@ -45,9 +45,13 @@ the existing contracts and then makes the ownership metadata honest.
 | Test/ABI helpers | Zig tests and probes under `src/id` | checked-in fixtures | Retain; they are evidence, not runtime authorities |
 
 The source inventory in `docs/design/64-remaining-module-contract-inventory.md`
-is the contract reference, but its historical status fields must be refreshed
-by Phase C0 below. The runtime may select only installed dynamic libraries by
-their declared canonical or explicit fixture names.
+is the contract reference, but its historical execution record is immutable.
+Phase C0 appends a dated current-owner projection and updates only explicitly
+current fields. `abi/remaining-rungs-v1.json` is a residual-rung diagnostic
+manifest, not a complete runtime dependency graph; adding Codegen requires a
+schema/scope note and a Codegen row before Prelude in `load_order`. The runtime
+may select only installed dynamic libraries by their declared canonical or
+explicit fixture names.
 
 ## 3. Target ownership and dependency graph
 
@@ -68,11 +72,13 @@ Rust IdApi floor
        (already canonical) (already canonical) (already canonical)
 ```
 
-Every edge is a runtime `dlopen`/`dlsym` dependency with one `module_init`
-call. The Rust Codegen crate may use pure Rust helpers internally, but its
-production surface is still one dynamic `module_init` owner named
-`libbirnam_id_codegen.dylib`. It must not statically link a second floor,
-Store, PEG, TCC, Image, or host.
+Each rung edge is satisfied by the ordered dynamic loader and one
+`module_init` call; once loaded, rungs communicate through imported IdApi
+objects and messages. Image, Alien, and the host consume Codegen services but
+do not become libraries that Codegen loads. The Rust Codegen crate may use
+pure Rust helpers internally, but its production surface is still one dynamic
+`module_init` owner named `libbirnam_id_codegen.dylib`. It must not statically
+link a second floor, Store, PEG, TCC, Image, or host.
 
 ## 4. Invariants and non-negotiable design decisions
 
@@ -88,15 +94,19 @@ Store, PEG, TCC, Image, or host.
    exported names, generated-C helper symbols, image-v4 framing, and
    Isolate wire-v1 are unchanged. Any necessary ABI change is a separate
    manifest/fixture decision, not a Codegen implementation detail.
-4. **Toolchain bootstrap is not a runtime invariant.** Rust Codegen may be
-   bootstrapped from the existing Zig toolchain or Birnam source. It need not
-   compile itself before it can be selected, provided the installed artifact
-   is fully self-contained and the source/bootstrap gates remain green.
-5. **MOP consistency law.** The object dictionary is authoritative. Store is a
-   derived mirror for facts/observation; Codegen's observer and authorizer must
-   never create a second method truth. Exact, `#primitive`, and absent mirror
-   states, ordering, inheritance, backfill, drift refusal, and rollback all
-   remain observable.
+4. **Toolchain bootstrap is not a self-hosting requirement, but cold
+   independence is.** Rust Codegen need not compile itself before it can be
+   selected, and the implementation may use a compiler/bootstrap language.
+   Before canonical selection, however, two independent clean builds must
+   compile the complete Birnam source closure from Rust PEG/Lang/TCC/Codegen
+   sources without a Zig compiler implementation or prebuilt Birnam artifact.
+5. **MOP consistency law.** The object dictionary is authoritative for method
+   lookup. Store owns its fact timeline, while only the Store's MOP method
+   mirror is derived from that dictionary; relational queries consume Store
+   facts and do not become a second method authority. Codegen's observer and
+   authorizer must never create a second method truth. Exact, `#primitive`, and
+   absent mirror states, ordering, inheritance, backfill, drift refusal, and
+   rollback all remain observable.
 6. **GC and re-entry.** No Rust borrow, mutex guard, temporary pointer, or
    `&mut` runtime reference crosses `send`, a finalizer, TCC, `dlopen`, or a
    callback. Callback state is rooted for the synchronous dynamic extent;
@@ -119,33 +129,50 @@ Store, PEG, TCC, Image, or host.
     must not recreate that policy in a native vtable or silently change the
     message protocol.
 
-## 5. Phase C0 — reconcile owners and rollback metadata (first commit)
+## 5. Phase C0 — reconcile owners and rollback metadata
 
-This is a metadata/selection slice; it must not change runtime behavior.
+C0 is deliberately split. The first slice only installs explicit fixtures and
+keeps Zig Codegen canonical. Rust Codegen is not selectable until C1 proves the
+canonical family contract.
 
-1. Update `abi/remaining-rungs-v1.json` and Design 64 status fields to the
-   audited state above. Add a Codegen row that distinguishes canonical Zig,
-   Rust opt-in, dependencies, selectors, and the explicit Zig rollback name.
-2. Add `-Dcodegen-impl=zig|rust` to `build.zig`. Always install
-   `libbirnam_id_codegen_zig.dylib`, `libbirnam_id_codegen_rust.dylib`, and
-   exactly one selected `libbirnam_id_codegen.dylib`.
-3. Make the PEG selection install its explicit Zig fixture whenever Rust is
+### C0a — metadata and fixture closure (first commit)
+
+1. Update `abi/remaining-rungs-v1.json` with a schema/scope note for Codegen,
+   place Codegen before Prelude in `load_order`, and add its canonical Zig,
+   Rust fixture, explicit Zig fixture, dependencies, identity, and selectors.
+   Append a dated current-owner projection to Design 64; do not rewrite its
+   historical execution record.
+2. Add `-Dcodegen-impl=zig|rust` to `build.zig`, but make `rust` fail closed
+   as `codegen-impl=rust is not yet selectable` until C1's gate is enabled.
+   Always install `libbirnam_id_codegen_zig.dylib` and the current opt-in
+   `libbirnam_id_codegen_rust.dylib`; keep canonical
+   `libbirnam_id_codegen.dylib` on Zig.
+3. Make PEG selection install its explicit Zig fixture whenever Rust is
    canonical, so rollback paths are symmetric and do not depend on a checkout
    rebuild. Keep all other existing fixture names unchanged.
-4. Extend `test-remaining-rung-manifest`, `test-native-rung-selection`, and the
-   clean-prefix smoke to assert canonical/fixture identity, digest, install
-   root, and the absence of static/runtime fallback paths.
-5. Record the selected owner and dylib digest in the plan. Commit this phase as
-   `build: make residual owner and rollback metadata explicit`.
+4. Extend the manifest, native-rung selection, install/relocation, and clean
+   prefix checks to assert permitted Zig selection, refused Rust selection,
+   exact canonical/fixture identities and digests, install root, and absence
+   of static/runtime fallback paths.
+5. Commit as `build: make residual owner and rollback metadata explicit`.
 
-Required verification before commit:
+Required C0a verification:
 
 ```text
 zig fmt --check build.zig
 bash -n scripts/native-rung-selection.sh scripts/r6-acceptance.sh
 zig build test-remaining-rung-manifest test-native-rung-selection \
-  test-remaining-rung-clean-prefix -Dhost-impl=rust
+  test-remaining-rung-clean-prefix test-install \
+  -Dhost-impl=rust -Dcodegen-impl=zig
+zig build install -Dhost-impl=rust -Dcodegen-impl=rust  # must fail closed
 ```
+
+### C0b — exact contract gate (after C1.1, before any Rust selection)
+
+Only after the exact Codegen/Reflect selector, export, and layout diff in C1.1
+is green may the build option permit `-Dcodegen-impl=rust`. Until then,
+`-Dcodegen-impl=rust` must remain a deliberate, tested refusal rather than a
+partially working Rust authority.
 
 ## 6. Phase C1 — freeze the Codegen replacement contract
 
@@ -154,12 +181,19 @@ Each numbered item is a separate commit.
 
 ### C1.1 Selector/export/layout manifest
 
-Extract the live `CodegenVt`, `Codegen` family, `lastError`, lifecycle phase,
-generation, candidate, source, and image-recovery selectors from
-`src/id/codegen.zig`. Assert exact names, arities, nil/error behavior, payload
-shape, export identity, and `module_init` idempotence through both Zig and Rust
-fixtures. Include negative probes for null args, duplicate generations,
-missing Store/PEG/TCC, and method-authority drift.
+Extract the frozen `CodegenVt` (47 selectors), `ReflectVt` (12 selectors),
+family payloads, `lastError`, lifecycle phase, generation, candidate, source,
+and image-recovery selectors from `src/id/codegen.zig` and
+`src/id/fixtures/codegen-authority-v1.json`. Add an automated exact-set diff:
+missing, extra, renamed, and wrong-arity selectors fail closed. The current
+Rust runtime's `RustCodegen`/`RustCodegenVt` names and Rust-only direct methods
+are not accepted as canonical aliases. Include `discardCandidate:` and
+`releaseCandidate:` and every frozen Reflect family/selector in the required
+set, while keeping Rust-only helpers private or behind test-only names.
+Assert nil/error behavior, payload shape, export identity, and
+`module_init` idempotence through both Zig and Rust fixtures. Include negative
+probes for null args, duplicate generations, missing Store/PEG/TCC, and
+method-authority drift.
 
 ### C1.2 Pure emitter parity
 
@@ -172,19 +206,21 @@ bounded depth and source-size limits.
 
 ### C1.3 Runtime IdApi adapter
 
-Move the full RustCodegen runtime surface from the opt-in emitter to the frozen
-`Codegen` family name. Implement `compile:`, `compile:output:`,
-`compile:output:from:`, `compile:output:root:`, `eval*`, `load:`, metadata/source
-recording, and `lastError` through the existing PEG/Lang/TCC dynamic modules.
-Keep all temporary Oops rooted and release every Rust lock before an IdApi send.
+Move the complete Rust runtime to the frozen `Codegen` and `Reflect` family
+names, with the exact C1.1 selector sets. Implement the frozen compile/eval,
+metadata/source, candidate, lifecycle, and image-recovery protocols through the
+existing PEG/Lang/TCC dynamic modules; do not list a Rust-only `emit:` or a
+non-frozen `compile:` alias as canonical. Keep all temporary Oops rooted and
+release every Rust lock before an IdApi send.
 
 ### C1.4 Candidate and lifecycle parity
 
 Port inspect/map/prepare/commit/discard/reconcile, phase transitions,
 generation projections, observer/authorizer callbacks, and rollback. Prove
-atomic activation and exact Store-derived MOP facts with the existing Zig Store
+atomic activation and exact Store MOP-mirror facts with the existing Zig Store
 and Rust Store fixtures. The Rust implementation must refuse inherited drift
-and preserve the predecessor on rejected rollback.
+and preserve the predecessor on rejected rollback without treating the Store
+fact timeline as the method dictionary.
 
 ### C1.5 Generated artifact/TCC boundary
 
@@ -208,6 +244,12 @@ identity and behavior, not by private Rust representation.
 4. Add a Rust-host smoke that proves no host helper silently loads the Zig
    Codegen fixture. Keep the explicit Zig oracle path for frozen compatibility
    and operator rollback.
+5. Before C3, run two independent clean archive/prefix builds that compile the
+   complete Birnam source closure using Rust PEG, Lang, TCC, and Codegen. Each
+   run must begin without a prebuilt Birnam binary, image, compiled module, or
+   Zig compiler implementation, and must pass source bootstrap, project,
+   image, and relocation checks. Rust Codegen need not self-host, but the
+   resulting complete compiler must be independent of the Zig implementation.
 
 ## 8. Phase C3 — canonical switch and observation window
 
@@ -216,12 +258,14 @@ identity and behavior, not by private Rust representation.
 2. Run focused Codegen, Store/MOP, Image, TCC, Alien, project, LSP, and
    relocation suites in Debug and ReleaseSafe. Run `BIRNAM_R6_ISOLATE_IMPL=rust
    mise run r6-acceptance` and record exact counts and comparator output.
-3. Run a second prefix/cwd and a packaged distribution smoke. Verify the
-   canonical Rust Codegen digest and the explicit Zig rollback digest in every
-   receipt. No benchmark allowance is admitted without a dated, named
-   comparator decision.
-4. Observe one clean release/rollback cycle before changing distribution
-   defaults. Do not delete Zig source or fixtures in this phase.
+3. Run a second prefix/cwd and, after the canonical switch, build and execute
+   a packaged distribution whose `bin/birnam` actually loads Rust Codegen.
+   Verify the canonical Rust Codegen digest and the explicit Zig rollback
+   digest in every receipt. No benchmark allowance is admitted without a
+   dated, named comparator decision.
+4. Observe one clean Rust-Codegen release/rollback cycle before changing
+   distribution defaults. A distribution containing only Zig Codegen is not
+   evidence for this plan. Do not delete Zig source or fixtures in this phase.
 
 ## 9. Phase C4 — host/helper disposition
 
@@ -232,15 +276,19 @@ After C3 is stable, classify every remaining Zig file by runtime role:
 - `project.zig`, `project_build.zig`, `project_check.zig`, and
   `runtime_resources.zig`: Rust host owns filesystem/process/resource
   observation; Birnam `project-policy.birnam`, TOML, Module, and Config remain
-  the language-level policy surface. Remove a Zig helper only after a clean
-  archive proves the Rust host does not load it.
-- `artifact_preflight*.zig`, `gc_baseline.zig`, `membership_bench.zig`, ABI
-  probes, and `*_test.zig`: retain as test/evidence tools unless a replacement
-  test proves identical failure behavior. They are not runtime migration
-  targets.
+  the language-level policy surface. These helpers remain real dependencies of
+  the Zig oracle/build until a clean archive proves the Rust host does not load
+  them; remove one only in a separately reviewed retirement slice.
+- `artifact_preflight.zig`: retained as a real Zig-oracle/build dependency,
+  not misclassified as a test-only fixture. Its sentinel and focused tests are
+  evidence, while the Rust host's artifact path is the canonical production
+  observer. `artifact_preflight_sentinel.zig`, `gc_baseline.zig`,
+  `membership_bench.zig`, ABI probes, and `*_test.zig` remain evidence tools
+  unless a replacement test proves identical failure behavior.
 - `id.zig`, `idapi.zig`, and the Zig rung sources: retain as the rollback/oracle
   implementation and contract comparator until a separately approved release
-  removes them. Do not weaken the old-binary, image, wire, or generated-C
+  removes them. `idapi.zig` is also a build/oracle dependency, not merely a
+  test helper. Do not weaken the old-binary, image, wire, or generated-C
   fixtures.
 
 Any file proposed for deletion requires a separate decision record naming its
@@ -254,6 +302,7 @@ processes and prefixes:
 | Cell | Required evidence |
 | --- | --- |
 | ABI | frozen IdApi manifest, exports, layouts, `module_init` once |
+| Codegen/Reflect | exact frozen selector/export/layout set; no Rust-only canonical aliases |
 | emitter | byte/diagnostic parity and bounded hostile corpus |
 | MOP | dictionary authority, derived Store mirror, observer/authorizer, drift refusal |
 | lifecycle | candidate inspect/map/activate/rollback with no partial mutation |
@@ -261,6 +310,7 @@ processes and prefixes:
 | Image | v4 2×2 save/map/rebuild, corruption rejection, frozen image |
 | host | project/check/build/run/install/test/LSP, source-free relocation |
 | distribution | packaged Rust canonical and explicit Zig rollback oracle |
+| bootstrap | two clean, prebuilt-artifact-free Rust PEG/Lang/TCC/Codegen source builds |
 | performance | existing comparator; no unrecorded allowances |
 
 The final gate remains `zig build verify -Doptimize=ReleaseSafe --summary all`
@@ -280,10 +330,28 @@ change an invariant or silently route through Zig.
 
 ## 12. Commit discipline and stop conditions
 
+### Adversarial review 1 (2026-07-26)
+
+The first adversarial review returned **NO-GO** and identified these concrete
+risks: the opt-in Rust dylib currently exports `RustCodegen` rather than the
+frozen `Codegen` family; its selector set lacks the frozen Reflect family and
+candidate operations while exposing Rust-only direct methods; the original
+bootstrap wording weakened the independent cold-compiler gate; the dependency
+graph overstated `dlopen` edges; the residual manifest/history and PEG rollback
+path were underspecified; `artifact_preflight.zig` and `idapi.zig` were
+misclassified as evidence-only; and the Store/MOP law needed to distinguish
+Store facts from its derived method mirror.
+
+This revision splits C0 into a non-selecting fixture/metadata slice and a
+post-C1 selection gate, requires an automated exact Codegen/Reflect set diff,
+requires two clean Rust source-closure bootstrap builds, corrects the graph,
+manifest, helper, Store/MOP, PEG, and packaged-observation language, and adds
+the missing acceptance rows. No implementation slice may begin until a
+follow-up review marks these corrections **GO**.
+
 Every numbered implementation item lands as one small commit after its focused
 tests pass. Before each ownership switch, inspect the install tree, run the
 cross-floor and forced-GC tests, run optimized `verify`, run serialized R6, and
 run from a second prefix/cwd. Stop for human decision only if the invariant
 evidence cannot distinguish a safe implementation from a change to a frozen
 contract; otherwise resolve by the rules above.
-
