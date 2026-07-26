@@ -1208,6 +1208,7 @@ pub enum ReplError {
     Module(RuntimeModuleError),
     MissingRepl,
     MissingDispatchGeneration,
+    MissingEvolutionIntent,
     InitializationRejected,
     GenerationRejected,
     Phase(PhaseHookError),
@@ -1461,6 +1462,44 @@ impl HostRuntime {
         } else {
             Err(ReplError::Phase(PhaseHookError::InvalidPhase))
         }
+    }
+
+    /// Run the complete terminal REPL loop until `hostStep` reports `done`.
+    /// Evolution intents are fulfilled only inside the Codegen quiescence
+    /// phase, and result presentation remains delegated to Repl.
+    ///
+    /// # Safety
+    ///
+    /// `session` must belong to this runtime; the caller must have established
+    /// a live GC anchor and remain on the floor owner thread.
+    pub unsafe fn run_repl(&self, session: &mut ReplSession) -> Result<(), ReplError> {
+        let api = self.stack.api();
+        let Some(intents) = (unsafe { global_named(api, "EvolutionIntent") }) else {
+            return Err(ReplError::MissingEvolutionIntent);
+        };
+        let intent_selector = unsafe { (api.intern)(c"isIntent:".as_ptr()) };
+        let fulfill_selector = unsafe { (api.intern)(c"fulfill".as_ptr()) };
+        let print_selector = unsafe { (api.intern)(c"printHostResult:".as_ptr()) };
+        loop {
+            match unsafe { self.repl_step(session) }? {
+                ReplStep::Done => break,
+                ReplStep::Other => {}
+                ReplStep::Evaluated(mut value) => {
+                    let is_intent =
+                        unsafe { (api.send)(intents, intent_selector, [value].as_ptr(), 1) }
+                            == api.trueObj;
+                    if is_intent {
+                        unsafe { self.begin_quiescence(session) }?;
+                        value = unsafe { (api.send)(value, fulfill_selector, std::ptr::null(), 0) };
+                        unsafe { self.end_quiescence(session) }?;
+                    }
+                    unsafe { (api.send)(session.repl, print_selector, [value].as_ptr(), 1) };
+                }
+            }
+            unsafe { self.drain_isolates() };
+        }
+        unsafe { self.finish_repl(session) };
+        Ok(())
     }
 
     /// Run one isolate worker over an inherited channel descriptor. The driver

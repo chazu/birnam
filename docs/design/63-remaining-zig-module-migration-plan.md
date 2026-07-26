@@ -2711,6 +2711,16 @@ allowances.
 - Thirty-three offline Rust tests pass with warnings denied. Interactive loop
   orchestration and CLI output remain later executable seams.
 
+### R7.27 Rust host REPL driver checkpoint (2026-07-26)
+
+- `HostRuntime::run_repl` now completes the host loop: it drains isolates,
+  recognizes `EvolutionIntent`, brackets fulfillment with begin/end quiescence,
+  presents values through `printHostResult:`, and finishes with `consoleDone`.
+- The loop never reimplements input parsing or output formatting; Repl remains
+  the language-owned authority and Codegen remains the phase authority.
+- Thirty-three offline Rust tests pass with warnings denied. Project-aware REPL
+  configuration, socket mode, and CLI dispatch remain later seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
