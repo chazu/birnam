@@ -196,6 +196,28 @@ fn initializeAuthorityGeneration(api: *idapi.IdApi) !void {
     try std.testing.expect(initialized != api.nilObj);
 }
 
+fn initializeRustAuthorityGeneration(api: *idapi.IdApi) !void {
+    const rust_codegen = api.import("RustCodegen") orelse return error.RustCodegenMissing;
+    const sources = [_][]const u8{ MODULES_SRC, STDLIB_SRC, COMPILED_UNIT_SRC, AUTHORITY_FIXTURE_SRC };
+    const names = [_][*:0]const u8{ "modules", "stdlib", "compiledUnit", "rustImageAuthority" };
+    for (sources, names) |source, name| {
+        const source_object = api.mkString(source.ptr, source.len);
+        const staged = api.send(
+            rust_codegen,
+            api.intern("recordModuleSource:named:"),
+            &.{ source_object, api.intern(name) },
+            2,
+        );
+        try std.testing.expect(staged != api.nilObj);
+        const eval_selector: Oop = if (std.mem.eql(u8, std.mem.span(name), "rustImageAuthority"))
+            api.intern("evalPersisting:")
+        else
+            api.intern("eval:");
+        const result = api.send(rust_codegen, eval_selector, &.{source_object}, 1);
+        try std.testing.expect(result != api.nilObj);
+    }
+}
+
 fn pathExists(path: []const u8) bool {
     std.fs.cwd().access(path, .{}) catch return false;
     return true;
@@ -574,6 +596,41 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     );
     try std.testing.expect(api.isSmallInt(rebuilt_fact) != 0);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(rebuilt_fact));
+}
+
+test "Rust Codegen bootstraps and retains its durable generation authority" {
+    const api = setupWithRustCodegen();
+    try initializeRustAuthorityGeneration(api);
+
+    const rust_codegen = api.import("RustCodegen") orelse return error.RustCodegenMissing;
+    const runtime_store = api.import("Store") orelse return error.StoreMissing;
+    const globals = api.import("Globals") orelse return error.GlobalsMissing;
+    const generations = send(api, globals, "at:", &.{api.intern("DispatchGeneration")});
+    try std.testing.expect(generations != api.nilObj);
+
+    const initialized = send(api, rust_codegen, "initializeCurrentGeneration", &.{});
+    try std.testing.expect(initialized != api.nilObj);
+    try std.testing.expectEqual(
+        initialized,
+        send(api, runtime_store, "currentValue:attr:", &.{ api.intern("dispatch"), api.intern("activeGeneration") }),
+    );
+    try std.testing.expectEqual(initialized, send(api, generations, "current", &.{}));
+
+    const digest = send(api, rust_codegen, "currentGenerationDigest", &.{});
+    try std.testing.expectEqual(api.string_vt, api.vtableOf(digest));
+    var digest_len: usize = 0;
+    const digest_bytes = api.stringBytes(digest, &digest_len);
+    try std.testing.expectEqual(@as(usize, 64), digest_len);
+    const recorded = send(api, runtime_store, "currentValue:attr:", &.{ initialized, api.intern("baseDigest") });
+    var recorded_len: usize = 0;
+    const recorded_bytes = api.stringBytes(recorded, &recorded_len);
+    try std.testing.expectEqual(@as(usize, 64), recorded_len);
+    try std.testing.expectEqualSlices(u8, digest_bytes[0..digest_len], recorded_bytes[0..recorded_len]);
+
+    // Re-entry is idempotent: an existing canonical durable generation is
+    // returned, never replaced by a second Rust-side projection object.
+    try std.testing.expectEqual(initialized, send(api, rust_codegen, "initializeCurrentGeneration", &.{}));
+    try std.testing.expectEqual(initialized, send(api, generations, "current", &.{}));
 }
 
 test "Rust Image reads a Zig-authored v4 data image" {

@@ -61,6 +61,7 @@ const RECORD_MODULE_SOURCE_SELECTOR: &[u8] = b"recordModuleSource:named:\0";
 const MODULE_SOURCE_FOR_SELECTOR: &[u8] = b"moduleSourceFor:\0";
 const SEAL_INITIAL_GENERATION_SELECTOR: &[u8] = b"sealInitialGeneration\0";
 const INITIAL_GENERATION_PROJECTION_SELECTOR: &[u8] = b"initialGenerationProjection\0";
+const INITIALIZE_CURRENT_GENERATION_SELECTOR: &[u8] = b"initializeCurrentGeneration\0";
 const SUCCESSOR_GENERATION_PROJECTION_SELECTOR: &[u8] =
     b"successorGenerationProjection:replacing:with:unit:\0";
 const GENERATION_SOURCES_SELECTOR: &[u8] = b"generationSources\0";
@@ -120,6 +121,8 @@ const MODULE_NAME: &[u8] = b"Module\0";
 const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
 const DISPATCH_NAME: &[u8] = b"dispatch\0";
 const ACTIVE_GENERATION_NAME: &[u8] = b"activeGeneration\0";
+const DISPATCH_GENERATION_NAME: &[u8] = b"DispatchGeneration\0";
+const FROM_PROJECTION_SELECTOR: &[u8] = b"fromProjection:predecessor:delta:\0";
 const GLOBALS_ENTITY_NAME: &[u8] = b"__globals__\0";
 const GLOBAL_SOURCES_ENTITY_NAME: &[u8] = b"__globalsrc__\0";
 const MAX_CST_DEPTH: usize = 4096;
@@ -1718,6 +1721,141 @@ unsafe extern "C" fn rust_codegen_seal_initial_generation(
         return api.trueObj;
     }
     api.nilObj
+}
+
+/// Establish the first durable DispatchGeneration from the Rust-owned source
+/// projection.
+///
+/// The ordinary `DispatchGeneration>>initializeCurrent` method is authored in
+/// Birnam and intentionally asks the canonical `Codegen` global for its
+/// projection. That is correct for the mixed Zig-authority host, but it cannot
+/// bootstrap a Rust-only Codegen authority because `RustCodegen` is exposed
+/// under its explicit opt-in name until the canonical switch. This selector is
+/// the Rust-side equivalent for that isolated authority boundary: it creates G0
+/// only when Store has no active generation, and it refuses to overwrite or
+/// reinterpret an existing durable generation.
+unsafe extern "C" fn rust_codegen_initialize_current_generation(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen initializeCurrentGeneration received invalid arguments")
+    });
+    if !values.is_empty() {
+        abort("RustCodegen initializeCurrentGeneration expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+
+    let durable = unsafe { durable_current_generation(api) };
+    if !durable.is_null() && durable != api.nilObj {
+        if !unsafe { durable_generation_is_canonical(api, durable) } {
+            note_error(b"RustCodegen durable generation is not canonical");
+            return api.nilObj;
+        }
+        let projection = unsafe {
+            send(
+                api,
+                runtime.rust_codegen as Oop,
+                INITIAL_GENERATION_PROJECTION_SELECTOR,
+                &[],
+            )
+        };
+        let projection_digest = unsafe { vector_item(api, projection, 2) };
+        let durable_digest = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                CURRENT_VALUE_SELECTOR,
+                &[durable, intern(api, b"baseDigest\0")],
+            )
+        };
+        if unsafe { string_bytes(api, projection_digest) }
+            != unsafe { string_bytes(api, durable_digest) }
+        {
+            note_error(b"RustCodegen durable generation does not match its projection");
+            return api.nilObj;
+        }
+        ACTIVE_GENERATION.store(durable as usize, Ordering::Release);
+        return durable;
+    }
+
+    let sealed = INITIAL_GENERATION_SEALED
+        .lock()
+        .map(|value| *value)
+        .unwrap_or(true);
+    if sealed {
+        note_error(b"RustCodegen initial generation is already sealed");
+        return api.nilObj;
+    }
+
+    let projection = unsafe {
+        send(
+            api,
+            runtime.rust_codegen as Oop,
+            INITIAL_GENERATION_PROJECTION_SELECTOR,
+            &[],
+        )
+    };
+    if projection.is_null() || projection == api.nilObj {
+        note_error(b"RustCodegen initial generation projection is unavailable");
+        return api.nilObj;
+    }
+    let globals = runtime.globals as Oop;
+    if globals.is_null() || globals == api.nilObj {
+        note_error(b"RustCodegen Globals authority is unavailable");
+        return api.nilObj;
+    }
+    let generation_proto = unsafe {
+        send(
+            api,
+            globals,
+            GLOBAL_AT_SELECTOR,
+            &[intern(api, DISPATCH_GENERATION_NAME)],
+        )
+    };
+    if generation_proto.is_null() || generation_proto == api.nilObj {
+        note_error(b"RustCodegen DispatchGeneration family is unavailable");
+        return api.nilObj;
+    }
+    let generation = unsafe { send0(api, generation_proto, b"clone\0") };
+    if generation.is_null() || generation == api.nilObj {
+        note_error(b"RustCodegen could not allocate initial generation");
+        return api.nilObj;
+    }
+    let initialized = unsafe {
+        send(
+            api,
+            generation,
+            FROM_PROJECTION_SELECTOR,
+            &[projection, api.nilObj, api.nilObj],
+        )
+    };
+    if initialized.is_null() || initialized == api.nilObj {
+        note_error(b"RustCodegen could not materialize initial generation");
+        return api.nilObj;
+    }
+    if !unsafe { set_durable_current_generation(api, initialized) } {
+        note_error(b"RustCodegen could not publish initial generation");
+        return api.nilObj;
+    }
+    if let Ok(mut sealed) = INITIAL_GENERATION_SEALED.lock() {
+        *sealed = true;
+    } else {
+        note_error(b"RustCodegen initial generation seal is unavailable");
+        return api.nilObj;
+    }
+    ACTIVE_GENERATION.store(initialized as usize, Ordering::Release);
+    initialized
 }
 
 unsafe fn make_vector(api: &IdApi, vector_proto: Oop, items: &[Oop]) -> Oop {
@@ -5938,6 +6076,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, SEAL_INITIAL_GENERATION_SELECTOR),
             rust_codegen_seal_initial_generation,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, INITIALIZE_CURRENT_GENERATION_SELECTOR),
+            rust_codegen_initialize_current_generation,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
