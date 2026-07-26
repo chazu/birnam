@@ -1514,6 +1514,10 @@ fn rust_image_publication_selected() -> bool {
     std::env::var("BIRNAM_RUST_IMAGE_PUBLICATION").ok().as_deref() == Some("rust")
 }
 
+fn rust_image_writer_authority_selected() -> bool {
+    std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY").ok().as_deref() == Some("rust")
+}
+
 unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
     let codegen = unsafe { writer_codegen_authority(api) }?;
     let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
@@ -1908,7 +1912,9 @@ unsafe extern "C" fn system_save_image(self_object: Oop, args: *const Oop, count
         _ => None,
     };
     let publication_requested = rust_image_publication_selected();
-    let published = if publication_requested {
+    let publication_authorized =
+        !publication_requested || rust_image_writer_authority_selected();
+    let published = if publication_requested && publication_authorized {
         composed.as_ref().is_some_and(|bytes| {
             let path_bytes = unsafe { runtime_image_path_bytes(api, path) };
             path_bytes.is_some_and(|path_bytes| {
@@ -1941,6 +1947,8 @@ unsafe extern "C" fn system_save_image(self_object: Oop, args: *const Oop, count
         "Rust Image fact preflight rejected unsupported values"
     } else if !preflight.writer_ok {
         "Rust Image writer rejected preflight payload"
+    } else if publication_requested && !publication_authorized {
+        "Rust Image publication requires explicit Rust writer authority"
     } else if !authority_available {
         "Rust Image generation authority is not available"
     } else if preflight.recoveries_needing_code != 0 && !code_captured {

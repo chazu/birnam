@@ -695,6 +695,34 @@ test "Rust Image publishes a complete image under explicit Rust authority" {
     try std.testing.expectEqual(@as(i64, 818), api.smallIntValue(recovered));
 }
 
+test "Rust Image publication rejects without explicit Rust writer authority" {
+    const api = setupWithZigCodegen();
+    try initializeAuthorityGeneration(api);
+
+    const system = api.import("System") orelse return error.SystemMissing;
+    const report = send(api, system, "imageSaveReport", &.{});
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+    const directory = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(directory);
+    const image_path = try std.fs.path.join(allocator, &.{ directory, "rust-publication-without-authority.image" });
+    defer allocator.free(image_path);
+
+    // Publication is selected by the isolated target, but no Rust writer
+    // authority is selected. The Rust Image shell must not silently publish
+    // through the canonical Zig Codegen/Store pair.
+    try std.testing.expectEqual(api.nilObj, send(api, system, "saveImage:", &.{str(api, image_path)}));
+    try std.testing.expectEqual(api.intern("rejected"), send(api, report, "status", &.{}));
+    var detail_len: usize = 0;
+    const detail = api.stringBytes(send(api, report, "detail", &.{}), &detail_len);
+    try std.testing.expectEqualStrings(
+        "Rust Image publication requires explicit Rust writer authority",
+        detail[0..detail_len],
+    );
+    try std.testing.expect(!pathExists(image_path));
+}
+
 test "Zig Image reads a Rust-authored v4 data image" {
     const api = setupWithRustCodegen();
     try initializeRustAuthorityGeneration(api);
