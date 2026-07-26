@@ -2441,3 +2441,24 @@ R6 focused pin is therefore 84 passing tests, with the shell pin remaining 2.
 The focused pin includes 26 Rust Codegen runtime tests, including the
 factless-image Store-preservation regression; the gate records that count
 explicitly so the recovery surface cannot silently shrink.
+
+### R6.28 Read-only image-code admission checkpoint (2026-07-25)
+
+- The Rust Codegen `preflightImage:` boundary now stages a checksum-verified
+  code unit in a unique temporary dylib, validates the artifact ABI,
+  descriptor, initializer, and entry exports through the existing loader in a
+  non-activating mode, closes the temporary handle, and removes the staged
+  file on every path. Initial-generation sealing does not block this
+  read-only check; no initializer, entry point, live-handle registration, or
+  Store mutation occurs.
+- Rust Image performs that code admission before beginning recovery or
+  replaying facts/heap state. The isolated mapped-image proof now rejects a
+  checksum-valid non-dylib while preserving a Store sentinel and the temp
+  staging-file count, then still proves the valid mapped unit executes and
+  leaves no staged file behind. The focused counts remain `84/84`, Rust Image
+  shell `2/2`, and Rust Codegen runtime `26/26`.
+- `zig fmt --check`, image/codegen Cargo tests and Clippy, both isolated Rust
+  Image targets, and the full `BIRNAM_R6_ISOLATE_IMPL=rust mise run
+  r6-acceptance` gate pass with no new comparator allowance. The only accepted
+  crossings remain `query.aggregate +5.8%` and `compile.stage1-stdlib
+  +11.9%`.

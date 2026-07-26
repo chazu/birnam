@@ -200,6 +200,20 @@ fn pathExists(path: []const u8) bool {
     return true;
 }
 
+fn stagedImageCodeCount() !usize {
+    const temp_root = if (std.posix.getenv("TMPDIR")) |value| value[0..value.len] else "/tmp";
+    var directory = std.fs.openDirAbsolute(temp_root, .{ .iterate = true }) catch return 0;
+    defer directory.close();
+    var entries = directory.iterate();
+    var count: usize = 0;
+    while (try entries.next()) |entry| {
+        if (std.mem.startsWith(u8, entry.name, "birnam-image-code-")) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
 test "Rust Image shell preserves report layout and selector surface" {
     const api = floor.api();
     prelude.bringUp(api);
@@ -424,11 +438,45 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
         }
     }
     std.mem.copyForwards(u8, code_payload.items[8 .. 8 + authority.len], &authority);
+
+    // A checksum-valid but non-dylib code unit must fail during read-only
+    // admission, before image facts or heap state can be replayed. The Rust
+    // Codegen preflight also closes and removes its temporary staging file.
+    const staged_before = try stagedImageCodeCount();
+    var invalid_code_payload: std.ArrayList(u8) = .{};
+    defer invalid_code_payload.deinit(allocator);
+    std.mem.writeInt(u64, &u64_bytes, std.hash.Wyhash.hash(0, "not-a-dylib"), .little);
+    try invalid_code_payload.appendSlice(allocator, &u64_bytes);
+    try invalid_code_payload.appendSlice(allocator, &authority);
+    try invalid_code_payload.appendSlice(allocator, "not-a-dylib");
+    var invalid_image: std.ArrayList(u8) = .{};
+    defer invalid_image.deinit(allocator);
+    try invalid_image.appendSlice(allocator, "BIRNAMIM");
+    std.mem.writeInt(u32, &u32_bytes, 4, .little);
+    try invalid_image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 0x0102_0304, .little);
+    try invalid_image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, imageArchTag(), .little);
+    try invalid_image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, imageAbiHash(), .little);
+    try invalid_image.appendSlice(allocator, &u64_bytes);
+    try appendImageRecord(&invalid_image, allocator, 5, &authority);
+    try appendImageRecord(&invalid_image, allocator, 4, invalid_code_payload.items);
+    const invalid_image_path = try std.fs.path.join(allocator, &.{ directory, "rust-image-invalid-code.image" });
+    defer allocator.free(invalid_image_path);
+    try tmp.dir.writeFile(.{ .sub_path = "rust-image-invalid-code.image", .data = invalid_image.items });
+    const system = api.import("System") orelse return error.SystemMissing;
+    const rejected = send(api, system, "loadImage:", &.{str(api, invalid_image_path)});
+    try std.testing.expect(rejected == api.nilObj);
+    const retained_before = send(api, runtime_store, "currentValue:attr:", &.{ sentinel_entity, sentinel_attribute });
+    try std.testing.expect(api.isSmallInt(retained_before) != 0);
+    try std.testing.expectEqual(@as(i64, 33), api.smallIntValue(retained_before));
+    try std.testing.expectEqual(staged_before, try stagedImageCodeCount());
+
     try appendImageRecord(&image, allocator, 5, &authority);
     try appendImageRecord(&image, allocator, 4, code_payload.items);
     try tmp.dir.writeFile(.{ .sub_path = "rust-image-mapped.image", .data = image.items });
 
-    const system = api.import("System") orelse return error.SystemMissing;
     const loaded = send(api, system, "loadImage:", &.{str(api, image_path)});
     if (loaded != api.trueObj) {
         const diagnostic = send(api, rust_codegen, "lastError", &.{});
@@ -446,6 +494,7 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     const mapped = send(api, globals, "at:", &.{api.intern("rustImageMapped")});
     try std.testing.expect(api.isSmallInt(mapped) != 0);
     try std.testing.expectEqual(@as(i64, 91), api.smallIntValue(mapped));
+    try std.testing.expectEqual(staged_before, try stagedImageCodeCount());
 
     const rebuilt = send(api, system, "loadImage:rebuild:", &.{ str(api, image_path), api.trueObj });
     try std.testing.expect(rebuilt == api.falseObj);

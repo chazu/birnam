@@ -154,6 +154,7 @@ static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static CANDIDATE_PREPARING: AtomicBool = AtomicBool::new(false);
 static HOST_CAPABILITY_LOADING: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
+static IMAGE_CODE_PREFLIGHT: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
@@ -2480,7 +2481,64 @@ unsafe extern "C" fn rust_codegen_preflight_image(
         note_error(b"RustCodegen image preflight authority is stale");
         return api.nilObj;
     }
+    if let Some(code) = image.code()
+        && !unsafe { preflight_image_code_unit(api, code.unit) }
+    {
+        note_error(b"RustCodegen image preflight code unit is invalid");
+        return api.nilObj;
+    }
     api.trueObj
+}
+
+struct StagedImageCode {
+    path: Vec<u8>,
+}
+
+impl Drop for StagedImageCode {
+    fn drop(&mut self) {
+        let path = Path::new(OsStr::from_bytes(&self.path));
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn stage_image_code(unit: &[u8]) -> Result<StagedImageCode, ()> {
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut path = std::env::temp_dir().into_os_string().into_vec();
+    if !path.ends_with(b"/") {
+        path.push(b'/');
+    }
+    path.extend_from_slice(b"birnam-image-code-");
+    path.extend_from_slice(std::process::id().to_string().as_bytes());
+    path.push(b'-');
+    path.extend_from_slice(sequence.to_string().as_bytes());
+    path.extend_from_slice(b".dylib");
+    let path_ref = Path::new(OsStr::from_bytes(&path));
+    let Ok(mut staged) = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path_ref)
+    else {
+        return Err(());
+    };
+    if staged.write_all(unit).is_err() {
+        let _ = fs::remove_file(path_ref);
+        return Err(());
+    }
+    drop(staged);
+    Ok(StagedImageCode { path })
+}
+
+unsafe fn preflight_image_code_unit(api: &IdApi, unit: &[u8]) -> bool {
+    let Ok(staged) = stage_image_code(unit) else {
+        return false;
+    };
+    let mut path = staged.path.clone();
+    path.push(0);
+    let path_object = unsafe { (api.mkString)(path.as_ptr(), path.len() - 1) };
+    IMAGE_CODE_PREFLIGHT.store(true, Ordering::Release);
+    let result = unsafe { rust_codegen_load(runtime().rust_codegen as Oop, &path_object, 1) };
+    IMAGE_CODE_PREFLIGHT.store(false, Ordering::Release);
+    result == api.trueObj
 }
 
 /// Stage the checksum-verified v4 code unit through the existing Rust artifact
@@ -2531,35 +2589,12 @@ unsafe extern "C" fn rust_codegen_map_image_code(
         return api.nilObj;
     };
 
-    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let mut staged_path = std::env::temp_dir().into_os_string().into_vec();
-    if !staged_path.ends_with(b"/") {
-        staged_path.push(b'/');
-    }
-    staged_path.extend_from_slice(b"birnam-image-code-");
-    staged_path.extend_from_slice(std::process::id().to_string().as_bytes());
-    staged_path.push(b'-');
-    staged_path.extend_from_slice(sequence.to_string().as_bytes());
-    staged_path.extend_from_slice(b".dylib");
-    let staged_path_ref = Path::new(OsStr::from_bytes(&staged_path));
-    let Ok(mut staged) = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(staged_path_ref)
-    else {
+    let Ok(staged) = stage_image_code(code.unit) else {
         note_error(b"RustCodegen image code mapping could not stage the unit");
         return api.nilObj;
     };
-    if staged.write_all(code.unit).is_err() {
-        let _ = fs::remove_file(staged_path_ref);
-        note_error(b"RustCodegen image code mapping could not stage the unit");
-        return api.nilObj;
-    }
-    drop(staged);
-    let staged_object = unsafe { (api.mkString)(staged_path.as_ptr(), staged_path.len()) };
-    let result = unsafe { rust_codegen_load(self_object, &staged_object, 1) };
-    let _ = fs::remove_file(staged_path_ref);
-    result
+    let staged_object = unsafe { (api.mkString)(staged.path.as_ptr(), staged.path.len()) };
+    unsafe { rust_codegen_load(self_object, &staged_object, 1) }
 }
 
 unsafe fn materialize_image_field_with_relocations(
@@ -5641,6 +5676,7 @@ unsafe extern "C" fn rust_codegen_load(
         .is_some_and(|sealed| *sealed)
         && !HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
         && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        && !IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire)
     {
         note_error(b"RustCodegen module introduction is not available");
         return api.nilObj;
@@ -5785,6 +5821,10 @@ unsafe extern "C" fn rust_codegen_load(
     // and Method ABI entry point.
     let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
     let entry: Method = unsafe { core::mem::transmute(entry_symbol) };
+    if IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire) {
+        unsafe { dlclose(handle) };
+        return api.trueObj;
+    }
     unsafe { init() };
     if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
         handles.push(handle as usize);
