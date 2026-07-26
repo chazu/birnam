@@ -3334,6 +3334,10 @@ mod tests {
 
     #[test]
     fn worker_parser_preserves_channel_and_named_dispatch_operands() {
+        assert!(selector_has_arity_one("handle:"));
+        assert!(selector_has_arity_one("+"));
+        assert!(!selector_has_arity_one("handle"));
+        assert!(!selector_has_arity_one("a:b:"));
         assert_eq!(
             parse_worker_args(&["saved.image", "Receiver", "handle:", "--channel-fd", "17",])
                 .expect("worker operands parse"),
