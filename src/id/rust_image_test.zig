@@ -439,6 +439,25 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     }
     std.mem.copyForwards(u8, code_payload.items[8 .. 8 + authority.len], &authority);
 
+    var facts_payload: std.ArrayList(u8) = .{};
+    defer facts_payload.deinit(allocator);
+    std.mem.writeInt(u64, &u64_bytes, 1, .little);
+    try facts_payload.appendSlice(allocator, &u64_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try facts_payload.appendSlice(allocator, &u32_bytes);
+    try facts_payload.append(allocator, 0);
+    std.mem.writeInt(u64, &u64_bytes, 1, .little);
+    try facts_payload.appendSlice(allocator, &u64_bytes);
+    for ([_][]const u8{ "rust_image_recovered_entity", "rust_image_recovered_attribute" }) |name| {
+        try facts_payload.append(allocator, 5);
+        std.mem.writeInt(u32, &u32_bytes, @intCast(name.len), .little);
+        try facts_payload.appendSlice(allocator, u32_bytes[0..4]);
+        try facts_payload.appendSlice(allocator, name);
+    }
+    try facts_payload.append(allocator, 3);
+    std.mem.writeInt(i64, &u64_bytes, 42, .little);
+    try facts_payload.appendSlice(allocator, &u64_bytes);
+
     // A checksum-valid but non-dylib code unit must fail during read-only
     // admission, before image facts or heap state can be replayed. The Rust
     // Codegen preflight also closes and removes its temporary staging file.
@@ -474,6 +493,7 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     try std.testing.expectEqual(staged_before, try stagedImageCodeCount());
 
     try appendImageRecord(&image, allocator, 5, &authority);
+    try appendImageRecord(&image, allocator, 2, facts_payload.items);
     try appendImageRecord(&image, allocator, 4, code_payload.items);
     try tmp.dir.writeFile(.{ .sub_path = "rust-image-mapped.image", .data = image.items });
 
@@ -488,8 +508,15 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     }
     try std.testing.expect(loaded == api.trueObj);
     const retained = send(api, runtime_store, "currentValue:attr:", &.{ sentinel_entity, sentinel_attribute });
-    try std.testing.expect(api.isSmallInt(retained) != 0);
-    try std.testing.expectEqual(@as(i64, 33), api.smallIntValue(retained));
+    try std.testing.expect(retained == api.nilObj);
+    const recovered = send(
+        api,
+        runtime_store,
+        "currentValue:attr:",
+        &.{ api.intern("rust_image_recovered_entity"), api.intern("rust_image_recovered_attribute") },
+    );
+    try std.testing.expect(api.isSmallInt(recovered) != 0);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(recovered));
     const globals = api.import("Globals") orelse return error.GlobalsMissing;
     const mapped = send(api, globals, "at:", &.{api.intern("rustImageMapped")});
     try std.testing.expect(api.isSmallInt(mapped) != 0);

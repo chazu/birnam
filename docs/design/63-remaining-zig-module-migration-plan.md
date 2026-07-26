@@ -2462,3 +2462,20 @@ explicitly so the recovery surface cannot silently shrink.
   r6-acceptance` gate pass with no new comparator allowance. The only accepted
   crossings remain `query.aggregate +5.8%` and `compile.stage1-stdlib
   +11.9%`.
+
+### R6.29 Integrated Facts-before-code recovery checkpoint (2026-07-25)
+
+- The isolated Rust Image→Rust Codegen mapped-unit fixture now carries one
+  canonical scalar Facts record alongside its authority and code record. Rust
+  recovery replaces the preexisting Store timeline, rebuilds its derived
+  mirror, and only then maps the admitted compiled unit; the recovered fact and
+  mapped global are both asserted after load.
+- The malformed-code admission case remains first in the same fresh process:
+  it rejects before `imageLoadBegin`, preserves the sentinel fact, and leaves
+  the temporary staging count unchanged. This makes the heap/facts-before-code
+  ordering and rejection-before-mutation contract executable at the Image
+  orchestration boundary.
+- The focused counts remain `84/84`, Rust Image shell `2/2`, mapped Image
+  Codegen `1/1`, and Rust Codegen runtime `26/26`; the complete R6 gate remains
+  green with only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
+  accepted for this snapshot.
