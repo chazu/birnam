@@ -123,8 +123,6 @@ const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
 const STORE_RAW_CURRENT_SELECTOR: &[u8] = b"rawCurrentValue:attr:\0";
-const STORE_ATTR_COUNT_SELECTOR: &[u8] = b"attrCount:\0";
-const STORE_ATTR_AT_SELECTOR: &[u8] = b"attrAt:index:\0";
 const SET_METHOD_OBSERVER_SELECTOR: &[u8] = b"setMethodMutationObserver:\0";
 const SET_METHOD_AUTHORIZER_SELECTOR: &[u8] = b"setMethodMutationAuthorizer:\0";
 const CODEGEN_NAME: &[u8] = b"Codegen\0";
@@ -6193,6 +6191,7 @@ unsafe fn reflect_method_descriptor(api: &IdApi, runtime: &Runtime, vt: Oop, sel
         return api.nilObj;
     }
     let owner = unsafe { (api.vtableOwner)(vt) };
+    let owner = if owner.is_null() { api.nilObj } else { owner };
     let target = unsafe { reflect_exported_symbol(api, owner) };
     let target = if target == api.nilObj {
         unsafe { reflect_exported_symbol(api, vt) }
@@ -6221,6 +6220,40 @@ unsafe fn reflect_method_descriptor(api: &IdApi, runtime: &Runtime, vt: Oop, sel
     let _ = unsafe { reflect_map_put(api, descriptor, b"target\0", target) };
     let _ = unsafe { reflect_map_put(api, descriptor, b"method\0", method) };
     descriptor
+}
+
+#[derive(Clone, Copy)]
+struct ReflectFactRow {
+    entity: Oop,
+    attribute: Oop,
+    value: Oop,
+}
+
+struct ReflectFactCollectorState {
+    target: Oop,
+    rows: Vec<ReflectFactRow>,
+}
+
+unsafe fn collect_reflect_facts(api: &IdApi, target: Oop) -> Vec<ReflectFactRow> {
+    let runtime = runtime();
+    let state = Box::new(ReflectFactCollectorState {
+        target,
+        rows: Vec::new(),
+    });
+    let state_pointer = Box::into_raw(state);
+    let collector = unsafe { (api.alloc)(runtime.adapter_collector_vt as Oop, size_of::<usize>()) };
+    if collector.is_null() {
+        // SAFETY: no Store call was made, so ownership remains local.
+        unsafe { drop(Box::from_raw(state_pointer)) };
+        return Vec::new();
+    }
+    // The collector callback runs synchronously inside Store.  Disable
+    // automatic collection for the entire call so the raw state pointer and
+    // the Oops copied into its rows cannot be invalidated between callbacks.
+    unsafe { *(collector as *mut usize) = state_pointer as usize };
+    let _ = unsafe { send(api, runtime.store as Oop, b"liveTriplesDo:\0", &[collector]) };
+    let state = unsafe { Box::from_raw(state_pointer) };
+    state.rows
 }
 
 unsafe extern "C" fn rust_reflect_vtable_of(
@@ -6340,7 +6373,10 @@ unsafe fn compile_reflect_trampoline(
             byte if byte.is_ascii_graphic() || *byte == b' ' => {
                 escaped_selector.push(*byte as char)
             }
-            _ => return None,
+            _ => {
+                unsafe { dispose_unit(api, unit) };
+                return None;
+            }
         }
     }
     let source = format!(
@@ -6568,43 +6604,12 @@ unsafe extern "C" fn rust_reflect_facts_of(
         if vector.is_null() || vector == api.nilObj {
             return api.nilObj;
         }
-        let count_object = unsafe {
-            send(
-                api,
-                runtime.store as Oop,
-                STORE_ATTR_COUNT_SELECTOR,
-                &[values[0]],
-            )
-        };
-        if unsafe { (api.isSmallInt)(count_object) } == 0 {
-            return api.nilObj;
-        }
-        let count = unsafe { (api.smallIntValue)(count_object) };
-        if count < 0 {
-            return api.nilObj;
-        }
         let mut facts = Vec::new();
-        for index in 0..count as usize {
-            let attribute = unsafe {
-                send(
-                    api,
-                    runtime.store as Oop,
-                    STORE_ATTR_AT_SELECTOR,
-                    &[values[0], (api.mkSmallInt)(index as i64)],
-                )
-            };
-            let value = unsafe {
-                send(
-                    api,
-                    runtime.store as Oop,
-                    CURRENT_VALUE_SELECTOR,
-                    &[values[0], attribute],
-                )
-            };
+        for row in unsafe { collect_reflect_facts(api, values[0]) } {
             let map = unsafe { reflect_new_map(api) };
-            let _ = unsafe { reflect_map_put(api, map, b"entity\0", values[0]) };
-            let _ = unsafe { reflect_map_put(api, map, b"attribute\0", attribute) };
-            let _ = unsafe { reflect_map_put(api, map, b"value\0", value) };
+            let _ = unsafe { reflect_map_put(api, map, b"entity\0", row.entity) };
+            let _ = unsafe { reflect_map_put(api, map, b"attribute\0", row.attribute) };
+            let _ = unsafe { reflect_map_put(api, map, b"value\0", row.value) };
             facts.push(map);
         }
         unsafe { make_vector(api, vector, &facts) }
@@ -6614,12 +6619,31 @@ unsafe extern "C" fn rust_reflect_facts_of(
 }
 
 unsafe extern "C" fn rust_reflect_collect_fact(
-    _self_object: Oop,
-    _pointer: *const Oop,
+    self_object: Oop,
+    pointer: *const Oop,
     count: usize,
 ) -> Oop {
     if count != 3 {
         abort("RustReflectFactCollector value:value:value: expects three arguments");
+    }
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflectFactCollector received invalid arguments"));
+    if self_object.is_null() {
+        return unsafe { api(runtime()) }.nilObj;
+    }
+    // SAFETY: collect_reflect_facts installs a valid state pointer in the raw
+    // collector slot for the synchronous Store traversal.
+    let state_pointer = unsafe { *(self_object as *const usize) };
+    if state_pointer == 0 {
+        return unsafe { api(runtime()) }.nilObj;
+    }
+    let state = unsafe { &mut *(state_pointer as *mut ReflectFactCollectorState) };
+    if values[0] == state.target {
+        state.rows.push(ReflectFactRow {
+            entity: values[0],
+            attribute: values[1],
+            value: values[2],
+        });
     }
     unsafe { api(runtime()) }.nilObj
 }

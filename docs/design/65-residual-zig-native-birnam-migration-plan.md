@@ -244,8 +244,9 @@ C1.3 adapter checkpoint (2026-07-26):
 - The adapter maps compile/eval, metadata/source, candidate/generation/image
   protocol, rooting, and error handlers through the existing PEG/Lang/TCC and
   Store objects. Reflect provides vtable/name/export, method definition and
-  removal, method descriptors/sources, and live fact snapshots; TCC trampoline
-  units are retained by the Rust root provider before dispatch can observe them.
+  removal, method descriptors/sources, and live fact snapshots through the
+  raw-layout collector callback; TCC trampoline units are retained by the Rust
+  root provider before dispatch can observe them.
 - The frozen exports remain deliberately absent until C1.6; the current C1.1
   rejection fixture therefore stays valid while the adapter surface is tested
   in place. The focused gate is now `94/94` tests (`170/170` steps), including

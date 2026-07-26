@@ -151,6 +151,7 @@ test "C1.3 Rust adapter projects the frozen Codegen and Reflect families" {
     defer parsed.deinit();
 
     const codegen_vt = api.import("RustCodegenAdapterVt") orelse return error.MissingRustAdapterCodegenVt;
+    const reflect = api.import("RustReflectAdapter") orelse return error.MissingRustAdapterReflect;
     const reflect_vt = api.import("RustReflectAdapterVt") orelse return error.MissingRustAdapterReflectVt;
     const collector_vt = api.import("RustReflectFactCollectorVt") orelse return error.MissingRustAdapterCollectorVt;
     try std.testing.expectEqual(parsed.value.codegen_selectors.len, directSelectorCount(api, codegen_vt));
@@ -161,6 +162,16 @@ test "C1.3 Rust adapter projects the frozen Codegen and Reflect families" {
     try std.testing.expectEqual(@as(u8, idapi.slot_raw), api.slotKind(collector_vt, 0));
     try std.testing.expect(api.import("Codegen") == null);
     try std.testing.expect(api.import("Reflect") == null);
+
+    const store = api.import("Store") orelse return error.MissingStore;
+    const entity = api.intern("c13ReflectEntity");
+    const attribute = api.intern("c13ReflectAttribute");
+    const value = api.mkSmallInt(17);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, value }, 3);
+    defer _ = api.send(store, api.intern("retract:attr:value:"), &.{ entity, attribute, value }, 3);
+    const facts = api.send(reflect, api.intern("factsOf:"), &.{entity}, 1);
+    try std.testing.expect(facts != api.nilObj);
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(api.send(facts, api.intern("size"), &.{}, 0)));
 }
 
 fn emitBytes(api: *idapi.IdApi, codegen: idapi.Oop, source: []const u8) ![]const u8 {
