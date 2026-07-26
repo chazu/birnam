@@ -2255,6 +2255,22 @@ validation plus v4 header/record/facts preflight, with no Store mutation,
 compiled-unit mapping, source rebuild, or publication until those authorities
 are separately installed and tested.
 
+### R6.24 Rust Image read-only admission checkpoint (2026-07-25)
+
+- `c8a3b3d` adds `Image::preflight` and a bounded runtime admission helper:
+  regular-file and 1 GiB size checks precede v4 header/authority/code/facts
+  validation. `loadImage:` and `loadImage:rebuild:` now answer `false` only
+  for an admitted data-only image; malformed, mismatched, oversized, missing,
+  and non-String paths remain `nil`. No Store allocation/mutation, code-unit
+  mapping, source rebuild, or publication is performed.
+- The Rust Image codec suite is `21/21`, image-only clippy is clean, and the
+  dynamic shell remains `2/2`. The full `BIRNAM_R6_ISOLATE_IMPL=rust mise run
+  r6-acceptance` rerun passed after `c8a3b3d` with focused `82/82`, Rust Alien
+  live `9/9`, both Rust Image CLI save profile receipts, optimized
+  verify/install/harness legs, and zero missing/unusable cases. The only
+  accepted comparator crossings remain `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
