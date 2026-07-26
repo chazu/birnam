@@ -3426,6 +3426,20 @@ allowances.
 - Rust-host formatting, check, 54-test suite, and warnings-denied clippy pass;
   R6 remains accepted at focused `91/91`.
 
+### R7.84 Rust host project-URI boundary checkpoint (2026-07-26)
+
+- The Rust host now exposes the same narrow project URI/path boundary needed by
+  a future LSP bridge: plain paths pass through, `file://` and
+  `file://localhost/` URIs decode percent escapes, and non-file URI schemes or
+  malformed escapes fail closed before filesystem observation.
+- The localhost form preserves its absolute leading slash; this is an
+  intentional correctness hardening over the old Zig helper's relative-path
+  edge case and is covered by a focused regression test.
+- The focused Rust-host suite advances to 55 tests with warnings-denied clippy
+  and formatting green. LSP remains explicitly Zig-owned until the bridge can
+  delegate both snapshot and path selectors without a second project authority;
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

@@ -17,7 +17,7 @@ use std::ptr::NonNull;
 use birnam_abi::{IdApi, IdInitFn};
 
 #[cfg(unix)]
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Overrides<'a> {
@@ -1706,6 +1706,13 @@ pub enum ProjectDiscoveryError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectUriError {
+    UnsupportedScheme,
+    InvalidEscape,
+    CurrentDirectory(io::ErrorKind),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectManifestError {
     Read { path: PathBuf, kind: io::ErrorKind },
     MissingToml,
@@ -1994,6 +2001,75 @@ pub enum ProjectDependencyResolutionError {
         path: PathBuf,
         kind: io::ErrorKind,
     },
+}
+
+/// Convert a file URI (or a plain path used by tests/tools) into a filesystem
+/// path. This mirrors the Zig host's narrow project bridge boundary: only
+/// `file://` URIs and plain paths are admitted, percent decoding happens here,
+/// and other URI schemes fail closed before project observation.
+pub fn project_path_from_uri(raw: &str) -> Result<PathBuf, ProjectUriError> {
+    if raw.is_empty() {
+        return std::env::current_dir()
+            .map_err(|error| ProjectUriError::CurrentDirectory(error.kind()));
+    }
+
+    let (input, is_file_uri, add_leading_slash) = if let Some(input) = raw.strip_prefix("file://") {
+        if let Some(input) = input.strip_prefix("localhost/") {
+            (input, true, true)
+        } else {
+            (input, true, false)
+        }
+    } else if raw.contains("://") {
+        return Err(ProjectUriError::UnsupportedScheme);
+    } else {
+        (raw, false, false)
+    };
+
+    let mut bytes = Vec::with_capacity(input.len() + usize::from(add_leading_slash));
+    if add_leading_slash {
+        bytes.push(b'/');
+    }
+    let input = input.as_bytes();
+    let mut index = 0;
+    while index < input.len() {
+        if is_file_uri && input[index] == b'%' && index + 2 < input.len() {
+            let Some(high) = hex_nibble(input[index + 1]) else {
+                return Err(ProjectUriError::InvalidEscape);
+            };
+            let Some(low) = hex_nibble(input[index + 2]) else {
+                return Err(ProjectUriError::InvalidEscape);
+            };
+            bytes.push((high << 4) | low);
+            index += 3;
+        } else {
+            bytes.push(input[index]);
+            index += 1;
+        }
+    }
+    if bytes.is_empty() {
+        return std::env::current_dir()
+            .map_err(|error| ProjectUriError::CurrentDirectory(error.kind()));
+    }
+
+    #[cfg(unix)]
+    {
+        Ok(PathBuf::from(OsString::from_vec(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        String::from_utf8(bytes)
+            .map(PathBuf::from)
+            .map_err(|_| ProjectUriError::InvalidEscape)
+    }
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
@@ -7704,6 +7780,33 @@ mod tests {
             SELF_HOSTED_MODULES
                 .iter()
                 .all(|module| module.name != PROJECT_POLICY_MODULE.name)
+        );
+    }
+
+    #[test]
+    fn project_uri_path_boundary_matches_file_uri_contract() {
+        assert_eq!(
+            project_path_from_uri("file:///tmp/project%20name/src/app.birnam")
+                .expect("file URI decodes"),
+            PathBuf::from("/tmp/project name/src/app.birnam")
+        );
+        assert_eq!(
+            project_path_from_uri("file://localhost/tmp/project/src/app.birnam")
+                .expect("localhost file URI decodes"),
+            PathBuf::from("/tmp/project/src/app.birnam")
+        );
+        assert_eq!(
+            project_path_from_uri("src/app.birnam").expect("plain path passes through"),
+            PathBuf::from("src/app.birnam")
+        );
+        assert_eq!(
+            project_path_from_uri("file:///tmp/%GG").expect_err("invalid escape rejects"),
+            ProjectUriError::InvalidEscape
+        );
+        assert_eq!(
+            project_path_from_uri("https://example.test/app.birnam")
+                .expect_err("non-file URI rejects"),
+            ProjectUriError::UnsupportedScheme
         );
     }
 
