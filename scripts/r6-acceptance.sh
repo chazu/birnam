@@ -51,10 +51,11 @@ latest_tests=(
   test-rust-collection
   test-rust-error
 )
-# Accepted on 2026-07-25 after the Rust Image-to-Rust Codegen mapped-unit proof
-# and the first Zig-writer/Rust-reader cross-floor proof: the focused matrix is
-# 85 tests; the mixed dynamic Rust Image shell remains 2 passing tests, and
-# each isolated Image proof runs as one test process.
+# Accepted on 2026-07-26 after the Rust Image-to-Rust Codegen mapped-unit proof,
+# the Zig-writer/Rust-reader cross-floor proof, and fail-closed duplicate/truncated
+# Image-record coverage: the focused matrix is 86 tests; the mixed dynamic Rust
+# Image shell remains 2 passing tests, and each isolated Image proof runs as one
+# test process.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
 readonly expected_focused_tests=86
 readonly expected_rust_image_shell_tests=2
