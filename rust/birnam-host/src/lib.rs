@@ -2298,6 +2298,37 @@ pub unsafe fn decode_project_resolution(
     })
 }
 
+/// Reproduce the frozen `project-resolution.v1` digest over the host's
+/// pointer-free resolution records. This is an observation checksum only; it
+/// does not influence Birnam policy or provider selection.
+pub fn project_resolution_digest(
+    project_root: &str,
+    manifest_bytes: &[u8],
+    modules: &[ProjectSourceObservation],
+) -> String {
+    let manifest_digest = String::from_utf8_lossy(&sha256_hex(manifest_bytes)).into_owned();
+    let mut input = Vec::new();
+    let add = |input: &mut Vec<u8>, value: &str| {
+        input.extend_from_slice(&(value.len() as u64).to_be_bytes());
+        input.extend_from_slice(value.as_bytes());
+    };
+    add(&mut input, "birnam.project-resolution.v1");
+    add(&mut input, project_root);
+    add(&mut input, &manifest_digest);
+    for module in modules {
+        add(&mut input, &module.name);
+        add(&mut input, &module.path);
+        for source in &module.sources {
+            add(&mut input, source);
+        }
+        add(&mut input, &module.source_digest);
+        for dependency in &module.requires {
+            add(&mut input, dependency);
+        }
+    }
+    String::from_utf8_lossy(&sha256_hex(&input)).into_owned()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoadedSelfHostedModule {
     pub name: &'static str,
@@ -4662,6 +4693,38 @@ mod tests {
         assert_eq!(
             sha256_hex(b"abc"),
             *b"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn project_resolution_digest_is_stable_and_order_sensitive() {
+        let module = |name: &str| ProjectSourceObservation {
+            name: name.to_owned(),
+            path: format!("/tmp/{name}.birnam"),
+            sources: vec![format!("/tmp/{name}.birnam")],
+            project_root: "/tmp/project".to_owned(),
+            source: Vec::new(),
+            requires: Vec::new(),
+            source_digest: format!("{name}-source"),
+            revision_digest: format!("{name}-revision"),
+        };
+        let first =
+            project_resolution_digest("/tmp/project", b"name = \"one\"\n", &[module("one")]);
+        assert_eq!(
+            first,
+            project_resolution_digest("/tmp/project", b"name = \"one\"\n", &[module("one")])
+        );
+        assert_ne!(
+            first,
+            project_resolution_digest("/tmp/project", b"name = \"two\"\n", &[module("one")])
+        );
+        assert_ne!(
+            first,
+            project_resolution_digest(
+                "/tmp/project",
+                b"name = \"one\"\n",
+                &[module("two"), module("one")]
+            )
         );
     }
 

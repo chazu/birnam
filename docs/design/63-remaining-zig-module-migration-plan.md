@@ -3080,6 +3080,15 @@ allowances.
 - The Rust host check, 44-test suite, formatting, and warnings-denied clippy
   pass. R6 remains accepted at focused `91/91`.
 
+### R7.55 Rust host resolution-digest checkpoint (2026-07-26)
+
+- `project_resolution_digest` reproduces the frozen length-delimited
+  `birnam.project-resolution.v1` checksum over the root, manifest bytes, and
+  policy-selected module metadata. It is deterministic and order-sensitive,
+  and remains a reporting/checksum adapter rather than a policy input.
+- The focused Rust host suite advances to 45 tests with formatting, check, and
+  warnings-denied clippy green. R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
