@@ -2285,6 +2285,11 @@ are separately installed and tested.
   zero missing/unusable cases. The only accepted comparator crossings remain
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
+The next bounded slice must stage an admitted code record for Codegen's
+existing `load:` authority only after heap/facts replay ordering and
+quiescence guards are specified; it must prove temp-file cleanup and no
+partial activation before allowing a mapped result.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
