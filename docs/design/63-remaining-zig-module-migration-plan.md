@@ -3516,6 +3516,19 @@ allowances.
   R6 baseline remain green; the accepted R6 matrix stays `91/91` with only
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` admitted.
 
+### R7.91 Rust host pre-switch observation rehearsal (2026-07-26)
+
+- The installed Debug resource tree has now exercised the Rust host's current
+  project surface end-to-end: `check .`, `build .`, and `install .` succeed for
+  the zero-module root manifest; `run .` and `test .` fail at the established
+  missing-main and empty-test boundaries; and the same tree completes both
+  successful and failure-diagnostic LSP initialize/open/shutdown exchanges.
+- This is observation evidence only. The canonical `birnam` executable,
+  install mapping, release packaging, and rollback selection remain Zig-owned;
+  no canonical-switch or compatibility-dylib retirement is authorized by this
+  checkpoint. Rust-host 55-test/clippy, optimized verify, and the accepted R6
+  `91/91` snapshot remain green.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
