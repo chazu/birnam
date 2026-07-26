@@ -13,7 +13,7 @@ use birnam_artifact::candidate::{
 use birnam_artifact::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
 use birnam_image::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
-use core::ffi::{c_char, c_long, c_void};
+use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::ffi::{CStr, OsStr, OsString};
@@ -132,7 +132,6 @@ const STORE_RAW_CURRENT_SELECTOR: &[u8] = b"rawCurrentValue:attr:\0";
 const SET_METHOD_OBSERVER_SELECTOR: &[u8] = b"setMethodMutationObserver:\0";
 const SET_METHOD_AUTHORIZER_SELECTOR: &[u8] = b"setMethodMutationAuthorizer:\0";
 const CODEGEN_NAME: &[u8] = b"Codegen\0";
-const MODULE_NAME: &[u8] = b"Module\0";
 const MODULE_IS_LOADED_SELECTOR: &[u8] = b"isLoaded:\0";
 const DISPATCH_NAME: &[u8] = b"dispatch\0";
 const ACTIVE_GENERATION_NAME: &[u8] = b"activeGeneration\0";
@@ -465,6 +464,16 @@ pub unsafe extern "C" fn birnam_rust_codegen_global_set(name: *const c_char, val
     unsafe { birnam_global_set(name, value) }
 }
 
+/// Frozen generated-artifact spelling for the Rust-owned baked-global lookup.
+///
+/// The Rust Codegen dylib keeps the implementation-specific exports above so
+/// mixed-floor fixtures can identify their owner, while production artifacts
+/// continue to link against the shared `birnam_*` ABI.
+#[unsafe(export_name = "birnam_global_b")]
+pub unsafe extern "C" fn birnam_global_b(symbol: Oop) -> Oop {
+    unsafe { birnam_rust_codegen_global_b(symbol) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_record_global_src")]
 /// Record a generated top-level binding source in the Rust-owned Globals mirror.
 ///
@@ -493,6 +502,15 @@ pub unsafe extern "C" fn birnam_rust_codegen_record_global_src(
     };
 }
 
+#[unsafe(export_name = "birnam_record_global_src")]
+pub unsafe extern "C" fn birnam_record_global_src(
+    name: *const c_char,
+    source: *const u8,
+    length: c_long,
+) {
+    unsafe { birnam_rust_codegen_record_global_src(name, source, length) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_record_module_source")]
 /// Retain a generated module source pair in the Rust Codegen provider registry.
 ///
@@ -515,6 +533,15 @@ pub unsafe extern "C" fn birnam_rust_codegen_record_module_source(
     }
 }
 
+#[unsafe(export_name = "birnam_record_module_source")]
+pub unsafe extern "C" fn birnam_record_module_source(
+    name: *const c_char,
+    source: *const u8,
+    length: c_long,
+) {
+    unsafe { birnam_rust_codegen_record_module_source(name, source, length) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_is_error")]
 /// Return one when `value` is an Error object in the current floor.
 ///
@@ -531,6 +558,11 @@ pub unsafe extern "C" fn birnam_rust_codegen_is_error(value: Oop) -> c_long {
         return 0;
     }
     (unsafe { (api.vtableOf)(value) } == error_vt) as c_long
+}
+
+#[unsafe(export_name = "birnam_is_error")]
+pub unsafe extern "C" fn birnam_is_error(value: Oop) -> c_long {
+    unsafe { birnam_rust_codegen_is_error(value) }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_install_method")]
@@ -563,6 +595,17 @@ pub unsafe extern "C" fn birnam_rust_codegen_install_method(
     }
 }
 
+#[unsafe(export_name = "birnam_install_method")]
+pub unsafe extern "C" fn birnam_install_method(
+    vtable: Oop,
+    selector: Oop,
+    method: *mut c_void,
+    source: *const u8,
+    length: c_long,
+) -> Oop {
+    unsafe { birnam_rust_codegen_install_method(vtable, selector, method, source, length) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_remove_method")]
 /// Remove one generated direct method through the selected Store MOP.
 ///
@@ -590,6 +633,16 @@ pub unsafe extern "C" fn birnam_rust_codegen_remove_method(
     }
 }
 
+#[unsafe(export_name = "birnam_remove_method")]
+pub unsafe extern "C" fn birnam_remove_method(
+    target: Oop,
+    selector: Oop,
+    source: *const u8,
+    length: c_long,
+) -> Oop {
+    unsafe { birnam_rust_codegen_remove_method(target, selector, source, length) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_candidate_root_set")]
 /// Store one generated candidate capture in the Rust root provider.
 ///
@@ -615,6 +668,11 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_set(
     value as Oop
 }
 
+#[unsafe(export_name = "birnam_candidate_root_set")]
+pub unsafe extern "C" fn birnam_candidate_root_set(salt: u64, index: c_long, value: Oop) -> Oop {
+    unsafe { birnam_rust_codegen_candidate_root_set(salt, index, value) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_candidate_root_get")]
 /// Load one generated candidate capture from the Rust root provider.
 ///
@@ -637,6 +695,11 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(salt: u64, index
         .unwrap_or(api.nilObj)
 }
 
+#[unsafe(export_name = "birnam_candidate_root_get")]
+pub unsafe extern "C" fn birnam_candidate_root_get(salt: u64, index: c_long) -> Oop {
+    unsafe { birnam_rust_codegen_candidate_root_get(salt, index) }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_candidate_prepare_mode")]
 /// Toggle candidate preparation mode for generated method-install shims.
 ///
@@ -644,6 +707,11 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(salt: u64, index
 /// The caller must use the generated candidate lifecycle protocol.
 pub unsafe extern "C" fn birnam_rust_codegen_candidate_prepare_mode(on: c_long) {
     CANDIDATE_PREPARING.store(on != 0, Ordering::Release);
+}
+
+#[unsafe(export_name = "birnam_candidate_prepare_mode")]
+pub unsafe extern "C" fn birnam_candidate_prepare_mode(on: c_long) {
+    unsafe { birnam_rust_codegen_candidate_prepare_mode(on) }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_candidate_validate_binding")]
@@ -674,6 +742,23 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_validate_binding(
         return api.falseObj;
     }
     api.trueObj
+}
+
+#[unsafe(export_name = "birnam_candidate_validate_binding")]
+pub unsafe extern "C" fn birnam_candidate_validate_binding(
+    target_name: *const c_char,
+    selector_name: *const c_char,
+    arity: c_long,
+    removal: c_long,
+) -> Oop {
+    unsafe {
+        birnam_rust_codegen_candidate_validate_binding(
+            target_name,
+            selector_name,
+            arity,
+            removal,
+        )
+    }
 }
 
 unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
@@ -3370,7 +3455,13 @@ unsafe fn emit_source(
             return None;
         }
     };
-    let mut emitter = candidate_salt
+    let artifact_salt = candidate_salt.or_else(|| {
+        artifact.then(|| {
+            let digest = sha256_hex(&source);
+            u64::from_be_bytes(digest[..8].try_into().unwrap())
+        })
+    });
+    let mut emitter = artifact_salt
         .map(Emitter::new_candidate_artifact)
         .unwrap_or_else(|| Emitter::new_for_artifact(artifact));
     if persist_top_level {
@@ -4534,6 +4625,30 @@ unsafe extern "C" fn rust_codegen_end_quiescence(
     api.nilObj
 }
 
+// The host phase bridge is a frozen C ABI. Rust keeps the language-level
+// selectors above on the Codegen object, then exposes these process-local
+// adapters so the host does not need to know which Codegen floor owns them.
+#[unsafe(export_name = "birnam_codegen_enter_running")]
+pub unsafe extern "C" fn birnam_codegen_enter_running() -> c_int {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    (unsafe { rust_codegen_enter_running(api.nilObj, ptr::null(), 0) } == api.trueObj) as c_int
+}
+
+#[unsafe(export_name = "birnam_codegen_begin_quiescence")]
+pub unsafe extern "C" fn birnam_codegen_begin_quiescence() -> c_int {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    (unsafe { rust_codegen_begin_quiescence(api.nilObj, ptr::null(), 0) } == api.trueObj) as c_int
+}
+
+#[unsafe(export_name = "birnam_codegen_end_quiescence")]
+pub unsafe extern "C" fn birnam_codegen_end_quiescence() -> c_int {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    (unsafe { rust_codegen_end_quiescence(api.nilObj, ptr::null(), 0) } == api.trueObj) as c_int
+}
+
 unsafe extern "C" fn rust_codegen_managed_method_changed(
     _self_object: Oop,
     pointer: *const Oop,
@@ -4681,7 +4796,7 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     }
 
     if !requires.is_empty() {
-        let module = unsafe { (api.import)(MODULE_NAME.as_ptr().cast()) };
+        let module = unsafe { global_by_name(api, runtime, b"Module") };
         if module.is_null() || module == api.nilObj {
             note_error(b"RustCodegen candidate dependencies are missing");
             return api.nilObj;
@@ -5984,7 +6099,7 @@ unsafe extern "C" fn rust_codegen_load(
         };
     }
     if parsed_descriptor.requires.count() != 0 {
-        let module = unsafe { (api.import)(MODULE_NAME.as_ptr().cast()) };
+        let module = unsafe { global_by_name(api, runtime, b"Module") };
         if module.is_null() || module == api.nilObj {
             return unsafe {
                 map_candidate_failure(
@@ -5996,9 +6111,8 @@ unsafe extern "C" fn rust_codegen_load(
         }
         for requirement in parsed_descriptor.requires.iter() {
             let requirement = unsafe { intern_bytes(api, requirement) };
-            if unsafe { send(api, module, MODULE_IS_LOADED_SELECTOR, &[requirement]) }
-                != api.trueObj
-            {
+            let loaded = unsafe { send(api, module, MODULE_IS_LOADED_SELECTOR, &[requirement]) };
+            if loaded != api.trueObj {
                 return unsafe {
                     map_candidate_failure(
                         api,
