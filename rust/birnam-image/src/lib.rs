@@ -1070,6 +1070,7 @@ const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
 const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
 const MAX_IMAGE_BYTES: u64 = 1 << 30;
 const RUST_CODEGEN_NAME: &[u8] = b"RustCodegen\0";
+const RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION: &[u8] = b"initializeCurrentGeneration\0";
 const RUST_CODEGEN_PREFLIGHT_IMAGE: &[u8] = b"preflightImage:\0";
 const RUST_CODEGEN_BEGIN_IMAGE_RECOVERY: &[u8] = b"beginImageDispatchRecovery\0";
 const RUST_CODEGEN_END_IMAGE_RECOVERY: &[u8] = b"endImageDispatchRecovery\0";
@@ -1405,11 +1406,43 @@ fn preflight_writer_accepts(facts: &[u8], heap: &[u8]) -> bool {
     writer.facts(facts).is_ok() && writer.heap(heap).is_ok()
 }
 
-unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+/// Select the image writer's generation authority explicitly.
+///
+/// Mixed hosts retain the canonical `Codegen` owner. The Rust owner is only
+/// admitted by an explicit test/selection environment value, and must expose
+/// the durable-generation bootstrap plus capture selectors before it can be
+/// used. An unknown explicit value fails closed instead of silently falling
+/// back to another authority.
+unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
+    let requested = std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY").ok();
+    if requested.as_deref() == Some("rust") {
+        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        if codegen.is_null()
+            || codegen == api.nilObj
+            || !unsafe {
+                direct_method_present(api, codegen, RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION)
+                    && direct_method_present(api, codegen, b"currentGenerationDigest\0")
+                    && direct_method_present(api, codegen, b"compileImageCode:\0")
+            }
+        {
+            return None;
+        }
+        let initialized =
+            unsafe { send0(api, codegen, RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION) };
+        return (initialized != api.nilObj && !initialized.is_null()).then_some(codegen);
+    }
+    if requested.is_some() {
+        return None;
+    }
     let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
     if codegen.is_null() || codegen == api.nilObj {
         return None;
     }
+    Some(codegen)
+}
+
+unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+    let codegen = unsafe { writer_codegen_authority(api) }?;
     let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
     if digest.is_null()
         || digest == api.nilObj
@@ -1439,10 +1472,7 @@ unsafe fn capture_generation_code(
     api: &IdApi,
     _digest: &[u8; AUTHORITY_DIGEST_LEN],
 ) -> Option<Vec<u8>> {
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
-    if codegen.is_null() || codegen == api.nilObj {
-        return None;
-    }
+    let codegen = unsafe { writer_codegen_authority(api) }?;
     let sequence = CODE_CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
         "birnam-rust-image-code-{}-{}.dylib",

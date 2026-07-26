@@ -1785,6 +1785,7 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_CODEGEN_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
     );
+    run_rust_image_bootstrap.setEnvironmentVariable("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY", "rust");
     run_rust_image_bootstrap.step.dependOn(bootstrap_install);
     const test_rust_image_bootstrap_step = b.step(
         "test-rust-image-bootstrap",

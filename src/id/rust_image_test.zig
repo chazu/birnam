@@ -627,6 +627,22 @@ test "Rust Codegen bootstraps and retains its durable generation authority" {
     try std.testing.expectEqual(@as(usize, 64), recorded_len);
     try std.testing.expectEqualSlices(u8, digest_bytes[0..digest_len], recorded_bytes[0..recorded_len]);
 
+    // The explicit Rust-writer selection reaches Rust Codegen for the capture
+    // phase, but publication remains fail-closed until the complete Store/heap
+    // writer authority is installed.
+    const system = api.import("System") orelse return error.SystemMissing;
+    const report = send(api, system, "imageSaveReport", &.{});
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust-authority.image", .{directory});
+    defer std.testing.allocator.free(image_path);
+    try std.testing.expectEqual(api.nilObj, send(api, system, "saveImage:", &.{str(api, image_path)}));
+    try std.testing.expectEqual(api.intern("rejected"), send(api, report, "status", &.{}));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, report, "codeUnits", &.{})));
+    try std.testing.expect(!pathExists(image_path));
+
     // Re-entry is idempotent: an existing canonical durable generation is
     // returned, never replaced by a second Rust-side projection object.
     try std.testing.expectEqual(initialized, send(api, rust_codegen, "initializeCurrentGeneration", &.{}));
