@@ -2713,3 +2713,19 @@ explicitly so the recovery surface cannot silently shrink.
 - The comparator remains unchanged and fail-closed: no missing or unusable
   cases, with only `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` accepted.
+
+### R6.45 Rust-authored Image forced-rebuild checkpoint (2026-07-26)
+
+- The explicit Rust publication proof now also retracts its fact and invokes
+  `loadImage:rebuild:`. Rust Codegen replays the image facts while deliberately
+  bypassing mapped code, returns the expected `false` code-mapping result, and
+  restores the fact. The test therefore covers both mapped and source-rebuild
+  recovery modes for one Rust-authored image.
+- The publication target remains `1/1`; a fresh
+  `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` remains green at focused
+  `90/90`, with publication/authority-rejection, both Image cross-floor
+  directions, mapped Image-to-Codegen/bootstrap/rejection, and Rust Alien live
+  pins unchanged. Optimized verify/install/native-rung checks pass.
+- The comparator remains fail-closed and unchanged: no missing or unusable
+  cases, with only `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` accepted.
