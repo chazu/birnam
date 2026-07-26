@@ -11,8 +11,9 @@ use birnam_host::{
 const VERSION: &str = include_str!("../../../../VERSION");
 const USAGE: &str = "birnam-rust-experimental — opt-in Rust host\n\n\
 Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
-           --repl, --bake <image> <exe>, --rebuild <image>\n\
-Project/CLI dispatch remains on the canonical Zig host.\n";
+           --repl, --listen <port>, doc, docgen, init, wrap,\n\
+           --bake <image> <exe>, --rebuild <image>\n\
+Project commands and --lsp remain on the canonical Zig host.\n";
 
 fn fail(message: impl std::fmt::Display) -> ExitCode {
     eprintln!("birnam-rust-experimental: {message}");
@@ -91,6 +92,17 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             let mut session =
                 unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;
             unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
+        }
+        CommandKind::Doc
+        | CommandKind::Docgen
+        | CommandKind::Init
+        | CommandKind::Wrap
+        | CommandKind::Listen => {
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            unsafe { runtime.run_cli(&args) }.map_err(|error| format!("cli: {error:?}"))
         }
         other => Err(format!(
             "{other:?} is not implemented by the experimental host"

@@ -2748,6 +2748,22 @@ allowances.
   host slice must add project-aware execution and diagnostics before any
   canonical-switch consideration.
 
+### R7.30 Rust host Birnam-side CLI dispatcher checkpoint (2026-07-26)
+
+- `HostRuntime::run_cli` now loads the compiled `cli` module and delegates
+  `doc`, `docgen`, `init`, `wrap`, and `--listen` through the frozen
+  `Cli run:source:rustWorkspace:guides:` protocol. Rust supplies only opaque
+  UTF-8 argv and the one resolved resource tuple; subcommand parsing, output,
+  and module policy remain Birnam-owned.
+- The experimental executable routes those non-project command families to
+  this dispatcher. `--lsp` remains explicitly outside the route because its
+  Project bridge is still Zig-owned; check/build/install/run/test and worker
+  paths remain unsupported rather than acquiring a second project authority.
+- The host suite remains green at thirty-four tests with warnings denied, and
+  executable help plus the expected missing-floor diagnostic for a CLI command
+  were observed. No canonical executable, install tree, or rollback selection
+  changed.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

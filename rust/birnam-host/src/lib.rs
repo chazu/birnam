@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 use std::env;
-use std::ffi::{CStr, CString, OsStr, c_char, c_int, c_void};
+use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
 use std::io;
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
@@ -1169,6 +1169,17 @@ pub enum RuntimeModuleError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliError {
+    Module(RuntimeModuleError),
+    MissingCli,
+    MissingVector,
+    NonUtf8Argument(usize),
+    ArgumentVectorRejected,
+    MalformedStatus,
+    Failed(i64),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PhaseHookError {
     EmbeddedNul,
     OpenFailed,
@@ -1345,6 +1356,52 @@ impl HostRuntime {
             return Err(RuntimeModuleError::LoadRejected);
         }
         Ok(())
+    }
+
+    /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
+    /// module. Rust supplies opaque argv and the installed resource roots;
+    /// subcommand parsing, diagnostics, and module policy remain language
+    /// owned. Project-aware LSP setup is intentionally a separate seam until
+    /// the Rust host owns the `Project` bridge.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have called [`HostRuntime::prepare_execution`] with a
+    /// live stack anchor and remain on the floor owner thread for all sends.
+    pub unsafe fn run_cli(&self, args: &[OsString]) -> Result<(), CliError> {
+        unsafe { self.load_runtime_module("cli") }.map_err(CliError::Module)?;
+        let api = self.stack.api();
+        let Some(cli) = (unsafe { global_named(api, "Cli") }) else {
+            return Err(CliError::MissingCli);
+        };
+        let values = unsafe { native_os_string_vector(api, args) }?;
+        let source = path_bytes(&self.resources.source_dir);
+        let rust_workspace = path_bytes(&self.resources.rust_workspace_dir);
+        let guides = path_bytes(&self.resources.guide_dir);
+        let selector = unsafe { (api.intern)(c"run:source:rustWorkspace:guides:".as_ptr()) };
+        let result = unsafe {
+            (api.send)(
+                cli,
+                selector,
+                [
+                    values,
+                    (api.mkString)(source.as_ptr(), source.len()),
+                    (api.mkString)(rust_workspace.as_ptr(), rust_workspace.len()),
+                    (api.mkString)(guides.as_ptr(), guides.len()),
+                ]
+                .as_ptr(),
+                4,
+            )
+        };
+        if unsafe { (api.isSmallInt)(result) } == 0 {
+            return Err(CliError::MalformedStatus);
+        }
+        let status = unsafe { (api.smallIntValue)(result) };
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(CliError::Failed(status))
+        }
     }
 
     /// Initialize a terminal REPL session and enter the runtime's running
@@ -1718,6 +1775,34 @@ fn send_is_error(api: &IdApi, value: birnam_abi::Oop) -> bool {
     }
     let is_error = unsafe { (api.intern)(c"isError".as_ptr()) };
     unsafe { (api.send)(value, is_error, std::ptr::null(), 0) == api.trueObj }
+}
+
+unsafe fn native_os_string_vector(
+    api: &IdApi,
+    args: &[OsString],
+) -> Result<birnam_abi::Oop, CliError> {
+    let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
+    if vector_class == api.nilObj {
+        return Err(CliError::MissingVector);
+    }
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let mut vector = unsafe { (api.send)(vector_class, new_selector, std::ptr::null(), 0) };
+    if vector == api.nilObj || send_is_error(api, vector) {
+        return Err(CliError::ArgumentVectorRejected);
+    }
+    for (index, argument) in args.iter().enumerate() {
+        let Some(argument) = argument.to_str() else {
+            return Err(CliError::NonUtf8Argument(index));
+        };
+        let value = unsafe { (api.mkString)(argument.as_bytes().as_ptr(), argument.len()) };
+        let updated = unsafe { (api.send)(vector, add_selector, [value].as_ptr(), 1) };
+        if updated == api.nilObj || send_is_error(api, updated) {
+            return Err(CliError::ArgumentVectorRejected);
+        }
+        vector = updated;
+    }
+    Ok(vector)
 }
 
 /// Execute one embedded self-hosted module through the frozen Codegen
