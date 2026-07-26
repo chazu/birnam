@@ -1310,6 +1310,42 @@ pub struct ProjectCheckResult {
     pub diagnostics: Vec<ProjectCompileDiagnostic>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectArtifactPlanEntry {
+    pub name: String,
+    pub path: String,
+    pub action: String,
+    pub source: String,
+    pub sources: Vec<String>,
+    pub source_digest: String,
+    pub revision_digest: String,
+    pub requires: Vec<String>,
+    pub checksum: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectArtifactPlan {
+    pub project_root: String,
+    pub target: String,
+    pub profile: String,
+    pub tool_version: String,
+    pub built_at: String,
+    pub resolution_digest: String,
+    pub artifacts: Vec<ProjectArtifactPlanEntry>,
+    pub publication: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectArtifactPlanRequest<'a> {
+    pub resolution: &'a ProjectResolutionObservation,
+    pub wrapped: &'a [ProjectWrappedObservation],
+    pub target: &'a str,
+    pub profile: &'a str,
+    pub tool_version: &'a str,
+    pub built_at: &'a str,
+    pub resolution_digest: &'a str,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectSnapshotError {
     MissingVector,
@@ -1388,6 +1424,13 @@ pub enum ProjectCheckError {
     Resolution(ProjectManifestDecodeError),
     ManifestRead { path: PathBuf, kind: io::ErrorKind },
     TempDirectory { kind: io::ErrorKind },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectArtifactPlanError {
+    Snapshot(ProjectSnapshotError),
+    Policy(ProjectPolicyError),
+    Decode(ProjectManifestDecodeError),
 }
 
 struct CheckTempDirectory(PathBuf);
@@ -2409,6 +2452,107 @@ pub fn project_resolution_digest(
     String::from_utf8_lossy(&sha256_hex(&input)).into_owned()
 }
 
+/// Decode Birnam's side-effect-free `ProjectPolicy artifactPlan:` result.
+/// Artifact actions and reuse checks remain policy-owned; Rust only copies the
+/// typed plan before compilation/publication adapters consume it.
+///
+/// # Safety
+///
+/// `api` and `plan` must belong to the same live runtime, and all Oops must
+/// remain valid for the duration of this synchronous decode.
+pub unsafe fn decode_project_artifact_plan(
+    api: &IdApi,
+    plan: birnam_abi::Oop,
+) -> Result<ProjectArtifactPlan, ProjectManifestDecodeError> {
+    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    if plan == api.nilObj || unsafe { (api.vtableOf)(plan) } != decoder.map_vt {
+        return Err(ProjectManifestDecodeError::NotMap);
+    }
+    let record = unsafe { decoder.at(plan, "record")? };
+    if record == api.nilObj || unsafe { (api.vtableOf)(record) } != decoder.map_vt {
+        return Err(ProjectManifestDecodeError::InvalidMap("artifact record"));
+    }
+    let project_root =
+        unsafe { decoder.string(decoder.at(record, "projectRoot")?, "projectRoot")? };
+    let target = unsafe { decoder.string(decoder.at(record, "target")?, "target")? };
+    let profile = unsafe { decoder.string(decoder.at(record, "profile")?, "profile")? };
+    let tool_version =
+        unsafe { decoder.string(decoder.at(record, "toolVersion")?, "toolVersion")? };
+    let built_at = unsafe { decoder.string(decoder.at(record, "builtAt")?, "builtAt")? };
+    let resolution_digest =
+        unsafe { decoder.string(decoder.at(record, "resolutionDigest")?, "resolutionDigest")? };
+    let publication = unsafe { decoder.string(decoder.at(plan, "publication")?, "publication")? };
+    let artifacts_value = unsafe { decoder.at(plan, "artifacts")? };
+    if artifacts_value == api.nilObj
+        || unsafe { (api.vtableOf)(artifacts_value) } != decoder.vector_vt
+    {
+        return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
+    }
+    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let size = unsafe { (api.send)(artifacts_value, size_selector, std::ptr::null(), 0) };
+    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
+        return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
+    }
+    let mut artifacts = Vec::with_capacity(unsafe { (api.smallIntValue)(size) as usize });
+    for index in 0..unsafe { (api.smallIntValue)(size) } {
+        let item = unsafe {
+            (api.send)(
+                artifacts_value,
+                at_selector,
+                [(api.mkSmallInt)(index)].as_ptr(),
+                1,
+            )
+        };
+        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap("artifact"));
+        }
+        let name = unsafe { decoder.string(decoder.at(item, "name")?, "artifact.name")? };
+        let path = unsafe { decoder.string(decoder.at(item, "path")?, "artifact.path")? };
+        let action = unsafe { decoder.string(decoder.at(item, "action")?, "artifact.action")? };
+        let source = unsafe { decoder.string(decoder.at(item, "source")?, "artifact.source")? };
+        let sources =
+            unsafe { decoder.strings(decoder.at(item, "sources")?, "artifact.sources", false)? };
+        let source_digest =
+            unsafe { decoder.string(decoder.at(item, "sourceDigest")?, "artifact.sourceDigest")? };
+        let revision_digest = unsafe {
+            decoder.string(
+                decoder.at(item, "revisionDigest")?,
+                "artifact.revisionDigest",
+            )?
+        };
+        let requires =
+            unsafe { decoder.strings(decoder.at(item, "requires")?, "artifact.requires", false)? };
+        let checksum_value = unsafe { decoder.at(item, "checksum")? };
+        let checksum = if checksum_value == api.nilObj {
+            None
+        } else {
+            Some(unsafe { decoder.string(checksum_value, "artifact.checksum")? })
+        };
+        artifacts.push(ProjectArtifactPlanEntry {
+            name,
+            path,
+            action,
+            source,
+            sources,
+            source_digest,
+            revision_digest,
+            requires,
+            checksum,
+        });
+    }
+    Ok(ProjectArtifactPlan {
+        project_root,
+        target,
+        profile,
+        tool_version,
+        built_at,
+        resolution_digest,
+        artifacts,
+        publication,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoadedSelfHostedModule {
     pub name: &'static str,
@@ -3006,6 +3150,39 @@ impl HostRuntime {
             resolution_digest,
             diagnostics,
         })
+    }
+
+    /// Ask Birnam policy for a side-effect-free artifact plan. The request
+    /// carries only typed resolution metadata; no files are compiled, loaded,
+    /// or published by this boundary.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for all map/vector allocation and policy sends.
+    pub unsafe fn plan_project_artifacts(
+        &self,
+        request: &ProjectArtifactPlanRequest<'_>,
+    ) -> Result<ProjectArtifactPlan, ProjectArtifactPlanError> {
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api()) }
+            .map_err(ProjectArtifactPlanError::Snapshot)?;
+        let snapshot = unsafe { builder.artifact_plan_input(request) }
+            .map_err(ProjectArtifactPlanError::Snapshot)?;
+        unsafe { self.load_project_policy() }.map_err(ProjectArtifactPlanError::Policy)?;
+        let api = self.stack.api();
+        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
+            return Err(ProjectArtifactPlanError::Policy(
+                ProjectPolicyError::MissingPolicy,
+            ));
+        };
+        let selector = unsafe { (api.intern)(c"artifactPlan:".as_ptr()) };
+        let plan = unsafe { (api.send)(policy, selector, [snapshot].as_ptr(), 1) };
+        if plan == api.nilObj || send_is_error(api, plan) {
+            return Err(ProjectArtifactPlanError::Policy(
+                ProjectPolicyError::ResolutionRejected,
+            ));
+        }
+        unsafe { decode_project_artifact_plan(api, plan) }.map_err(ProjectArtifactPlanError::Decode)
     }
 
     /// Read one source file and ask Codegen for its static module metadata.
@@ -3798,6 +3975,58 @@ impl<'a> ProjectSnapshotBuilder<'a> {
             vector = unsafe { self.add(vector, self.string(value))? };
         }
         Ok(vector)
+    }
+
+    unsafe fn artifact_module(
+        &self,
+        value: &ProjectSourceObservation,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut item = unsafe { self.new_map()? };
+        item = unsafe { self.put(item, "name", self.string(&value.name))? };
+        item = unsafe { self.put(item, "path", self.string(&value.path))? };
+        item = unsafe { self.put(item, "sources", self.strings(&value.sources)?)? };
+        item = unsafe { self.put(item, "sourceDigest", self.string(&value.source_digest))? };
+        item = unsafe { self.put(item, "revisionDigest", self.string(&value.revision_digest))? };
+        unsafe { self.put(item, "requires", self.strings(&value.requires)?) }
+    }
+
+    unsafe fn artifact_plan_input(
+        &self,
+        request: &ProjectArtifactPlanRequest<'_>,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut snapshot = unsafe { self.new_map()? };
+        snapshot = unsafe {
+            self.put(
+                snapshot,
+                "projectRoot",
+                self.string(&request.resolution.project_root),
+            )?
+        };
+        snapshot = unsafe { self.put(snapshot, "target", self.string(request.target))? };
+        snapshot = unsafe { self.put(snapshot, "profile", self.string(request.profile))? };
+        snapshot = unsafe { self.put(snapshot, "toolVersion", self.string(request.tool_version))? };
+        let artifact_abi = String::from_utf8_lossy(birnam_artifact::ABI);
+        snapshot = unsafe { self.put(snapshot, "artifactAbi", self.string(&artifact_abi))? };
+        snapshot = unsafe {
+            self.put(
+                snapshot,
+                "resolutionDigest",
+                self.string(request.resolution_digest),
+            )?
+        };
+        snapshot = unsafe { self.put(snapshot, "builtAt", self.string(request.built_at))? };
+        let mut modules = unsafe { self.new_vector()? };
+        for module in &request.resolution.modules {
+            modules = unsafe { self.add(modules, self.artifact_module(module)?)? };
+        }
+        snapshot = unsafe { self.put(snapshot, "modules", modules)? };
+        let mut wrapped = unsafe { self.new_vector()? };
+        for value in request.wrapped {
+            let mut item = unsafe { self.new_map()? };
+            item = unsafe { self.put(item, "name", self.string(&value.name))? };
+            wrapped = unsafe { self.add(wrapped, item)? };
+        }
+        unsafe { self.put(snapshot, "wrapped", wrapped) }
     }
 
     unsafe fn wrapped(

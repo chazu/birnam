@@ -3140,6 +3140,19 @@ allowances.
 - Rust-host formatting, check, 46-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.60 Rust host artifact-plan policy checkpoint (2026-07-26)
+
+- `HostRuntime::plan_project_artifacts` now materializes the build-policy
+  snapshot with project metadata, module source/digest records, wrapped names,
+  target/profile/tool/built-at fields, and the frozen artifact ABI; it invokes
+  Birnam `ProjectPolicy artifactPlan:` and decodes compile/reuse actions,
+  checksums, relative paths, and publication intent into owned Rust records.
+- This slice has no filesystem effects: it does not read prior artifacts,
+  compile, invoke wrapper commands, activate dylibs, or publish a directory.
+  Those effectful stages remain downstream of this policy decision.
+- Rust-host formatting, check, 46-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
