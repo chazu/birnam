@@ -133,6 +133,32 @@ pub enum RunParseError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BakeOptions {
+    pub image: PathBuf,
+    pub executable: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RebuildOptions {
+    pub image: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileModuleOptions {
+    pub source: PathBuf,
+    pub output: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolingParseError {
+    Arity {
+        command: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseOutcome<T> {
     Parsed(T),
     Help,
@@ -458,6 +484,53 @@ pub fn parse_run_args<T: AsRef<std::ffi::OsStr>>(
         socket_port,
         arguments,
     }))
+}
+
+pub fn parse_bake_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<BakeOptions, ToolingParseError> {
+    if args.len() != 2 {
+        return Err(ToolingParseError::Arity {
+            command: "--bake",
+            expected: 2,
+            actual: args.len(),
+        });
+    }
+    Ok(BakeOptions {
+        image: PathBuf::from(args[0].as_ref()),
+        executable: PathBuf::from(args[1].as_ref()),
+    })
+}
+
+pub fn parse_rebuild_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<RebuildOptions, ToolingParseError> {
+    if args.len() != 1 {
+        return Err(ToolingParseError::Arity {
+            command: "--rebuild",
+            expected: 1,
+            actual: args.len(),
+        });
+    }
+    Ok(RebuildOptions {
+        image: PathBuf::from(args[0].as_ref()),
+    })
+}
+
+pub fn parse_compile_module_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<CompileModuleOptions, ToolingParseError> {
+    if args.len() != 2 {
+        return Err(ToolingParseError::Arity {
+            command: "--compile-module",
+            expected: 2,
+            actual: args.len(),
+        });
+    }
+    Ok(CompileModuleOptions {
+        source: PathBuf::from(args[0].as_ref()),
+        output: PathBuf::from(args[1].as_ref()),
+    })
 }
 
 /// Classify only the top-level command family. Subcommand option validation
@@ -1881,6 +1954,51 @@ mod tests {
             Err(RunParseError::InvalidValue {
                 option: "--repl-port",
                 value: "70000".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn tooling_parsers_preserve_exact_path_operands() {
+        assert_eq!(
+            parse_bake_args(&["saved.image", "standalone-birnam"]).expect("bake operands parse"),
+            BakeOptions {
+                image: PathBuf::from("saved.image"),
+                executable: PathBuf::from("standalone-birnam"),
+            }
+        );
+        assert_eq!(
+            parse_rebuild_args(&["saved.image"]).expect("rebuild operand parses"),
+            RebuildOptions {
+                image: PathBuf::from("saved.image"),
+            }
+        );
+        assert_eq!(
+            parse_compile_module_args(&["module.birnam", "module.dylib"])
+                .expect("compile operands parse"),
+            CompileModuleOptions {
+                source: PathBuf::from("module.birnam"),
+                output: PathBuf::from("module.dylib"),
+            }
+        );
+    }
+
+    #[test]
+    fn tooling_parsers_reject_wrong_arity_before_runtime_access() {
+        assert_eq!(
+            parse_bake_args::<&str>(&["only-image"]),
+            Err(ToolingParseError::Arity {
+                command: "--bake",
+                expected: 2,
+                actual: 1,
+            })
+        );
+        assert_eq!(
+            parse_rebuild_args::<&str>(&[]),
+            Err(ToolingParseError::Arity {
+                command: "--rebuild",
+                expected: 1,
+                actual: 0,
             })
         );
     }

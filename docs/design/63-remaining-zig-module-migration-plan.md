@@ -2565,6 +2565,16 @@ allowances.
 - The focused Rust suite remains green at twenty-two tests with warnings
   denied.
 
+### R7.15 Rust host tooling operand checkpoint (2026-07-26)
+
+- Pure parsers now validate the host-owned `--bake <image> <exe>`,
+  `--rebuild <image>`, and `--compile-module <source> <out>` operand shapes,
+  preserving each path as an opaque `PathBuf`.
+- Wrong arity is rejected before resource resolution or floor loading. The
+  parsers do not read, write, copy, or execute any operand.
+- Twenty-four offline Rust tests pass with warnings denied. Actual image bake,
+  rebuild recovery, and compile-module execution remain later host seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
