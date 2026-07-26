@@ -2793,6 +2793,20 @@ allowances.
   checks show `check --help` succeeds without runtime files, while malformed
   and valid project invocations fail before startup as designed.
 
+### R7.33 Rust host project-policy invocation checkpoint (2026-07-26)
+
+- `HostRuntime::resolve_project_snapshot` now exposes one narrow semantic
+  boundary: after lazy policy installation, it sends a live value-shaped
+  snapshot to `ProjectPolicy resolveSnapshot:` and returns the policy result
+  or a typed rejection. Rust does not inspect the snapshot, parse TOML, scan
+  source, or compute dependency closure.
+- Invalid/nil/Error snapshots fail before policy dispatch; missing policy and
+  rejected policy answers remain distinct. The API is ready for a future Rust
+  observation adapter without creating a second project-resolution authority.
+- The focused host suite remains at thirty-five passing tests with warnings
+  denied. No project command or LSP route consumes this boundary yet, and the
+  canonical Zig adapter remains the only filesystem observation implementation.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

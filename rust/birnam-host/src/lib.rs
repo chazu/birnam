@@ -1137,14 +1137,15 @@ pub enum SelfHostedLoadOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootstrapRuntimeError {
-    MissingCodegen,
     Source(BootstrapSourceError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectPolicyError {
-    MissingCodegen,
     Source(BootstrapSourceError),
+    MissingPolicy,
+    InvalidSnapshot,
+    ResolutionRejected,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1400,6 +1401,35 @@ impl HostRuntime {
             unsafe { mark_module_loaded(self.stack.api(), manager, PROJECT_POLICY_MODULE.name) };
         }
         Ok(())
+    }
+
+    /// Apply Birnam's project-resolution policy to one host-observed snapshot.
+    /// The snapshot is an Oop map/vector graph owned by the live Store; this
+    /// method does not inspect filesystem data or reimplement dependency
+    /// closure rules in Rust.
+    ///
+    /// # Safety
+    ///
+    /// `snapshot` must be a live value from this runtime. The caller must have
+    /// prepared a live GC anchor and remain on the floor owner thread.
+    pub unsafe fn resolve_project_snapshot(
+        &self,
+        snapshot: birnam_abi::Oop,
+    ) -> Result<birnam_abi::Oop, ProjectPolicyError> {
+        let api = self.stack.api();
+        if snapshot == api.nilObj || send_is_error(api, snapshot) {
+            return Err(ProjectPolicyError::InvalidSnapshot);
+        }
+        unsafe { self.load_project_policy()? };
+        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
+            return Err(ProjectPolicyError::MissingPolicy);
+        };
+        let selector = unsafe { (api.intern)(c"resolveSnapshot:".as_ptr()) };
+        let result = unsafe { (api.send)(policy, selector, [snapshot].as_ptr(), 1) };
+        if result == api.nilObj || send_is_error(api, result) {
+            return Err(ProjectPolicyError::ResolutionRejected);
+        }
+        Ok(result)
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
