@@ -3598,6 +3598,18 @@ allowances.
   canonical R6 comparator remains unchanged and still admits only
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
+### R7.96 Rust host clean-bootstrap checkpoint (2026-07-26)
+
+- `scripts/source-bootstrap-smoke.sh` now accepts `BIRNAM_HOST_IMPL=rust` and
+  carries that host choice through both the production Rust-floor build and
+  the explicit Zig rollback prefix. The fixture-free archive check still
+  rejects prebuilt Birnam artifacts before Cargo/Zig work and uses only the
+  archive's source and locked offline workspace.
+- Two independent clean archive runs passed with the Rust host selected. Each
+  completed the full Rust workspace test suite, stage-one source bootstrap,
+  Rust-floor execution, and Zig-floor rollback execution; no checkout, cwd,
+  or removed compatibility fixture was consulted as a runtime input.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
