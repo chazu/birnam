@@ -2201,9 +2201,29 @@ image authority fixture, and retain the Rust shell's no-publication boundary.
   missing/unusable cases. The only accepted comparator crossings remain
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
-The next bounded slice must bind the captured bytes to the checked v4 code
-record and authority digest in memory, while keeping mapping/rebuild and final
-atomic publication outside the Rust Image shell.
+### R6.21 Rust Image in-memory code-record composition checkpoint (2026-07-25)
+
+- `907a6fe` carries the admitted facts and heap payloads out of live preflight
+  and invokes the checked v4 complete-image composer only when all payloads are
+  supported. The composed record binds the captured code bytes to the live
+  64-byte authority digest and code hash in memory; mapping, activation,
+  rebuild, rename, and requested-path publication remain absent.
+- The mixed-runtime probe intentionally remains fail-closed on its unsupported
+  live Store facts, so it proves capture (`codeUnits = 1`) and no publication
+  rather than claiming a dynamically admissible image. Pure composer coverage
+  proves canonical authority/heap/facts/code ordering and parser-compatible
+  framing. Rust Image is `19/19`, image-only clippy is clean, and the dynamic
+  shell remains `2/2`.
+- The full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passed
+  after `907a6fe`: focused `82/82`, Rust Alien live `9/9`, both Rust Image CLI
+  save profile receipts, optimized verify/install/harness legs, and zero
+  missing/unusable cases. The only accepted comparator crossings remain
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+The next bounded slice must add an explicitly supported, test-only preflight
+fixture and round-trip its live-composed bytes through the v4 parser, while
+keeping mapping/rebuild and final atomic publication outside the Rust Image
+shell.
 
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
