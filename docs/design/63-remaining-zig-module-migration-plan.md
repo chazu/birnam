@@ -3352,6 +3352,14 @@ allowances.
 - Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.76 Rust host install CLI smoke checkpoint (2026-07-26)
+
+- `birnam-rust-experimental install --help` is resource-free and exposes the
+  validated `--build`/profile grammar. A direct uninstalled-checkout install
+  fails closed at the same missing installed floor dylib as `build`; no
+  checkout fallback or partial installation is attempted.
+- R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
