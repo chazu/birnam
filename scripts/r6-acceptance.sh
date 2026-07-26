@@ -48,6 +48,11 @@ latest_tests=(
   test-rust-collection
   test-rust-error
 )
+# Accepted on 2026-07-25 after the Rust Image malformed-load assertions landed:
+# the focused matrix is 82 tests and the dynamic Rust Image shell is 2 tests.
+# Keep these pins centralized so adding or removing a test cannot silently widen R6.
+readonly expected_focused_tests=82
+readonly expected_rust_image_shell_tests=2
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
@@ -75,7 +80,7 @@ if [ "$functional_status" -ne 0 ]; then
     "Build Summary: 111/113 steps succeeded; 1 failed"
     "test-install transitive failure"
     "test-native-rung-harness transitive failure"
-    "Build Summary: 109/110 steps succeeded; 1 failed; 82/82 tests passed"
+    "Build Summary: 109/110 steps succeeded; 1 failed; ${expected_focused_tests}/${expected_focused_tests} tests passed"
   )
   for marker in "${known_functional_markers[@]}"; do
     marker_count=$(grep -F -c -- "$marker" "$functional" || true)
@@ -91,9 +96,9 @@ fi
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec '^Build Summary: [0-9]+/[0-9]+ steps succeeded;( [0-9]+ failed;)? 82/82 tests passed$' "$functional" || true)
+focused_test_summary_count=$(grep -Ec "^Build Summary: [0-9]+/[0-9]+ steps succeeded;( [0-9]+ failed;)? ${expected_focused_tests}/${expected_focused_tests} tests passed$" "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
-  echo "r6-acceptance: focused Rust replacement set no longer reports exactly 82/82 passing tests" >&2
+  echo "r6-acceptance: focused Rust replacement set no longer reports exactly ${expected_focused_tests}/${expected_focused_tests} passing tests" >&2
   exit 1
 }
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
@@ -141,9 +146,9 @@ rust_image_shell_test_count=$(awk '
 /^test-rust-image-shell success$/ { seen=1; next }
 seen && /^\+- run test / { print; exit }
 seen && /^[^ ]/ { exit }
-' "$functional" | grep -Ec '^\+- run test 2 passed ' || true)
+' "$functional" | grep -Ec "^\\+- run test ${expected_rust_image_shell_tests} passed " || true)
 [ "$rust_image_shell_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Image shell target no longer has 2 passing tests" >&2
+  echo "r6-acceptance: Rust Image shell target no longer has ${expected_rust_image_shell_tests} passing tests" >&2
   exit 1
 }
 rust_image_save_success_count=$(grep -Fc 'test-rust-image-save success' "$functional" || true)
