@@ -269,8 +269,8 @@ C1.4 adapter checkpoint (2026-07-26):
   the adapter owns the candidate protocol and Store re-entry.
 - The adapter candidate probe publishes a method through the Store mirror and
   observes the exact dispatch result (`73`), proving that the adapter path does
-  not create a second method dictionary. The focused gate is now `95/95` tests
-  (`170/170` steps); the optimized verify pin advances to `510/514` with six
+  not create a second method dictionary. The focused gate is now `96/96` tests
+  (`170/170` steps); the optimized verify pin advances to `511/514` with six
   explicit skips.
 
 ### C1.5 Generated artifact/TCC boundary
