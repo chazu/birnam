@@ -3360,6 +3360,19 @@ allowances.
   checkout fallback or partial installation is attempted.
 - R6 remains accepted at focused `91/91`.
 
+### R7.77 Rust host project-run activation checkpoint (2026-07-26)
+
+- `HostRuntime::run_project_with_tool_version` now supports the project run
+  path after build/validation: observed main/run policy, runtime Repl/socket
+  dependencies, native-library directory configuration, descriptor preflight,
+  Module-manager activation, ProjectArgs, and persisting main evaluation.
+- Explicit `--repl` modes override manifest policy; socket bind/port use the
+  same observed defaults. Activation remains manager-owned and every artifact
+  is preflighted before the first load; failures are typed and no checkout
+  fallback is introduced.
+- Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

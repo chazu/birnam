@@ -253,6 +253,24 @@ fn install_command(args: &[OsString]) -> Result<(), String> {
     }
 }
 
+fn run_project_command(args: &[OsString]) -> Result<(), String> {
+    let outcome = parse_run_args(&args[1..]).map_err(|error| format!("run: {error:?}"))?;
+    match outcome {
+        ParseOutcome::Help => {
+            print!("{RUN_USAGE}");
+            Ok(())
+        }
+        ParseOutcome::Parsed(options) => {
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            unsafe { runtime.run_project_with_tool_version(&options, VERSION.trim()) }
+                .map_err(|error| format!("run: {error:?}"))
+        }
+    }
+}
+
 fn worker_command(args: &[OsString]) -> Result<(), String> {
     let options = parse_worker_args(&args[1..]).map_err(|error| format!("--worker: {error:?}"))?;
     let runtime =
@@ -357,7 +375,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Check => check_command(&args),
         CommandKind::Build => build_command(&args),
         CommandKind::Install => install_command(&args),
-        CommandKind::Run => project_command(&args, "run"),
+        CommandKind::Run => run_project_command(&args),
         CommandKind::Test => project_command(&args, "test"),
         CommandKind::Worker => worker_command(&args),
         other => Err(format!(

@@ -1563,6 +1563,21 @@ pub enum ProjectInstallError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectRunError {
+    Build(ProjectBuildError),
+    MissingMain,
+    InvalidReplMode(String),
+    Module(RuntimeModuleError),
+    NativeDirectoryRejected,
+    ArtifactPreflight(ArtifactPreflightError),
+    ArtifactActivation(ArtifactActivationError),
+    ArgumentsRejected,
+    Main(ScriptError),
+    Repl(ReplError),
+    Socket(SocketReplError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectBuildRecordWriteError {
     Create { path: PathBuf, kind: io::ErrorKind },
     Write { path: PathBuf, kind: io::ErrorKind },
@@ -3865,6 +3880,144 @@ impl HostRuntime {
             return Err(RuntimeModuleError::LoadRejected);
         }
         Ok(())
+    }
+
+    /// Run a project main after validating/building its publication, loading
+    /// project modules through the canonical Module manager, and installing
+    /// ProjectArgs. Repl/socket follow the observed run policy unless the CLI
+    /// supplies an explicit mode.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for every policy, activation, evaluation, and REPL send.
+    pub unsafe fn run_project_with_tool_version(
+        &self,
+        options: &RunOptions,
+        tool_version: &str,
+    ) -> Result<(), ProjectRunError> {
+        let target = host_target_identity();
+        let build = if options.build {
+            let built_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| {
+                    ProjectRunError::Build(ProjectBuildError::ManifestRead {
+                        path: options.directory.clone(),
+                        kind: io::ErrorKind::Other,
+                    })
+                })?
+                .as_secs()
+                .to_string();
+            let request = ProjectBuildRequest {
+                start: &options.directory,
+                target: &target,
+                profile: &options.profile,
+                tool_version,
+                built_at: &built_at,
+            };
+            unsafe { self.build_project(&request) }
+        } else {
+            unsafe {
+                self.validate_project_build(
+                    &options.directory,
+                    &target,
+                    &options.profile,
+                    tool_version,
+                )
+            }
+        }
+        .map_err(ProjectRunError::Build)?;
+        let root = unsafe { self.observe_project_snapshot(&options.directory) }
+            .map_err(|error| ProjectRunError::Build(ProjectBuildError::Observation(error)))?;
+        let root = root.projects.first().ok_or(ProjectRunError::MissingMain)?;
+        let main = root.main.as_deref().ok_or(ProjectRunError::MissingMain)?;
+        let mode = if let Some(mode) = options.repl {
+            mode
+        } else {
+            match root.run.repl.as_str() {
+                "none" => ReplMode::None,
+                "tty" => ReplMode::Tty,
+                "socket" => ReplMode::Socket,
+                value => return Err(ProjectRunError::InvalidReplMode(value.to_owned())),
+            }
+        };
+        match mode {
+            ReplMode::None => {}
+            ReplMode::Tty => {
+                unsafe { self.load_runtime_module("repl") }.map_err(ProjectRunError::Module)?
+            }
+            ReplMode::Socket => {
+                unsafe { self.load_runtime_module("socket") }.map_err(ProjectRunError::Module)?;
+                unsafe { self.load_runtime_module("repl") }.map_err(ProjectRunError::Module)?;
+            }
+        }
+        let project_lib = build.output_root.join("lib");
+        let api = self.stack.api();
+        let alien = unsafe { (api.import)(c"Alien".as_ptr()) };
+        if alien != api.nilObj {
+            let path = path_bytes(&project_lib);
+            let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
+            let selector = unsafe { (api.intern)(c"libraryDir:".as_ptr()) };
+            let result = unsafe { (api.send)(alien, selector, [value].as_ptr(), 1) };
+            if result == api.nilObj || send_is_error(api, result) {
+                return Err(ProjectRunError::NativeDirectoryRejected);
+            }
+        }
+        let mut paths = Vec::with_capacity(build.record.artifacts.len());
+        for artifact in &build.record.artifacts {
+            let Some(relative) = safe_record_relative_path(&artifact.path) else {
+                return Err(ProjectRunError::ArtifactPreflight(
+                    ArtifactPreflightError::Read {
+                        path: PathBuf::from(&artifact.path),
+                        kind: io::ErrorKind::InvalidInput,
+                    },
+                ));
+            };
+            let path = build.output_root.join(relative);
+            preflight_artifact(&path, Some(artifact.name.as_bytes()))
+                .map_err(ProjectRunError::ArtifactPreflight)?;
+            paths.push((path, artifact.name.clone()));
+        }
+        for (path, name) in paths {
+            unsafe { activate_artifact(self, &path, Some(name.as_bytes())) }
+                .map_err(ProjectRunError::ArtifactActivation)?;
+        }
+        let globals =
+            unsafe { global_named(api, "Globals") }.ok_or(ProjectRunError::ArgumentsRejected)?;
+        let values = unsafe { native_os_string_vector(api, &options.arguments) }
+            .map_err(|_| ProjectRunError::ArgumentsRejected)?;
+        let key = unsafe { (api.intern)(c"ProjectArgs".as_ptr()) };
+        let put = unsafe { (api.intern)(c"at:put:".as_ptr()) };
+        let result = unsafe { (api.send)(globals, put, [key, values].as_ptr(), 2) };
+        if result == api.nilObj || send_is_error(api, result) {
+            return Err(ProjectRunError::ArgumentsRejected);
+        }
+        unsafe { eval_script(self, Path::new(main)) }.map_err(ProjectRunError::Main)?;
+        match mode {
+            ReplMode::None => Ok(()),
+            ReplMode::Tty => {
+                let mut session = unsafe { self.start_repl() }.map_err(ProjectRunError::Repl)?;
+                unsafe { self.run_repl(&mut session) }.map_err(ProjectRunError::Repl)
+            }
+            ReplMode::Socket => {
+                let bind = options
+                    .socket_bind
+                    .as_deref()
+                    .unwrap_or(&root.run.socket_bind);
+                let port = options.socket_port.unwrap_or(root.run.socket_port as u16);
+                unsafe { self.serve_socket(port, bind) }.map_err(ProjectRunError::Socket)
+            }
+        }
+    }
+
+    /// Run a project using the host crate's package version when no external
+    /// toolchain version is available.
+    ///
+    /// # Safety
+    ///
+    /// See [`HostRuntime::run_project_with_tool_version`].
+    pub unsafe fn run_project(&self, options: &RunOptions) -> Result<(), ProjectRunError> {
+        unsafe { self.run_project_with_tool_version(options, env!("CARGO_PKG_VERSION")) }
     }
 
     /// Lazily install the Birnam-owned project policy module. Filesystem
