@@ -2111,6 +2111,9 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_CODEGEN_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
     );
+    // This cross-floor cell deliberately keeps Zig Codegen canonical while
+    // exercising Rust Codegen's private capture surface alongside it.
+    run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_RUST_CODEGEN_CANONICAL", "0");
     run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY", "rust");
     run_rust_image_zig_store.setEnvironmentVariable("BIRNAM_RUST_IMAGE_PUBLICATION", "rust");
     run_rust_image_zig_store.step.dependOn(bootstrap_install);
