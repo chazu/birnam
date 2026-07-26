@@ -88,6 +88,20 @@ pub struct BuildOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallOptions {
+    pub directory: PathBuf,
+    pub build: bool,
+    pub profile: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestOptions {
+    pub directory: PathBuf,
+    pub build: bool,
+    pub profile: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseOutcome<T> {
     Parsed(T),
     Help,
@@ -219,6 +233,75 @@ pub fn parse_build_args<T: AsRef<std::ffi::OsStr>>(
         directory: directory.unwrap_or_else(|| PathBuf::from(".")),
         profile,
     }))
+}
+
+fn parse_buildish_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<(PathBuf, bool, String)>, ProjectParseError> {
+    let mut directory = None;
+    let mut build = false;
+    let mut profile = String::from("debug");
+    let mut index = 0;
+    while index < args.len() {
+        let token = args[index].as_ref();
+        if token == std::ffi::OsStr::new("--help") || token == std::ffi::OsStr::new("-h") {
+            if index + 1 != args.len() {
+                return Err(ProjectParseError::UnexpectedAfterHelp);
+            }
+            return Ok(ParseOutcome::Help);
+        }
+        let token_text = token.to_string_lossy();
+        if token == std::ffi::OsStr::new("--build") {
+            build = true;
+        } else if token == std::ffi::OsStr::new("--profile") {
+            index += 1;
+            let value = args
+                .get(index)
+                .ok_or(ProjectParseError::MissingValue("--profile"))
+                .and_then(|value| option_value("--profile", value))?;
+            profile = parse_profile(value)?;
+        } else if let Some(value) = token_text.strip_prefix("--profile=") {
+            profile = parse_profile(value.to_owned())?;
+        } else if token_text.starts_with('-') {
+            return Err(ProjectParseError::UnknownOption(token_text.into_owned()));
+        } else if directory.is_some() {
+            return Err(ProjectParseError::DuplicateDirectory);
+        } else {
+            directory = Some(PathBuf::from(token));
+        }
+        index += 1;
+    }
+    Ok(ParseOutcome::Parsed((
+        directory.unwrap_or_else(|| PathBuf::from(".")),
+        build,
+        profile,
+    )))
+}
+
+pub fn parse_install_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<InstallOptions>, ProjectParseError> {
+    Ok(match parse_buildish_args(args)? {
+        ParseOutcome::Help => ParseOutcome::Help,
+        ParseOutcome::Parsed((directory, build, profile)) => ParseOutcome::Parsed(InstallOptions {
+            directory,
+            build,
+            profile,
+        }),
+    })
+}
+
+pub fn parse_test_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<TestOptions>, ProjectParseError> {
+    Ok(match parse_buildish_args(args)? {
+        ParseOutcome::Help => ParseOutcome::Help,
+        ParseOutcome::Parsed((directory, build, profile)) => ParseOutcome::Parsed(TestOptions {
+            directory,
+            build,
+            profile,
+        }),
+    })
 }
 
 /// Classify only the top-level command family. Subcommand option validation
@@ -1535,6 +1618,42 @@ mod tests {
         assert_eq!(
             parse_build_args(&["one", "two"]),
             Err(ProjectParseError::DuplicateDirectory)
+        );
+    }
+
+    #[test]
+    fn install_and_test_parsers_share_build_and_profile_policy() {
+        assert_eq!(
+            parse_install_args(&["--build", "--profile=release"]).expect("install options parse"),
+            ParseOutcome::Parsed(InstallOptions {
+                directory: PathBuf::from("."),
+                build: true,
+                profile: "release".to_owned(),
+            })
+        );
+        assert_eq!(
+            parse_test_args(&["project", "--profile", "debug"]).expect("test options parse"),
+            ParseOutcome::Parsed(TestOptions {
+                directory: PathBuf::from("project"),
+                build: false,
+                profile: "debug".to_owned(),
+            })
+        );
+        assert_eq!(
+            parse_install_args(&["--help"]).expect("help parses"),
+            ParseOutcome::Help
+        );
+    }
+
+    #[test]
+    fn buildish_parser_rejects_missing_profile_and_unknown_flags() {
+        assert_eq!(
+            parse_test_args(&["--profile"]),
+            Err(ProjectParseError::MissingValue("--profile"))
+        );
+        assert_eq!(
+            parse_install_args(&["--wat"]),
+            Err(ProjectParseError::UnknownOption("--wat".to_owned()))
         );
     }
 }

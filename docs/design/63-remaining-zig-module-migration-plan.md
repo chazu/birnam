@@ -2531,6 +2531,18 @@ allowances.
 - Eighteen offline Rust tests pass with warnings denied. Execution of these
   commands remains a later host seam; Zig remains canonical.
 
+### R7.12 Rust host install/test parser checkpoint (2026-07-26)
+
+- `install` and `test` now share the existing project option contract:
+  directory default `.`, `--build`, and `--profile debug|release` with both
+  separated and `=` forms. Their public option values remain distinct types
+  even though parsing is shared.
+- Missing profile values, invalid profiles, unknown flags, duplicate
+  directories, and help-with-extra-arguments remain explicit parse errors.
+  No filesystem, project, floor, or process operation is performed.
+- Twenty offline Rust tests pass with warnings denied. Project execution and
+  test-process isolation remain later host seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
