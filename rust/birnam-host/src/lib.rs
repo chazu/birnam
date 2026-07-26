@@ -1287,6 +1287,16 @@ pub enum ProjectSourceWalkError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectCompositionError {
+    MissingModule,
+    MissingVector,
+    AllocationRejected,
+    Rejected,
+    NonString,
+    TooLarge { limit: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectPreparationError {
     Discovery(ProjectDiscoveryError),
     Manifest(ProjectManifestError),
@@ -1961,6 +1971,62 @@ impl HostRuntime {
             source_digest: metadata.source_digest,
             revision_digest: metadata.revision_digest,
         }))
+    }
+
+    /// Ask the Birnam Module manager to compose ordered source parts. The
+    /// manager owns file reading and composition semantics; Rust only builds
+    /// the path vector and copies the returned source bytes.
+    ///
+    /// # Safety
+    ///
+    /// The returned bytes are an owned Rust copy. The runtime must remain on
+    /// the floor owner thread for the synchronous Module send.
+    pub unsafe fn compose_project_sources(
+        &self,
+        paths: &[PathBuf],
+    ) -> Result<Vec<u8>, ProjectCompositionError> {
+        let api = self.stack.api();
+        let module =
+            unsafe { global_named(api, "Module") }.ok_or(ProjectCompositionError::MissingModule)?;
+        let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
+        if vector_class == api.nilObj {
+            return Err(ProjectCompositionError::MissingVector);
+        }
+        let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+        let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+        let mut source_paths =
+            unsafe { (api.send)(vector_class, new_selector, std::ptr::null(), 0) };
+        if source_paths == api.nilObj || send_is_error(api, source_paths) {
+            return Err(ProjectCompositionError::AllocationRejected);
+        }
+        for path in paths {
+            let bytes = path_bytes(path);
+            let value = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+            let updated = unsafe { (api.send)(source_paths, add_selector, [value].as_ptr(), 1) };
+            if updated == api.nilObj || send_is_error(api, updated) {
+                return Err(ProjectCompositionError::AllocationRejected);
+            }
+            source_paths = updated;
+        }
+        let selector = unsafe { (api.intern)(c"composeSources:".as_ptr()) };
+        let result = unsafe { (api.send)(module, selector, [source_paths].as_ptr(), 1) };
+        if send_is_error(api, result) {
+            return Err(ProjectCompositionError::Rejected);
+        }
+        if result == api.nilObj || unsafe { (api.vtableOf)(result) } != api.string_vt {
+            return Err(ProjectCompositionError::NonString);
+        }
+        let mut length = 0usize;
+        let bytes = unsafe { (api.stringBytes)(result, &mut length) };
+        if bytes.is_null() {
+            return Err(ProjectCompositionError::NonString);
+        }
+        if length > MAX_SCRIPT_BYTES {
+            return Err(ProjectCompositionError::TooLarge {
+                limit: MAX_SCRIPT_BYTES,
+            });
+        }
+        Ok(unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec())
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`

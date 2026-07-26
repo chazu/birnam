@@ -2952,6 +2952,18 @@ allowances.
 - The focused host suite advances to thirty-eight tests with warnings denied;
   dependency closure and full source indexing remain pending.
 
+### R7.45 Rust host Module composition checkpoint (2026-07-26)
+
+- `HostRuntime::compose_project_sources` now delegates ordered source-part
+  composition to `Module composeSources:` and returns an owned byte copy. Rust
+  preserves manager Error, non-String, allocation, and 16 MiB size failures.
+- The host creates only the path Vector and never reads/evaluates source or
+  installs a composed unit itself. Module remains the source-composition and
+  path-policy authority, preserving the no-second-parser/no-second-loader law.
+- The focused host suite and all-target clippy remain green at thirty-eight
+  tests. Module composition is available to the observation adapter; provider
+  closure and build publication remain pending.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
