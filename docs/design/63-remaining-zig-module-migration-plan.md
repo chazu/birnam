@@ -2587,3 +2587,23 @@ explicitly so the recovery surface cannot silently shrink.
   `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed with optimized
   verify/install/harness green and only the existing benchmark allowances:
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+### R6.38 Explicit Rust Image writer-authority capture checkpoint (2026-07-26)
+
+- Rust Image now has an explicit, fail-closed writer-authority seam. The
+  `BIRNAM_RUST_IMAGE_WRITER_AUTHORITY=rust` selection imports Rust Codegen,
+  initializes and validates its durable generation, and captures the current
+  generation digest and code record through that authority. Unknown non-empty
+  selections are rejected; the default mixed host continues to use canonical
+  Zig Codegen.
+- The isolated bootstrap proof exercises `System saveImage:` through the Rust
+  authority and confirms a one-unit code capture while publication remains
+  rejected and no target image file is created. This preserves the no-partial-
+  activation invariant until Rust owns the complete data/heap/code publication
+  and recovery path.
+- A fresh `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed after this
+  slice: focused `87/87`, Rust Image shell `2/2`, mapped Image-to-Codegen `1/1`,
+  durable-generation bootstrap `1/1`, cross-floor `1/1`, rejection `1/1`, and
+  Rust Alien live `9/9`. Optimized verify/install/harness remained green, with
+  only the accepted snapshot allowances `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`.
