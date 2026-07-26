@@ -1318,6 +1318,7 @@ pub enum ProjectCompositionError {
     AllocationRejected,
     Rejected,
     NonString,
+    PartDeclaration(PathBuf),
     TooLarge { limit: usize },
 }
 
@@ -1337,6 +1338,19 @@ pub enum ProjectObservationError {
         second: PathBuf,
     },
     DuplicateModulePart(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectObservationBuildError {
+    Discovery(ProjectDiscoveryError),
+    Manifest(ProjectManifestError),
+    Decode(ProjectManifestDecodeError),
+    Dependency(ProjectDependencyResolutionError),
+    SourceWalk(ProjectSourceWalkError),
+    Source(ProjectSourceIndexError),
+    Observation(ProjectObservationError),
+    MissingMain(PathBuf),
+    DependencyCycle(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1430,6 +1444,7 @@ pub enum ProjectSourceIndexError {
     MissingCodegen,
     MetadataRejected,
     MetadataMalformed(ProjectMetadataError),
+    CompositionPlan(ProjectCompositionPlanError),
     Composition(ProjectCompositionError),
 }
 
@@ -2529,6 +2544,158 @@ impl HostRuntime {
         let parsed = unsafe { self.parse_project_manifest(&manifest) }
             .map_err(ProjectPreparationError::Manifest)?;
         Ok((root, parsed))
+    }
+
+    unsafe fn observe_project_at(
+        &self,
+        root: &Path,
+        is_root: bool,
+    ) -> Result<(ProjectObservation, Vec<ProjectDependencyObservation>), ProjectObservationBuildError>
+    {
+        let manifest_path = root.join("birnam.toml");
+        let parsed = unsafe { self.parse_project_manifest(&manifest_path) }
+            .map_err(ProjectObservationBuildError::Manifest)?;
+        let manifest = unsafe { decode_project_manifest(self.stack.api(), parsed) }
+            .map_err(ProjectObservationBuildError::Decode)?;
+        let dependencies = resolve_project_dependency_paths(root, &manifest.dependencies)
+            .map_err(ProjectObservationBuildError::Dependency)?;
+        let root_string = root.to_string_lossy().into_owned();
+        let mut sources = Vec::new();
+        let mut explicit_paths = HashSet::new();
+        for module in &manifest.modules {
+            let paths = project_composition_paths(root, &module.entry, &module.files)
+                .map_err(ProjectSourceIndexError::CompositionPlan)
+                .map_err(ProjectObservationBuildError::Source)?;
+            for path in paths.iter().skip(1) {
+                if matches!(
+                    unsafe { self.index_project_source(path) }
+                        .map_err(ProjectObservationBuildError::Source)?,
+                    ProjectSourceIndexOutcome::Metadata(_)
+                ) {
+                    return Err(ProjectObservationBuildError::Source(
+                        ProjectSourceIndexError::Composition(
+                            ProjectCompositionError::PartDeclaration(path.clone()),
+                        ),
+                    ));
+                }
+            }
+            explicit_paths.extend(paths.iter().cloned());
+            if let Some(source) =
+                unsafe { self.observe_composed_project_source(&paths, &root_string) }
+                    .map_err(ProjectObservationBuildError::Source)?
+            {
+                sources.push(source);
+            }
+        }
+        let files = collect_project_source_files(root, &manifest.source_roots)
+            .map_err(ProjectObservationBuildError::SourceWalk)?;
+        for path in files {
+            if explicit_paths.contains(&path) {
+                continue;
+            }
+            let source_path = path.to_string_lossy().into_owned();
+            if let Some(source) =
+                unsafe { self.observe_project_source(&path, &root_string, &[source_path]) }
+                    .map_err(ProjectObservationBuildError::Source)?
+            {
+                sources.push(source);
+            }
+        }
+        validate_project_observations(&sources)
+            .map_err(ProjectObservationBuildError::Observation)?;
+        let main = if is_root {
+            if let Some(main) = manifest.main.as_deref() {
+                let main_path = root.join(main);
+                if std::fs::metadata(&main_path).is_err() {
+                    return Err(ProjectObservationBuildError::MissingMain(main_path));
+                }
+                Some(main_path.to_string_lossy().into_owned())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        Ok((
+            ProjectObservation {
+                root: root_string,
+                manifest: manifest_path.to_string_lossy().into_owned(),
+                name: manifest.name,
+                main,
+                loads: manifest.loads,
+                run: manifest.run,
+                wrapped: manifest.wrapped,
+                dependencies: dependencies.clone(),
+                sources,
+            },
+            dependencies,
+        ))
+    }
+
+    unsafe fn observe_project_recursive(
+        &self,
+        root: &Path,
+        is_root: bool,
+        visiting: &mut HashSet<PathBuf>,
+        visited: &mut HashSet<PathBuf>,
+        projects: &mut Vec<ProjectObservation>,
+    ) -> Result<(), ProjectObservationBuildError> {
+        if visited.contains(root) {
+            return Ok(());
+        }
+        if !visiting.insert(root.to_path_buf()) {
+            return Err(ProjectObservationBuildError::DependencyCycle(
+                root.to_path_buf(),
+            ));
+        }
+        let result = (|| {
+            let (project, dependencies) = unsafe { self.observe_project_at(root, is_root) }?;
+            projects.push(project);
+            for dependency in dependencies {
+                let dependency_root = PathBuf::from(dependency.root);
+                unsafe {
+                    self.observe_project_recursive(
+                        &dependency_root,
+                        false,
+                        visiting,
+                        visited,
+                        projects,
+                    )?
+                };
+            }
+            Ok::<(), ProjectObservationBuildError>(())
+        })();
+        visiting.remove(root);
+        if result.is_ok() {
+            visited.insert(root.to_path_buf());
+        }
+        result
+    }
+
+    /// Observe the root project and its canonical dependency closure into the
+    /// pointer-free snapshot consumed by `ProjectPolicy`. Rust owns only
+    /// filesystem reads, Codegen metadata, and deterministic ordering; TOML
+    /// parsing and provider/policy decisions remain Birnam-owned.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for every parse, composition, and metadata send.
+    pub unsafe fn observe_project_snapshot(
+        &self,
+        start: &Path,
+    ) -> Result<ProjectSnapshot, ProjectObservationBuildError> {
+        let root = nearest_project_root(start).map_err(ProjectObservationBuildError::Discovery)?;
+        let mut visiting = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut projects = Vec::new();
+        unsafe {
+            self.observe_project_recursive(&root, true, &mut visiting, &mut visited, &mut projects)?
+        };
+        Ok(ProjectSnapshot {
+            root: root.to_string_lossy().into_owned(),
+            projects,
+        })
     }
 
     /// Read one source file and ask Codegen for its static module metadata.

@@ -3052,6 +3052,21 @@ allowances.
   formatting, check, and warnings-denied clippy green; R6 remains accepted at
   `91/91`.
 
+### R7.53 Rust host recursive project observation checkpoint (2026-07-26)
+
+- `HostRuntime::observe_project_snapshot` now performs the first complete
+  observation pass: nearest-root discovery, self-hosted TOML parsing and typed
+  manifest decoding, canonical dependency resolution, explicit Module source
+  composition, static Codegen metadata, source-tree observation, ownership
+  validation, and root-first recursive dependency traversal.
+- The observer tracks visiting/visited canonical roots, rejects dependency
+  cycles, rejects declaring module parts, and reports a missing root `main`
+  source without evaluating project code. It returns only owned Rust records;
+  `ProjectPolicy` remains the sole provider/dependency semantic authority.
+- The host check, focused 44-test suite, Rust formatting, and warnings-denied
+  clippy pass. R6 remains accepted at focused `91/91` with the two existing
+  benchmark allowances.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
