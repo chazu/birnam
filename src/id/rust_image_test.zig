@@ -205,7 +205,7 @@ test "Rust Image shell preserves report layout and selector surface" {
     if (rejected_slots > 0) {
         try std.testing.expectEqualStrings("Rust Image heap preflight rejected unsupported layout", shell_detail[0..detail_len]);
     } else if (rejected_facts == 0) {
-        try std.testing.expectEqualStrings("Rust Image writer/publisher orchestration is not installed", shell_detail[0..detail_len]);
+        try std.testing.expectEqualStrings("Rust Image code mapping/rebuild orchestration is not installed", shell_detail[0..detail_len]);
     } else {
         try std.testing.expectEqualStrings("Rust Image fact preflight rejected unsupported values", shell_detail[0..detail_len]);
     }
