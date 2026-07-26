@@ -2507,6 +2507,18 @@ allowances.
   shipped executable: command dispatch, REPL/project/image/isolate paths,
   release rollback, and canonical-switch evidence remain before R7 closure.
 
+### R7.10 Rust host top-level command checkpoint (2026-07-26)
+
+- `birnam-host` now classifies the top-level command family without touching
+  runtime resources: help/version, REPL/listen/LSP, documentation and project
+  commands, wrap/bake/rebuild, and source/image/artifact file kinds are all
+  explicit variants.
+- Unknown top-level flags are rejected before floor loading. Subcommand options,
+  project resolution, image recovery, and execution remain separate later
+  seams; `--` payloads are not interpreted by this classifier.
+- Sixteen offline Rust tests pass with warnings denied. The classifier remains
+  opt-in and does not change the canonical Zig executable or R6 gate.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

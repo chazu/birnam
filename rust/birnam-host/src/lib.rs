@@ -41,6 +41,84 @@ pub enum EarlyAction {
     Version,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandKind {
+    Help,
+    Version,
+    Repl,
+    Listen,
+    Lsp,
+    Doc,
+    Docgen,
+    Init,
+    Check,
+    Build,
+    Install,
+    Run,
+    Test,
+    Wrap,
+    Bake,
+    Rebuild,
+    Script(PathBuf),
+    Image(PathBuf),
+    Artifact(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandError {
+    UnknownOption(String),
+}
+
+/// Classify only the top-level command family. Subcommand option validation
+/// remains a later parser seam; this function therefore cannot consume a
+/// project directory or reinterpret `--` arguments as host flags.
+pub fn classify_command<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<CommandKind, CommandError> {
+    let Some(first) = args.first().map(AsRef::as_ref) else {
+        return Ok(CommandKind::Repl);
+    };
+    let known = [
+        ("--help", CommandKind::Help),
+        ("-h", CommandKind::Help),
+        ("--version", CommandKind::Version),
+        ("-V", CommandKind::Version),
+        ("--repl", CommandKind::Repl),
+        ("-i", CommandKind::Repl),
+        ("repl", CommandKind::Repl),
+        ("--listen", CommandKind::Listen),
+        ("--serve", CommandKind::Listen),
+        ("--lsp", CommandKind::Lsp),
+        ("doc", CommandKind::Doc),
+        ("docgen", CommandKind::Docgen),
+        ("init", CommandKind::Init),
+        ("check", CommandKind::Check),
+        ("build", CommandKind::Build),
+        ("install", CommandKind::Install),
+        ("run", CommandKind::Run),
+        ("test", CommandKind::Test),
+        ("wrap", CommandKind::Wrap),
+        ("--bake", CommandKind::Bake),
+        ("--rebuild", CommandKind::Rebuild),
+    ];
+    for (name, command) in known {
+        if first == std::ffi::OsStr::new(name) {
+            return Ok(command);
+        }
+    }
+    if first.to_string_lossy().starts_with('-') {
+        return Err(CommandError::UnknownOption(
+            first.to_string_lossy().into_owned(),
+        ));
+    }
+    let path = PathBuf::from(first);
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("image") => Ok(CommandKind::Image(path)),
+        Some("dylib") => Ok(CommandKind::Artifact(path)),
+        _ => Ok(CommandKind::Script(path)),
+    }
+}
+
 /// Classify the pure CLI exits that must run before any runtime-resource or
 /// floor access. Remaining arguments stay opaque until the host dispatch slice
 /// ports the project/REPL command grammar.
@@ -1227,6 +1305,39 @@ mod tests {
                 force_source: false,
                 skip_stdlib: true,
             }
+        );
+    }
+
+    #[test]
+    fn top_level_command_classification_preserves_file_kinds() {
+        assert_eq!(classify_command::<&str>(&[]), Ok(CommandKind::Repl));
+        assert_eq!(
+            classify_command(&["--lsp"]).expect("lsp is a top-level command"),
+            CommandKind::Lsp
+        );
+        assert_eq!(
+            classify_command(&["program.birnam"]).expect("source is a script"),
+            CommandKind::Script(PathBuf::from("program.birnam"))
+        );
+        assert_eq!(
+            classify_command(&["saved.image"]).expect("image extension is explicit"),
+            CommandKind::Image(PathBuf::from("saved.image"))
+        );
+        assert_eq!(
+            classify_command(&["libbirnam_app.dylib"]).expect("dylib extension is explicit"),
+            CommandKind::Artifact(PathBuf::from("libbirnam_app.dylib"))
+        );
+    }
+
+    #[test]
+    fn top_level_unknown_flags_are_rejected_without_runtime_access() {
+        assert_eq!(
+            classify_command(&["--not-a-command"]),
+            Err(CommandError::UnknownOption("--not-a-command".to_owned()))
+        );
+        assert_eq!(
+            classify_command(&["--rebuild"]).expect("rebuild is top-level"),
+            CommandKind::Rebuild
         );
     }
 }
