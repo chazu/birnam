@@ -272,6 +272,9 @@ C1.4 adapter checkpoint (2026-07-26):
   not create a second method dictionary. The focused gate is now `96/96` tests
   (`170/170` steps); the optimized verify pin advances to `511/514` with six
   explicit skips.
+- The rollback fixture now drives the adapter through successor preparation and
+  rollback after collection, and verifies that the predecessor method and
+  exact Store mirror facts return unchanged.
 
 ### C1.5 Generated artifact/TCC boundary
 

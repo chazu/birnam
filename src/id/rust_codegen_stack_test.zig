@@ -204,6 +204,7 @@ test "Rust Codegen adapter commits a candidate through the frozen surface" {
 test "Rust Codegen candidate rollback restores the retained predecessor" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const adapter = api.import("RustCodegenAdapter") orelse return error.MissingRustCodegenAdapter;
     const store = api.import("Store") orelse return error.MissingStore;
     const object = api.import("Object") orelse return error.MissingObject;
 
@@ -228,18 +229,18 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     const base_source = api.mkString(base_text.ptr, base_text.len);
     const base_output = api.mkString(base_path.ptr, base_path.len);
     try std.testing.expect(api.send(
-        rust_codegen,
+        adapter,
         api.intern("compileCandidate:named:output:"),
         &.{ base_source, api.intern("rustOnlyRollbackBase"), base_output },
         3,
     ) != api.nilObj);
     const base_unit = api.send(object, api.intern("clone"), &.{}, 0);
-    try std.testing.expectEqual(base_unit, api.send(rust_codegen, api.intern("inspectCandidate:into:"), &.{ base_output, base_unit }, 2));
-    try std.testing.expectEqual(base_unit, api.send(rust_codegen, api.intern("mapCandidate:"), &.{base_unit}, 1));
-    const base_token = api.send(rust_codegen, api.intern("prepareActivation:"), &.{base_unit}, 1);
+    try std.testing.expectEqual(base_unit, api.send(adapter, api.intern("inspectCandidate:into:"), &.{ base_output, base_unit }, 2));
+    try std.testing.expectEqual(base_unit, api.send(adapter, api.intern("mapCandidate:"), &.{base_unit}, 1));
+    const base_token = api.send(adapter, api.intern("prepareActivation:"), &.{base_unit}, 1);
     try std.testing.expect(base_token != api.nilObj);
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0));
-    try std.testing.expectEqual(base_unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{base_token}, 1));
+    try std.testing.expectEqual(base_unit, api.send(adapter, api.intern("commitPrepared:"), &.{base_token}, 1));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
     try std.testing.expectEqual(@as(i64, 81), api.smallIntValue(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
     try std.testing.expectEqual(@as(i64, 91), api.smallIntValue(api.send(api.mkSmallInt(3), removed_selector, &.{}, 0)));
@@ -250,18 +251,18 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     const successor_source = api.mkString(successor_text.ptr, successor_text.len);
     const successor_output = api.mkString(successor_path.ptr, successor_path.len);
     try std.testing.expect(api.send(
-        rust_codegen,
+        adapter,
         api.intern("compileCandidate:named:output:"),
         &.{ successor_source, api.intern("rustOnlyRollbackSuccessor"), successor_output },
         3,
     ) != api.nilObj);
     const successor_unit = api.send(object, api.intern("clone"), &.{}, 0);
-    try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("inspectCandidate:into:"), &.{ successor_output, successor_unit }, 2));
-    try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("mapCandidate:"), &.{successor_unit}, 1));
-    const successor_token = api.send(rust_codegen, api.intern("prepareActivation:prior:"), &.{ successor_unit, base_unit }, 2);
+    try std.testing.expectEqual(successor_unit, api.send(adapter, api.intern("inspectCandidate:into:"), &.{ successor_output, successor_unit }, 2));
+    try std.testing.expectEqual(successor_unit, api.send(adapter, api.intern("mapCandidate:"), &.{successor_unit}, 1));
+    const successor_token = api.send(adapter, api.intern("prepareActivation:prior:"), &.{ successor_unit, base_unit }, 2);
     try std.testing.expect(successor_token != api.nilObj);
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0));
-    try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("commitPrepared:"), &.{successor_token}, 1));
+    try std.testing.expectEqual(successor_unit, api.send(adapter, api.intern("commitPrepared:"), &.{successor_token}, 1));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
     try std.testing.expectEqual(@as(i64, 82), api.smallIntValue(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
     try std.testing.expectEqual(
@@ -274,9 +275,9 @@ test "Rust Codegen candidate rollback restores the retained predecessor" {
     api.gcSetStackBottom(@intFromPtr(&stack_anchor));
     _ = api.gcCollect();
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0));
-    const rollback_token = api.send(rust_codegen, api.intern("prepareRollback:"), &.{successor_unit}, 1);
+    const rollback_token = api.send(adapter, api.intern("prepareRollback:"), &.{successor_unit}, 1);
     try std.testing.expect(rollback_token != api.nilObj);
-    try std.testing.expectEqual(successor_unit, api.send(rust_codegen, api.intern("commitPreparedRollback:"), &.{rollback_token}, 1));
+    try std.testing.expectEqual(successor_unit, api.send(adapter, api.intern("commitPreparedRollback:"), &.{rollback_token}, 1));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
     try std.testing.expectEqual(@as(i64, 81), api.smallIntValue(api.send(api.mkSmallInt(3), selector, &.{}, 0)));
     try std.testing.expectEqual(api.intern("active"), api.send(store, api.intern("currentValue:attr:"), &.{ base_unit, api.intern("state") }, 2));
