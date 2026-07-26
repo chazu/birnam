@@ -2418,6 +2418,20 @@ allowances.
   and pure early-CLI classification. No shipped executable or canonical host
   selection changes in this checkpoint.
 
+### R7.4 Rust host higher-rung loading checkpoint (2026-07-26)
+
+- `LoadedStack` now opens higher rungs only through the selected floor's
+  `IdApi.dlopen`/`dlsym` callbacks, invokes the frozen `module_init` ABI, and
+  retains every successful module handle for process lifetime. The raw loader
+  remains confined to floor selection.
+- The stack records the existing dependency order exactly: artifact, Store,
+  PEG, Lang, TCC, Codegen, Prelude, Collection, Error, Isolate, Relational,
+  Alien, Image. Store and TCC preserve their exact override paths; all other
+  modules resolve only from the executable-relative runtime library directory.
+- This is still an opt-in library seam. No Zig host dispatch or canonical
+  selection changed, and no module fallback to source, cwd, checkout, or a
+  manifest was introduced.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

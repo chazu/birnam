@@ -84,6 +84,112 @@ pub struct LoadedFloor {
     _owner_thread: PhantomData<std::rc::Rc<()>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModuleError {
+    EmbeddedNul,
+    OpenFailed { path: PathBuf },
+    MissingModuleInit { path: PathBuf },
+}
+
+/// The native module order is part of the host contract: Store precedes
+/// Codegen, and every later rung sees the same canonical floor/API table.
+pub const SCRIPT_MODULES: &[&str] = &[
+    "libbirnam_id_artifact",
+    "libbirnam_store",
+    "libbirnam_id_peg",
+    "libbirnam_id_lang",
+    "libbirnam_id_tcc",
+    "libbirnam_id_codegen",
+    "libbirnam_id_prelude",
+    "libbirnam_id_collection",
+    "libbirnam_id_error",
+    "libbirnam_id_isolate",
+    "libbirnam_id_relational",
+    "libbirnam_id_alien",
+    "libbirnam_id_image",
+];
+
+/// Process-lifetime native stack owned by the host. Higher rungs are opened
+/// through `IdApi`; successful handles are retained because methods/finalizers
+/// may retain code pointers after `module_init` returns.
+pub struct LoadedStack {
+    pub floor: LoadedFloor,
+    modules: Vec<NonNull<std::ffi::c_void>>,
+}
+
+impl LoadedStack {
+    pub fn new(floor: LoadedFloor) -> Self {
+        Self {
+            floor,
+            modules: Vec::new(),
+        }
+    }
+
+    pub fn module_count(&self) -> usize {
+        self.modules.len()
+    }
+
+    /// Load one higher rung through the selected floor's dynamic-loader API.
+    /// No host-side `dlopen` is used after the floor has initialized.
+    pub fn load_module(&mut self, path: &Path) -> Result<(), ModuleError> {
+        let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
+        // SAFETY: the floor API is process-owned and the C string lives across
+        // this synchronous call.
+        let handle = unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) };
+        let Some(handle) = NonNull::new(handle) else {
+            return Err(ModuleError::OpenFailed {
+                path: path.to_path_buf(),
+            });
+        };
+        let init_name = c"module_init";
+        // SAFETY: the handle came from the selected floor's successful dlopen.
+        let init = unsafe { (self.floor.api().dlsym)(handle.as_ptr(), init_name.as_ptr().cast()) };
+        let Some(init) = NonNull::new(init) else {
+            return Err(ModuleError::MissingModuleInit {
+                path: path.to_path_buf(),
+            });
+        };
+        // SAFETY: module_init is the frozen higher-rung ABI and the floor table
+        // remains live for the module's initialization call.
+        let init: birnam_abi::ModuleInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
+        unsafe {
+            init(
+                self.floor.api() as *const IdApi as *mut IdApi,
+                std::ptr::null_mut(),
+            )
+        };
+        self.modules.push(handle);
+        Ok(())
+    }
+
+    /// Resolve and load the canonical native stack in the same order as the
+    /// Zig host. Store/TCC retain their exact override paths; every other rung
+    /// comes from the one executable-relative runtime library directory.
+    pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
+        let store_override = env::var_os("BIRNAM_STORE_DYLIB").map(PathBuf::from);
+        let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
+        for name in SCRIPT_MODULES {
+            let path = if *name == "libbirnam_store" {
+                store_override
+                    .as_deref()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| resources.lib_dir.join("libbirnam_store.dylib"))
+            } else if *name == "libbirnam_id_tcc" {
+                tcc_override
+                    .as_deref()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| resources.lib_dir.join("libbirnam_id_tcc.dylib"))
+            } else {
+                resources.lib_dir.join(format!("{name}.dylib"))
+            };
+            self.load_module(&path)?;
+        }
+        Ok(())
+    }
+}
+
+const RTLD_LAZY: i32 = 1;
+
 impl LoadedFloor {
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
