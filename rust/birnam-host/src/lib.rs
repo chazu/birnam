@@ -1471,15 +1471,36 @@ pub enum ProjectBuildError {
     Snapshot(ProjectSnapshotError),
     Policy(ProjectPolicyError),
     Resolution(ProjectManifestDecodeError),
-    ManifestRead { path: PathBuf, kind: io::ErrorKind },
+    ManifestRead {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
     BuildRecord(ProjectBuildRecordLoadError),
     Plan(ProjectArtifactPlanError),
-    StageDirectory { path: PathBuf, kind: io::ErrorKind },
+    StageDirectory {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
     Wrapped(ProjectWrappedBuildError),
     Stage(ProjectArtifactStageError),
     Record(ProjectArtifactRecordError),
     Write(ProjectBuildRecordWriteError),
     Publish(ProjectBuildPublicationError),
+    PublishedPolicy(ProjectPolicyError),
+    PublishedArtifact {
+        name: String,
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    PublishedDescriptor {
+        name: String,
+        error: ProjectCompiledArtifactValidationError,
+    },
+    PublishedChecksum {
+        name: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3006,6 +3027,13 @@ fn previous_artifact<'a>(
         .artifacts
         .iter()
         .find(|artifact| artifact.name == name)
+}
+
+fn previous_native_artifact<'a>(
+    record: &'a ProjectBuildRecord,
+    name: &str,
+) -> Option<&'a ProjectPreviousNativeArtifact> {
+    record.native.iter().find(|artifact| artifact.name == name)
 }
 
 /// Expand the placeholder protocol used by wrapped build commands without
@@ -4696,6 +4724,160 @@ impl HostRuntime {
             let _ = std::fs::remove_dir_all(&stage_root);
         }
         result
+    }
+
+    /// Validate an already-published project without compiling or mutating it.
+    /// The persisted record is re-observed, Birnam owns the final policy
+    /// decision, and every selected module/native file is checked before a
+    /// result is returned to install/run/test adapters.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for observation, TOML parsing, and policy sends.
+    pub unsafe fn validate_project_build(
+        &self,
+        start: &Path,
+        target: &str,
+        profile: &str,
+        tool_version: &str,
+    ) -> Result<ProjectBuildResult, ProjectBuildError> {
+        let snapshot = unsafe { self.observe_project_snapshot(start) }
+            .map_err(ProjectBuildError::Observation)?;
+        let root = snapshot
+            .projects
+            .first()
+            .ok_or(ProjectBuildError::Observation(
+                ProjectObservationBuildError::EmptyClosure,
+            ))?;
+        let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
+            .map_err(ProjectBuildError::Snapshot)?;
+        let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
+            .map_err(ProjectBuildError::Policy)?;
+        let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
+            .map_err(ProjectBuildError::Resolution)?;
+        let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
+            ProjectBuildError::ManifestRead {
+                path: PathBuf::from(&resolution.manifest),
+                kind: error.kind(),
+            }
+        })?;
+        let resolution_digest =
+            project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let final_root = PathBuf::from(&resolution.project_root)
+            .join(".birnam/build")
+            .join(target)
+            .join(profile);
+        let record = unsafe { self.load_project_build_record(&final_root.join("artifacts.toml")) }
+            .map_err(ProjectBuildError::BuildRecord)?;
+        let request = ProjectArtifactPlanRequest {
+            resolution: &resolution,
+            wrapped: &root.wrapped,
+            previous: Some(&record),
+            target,
+            profile,
+            tool_version,
+            built_at: &record.built_at,
+            resolution_digest: &resolution_digest,
+        };
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api()) }
+            .map_err(ProjectBuildError::Snapshot)?;
+        let snapshot_value = unsafe { builder.artifact_plan_input(&request) }
+            .map_err(ProjectBuildError::Snapshot)?;
+        unsafe { self.load_project_policy() }.map_err(ProjectBuildError::PublishedPolicy)?;
+        let api = self.stack.api();
+        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
+            return Err(ProjectBuildError::PublishedPolicy(
+                ProjectPolicyError::MissingPolicy,
+            ));
+        };
+        let selector = unsafe { (api.intern)(c"validateArtifacts:".as_ptr()) };
+        let valid = unsafe { (api.send)(policy, selector, [snapshot_value].as_ptr(), 1) };
+        if valid != api.trueObj || send_is_error(api, valid) {
+            return Err(ProjectBuildError::PublishedPolicy(
+                ProjectPolicyError::ResolutionRejected,
+            ));
+        }
+        let mut artifacts = Vec::with_capacity(resolution.modules.len());
+        for module in &resolution.modules {
+            let Some(old) = previous_artifact(&record, &module.name) else {
+                return Err(ProjectBuildError::PublishedArtifact {
+                    name: module.name.clone(),
+                    path: final_root.clone(),
+                    kind: io::ErrorKind::NotFound,
+                });
+            };
+            let Some(relative) = safe_record_relative_path(&old.path) else {
+                return Err(ProjectBuildError::PublishedArtifact {
+                    name: module.name.clone(),
+                    path: PathBuf::from(&old.path),
+                    kind: io::ErrorKind::InvalidInput,
+                });
+            };
+            let path = final_root.join(relative);
+            let bytes =
+                std::fs::read(&path).map_err(|error| ProjectBuildError::PublishedArtifact {
+                    name: module.name.clone(),
+                    path: path.clone(),
+                    kind: error.kind(),
+                })?;
+            validate_project_compiled_artifact(module, &bytes).map_err(|error| {
+                ProjectBuildError::PublishedDescriptor {
+                    name: module.name.clone(),
+                    error,
+                }
+            })?;
+            let actual = String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned();
+            if actual != old.checksum {
+                return Err(ProjectBuildError::PublishedChecksum {
+                    name: module.name.clone(),
+                    expected: old.checksum.clone(),
+                    actual,
+                });
+            }
+            artifacts.push(ProjectStagedArtifact {
+                name: module.name.clone(),
+                path: old.path.clone(),
+                action: "reuse".to_owned(),
+                checksum: old.checksum.clone(),
+            });
+        }
+        for wrapped in &root.wrapped {
+            let Some(old) = previous_native_artifact(&record, &wrapped.name) else {
+                return Err(ProjectBuildError::PublishedArtifact {
+                    name: wrapped.name.clone(),
+                    path: final_root.clone(),
+                    kind: io::ErrorKind::NotFound,
+                });
+            };
+            let Some(relative) = safe_record_relative_path(&old.path) else {
+                return Err(ProjectBuildError::PublishedArtifact {
+                    name: wrapped.name.clone(),
+                    path: PathBuf::from(&old.path),
+                    kind: io::ErrorKind::InvalidInput,
+                });
+            };
+            let path = final_root.join(relative);
+            let bytes =
+                std::fs::read(&path).map_err(|error| ProjectBuildError::PublishedArtifact {
+                    name: wrapped.name.clone(),
+                    path: path.clone(),
+                    kind: error.kind(),
+                })?;
+            let actual = String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned();
+            if actual != old.checksum {
+                return Err(ProjectBuildError::PublishedChecksum {
+                    name: wrapped.name.clone(),
+                    expected: old.checksum.clone(),
+                    actual,
+                });
+            }
+        }
+        Ok(ProjectBuildResult {
+            output_root: final_root,
+            record,
+            artifacts,
+        })
     }
 
     /// Read one source file and ask Codegen for its static module metadata.

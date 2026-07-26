@@ -3326,6 +3326,19 @@ allowances.
 - Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.74 Rust host published-build validation checkpoint (2026-07-26)
+
+- `HostRuntime::validate_project_build` now covers the no-rebuild path needed
+  by install/run/test: it re-observes `artifacts.toml`, materializes the
+  camelCase prior record, asks `ProjectPolicy validateArtifacts:`, then checks
+  every module descriptor/checksum and every wrapped-native checksum before
+  returning a build result.
+- Missing records, unsafe paths, policy rejection, descriptor drift, missing
+  files, and checksum drift fail closed. Validation performs no compilation,
+  copying, activation, or publication.
+- Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
