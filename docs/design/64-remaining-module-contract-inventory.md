@@ -462,9 +462,9 @@ R0.7 R6 gate refresh (2026-07-26):
 R0.8 Rust Codegen adapter refresh (2026-07-26):
 
 - C1.3 adds the exact frozen Codegen/Reflect/collector projection under
-  explicit Rust adapter fixture names while keeping canonical Zig exports
-  absent until C1.6. The Rust-only `emit:` and `compile:` aliases remain out
-  of the adapter vtable.
+  explicit Rust adapter fixture names while keeping Rust-only `emit:` and
+  `compile:` aliases out of the adapter vtable. C1.6 now permits canonical
+  Rust Codegen selection while retaining the Zig and Rust explicit fixtures.
 - The focused gate now records `97/97` tests and `171/171` steps, including
   `29` Rust Codegen runtime tests and the adapter candidate probe. The
   optimized verify pin advances to `512/514` tests (`296/296` steps) with the same six explicit

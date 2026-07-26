@@ -73,6 +73,7 @@ test "Rust Codegen publishes the frozen canonical families when explicitly gated
     try std.testing.expectEqual(parsed.value.reflect_selectors.len, directSelectorCount(api, reflect_vt));
     for (parsed.value.codegen_selectors) |selector| try std.testing.expect(hasDirectSelector(api, codegen_vt, selector));
     for (parsed.value.reflect_selectors) |selector| try std.testing.expect(hasDirectSelector(api, reflect_vt, selector));
+    try std.testing.expectEqual(@as(usize, 1), directSelectorCount(api, collector_vt));
     try std.testing.expect(hasDirectSelector(api, collector_vt, "value:value:value:"));
     try std.testing.expectEqual(@as(u8, idapi.slot_raw), api.slotKind(collector_vt, 0));
 

@@ -292,10 +292,10 @@ C1.5/C1.6 publication probe (2026-07-26):
   verifies the frozen `CodegenVt`/`Codegen`, `ReflectVt`/`Reflect`, and
   `ReflectFactCollectorVt` exports, exact selector sets/layout, a canonical
   `Codegen eval:` call, and `Reflect nameOf:` behavior.
-- The ordinary Rust fixture remains fail-closed and keeps the canonical names
-  absent unless this explicit gate is present. The focused matrix is now
-  `97/97` tests (`171/171` steps); the optimized verify pin advances to
-  `512/514` with six explicit skips (`296/296` steps).
+- The private Rust fixture tests explicitly disable canonical publication;
+  the selected production dylib publishes the frozen names by default. The
+  focused matrix is now `97/97` tests (`171/171` steps); the optimized verify
+  pin advances to `512/514` with six explicit skips (`296/296` steps).
 
 ### C1.6 Exact parity and opt-in enablement
 
@@ -304,6 +304,15 @@ and `ReflectFactCollectorVt` parity in both fixtures, including the frozen
 exports, selector sets, layouts, diagnostics, and negative cases. Only this
 commit changes the build refusal into a permitted `-Dcodegen-impl=rust`
 selection; canonical Zig remains selected until C3.
+
+C1.6 implementation checkpoint (2026-07-26):
+
+- `-Dcodegen-impl=rust` now installs the Rust Codegen runtime under the
+  canonical `libbirnam_id_codegen.dylib` name while retaining the explicit
+  Rust and Zig fixtures. Unknown implementation choices remain fail-closed.
+- The canonical publication probe verifies exact frozen selector counts and
+  sets, collector raw layout, and behavior; the isolated fixture matrix keeps
+  private Rust names available for rollback-focused tests.
 
 ## 7. Phase C2 — image and host integration
 

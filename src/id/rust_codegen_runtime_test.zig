@@ -93,7 +93,7 @@ fn hasDirectSelector(api: *idapi.IdApi, vt: idapi.Oop, expected: []const u8) boo
     return false;
 }
 
-test "C1.1 expected rejection: Rust Codegen is not the frozen authority surface" {
+test "isolated Rust Codegen fixture stays outside the canonical authority surface" {
     const api = try setupRustOnly();
     const parsed = try std.json.parseFromSlice(
         AuthorityManifest,
@@ -124,9 +124,10 @@ test "C1.1 expected rejection: Rust Codegen is not the frozen authority surface"
         if (!known) exact = false;
     }
 
-    // This is deliberately an expected rejection until C1.6. The opt-in Rust
-    // object and its Rust-only direct surface must remain visibly distinct from
-    // the frozen Codegen/Reflect/collector family exports.
+    // This process is explicitly marked as a fixture run by the build graph.
+    // The selected canonical Rust dylib publishes the same adapter objects
+    // under the frozen names; this test keeps the private fixture boundary
+    // observable for rollback and adapter-focused tests.
     try std.testing.expect(!exact);
     try std.testing.expect(api.import("RustCodegen") != null);
     try std.testing.expect(api.import("CodegenVt") == null);
@@ -135,7 +136,7 @@ test "C1.1 expected rejection: Rust Codegen is not the frozen authority surface"
     try std.testing.expect(api.import("Reflect") == null);
     try std.testing.expect(api.import("ReflectFactCollectorVt") == null);
     std.debug.print(
-        "codegen-contract: expected-rejection selectors={d} frozen={d} canonical-exports=absent collector=absent\n",
+        "codegen-contract: isolated-fixture selectors={d} frozen={d} canonical-exports=absent collector=absent\n",
         .{ actual_count, parsed.value.codegen_selectors.len },
     );
 }

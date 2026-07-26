@@ -811,9 +811,10 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_rust_codegen_runtime_test.step);
 
     // C1.6's canonical publication probe runs in a fresh process with the
-    // explicit environment gate. The ordinary Rust runtime test intentionally
-    // keeps Codegen/Reflect absent so C1.1's expected-rejection fixture remains
-    // meaningful until this opt-in path is selected by the build policy.
+    // explicit environment gate. The ordinary Rust runtime and adapter tests
+    // explicitly disable canonical publication so their private fixture
+    // boundary remains meaningful while the selected production dylib uses
+    // the frozen family names by default.
     const rust_codegen_canonical_test_mod = b.createModule(.{
         .root_source_file = b.path("src/id/rust_codegen_canonical_test.zig"),
         .target = target,
