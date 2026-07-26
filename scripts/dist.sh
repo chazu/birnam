@@ -41,6 +41,12 @@ zig build install -Doptimize=ReleaseSafe --prefix "$prefix"
 log "staging"
 mkdir -p "$stage/bin" "$stage/lib"
 cp "$prefix/bin/birnam" "$stage/bin/birnam"
+# Canonical Rust installs carry the Zig host as an explicit rollback/oracle
+# executable. Keep it in the portable bundle when present; Zig-selected
+# rollback builds may legitimately have no second executable.
+if [ -x "$prefix/bin/birnam-zig-oracle" ]; then
+  cp "$prefix/bin/birnam-zig-oracle" "$stage/bin/birnam-zig-oracle"
+fi
 # All supported artifacts are Mach-O dylibs.
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
 # Native Rust-workspace/Zig-oracle source documentation + guides, in the
@@ -53,8 +59,8 @@ cp -R "$prefix/share" "$stage/share"
 # build receipt, then installed without that receipt.
 
 log "ad-hoc signing"
-codesign -s - --force "$stage"/lib/*.dylib "$stage/bin/birnam"
-for artifact in "$stage"/lib/*.dylib "$stage/bin/birnam"; do
+codesign -s - --force "$stage"/lib/*.dylib "$stage"/bin/*
+for artifact in "$stage"/lib/*.dylib "$stage"/bin/*; do
   codesign --verify --strict "$artifact"
 done
 

@@ -3635,6 +3635,17 @@ allowances.
   isolate, ABI, or dynamic-library boundary changed during the observation;
   the R6 comparator remains at its exact two accepted crossings.
 
+### R7.99 Rust host release-bundle rollback checkpoint (2026-07-26)
+
+- `scripts/dist.sh` now carries `bin/birnam-zig-oracle` into the portable
+  archive whenever the canonical Rust install provides it, and signs/verifies
+  both host executables alongside the dylibs. Zig-selected rollback builds
+  remain valid without a second executable.
+- The post-change `mise run dist` tarball build passed its relocated
+  `install-smoke`, including project, image, isolate, docs, and resource
+  closure checks. The distributed bundle now preserves the same explicit
+  rollback boundary as the installed tree.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
