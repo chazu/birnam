@@ -1416,6 +1416,7 @@ pub enum ProjectPolicyError {
     MissingPolicy,
     InvalidSnapshot,
     ResolutionRejected,
+    ResolutionDiagnostic { kind: String, message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4291,7 +4292,21 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
         }
     };
     match unsafe { runtime.resolve_project_snapshot(snapshot) } {
-        Ok(resolution) => resolution,
+        Ok(resolution) => {
+            // ProjectPolicy returns the resolution payload itself. The shared
+            // LSP bridge contract adds an explicit success bit so Birnam can
+            // distinguish a valid snapshot from its typed failure maps.
+            let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api) }) else {
+                return api.nilObj;
+            };
+            match unsafe { builder.put(resolution, "ok", api.trueObj) } {
+                Ok(resolution) => resolution,
+                Err(_) => api.nilObj,
+            }
+        }
+        Err(ProjectPolicyError::ResolutionDiagnostic { kind, message }) => unsafe {
+            project_bridge_failure(api, &kind, &message)
+        },
         Err(error) => {
             let message = format!("{error:?}");
             unsafe { project_bridge_failure(api, "projectResolutionFailed", &message) }
@@ -4668,6 +4683,9 @@ impl HostRuntime {
         let selector = unsafe { (api.intern)(c"resolveSnapshot:".as_ptr()) };
         let result = unsafe { (api.send)(policy, selector, [snapshot].as_ptr(), 1) };
         if result == api.nilObj || send_is_error(api, result) {
+            if let Some((kind, message)) = unsafe { error_diagnostic(api, result) } {
+                return Err(ProjectPolicyError::ResolutionDiagnostic { kind, message });
+            }
             return Err(ProjectPolicyError::ResolutionRejected);
         }
         Ok(result)
@@ -6537,6 +6555,25 @@ fn send_is_error(api: &IdApi, value: birnam_abi::Oop) -> bool {
     }
     let is_error = unsafe { (api.intern)(c"isError".as_ptr()) };
     unsafe { (api.send)(value, is_error, std::ptr::null(), 0) == api.trueObj }
+}
+
+unsafe fn error_diagnostic(api: &IdApi, value: birnam_abi::Oop) -> Option<(String, String)> {
+    if value == api.nilObj || !send_is_error(api, value) {
+        return None;
+    }
+    let kind_selector = unsafe { (api.intern)(c"kind".as_ptr()) };
+    let kind = unsafe { (api.send)(value, kind_selector, std::ptr::null(), 0) };
+    let kind_name = unsafe { (api.symbolName)(kind) };
+    if kind_name.is_null() {
+        return None;
+    }
+    let kind = unsafe { CStr::from_ptr(kind_name) }
+        .to_string_lossy()
+        .into_owned();
+    let message_selector = unsafe { (api.intern)(c"message".as_ptr()) };
+    let message = unsafe { (api.send)(value, message_selector, std::ptr::null(), 0) };
+    let message = unsafe { bridge_string(api, message) }.unwrap_or_default();
+    Some((kind, message))
 }
 
 unsafe fn native_os_string_vector(
