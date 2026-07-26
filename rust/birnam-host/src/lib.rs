@@ -5134,6 +5134,14 @@ impl HostRuntime {
                     kind: io::ErrorKind::NotFound,
                 });
             };
+            let expected_path = format!("lib/lib{}.dylib", wrapped.name);
+            if old.path != expected_path {
+                return Err(ProjectBuildError::PublishedArtifact {
+                    name: wrapped.name.clone(),
+                    path: PathBuf::from(&old.path),
+                    kind: io::ErrorKind::InvalidData,
+                });
+            }
             let Some(relative) = safe_record_relative_path(&old.path) else {
                 return Err(ProjectBuildError::PublishedArtifact {
                     name: wrapped.name.clone(),

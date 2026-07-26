@@ -3418,6 +3418,14 @@ allowances.
 - Rust-host formatting, check, 54-test suite, and warnings-denied clippy pass;
   R6 remains accepted at focused `91/91`.
 
+### R7.83 Rust host native-record path hardening checkpoint (2026-07-26)
+
+- Published wrapped-native validation now requires each record path to equal
+  canonical `lib/lib<name>.dylib` before checksum/read acceptance, matching
+  the Zig adapter's path/identity invariant.
+- Rust-host formatting, check, 54-test suite, and warnings-denied clippy pass;
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
