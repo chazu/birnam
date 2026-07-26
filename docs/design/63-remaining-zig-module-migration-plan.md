@@ -2437,3 +2437,7 @@ Acceptance is split to keep lifecycle ownership explicit: the mixed shell target
 has two passing tests (the Rust-Codegen delegation test is skipped there), and
 `test-rust-image-codegen` runs that one mapped-unit test in a fresh process. The
 R6 focused pin is therefore 84 passing tests, with the shell pin remaining 2.
+
+The focused pin includes 26 Rust Codegen runtime tests, including the
+factless-image Store-preservation regression; the gate records that count
+explicitly so the recovery surface cannot silently shrink.
