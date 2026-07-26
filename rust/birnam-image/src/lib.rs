@@ -2004,6 +2004,30 @@ mod tests {
         bytes
     }
 
+    fn supported_preflight_fixture() -> (Vec<u8>, Vec<u8>) {
+        let mut facts = FactsWriter::new(17);
+        facts
+            .fact(
+                1,
+                42,
+                Field::Symbol(b"Point"),
+                Field::Symbol(b"value"),
+                Field::Integer(7),
+            )
+            .unwrap();
+
+        let mut heap = Vec::new();
+        heap.extend_from_slice(&1u32.to_le_bytes());
+        heap.extend_from_slice(&5u32.to_le_bytes());
+        heap.extend_from_slice(b"Point");
+        heap.extend_from_slice(&2u32.to_le_bytes());
+        let mut oop = FieldEncoder::new();
+        oop.integer(9);
+        heap.extend_from_slice(oop.as_bytes());
+        heap.extend_from_slice(&0xfeed_face_cafe_beefu64.to_le_bytes());
+        (facts.finish(), heap)
+    }
+
     #[test]
     fn header_and_records_are_borrowed() {
         let parsed = Header::parse(&header(1, 99))
@@ -2065,6 +2089,74 @@ mod tests {
                 RecordKind::Code
             ]
         );
+    }
+
+    #[test]
+    fn composed_supported_preflight_round_trips_v4_payloads() {
+        let (facts_payload, heap_payload) = supported_preflight_fixture();
+        let digest = [b'g'; AUTHORITY_DIGEST_LEN];
+        let code = b"compiled-unit";
+        let bytes = compose_complete_image(
+            IMAGE_ARCH_TAG,
+            runtime_abi_hash(),
+            &facts_payload,
+            &heap_payload,
+            &digest,
+            wyhash(0, code),
+            code,
+        )
+        .unwrap();
+
+        let image = Image::parse(&bytes).unwrap();
+        image
+            .header
+            .require(IMAGE_ARCH_TAG, runtime_abi_hash())
+            .unwrap();
+        assert_eq!(image.authority.digest, &digest);
+        image.validate_facts().unwrap();
+        assert_eq!(image.code().unwrap().unit, code);
+
+        let mut records = image.records();
+        let authority = records.next_record().unwrap().unwrap();
+        assert_eq!(authority.kind, RecordKind::Authority);
+        assert_eq!(authority.payload, digest);
+
+        let heap = records.next_record().unwrap().unwrap();
+        assert_eq!(heap.kind, RecordKind::Heap);
+        let mut objects = Heap::parse(heap.payload).unwrap();
+        assert_eq!(
+            objects.peek_header().unwrap(),
+            Some(HeapHeader {
+                vtable_name: b"Point",
+                word_count: 2,
+            })
+        );
+        let object = objects
+            .next_object(&[SlotKind::Oop, SlotKind::RawWord])
+            .unwrap()
+            .unwrap();
+        assert_eq!(object.header.vtable_name, b"Point");
+        assert_eq!(object.header.word_count, 2);
+        let mut fields = Fields::new(object.encoded_slots);
+        assert_eq!(fields.next_field().unwrap(), Some(Field::Integer(9)));
+        assert_eq!(fields.consumed(), 9);
+        assert_eq!(
+            objects
+                .next_object(&[SlotKind::Oop, SlotKind::RawWord])
+                .unwrap(),
+            None
+        );
+
+        let facts = records.next_record().unwrap().unwrap();
+        assert_eq!(facts.kind, RecordKind::Facts);
+        let mut facts = Facts::parse(facts.payload).unwrap();
+        assert_eq!(facts.basis, 17);
+        assert_eq!(facts.next_fact().unwrap().unwrap().value, Field::Integer(7));
+        assert_eq!(facts.next_fact().unwrap(), None);
+
+        let code_record = records.next_record().unwrap().unwrap();
+        assert_eq!(code_record.kind, RecordKind::Code);
+        assert_eq!(records.next_record().unwrap(), None);
     }
 
     #[test]
