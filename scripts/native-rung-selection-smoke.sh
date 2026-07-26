@@ -26,6 +26,23 @@ case "$receipt" in
     ;;
 esac
 
+printf 'zig codegen implementation\n' >"$tmp/libbirnam_id_codegen_zig.dylib"
+cp "$tmp/libbirnam_id_codegen_zig.dylib" "$tmp/libbirnam_id_codegen.dylib"
+codegen_receipt=$(
+  ./scripts/native-rung-selection.sh \
+    codegen \
+    zig \
+    "$tmp/libbirnam_id_codegen.dylib" \
+    "$tmp/libbirnam_id_codegen_zig.dylib"
+)
+case "$codegen_receipt" in
+  '{"schema":1,"rung":"codegen","implementation":"zig","sha256":"'*) ;;
+  *)
+    echo "native-rung-selection-smoke: malformed Codegen receipt: $codegen_receipt" >&2
+    exit 1
+    ;;
+esac
+
 if ./scripts/native-rung-selection.sh \
   artifact-inspector \
   rust \

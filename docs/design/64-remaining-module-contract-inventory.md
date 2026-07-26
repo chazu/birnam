@@ -432,3 +432,20 @@ R3.13 Rust Isolate module-family checkpoint (2026-07-24):
 - Dynamic Debug/ReleaseSafe probes verify initialization, family exports, and
   pending-failure shape. Worker transport/error tests remain green; host
   lifecycle parity and canonical selection are not yet implemented.
+
+R0.6 current-owner projection (2026-07-26):
+
+- The historical execution records above remain unchanged. The current
+  projection is that Rust owns the canonical floor, Store, PEG, Lang, TCC,
+  Prelude, Collection, Error, Isolate, Relational, Alien, Image, and host.
+  Zig remains the explicit oracle/rollback implementation for each retained
+  dynamic name.
+- Codegen is the remaining canonical Zig production rung:
+  `src/id/codegen.zig` provides `libbirnam_id_codegen.dylib`; the Rust runtime
+  is installed only as `libbirnam_id_codegen_rust.dylib` until the reviewed
+  Codegen/Reflect/collector parity gate passes. The Zig implementation is also
+  installed as `libbirnam_id_codegen_zig.dylib` for the C0a rollback path.
+- The residual manifest in `abi/remaining-rungs-v1.json` is diagnostic
+  metadata only. Its load order now includes Codegen before Prelude and names
+  dynamic libraries plus explicit implementation fixtures; it is not a runtime
+  fallback graph.

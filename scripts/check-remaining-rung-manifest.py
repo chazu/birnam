@@ -11,7 +11,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "abi/remaining-rungs-v1.json"
 BASELINE = REPO / "abi/native-rungs-v1.json"
-EXPECTED = ("prelude", "collection", "error", "isolate", "relational", "alien", "image")
+EXPECTED = ("codegen", "prelude", "collection", "error", "isolate", "relational", "alien", "image")
 
 
 def fail(message: str) -> None:

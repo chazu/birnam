@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const Floor = enum { zig, rust };
     const PegImpl = enum { zig, rust };
+    const CodegenImpl = enum { zig, rust };
     const selected_floor = b.option(
         Floor,
         "floor",
@@ -27,6 +28,11 @@ pub fn build(b: *std.Build) void {
         "peg",
         "PEG matcher installed as canonical libbirnam_id_peg.dylib (zig or rust)",
     ) orelse .rust;
+    const selected_codegen = b.option(
+        CodegenImpl,
+        "codegen-impl",
+        "Codegen implementation installed as canonical libbirnam_id_codegen.dylib (zig or rust)",
+    ) orelse .zig;
     const TccImpl = enum { zig, rust };
     const selected_tcc = b.option(
         TccImpl,
@@ -100,6 +106,9 @@ pub fn build(b: *std.Build) void {
                 "A Linux or Intel port needs a target-specific libtcc build and runtime shared-library loading.",
             .{ @tagName(target.result.cpu.arch), @tagName(target.result.os.tag) },
         );
+    }
+    if (selected_codegen == .rust) {
+        std.process.fatal("codegen-impl=rust is not yet selectable", .{});
     }
 
     // The release version, read from the repo's VERSION file at build time so the
@@ -215,6 +224,17 @@ pub fn build(b: *std.Build) void {
     );
     test_native_rung_selection_step.dependOn(&native_rung_selection_smoke.step);
     test_step.dependOn(&native_rung_selection_smoke.step);
+
+    const codegen_selection_refusal = b.addSystemCommand(&.{
+        "bash",
+        "scripts/codegen-selection-refusal.sh",
+    });
+    const test_codegen_selection_refusal_step = b.step(
+        "test-codegen-selection-refusal",
+        "Verify incomplete Rust Codegen selection fails closed with its exact diagnostic",
+    );
+    test_codegen_selection_refusal_step.dependOn(&codegen_selection_refusal.step);
+    test_step.dependOn(&codegen_selection_refusal.step);
 
     const tcc_selection_smoke = b.addSystemCommand(&.{
         "bash",
@@ -2300,6 +2320,11 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&install_rust_store.step);
             bootstrap_install.dependOn(&install_rust_store.step);
         } else if (std.mem.eql(u8, m.name, "birnam_id_peg")) {
+            const install_zig_peg_fixture = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_peg_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_peg_fixture.step);
+            bootstrap_install.dependOn(&install_zig_peg_fixture.step);
             const install_rust_peg = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_peg.dylib",
@@ -2328,6 +2353,15 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_zig_peg.step);
                 bootstrap_install.dependOn(&install_zig_peg.step);
             }
+        } else if (std.mem.eql(u8, m.name, "birnam_id_codegen")) {
+            const install_zig_codegen_fixture = b.addInstallArtifact(lib, .{
+                .dest_sub_path = "libbirnam_id_codegen_zig.dylib",
+            });
+            b.getInstallStep().dependOn(&install_zig_codegen_fixture.step);
+            bootstrap_install.dependOn(&install_zig_codegen_fixture.step);
+            const install_zig_codegen_selected = b.addInstallArtifact(lib, .{});
+            b.getInstallStep().dependOn(&install_zig_codegen_selected.step);
+            bootstrap_install.dependOn(&install_zig_codegen_selected.step);
         } else if (std.mem.eql(u8, m.name, "birnam_id_tcc")) {
             const install_zig_tcc = b.addInstallArtifact(lib, .{
                 .dest_sub_path = "libbirnam_id_tcc_zig.dylib",

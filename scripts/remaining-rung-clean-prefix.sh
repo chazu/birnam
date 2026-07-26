@@ -21,6 +21,9 @@ zig build install \
   --summary all >/dev/null
 
 test -x "$prefix/bin/birnam"
+test -f "$prefix/lib/libbirnam_id_codegen.dylib"
+test -f "$prefix/lib/libbirnam_id_codegen_zig.dylib"
+test -f "$prefix/lib/libbirnam_id_codegen_rust.dylib"
 test -f "$prefix/lib/libbirnam_id_prelude.dylib"
 
 relocated="$scratch/relocated"
@@ -30,6 +33,7 @@ cp -R "$prefix/bin" "$prefix/lib" "$prefix/share" "$relocated/"
 work="$scratch/decoy-workdir"
 mkdir -p "$work"
 for dylib in \
+  libbirnam_id_codegen.dylib \
   libbirnam_id_prelude.dylib \
   libbirnam_id_collection.dylib \
   libbirnam_id_error.dylib \
