@@ -2586,6 +2586,18 @@ allowances.
 - Twenty-six offline Rust tests pass with warnings denied. Filesystem bake,
   image runtime recovery, and rollback selection remain later host seams.
 
+### R7.17 Rust host script-evaluation checkpoint (2026-07-26)
+
+- A started `HostRuntime` can now evaluate one source file through Codegen's
+  persistent `evalPersisting:from:` selector. Rust preserves the source path
+  for image recovery, enforces the shipped 16 MiB source limit, and surfaces a
+  non-nil Codegen `lastError` as a failed evaluation.
+- The operation performs no second floor/module load and does not invent a GC
+  policy: callers must establish a live owner-thread stack anchor before the
+  synchronous send, matching every existing Zig execution boundary.
+- Twenty-seven offline Rust tests pass with warnings denied. REPL loop,
+  diagnostics rendering, and project/image execution remain later seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

@@ -167,6 +167,16 @@ pub enum BakeError {
     ImageTooLarge,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScriptError {
+    Read { path: PathBuf, kind: io::ErrorKind },
+    TooLarge { path: PathBuf, limit: usize },
+    MissingCodegen,
+    EvaluationRejected,
+}
+
+pub const MAX_SCRIPT_BYTES: usize = 16 << 20;
+
 /// Append an image trailer to a runtime byte sequence. The runtime remains a
 /// valid executable because the loader ignores trailing bytes; recovery uses
 /// [`baked_image`] to select the exact image slice.
@@ -201,6 +211,48 @@ pub fn baked_image(bytes: &[u8]) -> Option<&[u8]> {
         return None;
     }
     Some(&bytes[length_start - image_len..length_start])
+}
+
+/// Evaluate one source file through the started host's Codegen object. This is
+/// the persistent, path-aware form used by the shipped script command; it lets
+/// Codegen record the source for image recovery and reports its `lastError`
+/// instead of treating a nil result as success.
+///
+/// # Safety
+///
+/// The runtime must remain on the selected floor's owner thread. The caller
+/// must set a valid GC stack bottom before invoking this operation and keep it
+/// live for the complete synchronous evaluation.
+pub unsafe fn eval_script(
+    runtime: &HostRuntime,
+    path: &Path,
+) -> Result<birnam_abi::Oop, ScriptError> {
+    let source = std::fs::read(path).map_err(|error| ScriptError::Read {
+        path: path.to_path_buf(),
+        kind: error.kind(),
+    })?;
+    if source.len() > MAX_SCRIPT_BYTES {
+        return Err(ScriptError::TooLarge {
+            path: path.to_path_buf(),
+            limit: MAX_SCRIPT_BYTES,
+        });
+    }
+    let api = runtime.stack.api();
+    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    if codegen == api.nilObj {
+        return Err(ScriptError::MissingCodegen);
+    }
+    let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let path_bytes = path_bytes(path);
+    let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let selector = unsafe { (api.intern)(c"evalPersisting:from:".as_ptr()) };
+    let result = unsafe { (api.send)(codegen, selector, [source_value, path_value].as_ptr(), 2) };
+    let last_error_selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
+    let last_error = unsafe { (api.send)(codegen, last_error_selector, std::ptr::null(), 0) };
+    if last_error != api.nilObj {
+        return Err(ScriptError::EvaluationRejected);
+    }
+    Ok(result)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2068,5 +2120,10 @@ mod tests {
         assert!(baked_image(&corrupt).is_none());
         corrupt[magic_start..].copy_from_slice(b"NOTBAKED");
         assert!(baked_image(&corrupt).is_none());
+    }
+
+    #[test]
+    fn script_source_limit_matches_the_shipped_host_contract() {
+        assert_eq!(MAX_SCRIPT_BYTES, 16 << 20);
     }
 }
