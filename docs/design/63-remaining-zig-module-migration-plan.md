@@ -2778,6 +2778,21 @@ allowances.
   No project command is routed through this method yet, and the canonical Zig
   project adapter remains the authority until the observation bridge is ported.
 
+### R7.32 Rust host pure project-CLI gate checkpoint (2026-07-26)
+
+- The experimental executable now runs the existing Rust project parsers for
+  `check`, `build`, `install`, `run`, and `test` before any resource or floor
+  access. Their help forms print deterministic usage; malformed options return
+  typed parse diagnostics; valid forms stop at an explicit unsupported-project
+  boundary.
+- This preserves the canonical host's pure-tooling behavior without pretending
+  that Rust owns TOML/CST observation or project execution. No project command
+  can accidentally load a floor merely because its argument grammar was
+  malformed.
+- The thirty-five-test host suite and all-target clippy remain green. Smoke
+  checks show `check --help` succeeds without runtime files, while malformed
+  and valid project invocations fail before startup as designed.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

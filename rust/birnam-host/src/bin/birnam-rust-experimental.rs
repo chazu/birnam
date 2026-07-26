@@ -4,8 +4,10 @@ use std::fs;
 use std::process::ExitCode;
 
 use birnam_host::{
-    CommandKind, ImageLoadOutcome, bake_executable, baked_image, classify_command, eval_script,
-    load_image, parse_bake_args, parse_rebuild_args, start_from_environment,
+    CommandKind, ImageLoadOutcome, ParseOutcome, bake_executable, baked_image, classify_command,
+    eval_script, load_image, parse_bake_args, parse_build_args, parse_check_args,
+    parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args,
+    start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -15,9 +17,54 @@ Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
            --bake <image> <exe>, --rebuild <image>\n\
 Project commands and --lsp remain on the canonical Zig host.\n";
 
+const CHECK_USAGE: &str = "usage: birnam check [directory] [--format human|json]\n";
+const BUILD_USAGE: &str = "usage: birnam build [directory] [--profile debug|release]\n";
+const INSTALL_USAGE: &str =
+    "usage: birnam install [directory] [--build] [--profile debug|release]\n";
+const TEST_USAGE: &str = "usage: birnam test [directory] [--build] [--profile debug|release]\n";
+const RUN_USAGE: &str = "usage: birnam run [directory] [--build] [--profile debug|release] [--repl|--no-repl] [-- args...]\n";
+
 fn fail(message: impl std::fmt::Display) -> ExitCode {
     eprintln!("birnam-rust-experimental: {message}");
     ExitCode::from(1)
+}
+
+fn project_command(args: &[OsString], command: &str) -> Result<(), String> {
+    let tail = &args[1..];
+    let is_help = match command {
+        "check" => parse_check_args(tail)
+            .map(|outcome| matches!(outcome, ParseOutcome::Help))
+            .map_err(|error| format!("{command}: {error:?}"))?,
+        "build" => parse_build_args(tail)
+            .map(|outcome| matches!(outcome, ParseOutcome::Help))
+            .map_err(|error| format!("{command}: {error:?}"))?,
+        "install" => parse_install_args(tail)
+            .map(|outcome| matches!(outcome, ParseOutcome::Help))
+            .map_err(|error| format!("{command}: {error:?}"))?,
+        "test" => parse_test_args(tail)
+            .map(|outcome| matches!(outcome, ParseOutcome::Help))
+            .map_err(|error| format!("{command}: {error:?}"))?,
+        "run" => parse_run_args(tail)
+            .map(|outcome| matches!(outcome, ParseOutcome::Help))
+            .map_err(|error| format!("{command}: {error:?}"))?,
+        _ => unreachable!("unsupported project command parser: {command}"),
+    };
+    if is_help {
+        let usage = match command {
+            "check" => CHECK_USAGE,
+            "build" => BUILD_USAGE,
+            "install" => INSTALL_USAGE,
+            "test" => TEST_USAGE,
+            "run" => RUN_USAGE,
+            _ => unreachable!("unsupported project command usage: {command}"),
+        };
+        print!("{usage}");
+        Ok(())
+    } else {
+        Err(format!(
+            "{command} is not implemented by the experimental host"
+        ))
+    }
 }
 
 fn run(args: Vec<OsString>) -> Result<(), String> {
@@ -104,6 +151,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             unsafe { runtime.run_cli(&args) }.map_err(|error| format!("cli: {error:?}"))
         }
+        CommandKind::Check => project_command(&args, "check"),
+        CommandKind::Build => project_command(&args, "build"),
+        CommandKind::Install => project_command(&args, "install"),
+        CommandKind::Run => project_command(&args, "run"),
+        CommandKind::Test => project_command(&args, "test"),
         other => Err(format!(
             "{other:?} is not implemented by the experimental host"
         )),
