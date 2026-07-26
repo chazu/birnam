@@ -66,7 +66,7 @@
         ifFalse: [| [args at: [index + 1]]]]]]] doc:
   "Read a command-line option in either `--key=value` or `--key value` form."];
 
-[Reflect defineMethod: #cliPresent:key:args: on: AppConfig as: [:self :key :args |
+[Reflect defineMethod: #cliPresent:args: on: AppConfig as: [:self :key :args |
   let value := [self cliValue: key args: args];
   let index := [self cliIndex: "--" key: key args: args];
   [[value notNil] | [index notNil]]] doc:

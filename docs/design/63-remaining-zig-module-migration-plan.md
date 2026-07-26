@@ -3545,6 +3545,20 @@ allowances.
   release mapping, and rollback selection remain Zig-owned until the R7
   pre-switch acceptance and observation window authorize a switch.
 
+### R7.93 Rust host embedded-source closure checkpoint (2026-07-26)
+
+- Forced embedded-source startup now completes on the explicit Rust host. The
+  source corpus had one latent scanner violation in `app-config.birnam`: the
+  `cliPresent:key:args:` selector declared three arguments while its block
+  supplied two. The declaration is corrected to `cliPresent:args:`, matching the
+  implementation and restoring the source-recovery invariant that every
+  embedded module is recordable before evaluation.
+- The Rust host continues to treat a rejected record/evaluation as a typed
+  bootstrap failure; it does not weaken source recovery to mirror the Zig
+  host's historical error-swallowing path. Explicit Rust-host forced-source
+  startup now publishes the generation digest successfully, while canonical
+  host selection remains unchanged.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
