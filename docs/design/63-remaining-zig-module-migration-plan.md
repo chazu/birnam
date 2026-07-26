@@ -3900,3 +3900,21 @@ explicitly so the recovery surface cannot silently shrink.
   reverse cross-floor, mapped Image-to-Codegen, bootstrap, rejection, and Rust
   Alien live pins remain unchanged. The comparator remains fail-closed with
   only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` accepted.
+
+### R6.47 R6 gate acceptance for the current Rust host test set (2026-07-26)
+
+- The relocated-install metadata gate now includes the shipped `birnam-host`
+  Cargo package. This keeps the installed workspace assertion aligned with
+  the Rust host crate added during the R7 observation slices; it does not
+  admit an unlisted package or weaken relocation/source-closure checks.
+- The exact deterministic install-smoke fixture is now pinned at
+  `116/118` nested steps. The focused Rust replacement invocation remains
+  `91/91` tests and reports `164/166` steps with only the recorded
+  `collection.zig:336:29` `docgen` crash. Optimized `verify` reports the same
+  two install-smoke crashes with `286/290` steps, `506/512` tests passed, and
+  six skipped tests; all other verify, relocation, project, LSP, and release
+  legs pass.
+- The post-change `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` exits
+  successfully. The comparator remains fail-closed with zero missing or
+  unusable cases and exactly the two pre-existing accepted crossings:
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
