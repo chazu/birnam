@@ -2475,6 +2475,23 @@ allowances.
   candidate-path contract. The helper is still opt-in and does not alter Zig
   host selection or the R6 gate.
 
+### R7.8 Rust host manager-first bootstrap checkpoint (2026-07-26)
+
+- `birnam-host` now models the full self-hosted bootstrap orchestration after
+  `LoadedStack`: install `modules` first, register the native kernel tier and
+  resolved library directory, register each source declaration, ask the
+  Birnam `Module loadOrder:` protocol for dependency order, and mark each
+  successful installation as loaded.
+- If the manager/vector protocol is unavailable or returns an Error, the Rust
+  host follows the existing declared-order fallback. It does not use the pure
+  Rust order as a second runtime authority; that helper remains metadata/test
+  coverage, while live ordering stays owned by the Birnam Module manager.
+- `BIRNAM_NO_STDLIB` is represented as an explicit `skip_stdlib` input and
+  causes no manager or source work. `force_source` remains the only switch that
+  suppresses the exact compiled-module candidate.
+- Thirteen offline Rust tests pass with warnings denied. This remains an
+  opt-in library seam; no Rust executable or canonical host switch has landed.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

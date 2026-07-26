@@ -145,6 +145,26 @@ pub const SELF_HOSTED_MODULES: &[SelfHostedModule] = &[
     },
 ];
 
+pub const MODULE_MANAGER: SelfHostedModule = SelfHostedModule {
+    name: "modules",
+    source: include_bytes!("../../../src/id/modules.birnam"),
+};
+
+const KERNEL_MODULES: &[&str] = &[
+    "artifact",
+    "store",
+    "peg",
+    "lang",
+    "tcc",
+    "codegen",
+    "prelude",
+    "collection",
+    "error",
+    "relational",
+    "alien",
+    "image",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootstrapOrderError {
     UnknownSelfHostedDependency { module: String, dependency: String },
@@ -161,6 +181,17 @@ pub enum BootstrapSourceError {
 pub enum SelfHostedLoadOutcome {
     Precompiled,
     Source,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootstrapRuntimeError {
+    Source(BootstrapSourceError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoadedSelfHostedModule {
+    pub name: &'static str,
+    pub outcome: SelfHostedLoadOutcome,
 }
 
 /// Scan the first `requires: #[...]` declaration using the same deliberately
@@ -342,6 +373,203 @@ fn self_hosted_candidate_path(resources: &Resources, module: &SelfHostedModule) 
     resources
         .lib_dir
         .join(format!("libbirnam_{}.dylib", module.name))
+}
+
+unsafe fn intern_name(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
+    let name = CString::new(name).ok()?;
+    Some(unsafe { (api.intern)(name.as_ptr()) })
+}
+
+unsafe fn global_named(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
+    let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+    if globals == api.nilObj {
+        return None;
+    }
+    let name = unsafe { intern_name(api, name) }?;
+    let selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let value = unsafe { (api.send)(globals, selector, [name].as_ptr(), 1) };
+    (value != api.nilObj).then_some(value)
+}
+
+unsafe fn mark_module_loaded(api: &IdApi, module_manager: birnam_abi::Oop, name: &str) {
+    let Some(name) = (unsafe { intern_name(api, name) }) else {
+        return;
+    };
+    let selector = unsafe { (api.intern)(c"markLoaded:".as_ptr()) };
+    unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
+}
+
+unsafe fn refresh_module_manager(
+    api: &IdApi,
+    module_manager: birnam_abi::Oop,
+    resources: &Resources,
+) {
+    let selector = unsafe { (api.intern)(c"kernel:".as_ptr()) };
+    for name in KERNEL_MODULES {
+        let Some(name) = (unsafe { intern_name(api, name) }) else {
+            continue;
+        };
+        unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
+    }
+    let path = path_bytes(&resources.lib_dir);
+    let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
+    let selector = unsafe { (api.intern)(c"libDir:".as_ptr()) };
+    unsafe { (api.send)(module_manager, selector, [value].as_ptr(), 1) };
+}
+
+unsafe fn dependency_vector(
+    api: &IdApi,
+    vector: birnam_abi::Oop,
+    dependencies: &[String],
+) -> Option<birnam_abi::Oop> {
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let mut result = unsafe { (api.send)(vector, new_selector, std::ptr::null(), 0) };
+    if result == api.nilObj {
+        return None;
+    }
+    for dependency in dependencies {
+        let name = unsafe { intern_name(api, dependency) }?;
+        result = unsafe { (api.send)(result, add_selector, [name].as_ptr(), 1) };
+        if result == api.nilObj {
+            return None;
+        }
+    }
+    Some(result)
+}
+
+unsafe fn requested_names(api: &IdApi, vector: birnam_abi::Oop) -> Option<birnam_abi::Oop> {
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let mut names = unsafe { (api.send)(vector, new_selector, std::ptr::null(), 0) };
+    if names == api.nilObj {
+        return None;
+    }
+    for module in SELF_HOSTED_MODULES {
+        let name = unsafe { intern_name(api, module.name) }?;
+        names = unsafe { (api.send)(names, add_selector, [name].as_ptr(), 1) };
+        if names == api.nilObj {
+            return None;
+        }
+    }
+    Some(names)
+}
+
+unsafe fn order_from_manager(
+    api: &IdApi,
+    module_manager: birnam_abi::Oop,
+    vector: birnam_abi::Oop,
+) -> Option<Vec<&'static SelfHostedModule>> {
+    let names = unsafe { requested_names(api, vector) }?;
+    let order_selector = unsafe { (api.intern)(c"loadOrder:".as_ptr()) };
+    let order = unsafe { (api.send)(module_manager, order_selector, [names].as_ptr(), 1) };
+    if order == api.nilObj || send_is_error(api, order) {
+        return None;
+    }
+    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let size = unsafe { (api.send)(order, size_selector, std::ptr::null(), 0) };
+    let size = unsafe { (api.smallIntValue)(size) };
+    if size < 0 {
+        return None;
+    }
+    let mut result = Vec::with_capacity(size as usize);
+    for index in 0..size as usize {
+        let index = unsafe { (api.mkSmallInt)(index as i64) };
+        let name = unsafe { (api.send)(order, at_selector, [index].as_ptr(), 1) };
+        if name == api.nilObj {
+            return None;
+        }
+        let name_ptr = unsafe { (api.symbolName)(name) };
+        if name_ptr.is_null() {
+            return None;
+        }
+        let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes();
+        let module = SELF_HOSTED_MODULES
+            .iter()
+            .find(|module| module.name.as_bytes() == name)?;
+        result.push(module);
+    }
+    Some(result)
+}
+
+/// Bring up the source-backed layer after `LoadedStack` is ready. The module
+/// manager is always the first ordinary self-hosted source; it registers the
+/// native kernel tier, asks the manager for dependency order, and falls back to
+/// the declared order only when the manager/vector protocol is unavailable or
+/// returns an Error. Module installation itself still goes through the one
+/// Codegen load/source policy above.
+///
+/// `skip_stdlib` is the explicit `BIRNAM_NO_STDLIB` policy; when set, this
+/// function performs no manager or source work. The returned list includes the
+/// manager followed by every attempted self-hosted module.
+///
+/// # Safety
+///
+/// `api` and `codegen` must be the live selected-floor API and Codegen object,
+/// and remain valid for the synchronous sends performed during bootstrap.
+pub unsafe fn bootstrap_self_hosted(
+    api: &IdApi,
+    codegen: birnam_abi::Oop,
+    resources: &Resources,
+    force_source: bool,
+    skip_stdlib: bool,
+) -> Result<Vec<LoadedSelfHostedModule>, BootstrapRuntimeError> {
+    if skip_stdlib {
+        return Ok(Vec::new());
+    }
+    let mut loaded = Vec::with_capacity(SELF_HOSTED_MODULES.len() + 1);
+    let manager_outcome =
+        unsafe { load_self_hosted(api, codegen, resources, &MODULE_MANAGER, force_source) }
+            .map_err(BootstrapRuntimeError::Source)?;
+    loaded.push(LoadedSelfHostedModule {
+        name: MODULE_MANAGER.name,
+        outcome: manager_outcome,
+    });
+
+    let module_manager = unsafe { global_named(api, "Module") };
+    let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
+    if let (Some(module_manager), true) = (module_manager, vector != api.nilObj) {
+        unsafe { refresh_module_manager(api, module_manager, resources) };
+        let named_selector = unsafe { (api.intern)(c"named:requires:".as_ptr()) };
+        for module in SELF_HOSTED_MODULES {
+            let Some(name) = (unsafe { intern_name(api, module.name) }) else {
+                continue;
+            };
+            let Some(requirements) =
+                (unsafe { dependency_vector(api, vector, &self_hosted_requires(module.source)) })
+            else {
+                continue;
+            };
+            unsafe {
+                (api.send)(
+                    module_manager,
+                    named_selector,
+                    [name, requirements].as_ptr(),
+                    2,
+                )
+            };
+        }
+    }
+    let order = module_manager
+        .zip((vector != api.nilObj).then_some(vector))
+        .and_then(|(module_manager, vector)| unsafe {
+            order_from_manager(api, module_manager, vector)
+        })
+        .unwrap_or_else(|| SELF_HOSTED_MODULES.iter().collect());
+
+    for module in order {
+        let outcome = unsafe { load_self_hosted(api, codegen, resources, module, force_source) }
+            .map_err(BootstrapRuntimeError::Source)?;
+        if let Some(module_manager) = module_manager {
+            unsafe { mark_module_loaded(api, module_manager, module.name) };
+        }
+        loaded.push(LoadedSelfHostedModule {
+            name: module.name,
+            outcome,
+        });
+    }
+    Ok(loaded)
 }
 
 /// Process-lifetime native stack owned by the host. Higher rungs are opened
@@ -882,6 +1110,18 @@ mod tests {
         assert_eq!(
             self_hosted_candidate_path(&resources, module),
             Path::new("/opt/birnam/lib/libbirnam_toml.dylib")
+        );
+    }
+
+    #[test]
+    fn manager_is_a_separate_first_boot_step() {
+        assert_eq!(MODULE_MANAGER.name, "modules");
+        assert!(!MODULE_MANAGER.source.is_empty());
+        assert_eq!(KERNEL_MODULES.first(), Some(&"artifact"));
+        assert!(
+            !SELF_HOSTED_MODULES
+                .iter()
+                .any(|module| module.name == MODULE_MANAGER.name)
         );
     }
 }
