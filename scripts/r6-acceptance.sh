@@ -99,10 +99,10 @@ if [ "$functional_status" -ne 0 ]; then
     "/src/id/collection.zig:336:29:"
     "scripts/install-smoke.sh: line 92:"
     "test-install"
-    "Build Summary: 111/113 steps succeeded; 1 failed"
+    "Build Summary: 116/118 steps succeeded; 1 failed"
     "test-install transitive failure"
     "test-native-rung-harness transitive failure"
-    "Build Summary: 109/110 steps succeeded; 1 failed; ${expected_focused_tests}/${expected_focused_tests} tests passed"
+    "Build Summary: 164/166 steps succeeded; 1 failed; ${expected_focused_tests}/${expected_focused_tests} tests passed"
   )
   for marker in "${known_functional_markers[@]}"; do
     marker_count=$(grep -F -c -- "$marker" "$functional" || true)
