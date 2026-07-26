@@ -7445,10 +7445,10 @@ fn resolve_phase_hooks(
     })
 }
 
-/// Start the opt-in Rust host through the same floor → native stack → MOP
-/// mirror → self-hosted sequence as the Zig host. Resource resolution is kept
-/// outside this function so callers can inspect or override it before any
-/// dylib is opened.
+/// Start the Rust host through the same floor → native stack → MOP mirror →
+/// self-hosted sequence as the Zig oracle. Resource resolution is kept outside
+/// this function so callers can inspect or override it before any dylib is
+/// opened.
 ///
 /// # Safety
 ///
@@ -7497,8 +7497,8 @@ pub unsafe fn start(
     })
 }
 
-/// Resolve production resources and start the opt-in Rust host using the
-/// environment contract already shared with the Zig executable.
+/// Resolve production resources and start the Rust host using the environment
+/// contract already shared with the Zig oracle executable.
 ///
 /// # Safety
 ///

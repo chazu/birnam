@@ -50,7 +50,7 @@ pub fn build(b: *std.Build) void {
         HostImpl,
         "host-impl",
         "Birnam executable implementation installed as bin/birnam (zig or rust)",
-    ) orelse .zig;
+    ) orelse .rust;
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
@@ -2787,9 +2787,9 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_artifact_preflight_tests.step);
 
     // -- birnam: the selected host (default install) --------------------------
-    // Keep the Zig siphon canonical until the Rust-host observation and
-    // post-switch rollback gates are complete. The Rust host remains an
-    // explicit, installable implementation for those rehearsal gates.
+    // Rust is canonical after the R7 pre-switch acceptance. The Zig siphon is
+    // always installed under its explicit oracle name for rollback and frozen
+    // compatibility fixtures; it is never selected implicitly.
     const siphon_mod = b.createModule(.{
         .root_source_file = b.path("src/id/main.zig"),
         .target = target,

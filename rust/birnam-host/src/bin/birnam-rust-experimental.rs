@@ -14,13 +14,13 @@ use birnam_host::{
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
-const USAGE: &str = "birnam-rust-experimental — opt-in Rust host\n\n\
+const USAGE: &str = "birnam-rust-experimental — Rust host\n\n\
 Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
            --repl, --listen <port>, doc, docgen, init, wrap,\n\
            --worker <image> <receiver> <selector> --channel-fd <fd>,\n\
            --bake <image> <exe>, --rebuild <image>\n\
-Rust-hosted check/build/install/run/test/lsp are supported; the canonical Zig\n\
-host remains the rollback oracle.\n";
+Rust-hosted check/build/install/run/test/lsp are canonical; the explicit\n\
+birnam-zig-oracle executable remains the rollback oracle.\n";
 
 const CHECK_USAGE: &str = "usage: birnam check [directory] [--format human|json]\n";
 const BUILD_USAGE: &str = "usage: birnam build [directory] [--profile debug|release]\n";
