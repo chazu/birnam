@@ -1309,6 +1309,7 @@ pub enum ProjectSourceIndexError {
     MissingCodegen,
     MetadataRejected,
     MetadataMalformed(ProjectMetadataError),
+    Composition(ProjectCompositionError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1965,6 +1966,54 @@ impl HostRuntime {
             name: metadata.name,
             path: path.to_string_lossy().into_owned(),
             sources: composition.to_vec(),
+            project_root: project_root.to_owned(),
+            source,
+            requires: metadata.requires,
+            source_digest: metadata.source_digest,
+            revision_digest: metadata.revision_digest,
+        }))
+    }
+
+    /// Observe one explicit module entry and its ordered source parts after
+    /// Birnam Module composition. The first path is the provider identity;
+    /// every path is retained in the observation's `sources` list.
+    ///
+    /// # Safety
+    ///
+    /// The returned record owns copied bytes and strings. The runtime must
+    /// remain on the owner thread for composition and metadata sends.
+    pub unsafe fn observe_composed_project_source(
+        &self,
+        paths: &[PathBuf],
+        project_root: &str,
+    ) -> Result<Option<ProjectSourceObservation>, ProjectSourceIndexError> {
+        let source = unsafe { self.compose_project_sources(paths) }
+            .map_err(ProjectSourceIndexError::Composition)?;
+        let api = self.stack.api();
+        let codegen = unsafe { global_named(api, "Codegen") }
+            .ok_or(ProjectSourceIndexError::MissingCodegen)?;
+        let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
+        let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
+        if metadata == api.nilObj {
+            return Ok(None);
+        }
+        if send_is_error(api, metadata) {
+            return Err(ProjectSourceIndexError::MetadataRejected);
+        }
+        let metadata = unsafe { decode_project_source_metadata(api, metadata) }
+            .map_err(ProjectSourceIndexError::MetadataMalformed)?;
+        let path = paths
+            .first()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        Ok(Some(ProjectSourceObservation {
+            name: metadata.name,
+            path,
+            sources: paths
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
             project_root: project_root.to_owned(),
             source,
             requires: metadata.requires,

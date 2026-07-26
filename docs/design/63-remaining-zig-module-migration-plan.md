@@ -2964,6 +2964,19 @@ allowances.
   tests. Module composition is available to the observation adapter; provider
   closure and build publication remain pending.
 
+### R7.46 Rust host composed-source observation checkpoint (2026-07-26)
+
+- `HostRuntime::observe_composed_project_source` now composes an explicit
+  entry/parts path list through Module, decodes Codegen metadata from the
+  composed bytes, and returns one typed observation retaining provider path,
+  ordered source paths, raw source bytes, requirements, and digests.
+- Composition failures, metadata rejection/malformed vectors, and legacy nil
+  outcomes remain distinct. No module is installed and no source is evaluated;
+  Module and Codegen retain their respective authorities.
+- The focused host suite and all-target clippy remain green at thirty-eight
+  tests. The remaining project gap is manifest-driven composition discovery,
+  dependency closure, and policy invocation over the resulting snapshot.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
