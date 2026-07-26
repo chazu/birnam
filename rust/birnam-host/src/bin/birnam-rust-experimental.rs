@@ -6,11 +6,12 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
-    CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, ProjectBuildRequest,
-    bake_executable, baked_image, classify_command, eval_script, host_target_identity, load_image,
-    parse_bake_args, parse_build_args, parse_check_args, parse_install_args,
-    parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
-    parse_worker_args, start_from_environment,
+    CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy,
+    bake_executable, baked_image, classify_command, compile_module, eval_script,
+    host_target_identity, load_image, parse_bake_args, parse_build_args, parse_check_args,
+    parse_compile_module_args, parse_install_args, parse_project_test_worker_args,
+    parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args, resolve, start,
+    start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -257,6 +258,30 @@ fn test_worker_command(args: &[OsString]) -> Result<(), String> {
     }
 }
 
+fn compile_module_command(args: &[OsString]) -> Result<(), String> {
+    let options = parse_compile_module_args(&args[1..])
+        .map_err(|error| format!("--compile-module: {error:?}"))?;
+    let resources = resolve().map_err(|error| format!("--compile-module resources: {error:?}"))?;
+    let inherited = StartupPolicy::from_environment();
+    let policy = StartupPolicy::from_flags_with_precision(
+        inherited.force_source,
+        true,
+        inherited.precise_gc,
+    );
+    let runtime = unsafe { start(resources, policy) }
+        .map_err(|error| format!("--compile-module startup: {error:?}"))?;
+    let mut anchor = 0usize;
+    unsafe { runtime.prepare_execution(&mut anchor) };
+    unsafe { compile_module(&runtime, &options.source, &options.output) }
+        .map_err(|error| format!("--compile-module: {error:?}"))?;
+    println!(
+        "[stage1] compiled {} -> {}",
+        options.source.display(),
+        options.output.display()
+    );
+    Ok(())
+}
+
 fn test_command(args: &[OsString]) -> Result<(), String> {
     let outcome = parse_test_args(&args[1..]).map_err(|error| format!("test: {error:?}"))?;
     match outcome {
@@ -443,6 +468,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Install => install_command(&args),
         CommandKind::Run => run_project_command(&args),
         CommandKind::Test => test_command(&args),
+        CommandKind::CompileModule => compile_module_command(&args),
         CommandKind::ProjectTestWorker => test_worker_command(&args),
         CommandKind::Worker => worker_command(&args),
         CommandKind::Lsp => {
@@ -452,9 +478,6 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             unsafe { runtime.run_cli(&args) }.map_err(|error| format!("lsp: {error:?}"))
         }
-        other => Err(format!(
-            "{other:?} is not implemented by the experimental host"
-        )),
     }
 }
 

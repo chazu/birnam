@@ -215,6 +215,14 @@ pub enum ScriptError {
     EvaluationRejected,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileModuleError {
+    Read { path: PathBuf, kind: io::ErrorKind },
+    TooLarge { path: PathBuf, limit: usize },
+    MissingCodegen,
+    CompilationRejected,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageLoadOutcome {
     Mapped,
@@ -551,6 +559,58 @@ pub unsafe fn eval_script(
         return Err(ScriptError::EvaluationRejected);
     }
     Ok(result)
+}
+
+/// Compile one authored self-hosted module into an installable compiled unit.
+///
+/// This is the Rust-host equivalent of the Zig siphon's private
+/// `--compile-module` route. The caller deliberately starts the runtime with
+/// `skip_stdlib`, so stage-1 can compile the stdlib itself without depending on
+/// a pre-existing self-hosted source or compiled-unit closure.
+///
+/// # Safety
+///
+/// The runtime must remain on the selected floor's owner thread. The caller
+/// must set a valid GC stack bottom before invoking this operation and keep it
+/// live for the complete synchronous compiler send.
+pub unsafe fn compile_module(
+    runtime: &HostRuntime,
+    source_path: &Path,
+    output_path: &Path,
+) -> Result<(), CompileModuleError> {
+    let source = std::fs::read(source_path).map_err(|error| CompileModuleError::Read {
+        path: source_path.to_path_buf(),
+        kind: error.kind(),
+    })?;
+    if source.len() > MAX_SCRIPT_BYTES {
+        return Err(CompileModuleError::TooLarge {
+            path: source_path.to_path_buf(),
+            limit: MAX_SCRIPT_BYTES,
+        });
+    }
+    let api = runtime.stack.api();
+    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    if codegen == api.nilObj {
+        return Err(CompileModuleError::MissingCodegen);
+    }
+    let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let output_bytes = path_bytes(output_path);
+    let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+    let source_bytes = path_bytes(source_path);
+    let source_path_value = unsafe { (api.mkString)(source_bytes.as_ptr(), source_bytes.len()) };
+    let selector = unsafe { (api.intern)(c"compile:output:from:".as_ptr()) };
+    let result = unsafe {
+        (api.send)(
+            codegen,
+            selector,
+            [source_value, output_value, source_path_value].as_ptr(),
+            3,
+        )
+    };
+    if result == api.nilObj || send_is_error(api, result) {
+        return Err(CompileModuleError::CompilationRejected);
+    }
+    Ok(())
 }
 
 /// Load an image through the Birnam `System` protocol. A true answer means
