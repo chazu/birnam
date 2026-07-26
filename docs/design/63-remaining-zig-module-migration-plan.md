@@ -2530,3 +2530,13 @@ explicitly so the recovery surface cannot silently shrink.
   to `86/86`. Rust Image shell remains `2/2`, the Zig-writer/Rust-reader cell
   remains `1/1`, and mapped Image Codegen remains `1/1`; benchmark allowances
   remain exactly `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+### R6.34 Duplicate-code rejection checkpoint (2026-07-25)
+
+- The corruption fixture now also carries two checksum-valid empty code records
+  bound to one authority. Rust Image rejects the duplicate code before Rust
+  Codegen recovery and preserves the same sentinel, alongside the duplicate-
+  authority and truncated-record cases.
+- The rejection target remains pinned at `1/1` and the focused aggregate stays
+  `86/86`; the full R6 gate remains green with the unchanged two benchmark
+  allowances.

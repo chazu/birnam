@@ -629,6 +629,8 @@ test "Rust Image rejects duplicate and truncated authority before Store mutation
     defer allocator.free(directory);
     const duplicate_path = try std.fs.path.join(allocator, &.{ directory, "duplicate-authority.image" });
     defer allocator.free(duplicate_path);
+    const duplicate_code_path = try std.fs.path.join(allocator, &.{ directory, "duplicate-code.image" });
+    defer allocator.free(duplicate_code_path);
     const truncated_path = try std.fs.path.join(allocator, &.{ directory, "truncated-authority.image" });
     defer allocator.free(truncated_path);
 
@@ -650,6 +652,20 @@ test "Rust Image rejects duplicate and truncated authority before Store mutation
     try appendImageRecord(&duplicate, allocator, 5, &authority);
     try tmp.dir.writeFile(.{ .sub_path = "duplicate-authority.image", .data = duplicate.items });
 
+    var duplicate_code: std.ArrayList(u8) = .{};
+    defer duplicate_code.deinit(allocator);
+    try duplicate_code.appendSlice(allocator, duplicate.items[0 .. 8 + 4 + 4 + 4 + 8]);
+    try appendImageRecord(&duplicate_code, allocator, 5, &authority);
+    var code_payload: std.ArrayList(u8) = .{};
+    defer code_payload.deinit(allocator);
+    const empty_unit = [_]u8{};
+    std.mem.writeInt(u64, &u64_bytes, std.hash.Wyhash.hash(0, &empty_unit), .little);
+    try code_payload.appendSlice(allocator, &u64_bytes);
+    try code_payload.appendSlice(allocator, &authority);
+    try appendImageRecord(&duplicate_code, allocator, 4, code_payload.items);
+    try appendImageRecord(&duplicate_code, allocator, 4, code_payload.items);
+    try tmp.dir.writeFile(.{ .sub_path = "duplicate-code.image", .data = duplicate_code.items });
+
     var truncated_bytes: std.ArrayList(u8) = .{};
     defer truncated_bytes.deinit(allocator);
     try truncated_bytes.appendSlice(allocator, duplicate.items[0 .. 8 + 4 + 4 + 4 + 8]);
@@ -661,6 +677,7 @@ test "Rust Image rejects duplicate and truncated authority before Store mutation
     try tmp.dir.writeFile(.{ .sub_path = "truncated-authority.image", .data = truncated_bytes.items });
 
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, duplicate_path)}) == api.nilObj);
+    try std.testing.expect(send(api, system, "loadImage:", &.{str(api, duplicate_code_path)}) == api.nilObj);
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, truncated_path)}) == api.nilObj);
     const retained = send(api, runtime_store, "currentValue:attr:", &.{ sentinel_entity, sentinel_attribute });
     try std.testing.expect(api.isSmallInt(retained) != 0);
