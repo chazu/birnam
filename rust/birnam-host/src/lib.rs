@@ -5,7 +5,7 @@
 //! overrides accepted by the existing Zig host. Loading a floor or any higher
 //! rung remains a later host boundary.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
 use std::io;
@@ -1247,6 +1247,12 @@ pub struct ProjectDependencyObservation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectDependencyClosureNode {
+    pub root: PathBuf,
+    pub dependencies: Vec<ProjectDependencyObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectSourceObservation {
     pub name: String,
     pub path: String,
@@ -1331,6 +1337,18 @@ pub enum ProjectObservationError {
         second: PathBuf,
     },
     DuplicateModulePart(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectDependencyClosureError {
+    DuplicateRoot(PathBuf),
+    RootMissing(PathBuf),
+    Missing {
+        from: PathBuf,
+        name: String,
+        root: PathBuf,
+    },
+    Cycle(PathBuf),
 }
 
 /// Validate one manifest module composition and return its project-rooted path
@@ -1543,6 +1561,63 @@ pub fn resolve_project_dependency_paths(
     }
     resolved.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(resolved)
+}
+
+/// Plan a root-first dependency closure from already-observed project nodes.
+/// The function is deliberately filesystem-free: callers resolve and observe
+/// manifests separately, then provide canonical project roots here. Edges are
+/// visited by dependency name, matching Birnam's sorted manifest order.
+pub fn project_dependency_closure_order(
+    root: &Path,
+    nodes: &[ProjectDependencyClosureNode],
+) -> Result<Vec<PathBuf>, ProjectDependencyClosureError> {
+    let mut index = HashMap::with_capacity(nodes.len());
+    for (position, node) in nodes.iter().enumerate() {
+        if index.insert(node.root.clone(), position).is_some() {
+            return Err(ProjectDependencyClosureError::DuplicateRoot(
+                node.root.clone(),
+            ));
+        }
+    }
+    let mut state = HashMap::with_capacity(nodes.len());
+    let mut order = Vec::with_capacity(nodes.len());
+    fn visit(
+        root: &Path,
+        nodes: &[ProjectDependencyClosureNode],
+        index: &HashMap<PathBuf, usize>,
+        state: &mut HashMap<PathBuf, bool>,
+        order: &mut Vec<PathBuf>,
+    ) -> Result<(), ProjectDependencyClosureError> {
+        match state.get(root) {
+            Some(true) => return Ok(()),
+            Some(false) => return Err(ProjectDependencyClosureError::Cycle(root.to_path_buf())),
+            None => {}
+        }
+        let Some(&position) = index.get(root) else {
+            return Err(ProjectDependencyClosureError::RootMissing(
+                root.to_path_buf(),
+            ));
+        };
+        state.insert(root.to_path_buf(), false);
+        order.push(root.to_path_buf());
+        let mut dependencies = nodes[position].dependencies.clone();
+        dependencies.sort_by(|left, right| left.name.cmp(&right.name));
+        for dependency in dependencies {
+            let dependency_root = PathBuf::from(&dependency.root);
+            if !index.contains_key(&dependency_root) {
+                return Err(ProjectDependencyClosureError::Missing {
+                    from: root.to_path_buf(),
+                    name: dependency.name,
+                    root: dependency_root,
+                });
+            }
+            visit(&dependency_root, nodes, index, state, order)?;
+        }
+        state.insert(root.to_path_buf(), true);
+        Ok(())
+    }
+    visit(root, nodes, &index, &mut state, &mut order)?;
+    Ok(order)
 }
 
 fn collect_project_source_tree(
@@ -4478,6 +4553,94 @@ mod tests {
             result,
             Err(ProjectDependencyResolutionError::InvalidPath { name, .. }) if name == "escape"
         ));
+    }
+
+    #[test]
+    fn dependency_closure_is_root_first_and_name_sorted() {
+        let root = Path::new("/tmp/root");
+        let nodes = vec![
+            ProjectDependencyClosureNode {
+                root: PathBuf::from("/tmp/root"),
+                dependencies: vec![
+                    ProjectDependencyObservation {
+                        name: "zeta".to_owned(),
+                        root: "/tmp/zeta".to_owned(),
+                    },
+                    ProjectDependencyObservation {
+                        name: "alpha".to_owned(),
+                        root: "/tmp/alpha".to_owned(),
+                    },
+                ],
+            },
+            ProjectDependencyClosureNode {
+                root: PathBuf::from("/tmp/alpha"),
+                dependencies: Vec::new(),
+            },
+            ProjectDependencyClosureNode {
+                root: PathBuf::from("/tmp/zeta"),
+                dependencies: vec![ProjectDependencyObservation {
+                    name: "nested".to_owned(),
+                    root: "/tmp/nested".to_owned(),
+                }],
+            },
+            ProjectDependencyClosureNode {
+                root: PathBuf::from("/tmp/nested"),
+                dependencies: Vec::new(),
+            },
+        ];
+        assert_eq!(
+            project_dependency_closure_order(root, &nodes).expect("closure plans"),
+            [
+                PathBuf::from("/tmp/root"),
+                PathBuf::from("/tmp/alpha"),
+                PathBuf::from("/tmp/zeta"),
+                PathBuf::from("/tmp/nested"),
+            ]
+        );
+    }
+
+    #[test]
+    fn dependency_closure_rejects_missing_and_cyclic_nodes() {
+        let missing = project_dependency_closure_order(
+            Path::new("/tmp/root"),
+            &[ProjectDependencyClosureNode {
+                root: PathBuf::from("/tmp/root"),
+                dependencies: vec![ProjectDependencyObservation {
+                    name: "missing".to_owned(),
+                    root: "/tmp/missing".to_owned(),
+                }],
+            }],
+        );
+        assert!(matches!(
+            missing,
+            Err(ProjectDependencyClosureError::Missing { name, .. }) if name == "missing"
+        ));
+
+        let cycle = project_dependency_closure_order(
+            Path::new("/tmp/root"),
+            &[
+                ProjectDependencyClosureNode {
+                    root: PathBuf::from("/tmp/root"),
+                    dependencies: vec![ProjectDependencyObservation {
+                        name: "dep".to_owned(),
+                        root: "/tmp/dep".to_owned(),
+                    }],
+                },
+                ProjectDependencyClosureNode {
+                    root: PathBuf::from("/tmp/dep"),
+                    dependencies: vec![ProjectDependencyObservation {
+                        name: "root".to_owned(),
+                        root: "/tmp/root".to_owned(),
+                    }],
+                },
+            ],
+        );
+        assert_eq!(
+            cycle,
+            Err(ProjectDependencyClosureError::Cycle(PathBuf::from(
+                "/tmp/root",
+            )))
+        );
     }
 
     #[test]

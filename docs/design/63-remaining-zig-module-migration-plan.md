@@ -3041,6 +3041,17 @@ allowances.
 - The focused Rust host suite advances to 42 tests, with Rust-host formatting,
   check, and warnings-denied clippy green. R6 remains accepted at `91/91`.
 
+### R7.52 Rust host dependency-closure planning checkpoint (2026-07-26)
+
+- `project_dependency_closure_order` now plans an already-observed dependency
+  graph root-first, visiting each project's dependency names lexically. It
+  rejects duplicate project roots, missing dependency nodes, and cycles with
+  typed paths/names; it never reads manifests or evaluates source.
+- The pure planner is the deterministic ordering seam for the later recursive
+  runtime observer. The focused Rust host suite advances to 44 tests, with
+  formatting, check, and warnings-denied clippy green; R6 remains accepted at
+  `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
