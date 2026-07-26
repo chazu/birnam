@@ -2646,3 +2646,21 @@ explicitly so the recovery surface cannot silently shrink.
   Rust Alien live is `9/9`.
 - No benchmark allowance or fixture exception changed. The comparator still
   reports exactly `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+### R6.41 Explicit Rust Image atomic-publication checkpoint (2026-07-26)
+
+- Rust Image now accepts `BIRNAM_RUST_IMAGE_PUBLICATION=rust` only alongside
+  the explicit Rust writer authority. After deferred-fact, heap, writer, and
+  code-unit preflight all pass, it publishes the complete v4 composition with
+  the existing same-directory temporary-file/sync/rename transaction. A
+  publication failure reports an explicit rejection detail and never truncates
+  the destination; the default mixed host remains rejected at the mapping
+  boundary.
+- The isolated `test-rust-image-publication` proof records a saved report,
+  recovered deferred facts, zero rejected facts, one captured code unit, and a
+  parser-identifiable `BIRNAMIM` file. The focused R6 matrix advances to
+  `88/88`; Image shell remains `2/2`, mapped Image-to-Codegen/bootstrap/
+  cross-floor/rejection remain `1/1`, and Rust Alien live remains `9/9`.
+- A fresh `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes optimized
+  verify/install/native-rung checks and the exact existing comparator snapshot:
+  only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` are accepted.

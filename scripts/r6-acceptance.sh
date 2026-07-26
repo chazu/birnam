@@ -39,6 +39,7 @@ latest_tests=(
   test-rust-image-shell
   test-rust-image-codegen
   test-rust-image-bootstrap
+  test-rust-image-publication
   test-rust-image-cross-floor
   test-rust-image-rejection
   test-rust-image-save
@@ -54,16 +55,17 @@ latest_tests=(
 )
 # Accepted on 2026-07-26 after the Rust Image-to-Rust Codegen mapped-unit proof,
 # Rust-owned durable-generation bootstrap, explicit Rust Image writer-authority
-# capture, Zig-compatible deferred-fact classification, the Zig-writer/Rust-
-# reader cross-floor proof, and fail-closed duplicate/truncated Image-record
-# coverage: the focused matrix is 87 tests; the mixed dynamic Rust Image shell
-# remains 2 passing tests, and each isolated Image proof runs as one test
-# process. The deferred-fact change updates only the live-probe diagnostic; no
-# test-count, benchmark, or fixture exception is widened here.
+# capture, Zig-compatible deferred-fact classification, explicit atomic Rust
+# Image publication, the Zig-writer/Rust-reader cross-floor proof, and
+# fail-closed duplicate/truncated Image-record coverage: the focused matrix is
+# 88 tests; the mixed dynamic Rust Image shell remains 2 passing tests, and each
+# isolated Image proof runs as one test process. The publication change is
+# explicit-authority-only; no benchmark or fixture exception is widened here.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=87
+readonly expected_focused_tests=88
 readonly expected_rust_image_shell_tests=2
 readonly expected_rust_image_bootstrap_tests=1
+readonly expected_rust_image_publication_tests=1
 readonly expected_rust_image_cross_floor_tests=1
 readonly expected_rust_image_rejection_tests=1
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
@@ -190,6 +192,20 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec "^\\+- run test ${expected_rust_image_bootstrap_tests} passed " || true)
 [ "$rust_image_bootstrap_test_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Codegen durable-generation bootstrap target no longer has ${expected_rust_image_bootstrap_tests} passing test" >&2
+  exit 1
+}
+rust_image_publication_success_count=$(grep -Fc 'test-rust-image-publication success' "$functional" || true)
+[ "$rust_image_publication_success_count" -eq 1 ] || {
+  echo "r6-acceptance: explicit Rust Image publication target was not executed" >&2
+  exit 1
+}
+rust_image_publication_test_count=$(awk '
+/^test-rust-image-publication success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec "^\\+- run test ${expected_rust_image_publication_tests} passed " || true)
+[ "$rust_image_publication_test_count" -eq 1 ] || {
+  echo "r6-acceptance: explicit Rust Image publication target no longer has ${expected_rust_image_publication_tests} passing test" >&2
   exit 1
 }
 rust_image_cross_floor_success_count=$(grep -Fc 'test-rust-image-cross-floor success' "$functional" || true)
