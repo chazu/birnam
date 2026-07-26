@@ -1168,6 +1168,67 @@ pub enum RuntimeModuleError {
     LoadRejected,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PhaseHookError {
+    EmbeddedNul,
+    OpenFailed,
+    MissingSymbol(&'static str),
+    InvalidPhase,
+}
+
+type HostPhaseFn = unsafe extern "C" fn() -> c_int;
+
+pub struct PhaseHooks {
+    handle: NonNull<c_void>,
+    enter_running: HostPhaseFn,
+    begin_quiescence: HostPhaseFn,
+    end_quiescence: HostPhaseFn,
+}
+
+impl PhaseHooks {
+    fn enter_running(&self) -> bool {
+        unsafe { (self.enter_running)() == 1 }
+    }
+
+    fn begin_quiescence(&self) -> bool {
+        unsafe { (self.begin_quiescence)() == 1 }
+    }
+
+    fn end_quiescence(&self) -> bool {
+        unsafe { (self.end_quiescence)() == 1 }
+    }
+
+    pub fn handle(&self) -> NonNull<c_void> {
+        self.handle
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplError {
+    Module(RuntimeModuleError),
+    MissingRepl,
+    MissingDispatchGeneration,
+    InitializationRejected,
+    GenerationRejected,
+    Phase(PhaseHookError),
+    ReadyRejected,
+    MalformedStep,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplStep {
+    Done,
+    Evaluated(birnam_abi::Oop),
+    Other,
+}
+
+pub struct ReplSession {
+    repl: birnam_abi::Oop,
+    phases: PhaseHooks,
+    done: bool,
+    finished: bool,
+}
+
 type IsolateDriverFn =
     unsafe extern "C" fn(*mut IdApi, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
 type IsolateBootErrorFn = unsafe extern "C" fn(*mut IdApi, c_int, *const c_char, *const u8, usize);
@@ -1276,6 +1337,130 @@ impl HostRuntime {
             return Err(RuntimeModuleError::LoadRejected);
         }
         Ok(())
+    }
+
+    /// Initialize a terminal REPL session and enter the runtime's running
+    /// phase. Input/output is still owned by the self-hosted Repl module; Rust
+    /// only drives its frozen lifecycle selectors.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have called [`HostRuntime::prepare_execution`] with a
+    /// live stack anchor and remain on the floor owner thread.
+    pub unsafe fn start_repl(&self) -> Result<ReplSession, ReplError> {
+        unsafe { self.load_runtime_module("repl") }.map_err(ReplError::Module)?;
+        let api = self.stack.api();
+        let Some(repl) = (unsafe { global_named(api, "Repl") }) else {
+            return Err(ReplError::MissingRepl);
+        };
+        let init_selector = unsafe { (api.intern)(c"consoleHostInit".as_ptr()) };
+        let initialized = unsafe { (api.send)(repl, init_selector, std::ptr::null(), 0) };
+        if send_is_error(api, initialized) {
+            return Err(ReplError::InitializationRejected);
+        }
+        let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
+            return Err(ReplError::MissingDispatchGeneration);
+        };
+        let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
+        let generation =
+            unsafe { (api.send)(generations, initialize_selector, std::ptr::null(), 0) };
+        if send_is_error(api, generation) {
+            return Err(ReplError::GenerationRejected);
+        }
+        let phases = resolve_phase_hooks(&self.stack, &self.resources).map_err(ReplError::Phase)?;
+        if !phases.enter_running() {
+            return Err(ReplError::Phase(PhaseHookError::InvalidPhase));
+        }
+        let ready_selector = unsafe { (api.intern)(c"consoleHostReady".as_ptr()) };
+        let ready = unsafe { (api.send)(repl, ready_selector, std::ptr::null(), 0) };
+        if send_is_error(api, ready) {
+            return Err(ReplError::ReadyRejected);
+        }
+        Ok(ReplSession {
+            repl,
+            phases,
+            done: false,
+            finished: false,
+        })
+    }
+
+    /// Drive one Repl `hostStep`; the module owns input parsing and output
+    /// policy. An evaluated value is returned as an Oop so callers can handle
+    /// EvolutionIntent/quiescence exactly at the host boundary.
+    ///
+    /// # Safety
+    ///
+    /// `session` must belong to this runtime, and the caller must keep the GC
+    /// anchor from `prepare_execution` live.
+    pub unsafe fn repl_step(&self, session: &mut ReplSession) -> Result<ReplStep, ReplError> {
+        if session.done || session.finished {
+            return Ok(ReplStep::Done);
+        }
+        let api = self.stack.api();
+        let step_selector = unsafe { (api.intern)(c"hostStep".as_ptr()) };
+        let step = unsafe { (api.send)(session.repl, step_selector, std::ptr::null(), 0) };
+        if step == api.nilObj {
+            return Err(ReplError::MalformedStep);
+        }
+        let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+        let tag = unsafe { (api.send)(step, at_selector, [(api.mkSmallInt)(0)].as_ptr(), 1) };
+        if tag == api.nilObj {
+            return Err(ReplError::MalformedStep);
+        }
+        let tag_name = unsafe { (api.symbolName)(tag) };
+        if tag_name.is_null() {
+            return Err(ReplError::MalformedStep);
+        }
+        if unsafe { CStr::from_ptr(tag_name) }.to_bytes() == b"done" {
+            session.done = true;
+            return Ok(ReplStep::Done);
+        }
+        if unsafe { CStr::from_ptr(tag_name) }.to_bytes() == b"evaluated" {
+            let value = unsafe { (api.send)(step, at_selector, [(api.mkSmallInt)(1)].as_ptr(), 1) };
+            return Ok(ReplStep::Evaluated(value));
+        }
+        Ok(ReplStep::Other)
+    }
+
+    /// Finish a REPL session and release its running-phase ownership.
+    ///
+    /// # Safety
+    ///
+    /// `session` must belong to this runtime and the caller must remain on the
+    /// floor owner thread.
+    pub unsafe fn finish_repl(&self, session: &mut ReplSession) {
+        if session.finished {
+            return;
+        }
+        let api = self.stack.api();
+        let selector = unsafe { (api.intern)(c"consoleDone".as_ptr()) };
+        unsafe { (api.send)(session.repl, selector, std::ptr::null(), 0) };
+        session.finished = true;
+    }
+
+    /// Quiesce the runtime around an EvolutionIntent fulfillment.
+    ///
+    /// # Safety
+    ///
+    /// The caller must be on the owner thread and invoke `end_quiescence` only
+    /// after a successful `begin_quiescence`.
+    pub unsafe fn begin_quiescence(&self, session: &ReplSession) -> Result<(), ReplError> {
+        if session.phases.begin_quiescence() {
+            Ok(())
+        } else {
+            Err(ReplError::Phase(PhaseHookError::InvalidPhase))
+        }
+    }
+
+    /// # Safety
+    ///
+    /// See [`HostRuntime::begin_quiescence`].
+    pub unsafe fn end_quiescence(&self, session: &ReplSession) -> Result<(), ReplError> {
+        if session.phases.end_quiescence() {
+            Ok(())
+        } else {
+            Err(ReplError::Phase(PhaseHookError::InvalidPhase))
+        }
     }
 
     /// Run one isolate worker over an inherited channel descriptor. The driver
@@ -1854,6 +2039,51 @@ fn resolve_isolate_hooks(
         drain: unsafe { std::mem::transmute::<*mut c_void, IsolateDrainFn>(drain.as_ptr()) },
         shutdown: unsafe {
             std::mem::transmute::<*mut c_void, IsolateShutdownFn>(shutdown.as_ptr())
+        },
+    })
+}
+
+fn resolve_phase_hooks(
+    stack: &LoadedStack,
+    resources: &Resources,
+) -> Result<PhaseHooks, PhaseHookError> {
+    let path = resources.lib_dir.join("libbirnam_id_codegen.dylib");
+    let path = CString::new(path_bytes(&path)).map_err(|_| PhaseHookError::EmbeddedNul)?;
+    let api = stack.api();
+    let handle = unsafe { (api.dlopen)(path.as_ptr(), RTLD_LAZY) };
+    let Some(handle) = NonNull::new(handle) else {
+        return Err(PhaseHookError::OpenFailed);
+    };
+    let lookup = |name: &'static std::ffi::CStr| {
+        // SAFETY: the handle came from the selected floor's IdApi loader and
+        // the static symbol name remains live for this synchronous lookup.
+        unsafe { (api.dlsym)(handle.as_ptr(), name.as_ptr().cast()) }
+    };
+    let Some(enter_running) = NonNull::new(lookup(c"birnam_codegen_enter_running")) else {
+        return Err(PhaseHookError::MissingSymbol(
+            "birnam_codegen_enter_running",
+        ));
+    };
+    let Some(begin_quiescence) = NonNull::new(lookup(c"birnam_codegen_begin_quiescence")) else {
+        return Err(PhaseHookError::MissingSymbol(
+            "birnam_codegen_begin_quiescence",
+        ));
+    };
+    let Some(end_quiescence) = NonNull::new(lookup(c"birnam_codegen_end_quiescence")) else {
+        return Err(PhaseHookError::MissingSymbol(
+            "birnam_codegen_end_quiescence",
+        ));
+    };
+    Ok(PhaseHooks {
+        handle,
+        enter_running: unsafe {
+            std::mem::transmute::<*mut c_void, HostPhaseFn>(enter_running.as_ptr())
+        },
+        begin_quiescence: unsafe {
+            std::mem::transmute::<*mut c_void, HostPhaseFn>(begin_quiescence.as_ptr())
+        },
+        end_quiescence: unsafe {
+            std::mem::transmute::<*mut c_void, HostPhaseFn>(end_quiescence.as_ptr())
         },
     })
 }
@@ -2718,6 +2948,12 @@ mod tests {
             RuntimeModuleError::EmbeddedNul,
             RuntimeModuleError::MissingModuleManager
         );
+    }
+
+    #[test]
+    fn repl_step_tags_keep_done_evaluated_and_other_distinct() {
+        assert_ne!(ReplStep::Done, ReplStep::Other);
+        assert_ne!(ReplStep::Evaluated(std::ptr::null_mut()), ReplStep::Done);
     }
 
     #[test]

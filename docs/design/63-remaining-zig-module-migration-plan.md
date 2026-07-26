@@ -2665,7 +2665,8 @@ allowances.
 ### R7.23 Rust host environment-start checkpoint (2026-07-26)
 
 - `birnam-host::start_from_environment` now composes the one resolver and the
-  exact `BIRNAM_FORCE_SOURCE`/`BIRNAM_NO_STDLIB` policy into a future entrypoint.
+  exact `BIRNAM_FORCE_SOURCE`/`BIRNAM_NO_STDLIB`/`BIRNAM_GC_PRECISE` policy into
+  a future entrypoint.
   Resource-resolution failures remain typed before any floor load.
 - No executable duplicates environment parsing or resource fallback, and the
   startup API remains opt-in. The owner-thread, stack-anchor, ABI, and rollback
@@ -2697,6 +2698,18 @@ allowances.
   invariants.
 - Thirty-two offline Rust tests pass with warnings denied. The focused host
   suite remains opt-in; no canonical executable switch has occurred.
+
+### R7.26 Rust host REPL lifecycle checkpoint (2026-07-26)
+
+- `HostRuntime` now drives the self-hosted REPL lifecycle: load `repl`, run
+  `consoleHostInit`, initialize the current dispatch generation, resolve the
+  Codegen phase hooks, enter running, and run `consoleHostReady`.
+- `repl_step` preserves the frozen `done`/`evaluated`/other tags; callers can
+  quiesce around EvolutionIntent fulfillment and must finish with
+  `consoleDone`. Input and presentation remain Repl-owned, not reimplemented
+  in Rust.
+- Thirty-three offline Rust tests pass with warnings denied. Interactive loop
+  orchestration and CLI output remain later executable seams.
 
 ## 12. Commit and review discipline
 
