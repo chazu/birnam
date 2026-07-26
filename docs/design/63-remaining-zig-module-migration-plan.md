@@ -3014,6 +3014,20 @@ allowances.
   manifest sections and recursive dependency observation remain the next
   bounded slices.
 
+### R7.50 Rust host wrapped/test manifest decoder checkpoint (2026-07-26)
+
+- `decode_project_manifest` now decodes the optional `wrapped` declarations
+  into typed Rust observations. It rejects duplicate names, invalid or
+  absolute names, empty commands, and command lists that do not carry the
+  required `{output}` substitution; it does not compile or execute them.
+- It also decodes the optional `test.sources` list and rejects missing,
+  absolute, empty, `.`, or `..` path components. The decoder preserves the
+  value-layer ordering and leaves test discovery and execution to later host
+  slices.
+- The Rust host check, 40-test unit suite, and warnings-denied clippy pass.
+  The accepted R6 gate remains unchanged at focused `91/91`, with only the
+  two recorded benchmark allowances.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

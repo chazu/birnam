@@ -1230,6 +1230,8 @@ pub struct ProjectManifestObservation {
     pub modules: Vec<ProjectModulePlan>,
     pub dependencies: Vec<ProjectDependencyObservation>,
     pub run: ProjectRunObservation,
+    pub wrapped: Vec<ProjectWrappedObservation>,
+    pub test_sources: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1448,6 +1450,9 @@ pub enum ProjectManifestDecodeError {
     EmptyValue(&'static str),
     InvalidRunMode(String),
     InvalidPort,
+    DuplicateWrapped(String),
+    MissingWrappedOutput(String),
+    InvalidTestSource(String),
 }
 
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
@@ -1829,6 +1834,124 @@ impl<'a> ProjectManifestDecoder<'a> {
         Ok(result)
     }
 
+    unsafe fn wrapped(
+        &self,
+        value: birnam_abi::Oop,
+    ) -> Result<Vec<ProjectWrappedObservation>, ProjectManifestDecodeError> {
+        if value == self.api.nilObj {
+            return Ok(Vec::new());
+        }
+        if unsafe { (self.api.vtableOf)(value) } != self.vector_vt {
+            return Err(ProjectManifestDecodeError::InvalidList("wrapped"));
+        }
+        let size_selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
+        let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
+        let size = unsafe { (self.api.send)(value, size_selector, std::ptr::null(), 0) };
+        if unsafe { (self.api.isSmallInt)(size) } == 0
+            || unsafe { (self.api.smallIntValue)(size) } < 0
+        {
+            return Err(ProjectManifestDecodeError::InvalidList("wrapped"));
+        }
+        let mut result = Vec::with_capacity(unsafe { (self.api.smallIntValue)(size) as usize });
+        for index in 0..unsafe { (self.api.smallIntValue)(size) } {
+            let item = unsafe {
+                (self.api.send)(
+                    value,
+                    at_selector,
+                    [(self.api.mkSmallInt)(index)].as_ptr(),
+                    1,
+                )
+            };
+            if item == self.api.nilObj || unsafe { (self.api.vtableOf)(item) } != self.map_vt {
+                return Err(ProjectManifestDecodeError::InvalidMap("wrapped entry"));
+            }
+            let name = unsafe { self.string(self.at(item, "name")?, "wrapped.name")? };
+            if name.is_empty() || name.contains('/') || Path::new(&name).is_absolute() {
+                return Err(ProjectManifestDecodeError::InvalidPath("wrapped.name"));
+            }
+            if result
+                .iter()
+                .any(|entry: &ProjectWrappedObservation| entry.name == name)
+            {
+                return Err(ProjectManifestDecodeError::DuplicateWrapped(name));
+            }
+            let build_value = unsafe { self.at(item, "build")? };
+            if build_value == self.api.nilObj {
+                return Err(ProjectManifestDecodeError::MissingValue("wrapped.build"));
+            }
+            if unsafe { (self.api.vtableOf)(build_value) } != self.vector_vt {
+                return Err(ProjectManifestDecodeError::InvalidList("wrapped.build"));
+            }
+            let command_count =
+                unsafe { (self.api.send)(build_value, size_selector, std::ptr::null(), 0) };
+            if unsafe { (self.api.isSmallInt)(command_count) } == 0
+                || unsafe { (self.api.smallIntValue)(command_count) } <= 0
+            {
+                return Err(ProjectManifestDecodeError::EmptyValue("wrapped.build"));
+            }
+            let mut build =
+                Vec::with_capacity(unsafe { (self.api.smallIntValue)(command_count) as usize });
+            let mut has_output = false;
+            for command_index in 0..unsafe { (self.api.smallIntValue)(command_count) } {
+                let command = unsafe {
+                    (self.api.send)(
+                        build_value,
+                        at_selector,
+                        [(self.api.mkSmallInt)(command_index)].as_ptr(),
+                        1,
+                    )
+                };
+                let argv = unsafe { self.strings(command, "wrapped.build command", false)? };
+                if argv.is_empty() {
+                    return Err(ProjectManifestDecodeError::EmptyValue(
+                        "wrapped.build command",
+                    ));
+                }
+                has_output |= argv.iter().any(|argument| argument.contains("{output}"));
+                build.push(argv);
+            }
+            if !has_output {
+                return Err(ProjectManifestDecodeError::MissingWrappedOutput(name));
+            }
+            result.push(ProjectWrappedObservation { name, build });
+        }
+        Ok(result)
+    }
+
+    unsafe fn test_sources(
+        &self,
+        value: birnam_abi::Oop,
+    ) -> Result<Option<Vec<String>>, ProjectManifestDecodeError> {
+        if value == self.api.nilObj {
+            return Ok(None);
+        }
+        if unsafe { (self.api.vtableOf)(value) } != self.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap("test"));
+        }
+        let sources = unsafe { self.at(value, "sources")? };
+        if sources == self.api.nilObj {
+            return Err(ProjectManifestDecodeError::MissingValue("test.sources"));
+        }
+        let sources = unsafe { self.strings(sources, "test.sources", false)? };
+        for source in &sources {
+            let path = Path::new(source);
+            if source.is_empty()
+                || path.is_absolute()
+                || path.components().any(|component| {
+                    matches!(
+                        component,
+                        std::path::Component::CurDir | std::path::Component::ParentDir
+                    )
+                })
+            {
+                return Err(ProjectManifestDecodeError::InvalidTestSource(
+                    source.clone(),
+                ));
+            }
+        }
+        Ok(Some(sources))
+    }
+
     unsafe fn dependencies(
         &self,
         value: birnam_abi::Oop,
@@ -1908,6 +2031,8 @@ pub unsafe fn decode_project_manifest(
     let run = unsafe { decoder.run(decoder.at(parsed, "run")?)? };
     let modules = unsafe { decoder.modules(decoder.at(parsed, "module")?)? };
     let dependencies = unsafe { decoder.dependencies(decoder.at(parsed, "dependencies")?)? };
+    let wrapped = unsafe { decoder.wrapped(decoder.at(parsed, "wrapped")?)? };
+    let test_sources = unsafe { decoder.test_sources(decoder.at(parsed, "test")?)? };
     Ok(ProjectManifestObservation {
         name,
         main,
@@ -1916,6 +2041,8 @@ pub unsafe fn decode_project_manifest(
         modules,
         dependencies,
         run,
+        wrapped,
+        test_sources,
     })
 }
 
