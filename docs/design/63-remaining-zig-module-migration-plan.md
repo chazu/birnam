@@ -3410,6 +3410,14 @@ allowances.
 - The full serial Cargo workspace gate is green, including all 54 Rust-host
   tests; R6 remains accepted at focused `91/91`.
 
+### R7.82 Rust host CLI contract correction checkpoint (2026-07-26)
+
+- The experimental host `--help` contract now reflects reality: Rust-hosted
+  check/build/install/run/test are supported, while `--lsp` remains the only
+  listed project route on the canonical Zig host.
+- Rust-host formatting, check, 54-test suite, and warnings-denied clippy pass;
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
