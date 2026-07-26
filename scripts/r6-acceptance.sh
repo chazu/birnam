@@ -50,10 +50,10 @@ latest_tests=(
   test-rust-error
 )
 # Accepted on 2026-07-25 after the Rust Image-to-Rust Codegen mapped-unit proof:
-# the focused matrix is 83 tests; the mixed dynamic Rust Image shell remains 2
+# the focused matrix is 84 tests; the mixed dynamic Rust Image shell remains 2
 # passing tests, and the mapped-unit proof runs as one isolated test process.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=83
+readonly expected_focused_tests=84
 readonly expected_rust_image_shell_tests=2
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)

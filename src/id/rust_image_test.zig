@@ -363,7 +363,6 @@ test "Rust Image live probe accepts Zig Codegen authority without publishing" {
 }
 
 test "Rust Image delegates an admitted code unit to Rust Codegen" {
-    if (std.posix.getenv("BIRNAM_RUST_IMAGE_CODEGEN_TEST") == null) return error.SkipZigTest;
     const api = setupWithRustCodegen();
     const rust_codegen = api.import("RustCodegen") orelse return error.RustCodegenMissing;
     const runtime_store = api.import("Store") orelse return error.StoreMissing;

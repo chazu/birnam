@@ -1666,7 +1666,13 @@ pub fn build(b: *std.Build) void {
     });
     rust_image_shell_mod.addImport("tcc_build_options", rust_tcc_test_options.createModule());
     rust_image_shell_mod.addIncludePath(b.path("vendor/libtcc-src"));
-    const rust_image_shell_tests = b.addTest(.{ .root_module = rust_image_shell_mod });
+    const rust_image_shell_tests = b.addTest(.{
+        .root_module = rust_image_shell_mod,
+        .filters = &.{
+            "Rust Image shell preserves report layout and selector surface",
+            "Rust Image live probe accepts Zig Codegen authority without publishing",
+        },
+    });
     rust_image_shell_tests.rdynamic = true;
     rust_image_shell_tests.linkLibC();
     rust_image_shell_tests.linkLibrary(libtcc_lib);
@@ -1714,7 +1720,6 @@ pub fn build(b: *std.Build) void {
     rust_image_codegen_tests.linkLibC();
     rust_image_codegen_tests.linkLibrary(libtcc_lib);
     const run_rust_image_codegen = b.addRunArtifact(rust_image_codegen_tests);
-    run_rust_image_codegen.setEnvironmentVariable("BIRNAM_RUST_IMAGE_CODEGEN_TEST", "1");
     run_rust_image_codegen.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
     run_rust_image_codegen.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
     run_rust_image_codegen.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
