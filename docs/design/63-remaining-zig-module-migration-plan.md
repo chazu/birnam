@@ -3623,6 +3623,18 @@ allowances.
   switch is one focused commit (`35af4ea`); the Zig oracle remains available for
   rollback and frozen-image compatibility during the observation window.
 
+### R7.98 Rust host post-switch rollback observation (2026-07-26)
+
+- An explicit `zig build install -Dhost-impl=zig` rollback install passed the
+  project-check and project-aware LSP smokes, including diagnostics, UTF-16
+  ranges, version changes, close, and shutdown. The default Rust install was
+  then restored and verified to publish both `bin/birnam` and
+  `bin/birnam-zig-oracle`.
+- The Rust canonical help path now names the Rust host as canonical and the
+  Zig executable as the rollback oracle. No floor, rung, MOP, Store, image,
+  isolate, ABI, or dynamic-library boundary changed during the observation;
+  the R6 comparator remains at its exact two accepted crossings.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
