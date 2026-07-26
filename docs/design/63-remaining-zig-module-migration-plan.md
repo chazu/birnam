@@ -3236,6 +3236,20 @@ allowances.
 - Rust-host formatting, check, 50-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.67 Rust host staged plan materialization checkpoint (2026-07-26)
+
+- `HostRuntime::stage_project_artifacts` now materializes validated module
+  decisions below a disposable staging root. Compile actions use the staged
+  Codegen adapter; reuse actions require an observed prior record and prior
+  root, copy only safe relative paths, revalidate descriptors, and compare
+  fresh bytes to policy's expected checksum.
+- The method returns owned staged-artifact metadata and keeps the final build
+  directory untouched. Missing prior entries, invalid actions/paths, copy or
+  descriptor failures, and checksum drift are typed failures; no activation,
+  wrapper execution, or publication is performed.
+- Rust-host formatting, check, 50-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

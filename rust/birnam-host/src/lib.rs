@@ -1363,6 +1363,65 @@ pub enum ProjectArtifactCompileError {
     Descriptor(ProjectCompiledArtifactValidationError),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectStagedArtifact {
+    pub name: String,
+    pub path: String,
+    pub action: String,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectArtifactStageRequest<'a> {
+    pub resolution: &'a ProjectResolutionObservation,
+    pub plan: &'a ProjectArtifactPlan,
+    pub previous: Option<&'a ProjectBuildRecord>,
+    pub previous_root: Option<&'a Path>,
+    pub stage_root: &'a Path,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectArtifactStageError {
+    CreateDirectory {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    ArtifactCount {
+        expected: usize,
+        actual: usize,
+    },
+    InvalidPlanPath {
+        index: usize,
+        path: String,
+    },
+    InvalidAction {
+        index: usize,
+        action: String,
+    },
+    MissingPrevious {
+        name: String,
+    },
+    MissingPreviousRoot {
+        name: String,
+    },
+    Copy {
+        source: PathBuf,
+        destination: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Read {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Compile(ProjectArtifactCompileError),
+    Descriptor(ProjectCompiledArtifactValidationError),
+    ChecksumMismatch {
+        name: String,
+        expected: String,
+        actual: String,
+    },
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
@@ -2820,6 +2879,16 @@ pub fn validate_project_compiled_artifact(
     Ok(())
 }
 
+fn previous_artifact<'a>(
+    record: &'a ProjectBuildRecord,
+    name: &str,
+) -> Option<&'a ProjectPreviousArtifact> {
+    record
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.name == name)
+}
+
 /// Decode the persisted `birnam-artifacts-v3` record before it participates in
 /// a later reuse decision. The file remains an untrusted input; this function
 /// only copies and validates its structural metadata.
@@ -3703,6 +3772,122 @@ impl HostRuntime {
         validate_project_compiled_artifact(module, &bytes)
             .map_err(ProjectArtifactCompileError::Descriptor)?;
         Ok(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
+    }
+
+    /// Materialize module decisions into an isolated staging directory. A
+    /// compile action invokes Codegen; a reuse action copies the prior artifact
+    /// only after re-reading and validating its descriptor and checksum. The
+    /// final build directory remains untouched by this method.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for compile actions. `stage_root` must be a disposable staging
+    /// directory and must not be the published build root.
+    pub unsafe fn stage_project_artifacts(
+        &self,
+        request: &ProjectArtifactStageRequest<'_>,
+    ) -> Result<Vec<ProjectStagedArtifact>, ProjectArtifactStageError> {
+        std::fs::create_dir_all(request.stage_root.join("lib")).map_err(|error| {
+            ProjectArtifactStageError::CreateDirectory {
+                path: request.stage_root.join("lib"),
+                kind: error.kind(),
+            }
+        })?;
+        if request.plan.artifacts.len() != request.resolution.modules.len() {
+            return Err(ProjectArtifactStageError::ArtifactCount {
+                expected: request.resolution.modules.len(),
+                actual: request.plan.artifacts.len(),
+            });
+        }
+        let mut staged = Vec::with_capacity(request.plan.artifacts.len());
+        for (index, (module, plan)) in request
+            .resolution
+            .modules
+            .iter()
+            .zip(&request.plan.artifacts)
+            .enumerate()
+        {
+            let Some(relative) = safe_record_relative_path(&plan.path) else {
+                return Err(ProjectArtifactStageError::InvalidPlanPath {
+                    index,
+                    path: plan.path.clone(),
+                });
+            };
+            let destination = request.stage_root.join(relative);
+            let checksum = match plan.action.as_str() {
+                "compile" => unsafe { self.compile_project_artifact(module, &destination) }
+                    .map_err(ProjectArtifactStageError::Compile)?,
+                "reuse" => {
+                    let Some(previous) = request.previous else {
+                        return Err(ProjectArtifactStageError::MissingPrevious {
+                            name: module.name.clone(),
+                        });
+                    };
+                    let Some(previous_root) = request.previous_root else {
+                        return Err(ProjectArtifactStageError::MissingPreviousRoot {
+                            name: module.name.clone(),
+                        });
+                    };
+                    let Some(old) = previous_artifact(previous, &module.name) else {
+                        return Err(ProjectArtifactStageError::MissingPrevious {
+                            name: module.name.clone(),
+                        });
+                    };
+                    let Some(old_relative) = safe_record_relative_path(&old.path) else {
+                        return Err(ProjectArtifactStageError::InvalidPlanPath {
+                            index,
+                            path: old.path.clone(),
+                        });
+                    };
+                    let source = previous_root.join(old_relative);
+                    std::fs::copy(&source, &destination).map_err(|error| {
+                        ProjectArtifactStageError::Copy {
+                            source: source.clone(),
+                            destination: destination.clone(),
+                            kind: error.kind(),
+                        }
+                    })?;
+                    let bytes = std::fs::read(&destination).map_err(|error| {
+                        ProjectArtifactStageError::Read {
+                            path: destination.clone(),
+                            kind: error.kind(),
+                        }
+                    })?;
+                    validate_project_compiled_artifact(module, &bytes)
+                        .map_err(ProjectArtifactStageError::Descriptor)?;
+                    let checksum = String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned();
+                    let Some(expected) = plan.checksum.as_deref() else {
+                        return Err(ProjectArtifactStageError::ChecksumMismatch {
+                            name: module.name.clone(),
+                            expected: "present".to_owned(),
+                            actual: "missing".to_owned(),
+                        });
+                    };
+                    if checksum != expected {
+                        return Err(ProjectArtifactStageError::ChecksumMismatch {
+                            name: module.name.clone(),
+                            expected: expected.to_owned(),
+                            actual: checksum,
+                        });
+                    }
+                    checksum
+                }
+                action => {
+                    return Err(ProjectArtifactStageError::InvalidAction {
+                        index,
+                        action: action.to_owned(),
+                    });
+                }
+            };
+            staged.push(ProjectStagedArtifact {
+                name: module.name.clone(),
+                path: plan.path.clone(),
+                action: plan.action.clone(),
+                checksum,
+            });
+        }
+        Ok(staged)
     }
 
     /// Ask Birnam policy for a side-effect-free artifact plan. The request
