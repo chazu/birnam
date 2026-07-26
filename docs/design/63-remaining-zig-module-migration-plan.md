@@ -2851,6 +2851,19 @@ allowances.
   already-landed `resolve_project_snapshot` seam without hand-assembling raw
   Oops.
 
+### R7.37 Rust host nearest-project discovery checkpoint (2026-07-26)
+
+- `nearest_project_root` now canonicalizes a project command's starting path
+  and walks parent directories for the nearest regular `birnam.toml`, with
+  typed canonicalization, inspection, and not-found failures. It is read-only
+  and does not parse or cache the manifest.
+- Nested source-directory discovery is covered by a temporary fixture test;
+  no runtime resource lookup or floor load is involved. The project adapter's
+  next slice can use this root while retaining Birnam TOML and Codegen as the
+  parsing/indexing authorities.
+- The focused host suite is green at thirty-seven tests with warnings denied;
+  no project command is yet routed past the unsupported execution boundary.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

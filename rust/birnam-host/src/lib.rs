@@ -1265,6 +1265,56 @@ pub enum ProjectSnapshotError {
     AllocationRejected,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectDiscoveryError {
+    Canonicalize { path: PathBuf, kind: io::ErrorKind },
+    Inspect { path: PathBuf, kind: io::ErrorKind },
+    NotFound { start: PathBuf },
+}
+
+/// Find the nearest canonical directory containing `birnam.toml`. This is the
+/// filesystem half of project observation only; it never parses the manifest
+/// or selects a module provider.
+pub fn nearest_project_root(start: &Path) -> Result<PathBuf, ProjectDiscoveryError> {
+    let mut current =
+        std::fs::canonicalize(start).map_err(|error| ProjectDiscoveryError::Canonicalize {
+            path: start.to_path_buf(),
+            kind: error.kind(),
+        })?;
+    if !current.is_dir()
+        && let Some(parent) = current.parent()
+    {
+        current = parent.to_path_buf();
+    }
+    let original = current.clone();
+    loop {
+        let manifest = current.join("birnam.toml");
+        match std::fs::metadata(&manifest) {
+            Ok(metadata) if metadata.is_file() => return Ok(current),
+            Ok(_) => {
+                return Err(ProjectDiscoveryError::Inspect {
+                    path: manifest,
+                    kind: io::ErrorKind::InvalidData,
+                });
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(ProjectDiscoveryError::Inspect {
+                    path: manifest,
+                    kind: error.kind(),
+                });
+            }
+        }
+        let Some(parent) = current.parent() else {
+            return Err(ProjectDiscoveryError::NotFound { start: original });
+        };
+        if parent == current {
+            return Err(ProjectDiscoveryError::NotFound { start: original });
+        }
+        current = parent.to_path_buf();
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoadedSelfHostedModule {
     pub name: &'static str,
@@ -3321,6 +3371,22 @@ mod tests {
                 .iter()
                 .all(|module| module.name != PROJECT_POLICY_MODULE.name)
         );
+    }
+
+    #[test]
+    fn nearest_project_root_walks_from_nested_source_directory() {
+        let root =
+            std::env::temp_dir().join(format!("birnam-host-project-root-{}", std::process::id()));
+        let nested = root.join("src/nested");
+        std::fs::create_dir_all(&nested).expect("project fixture creates");
+        std::fs::write(root.join("birnam.toml"), b"name = \"fixture\"\n")
+            .expect("manifest fixture writes");
+        let found = nearest_project_root(&nested).expect("nearest manifest resolves");
+        assert_eq!(
+            found,
+            std::fs::canonicalize(&root).expect("fixture root canonicalizes")
+        );
+        std::fs::remove_dir_all(&root).expect("project fixture removes");
     }
 
     #[test]
