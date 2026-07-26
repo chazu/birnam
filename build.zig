@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) void {
         CollectionImpl,
         "collection-impl",
         "Collection implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .zig;
+    ) orelse .rust;
     const selected_error = b.option(
         ErrorImpl,
         "error-impl",
@@ -2447,6 +2447,9 @@ pub fn build(b: *std.Build) void {
             install_rust_collection.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_collection.step);
             bootstrap_install.dependOn(&install_rust_collection.step);
+            // Rust is canonical after the complete Collection protocol,
+            // cross-floor, GC-layout, and relocation gates. The Zig owner
+            // remains installed under an explicit rollback/probe name.
             if (selected_collection == .rust) {
                 const install_rust_collection_selected = b.addInstallFileWithDir(
                     b.path(b.fmt(
