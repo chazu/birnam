@@ -2552,3 +2552,18 @@ explicitly so the recovery surface cannot silently shrink.
   clippy warnings denied. The focused R6 aggregate and two benchmark allowances
   remain unchanged at `86/86`, `query.aggregate +5.8%`, and
   `compile.stage1-stdlib +11.9%`.
+
+### R6.36 R6 acceptance rerun checkpoint (2026-07-26)
+
+- A fresh `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed from the
+  clean `rust-libid-floor` checkout. The focused replacement build completed
+  at `151/151` steps and `86/86` tests; the sequential Rust Alien live target
+  completed at `62/62` steps and `9/9` tests.
+- Optimized `zig build verify`, install-smoke, the native-rung harness, and the
+  artifact/benchmark checks all passed under the gate's existing fail-closed
+  fixture exceptions. The comparator reported no missing or unusable cases and
+  exactly the two accepted crossings: `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`.
+- The R6 pins therefore remain explicitly accepted for this latest test set:
+  focused `86`, Rust Image shell `2`, isolated Rust Image Codegen `1`,
+  cross-floor Image `1`, rejection `1`, and Rust Alien live `9`.
