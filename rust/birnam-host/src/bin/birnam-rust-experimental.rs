@@ -445,6 +445,10 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Test => test_command(&args),
         CommandKind::ProjectTestWorker => test_worker_command(&args),
         CommandKind::Worker => worker_command(&args),
+        CommandKind::Lsp => Err(
+            "--lsp remains on the canonical Zig host until the Rust Project bridge is complete"
+                .to_owned(),
+        ),
         other => Err(format!(
             "{other:?} is not implemented by the experimental host"
         )),

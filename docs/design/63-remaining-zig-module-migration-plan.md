@@ -3440,6 +3440,17 @@ allowances.
   delegate both snapshot and path selectors without a second project authority;
   R6 remains accepted at focused `91/91`.
 
+### R7.85 Rust host explicit LSP ownership checkpoint (2026-07-26)
+
+- The experimental Rust executable now recognizes `--lsp` as a deliberate
+  boundary and reports that the canonical Zig host owns it until the Rust
+  `Project` snapshot/path bridge is complete. It no longer presents LSP as an
+  undifferentiated unimplemented command.
+- The boundary is checked before resource/floor startup, preserving pure CLI
+  diagnostics and preventing a partial LSP boot from inventing a second
+  project-resolution authority. Rust-host formatting, 55-test suite, clippy,
+  and the explicit `--lsp` smoke all pass; R6 remains accepted at `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
