@@ -2664,3 +2664,18 @@ explicitly so the recovery surface cannot silently shrink.
 - A fresh `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes optimized
   verify/install/native-rung checks and the exact existing comparator snapshot:
   only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` are accepted.
+
+### R6.42 Rust-authored Image recovery round-trip checkpoint (2026-07-26)
+
+- The explicit Rust publication proof now asserts the shipped recovery path:
+  it saves a direct Store fact, retracts it, loads the published image through
+  Rust Codegen, and observes the fact restored. This exercises framing,
+  authority validation, heap/fact replay, code mapping, and Store replacement
+  in one isolated process; the target remains `1/1`.
+- The full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun remains
+  green at focused `88/88`, with Image shell `2/2`, mapped Image-to-Codegen,
+  bootstrap, publication, cross-floor, and rejection targets each `1/1`, and
+  Rust Alien live `9/9`. Optimized verify/install/native-rung checks pass.
+- The comparator remains unchanged and fail-closed: no missing or unusable
+  cases, and exactly `query.aggregate +5.8%` plus
+  `compile.stage1-stdlib +11.9%` accepted.
