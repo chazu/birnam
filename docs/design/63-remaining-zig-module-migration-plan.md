@@ -2902,6 +2902,19 @@ allowances.
 - The focused host suite remains at thirty-seven passing tests with warnings
   denied. No build/install/run/test command is promoted past its boundary.
 
+### R7.41 Rust host Codegen source-observation checkpoint (2026-07-26)
+
+- `HostRuntime::index_project_source` now reads one source under the shipped
+  16 MiB limit and delegates static module metadata to Codegen's
+  `moduleMetadataOf:` selector. Nil metadata is preserved as an explicit
+  ignored/legacy source outcome; Error-valued metadata is a typed rejection.
+- No source is evaluated, installed, or compiled by this operation. The
+  result is ready for the typed snapshot adapter to populate source name,
+  composition, requirements, and digests while Codegen remains the metadata
+  authority.
+- The focused host suite and all-target clippy remain green at thirty-seven
+  tests; filesystem indexing and full project resolution are still pending.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

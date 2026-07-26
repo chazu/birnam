@@ -1285,6 +1285,20 @@ pub enum ProjectPreparationError {
     Manifest(ProjectManifestError),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectSourceIndexError {
+    Read { path: PathBuf, kind: io::ErrorKind },
+    TooLarge { path: PathBuf, limit: usize },
+    MissingCodegen,
+    MetadataRejected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectSourceIndexOutcome {
+    Metadata(birnam_abi::Oop),
+    Ignored,
+}
+
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
 /// filesystem half of project observation only; it never parses the manifest
 /// or selects a module provider.
@@ -1689,6 +1703,43 @@ impl HostRuntime {
         let parsed = unsafe { self.parse_project_manifest(&manifest) }
             .map_err(ProjectPreparationError::Manifest)?;
         Ok((root, parsed))
+    }
+
+    /// Read one source file and ask Codegen for its static module metadata.
+    /// This is observation only: no source evaluation, Module installation, or
+    /// provider selection occurs here.
+    ///
+    /// # Safety
+    ///
+    /// The returned metadata Oop is owned by this runtime's Store. Keep a live
+    /// GC anchor and remain on the floor owner thread while using it.
+    pub unsafe fn index_project_source(
+        &self,
+        path: &Path,
+    ) -> Result<ProjectSourceIndexOutcome, ProjectSourceIndexError> {
+        let source = std::fs::read(path).map_err(|error| ProjectSourceIndexError::Read {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })?;
+        if source.len() > MAX_SCRIPT_BYTES {
+            return Err(ProjectSourceIndexError::TooLarge {
+                path: path.to_path_buf(),
+                limit: MAX_SCRIPT_BYTES,
+            });
+        }
+        let api = self.stack.api();
+        let codegen = unsafe { global_named(api, "Codegen") }
+            .ok_or(ProjectSourceIndexError::MissingCodegen)?;
+        let source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
+        let metadata = unsafe { (api.send)(codegen, selector, [source].as_ptr(), 1) };
+        if metadata == api.nilObj {
+            return Ok(ProjectSourceIndexOutcome::Ignored);
+        }
+        if send_is_error(api, metadata) {
+            return Err(ProjectSourceIndexError::MetadataRejected);
+        }
+        Ok(ProjectSourceIndexOutcome::Metadata(metadata))
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
