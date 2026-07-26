@@ -3250,6 +3250,19 @@ allowances.
 - Rust-host formatting, check, 50-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.68 Rust host policy artifact-record checkpoint (2026-07-26)
+
+- `HostRuntime::record_project_artifacts` now supplies staged module metadata,
+  fresh checksums, wrapper records, and build identity to Birnam's
+  `artifactRecord:artifacts:native:` selector. The camelCase policy result is
+  decoded into the owned `ProjectBuildRecord`, including schema, ABI, and
+  built-at identity; Rust does not synthesize or override policy fields.
+- TOML serialization and publication remain separate downstream effects. A
+  malformed policy record fails before any record file is written or build
+  directory is activated.
+- Rust-host formatting, check, 50-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
