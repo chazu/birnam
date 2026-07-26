@@ -25,7 +25,10 @@ python3 scripts/check-native-rung-baseline.py
 # Store callback boundaries. The live Rust Alien callback/buffer fixture runs
 # just below as a sequential target to avoid Cargo/clean-prefix contention.
 # The full optimized verify below remains the cross-layer acceptance gate; the
-# focused set keeps failures attributable to the latest replacement rung.
+# focused set keeps failures attributable to the latest replacement rung. Run
+# this matrix serially: the Image-to-Codegen admission fixture and the other
+# clean-prefix targets share the installed dynamic-module staging boundary and
+# can otherwise race when Zig schedules their test processes concurrently.
 latest_tests=(
   test-rust-lang
   test-rust-lang-parity
@@ -90,7 +93,7 @@ live=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-alien-live.XXXXXX")
 trap 'rm -f "$functional" "$live"' EXIT
 
 set +e
-zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe --summary all >"$functional" 2>&1
+zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$functional" 2>&1
 functional_status=$?
 set -e
 cat "$functional"
