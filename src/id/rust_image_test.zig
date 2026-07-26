@@ -638,10 +638,15 @@ test "Rust Codegen bootstraps and retains its durable generation authority" {
     defer std.testing.allocator.free(directory);
     const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust-authority.image", .{directory});
     defer std.testing.allocator.free(image_path);
+    var prior_image = try std.fs.createFileAbsolute(image_path, .{});
+    defer prior_image.close();
+    try prior_image.writeAll("prior-image");
     try std.testing.expectEqual(api.nilObj, send(api, system, "saveImage:", &.{str(api, image_path)}));
     try std.testing.expectEqual(api.intern("rejected"), send(api, report, "status", &.{}));
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, report, "codeUnits", &.{})));
-    try std.testing.expect(!pathExists(image_path));
+    const preserved = try std.fs.cwd().readFileAlloc(std.testing.allocator, image_path, 1 << 20);
+    defer std.testing.allocator.free(preserved);
+    try std.testing.expectEqualStrings("prior-image", preserved);
 
     // Re-entry is idempotent: an existing canonical durable generation is
     // returned, never replaced by a second Rust-side projection object.
