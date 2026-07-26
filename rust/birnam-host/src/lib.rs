@@ -1299,6 +1299,24 @@ pub enum ProjectSourceIndexOutcome {
     Ignored,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSourceMetadata {
+    pub name: String,
+    pub requires: Vec<String>,
+    pub source_digest: String,
+    pub revision_digest: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectMetadataError {
+    NotVector,
+    WrongSize,
+    WrongTag,
+    InvalidSymbol,
+    InvalidString,
+    InvalidRequires,
+}
+
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
 /// filesystem half of project observation only; it never parses the manifest
 /// or selects a module provider.
@@ -1340,6 +1358,98 @@ pub fn nearest_project_root(start: &Path) -> Result<PathBuf, ProjectDiscoveryErr
         }
         current = parent.to_path_buf();
     }
+}
+
+/// Decode the frozen Codegen `#moduleMetadata` vector without evaluating any
+/// source. The vector shape is `[tag, name, requires, sourceDigest,
+/// revisionDigest]`; symbols and strings are copied before the next send.
+///
+/// # Safety
+///
+/// `api` and `metadata` must belong to the same live runtime, and all Oops must
+/// remain valid for the duration of this synchronous decode.
+pub unsafe fn decode_project_source_metadata(
+    api: &IdApi,
+    metadata: birnam_abi::Oop,
+) -> Result<ProjectSourceMetadata, ProjectMetadataError> {
+    let vector_vt = unsafe { (api.import)(c"VectorVt".as_ptr()) };
+    if metadata == api.nilObj
+        || vector_vt == api.nilObj
+        || unsafe { (api.vtableOf)(metadata) } != vector_vt
+    {
+        return Err(ProjectMetadataError::NotVector);
+    }
+    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+    let size = unsafe { (api.send)(metadata, size_selector, std::ptr::null(), 0) };
+    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } != 5 {
+        return Err(ProjectMetadataError::WrongSize);
+    }
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let item = |index: i64| unsafe {
+        (api.send)(metadata, at_selector, [(api.mkSmallInt)(index)].as_ptr(), 1)
+    };
+    let tag = item(0);
+    if tag == api.nilObj
+        || unsafe { (api.vtableOf)(tag) } != api.symbol_vt
+        || unsafe { (api.symbolName)(tag) }.is_null()
+        || unsafe { CStr::from_ptr((api.symbolName)(tag)) }.to_bytes() != b"moduleMetadata"
+    {
+        return Err(ProjectMetadataError::WrongTag);
+    }
+    let symbol = |value: birnam_abi::Oop| -> Result<String, ProjectMetadataError> {
+        if value == api.nilObj || unsafe { (api.vtableOf)(value) } != api.symbol_vt {
+            return Err(ProjectMetadataError::InvalidSymbol);
+        }
+        let name = unsafe { (api.symbolName)(value) };
+        if name.is_null() {
+            return Err(ProjectMetadataError::InvalidSymbol);
+        }
+        Ok(unsafe { CStr::from_ptr(name) }
+            .to_string_lossy()
+            .into_owned())
+    };
+    let string = |value: birnam_abi::Oop| -> Result<String, ProjectMetadataError> {
+        if value == api.nilObj || unsafe { (api.vtableOf)(value) } != api.string_vt {
+            return Err(ProjectMetadataError::InvalidString);
+        }
+        let mut length = 0usize;
+        let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+        if bytes.is_null() {
+            return Err(ProjectMetadataError::InvalidString);
+        }
+        Ok(
+            String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(bytes, length) })
+                .into_owned(),
+        )
+    };
+    let requires_value = item(2);
+    if requires_value == api.nilObj || unsafe { (api.vtableOf)(requires_value) } != vector_vt {
+        return Err(ProjectMetadataError::InvalidRequires);
+    }
+    let requires_size = unsafe { (api.send)(requires_value, size_selector, std::ptr::null(), 0) };
+    if unsafe { (api.isSmallInt)(requires_size) } == 0
+        || unsafe { (api.smallIntValue)(requires_size) } < 0
+    {
+        return Err(ProjectMetadataError::InvalidRequires);
+    }
+    let mut requires = Vec::with_capacity(unsafe { (api.smallIntValue)(requires_size) as usize });
+    for index in 0..unsafe { (api.smallIntValue)(requires_size) } {
+        let value = unsafe {
+            (api.send)(
+                requires_value,
+                at_selector,
+                [(api.mkSmallInt)(index)].as_ptr(),
+                1,
+            )
+        };
+        requires.push(symbol(value).map_err(|_| ProjectMetadataError::InvalidRequires)?);
+    }
+    Ok(ProjectSourceMetadata {
+        name: symbol(item(1))?,
+        requires,
+        source_digest: string(item(3))?,
+        revision_digest: string(item(4))?,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

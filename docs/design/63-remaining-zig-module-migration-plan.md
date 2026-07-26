@@ -2915,6 +2915,19 @@ allowances.
 - The focused host suite and all-target clippy remain green at thirty-seven
   tests; filesystem indexing and full project resolution are still pending.
 
+### R7.42 Rust host Codegen metadata decoder checkpoint (2026-07-26)
+
+- Rust now decodes the frozen Codegen metadata vector
+  `[#moduleMetadata, #name, requires, sourceDigest, revisionDigest]` into a
+  typed source-metadata record. Vector identity, tag, symbol/string shapes,
+  arity, and requirement entries are checked before bytes are copied.
+- This decoder is purely observational and preserves the existing distinction
+  between nil legacy sources and Error-valued malformed sources. It does not
+  infer module names, recompute digests, or alter Codegen/Store authority.
+- The thirty-seven-test host suite and all-target clippy remain green; the
+  next adapter slice can combine decoded metadata with project-relative paths
+  and source composition records.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
