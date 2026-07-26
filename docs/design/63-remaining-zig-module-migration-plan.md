@@ -2977,6 +2977,17 @@ allowances.
   tests. The remaining project gap is manifest-driven composition discovery,
   dependency closure, and policy invocation over the resulting snapshot.
 
+### R7.47 Rust host manifest composition-plan checkpoint (2026-07-26)
+
+- `project_composition_paths` now validates already-parsed module entry/part
+  paths, enforces project-relative `.birnam` names, rejects duplicate parts and
+  entry-as-part reuse, and returns the exact entry-first path order.
+- This is a pure plan function: it does not read files, parse TOML, invoke
+  Module, or decide dependency providers. Its output feeds the composed-source
+  observation boundary without moving manifest semantics out of Birnam policy.
+- The focused host suite advances to thirty-nine tests with warnings denied;
+  manifest extraction and cross-module duplicate ownership remain pending.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

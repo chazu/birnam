@@ -1297,6 +1297,49 @@ pub enum ProjectCompositionError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectCompositionPlanError {
+    InvalidEntry,
+    InvalidPart(String),
+    DuplicatePart(String),
+    EntryListedAsPart,
+}
+
+/// Validate one manifest module composition and return its project-rooted path
+/// order. This consumes already-parsed manifest values; it does not parse TOML
+/// or inspect source contents.
+pub fn project_composition_paths(
+    project_root: &Path,
+    entry: &str,
+    parts: &[String],
+) -> Result<Vec<PathBuf>, ProjectCompositionPlanError> {
+    let entry_path = Path::new(entry);
+    if entry.is_empty()
+        || entry_path.is_absolute()
+        || entry_path.extension() != Some(OsStr::new("birnam"))
+    {
+        return Err(ProjectCompositionPlanError::InvalidEntry);
+    }
+    let mut seen = HashSet::with_capacity(parts.len() + 1);
+    seen.insert(entry.to_owned());
+    let mut paths = Vec::with_capacity(parts.len() + 1);
+    paths.push(project_root.join(entry_path));
+    for part in parts {
+        let path = Path::new(part);
+        if part.is_empty() || path.is_absolute() || path.extension() != Some(OsStr::new("birnam")) {
+            return Err(ProjectCompositionPlanError::InvalidPart(part.clone()));
+        }
+        if !seen.insert(part.clone()) {
+            if part == entry {
+                return Err(ProjectCompositionPlanError::EntryListedAsPart);
+            }
+            return Err(ProjectCompositionPlanError::DuplicatePart(part.clone()));
+        }
+        paths.push(project_root.join(path));
+    }
+    Ok(paths)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectPreparationError {
     Discovery(ProjectDiscoveryError),
     Manifest(ProjectManifestError),
@@ -3856,6 +3899,30 @@ mod tests {
             vec![root.join("src/nested/a.birnam"), root.join("src/z.birnam")]
         );
         std::fs::remove_dir_all(&root).expect("source fixture removes");
+    }
+
+    #[test]
+    fn composition_plan_preserves_entry_order_and_rejects_duplicate_parts() {
+        let root = Path::new("/tmp/project");
+        assert_eq!(
+            project_composition_paths(root, "src/main.birnam", &["src/part.birnam".to_owned()])
+                .expect("composition paths validate"),
+            vec![root.join("src/main.birnam"), root.join("src/part.birnam")]
+        );
+        assert_eq!(
+            project_composition_paths(root, "src/main.birnam", &["src/main.birnam".to_owned()]),
+            Err(ProjectCompositionPlanError::EntryListedAsPart)
+        );
+        assert_eq!(
+            project_composition_paths(
+                root,
+                "src/main.birnam",
+                &["src/part.birnam".to_owned(), "src/part.birnam".to_owned()]
+            ),
+            Err(ProjectCompositionPlanError::DuplicatePart(
+                "src/part.birnam".to_owned()
+            ))
+        );
     }
 
     #[test]
