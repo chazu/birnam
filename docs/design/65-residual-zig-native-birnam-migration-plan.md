@@ -235,6 +235,22 @@ through the existing PEG/Lang/TCC dynamic modules. Do not list a Rust-only
 and lifecycle protocols belong exclusively to C1.4. Keep all temporary Oops
 rooted and release every Rust lock before an IdApi send.
 
+C1.3 adapter checkpoint (2026-07-26):
+
+- Rust now constructs an inspectable `RustCodegenAdapter`/`RustReflectAdapter`
+  projection with the exact frozen Codegen (47), Reflect (12), and collector
+  (`value:value:value:` with raw layout) selector sets. Rust-only `emit:` and
+  `compile:` aliases remain confined to `RustCodegen`.
+- The adapter maps compile/eval, metadata/source, candidate/generation/image
+  protocol, rooting, and error handlers through the existing PEG/Lang/TCC and
+  Store objects. Reflect provides vtable/name/export, method definition and
+  removal, method descriptors/sources, and live fact snapshots; TCC trampoline
+  units are retained by the Rust root provider before dispatch can observe them.
+- The frozen exports remain deliberately absent until C1.6; the current C1.1
+  rejection fixture therefore stays valid while the adapter surface is tested
+  in place. The focused gate is now `94/94` tests (`170/170` steps), including
+  `29` Rust Codegen runtime tests.
+
 ### C1.4 Candidate and lifecycle parity
 
 Port inspect/map/prepare/commit/discard/reconcile, phase transitions,

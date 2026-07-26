@@ -458,3 +458,14 @@ R0.7 R6 gate refresh (2026-07-26):
   tests and `170/170` steps; optimized verify passed at `295/295` steps with
   `508/514` tests passed and six skips. The comparator retained exactly the
   accepted `query.aggregate` and `compile.stage1-stdlib` crossings.
+
+R0.8 Rust Codegen adapter refresh (2026-07-26):
+
+- C1.3 adds the exact frozen Codegen/Reflect/collector projection under
+  explicit Rust adapter fixture names while keeping canonical Zig exports
+  absent until C1.6. The Rust-only `emit:` and `compile:` aliases remain out
+  of the adapter vtable.
+- The focused gate now records `94/94` tests and `170/170` steps, including
+  `29` Rust Codegen runtime tests. The optimized verify pin advances to
+  `509/514` tests with the same six explicit skips; the two benchmark crossings
+  remain the only accepted comparator differences.

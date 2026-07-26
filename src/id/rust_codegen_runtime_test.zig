@@ -140,6 +140,29 @@ test "C1.1 expected rejection: Rust Codegen is not the frozen authority surface"
     );
 }
 
+test "C1.3 Rust adapter projects the frozen Codegen and Reflect families" {
+    const api = try setupRustOnly();
+    const parsed = try std.json.parseFromSlice(
+        AuthorityManifest,
+        std.testing.allocator,
+        @embedFile("fixtures/codegen-authority-v1.json"),
+        .{},
+    );
+    defer parsed.deinit();
+
+    const codegen_vt = api.import("RustCodegenAdapterVt") orelse return error.MissingRustAdapterCodegenVt;
+    const reflect_vt = api.import("RustReflectAdapterVt") orelse return error.MissingRustAdapterReflectVt;
+    const collector_vt = api.import("RustReflectFactCollectorVt") orelse return error.MissingRustAdapterCollectorVt;
+    try std.testing.expectEqual(parsed.value.codegen_selectors.len, directSelectorCount(api, codegen_vt));
+    try std.testing.expectEqual(parsed.value.reflect_selectors.len, directSelectorCount(api, reflect_vt));
+    for (parsed.value.codegen_selectors) |selector| try std.testing.expect(hasDirectSelector(api, codegen_vt, selector));
+    for (parsed.value.reflect_selectors) |selector| try std.testing.expect(hasDirectSelector(api, reflect_vt, selector));
+    try std.testing.expect(hasDirectSelector(api, collector_vt, "value:value:value:"));
+    try std.testing.expectEqual(@as(u8, idapi.slot_raw), api.slotKind(collector_vt, 0));
+    try std.testing.expect(api.import("Codegen") == null);
+    try std.testing.expect(api.import("Reflect") == null);
+}
+
 fn emitBytes(api: *idapi.IdApi, codegen: idapi.Oop, source: []const u8) ![]const u8 {
     const source_obj = api.mkString(source.ptr, source.len);
     const result = api.send(codegen, api.intern("emit:"), &.{source_obj}, 1);

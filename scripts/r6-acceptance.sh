@@ -65,12 +65,12 @@ latest_tests=(
 # Image publication, publication-authority rejection, both Image cross-floor
 # directions, the Zig-Store cross-floor cell, and fail-closed
 # duplicate/truncated Image-record coverage, plus the Rust Codegen contract and
-# pure-emitter parity checks: the focused matrix is 93 tests;
+# pure-emitter parity checks: the focused matrix is 94 tests;
 # the mixed dynamic Rust Image shell remains 2 passing tests, and each isolated
 # Image proof runs as one test process. The publication change is
 # explicit-authority-only; no benchmark or fixture exception is widened here.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=93
+readonly expected_focused_tests=94
 readonly expected_rust_image_shell_tests=2
 readonly expected_rust_image_bootstrap_tests=1
 readonly expected_rust_image_publication_tests=1
@@ -84,7 +84,7 @@ readonly expected_rust_image_rejection_tests=1
 # step to both the focused replacement graph and complete verify graph.
 readonly expected_focused_steps=170
 readonly expected_verify_steps=295
-readonly expected_verify_tests=508
+readonly expected_verify_tests=509
 readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
@@ -116,9 +116,9 @@ rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$func
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
   exit 1
 }
-rust_codegen_test_count=$(grep -Ec '^\+- run test 28 passed ' "$functional" || true)
+rust_codegen_test_count=$(grep -Ec '^\+- run test 29 passed ' "$functional" || true)
 [ "$rust_codegen_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Codegen runtime test set no longer has 28 passing tests" >&2
+  echo "r6-acceptance: Rust Codegen runtime test set no longer has 29 passing tests" >&2
   exit 1
 }
 rust_codegen_callback_test_count=$(awk '

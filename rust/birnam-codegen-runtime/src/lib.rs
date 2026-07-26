@@ -28,6 +28,15 @@ use std::sync::{Mutex, OnceLock};
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
 const RUST_CODEGEN_NAME: &[u8] = b"RustCodegen\0";
 const RUST_CODEGEN_VT_NAME: &[u8] = b"RustCodegenVt\0";
+// C1.3 constructs the frozen family under explicit adapter names.  C1.6 is
+// the only phase allowed to publish these objects as Codegen/Reflect; keeping
+// the intermediate names visible makes the adapter inspectable without
+// weakening C1.1's expected-rejection gate.
+const ADAPTER_CODEGEN_NAME: &[u8] = b"RustCodegenAdapter\0";
+const ADAPTER_CODEGEN_VT_NAME: &[u8] = b"RustCodegenAdapterVt\0";
+const ADAPTER_REFLECT_NAME: &[u8] = b"RustReflectAdapter\0";
+const ADAPTER_REFLECT_VT_NAME: &[u8] = b"RustReflectAdapterVt\0";
+const ADAPTER_COLLECTOR_VT_NAME: &[u8] = b"RustReflectFactCollectorVt\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
@@ -114,6 +123,8 @@ const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
 const STORE_RAW_CURRENT_SELECTOR: &[u8] = b"rawCurrentValue:attr:\0";
+const STORE_ATTR_COUNT_SELECTOR: &[u8] = b"attrCount:\0";
+const STORE_ATTR_AT_SELECTOR: &[u8] = b"attrAt:index:\0";
 const SET_METHOD_OBSERVER_SELECTOR: &[u8] = b"setMethodMutationObserver:\0";
 const SET_METHOD_AUTHORIZER_SELECTOR: &[u8] = b"setMethodMutationAuthorizer:\0";
 const CODEGEN_NAME: &[u8] = b"Codegen\0";
@@ -131,12 +142,18 @@ const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
 const ARTIFACT_DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
 const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IMAGE_PREFLIGHT_BYTES: u64 = 512 * 1024 * 1024;
+const REFLECT_METHOD_COUNTER_START: usize = 0;
 
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
     rust_codegen_vt: usize,
     rust_codegen: usize,
+    adapter_codegen_vt: usize,
+    adapter_codegen: usize,
+    adapter_reflect_vt: usize,
+    adapter_reflect: usize,
+    adapter_collector_vt: usize,
     tcc: usize,
     globals: usize,
     store: usize,
@@ -162,6 +179,7 @@ static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
+static REFLECT_METHOD_COUNTER: AtomicUsize = AtomicUsize::new(REFLECT_METHOD_COUNTER_START);
 
 const PHASE_BOOTSTRAPPING: u8 = 0;
 const PHASE_RUNNING: u8 = 1;
@@ -6035,6 +6053,577 @@ unsafe extern "C" fn rust_codegen_last_error(
     unsafe { (api.mkString)(message.as_ptr(), message.len()) }
 }
 
+unsafe extern "C" fn rust_codegen_discard_candidate(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen discardCandidate: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen discardCandidate: expects one unit");
+    }
+    let api = unsafe { api(runtime()) };
+    let unit = values[0] as usize;
+    let Some(candidate) = (|| {
+        let mut candidates = CANDIDATES.lock().ok()?;
+        let index = candidates
+            .iter()
+            .position(|candidate| candidate.unit == unit)?;
+        if candidates[index].active || candidates[index].prepared != 0 {
+            return None;
+        }
+        Some(candidates.remove(index))
+    })() else {
+        if let Ok(candidates) = CANDIDATES.lock()
+            && candidates.iter().any(|candidate| {
+                candidate.unit == unit && (candidate.active || candidate.prepared != 0)
+            })
+        {
+            note_error(b"RustCodegen candidate cannot be discarded while active or prepared");
+        }
+        return if unit == 0 { api.nilObj } else { values[0] };
+    };
+    if candidate.handle != 0 {
+        // SAFETY: the candidate handle is detached from the registry before
+        // unloading, so no callback or lock can observe a half-cleaned entry.
+        unsafe { dlclose(candidate.handle as *mut c_void) };
+    }
+    let _ = fs::remove_file(Path::new(OsStr::from_bytes(&candidate.author_path)));
+    let mut sidecar = candidate.author_path.clone();
+    sidecar.extend_from_slice(b".candidate");
+    let _ = fs::remove_file(Path::new(OsStr::from_bytes(&sidecar)));
+    let _ = unsafe {
+        assert_candidate_fact(
+            api,
+            runtime(),
+            values[0],
+            b"state\0",
+            intern(api, b"discarded\0"),
+        )
+    };
+    values[0]
+}
+
+unsafe extern "C" fn rust_codegen_release_candidate(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen releaseCandidate: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen releaseCandidate: expects one unit");
+    }
+    let api = unsafe { api(runtime()) };
+    let unit = values[0] as usize;
+    let Some(candidate) = (|| {
+        let mut candidates = CANDIDATES.lock().ok()?;
+        let index = candidates
+            .iter()
+            .position(|candidate| candidate.unit == unit)?;
+        if candidates[index].active || candidates[index].prepared != 0 {
+            return None;
+        }
+        Some(candidates.remove(index))
+    })() else {
+        if let Ok(candidates) = CANDIDATES.lock()
+            && candidates.iter().any(|candidate| {
+                candidate.unit == unit && (candidate.active || candidate.prepared != 0)
+            })
+        {
+            note_error(b"RustCodegen candidate cannot be released while active or prepared");
+        }
+        return if unit == 0 { api.nilObj } else { values[0] };
+    };
+    if candidate.handle != 0 {
+        // SAFETY: see discardCandidate:; the handle is no longer published.
+        unsafe { dlclose(candidate.handle as *mut c_void) };
+    }
+    let _ = unsafe {
+        assert_candidate_fact(
+            api,
+            runtime(),
+            values[0],
+            b"state\0",
+            intern(api, b"discarded\0"),
+        )
+    };
+    values[0]
+}
+
+unsafe fn reflect_symbol_name(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
+    if value.is_null() || unsafe { (api.vtableOf)(value) } != api.symbol_vt {
+        return None;
+    }
+    let pointer = unsafe { (api.symbolName)(value) };
+    if pointer.is_null() {
+        return None;
+    }
+    Some(unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec())
+}
+
+unsafe fn reflect_exported_symbol(api: &IdApi, value: Oop) -> Oop {
+    if value.is_null() {
+        return api.nilObj;
+    }
+    let name = unsafe { (api.exportedNameOf)(value) };
+    if name.is_null() {
+        return api.nilObj;
+    }
+    unsafe { (api.intern)(name) }
+}
+
+unsafe fn reflect_map_put(api: &IdApi, map: Oop, key: &[u8], value: Oop) -> Oop {
+    let key = unsafe { intern(api, key) };
+    unsafe { send(api, map, b"at:put:\0", &[key, value]) }
+}
+
+unsafe fn reflect_new_map(api: &IdApi) -> Oop {
+    let map = unsafe { (api.import)(b"Map\0".as_ptr().cast()) };
+    if map.is_null() || map == api.nilObj {
+        return api.nilObj;
+    }
+    unsafe { send0(api, map, NEW_SELECTOR) }
+}
+
+unsafe fn reflect_method_descriptor(api: &IdApi, runtime: &Runtime, vt: Oop, selector: Oop) -> Oop {
+    let descriptor = unsafe { reflect_new_map(api) };
+    if descriptor == api.nilObj {
+        return api.nilObj;
+    }
+    let owner = unsafe { (api.vtableOwner)(vt) };
+    let target = unsafe { reflect_exported_symbol(api, owner) };
+    let target = if target == api.nilObj {
+        unsafe { reflect_exported_symbol(api, vt) }
+    } else {
+        target
+    };
+    let mirror = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            CURRENT_VALUE_SELECTOR,
+            &[vt, selector],
+        )
+    };
+    let method = if mirror == api.nilObj {
+        unsafe { intern(api, b"primitive\0") }
+    } else if mirror == unsafe { intern(api, b"primitive\0") }
+        || unsafe { (api.objectPayloadSize)(mirror) } != 0
+    {
+        mirror
+    } else {
+        unsafe { intern(api, b"compiled\0") }
+    };
+    let _ = unsafe { reflect_map_put(api, descriptor, b"selector\0", selector) };
+    let _ = unsafe { reflect_map_put(api, descriptor, b"owner\0", owner) };
+    let _ = unsafe { reflect_map_put(api, descriptor, b"target\0", target) };
+    let _ = unsafe { reflect_map_put(api, descriptor, b"method\0", method) };
+    descriptor
+}
+
+unsafe extern "C" fn rust_reflect_vtable_of(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect vtableOf: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustReflect vtableOf: expects one value");
+    }
+    unsafe { (api(runtime()).vtableOf)(values[0]) }
+}
+
+unsafe extern "C" fn rust_reflect_name_of(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect nameOf: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustReflect nameOf: expects one value");
+    }
+    let api = unsafe { api(runtime()) };
+    let Some(name) = (unsafe { reflect_symbol_name(api, values[0]) }) else {
+        note_error(b"RustReflect nameOf: expects a symbol");
+        return api.nilObj;
+    };
+    unsafe { (api.mkString)(name.as_ptr(), name.len()) }
+}
+
+unsafe extern "C" fn rust_reflect_export_vtable(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect exportVtableOf:as: received invalid arguments"));
+    if values.len() != 2 {
+        abort("RustReflect exportVtableOf:as: expects value and symbol");
+    }
+    let api = unsafe { api(runtime()) };
+    if unsafe { reflect_symbol_name(api, values[1]) }.is_none() {
+        note_error(b"RustReflect exportVtableOf:as: expects a symbol");
+        return api.nilObj;
+    }
+    let vt = unsafe { (api.vtableOf)(values[0]) };
+    if vt.is_null() || unsafe { (api.vtableOwner)(vt) } != values[0] {
+        note_error(b"RustReflect exportVtableOf:as: target has no stable vtable");
+        return api.nilObj;
+    }
+    let name = unsafe { (api.symbolName)(values[1]) };
+    if unsafe { (api.isExported)(name) } != 0 {
+        return if unsafe { (api.import)(name) } == vt {
+            values[0]
+        } else {
+            note_error(b"RustReflect exportVtableOf:as: name conflict");
+            api.nilObj
+        };
+    }
+    if unsafe { (api.exportObj)(name, vt) }.is_null() {
+        note_error(b"RustReflect exportVtableOf:as: export failed");
+        return api.nilObj;
+    }
+    values[0]
+}
+
+unsafe extern "C" fn rust_reflect_export_object(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect exportObject:as: received invalid arguments"));
+    if values.len() != 2 {
+        abort("RustReflect exportObject:as: expects value and symbol");
+    }
+    let api = unsafe { api(runtime()) };
+    if unsafe { reflect_symbol_name(api, values[1]) }.is_none() {
+        note_error(b"RustReflect exportObject:as: expects a symbol");
+        return api.nilObj;
+    }
+    let name = unsafe { (api.symbolName)(values[1]) };
+    if unsafe { (api.isExported)(name) } != 0 {
+        return if unsafe { (api.import)(name) } == values[0] {
+            values[0]
+        } else {
+            note_error(b"RustReflect exportObject:as: name conflict");
+            api.nilObj
+        };
+    }
+    if unsafe { (api.exportObj)(name, values[0]) }.is_null() {
+        note_error(b"RustReflect exportObject:as: export failed");
+        return api.nilObj;
+    }
+    values[0]
+}
+
+unsafe fn compile_reflect_trampoline(
+    api: &IdApi,
+    selector: &[u8],
+    key: &[u8],
+) -> Option<(Oop, Oop)> {
+    let runtime = runtime();
+    let unit = unsafe { send0(api, runtime.tcc as Oop, NEW_SELECTOR) };
+    if unit.is_null() || unit == api.nilObj {
+        return None;
+    }
+    let arity = selector.iter().filter(|byte| **byte == b':').count();
+    let mut escaped_selector = String::new();
+    for byte in selector {
+        match byte {
+            b'\\' => escaped_selector.push_str("\\\\"),
+            b'"' => escaped_selector.push_str("\\\""),
+            byte if byte.is_ascii_graphic() || *byte == b' ' => {
+                escaped_selector.push(*byte as char)
+            }
+            _ => return None,
+        }
+    }
+    let source = format!(
+        "extern void* birnam_send(void*, void*, void**, long);\nextern void* birnam_intern(const char*);\nextern void* birnam_global(const char*);\nvoid* __tramp(void* self, void** args, long n) {{ (void)n; void* a[{}]; a[0] = self; for (long i = 0; i < {}; ++i) a[i + 1] = args[i]; return birnam_send(birnam_global(\"{}\"), birnam_intern(\"{}\"), a, {}L); }}\n",
+        arity + 1,
+        arity,
+        String::from_utf8_lossy(key),
+        escaped_selector,
+        arity + 1,
+    );
+    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[source_object]) } == api.nilObj
+        || !unsafe { bind_global_shims(api, unit) }
+        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
+        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+    {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let entry = unsafe { (api.mkString)(b"__tramp".as_ptr(), 7) };
+    let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry]) };
+    if unsafe { (api.isSmallInt)(symbol) } == 0 {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+    let method: Oop = address as Oop;
+    Some((unit, method))
+}
+
+unsafe fn reflect_install_method(api: &IdApi, selector: Oop, target: Oop, block: Oop) -> Oop {
+    let Some(selector_bytes) = (unsafe { reflect_symbol_name(api, selector) }) else {
+        note_error(b"RustReflect defineMethod: expects a selector symbol");
+        return api.nilObj;
+    };
+    let vt = unsafe { (api.ensurePrivateVtable)(target) };
+    if vt.is_null() {
+        note_error(b"RustReflect defineMethod: target has no vtable");
+        return api.nilObj;
+    }
+    let id = REFLECT_METHOD_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let key = format!("__rust_mblk_{id}");
+    let key_symbol = unsafe { intern_bytes(api, key.as_bytes()) };
+    let globals_entity = unsafe { intern(api, GLOBALS_ENTITY_NAME) };
+    if unsafe {
+        send(
+            api,
+            runtime().store as Oop,
+            STORE_ASSERT_SELECTOR,
+            &[globals_entity, key_symbol, block],
+        )
+    } == api.nilObj
+    {
+        note_error(b"RustReflect defineMethod: could not retain block");
+        return api.nilObj;
+    }
+    let Some((unit, method)) =
+        (unsafe { compile_reflect_trampoline(api, &selector_bytes, key.as_bytes()) })
+    else {
+        note_error(b"RustReflect defineMethod: trampoline compilation failed");
+        return api.nilObj;
+    };
+    let result = unsafe {
+        send(
+            api,
+            runtime().store as Oop,
+            b"addMethod:on:with:\0",
+            &[selector, vt, method],
+        )
+    };
+    if result == api.nilObj {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustReflect defineMethod: Store rejected method");
+        return api.nilObj;
+    }
+    retain_unit(unit);
+    vt
+}
+
+unsafe extern "C" fn rust_reflect_define_method(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect defineMethod:on:as: received invalid arguments"));
+    if values.len() != 3 {
+        abort("RustReflect defineMethod:on:as: expects selector, target, and block");
+    }
+    let api = unsafe { api(runtime()) };
+    unsafe { reflect_install_method(api, values[0], values[1], values[2]) }
+}
+
+unsafe extern "C" fn rust_reflect_remove_method(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect removeMethod:on: received invalid arguments"));
+    if values.len() != 2 {
+        abort("RustReflect removeMethod:on: expects selector and target");
+    }
+    let result = unsafe { birnam_rust_codegen_remove_method(values[1], values[0], ptr::null(), 0) };
+    if result == unsafe { api(runtime()).nilObj } {
+        note_error(b"RustReflect removeMethod:on: Store rejected method");
+    }
+    result
+}
+
+unsafe extern "C" fn rust_reflect_define_method_sourced(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect sourced define received invalid arguments"));
+    if values.len() != 4 {
+        abort("RustReflect defineMethod:on:as:source: expects four arguments");
+    }
+    unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) }
+}
+
+unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect doc define received invalid arguments"));
+    if values.len() != 5 {
+        abort("RustReflect defineMethod:on:as:doc:source: expects five arguments");
+    }
+    unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) }
+}
+
+unsafe extern "C" fn rust_reflect_remove_method_sourced(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect sourced remove received invalid arguments"));
+    if values.len() != 3 {
+        abort("RustReflect removeMethod:on:source: expects three arguments");
+    }
+    unsafe { rust_reflect_remove_method(self_object, values.as_ptr(), 2) }
+}
+
+unsafe extern "C" fn rust_reflect_all_methods(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect allMethodsOf: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustReflect allMethodsOf: expects one value");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    let result = (|| {
+        let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
+        if vector.is_null() || vector == api.nilObj {
+            return api.nilObj;
+        }
+        let mut entries = Vec::new();
+        let mut seen = Vec::<Oop>::new();
+        let mut vt = unsafe { (api.vtableOf)(values[0]) };
+        while !vt.is_null() {
+            let selector_count = 0..;
+            for index in selector_count {
+                let selector = unsafe { (api.vtableSelectorAt)(vt, index) };
+                if selector.is_null() {
+                    break;
+                }
+                if seen.contains(&selector) {
+                    continue;
+                }
+                seen.push(selector);
+                entries.push(unsafe { reflect_method_descriptor(api, runtime, vt, selector) });
+            }
+            vt = unsafe { (api.vtableParent)(vt) };
+        }
+        unsafe { make_vector(api, vector, &entries) }
+    })();
+    unsafe { (api.gcSetAuto)(1) };
+    result
+}
+
+unsafe extern "C" fn rust_reflect_method_source(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect methodSource: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustReflect methodSource: expects one descriptor");
+    }
+    let api = unsafe { api(runtime()) };
+    let source = unsafe { send(api, values[0], b"at:\0", &[intern(api, b"source\0")]) };
+    if source != api.nilObj {
+        return source;
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn rust_reflect_facts_of(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect factsOf: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustReflect factsOf: expects one entity");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    unsafe { (api.gcSetAuto)(0) };
+    let result = (|| {
+        let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
+        if vector.is_null() || vector == api.nilObj {
+            return api.nilObj;
+        }
+        let count_object = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                STORE_ATTR_COUNT_SELECTOR,
+                &[values[0]],
+            )
+        };
+        if unsafe { (api.isSmallInt)(count_object) } == 0 {
+            return api.nilObj;
+        }
+        let count = unsafe { (api.smallIntValue)(count_object) };
+        if count < 0 {
+            return api.nilObj;
+        }
+        let mut facts = Vec::new();
+        for index in 0..count as usize {
+            let attribute = unsafe {
+                send(
+                    api,
+                    runtime.store as Oop,
+                    STORE_ATTR_AT_SELECTOR,
+                    &[values[0], (api.mkSmallInt)(index as i64)],
+                )
+            };
+            let value = unsafe {
+                send(
+                    api,
+                    runtime.store as Oop,
+                    CURRENT_VALUE_SELECTOR,
+                    &[values[0], attribute],
+                )
+            };
+            let map = unsafe { reflect_new_map(api) };
+            let _ = unsafe { reflect_map_put(api, map, b"entity\0", values[0]) };
+            let _ = unsafe { reflect_map_put(api, map, b"attribute\0", attribute) };
+            let _ = unsafe { reflect_map_put(api, map, b"value\0", value) };
+            facts.push(map);
+        }
+        unsafe { make_vector(api, vector, &facts) }
+    })();
+    unsafe { (api.gcSetAuto)(1) };
+    result
+}
+
+unsafe extern "C" fn rust_reflect_collect_fact(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 3 {
+        abort("RustReflectFactCollector value:value:value: expects three arguments");
+    }
+    unsafe { api(runtime()) }.nilObj
+}
+
 unsafe fn bring_up(api_pointer: *mut IdApi) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
@@ -6055,6 +6644,44 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         if rust_codegen_vt.is_null() || rust_codegen.is_null() {
             abort("RustCodegen exports were incomplete");
         }
+        let adapter_reloading =
+            unsafe { (host_api.isExported)(ADAPTER_CODEGEN_NAME.as_ptr().cast()) != 0 };
+        let (adapter_codegen_vt, adapter_codegen) = if adapter_reloading {
+            (
+                unsafe { (host_api.import)(ADAPTER_CODEGEN_VT_NAME.as_ptr().cast()) },
+                unsafe { (host_api.import)(ADAPTER_CODEGEN_NAME.as_ptr().cast()) },
+            )
+        } else {
+            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
+            let object = unsafe { (host_api.alloc)(vt, 0) };
+            (vt, object)
+        };
+        let (adapter_reflect_vt, adapter_reflect) = if adapter_reloading {
+            (
+                unsafe { (host_api.import)(ADAPTER_REFLECT_VT_NAME.as_ptr().cast()) },
+                unsafe { (host_api.import)(ADAPTER_REFLECT_NAME.as_ptr().cast()) },
+            )
+        } else {
+            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
+            let object = unsafe { (host_api.alloc)(vt, 0) };
+            (vt, object)
+        };
+        let adapter_collector_vt = if adapter_reloading {
+            unsafe { (host_api.import)(ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast()) }
+        } else {
+            unsafe { (host_api.proto)(host_api.object_vt) }
+        };
+        if adapter_codegen_vt.is_null()
+            || adapter_codegen.is_null()
+            || adapter_reflect_vt.is_null()
+            || adapter_reflect.is_null()
+            || adapter_collector_vt.is_null()
+        {
+            abort("RustCodegen adapter exports were incomplete");
+        }
+        unsafe {
+            (host_api.setLayout)(adapter_collector_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        }
         let tcc = unsafe { (host_api.import)(TCC_NAME.as_ptr().cast()) };
         if tcc.is_null() {
             abort("RustCodegen requires Tcc to be loaded");
@@ -6065,6 +6692,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             api: api_pointer as usize,
             rust_codegen_vt: rust_codegen_vt as usize,
             rust_codegen: rust_codegen as usize,
+            adapter_codegen_vt: adapter_codegen_vt as usize,
+            adapter_codegen: adapter_codegen as usize,
+            adapter_reflect_vt: adapter_reflect_vt as usize,
+            adapter_reflect: adapter_reflect as usize,
+            adapter_collector_vt: adapter_collector_vt as usize,
             tcc: tcc as usize,
             globals: globals as usize,
             store: store as usize,
@@ -6339,6 +6971,181 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, b"lastError\0"),
             rust_codegen_last_error,
+        );
+        macro_rules! adapter_method {
+            ($selector:expr, $method:expr) => {
+                (api.method)(
+                    runtime.adapter_codegen_vt as Oop,
+                    intern(api, $selector),
+                    $method,
+                );
+            };
+        }
+        // Exact frozen Codegen selector projection.  Rust-only conveniences
+        // (emit:, compile:, image preflight helpers, and phase aliases) remain
+        // on RustCodegen and are deliberately not copied into this vtable.
+        adapter_method!(b"eval:\0", rust_codegen_eval);
+        adapter_method!(b"evalPersisting:\0", rust_codegen_eval_persisting);
+        adapter_method!(b"eval:from:\0", rust_codegen_eval);
+        adapter_method!(b"evalPersisting:from:\0", rust_codegen_eval_persisting);
+        adapter_method!(b"compile:output:\0", rust_codegen_compile_output);
+        adapter_method!(b"compile:output:from:\0", rust_codegen_compile_output);
+        adapter_method!(b"compile:output:root:\0", rust_codegen_compile_output_root);
+        adapter_method!(SOURCE_REVISION_SELECTOR, rust_codegen_source_revision);
+        adapter_method!(MODULE_METADATA_SELECTOR, rust_codegen_module_metadata);
+        adapter_method!(EMBEDDED_FILES_SELECTOR, rust_codegen_embedded_files);
+        adapter_method!(
+            RECORD_MODULE_SOURCE_SELECTOR,
+            rust_codegen_record_module_source
+        );
+        adapter_method!(
+            INITIAL_GENERATION_PROJECTION_SELECTOR,
+            rust_codegen_initial_generation_projection
+        );
+        adapter_method!(
+            SEAL_INITIAL_GENERATION_SELECTOR,
+            rust_codegen_seal_initial_generation
+        );
+        adapter_method!(
+            SUCCESSOR_GENERATION_PROJECTION_SELECTOR,
+            rust_codegen_successor_generation_projection
+        );
+        adapter_method!(MODULE_SOURCE_FOR_SELECTOR, rust_codegen_module_source_for);
+        adapter_method!(COMPILE_CANDIDATE_SELECTOR, rust_codegen_compile_candidate);
+        adapter_method!(INSPECT_CANDIDATE_SELECTOR, rust_codegen_inspect_candidate);
+        adapter_method!(MAP_CANDIDATE_SELECTOR, rust_codegen_map_candidate);
+        adapter_method!(CANDIDATE_MAPPED_SELECTOR, rust_codegen_candidate_mapped);
+        adapter_method!(
+            CANDIDATE_CONTENT_PATH_SELECTOR,
+            rust_codegen_candidate_content_path
+        );
+        adapter_method!(b"discardCandidate:\0", rust_codegen_discard_candidate);
+        adapter_method!(b"releaseCandidate:\0", rust_codegen_release_candidate);
+        adapter_method!(PREPARE_ACTIVATION_SELECTOR, rust_codegen_prepare_activation);
+        adapter_method!(
+            PREPARE_ACTIVATION_PRIOR_SELECTOR,
+            rust_codegen_prepare_activation
+        );
+        adapter_method!(
+            PREPARE_ACTIVATION_PLAN_SELECTOR,
+            rust_codegen_prepare_activation
+        );
+        adapter_method!(COMMIT_PREPARED_SELECTOR, rust_codegen_commit_prepared);
+        adapter_method!(PREPARE_ROLLBACK_SELECTOR, rust_codegen_prepare_rollback);
+        adapter_method!(
+            PREPARE_ROLLBACK_PLAN_SELECTOR,
+            rust_codegen_prepare_rollback
+        );
+        adapter_method!(
+            COMMIT_PREPARED_ROLLBACK_SELECTOR,
+            rust_codegen_commit_prepared_rollback
+        );
+        adapter_method!(DISCARD_PREPARED_SELECTOR, rust_codegen_discard_prepared);
+        adapter_method!(
+            RECONCILE_CANDIDATE_SELECTOR,
+            rust_codegen_reconcile_candidate
+        );
+        adapter_method!(
+            RECONCILE_ALL_CANDIDATES_SELECTOR,
+            rust_codegen_reconcile_all_candidates
+        );
+        adapter_method!(
+            MANAGED_METHOD_CHANGED_SELECTOR,
+            rust_codegen_managed_method_changed
+        );
+        adapter_method!(
+            AUTHORIZE_METHOD_MUTATION_SELECTOR,
+            rust_codegen_authorize_method_mutation_method
+        );
+        adapter_method!(
+            BEGIN_IMAGE_RECOVERY_SELECTOR,
+            rust_codegen_begin_image_dispatch_recovery
+        );
+        adapter_method!(
+            END_IMAGE_RECOVERY_SELECTOR,
+            rust_codegen_end_image_dispatch_recovery
+        );
+        adapter_method!(COMPILE_IMAGE_CODE_SELECTOR, rust_codegen_compile_image_code);
+        adapter_method!(GENERATION_SOURCES_SELECTOR, rust_codegen_generation_sources);
+        adapter_method!(
+            GENERATION_METHOD_SOURCES_SELECTOR,
+            rust_codegen_generation_method_sources
+        );
+        adapter_method!(
+            CURRENT_GENERATION_DIGEST_SELECTOR,
+            rust_codegen_current_generation_digest
+        );
+        adapter_method!(REPLAY_METHODS_SELECTOR, rust_codegen_replay_methods);
+        adapter_method!(REPLAY_ALIENS_SELECTOR, rust_codegen_replay_aliens);
+        adapter_method!(
+            DERIVE_IMAGE_GLOBALS_SELECTOR,
+            rust_codegen_derive_image_globals
+        );
+        adapter_method!(
+            DERIVE_IMAGE_METHOD_TARGETS_SELECTOR,
+            rust_codegen_derive_image_method_targets
+        );
+        adapter_method!(b"lastError\0", rust_codegen_last_error);
+        adapter_method!(LOAD_SELECTOR, rust_codegen_load);
+        adapter_method!(
+            LOAD_HOST_CAPABILITY_SELECTOR,
+            rust_codegen_load_host_capability
+        );
+
+        macro_rules! reflect_method {
+            ($selector:expr, $method:expr) => {
+                (api.method)(
+                    runtime.adapter_reflect_vt as Oop,
+                    intern(api, $selector),
+                    $method,
+                );
+            };
+        }
+        reflect_method!(b"defineMethod:on:as:\0", rust_reflect_define_method);
+        reflect_method!(b"removeMethod:on:\0", rust_reflect_remove_method);
+        reflect_method!(
+            b"removeMethod:on:source:\0",
+            rust_reflect_remove_method_sourced
+        );
+        reflect_method!(
+            b"defineMethod:on:as:source:\0",
+            rust_reflect_define_method_sourced
+        );
+        reflect_method!(
+            b"defineMethod:on:as:doc:source:\0",
+            rust_reflect_define_method_doc_sourced
+        );
+        reflect_method!(b"vtableOf:\0", rust_reflect_vtable_of);
+        reflect_method!(b"exportVtableOf:as:\0", rust_reflect_export_vtable);
+        reflect_method!(b"exportObject:as:\0", rust_reflect_export_object);
+        reflect_method!(b"nameOf:\0", rust_reflect_name_of);
+        reflect_method!(b"allMethodsOf:\0", rust_reflect_all_methods);
+        reflect_method!(b"methodSource:\0", rust_reflect_method_source);
+        reflect_method!(b"factsOf:\0", rust_reflect_facts_of);
+        (api.method)(
+            runtime.adapter_collector_vt as Oop,
+            intern(api, b"value:value:value:\0"),
+            rust_reflect_collect_fact,
+        );
+        let _ = (api.exportObj)(
+            ADAPTER_CODEGEN_VT_NAME.as_ptr().cast(),
+            runtime.adapter_codegen_vt as Oop,
+        );
+        let _ = (api.exportObj)(
+            ADAPTER_CODEGEN_NAME.as_ptr().cast(),
+            runtime.adapter_codegen as Oop,
+        );
+        let _ = (api.exportObj)(
+            ADAPTER_REFLECT_VT_NAME.as_ptr().cast(),
+            runtime.adapter_reflect_vt as Oop,
+        );
+        let _ = (api.exportObj)(
+            ADAPTER_REFLECT_NAME.as_ptr().cast(),
+            runtime.adapter_reflect as Oop,
+        );
+        let _ = (api.exportObj)(
+            ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast(),
+            runtime.adapter_collector_vt as Oop,
         );
         if (api.isExported)(RUST_CODEGEN_NAME.as_ptr().cast()) == 0 {
             let _ = (api.exportObj)(
