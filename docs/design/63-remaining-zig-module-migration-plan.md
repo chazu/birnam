@@ -2416,3 +2416,24 @@ This is **26–45 engineering weeks plus observation windows** for one developer
 with the widest variance in Relational, Alien, and Image. The estimate excludes
 already-landed Rust floor/compiler work and includes migration-specific parity,
 GC, install, and rollback evidence.
+
+## 14. R6.27 — admitted Image delegation to Rust Codegen
+
+The R6 Image shell now owns the admitted-load handoff when the process exposes
+the complete Rust Codegen recovery surface. It performs a copied-byte path
+preflight, asks Rust Codegen to preflight the same image, begins recovery, replays
+facts/heap records when present, derives method targets, maps the single checked
+code unit, and always closes recovery. `loadImage:rebuild:` deliberately skips
+mapping and returns false so the boot path can run the existing source replay.
+
+The Rust Image shell remains mixed-authority safe: without the direct Rust
+Codegen selectors it returns false and leaves the canonical Zig loader in
+charge; malformed, stale, ABI-mismatched, or incomplete images remain nil.
+Factless images do not clear an existing Store timeline. Rust Codegen's image
+code staging also preserves the temp-directory separator and loads Rust TCC
+runtime shims globally in the dedicated live proof.
+
+Acceptance is split to keep lifecycle ownership explicit: the mixed shell target
+has two passing tests (the Rust-Codegen delegation test is skipped there), and
+`test-rust-image-codegen` runs that one mapped-unit test in a fresh process. The
+R6 focused pin is therefore 83 passing tests, with the shell pin remaining 2.

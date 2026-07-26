@@ -37,6 +37,7 @@ latest_tests=(
   test-rust-codegen-zig-store
   test-rust-ffi-abort
   test-rust-image-shell
+  test-rust-image-codegen
   test-rust-image-save
   test-rust-prelude
   test-rust-prelude-rust-error
@@ -48,10 +49,11 @@ latest_tests=(
   test-rust-collection
   test-rust-error
 )
-# Accepted on 2026-07-25 after the Rust Image malformed-load assertions landed:
-# the focused matrix is 82 tests and the dynamic Rust Image shell is 2 tests.
+# Accepted on 2026-07-25 after the Rust Image-to-Rust Codegen mapped-unit proof:
+# the focused matrix is 83 tests; the mixed dynamic Rust Image shell remains 2
+# passing tests, and the mapped-unit proof runs as one isolated test process.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=82
+readonly expected_focused_tests=83
 readonly expected_rust_image_shell_tests=2
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
@@ -149,6 +151,20 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec "^\\+- run test ${expected_rust_image_shell_tests} passed " || true)
 [ "$rust_image_shell_test_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Image shell target no longer has ${expected_rust_image_shell_tests} passing tests" >&2
+  exit 1
+}
+rust_image_codegen_success_count=$(grep -Fc 'test-rust-image-codegen success' "$functional" || true)
+[ "$rust_image_codegen_success_count" -eq 1 ] || {
+  echo "r6-acceptance: isolated Rust Image-to-Rust Codegen target was not executed" >&2
+  exit 1
+}
+rust_image_codegen_test_count=$(awk '
+/^test-rust-image-codegen success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
+[ "$rust_image_codegen_test_count" -eq 1 ] || {
+  echo "r6-acceptance: isolated Rust Image-to-Rust Codegen target no longer has one passing test" >&2
   exit 1
 }
 rust_image_save_success_count=$(grep -Fc 'test-rust-image-save success' "$functional" || true)
