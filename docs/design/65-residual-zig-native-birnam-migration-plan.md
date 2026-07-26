@@ -154,7 +154,10 @@ canonical family contract.
    prefix checks to assert permitted Zig selection, refused Rust selection,
    exact canonical/fixture identities and digests, install root, and absence
    of static/runtime fallback paths.
-5. Commit as `build: make residual owner and rollback metadata explicit`.
+5. Add a named `test-codegen-selection-refusal` target that asserts the exact
+   `codegen-impl=rust is not yet selectable` diagnostic and does not treat a
+   shell comment or an unexamined non-zero command as the gate.
+6. Commit as `build: make residual owner and rollback metadata explicit`.
 
 Required C0a verification:
 
@@ -164,36 +167,36 @@ bash -n scripts/native-rung-selection.sh scripts/r6-acceptance.sh
 zig build test-remaining-rung-manifest test-native-rung-selection \
   test-remaining-rung-clean-prefix test-install \
   -Dhost-impl=rust -Dcodegen-impl=zig
-zig build install -Dhost-impl=rust -Dcodegen-impl=rust  # must fail closed
+zig build test-codegen-selection-refusal -Dhost-impl=rust
+zig build verify -Doptimize=ReleaseSafe --summary all -Dcodegen-impl=zig
 ```
 
-### C0b — exact contract gate (after C1.1, before any Rust selection)
+### C0b — exact contract gate (after C1.6, before any Rust selection)
 
-Only after the exact Codegen/Reflect selector, export, and layout diff in C1.1
+Only after the exact Codegen/Reflect selector, export, and layout diff in C1.6
 is green may the build option permit `-Dcodegen-impl=rust`. Until then,
 `-Dcodegen-impl=rust` must remain a deliberate, tested refusal rather than a
 partially working Rust authority.
 
 ## 6. Phase C1 — freeze the Codegen replacement contract
 
-This phase adds tests and Rust-side typed boundaries without selecting Rust.
-Each numbered item is a separate commit.
+This phase adds tests and Rust-side typed boundaries without selecting Rust
+until C1.6. Each numbered item is a separate commit.
 
 ### C1.1 Selector/export/layout manifest
 
 Extract the frozen `CodegenVt` (47 selectors), `ReflectVt` (12 selectors),
-family payloads, `lastError`, lifecycle phase, generation, candidate, source,
-and image-recovery selectors from `src/id/codegen.zig` and
-`src/id/fixtures/codegen-authority-v1.json`. Add an automated exact-set diff:
-missing, extra, renamed, and wrong-arity selectors fail closed. The current
-Rust runtime's `RustCodegen`/`RustCodegenVt` names and Rust-only direct methods
-are not accepted as canonical aliases. Include `discardCandidate:` and
+families, and auxiliary `ReflectFactCollectorVt` from `src/id/codegen.zig` and
+`src/id/fixtures/codegen-authority-v1.json`. Enumerate the required object
+exports explicitly: `CodegenVt`, `Codegen`, `ReflectVt`, `Reflect`, and
+`ReflectFactCollectorVt`, including the collector's raw layout and
+`value:value:value:` behavior. Add an automated exact-set diff: missing,
+extra, renamed, and wrong-arity selectors fail closed. The current Rust
+runtime's `RustCodegen`/`RustCodegenVt` names and Rust-only direct methods are
+not accepted as canonical aliases. Include `discardCandidate:` and
 `releaseCandidate:` and every frozen Reflect family/selector in the required
-set, while keeping Rust-only helpers private or behind test-only names.
-Assert nil/error behavior, payload shape, export identity, and
-`module_init` idempotence through both Zig and Rust fixtures. Include negative
-probes for null args, duplicate generations, missing Store/PEG/TCC, and
-method-authority drift.
+set. C1.1 intentionally lands with an expected-rejection test for the current
+Rust fixture; parity is not claimed until C1.6.
 
 ### C1.2 Pure emitter parity
 
@@ -206,12 +209,13 @@ bounded depth and source-size limits.
 
 ### C1.3 Runtime IdApi adapter
 
-Move the complete Rust runtime to the frozen `Codegen` and `Reflect` family
-names, with the exact C1.1 selector sets. Implement the frozen compile/eval,
-metadata/source, candidate, lifecycle, and image-recovery protocols through the
-existing PEG/Lang/TCC dynamic modules; do not list a Rust-only `emit:` or a
-non-frozen `compile:` alias as canonical. Keep all temporary Oops rooted and
-release every Rust lock before an IdApi send.
+Move the compiler-facing Rust runtime to the frozen `Codegen` and `Reflect`
+family names, with the exact C1.1 selector sets. Implement canonical family
+creation, compile/eval, metadata/source, Reflect, rooting, and error handling
+through the existing PEG/Lang/TCC dynamic modules. Do not list a Rust-only
+`emit:` or a non-frozen `compile:` alias as canonical. Candidate, generation,
+and lifecycle protocols belong exclusively to C1.4. Keep all temporary Oops
+rooted and release every Rust lock before an IdApi send.
 
 ### C1.4 Candidate and lifecycle parity
 
@@ -229,6 +233,14 @@ install names, exported `birnam_*` helpers, callback signatures, disposable
 handles, and hostile C inputs. Compare artifacts with the Zig Codegen oracle by
 identity and behavior, not by private Rust representation.
 
+### C1.6 Exact parity and opt-in enablement
+
+Change C1.1's expected-rejection comparator to require exact Codegen, Reflect,
+and `ReflectFactCollectorVt` parity in both fixtures, including the frozen
+exports, selector sets, layouts, diagnostics, and negative cases. Only this
+commit changes the build refusal into a permitted `-Dcodegen-impl=rust`
+selection; canonical Zig remains selected until C3.
+
 ## 7. Phase C2 — image and host integration
 
 1. Exercise Rust Codegen as the Image authority for v4 preflight, map, replay,
@@ -238,6 +250,10 @@ identity and behavior, not by private Rust representation.
 2. Run the Rust Image canonical path with Rust Codegen and with every retained
    Zig rollback reader. The Image transaction must restore Rust Codegen methods
    after a temporary Zig reader load and must leave no partial publication.
+   `preflightImage:`, `mapImageCode:`, and `replayImageFacts:` are Image-owned
+   extensions: remove them from the initial canonical Codegen surface and
+   install them from the Rust Image boundary with the same ownership and
+   selector behavior as the Zig Image path.
 3. Switch the Rust host's canonical Codegen load only through the selected
    dynamic name. Project/check/build/run/install/test/LSP and source-free
    relocation must pass without importing `src/id/codegen.zig` directly.
@@ -348,6 +364,20 @@ requires two clean Rust source-closure bootstrap builds, corrects the graph,
 manifest, helper, Store/MOP, PEG, and packaged-observation language, and adds
 the missing acceptance rows. No implementation slice may begin until a
 follow-up review marks these corrections **GO**.
+
+### Adversarial review 2 (2026-07-26)
+
+The second adversarial review found five remaining plan hazards: C1.1 was not
+landable while the current Rust fixture intentionally failed the frozen
+contract; C1.3 and C1.4 overlapped; the auxiliary Reflect fact collector was
+implicit; Image-owned recovery selectors were incorrectly left in the initial
+Codegen surface; and C0a lacked a named refusal gate plus optimized
+verification. The plan now lands C1.1 as an expected-rejection comparator,
+reserves C1.6 for exact parity and opt-in enablement, separates compiler and
+lifecycle scopes, enumerates the collector export/layout, moves the Image
+extensions to the Rust Image boundary, and makes C0a verify the exact refusal,
+optimized build, and install evidence. A final follow-up review is required
+before implementation begins.
 
 Every numbered implementation item lands as one small commit after its focused
 tests pass. Before each ownership switch, inspect the install tree, run the
