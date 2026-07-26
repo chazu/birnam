@@ -1880,9 +1880,9 @@ unsafe extern "C" fn system_save_image(self_object: Oop, args: *const Oop, count
         reject_save("saveImage: expects one String path");
         return api.nilObj;
     }
-    // The shell deliberately has no authority to mutate or publish an image.
-    // Capture the generation unit only; later R6 slices install mapping and
-    // codec-backed save publication here.
+    // Mixed hosts keep publication fail-closed. An explicit Rust writer and
+    // publication selection may complete the codec-backed transaction below;
+    // without that pair this path only captures diagnostics and rejects.
     let authority_digest = unsafe { current_generation_digest(api) };
     let captured_code = authority_digest
         .as_ref()
@@ -2026,8 +2026,8 @@ unsafe extern "C" fn system_image_composition_identity(
         return api.nilObj;
     }
     // This identity is intentionally distinct from the eventual composition
-    // digest; it proves the Rust shell was selected without claiming image
-    // orchestration authority before the later R6 slices land.
+    // digest; it proves the Rust shell was selected without claiming canonical
+    // default image authority or a stable composition digest.
     unsafe { (api.mkString)(RUST_IMAGE_IDENTITY.as_ptr(), RUST_IMAGE_IDENTITY.len() - 1) }
 }
 
