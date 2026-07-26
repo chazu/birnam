@@ -2731,6 +2731,23 @@ allowances.
 - Thirty-four offline Rust tests pass with warnings denied. Project-derived
   socket configuration and CLI dispatch remain later seams.
 
+### R7.29 Opt-in Rust host executable checkpoint (2026-07-26)
+
+- `birnam-rust-experimental` is now a runnable, explicitly opt-in binary in
+  `birnam-host`. It exercises the already-owned Rust seams for help/version,
+  source evaluation, mapped/recovery image loading, artifact activation,
+  REPL, bake, and rebuild. Help and version exit before resource or floor
+  resolution, preserving the diagnostic bootstrap boundary.
+- The binary deliberately reports project, documentation, worker, compiler,
+  and other unported command families as unsupported. It is not wired into the
+  canonical `birnam` executable, install tree, or release packaging; the Zig
+  host remains the rollback oracle while project resolution and final CLI
+  dispatch are ported.
+- `cargo test -p birnam-host --offline`, all-target clippy with warnings
+  denied, and pure `--help`/`--version` executable smoke checks pass. The next
+  host slice must add project-aware execution and diagnostics before any
+  canonical-switch consideration.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

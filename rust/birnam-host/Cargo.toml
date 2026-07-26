@@ -8,6 +8,10 @@ publish = false
 [lib]
 crate-type = ["rlib"]
 
+[[bin]]
+name = "birnam-rust-experimental"
+path = "src/bin/birnam-rust-experimental.rs"
+
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { path = "../birnam-artifact" }
