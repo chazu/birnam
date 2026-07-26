@@ -2747,6 +2747,7 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
     };
 
     let mut pending = Vec::new();
+    let mut has_facts = false;
     let mut max_basis = 0i64;
     let mut records = image.records();
     loop {
@@ -2761,6 +2762,7 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
         if record.kind != RecordKind::Facts {
             continue;
         }
+        has_facts = true;
         let Ok(mut facts) = Facts::parse(record.payload) else {
             note_error(b"RustCodegen image facts framing is invalid");
             return api.nilObj;
@@ -2798,6 +2800,13 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
             };
             pending.push((entity, attribute, value, fact.tx, fact.op));
         }
+    }
+    // Heap-only images are valid framing inputs, but they have no Store
+    // timeline to replace. Match the Zig loader's `facts_began` guard and
+    // leave the existing Store untouched rather than clearing it through an
+    // empty image-load transaction.
+    if !has_facts {
+        return unsafe { (api.mkSmallInt)(0) };
     }
     let store = runtime.store as Oop;
     if store.is_null() || store == api.nilObj {

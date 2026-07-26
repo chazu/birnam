@@ -311,6 +311,55 @@ test "Rust Codegen rejects a stale image authority before recovery" {
     _ = api.send(active_generation_cell, api.intern("set:"), &.{api.nilObj}, 1);
 }
 
+test "Rust Codegen leaves the Store intact for an image without facts" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const store = api.import("Store") orelse return error.MissingStore;
+    const entity = api.intern("heapOnlyEntity");
+    const attribute = api.intern("heapOnlyAttribute");
+    const value = api.mkSmallInt(123);
+    _ = api.send(store, api.intern("assert:attr:value:"), &.{ entity, attribute, value }, 3);
+    defer _ = api.send(store, api.intern("retract:attr:value:"), &.{ entity, attribute, value }, 3);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const image_path = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{s}/heap-only.image",
+        .{directory},
+    );
+    defer std.testing.allocator.free(image_path);
+    var image: [28 + 12 + 64]u8 = undefined;
+    @memcpy(image[0..8], "BIRNAMIM");
+    std.mem.writeInt(u32, image[8..12], 4, .little);
+    std.mem.writeInt(u32, image[12..16], 0x0102_0304, .little);
+    std.mem.writeInt(u32, image[16..20], 1, .little);
+    std.mem.writeInt(u64, image[20..28], 0, .little);
+    std.mem.writeInt(u32, image[28..32], 5, .little);
+    std.mem.writeInt(u64, image[32..40], 64, .little);
+    @memset(image[40..], 0);
+    try tmp.dir.writeFile(.{ .sub_path = "heap-only.image", .data = &image });
+
+    const image_object = api.mkString(image_path.ptr, image_path.len);
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("beginImageDispatchRecovery"), &.{}, 0),
+    );
+    try std.testing.expectEqual(
+        @as(i64, 0),
+        api.smallIntValue(api.send(codegen, api.intern("replayImageFacts:"), &.{image_object}, 1)),
+    );
+    const retained = api.send(store, api.intern("currentValue:attr:"), &.{ entity, attribute }, 2);
+    try std.testing.expect(api.isSmallInt(retained) != 0);
+    try std.testing.expectEqual(@as(i64, 123), api.smallIntValue(retained));
+    try std.testing.expectEqual(
+        api.trueObj,
+        api.send(codegen, api.intern("endImageDispatchRecovery"), &.{}, 0),
+    );
+}
+
 test "Rust Codegen maps a verified v4 code unit during image recovery" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
