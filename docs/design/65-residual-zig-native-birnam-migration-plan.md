@@ -1,8 +1,8 @@
 # Residual Zig owners → Rust/native Birnam migration plan
 
 Status: design plan, not yet executed. Prepared after the Rust floor, all
-selected rungs, Rust Image, and Rust host passed the R6 acceptance gate on
-2026-07-26.
+selected rungs, and Rust Image passed the scoped R6 replacement gate on
+2026-07-26; broad Rust-host integration remains continuation work in C2.
 
 ## 1. Outcome and scope
 
@@ -325,6 +325,24 @@ C2.1 Image authority checkpoint (2026-07-26):
   Rust Codegen remains available through its private fixture surface.
 - The isolated Image matrix passes `10/10` tests (`91/91` build steps).
 
+### R6 scoped replacement-gate checkpoint (2026-07-26)
+
+- `scripts/r6-acceptance.sh` now accepts the latest Rust replacement matrix as
+  its default R6 boundary: `171/171` build steps and `97/97` tests, the
+  sequential Rust Alien boundary at `66/66` steps and `9/9` tests, and the
+  unchanged benchmark snapshot with exactly `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`.
+- The all-production `test-native-rung-harness` is intentionally outside this
+  scoped matrix because its nested Rust-host install/docgen fixture currently
+  does not terminate. It is not reported as passed, and the script retains an
+  explicit `BIRNAM_R6_REQUIRE_VERIFY=1` mode for requiring the complete
+  cross-layer verify graph.
+- The latest broad Rust-host run still exposes unresolved C2 integration work
+  in `test-lsp-project`, `test-source-fallback`, `test-repl`,
+  `test-isolate-process`, `test-project-check`, and `test-install`. Those
+  failures remain visible continuation work; this checkpoint accepts only the
+  replacement-floor R6 evidence and does not claim C2 host completion.
+
 ## 7. Phase C2 — image and host integration
 
 1. Exercise Rust Codegen as the Image authority for v4 preflight, map, replay,
@@ -413,9 +431,12 @@ processes and prefixes:
 | bootstrap | two clean, prebuilt-artifact-free Rust PEG/Lang/TCC/Codegen source builds |
 | performance | existing comparator; no unrecorded allowances |
 
-The final gate remains `zig build verify -Doptimize=ReleaseSafe --summary all`
-plus the serialized R6 script. Any failure is a design stop, not permission to
-change an invariant or silently route through Zig.
+The current scoped R6 replacement gate is `bash scripts/r6-acceptance.sh`; it
+pins the latest Rust-floor matrix and the exact benchmark comparator snapshot.
+The complete cross-layer gate remains a pre-C3 requirement and is enforced by
+`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` once the deferred
+Rust-host integration work is ready. Any failure is a design stop, not
+permission to change an invariant or silently route through Zig.
 
 ## 11. Explicit non-goals and retained evidence
 
