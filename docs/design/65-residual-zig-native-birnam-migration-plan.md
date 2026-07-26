@@ -314,6 +314,17 @@ C1.6 implementation checkpoint (2026-07-26):
   sets, collector raw layout, and behavior; the isolated fixture matrix keeps
   private Rust names available for rollback-focused tests.
 
+C2.1 Image authority checkpoint (2026-07-26):
+
+- The Rust Image authority matrix now runs with canonical Rust Codegen
+  publication enabled by default, covering shell, mapped-unit recovery,
+  durable-generation bootstrap, publication/rejection, both cross-floor
+  directions, Zig-Store interoperability, and malformed-image rejection.
+- The Zig-Store cross-floor cell explicitly disables Rust canonical exports so
+  the Zig Codegen authority remains the sole canonical owner in that process;
+  Rust Codegen remains available through its private fixture surface.
+- The isolated Image matrix passes `10/10` tests (`91/91` build steps).
+
 ## 7. Phase C2 — image and host integration
 
 1. Exercise Rust Codegen as the Image authority for v4 preflight, map, replay,
