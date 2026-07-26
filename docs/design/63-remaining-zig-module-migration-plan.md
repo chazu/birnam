@@ -3402,6 +3402,14 @@ allowances.
   worker spawn.
 - R6 remains accepted at focused `91/91`.
 
+### R7.81 Rust host test worker smoke checkpoint (2026-07-26)
+
+- The worker-enabled binary retains the resource-free `test --help` path and
+  fails an uninstalled-checkout `test .` before discovery, build, or worker
+  spawn on the expected missing installed floor dylib.
+- The full serial Cargo workspace gate is green, including all 54 Rust-host
+  tests; R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
