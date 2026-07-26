@@ -3180,6 +3180,23 @@ allowances.
 - Rust-host formatting, check, 48-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.63 Rust host prior-build policy-input checkpoint (2026-07-26)
+
+- `HostRuntime::load_project_build_record` now parses a persisted
+  `artifacts.toml` through self-hosted TOML, decodes its owned record, and
+  re-observes artifact/native bytes below the record directory before the
+  record can be supplied to policy. Missing or malformed records remain typed
+  load failures; callers may deliberately treat a missing prior build as no
+  previous record, matching the Zig adapter's boundary.
+- `ProjectArtifactPlanRequest` can now carry that observed prior record.
+  Materialization emits the policy's camelCase `previous` map, preserving
+  source/dependency metadata and omitting absent `observedChecksum` fields so
+  `ProjectPolicy artifactPlan:` retains its fail-closed reuse rule. This slice
+  still performs no compile, copy, dynamic-library load, wrapper, or publish
+  effect.
+- Rust-host formatting, check, 48-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

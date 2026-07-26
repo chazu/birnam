@@ -1339,6 +1339,7 @@ pub struct ProjectArtifactPlan {
 pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
     pub wrapped: &'a [ProjectWrappedObservation],
+    pub previous: Option<&'a ProjectBuildRecord>,
     pub target: &'a str,
     pub profile: &'a str,
     pub tool_version: &'a str,
@@ -1465,6 +1466,14 @@ pub enum ProjectArtifactPlanError {
     Snapshot(ProjectSnapshotError),
     Policy(ProjectPolicyError),
     Decode(ProjectManifestDecodeError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectBuildRecordLoadError {
+    Manifest(ProjectManifestError),
+    Decode(ProjectManifestDecodeError),
+    Observe(ProjectBuildRecordObservationError),
+    InvalidPath(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3132,6 +3141,30 @@ impl HostRuntime {
         Ok(result)
     }
 
+    /// Parse and re-observe one persisted `birnam-artifacts-v3` record. The
+    /// TOML map is decoded through the self-hosted parser, then every relative
+    /// artifact path is hashed below the record's parent directory. Stored
+    /// checksums never cross into policy as trusted observations.
+    ///
+    /// # Safety
+    ///
+    /// The returned record owns Rust strings only. The caller must keep a live
+    /// GC anchor and remain on the floor owner thread while parsing TOML.
+    pub unsafe fn load_project_build_record(
+        &self,
+        path: &Path,
+    ) -> Result<ProjectBuildRecord, ProjectBuildRecordLoadError> {
+        let parsed = unsafe { self.parse_project_manifest(path) }
+            .map_err(ProjectBuildRecordLoadError::Manifest)?;
+        let record = unsafe { decode_project_build_record(self.stack.api(), parsed) }
+            .map_err(ProjectBuildRecordLoadError::Decode)?;
+        let Some(build_root) = path.parent() else {
+            return Err(ProjectBuildRecordLoadError::InvalidPath(path.to_path_buf()));
+        };
+        observe_project_build_record(build_root, record)
+            .map_err(ProjectBuildRecordLoadError::Observe)
+    }
+
     /// Compose nearest-root discovery with self-hosted manifest parsing. The
     /// returned path is canonical and the returned Map is the live parsed TOML
     /// value; source indexing and ProjectPolicy invocation remain separate
@@ -4213,6 +4246,68 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         Ok(vector)
     }
 
+    unsafe fn previous_artifact(
+        &self,
+        value: &ProjectPreviousArtifact,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut item = unsafe { self.new_map()? };
+        item = unsafe { self.put(item, "name", self.string(&value.name))? };
+        item = unsafe { self.put(item, "path", self.string(&value.path))? };
+        item = unsafe { self.put(item, "source", self.string(&value.source))? };
+        item = unsafe { self.put(item, "sources", self.strings(&value.sources)?)? };
+        item = unsafe { self.put(item, "sourceDigest", self.string(&value.source_digest))? };
+        item = unsafe { self.put(item, "revisionDigest", self.string(&value.revision_digest))? };
+        item = unsafe { self.put(item, "requires", self.strings(&value.requires)?)? };
+        item = unsafe { self.put(item, "checksum", self.string(&value.checksum))? };
+        if let Some(observed) = &value.observed_checksum {
+            item = unsafe { self.put(item, "observedChecksum", self.string(observed))? };
+        }
+        Ok(item)
+    }
+
+    unsafe fn previous_native_artifact(
+        &self,
+        value: &ProjectPreviousNativeArtifact,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut item = unsafe { self.new_map()? };
+        item = unsafe { self.put(item, "name", self.string(&value.name))? };
+        item = unsafe { self.put(item, "path", self.string(&value.path))? };
+        item = unsafe { self.put(item, "checksum", self.string(&value.checksum))? };
+        if let Some(observed) = &value.observed_checksum {
+            item = unsafe { self.put(item, "observedChecksum", self.string(observed))? };
+        }
+        Ok(item)
+    }
+
+    unsafe fn previous_build_record(
+        &self,
+        value: &ProjectBuildRecord,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut result = unsafe { self.new_map()? };
+        result = unsafe { self.put(result, "projectRoot", self.string(&value.project_root))? };
+        result = unsafe { self.put(result, "target", self.string(&value.target))? };
+        result = unsafe { self.put(result, "profile", self.string(&value.profile))? };
+        result = unsafe { self.put(result, "toolVersion", self.string(&value.tool_version))? };
+        result = unsafe { self.put(result, "artifactAbi", self.string(&value.artifact_abi))? };
+        result = unsafe {
+            self.put(
+                result,
+                "resolutionDigest",
+                self.string(&value.resolution_digest),
+            )?
+        };
+        let mut artifacts = unsafe { self.new_vector()? };
+        for artifact in &value.artifacts {
+            artifacts = unsafe { self.add(artifacts, self.previous_artifact(artifact)?)? };
+        }
+        result = unsafe { self.put(result, "artifacts", artifacts)? };
+        let mut native = unsafe { self.new_vector()? };
+        for artifact in &value.native {
+            native = unsafe { self.add(native, self.previous_native_artifact(artifact)?)? };
+        }
+        unsafe { self.put(result, "native", native) }
+    }
+
     unsafe fn artifact_module(
         &self,
         value: &ProjectSourceObservation,
@@ -4262,7 +4357,13 @@ impl<'a> ProjectSnapshotBuilder<'a> {
             item = unsafe { self.put(item, "name", self.string(&value.name))? };
             wrapped = unsafe { self.add(wrapped, item)? };
         }
-        unsafe { self.put(snapshot, "wrapped", wrapped) }
+        snapshot = unsafe { self.put(snapshot, "wrapped", wrapped)? };
+        let previous = if let Some(previous) = request.previous {
+            unsafe { self.previous_build_record(previous)? }
+        } else {
+            self.api.nilObj
+        };
+        unsafe { self.put(snapshot, "previous", previous) }
     }
 
     unsafe fn wrapped(
