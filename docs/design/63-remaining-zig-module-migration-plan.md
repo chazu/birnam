@@ -3153,6 +3153,19 @@ allowances.
 - Rust-host formatting, check, 46-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.61 Rust host artifact-record decoder checkpoint (2026-07-26)
+
+- `decode_project_build_record` now validates and copies persisted
+  `birnam-artifacts-v3` TOML value maps, including schema, project/tool
+  identity, resolution digest, source metadata, dependency lists, checksums,
+  and native wrapper records. Legacy one-source artifact rows are normalized
+  to a one-element source list as the Zig adapter does.
+- This is an untrusted-record boundary only. It does not decide reuse, trust a
+  checksum, load a dylib, or mutate a build directory; observed checksums and
+  policy validation remain later steps.
+- Rust-host formatting, check, 46-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

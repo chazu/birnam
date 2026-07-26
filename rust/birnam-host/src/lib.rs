@@ -1346,6 +1346,38 @@ pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution_digest: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectPreviousArtifact {
+    pub name: String,
+    pub path: String,
+    pub source: String,
+    pub sources: Vec<String>,
+    pub source_digest: String,
+    pub revision_digest: String,
+    pub requires: Vec<String>,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectPreviousNativeArtifact {
+    pub name: String,
+    pub path: String,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectBuildRecord {
+    pub project_root: String,
+    pub target: String,
+    pub profile: String,
+    pub tool_version: String,
+    pub artifact_abi: String,
+    pub resolution_digest: String,
+    pub built_at: String,
+    pub artifacts: Vec<ProjectPreviousArtifact>,
+    pub native: Vec<ProjectPreviousNativeArtifact>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectSnapshotError {
     MissingVector,
@@ -1619,6 +1651,7 @@ pub enum ProjectManifestDecodeError {
     DuplicateWrapped(String),
     MissingWrappedOutput(String),
     InvalidTestSource(String),
+    InvalidSchema(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2550,6 +2583,128 @@ pub unsafe fn decode_project_artifact_plan(
         resolution_digest,
         artifacts,
         publication,
+    })
+}
+
+/// Decode the persisted `birnam-artifacts-v3` record before it participates in
+/// a later reuse decision. The file remains an untrusted input; this function
+/// only copies and validates its structural metadata.
+///
+/// # Safety
+///
+/// `api` and `record` must belong to the same live runtime, and all Oops must
+/// remain valid for the duration of this synchronous decode.
+pub unsafe fn decode_project_build_record(
+    api: &IdApi,
+    record: birnam_abi::Oop,
+) -> Result<ProjectBuildRecord, ProjectManifestDecodeError> {
+    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    if record == api.nilObj || unsafe { (api.vtableOf)(record) } != decoder.map_vt {
+        return Err(ProjectManifestDecodeError::NotMap);
+    }
+    let schema = unsafe { decoder.string(decoder.at(record, "schema")?, "schema")? };
+    if schema != "birnam-artifacts-v3" {
+        return Err(ProjectManifestDecodeError::InvalidSchema(schema));
+    }
+    let project_root =
+        unsafe { decoder.string(decoder.at(record, "project_root")?, "project_root")? };
+    let target = unsafe { decoder.string(decoder.at(record, "target")?, "target")? };
+    let profile = unsafe { decoder.string(decoder.at(record, "profile")?, "profile")? };
+    let tool_version =
+        unsafe { decoder.string(decoder.at(record, "tool_version")?, "tool_version")? };
+    let artifact_abi =
+        unsafe { decoder.string(decoder.at(record, "artifact_abi")?, "artifact_abi")? };
+    let resolution_digest = unsafe {
+        decoder.string(
+            decoder.at(record, "resolution_digest")?,
+            "resolution_digest",
+        )?
+    };
+    let built_at = unsafe { decoder.string(decoder.at(record, "built_at")?, "built_at")? };
+    let artifacts_value = unsafe { decoder.at(record, "artifacts")? };
+    let native_value = unsafe { decoder.at(record, "native")? };
+    let decode_vector_size =
+        |value: birnam_abi::Oop, field: &'static str| -> Result<i64, ProjectManifestDecodeError> {
+            if value == api.nilObj || unsafe { (api.vtableOf)(value) } != decoder.vector_vt {
+                return Err(ProjectManifestDecodeError::InvalidList(field));
+            }
+            let selector = unsafe { (api.intern)(c"size".as_ptr()) };
+            let size = unsafe { (api.send)(value, selector, std::ptr::null(), 0) };
+            if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
+                return Err(ProjectManifestDecodeError::InvalidList(field));
+            }
+            Ok(unsafe { (api.smallIntValue)(size) })
+        };
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let artifact_count = decode_vector_size(artifacts_value, "artifacts")?;
+    let mut artifacts = Vec::with_capacity(artifact_count as usize);
+    for index in 0..artifact_count {
+        let item = unsafe {
+            (api.send)(
+                artifacts_value,
+                at_selector,
+                [(api.mkSmallInt)(index)].as_ptr(),
+                1,
+            )
+        };
+        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap(
+                "artifact record entry",
+            ));
+        }
+        let sources_value = unsafe { decoder.at(item, "sources")? };
+        let sources = if sources_value == api.nilObj {
+            vec![unsafe { decoder.string(decoder.at(item, "source")?, "source")? }]
+        } else {
+            unsafe { decoder.strings(sources_value, "sources", false)? }
+        };
+        artifacts.push(ProjectPreviousArtifact {
+            name: unsafe { decoder.string(decoder.at(item, "name")?, "name")? },
+            path: unsafe { decoder.string(decoder.at(item, "path")?, "path")? },
+            source: unsafe { decoder.string(decoder.at(item, "source")?, "source")? },
+            sources,
+            source_digest: unsafe {
+                decoder.string(decoder.at(item, "source_digest")?, "source_digest")?
+            },
+            revision_digest: unsafe {
+                decoder.string(decoder.at(item, "revision_digest")?, "revision_digest")?
+            },
+            requires: unsafe { decoder.strings(decoder.at(item, "requires")?, "requires", false)? },
+            checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "checksum")? },
+        });
+    }
+    let native_count = decode_vector_size(native_value, "native")?;
+    let mut native = Vec::with_capacity(native_count as usize);
+    for index in 0..native_count {
+        let item = unsafe {
+            (api.send)(
+                native_value,
+                at_selector,
+                [(api.mkSmallInt)(index)].as_ptr(),
+                1,
+            )
+        };
+        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap(
+                "native record entry",
+            ));
+        }
+        native.push(ProjectPreviousNativeArtifact {
+            name: unsafe { decoder.string(decoder.at(item, "name")?, "name")? },
+            path: unsafe { decoder.string(decoder.at(item, "path")?, "path")? },
+            checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "checksum")? },
+        });
+    }
+    Ok(ProjectBuildRecord {
+        project_root,
+        target,
+        profile,
+        tool_version,
+        artifact_abi,
+        resolution_digest,
+        built_at,
+        artifacts,
+        native,
     })
 }
 
