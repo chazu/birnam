@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
 use std::io;
+use std::io::Write;
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
@@ -1440,6 +1441,35 @@ pub enum ProjectArtifactRecordError {
     Snapshot(ProjectSnapshotError),
     Policy(ProjectPolicyError),
     Decode(ProjectManifestDecodeError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectBuildRecordWriteError {
+    Create { path: PathBuf, kind: io::ErrorKind },
+    Write { path: PathBuf, kind: io::ErrorKind },
+    Sync { path: PathBuf, kind: io::ErrorKind },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectBuildPublicationError {
+    InvalidPaths,
+    CreateTarget {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Backup {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Publish {
+        stage: PathBuf,
+        final_root: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Restore {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3274,6 +3304,95 @@ pub fn encode_project_build_record(record: &ProjectBuildRecord) -> Vec<u8> {
     }
     output.push_str("]\n");
     output.into_bytes()
+}
+
+/// Write one encoded build record to an explicit staging path and flush it to
+/// stable storage before publication can observe it.
+pub fn write_project_build_record(
+    path: &Path,
+    record: &ProjectBuildRecord,
+) -> Result<(), ProjectBuildRecordWriteError> {
+    let bytes = encode_project_build_record(record);
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)
+        .map_err(|error| ProjectBuildRecordWriteError::Create {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })?;
+    file.write_all(&bytes)
+        .map_err(|error| ProjectBuildRecordWriteError::Write {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })?;
+    file.sync_all()
+        .map_err(|error| ProjectBuildRecordWriteError::Sync {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })
+}
+
+/// Publish a complete staging directory by rotating the old profile directory
+/// aside and renaming the stage into place. If the final rename fails, the old
+/// directory is restored; successful publication leaves no generated backup.
+pub fn publish_project_build(
+    stage_root: &Path,
+    final_root: &Path,
+    target_root: &Path,
+) -> Result<(), ProjectBuildPublicationError> {
+    if stage_root == final_root || stage_root == target_root || final_root == target_root {
+        return Err(ProjectBuildPublicationError::InvalidPaths);
+    }
+    std::fs::create_dir_all(target_root).map_err(|error| {
+        ProjectBuildPublicationError::CreateTarget {
+            path: target_root.to_path_buf(),
+            kind: error.kind(),
+        }
+    })?;
+    let process = std::process::id();
+    let mut backup = None;
+    for attempt in 0..128u32 {
+        let candidate = target_root.join(format!(".previous-{process}-{attempt}"));
+        if !candidate.exists() {
+            backup = Some(candidate);
+            break;
+        }
+    }
+    let backup = backup.ok_or(ProjectBuildPublicationError::Backup {
+        path: target_root.to_path_buf(),
+        kind: io::ErrorKind::AlreadyExists,
+    })?;
+    let had_previous = match std::fs::rename(final_root, &backup) {
+        Ok(()) => true,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(ProjectBuildPublicationError::Backup {
+                path: final_root.to_path_buf(),
+                kind: error.kind(),
+            });
+        }
+    };
+    if let Err(error) = std::fs::rename(stage_root, final_root) {
+        if had_previous {
+            std::fs::rename(&backup, final_root).map_err(|restore| {
+                ProjectBuildPublicationError::Restore {
+                    path: final_root.to_path_buf(),
+                    kind: restore.kind(),
+                }
+            })?;
+        }
+        return Err(ProjectBuildPublicationError::Publish {
+            stage: stage_root.to_path_buf(),
+            final_root: final_root.to_path_buf(),
+            kind: error.kind(),
+        });
+    }
+    if had_previous {
+        let _ = std::fs::remove_dir_all(backup);
+    }
+    Ok(())
 }
 
 fn safe_record_relative_path(path: &str) -> Option<&Path> {
@@ -6345,6 +6464,38 @@ mod tests {
         assert!(encoded.contains("requires = [\"core\"]"));
         assert!(!encoded.contains("observedChecksum"));
         assert!(!encoded.contains("observed_checksum"));
+    }
+
+    #[test]
+    fn build_publication_rotates_a_complete_stage_and_removes_backup() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-build-publication-{}",
+            std::process::id()
+        ));
+        let target = root.join("target");
+        let stage = target.join(".staging");
+        let final_root = target.join("debug");
+        std::fs::create_dir_all(stage.join("lib")).expect("stage creates");
+        std::fs::create_dir_all(final_root.join("lib")).expect("final creates");
+        std::fs::write(stage.join("lib/new.dylib"), b"new").expect("new artifact writes");
+        std::fs::write(final_root.join("lib/old.dylib"), b"old").expect("old artifact writes");
+
+        publish_project_build(&stage, &final_root, &target).expect("publication succeeds");
+        assert_eq!(
+            std::fs::read(final_root.join("lib/new.dylib")).expect("new artifact remains"),
+            b"new"
+        );
+        assert!(!final_root.join("lib/old.dylib").exists());
+        assert!(
+            std::fs::read_dir(&target)
+                .expect("target reads")
+                .filter_map(Result::ok)
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".previous-"))
+        );
+        std::fs::remove_dir_all(root).expect("publication fixture removes");
     }
 
     #[test]

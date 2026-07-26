@@ -3276,6 +3276,20 @@ allowances.
 - Rust-host formatting, check, 51-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.70 Rust host recovery-safe publication checkpoint (2026-07-26)
+
+- `write_project_build_record` now writes the encoded record with truncation,
+  complete bytes, and `sync_all` before publication. `publish_project_build`
+  rotates an explicit existing profile directory to a unique generated backup,
+  renames the complete stage into place, restores the backup if that rename
+  fails, and removes successful backups.
+- The publication seam operates only on caller-provided staging/target paths;
+  it does not activate dynamic libraries or alter runtime authority. A future
+  build command must invoke it only after every module, wrapper, and record
+  artifact is present in the stage.
+- Rust-host formatting, check, 52-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
