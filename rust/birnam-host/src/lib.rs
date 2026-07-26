@@ -1272,6 +1272,13 @@ pub enum ProjectDiscoveryError {
     NotFound { start: PathBuf },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectManifestError {
+    Read { path: PathBuf, kind: io::ErrorKind },
+    MissingToml,
+    ParseRejected,
+}
+
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
 /// filesystem half of project observation only; it never parses the manifest
 /// or selects a module provider.
@@ -1628,6 +1635,34 @@ impl HostRuntime {
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api())? };
         unsafe { builder.snapshot(snapshot) }
+    }
+
+    /// Read one manifest and delegate TOML parsing to the live self-hosted
+    /// `Toml parse:` protocol. Rust owns only file I/O and returns the
+    /// resulting Map Oop for the observation adapter; it does not duplicate a
+    /// TOML grammar or reinterpret parser errors.
+    ///
+    /// # Safety
+    ///
+    /// The returned map is owned by this runtime's Store. The caller must keep
+    /// a live GC anchor and remain on the floor owner thread while using it.
+    pub unsafe fn parse_project_manifest(
+        &self,
+        path: &Path,
+    ) -> Result<birnam_abi::Oop, ProjectManifestError> {
+        let source = std::fs::read(path).map_err(|error| ProjectManifestError::Read {
+            path: path.to_path_buf(),
+            kind: error.kind(),
+        })?;
+        let api = self.stack.api();
+        let toml = unsafe { global_named(api, "Toml") }.ok_or(ProjectManifestError::MissingToml)?;
+        let source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let selector = unsafe { (api.intern)(c"parse:".as_ptr()) };
+        let result = unsafe { (api.send)(toml, selector, [source].as_ptr(), 1) };
+        if result == api.nilObj || send_is_error(api, result) {
+            return Err(ProjectManifestError::ParseRejected);
+        }
+        Ok(result)
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`

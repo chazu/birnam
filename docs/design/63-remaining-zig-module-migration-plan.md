@@ -2864,6 +2864,18 @@ allowances.
 - The focused host suite is green at thirty-seven tests with warnings denied;
   no project command is yet routed past the unsupported execution boundary.
 
+### R7.38 Rust host self-hosted TOML boundary checkpoint (2026-07-26)
+
+- `HostRuntime::parse_project_manifest` reads one selected manifest and sends
+  its bytes to the live `Toml parse:` selector, returning the resulting Map
+  Oop or distinct read/missing-parser/parse-rejected errors. Rust does not
+  implement or shadow TOML grammar and does not select project providers.
+- The method is intentionally separate from nearest-root discovery and typed
+  snapshot serialization. The eventual project adapter can compose those
+  seams while preserving self-hosted Toml and ProjectPolicy authority.
+- The focused host suite remains green at thirty-seven tests with warnings
+  denied; project command execution and source/CST indexing remain pending.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
