@@ -6663,8 +6663,13 @@ unsafe fn intern_name(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
 }
 
 unsafe fn global_named(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
+    let imported_name = CString::new(name).ok()?;
+    let imported = unsafe { (api.import)(imported_name.as_ptr()) };
+    if !imported.is_null() && imported != api.nilObj {
+        return Some(imported);
+    }
     let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
-    if globals == api.nilObj {
+    if globals.is_null() || globals == api.nilObj {
         return None;
     }
     let name = unsafe { intern_name(api, name) }?;

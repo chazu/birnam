@@ -3478,6 +3478,20 @@ allowances.
   55-test/clippy suite, optimized Zig verify, and R6 `91/91` acceptance remain
   green.
 
+### R7.88 Rust host canonical-import project lookup checkpoint (2026-07-26)
+
+- The shared Rust host global lookup now checks the frozen IdApi import table
+  before the `Globals` map, with explicit null handling. This matches the
+  bootstrap contract for core/module exports such as `Codegen` and prevents
+  project observation from falsely reporting `MissingCodegen`.
+- Against the installed Debug resource tree, Rust `check .` and `build .`
+  completed successfully for the repository's zero-module manifest; `install
+  .` published its empty artifact set atomically. `run .` rejected the missing
+  main and `test .` rejected the empty test set with their typed boundaries.
+  The same installed tree's project-aware LSP smoke remains green; focused
+  tests/clippy, optimized verify, and R6 `91/91` remain required before the
+  checkpoint commit.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
