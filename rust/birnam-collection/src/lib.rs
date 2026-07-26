@@ -693,6 +693,69 @@ unsafe extern "C" fn vector_reversed(self_object: Oop, _args: *const Oop, count:
     result
 }
 
+unsafe extern "C" fn vector_sort_by(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(block) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let total = unsafe { (*vec_payload(self_object)).count };
+    if total < 2 {
+        return self_object;
+    }
+
+    // Copy the elements and compute each key before sorting. No pointer into
+    // the live vector or Rust-owned buffer is held across a foreign send.
+    let mut elements = Vec::with_capacity(total);
+    let mut keys = Vec::with_capacity(total);
+    let value_selector = runtime().value1 as Oop;
+    for index in 0..total {
+        let value = unsafe { vector_at(vec_payload(self_object), index) };
+        let call_arguments = [value];
+        let key = unsafe { (api.send)(block, value_selector, call_arguments.as_ptr(), 1) };
+        if key.is_null() {
+            return api.nilObj;
+        }
+        elements.push(value);
+        keys.push(key);
+    }
+
+    // Stable insertion sort, matching the Zig oracle's key comparator and
+    // preserving input order for equal keys.
+    let less_selector = unsafe { intern(api, b"<\0") };
+    let mut order: Vec<usize> = (0..total).collect();
+    for index in 1..total {
+        let candidate = order[index];
+        let mut position = index;
+        while position > 0 {
+            let previous = order[position - 1];
+            let comparator_arguments = [keys[previous]];
+            let less = unsafe {
+                (api.send)(
+                    keys[candidate],
+                    less_selector,
+                    comparator_arguments.as_ptr(),
+                    1,
+                )
+            };
+            if less != api.trueObj {
+                break;
+            }
+            order[position] = previous;
+            position -= 1;
+        }
+        order[position] = candidate;
+    }
+
+    let mut result = unsafe { empty_vector(api, runtime()) };
+    for index in order {
+        result = unsafe { vector_push(api, runtime(), result, elements[index]) };
+    }
+    result
+}
+
 unsafe extern "C" fn vector_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
@@ -2572,6 +2635,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.vector_vt as Oop,
             intern(api, b"reversed\0"),
             vector_reversed,
+        );
+        (api.method)(
+            runtime.vector_vt as Oop,
+            intern(api, b"sortBy:\0"),
+            vector_sort_by,
         );
         (api.method)(runtime.vector_vt as Oop, intern(api, b"new\0"), vector_new);
         (api.method)(

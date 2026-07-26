@@ -37,6 +37,13 @@ fn addInteger(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
     return api.mkSmallInt(api.smallIntValue(args[0]) + api.smallIntValue(args[1]));
 }
 
+fn descendingIntegerKey(_self: Oop, args: [*]const Oop, _count: usize) callconv(.c) Oop {
+    _ = _self;
+    _ = _count;
+    const api = floor.api();
+    return api.mkSmallInt(-api.smallIntValue(args[0]));
+}
+
 fn defaultInteger(_self: Oop, _args: [*]const Oop, _count: usize) callconv(.c) Oop {
     _ = _self;
     _ = _args;
@@ -151,6 +158,12 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     const reversed = send(api, second, "reversed", &.{});
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, reversed, "at:", &.{api.mkSmallInt(0)})));
     try std.testing.expectEqual(@as(i64, 10), api.smallIntValue(send(api, reversed, "at:", &.{api.mkSmallInt(1)})));
+    const sort_vt = api.proto(api.object_vt);
+    api.method(sort_vt, api.intern("value:"), &descendingIntegerKey);
+    const sort_block = api.alloc(sort_vt, 0);
+    const sorted = send(api, vector_with_tail, "sortBy:", &.{sort_block});
+    try std.testing.expectEqual(@as(i64, 39), api.smallIntValue(send(api, sorted, "at:", &.{api.mkSmallInt(0)})));
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, sorted, "at:", &.{api.mkSmallInt(39)})));
     try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, second, "indexOf:", &.{api.mkSmallInt(20)})));
     try std.testing.expectEqual(api.nilObj, send(api, second, "indexOf:", &.{api.mkSmallInt(99)}));
 
