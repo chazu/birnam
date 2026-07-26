@@ -59,6 +59,9 @@ pub enum CommandKind {
     Wrap,
     Bake,
     Rebuild,
+    CompileModule,
+    Worker,
+    ProjectTestWorker,
     Script(PathBuf),
     Image(PathBuf),
     Artifact(PathBuf),
@@ -488,6 +491,9 @@ pub fn classify_command<T: AsRef<std::ffi::OsStr>>(
         ("wrap", CommandKind::Wrap),
         ("--bake", CommandKind::Bake),
         ("--rebuild", CommandKind::Rebuild),
+        ("--compile-module", CommandKind::CompileModule),
+        ("--worker", CommandKind::Worker),
+        ("--project-test-worker", CommandKind::ProjectTestWorker),
     ];
     for (name, command) in known {
         if first == std::ffi::OsStr::new(name) {
@@ -1726,6 +1732,14 @@ mod tests {
         assert_eq!(
             classify_command(&["--rebuild"]).expect("rebuild is top-level"),
             CommandKind::Rebuild
+        );
+        assert_eq!(
+            classify_command(&["--project-test-worker"]).expect("worker is internal"),
+            CommandKind::ProjectTestWorker
+        );
+        assert_eq!(
+            classify_command(&["--compile-module"]).expect("compile module is internal"),
+            CommandKind::CompileModule
         );
     }
 

@@ -2554,6 +2554,17 @@ allowances.
 - Twenty-two offline Rust tests pass with warnings denied. REPL startup,
   project resolution, and child-process execution remain later seams.
 
+### R7.14 Rust host internal worker classification checkpoint (2026-07-26)
+
+- Top-level classification now preserves the internal worker/compiler routes
+  used by the shipped host: `--project-test-worker`, `--worker`, and
+  `--compile-module` are explicit command kinds rather than unknown flags.
+- This keeps private process routing ahead of ordinary file/REPL dispatch while
+  leaving their operand validation and execution to later host seams. The R6
+  gate and canonical Zig host are unchanged.
+- The focused Rust suite remains green at twenty-two tests with warnings
+  denied.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
