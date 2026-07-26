@@ -1208,6 +1208,63 @@ pub enum ProjectPolicyError {
     ResolutionRejected,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectRunObservation {
+    pub repl: String,
+    pub socket_bind: String,
+    pub socket_port: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectWrappedObservation {
+    pub name: String,
+    pub build: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectDependencyObservation {
+    pub name: String,
+    pub root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSourceObservation {
+    pub name: String,
+    pub path: String,
+    pub sources: Vec<String>,
+    pub project_root: String,
+    pub source: String,
+    pub requires: Vec<String>,
+    pub source_digest: String,
+    pub revision_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectObservation {
+    pub root: String,
+    pub manifest: String,
+    pub name: String,
+    pub main: Option<String>,
+    pub loads: Vec<String>,
+    pub run: ProjectRunObservation,
+    pub wrapped: Vec<ProjectWrappedObservation>,
+    pub dependencies: Vec<ProjectDependencyObservation>,
+    pub sources: Vec<ProjectSourceObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSnapshot {
+    pub root: String,
+    pub projects: Vec<ProjectObservation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectSnapshotError {
+    MissingVector,
+    MissingMap,
+    AllocationRejected,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoadedSelfHostedModule {
     pub name: &'static str,
@@ -1505,6 +1562,22 @@ impl HostRuntime {
             return Err(ProjectPolicyError::ResolutionRejected);
         }
         Ok(result)
+    }
+
+    /// Materialize a typed host observation into the exact map/vector shape
+    /// consumed by [`HostRuntime::resolve_project_snapshot`]. This is a
+    /// serialization boundary only; it performs no policy decisions.
+    ///
+    /// # Safety
+    ///
+    /// The runtime must remain on the floor owner thread with a live GC anchor
+    /// for all allocations and sends.
+    pub unsafe fn materialize_project_snapshot(
+        &self,
+        snapshot: &ProjectSnapshot,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api())? };
+        unsafe { builder.snapshot(snapshot) }
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
@@ -2017,6 +2090,199 @@ unsafe fn native_os_string_vector(
         vector = updated;
     }
     Ok(vector)
+}
+
+struct ProjectSnapshotBuilder<'a> {
+    api: &'a IdApi,
+    vector_class: birnam_abi::Oop,
+    map_class: birnam_abi::Oop,
+}
+
+impl<'a> ProjectSnapshotBuilder<'a> {
+    unsafe fn new(api: &'a IdApi) -> Result<Self, ProjectSnapshotError> {
+        let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
+        let map_class = unsafe { (api.import)(c"Map".as_ptr()) };
+        if vector_class == api.nilObj {
+            return Err(ProjectSnapshotError::MissingVector);
+        }
+        if map_class == api.nilObj {
+            return Err(ProjectSnapshotError::MissingMap);
+        }
+        Ok(Self {
+            api,
+            vector_class,
+            map_class,
+        })
+    }
+
+    unsafe fn new_vector(&self) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let selector = unsafe { (self.api.intern)(c"new".as_ptr()) };
+        let value = unsafe { (self.api.send)(self.vector_class, selector, std::ptr::null(), 0) };
+        if value == self.api.nilObj || send_is_error(self.api, value) {
+            Err(ProjectSnapshotError::AllocationRejected)
+        } else {
+            Ok(value)
+        }
+    }
+
+    unsafe fn new_map(&self) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let selector = unsafe { (self.api.intern)(c"new".as_ptr()) };
+        let value = unsafe { (self.api.send)(self.map_class, selector, std::ptr::null(), 0) };
+        if value == self.api.nilObj || send_is_error(self.api, value) {
+            Err(ProjectSnapshotError::AllocationRejected)
+        } else {
+            Ok(value)
+        }
+    }
+
+    unsafe fn add(
+        &self,
+        vector: birnam_abi::Oop,
+        value: birnam_abi::Oop,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let selector = unsafe { (self.api.intern)(c"add:".as_ptr()) };
+        let updated = unsafe { (self.api.send)(vector, selector, [value].as_ptr(), 1) };
+        if updated == self.api.nilObj || send_is_error(self.api, updated) {
+            Err(ProjectSnapshotError::AllocationRejected)
+        } else {
+            Ok(updated)
+        }
+    }
+
+    unsafe fn put(
+        &self,
+        map: birnam_abi::Oop,
+        key: &str,
+        value: birnam_abi::Oop,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let key = unsafe { (self.api.mkString)(key.as_bytes().as_ptr(), key.len()) };
+        let selector = unsafe { (self.api.intern)(c"at:put:".as_ptr()) };
+        let updated = unsafe { (self.api.send)(map, selector, [key, value].as_ptr(), 2) };
+        if updated == self.api.nilObj || send_is_error(self.api, updated) {
+            Err(ProjectSnapshotError::AllocationRejected)
+        } else {
+            Ok(updated)
+        }
+    }
+
+    unsafe fn string(&self, value: &str) -> birnam_abi::Oop {
+        unsafe { (self.api.mkString)(value.as_bytes().as_ptr(), value.len()) }
+    }
+
+    unsafe fn strings(&self, values: &[String]) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut vector = unsafe { self.new_vector()? };
+        for value in values {
+            vector = unsafe { self.add(vector, self.string(value))? };
+        }
+        Ok(vector)
+    }
+
+    unsafe fn wrapped(
+        &self,
+        values: &[ProjectWrappedObservation],
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut result = unsafe { self.new_vector()? };
+        for value in values {
+            let mut item = unsafe { self.new_map()? };
+            item = unsafe { self.put(item, "name", self.string(&value.name))? };
+            let mut commands = unsafe { self.new_vector()? };
+            for command in &value.build {
+                commands = unsafe { self.add(commands, self.strings(command)?)? };
+            }
+            item = unsafe { self.put(item, "build", commands)? };
+            result = unsafe { self.add(result, item)? };
+        }
+        Ok(result)
+    }
+
+    unsafe fn dependencies(
+        &self,
+        values: &[ProjectDependencyObservation],
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut result = unsafe { self.new_vector()? };
+        for value in values {
+            let mut item = unsafe { self.new_map()? };
+            item = unsafe { self.put(item, "name", self.string(&value.name))? };
+            item = unsafe { self.put(item, "root", self.string(&value.root))? };
+            result = unsafe { self.add(result, item)? };
+        }
+        Ok(result)
+    }
+
+    unsafe fn source(
+        &self,
+        value: &ProjectSourceObservation,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut item = unsafe { self.new_map()? };
+        item = unsafe { self.put(item, "name", self.string(&value.name))? };
+        item = unsafe { self.put(item, "path", self.string(&value.path))? };
+        item = unsafe { self.put(item, "sources", self.strings(&value.sources)?)? };
+        item = unsafe { self.put(item, "projectRoot", self.string(&value.project_root))? };
+        item = unsafe { self.put(item, "source", self.string(&value.source))? };
+        item = unsafe { self.put(item, "requires", self.strings(&value.requires)?)? };
+        item = unsafe { self.put(item, "sourceDigest", self.string(&value.source_digest))? };
+        item = unsafe { self.put(item, "revisionDigest", self.string(&value.revision_digest))? };
+        Ok(item)
+    }
+
+    unsafe fn project(
+        &self,
+        value: &ProjectObservation,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut item = unsafe { self.new_map()? };
+        item = unsafe { self.put(item, "root", self.string(&value.root))? };
+        item = unsafe { self.put(item, "manifest", self.string(&value.manifest))? };
+        item = unsafe { self.put(item, "name", self.string(&value.name))? };
+        item = unsafe {
+            self.put(
+                item,
+                "main",
+                value
+                    .main
+                    .as_deref()
+                    .map(|main| self.string(main))
+                    .unwrap_or(self.api.nilObj),
+            )?
+        };
+        item = unsafe { self.put(item, "loads", self.strings(&value.loads)?)? };
+        let mut run = unsafe { self.new_map()? };
+        run = unsafe { self.put(run, "repl", self.string(&value.run.repl))? };
+        run = unsafe { self.put(run, "socketBind", self.string(&value.run.socket_bind))? };
+        run = unsafe {
+            self.put(
+                run,
+                "socketPort",
+                (self.api.mkSmallInt)(value.run.socket_port),
+            )?
+        };
+        item = unsafe { self.put(item, "run", run)? };
+        item = unsafe { self.put(item, "wrapped", self.wrapped(&value.wrapped)?)? };
+        item = unsafe {
+            self.put(
+                item,
+                "dependencies",
+                self.dependencies(&value.dependencies)?,
+            )?
+        };
+        let mut sources = unsafe { self.new_vector()? };
+        for source in &value.sources {
+            sources = unsafe { self.add(sources, self.source(source)?)? };
+        }
+        unsafe { self.put(item, "sources", sources) }
+    }
+
+    unsafe fn snapshot(
+        &self,
+        value: &ProjectSnapshot,
+    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
+        let mut projects = unsafe { self.new_vector()? };
+        for project in &value.projects {
+            projects = unsafe { self.add(projects, self.project(project)?)? };
+        }
+        let mut snapshot = unsafe { self.new_map()? };
+        snapshot = unsafe { self.put(snapshot, "root", self.string(&value.root))? };
+        unsafe { self.put(snapshot, "projects", projects) }
+    }
 }
 
 /// Execute one embedded self-hosted module through the frozen Codegen

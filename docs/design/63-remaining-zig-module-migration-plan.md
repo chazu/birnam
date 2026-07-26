@@ -2835,6 +2835,22 @@ allowances.
   the expected missing-floor boundary in an uninstalled tree; malformed worker
   syntax still fails before startup.
 
+### R7.36 Rust host project-observation value boundary checkpoint (2026-07-26)
+
+- Rust now defines typed project observation records for the exact
+  `ProjectPolicy` snapshot shape: project manifests, run configuration,
+  wrapped commands, dependency roots, indexed source metadata, and the root
+  project selector. A single unsafe serializer materializes those records as
+  Birnam Map/Vector/String/Integer values before the existing policy send.
+- The serializer is deliberately not a parser or filesystem adapter. It does
+  not discover manifests, read TOML, scan CSTs, hash sources, or choose
+  providers; those responsibilities remain outside this boundary and the
+  ProjectPolicy module remains the sole semantic authority.
+- The focused host suite and all-target clippy pass with warnings denied. The
+  future observation adapter can now construct one typed snapshot and call the
+  already-landed `resolve_project_snapshot` seam without hand-assembling raw
+  Oops.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
