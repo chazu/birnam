@@ -3089,6 +3089,20 @@ allowances.
 - The focused Rust host suite advances to 45 tests with formatting, check, and
   warnings-denied clippy green. R6 remains accepted at focused `91/91`.
 
+### R7.56 Rust host check observation/policy dispatch checkpoint (2026-07-26)
+
+- The experimental Rust host `check` command now starts the Rust runtime,
+  observes the complete project snapshot, materializes the exact
+  Map/Vector boundary, invokes Birnam `ProjectPolicy`, decodes the selected
+  resolution, and reports the frozen `birnam-check-v1` JSON shape or a human
+  module count with the matching resolution digest.
+- This checkpoint intentionally stops before `Codegen compile:output:root:`;
+  it reports that compile diagnostics are the next host boundary rather than
+  claiming a compile-only pass. It does not alter CLI grammar, policy, or
+  source evaluation semantics.
+- Rust-host formatting, check, 45-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

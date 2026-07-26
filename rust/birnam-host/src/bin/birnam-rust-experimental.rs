@@ -4,10 +4,10 @@ use std::fs;
 use std::process::ExitCode;
 
 use birnam_host::{
-    CommandKind, ImageLoadOutcome, ParseOutcome, bake_executable, baked_image, classify_command,
-    eval_script, load_image, nearest_project_root, parse_bake_args, parse_build_args,
-    parse_check_args, parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args,
-    parse_worker_args, start_from_environment,
+    CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, bake_executable, baked_image,
+    classify_command, decode_project_resolution, eval_script, load_image, parse_bake_args,
+    parse_build_args, parse_check_args, parse_install_args, parse_rebuild_args, parse_run_args,
+    parse_test_args, parse_worker_args, project_resolution_digest, start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -68,6 +68,22 @@ fn project_command(args: &[OsString], command: &str) -> Result<(), String> {
     }
 }
 
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    for byte in value.bytes() {
+        match byte {
+            b'"' => escaped.push_str("\\\""),
+            b'\\' => escaped.push_str("\\\\"),
+            b'\n' => escaped.push_str("\\n"),
+            b'\r' => escaped.push_str("\\r"),
+            b'\t' => escaped.push_str("\\t"),
+            0x00..=0x1f => escaped.push_str(&format!("\\u{byte:04x}")),
+            _ => escaped.push(byte as char),
+        }
+    }
+    escaped
+}
+
 fn check_command(args: &[OsString]) -> Result<(), String> {
     let outcome = parse_check_args(&args[1..]).map_err(|error| format!("check: {error:?}"))?;
     match outcome {
@@ -76,12 +92,46 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
             Ok(())
         }
         ParseOutcome::Parsed(options) => {
-            let root = nearest_project_root(&options.directory)
-                .map_err(|error| format!("check: {error:?}"))?;
-            Err(format!(
-                "check observation/indexing is not implemented by the experimental host (root: {})",
-                root.display()
-            ))
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            let snapshot = unsafe { runtime.observe_project_snapshot(&options.directory) }
+                .map_err(|error| format!("check observation: {error:?}"))?;
+            let raw_snapshot = unsafe { runtime.materialize_project_snapshot(&snapshot) }
+                .map_err(|error| format!("check snapshot: {error:?}"))?;
+            let raw_resolution = unsafe { runtime.resolve_project_snapshot(raw_snapshot) }
+                .map_err(|error| format!("check policy: {error:?}"))?;
+            let resolution =
+                unsafe { decode_project_resolution(runtime.stack.api(), raw_resolution) }
+                    .map_err(|error| format!("check resolution: {error:?}"))?;
+            let manifest = fs::read(&resolution.manifest)
+                .map_err(|error| format!("check manifest: {error}"))?;
+            let digest =
+                project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+            match options.format {
+                OutputFormat::Human => {
+                    println!(
+                        "resolved {} module{}; compile diagnostics remain a later Rust-host boundary",
+                        resolution.modules.len(),
+                        if resolution.modules.len() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    );
+                }
+                OutputFormat::Json => {
+                    println!(
+                        "{{\"schema\":\"birnam-check-v1\",\"ok\":true,\"projectRoot\":\"{}\",\"manifest\":\"{}\",\"resolutionDigest\":\"{}\",\"checkedModules\":{},\"diagnostics\":[]}}",
+                        json_escape(&resolution.project_root),
+                        json_escape(&resolution.manifest),
+                        digest,
+                        resolution.modules.len(),
+                    );
+                }
+            }
+            Ok(())
         }
     }
 }
