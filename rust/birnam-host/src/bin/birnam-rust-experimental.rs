@@ -449,6 +449,13 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 .map_err(|error| format!("artifact: {error:?}"))
         }
         CommandKind::Repl => {
+            if env::var_os("BIRNAM_NO_STDLIB").is_some() {
+                // Keep the bare-floor diagnostic identical to the canonical
+                // Zig host. The REPL is a self-hosted tool and is deliberately
+                // unavailable when the explicit no-stdlib policy is active.
+                eprintln!("birnam: the REPL requires the stdlib (unset BIRNAM_NO_STDLIB)");
+                std::process::exit(1);
+            }
             let runtime = unsafe { start_from_environment() }
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;

@@ -4082,8 +4082,18 @@ fn mCompileImageCode(self: Oop, a: [*]const Oop, n: usize) callconv(.c) Oop {
     var sources = orderedGenerationSources() orelse return g_api.nilObj;
     defer sources.deinit(ca);
     for (sources.items) |source| {
-        prog.appendSlice(ca, oopBytes(source)) catch @panic("codegen: oom");
-        prog.appendSlice(ca, ";\n") catch @panic("codegen: oom");
+        const bytes = oopBytes(source);
+        prog.appendSlice(ca, bytes) catch @panic("codegen: oom");
+        // A complete module may end either with its own statement terminator
+        // or with an unterminated final expression at EOF. Preserve authored
+        // bytes while adding exactly the separator needed before the next
+        // document; `;;` would be parsed as a standalone invalid statement.
+        var end = bytes.len;
+        while (end > 0 and std.ascii.isWhitespace(bytes[end - 1])) end -= 1;
+        if (end == 0 or bytes[end - 1] != ';')
+            prog.appendSlice(ca, ";\n") catch @panic("codegen: oom")
+        else
+            prog.appendSlice(ca, "\n") catch @panic("codegen: oom");
     }
     const has_method_ops = appendMethodOps(&prog);
     if (sources.items.len == 0 and !has_method_ops) return g_api.nilObj;

@@ -3559,6 +3559,24 @@ allowances.
   startup now publishes the generation digest successfully, while canonical
   host selection remains unchanged.
 
+### R7.94 Source-backed image capture and bare-floor diagnostic checkpoint (2026-07-26)
+
+- Codegen image capture now joins complete generation documents with an exact
+  separator: authored trailing semicolons are preserved, while EOF documents
+  receive one terminator. This admits both `modules.birnam` (unterminated final
+  expression) and the other source modules without manufacturing a `;;` or
+  concatenating adjacent statements. The relocated image-save smoke now passes
+  for both the Zig host and the explicit Rust host.
+- The Rust experimental executable preserves the canonical no-stdlib REPL
+  boundary and exact diagnostic (`birnam: the REPL requires the stdlib (unset
+  BIRNAM_NO_STDLIB)`) before attempting runtime startup. This keeps the bare
+  floor intentionally non-interactive rather than reporting an unrelated
+  missing-generation failure.
+- The source-corpus parity baseline is now `1b00447e7eb89af7`, the digest
+  produced after the deliberate `app-config.birnam` selector correction above.
+  This records the new checked-in corpus rather than weakening parity or
+  accepting the stale digest.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
