@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
     const ErrorImpl = enum { zig, rust };
     const IsolateImpl = enum { zig, rust };
     const RelationalImpl = enum { zig, rust };
+    const ImageImpl = enum { zig, rust };
     const HostImpl = enum { zig, rust };
     const selected_host = b.option(
         HostImpl,
@@ -80,6 +81,11 @@ pub fn build(b: *std.Build) void {
         RelationalImpl,
         "relational",
         "Relational implementation installed under the canonical dylib name (zig or rust)",
+    ) orelse .rust;
+    const selected_image = b.option(
+        ImageImpl,
+        "image-impl",
+        "Image implementation installed under the canonical dylib name (zig or rust)",
     ) orelse .rust;
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
@@ -2617,11 +2623,26 @@ pub fn build(b: *std.Build) void {
             install_rust_image.step.dependOn(&rust_floor_build.step);
             b.getInstallStep().dependOn(&install_rust_image.step);
             bootstrap_install.dependOn(&install_rust_image.step);
-            // Zig remains the canonical Image owner until the Rust
-            // orchestration cross-product and post-switch R6 gate pass.
-            const install_zig_image_selected = b.addInstallArtifact(lib, .{});
-            b.getInstallStep().dependOn(&install_zig_image_selected.step);
-            bootstrap_install.dependOn(&install_zig_image_selected.step);
+            // Rust is canonical after the complete Image orchestration,
+            // cross-floor, publication, recovery, and post-switch R6 gate.
+            // The Zig owner remains installed under an explicit rollback name.
+            if (selected_image == .rust) {
+                const install_rust_image_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_image.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_image.dylib",
+                );
+                install_rust_image_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_image_selected.step);
+                bootstrap_install.dependOn(&install_rust_image_selected.step);
+            } else {
+                const install_zig_image_selected = b.addInstallArtifact(lib, .{});
+                b.getInstallStep().dependOn(&install_zig_image_selected.step);
+                bootstrap_install.dependOn(&install_zig_image_selected.step);
+            }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
             b.getInstallStep().dependOn(&install_lib.step);

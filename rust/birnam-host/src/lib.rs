@@ -675,11 +675,14 @@ pub unsafe fn compile_module(
 /// The runtime must remain on the selected floor's owner thread, and the
 /// caller must establish a valid GC stack bottom for the synchronous sends.
 pub unsafe fn load_image(
-    runtime: &HostRuntime,
+    runtime: &mut HostRuntime,
     path: &Path,
     rebuild: bool,
 ) -> Result<ImageLoadOutcome, ImageError> {
-    let api = runtime.stack.api();
+    let api_ptr = runtime.stack.api() as *const IdApi;
+    // SAFETY: the retained floor table outlives this synchronous load and the
+    // owner thread remains exclusive for the whole operation.
+    let api = unsafe { &*api_ptr };
     let system = unsafe { (api.import)(c"System".as_ptr()) };
     if system == api.nilObj {
         return Err(ImageError::MissingSystem);
@@ -688,7 +691,29 @@ pub unsafe fn load_image(
     let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
-    let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+    let mut status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+    if status == api.falseObj
+        && env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
+    {
+        // Rust Image owns the canonical selector surface, while Zig Image is
+        // retained as the explicit v4 reader rollback until Rust Codegen's
+        // reader is canonical. Load that reader only for this failed mixed
+        // authority attempt, then restore Rust Image's methods immediately.
+        let zig_image = runtime
+            .resources
+            .lib_dir
+            .join("libbirnam_id_image_zig.dylib");
+        runtime
+            .stack
+            .load_module(&zig_image)
+            .map_err(|_| ImageError::LoadRejected)?;
+        status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+        let rust_image = runtime.resources.lib_dir.join("libbirnam_id_image.dylib");
+        runtime
+            .stack
+            .load_module(&rust_image)
+            .map_err(|_| ImageError::LoadRejected)?;
+    }
     if status == api.nilObj {
         return Err(ImageError::LoadRejected);
     }
@@ -6359,7 +6384,7 @@ impl HostRuntime {
     /// by the selected runtime, and the caller must keep the GC anchor live on
     /// the floor owner thread for the complete operation.
     pub unsafe fn run_worker_image(
-        &self,
+        &mut self,
         image: &Path,
         receiver_name: &str,
         selector_name: &str,
@@ -7296,7 +7321,10 @@ impl LoadedStack {
 
     /// Load one higher rung through the selected floor's dynamic-loader API.
     /// No host-side `dlopen` is used after the floor has initialized.
-    pub fn load_module(&mut self, path: &Path) -> Result<(), ModuleError> {
+    fn load_module_handle(
+        &mut self,
+        path: &Path,
+    ) -> Result<NonNull<std::ffi::c_void>, ModuleError> {
         let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
         // SAFETY: the floor API is process-owned and the C string lives across
         // this synchronous call.
@@ -7324,7 +7352,11 @@ impl LoadedStack {
             )
         };
         self.modules.push(handle);
-        Ok(())
+        Ok(handle)
+    }
+
+    pub fn load_module(&mut self, path: &Path) -> Result<(), ModuleError> {
+        self.load_module_handle(path).map(|_| ())
     }
 
     /// Resolve and load the canonical native stack in the same order as the
@@ -7347,7 +7379,29 @@ impl LoadedStack {
             } else {
                 resources.lib_dir.join(format!("{name}.dylib"))
             };
-            self.load_module(&path)?;
+            let handle = self.load_module_handle(&path)?;
+            if *name == "libbirnam_id_image"
+                && path.file_name().and_then(|file| file.to_str())
+                    == Some("libbirnam_id_image.dylib")
+            {
+                // The canonical Rust Image module must be allowed to publish
+                // through the ordinary host path. Explicit `_rust` fixture
+                // loads used by cross-floor tests do not take this branch.
+                // SAFETY: `handle` is a live loader handle retained for the
+                // process lifetime, and the symbol has the frozen identity
+                // export signature when present.
+                let rust_identity = unsafe {
+                    (self.floor.api().dlsym)(
+                        handle.as_ptr(),
+                        c"birnam_image_rust_identity".as_ptr().cast(),
+                    )
+                };
+                if !rust_identity.is_null() {
+                    // Startup is single-threaded until this stack is returned;
+                    // publish the canonical choice before any saveImage send.
+                    unsafe { std::env::set_var("BIRNAM_RUST_IMAGE_CANONICAL", "rust") };
+                }
+            }
         }
         Ok(())
     }

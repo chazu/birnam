@@ -407,7 +407,7 @@ fn test_command(args: &[OsString]) -> Result<(), String> {
 
 fn worker_command(args: &[OsString]) -> Result<(), String> {
     let options = parse_worker_args(&args[1..]).map_err(|error| format!("--worker: {error:?}"))?;
-    let runtime =
+    let mut runtime =
         unsafe { start_from_environment() }.map_err(|error| format!("startup: {error:?}"))?;
     let mut anchor = 0usize;
     unsafe { runtime.prepare_execution(&mut anchor) };
@@ -450,11 +450,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Rebuild => {
             let options =
                 parse_rebuild_args(&args[1..]).map_err(|error| format!("rebuild: {error:?}"))?;
-            let runtime = unsafe { start_from_environment() }
+            let mut runtime = unsafe { start_from_environment() }
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            let _ = unsafe { load_image(&runtime, &options.image, true) }
+            let _ = unsafe { load_image(&mut runtime, &options.image, true) }
                 .map_err(|error| format!("image: {error:?}"))?;
             let mut session =
                 unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;
@@ -470,11 +470,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 .map_err(|error| format!("script: {error:?}"))
         }
         CommandKind::Image(path) => {
-            let runtime = unsafe { start_from_environment() }
+            let mut runtime = unsafe { start_from_environment() }
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            let _ = unsafe { load_image(&runtime, &path, false) }
+            let _ = unsafe { load_image(&mut runtime, &path, false) }
                 .map_err(|error| format!("image: {error:?}"))?;
             let mut session =
                 unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;

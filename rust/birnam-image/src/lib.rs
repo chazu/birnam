@@ -1507,6 +1507,26 @@ unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
     if codegen.is_null() || codegen == api.nilObj {
         return None;
     }
+    if rust_image_canonical_selected() {
+        // Match the Zig image driver's first-save behavior for script hosts:
+        // close the initial dispatch generation before asking Codegen for its
+        // digest. Explicit Rust Image fixtures do not set the canonical marker
+        // and therefore retain their diagnostic-only no-publication contract.
+        let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+        if !globals.is_null() && globals != api.nilObj {
+            let key = unsafe { intern(api, b"DispatchGeneration\0") };
+            let generations = [key];
+            let generations = unsafe {
+                (api.send)(globals, intern(api, b"at:\0"), generations.as_ptr(), 1)
+            };
+            if !generations.is_null() && generations != api.nilObj {
+                let current = unsafe { send0(api, generations, b"current\0") };
+                if current.is_null() || current == api.nilObj {
+                    let _ = unsafe { send0(api, generations, b"initializeCurrent\0") };
+                }
+            }
+        }
+    }
     Some(codegen)
 }
 
@@ -1516,6 +1536,10 @@ fn rust_image_publication_selected() -> bool {
 
 fn rust_image_writer_authority_selected() -> bool {
     std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY").ok().as_deref() == Some("rust")
+}
+
+fn rust_image_canonical_selected() -> bool {
+    std::env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
 }
 
 unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
@@ -1912,9 +1936,13 @@ unsafe extern "C" fn system_save_image(self_object: Oop, args: *const Oop, count
         _ => None,
     };
     let publication_requested = rust_image_publication_selected();
-    let publication_authorized =
-        !publication_requested || rust_image_writer_authority_selected();
-    let published = if publication_requested && publication_authorized {
+    let canonical_publication = rust_image_canonical_selected() && !publication_requested;
+    let publication_authorized = if publication_requested {
+        rust_image_writer_authority_selected()
+    } else {
+        canonical_publication
+    };
+    let published = if publication_authorized {
         composed.as_ref().is_some_and(|bytes| {
             let path_bytes = unsafe { runtime_image_path_bytes(api, path) };
             path_bytes.is_some_and(|path_bytes| {
