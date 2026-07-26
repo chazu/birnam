@@ -261,6 +261,18 @@ and Rust Store fixtures. The Rust implementation must refuse inherited drift
 and preserve the predecessor on rejected rollback without treating the Store
 fact timeline as the method dictionary.
 
+C1.4 adapter checkpoint (2026-07-26):
+
+- Candidate compile, inspect, map, prepare, and commit now run through the
+  frozen Rust adapter object in the Rust-only Stack process. The native
+  `enterRunning`/quiescence symbols remain the host lifecycle boundary, while
+  the adapter owns the candidate protocol and Store re-entry.
+- The adapter candidate probe publishes a method through the Store mirror and
+  observes the exact dispatch result (`73`), proving that the adapter path does
+  not create a second method dictionary. The focused gate is now `95/95` tests
+  (`170/170` steps); the optimized verify pin advances to `510/514` with six
+  explicit skips.
+
 ### C1.5 Generated artifact/TCC boundary
 
 Run generated-C compilation through the dynamically selected TCC rung. Audit

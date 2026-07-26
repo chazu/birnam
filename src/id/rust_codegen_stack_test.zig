@@ -157,6 +157,50 @@ test "Rust Codegen candidate uses Rust-owned shims and reenters Store" {
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
 }
 
+test "Rust Codegen adapter commits a candidate through the frozen surface" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const adapter = api.import("RustCodegenAdapter") orelse return error.MissingRustCodegenAdapter;
+    const object = api.import("Object") orelse return error.MissingObject;
+
+    if (api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0) == api.trueObj) {
+        try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
+    } else {
+        try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("enterRunning"), &.{}, 0));
+    }
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust_adapter_candidate.dylib", .{directory});
+    defer std.testing.allocator.free(path);
+    const source_text = "[Module named: #rustAdapterCandidate requires: #[]]; [Reflect defineMethod: #rustAdapterCandidateAnswer on: Integer as: [:self | 73]]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const output = api.mkString(path.ptr, path.len);
+    try std.testing.expect(api.send(
+        adapter,
+        api.intern("compileCandidate:named:output:"),
+        &.{ source, api.intern("rustAdapterCandidate"), output },
+        3,
+    ) != api.nilObj);
+
+    const unit = api.send(object, api.intern("clone"), &.{}, 0);
+    try std.testing.expectEqual(unit, api.send(adapter, api.intern("inspectCandidate:into:"), &.{ output, unit }, 2));
+    try std.testing.expectEqual(unit, api.send(adapter, api.intern("mapCandidate:"), &.{unit}, 1));
+    const token = api.send(adapter, api.intern("prepareActivation:"), &.{unit}, 1);
+    try std.testing.expect(token != api.nilObj);
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("beginQuiescence"), &.{}, 0));
+    try std.testing.expectEqual(unit, api.send(adapter, api.intern("commitPrepared:"), &.{token}, 1));
+    try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("endQuiescence"), &.{}, 0));
+    try std.testing.expectEqual(@as(i64, 73), api.smallIntValue(api.send(
+        api.mkSmallInt(3),
+        api.intern("rustAdapterCandidateAnswer"),
+        &.{},
+        0,
+    )));
+}
+
 test "Rust Codegen candidate rollback restores the retained predecessor" {
     const api = try setup();
     const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

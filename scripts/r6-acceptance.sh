@@ -65,12 +65,13 @@ latest_tests=(
 # Image publication, publication-authority rejection, both Image cross-floor
 # directions, the Zig-Store cross-floor cell, and fail-closed
 # duplicate/truncated Image-record coverage, plus the Rust Codegen contract and
-# pure-emitter parity checks: the focused matrix is 94 tests;
+# pure-emitter parity checks and the Rust Codegen adapter candidate probe: the
+# focused matrix is 95 tests;
 # the mixed dynamic Rust Image shell remains 2 passing tests, and each isolated
 # Image proof runs as one test process. The publication change is
 # explicit-authority-only; no benchmark or fixture exception is widened here.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=94
+readonly expected_focused_tests=95
 readonly expected_rust_image_shell_tests=2
 readonly expected_rust_image_bootstrap_tests=1
 readonly expected_rust_image_publication_tests=1
@@ -84,7 +85,7 @@ readonly expected_rust_image_rejection_tests=1
 # step to both the focused replacement graph and complete verify graph.
 readonly expected_focused_steps=170
 readonly expected_verify_steps=295
-readonly expected_verify_tests=509
+readonly expected_verify_tests=510
 readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
