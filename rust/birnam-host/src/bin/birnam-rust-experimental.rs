@@ -6,12 +6,11 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
-    CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy,
-    bake_executable, baked_image, classify_command, compile_module, eval_script,
-    host_target_identity, load_image, parse_bake_args, parse_build_args, parse_check_args,
-    parse_compile_module_args, parse_install_args, parse_project_test_worker_args,
-    parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args, resolve, start,
-    start_from_environment,
+    CommandKind, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy, bake_executable,
+    baked_image, classify_command, compile_module, eval_script, host_target_identity, load_image,
+    parse_bake_args, parse_build_args, parse_check_args, parse_compile_module_args,
+    parse_install_args, parse_project_test_worker_args, parse_rebuild_args, parse_run_args,
+    parse_test_args, parse_worker_args, preflight_artifact, resolve, start, start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -411,11 +410,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            match unsafe { load_image(&runtime, &options.image, true) }
-                .map_err(|error| format!("image: {error:?}"))?
-            {
-                ImageLoadOutcome::Mapped | ImageLoadOutcome::SourceRecovery => Ok(()),
-            }
+            let _ = unsafe { load_image(&runtime, &options.image, true) }
+                .map_err(|error| format!("image: {error:?}"))?;
+            let mut session =
+                unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;
+            unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
         }
         CommandKind::Script(path) => {
             let runtime = unsafe { start_from_environment() }
@@ -431,11 +430,17 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            unsafe { load_image(&runtime, &path, false) }
-                .map(|_| ())
-                .map_err(|error| format!("image: {error:?}"))
+            let _ = unsafe { load_image(&runtime, &path, false) }
+                .map_err(|error| format!("image: {error:?}"))?;
+            let mut session =
+                unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;
+            unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
         }
         CommandKind::Artifact(path) => {
+            // Inspect the inert descriptor before opening the language stack.
+            // This keeps target/ABI/identity diagnostics available even when
+            // the artifact's own native closure is incomplete.
+            preflight_artifact(&path, None).map_err(|error| format!("artifact: {error:?}"))?;
             let runtime = unsafe { start_from_environment() }
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;

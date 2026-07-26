@@ -45,6 +45,12 @@ pub fn build(b: *std.Build) void {
     const ErrorImpl = enum { zig, rust };
     const IsolateImpl = enum { zig, rust };
     const RelationalImpl = enum { zig, rust };
+    const HostImpl = enum { zig, rust };
+    const selected_host = b.option(
+        HostImpl,
+        "host-impl",
+        "Birnam executable implementation installed as bin/birnam (zig or rust)",
+    ) orelse .zig;
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
@@ -694,6 +700,23 @@ pub fn build(b: *std.Build) void {
         b.pathFromRoot(".cargo-target"),
     );
     if (optimize != .Debug) rust_floor_build.addArg("--release");
+    // The Rust host binary is built by the same locked/offline workspace
+    // command as the native Rust rungs. Keep the install path explicit so the
+    // selected host can become canonical without linking any rung into it.
+    const rust_host_binary = b.path(b.fmt(
+        ".cargo-target/{s}/birnam",
+        .{rust_floor_profile},
+    ));
+    const install_rust_host = b.addInstallFileWithDir(
+        rust_host_binary,
+        .bin,
+        "birnam",
+    );
+    install_rust_host.step.dependOn(&rust_floor_build.step);
+    if (selected_host == .rust) {
+        b.getInstallStep().dependOn(&install_rust_host.step);
+        bootstrap_install.dependOn(&install_rust_host.step);
+    }
     // Keep the explicit Rust Codegen emitter available beside the frozen Zig
     // Codegen authority. It is opt-in until N6.3–N6.6 lifecycle gates pass.
     const install_rust_codegen = b.addInstallFileWithDir(
@@ -2748,21 +2771,25 @@ pub fn build(b: *std.Build) void {
     artifact_preflight_test_step.dependOn(&run_artifact_preflight_tests.step);
     test_step.dependOn(&run_artifact_preflight_tests.step);
 
-    // -- birnam: the siphon (default install) --------------------------------
-    // A minimal host that imports only the IdApi (src/id/idapi.zig) and dlopens
-    // the rung dylibs at runtime ($BIRNAM_LIB_DIR / zig-out/lib). `birnam
-    // <file.birnam>` runs a script; bare invocation drops into the REPL.
+    // -- birnam: the selected host (default install) --------------------------
+    // Keep the Zig siphon canonical until the Rust-host observation and
+    // post-switch rollback gates are complete. The Rust host remains an
+    // explicit, installable implementation for those rehearsal gates.
     const siphon_mod = b.createModule(.{
         .root_source_file = b.path("src/id/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     siphon_mod.addOptions("build_opts", build_opts);
-    const siphon_exe = b.addExecutable(.{ .name = "birnam", .root_module = siphon_mod });
+    const siphon_exe = b.addExecutable(.{ .name = "birnam-zig-oracle", .root_module = siphon_mod });
     siphon_exe.linkLibC();
-    const install_siphon = b.addInstallArtifact(siphon_exe, .{});
-    b.getInstallStep().dependOn(&install_siphon.step);
-    bootstrap_install.dependOn(&install_siphon.step);
+    const install_zig_host = b.addInstallArtifact(siphon_exe, .{
+        .dest_sub_path = if (selected_host == .zig) "birnam" else "birnam-zig-oracle",
+    });
+    if (selected_host == .zig) {
+        b.getInstallStep().dependOn(&install_zig_host.step);
+        bootstrap_install.dependOn(&install_zig_host.step);
+    }
 
     // Birnam module source is embedded in its compiled unit. Native floor
     // sources and authored guides remain separate documentation resources.
@@ -2847,7 +2874,13 @@ pub fn build(b: *std.Build) void {
         .{ .src = "modules/compiled-unit-docs.birnam", .name = "compiledUnitDocs" },
     };
     inline for (self_hosted) |m| {
-        const compile = b.addRunArtifact(siphon_exe);
+        const compile = if (selected_host == .rust)
+            b.addSystemCommand(&.{b.pathFromRoot(b.fmt(
+                ".cargo-target/{s}/birnam",
+                .{rust_floor_profile},
+            ))})
+        else
+            b.addRunArtifact(siphon_exe);
         compile.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
         compile.addArg("--compile-module");
         compile.addFileArg(b.path(m.src));

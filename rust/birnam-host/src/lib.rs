@@ -8,6 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
+use std::fmt;
 use std::io;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -250,7 +251,7 @@ pub struct ArtifactPlan {
     pub entries: Vec<ArtifactEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ArtifactPreflightError {
     Read {
         path: PathBuf,
@@ -279,6 +280,57 @@ pub enum ArtifactPreflightError {
         path: PathBuf,
         dependency: Vec<u8>,
     },
+}
+
+impl fmt::Debug for ArtifactPreflightError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read { path, kind } => {
+                write!(
+                    formatter,
+                    "artifactUnavailable: {} ({kind:?})",
+                    path.display()
+                )
+            }
+            Self::Parse { path, error } => {
+                let diagnostic = match error {
+                    birnam_artifact::Error::AbiMismatch => "artifactAbiMismatch",
+                    birnam_artifact::Error::TargetMismatch => "artifactTargetMismatch",
+                    birnam_artifact::Error::EmptyIdentity => "artifactDescriptionMissing",
+                    birnam_artifact::Error::ArtifactTooLarge
+                    | birnam_artifact::Error::MissingDescriptor
+                    | birnam_artifact::Error::MultipleDescriptors
+                    | birnam_artifact::Error::TruncatedDescriptor
+                    | birnam_artifact::Error::InvalidDescriptor
+                    | birnam_artifact::Error::ListTooLarge => "artifactDescriptionMissing",
+                };
+                write!(formatter, "{diagnostic}: {}", path.display())
+            }
+            Self::KindMismatch { path } => {
+                write!(formatter, "artifactKindMismatch: {}", path.display())
+            }
+            Self::IdentityMismatch { path, .. } => {
+                write!(formatter, "artifactIdentityMismatch: {}", path.display())
+            }
+            Self::DependencyCycle { identity } => {
+                write!(formatter, "artifactDependencyCycle: {:?}", identity)
+            }
+            Self::NativeRequirementMissing {
+                path, requirement, ..
+            } => write!(
+                formatter,
+                "artifactNativeRequirementMissing: {} ({:?})",
+                path.display(),
+                requirement
+            ),
+            Self::InvalidDependencyName { path, dependency } => write!(
+                formatter,
+                "artifactDependencyInvalid: {} ({:?})",
+                path.display(),
+                dependency
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -649,10 +701,28 @@ pub unsafe fn load_image(
 
     let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
     if codegen != api.nilObj {
+        // `System loadImage:rebuild:` closes the image module's internal
+        // recovery phase before returning. Rust Codegen deliberately requires
+        // replay/derivation to run inside that phase, so reopen the host-owned
+        // recovery boundary around the post-load operations just as the Zig
+        // image driver does within its load transaction.
+        let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
+        let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
+        if begun == api.nilObj || send_is_error(api, begun) {
+            return Err(ImageError::LoadRejected);
+        }
         let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
         unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) };
         let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
         unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
+        // Source-backed block globals are intentionally not serialized as
+        // durable values. Re-derive them after code/method recovery so an
+        // ordinary image boot and an explicit rebuild expose the same globals
+        // before the REPL evaluates its first expression.
+        let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
+        unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
+        let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
+        unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
     }
     Ok(ImageLoadOutcome::SourceRecovery)
 }
@@ -1163,7 +1233,7 @@ pub fn classify_early_args<T: AsRef<std::ffi::OsStr>>(args: &[T]) -> EarlyAction
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum FloorError {
     Read {
         path: PathBuf,
@@ -1182,6 +1252,40 @@ pub enum FloorError {
         expected: String,
         actual: String,
     },
+}
+
+impl fmt::Debug for FloorError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read { path, source } if *source == io::ErrorKind::NotFound => write!(
+                formatter,
+                "required runtime dylib is unavailable: {}",
+                path.display()
+            ),
+            Self::Read { path, source } => {
+                write!(
+                    formatter,
+                    "floor read failed: {} ({source:?})",
+                    path.display()
+                )
+            }
+            Self::DigestMismatch { expected, actual } => {
+                write!(
+                    formatter,
+                    "DigestMismatch {{ expected: {expected:?}, actual: {actual:?} }}"
+                )
+            }
+            Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
+            Self::OpenFailed => formatter.write_str("OpenFailed"),
+            Self::MissingIdInit => formatter.write_str("MissingIdInit"),
+            Self::NullApi => formatter.write_str("NullApi"),
+            Self::MissingIdentity => formatter.write_str("MissingIdentity"),
+            Self::IdentityMismatch { expected, actual } => write!(
+                formatter,
+                "IdentityMismatch {{ expected: {expected:?}, actual: {actual:?} }}"
+            ),
+        }
+    }
 }
 
 /// A successfully initialized floor. The dynamic-library handle is retained
@@ -1668,6 +1772,9 @@ pub enum ProjectRunError {
     MissingMain,
     InvalidReplMode(String),
     Module(RuntimeModuleError),
+    TestHarnessUnavailable,
+    TestSuiteMissing,
+    TestFailed,
     NativeDirectoryRejected,
     ArtifactPreflight(ArtifactPreflightError),
     ArtifactActivation(ArtifactActivationError),
@@ -3860,11 +3967,27 @@ pub enum WorkerStartupError {
     Driver(WorkerError),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum RuntimeModuleError {
     EmbeddedNul,
     MissingModuleManager,
-    LoadRejected,
+    LoadRejected { path: PathBuf },
+    ArtifactUnavailable { path: PathBuf },
+}
+
+impl fmt::Debug for RuntimeModuleError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
+            Self::MissingModuleManager => formatter.write_str("MissingModuleManager"),
+            Self::LoadRejected { path } => {
+                write!(formatter, "LoadRejected {{ path: {:?} }}", path)
+            }
+            Self::ArtifactUnavailable { path } => {
+                write!(formatter, "artifactUnavailable: {}", path.display())
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4205,12 +4328,60 @@ impl HostRuntime {
             return Err(RuntimeModuleError::MissingModuleManager);
         };
         let name = CString::new(name).map_err(|_| RuntimeModuleError::EmbeddedNul)?;
+        let path = self
+            .resources
+            .lib_dir
+            .join(format!("libbirnam_{}.dylib", name.to_string_lossy()));
+        if std::fs::metadata(&path).is_err() {
+            return Err(RuntimeModuleError::ArtifactUnavailable { path });
+        }
         let api = self.stack.api();
         let selector = unsafe { (api.intern)(c"load:".as_ptr()) };
         let name = unsafe { (api.intern)(name.as_ptr()) };
         let result = unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
         if result == api.nilObj || send_is_error(api, result) {
-            return Err(RuntimeModuleError::LoadRejected);
+            return Err(RuntimeModuleError::LoadRejected { path });
+        }
+        Ok(())
+    }
+
+    /// Load a host-tool module outside the sealed application generation. This
+    /// is the same capability boundary used by the Zig host for a process-local
+    /// REPL fallback: the module may publish its tool globals, but it is not a
+    /// durable application-generation introduction.
+    ///
+    /// # Safety
+    ///
+    /// The runtime must remain on the floor owner thread for the synchronous
+    /// Codegen/Module sends.
+    unsafe fn load_host_runtime_module(&self, name: &str) -> Result<(), RuntimeModuleError> {
+        let name = CString::new(name).map_err(|_| RuntimeModuleError::EmbeddedNul)?;
+        let filename = format!("libbirnam_{}.dylib", name.to_string_lossy());
+        let path = self.resources.lib_dir.join(filename);
+        if std::fs::metadata(&path).is_err() {
+            return Err(RuntimeModuleError::ArtifactUnavailable { path });
+        }
+        let path = CString::new(path_bytes(&path)).map_err(|_| RuntimeModuleError::EmbeddedNul)?;
+        let selector = unsafe { (self.stack.api().intern)(c"loadHostCapability:".as_ptr()) };
+        let value =
+            unsafe { (self.stack.api().mkString)(path.as_bytes().as_ptr(), path.as_bytes().len()) };
+        let api = self.stack.api();
+        let result = unsafe { (api.send)(self.codegen, selector, [value].as_ptr(), 1) };
+        if result == self.stack.api().nilObj || send_is_error(self.stack.api(), result) {
+            return Err(RuntimeModuleError::LoadRejected {
+                path: PathBuf::from(path.to_string_lossy().trim_end_matches('\0')),
+            });
+        }
+        if let Some(module_manager) = unsafe { global_named(self.stack.api(), "Module") } {
+            let mark = unsafe { (self.stack.api().intern)(c"markLoaded:".as_ptr()) };
+            let symbol = unsafe { (self.stack.api().intern)(name.as_ptr()) };
+            let marked =
+                unsafe { (self.stack.api().send)(module_manager, mark, [symbol].as_ptr(), 1) };
+            if marked == self.stack.api().nilObj || send_is_error(self.stack.api(), marked) {
+                return Err(RuntimeModuleError::LoadRejected {
+                    path: PathBuf::from(path.to_string_lossy().trim_end_matches('\0')),
+                });
+            }
         }
         Ok(())
     }
@@ -4409,9 +4580,39 @@ impl HostRuntime {
             unsafe { self.validate_project_build(project_root, target, profile, tool_version) }
                 .map_err(ProjectRunError::Build)?;
         unsafe { self.activate_project_build(&build) }?;
-        unsafe { eval_script(self, test_source) }
-            .map(|_| ())
-            .map_err(ProjectRunError::Main)
+        // Match the Zig worker boundary: install the test harness before the
+        // project source registers suites, then run those suites through the
+        // canonical ConsoleRunner. Evaluating a source file alone is not a
+        // test run; it would silently accept a suite-registration script
+        // without producing the established `ok`/`FAIL` result lines.
+        unsafe { self.load_host_runtime_module("test") }.map_err(ProjectRunError::Module)?;
+        unsafe { eval_script(self, test_source) }.map_err(ProjectRunError::Main)?;
+        let api = self.stack.api();
+        let test =
+            unsafe { global_named(api, "Test") }.ok_or(ProjectRunError::TestHarnessUnavailable)?;
+        let runner = unsafe { global_named(api, "ConsoleRunner") }
+            .ok_or(ProjectRunError::TestHarnessUnavailable)?;
+        let suites_selector = unsafe { (api.intern)(c"suites".as_ptr()) };
+        let suites = unsafe { (api.send)(test, suites_selector, std::ptr::null(), 0) };
+        if suites == api.nilObj || send_is_error(api, suites) {
+            return Err(ProjectRunError::TestHarnessUnavailable);
+        }
+        let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+        let count = unsafe { (api.send)(suites, size_selector, std::ptr::null(), 0) };
+        if unsafe { (api.isSmallInt)(count) } == 0 || unsafe { (api.smallIntValue)(count) } == 0 {
+            return Err(ProjectRunError::TestSuiteMissing);
+        }
+        let run_selector = unsafe { (api.intern)(c"runAllSuitesWithRunner:".as_ptr()) };
+        let result = unsafe { (api.send)(test, run_selector, [runner].as_ptr(), 1) };
+        if result == api.nilObj || send_is_error(api, result) {
+            return Err(ProjectRunError::TestFailed);
+        }
+        let passed_selector = unsafe { (api.intern)(c"allPassed".as_ptr()) };
+        let passed = unsafe { (api.send)(result, passed_selector, std::ptr::null(), 0) };
+        if passed != api.trueObj {
+            return Err(ProjectRunError::TestFailed);
+        }
+        Ok(())
     }
 
     /// Lazily install the Birnam-owned project policy module. Filesystem
@@ -5903,7 +6104,13 @@ impl HostRuntime {
     /// The caller must have called [`HostRuntime::prepare_execution`] with a
     /// live stack anchor and remain on the floor owner thread.
     pub unsafe fn start_repl(&self) -> Result<ReplSession, ReplError> {
-        unsafe { self.load_runtime_module("repl") }.map_err(ReplError::Module)?;
+        // A normal boot can introduce Repl into G0. An image may already have
+        // sealed its application generation, so recover the same process-local
+        // host capability used by the Zig image path when ordinary loading is
+        // rejected.
+        if unsafe { self.load_runtime_module("repl") }.is_err() {
+            unsafe { self.load_host_runtime_module("repl") }.map_err(ReplError::Module)?;
+        }
         let api = self.stack.api();
         let Some(repl) = (unsafe { global_named(api, "Repl") }) else {
             return Err(ReplError::MissingRepl);
