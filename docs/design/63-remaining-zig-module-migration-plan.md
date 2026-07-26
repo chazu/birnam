@@ -3373,6 +3373,14 @@ allowances.
 - Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.78 Rust host run CLI smoke checkpoint (2026-07-26)
+
+- `birnam-rust-experimental run --help` is resource-free and exposes the
+  project run grammar. A direct uninstalled-checkout `run .` fails closed at
+  the expected missing installed floor dylib before project observation or
+  activation; no checkout fallback was added.
+- R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
