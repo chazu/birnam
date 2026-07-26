@@ -2567,3 +2567,23 @@ explicitly so the recovery surface cannot silently shrink.
 - The R6 pins therefore remain explicitly accepted for this latest test set:
   focused `86`, Rust Image shell `2`, isolated Rust Image Codegen `1`,
   cross-floor Image `1`, rejection `1`, and Rust Alien live `9`.
+
+### R6.37 Rust-owned durable-generation bootstrap checkpoint (2026-07-26)
+
+- Rust Codegen now exposes `initializeCurrentGeneration`. It creates the first
+  durable `DispatchGeneration` only when Store has no active generation, using
+  the Rust-owned source projection and the existing `fromProjection:` object
+  lifecycle. Re-entry returns the same canonical generation. If Store already
+  has a generation, the selector requires canonical framing and an exact
+  projection digest match; it never overwrites or silently adopts a stale
+  generation.
+- The isolated `test-rust-image-bootstrap` target proves source staging,
+  Rust-owned G0 materialization, Store authority, digest recording, and
+  idempotent re-entry in a fresh process. The mapped Rust Image proof remains
+  isolated because it intentionally exercises the no-generation code path.
+- The focused R6 matrix is now `87/87`; Rust Image shell remains `2/2`, mapped
+  Rust Image-to-Rust Codegen `1/1`, durable-generation bootstrap `1/1`,
+  cross-floor Image `1/1`, rejection `1/1`, and Rust Alien live `9/9`. A fresh
+  `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed with optimized
+  verify/install/harness green and only the existing benchmark allowances:
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.

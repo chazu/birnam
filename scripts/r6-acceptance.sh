@@ -38,6 +38,7 @@ latest_tests=(
   test-rust-ffi-abort
   test-rust-image-shell
   test-rust-image-codegen
+  test-rust-image-bootstrap
   test-rust-image-cross-floor
   test-rust-image-rejection
   test-rust-image-save
@@ -52,13 +53,14 @@ latest_tests=(
   test-rust-error
 )
 # Accepted on 2026-07-26 after the Rust Image-to-Rust Codegen mapped-unit proof,
-# the Zig-writer/Rust-reader cross-floor proof, and fail-closed duplicate/truncated
-# Image-record coverage: the focused matrix is 86 tests; the mixed dynamic Rust
-# Image shell remains 2 passing tests, and each isolated Image proof runs as one
-# test process.
+# Rust-owned durable-generation bootstrap, the Zig-writer/Rust-reader cross-floor
+# proof, and fail-closed duplicate/truncated Image-record coverage: the focused
+# matrix is 87 tests; the mixed dynamic Rust Image shell remains 2 passing tests,
+# and each isolated Image proof runs as one test process.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=86
+readonly expected_focused_tests=87
 readonly expected_rust_image_shell_tests=2
+readonly expected_rust_image_bootstrap_tests=1
 readonly expected_rust_image_cross_floor_tests=1
 readonly expected_rust_image_rejection_tests=1
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
@@ -171,6 +173,20 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
 [ "$rust_image_codegen_test_count" -eq 1 ] || {
   echo "r6-acceptance: isolated Rust Image-to-Rust Codegen target no longer has one passing test" >&2
+  exit 1
+}
+rust_image_bootstrap_success_count=$(grep -Fc 'test-rust-image-bootstrap success' "$functional" || true)
+[ "$rust_image_bootstrap_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Codegen durable-generation bootstrap target was not executed" >&2
+  exit 1
+}
+rust_image_bootstrap_test_count=$(awk '
+/^test-rust-image-bootstrap success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec "^\\+- run test ${expected_rust_image_bootstrap_tests} passed " || true)
+[ "$rust_image_bootstrap_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust Codegen durable-generation bootstrap target no longer has ${expected_rust_image_bootstrap_tests} passing test" >&2
   exit 1
 }
 rust_image_cross_floor_success_count=$(grep -Fc 'test-rust-image-cross-floor success' "$functional" || true)
