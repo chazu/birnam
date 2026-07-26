@@ -2285,6 +2285,18 @@ are separately installed and tested.
   zero missing/unusable cases. The only accepted comparator crossings remain
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
+### R6.26 R6 gate pin audit (2026-07-25)
+
+- `6cc51a3` centralizes the accepted R6 counts in `scripts/r6-acceptance.sh`:
+  the focused replacement matrix must report exactly `82/82` tests and the
+  dynamic Rust Image shell must report exactly `2/2`. The latter includes the
+  malformed-load assertions from R6.25; no exception was widened.
+- The post-change `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passed:
+  focused `142/142` build steps and `82/82` tests, Rust Alien live `9/9`, both
+  Rust Image CLI save profiles, complete optimized verify/install/harness
+  legs, zero missing/unusable cases, and only the existing comparator crossings
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
 The next bounded slice must stage an admitted code record for Codegen's
 existing `load:` authority only after heap/facts replay ordering and
 quiescence guards are specified; it must prove temp-file cleanup and no
