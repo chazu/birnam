@@ -3117,6 +3117,18 @@ allowances.
 - Rust-host formatting, check, 45-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.58 Rust host executable check smoke checkpoint (2026-07-26)
+
+- The experimental executable's pure `--help` path remains resource-free and
+  now describes only build/install/run/test and LSP as canonical-Zig routes;
+  `check` is explicitly Rust-hosted.
+- A direct `check --format=json .` smoke reaches the Rust startup floor loader
+  and fails closed with the expected missing installed `libbirnam_id.dylib`
+  when run from the uninstalled checkout. No checkout or cwd fallback was
+  added to make this smoke pass.
+- Rust-host formatting, check, 45-test suite, and warnings-denied clippy pass;
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

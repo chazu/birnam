@@ -16,7 +16,7 @@ Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
            --repl, --listen <port>, doc, docgen, init, wrap,\n\
            --worker <image> <receiver> <selector> --channel-fd <fd>,\n\
            --bake <image> <exe>, --rebuild <image>\n\
-Project commands and --lsp remain on the canonical Zig host.\n";
+Build/install/run/test and --lsp remain on the canonical Zig host.\n";
 
 const CHECK_USAGE: &str = "usage: birnam check [directory] [--format human|json]\n";
 const BUILD_USAGE: &str = "usage: birnam build [directory] [--profile debug|release]\n";
