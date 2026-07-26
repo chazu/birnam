@@ -913,6 +913,12 @@ impl Emitter {
                 {
                     return self.emit_artifact_method_install(args, source);
                 }
+                if matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
+                    && ((selector.as_ref() == b"defineMethod:on:as:" && args.len() == 3)
+                        || (selector.as_ref() == b"defineMethod:on:as:doc:" && args.len() == 4))
+                {
+                    return self.emit_reflect_method_sourced(receiver, selector, args, source, depth);
+                }
                 if self.artifact_mode
                     && matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
                     && selector.as_ref() == b"removeMethod:on:"
@@ -941,6 +947,42 @@ impl Emitter {
                 self.bytes.extend_from_slice(b"L)");
             }
         }
+        Ok(())
+    }
+
+    fn emit_reflect_method_sourced(
+        &mut self,
+        receiver: &Expr<'_>,
+        selector: &[u8],
+        args: &[Expr<'_>],
+        source: &[u8],
+        depth: usize,
+    ) -> Result<(), EmitError> {
+        self.bytes.extend_from_slice(b"birnam_send(");
+        self.emit_expr_at_depth(receiver, depth + 1)?;
+        self.bytes.extend_from_slice(b", ");
+        if selector == b"defineMethod:on:as:doc:" {
+            self.bytes
+                .extend_from_slice(b"birnam_intern(\"defineMethod:on:as:doc:source:\"), ");
+        } else {
+            self.bytes
+                .extend_from_slice(b"birnam_intern(\"defineMethod:on:as:source:\"), ");
+        }
+        self.bytes.extend_from_slice(b"(void*[]){");
+        for (index, arg) in args.iter().enumerate() {
+            if index != 0 {
+                self.bytes.extend_from_slice(b", ");
+            }
+            self.emit_expr_at_depth(arg, depth + 1)?;
+        }
+        if !args.is_empty() {
+            self.bytes.extend_from_slice(b", ");
+        }
+        self.emit_string(source);
+        self.bytes.extend_from_slice(b"}, ");
+        self.bytes
+            .extend_from_slice((args.len() + 1).to_string().as_bytes());
+        self.bytes.extend_from_slice(b"L)");
         Ok(())
     }
 
@@ -1546,6 +1588,32 @@ mod tests {
             emitter.finish(),
             b"birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"foo:bar:\"), (void*[]){MKV(1L), MKV(2L)}, 2L)"
         );
+    }
+
+    #[test]
+    fn rewrites_live_reflect_method_definitions_to_source_carrying_selectors() {
+        let source = b"[Reflect defineMethod: #value: on: Object as: [:self :x | x]]";
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&Expr::Send {
+                receiver: Box::new(Expr::Global(b"Reflect")),
+                selector: Cow::Borrowed(b"defineMethod:on:as:"),
+                args: vec![
+                    Expr::Symbol(b"value:"),
+                    Expr::Global(b"Object"),
+                    Expr::Nil,
+                ],
+                source,
+            })
+            .unwrap();
+        let output = emitter.finish();
+        assert!(output.windows(b"defineMethod:on:as:source:".len()).any(|window| {
+            window == b"defineMethod:on:as:source:"
+        }));
+        assert!(output.windows(b"birnam_mkString(\"[Reflect defineMethod:".len()).any(|window| {
+            window == b"birnam_mkString(\"[Reflect defineMethod:"
+        }));
+        assert!(output.ends_with(b"}, 4L)"));
     }
 
     #[test]
