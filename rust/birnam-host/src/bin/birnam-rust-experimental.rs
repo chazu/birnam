@@ -5,9 +5,9 @@ use std::process::ExitCode;
 
 use birnam_host::{
     CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, bake_executable, baked_image,
-    classify_command, decode_project_resolution, eval_script, load_image, parse_bake_args,
-    parse_build_args, parse_check_args, parse_install_args, parse_rebuild_args, parse_run_args,
-    parse_test_args, parse_worker_args, project_resolution_digest, start_from_environment,
+    classify_command, eval_script, load_image, parse_bake_args, parse_build_args, parse_check_args,
+    parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args,
+    start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -96,39 +96,48 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            let snapshot = unsafe { runtime.observe_project_snapshot(&options.directory) }
-                .map_err(|error| format!("check observation: {error:?}"))?;
-            let raw_snapshot = unsafe { runtime.materialize_project_snapshot(&snapshot) }
-                .map_err(|error| format!("check snapshot: {error:?}"))?;
-            let raw_resolution = unsafe { runtime.resolve_project_snapshot(raw_snapshot) }
-                .map_err(|error| format!("check policy: {error:?}"))?;
-            let resolution =
-                unsafe { decode_project_resolution(runtime.stack.api(), raw_resolution) }
-                    .map_err(|error| format!("check resolution: {error:?}"))?;
-            let manifest = fs::read(&resolution.manifest)
-                .map_err(|error| format!("check manifest: {error}"))?;
-            let digest =
-                project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+            let result = unsafe { runtime.check_project(&options.directory) }
+                .map_err(|error| format!("check: {error:?}"))?;
+            let resolution = &result.resolution;
             match options.format {
                 OutputFormat::Human => {
-                    println!(
-                        "resolved {} module{}; compile diagnostics remain a later Rust-host boundary",
-                        resolution.modules.len(),
-                        if resolution.modules.len() == 1 {
-                            ""
-                        } else {
-                            "s"
+                    if result.diagnostics.is_empty() {
+                        println!(
+                            "checked {} module{}; no compile diagnostics",
+                            resolution.modules.len(),
+                            if resolution.modules.len() == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
+                        );
+                    } else {
+                        for diagnostic in &result.diagnostics {
+                            println!("{}: compileFailed: {}", diagnostic.path, diagnostic.detail);
                         }
-                    );
+                    }
                 }
                 OutputFormat::Json => {
-                    println!(
-                        "{{\"schema\":\"birnam-check-v1\",\"ok\":true,\"projectRoot\":\"{}\",\"manifest\":\"{}\",\"resolutionDigest\":\"{}\",\"checkedModules\":{},\"diagnostics\":[]}}",
+                    print!(
+                        "{{\"schema\":\"birnam-check-v1\",\"ok\":{},\"projectRoot\":\"{}\",\"manifest\":\"{}\",\"resolutionDigest\":\"{}\",\"checkedModules\":{},\"diagnostics\":[",
+                        result.diagnostics.is_empty(),
                         json_escape(&resolution.project_root),
                         json_escape(&resolution.manifest),
-                        digest,
+                        result.resolution_digest,
                         resolution.modules.len(),
                     );
+                    for (index, diagnostic) in result.diagnostics.iter().enumerate() {
+                        if index != 0 {
+                            print!(",");
+                        }
+                        print!(
+                            "{{\"kind\":\"compileFailed\",\"message\":\"{}\",\"detail\":\"{}\",\"path\":\"{}\"}}",
+                            json_escape(&diagnostic.detail),
+                            json_escape(&diagnostic.detail),
+                            json_escape(&diagnostic.path),
+                        );
+                    }
+                    println!("]}}");
                 }
             }
             Ok(())

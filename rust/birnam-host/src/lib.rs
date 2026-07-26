@@ -1293,6 +1293,20 @@ pub struct ProjectResolutionObservation {
     pub modules: Vec<ProjectSourceObservation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectCompileDiagnostic {
+    pub module: String,
+    pub path: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectCheckResult {
+    pub resolution: ProjectResolutionObservation,
+    pub resolution_digest: String,
+    pub diagnostics: Vec<ProjectCompileDiagnostic>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectSnapshotError {
     MissingVector,
@@ -1361,6 +1375,38 @@ pub enum ProjectObservationBuildError {
     Observation(ProjectObservationError),
     MissingMain(PathBuf),
     DependencyCycle(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectCheckError {
+    Observation(ProjectObservationBuildError),
+    Snapshot(ProjectSnapshotError),
+    Policy(ProjectPolicyError),
+    Resolution(ProjectManifestDecodeError),
+    ManifestRead { path: PathBuf, kind: io::ErrorKind },
+    TempDirectory { kind: io::ErrorKind },
+}
+
+struct CheckTempDirectory(PathBuf);
+
+impl Drop for CheckTempDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn create_check_temp_directory() -> Result<CheckTempDirectory, io::ErrorKind> {
+    let base = env::temp_dir();
+    let process = std::process::id();
+    for attempt in 0..128u32 {
+        let path = base.join(format!("birnam-check-{process}-{attempt}"));
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(CheckTempDirectory(path)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.kind()),
+        }
+    }
+    Err(io::ErrorKind::AlreadyExists)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2841,6 +2887,90 @@ impl HostRuntime {
         Ok(ProjectSnapshot {
             root: root.to_string_lossy().into_owned(),
             projects,
+        })
+    }
+
+    /// Run the compile-only project check over a policy-selected resolution.
+    /// Each module is compiled into a private temporary directory; no output
+    /// is activated or published, and compiler failures are returned as owned
+    /// diagnostics rather than crossing the host boundary as live Oops.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for all observation, policy, and Codegen sends.
+    pub unsafe fn check_project(
+        &self,
+        start: &Path,
+    ) -> Result<ProjectCheckResult, ProjectCheckError> {
+        let snapshot = unsafe { self.observe_project_snapshot(start) }
+            .map_err(ProjectCheckError::Observation)?;
+        let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
+            .map_err(ProjectCheckError::Snapshot)?;
+        let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
+            .map_err(ProjectCheckError::Policy)?;
+        let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
+            .map_err(ProjectCheckError::Resolution)?;
+        let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
+            ProjectCheckError::ManifestRead {
+                path: PathBuf::from(&resolution.manifest),
+                kind: error.kind(),
+            }
+        })?;
+        let resolution_digest =
+            project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let temporary = create_check_temp_directory()
+            .map_err(|kind| ProjectCheckError::TempDirectory { kind })?;
+        let api = self.stack.api();
+        let compile_selector = unsafe { (api.intern)(c"compile:output:root:".as_ptr()) };
+        let last_error_selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
+        let mut diagnostics = Vec::new();
+        for (index, module) in resolution.modules.iter().enumerate() {
+            let output = temporary.0.join(format!("module-{index}.dylib"));
+            let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+            let output_bytes = path_bytes(&output);
+            let output = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+            let root_bytes = module.project_root.as_bytes();
+            let root = unsafe { (api.mkString)(root_bytes.as_ptr(), root_bytes.len()) };
+            let result = unsafe {
+                (api.send)(
+                    self.codegen,
+                    compile_selector,
+                    [source, output, root].as_ptr(),
+                    3,
+                )
+            };
+            if result == api.nilObj || send_is_error(api, result) {
+                let detail_value =
+                    unsafe { (api.send)(self.codegen, last_error_selector, std::ptr::null(), 0) };
+                let detail = if detail_value != api.nilObj
+                    && unsafe { (api.vtableOf)(detail_value) } == api.string_vt
+                {
+                    let mut length = 0usize;
+                    let bytes = unsafe { (api.stringBytes)(detail_value, &mut length) };
+                    if bytes.is_null() {
+                        "compiler did not provide a diagnostic".to_owned()
+                    } else {
+                        String::from_utf8_lossy(unsafe {
+                            std::slice::from_raw_parts(bytes, length)
+                        })
+                        .into_owned()
+                    }
+                } else {
+                    "compiler did not provide a diagnostic".to_owned()
+                };
+                diagnostics.push(ProjectCompileDiagnostic {
+                    module: module.name.clone(),
+                    path: module.path.clone(),
+                    detail,
+                });
+            }
+        }
+        drop(temporary);
+        Ok(ProjectCheckResult {
+            resolution,
+            resolution_digest,
+            diagnostics,
         })
     }
 

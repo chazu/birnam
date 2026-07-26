@@ -3103,6 +3103,20 @@ allowances.
 - Rust-host formatting, check, 45-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.57 Rust host compile-only check checkpoint (2026-07-26)
+
+- `HostRuntime::check_project` now runs the frozen Codegen
+  `compile:output:root:` selector for each policy-selected module in a
+  process-private temporary directory, copies `lastError` diagnostics, and
+  removes the directory through an RAII cleanup boundary. It never evaluates,
+  loads, activates, or publishes a compiled artifact.
+- The experimental `check` command now reports the existing human/JSON
+  `birnam-check-v1` shape with real compile diagnostics and resolution digest.
+  Diagnostic formatting stays deliberately minimal until the exact Zig
+  line/column parser is ported; compile success/failure is no longer a stub.
+- Rust-host formatting, check, 45-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
