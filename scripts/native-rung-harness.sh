@@ -24,6 +24,7 @@ run_selected_artifact() {
   TMPDIR="$root/tmp" zig build test-artifact test-native-rung-singleton \
     -Dartifact-inspector-impl=zig \
     -Doptimize="$optimize" \
+    -j1 \
     --prefix "$root/prefix" \
     --cache-dir "$root/cache" \
     --global-cache-dir "$root/global-cache"
@@ -35,6 +36,7 @@ run_all_migrated() {
   TMPDIR="$root/tmp" zig build test-install \
     -Dartifact-inspector-impl=zig \
     -Doptimize="$optimize" \
+    -j1 \
     --prefix "$root/prefix" \
     --cache-dir "$root/cache" \
     --global-cache-dir "$root/global-cache"

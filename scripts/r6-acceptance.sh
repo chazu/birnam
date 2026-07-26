@@ -84,8 +84,8 @@ readonly expected_rust_image_rejection_tests=1
 # Rust is now the canonical host. Its explicit installed Zig oracle is a
 # required rollback/compatibility artifact, adding one deterministic install
 # step to both the focused replacement graph and complete verify graph.
-readonly expected_focused_steps=170
-readonly expected_verify_steps=295
+readonly expected_focused_steps=171
+readonly expected_verify_steps=296
 readonly expected_verify_tests=512
 readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
@@ -423,7 +423,7 @@ verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
 trap 'rm -f "$functional" "$live" "$verify"' EXIT
 
 set +e
-zig build verify "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe --summary all >"$verify" 2>&1
+zig build verify "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$verify" 2>&1
 verify_status=$?
 set -e
 cat "$verify"

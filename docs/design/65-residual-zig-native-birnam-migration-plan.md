@@ -294,8 +294,8 @@ C1.5/C1.6 publication probe (2026-07-26):
   `Codegen eval:` call, and `Reflect nameOf:` behavior.
 - The ordinary Rust fixture remains fail-closed and keeps the canonical names
   absent unless this explicit gate is present. The focused matrix is now
-  `97/97` tests (`170/170` steps); the optimized verify pin advances to
-  `512/514` with six explicit skips.
+  `97/97` tests (`171/171` steps); the optimized verify pin advances to
+  `512/514` with six explicit skips (`296/296` steps).
 
 ### C1.6 Exact parity and opt-in enablement
 
