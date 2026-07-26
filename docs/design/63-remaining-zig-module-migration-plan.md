@@ -2876,6 +2876,19 @@ allowances.
 - The focused host suite remains green at thirty-seven tests with warnings
   denied; project command execution and source/CST indexing remain pending.
 
+### R7.39 Rust host check-root wiring checkpoint (2026-07-26)
+
+- The experimental `check` command now composes pure argument parsing with
+  nearest-project discovery. Help and malformed options remain runtime-free;
+  a valid directory locates the canonical project root before stopping at the
+  explicit observation/indexing boundary.
+- This first project command does not parse the manifest, scan source, or load
+  a floor. It proves the filesystem seam is reachable without weakening the
+  rule that TOML and Codegen observations remain delegated to their existing
+  authorities.
+- The thirty-seven-test host suite, clippy, and check help/root smoke checks
+  pass. Build/install/run/test remain behind the same explicit boundary.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

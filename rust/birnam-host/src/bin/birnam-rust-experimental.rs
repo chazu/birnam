@@ -5,9 +5,9 @@ use std::process::ExitCode;
 
 use birnam_host::{
     CommandKind, ImageLoadOutcome, ParseOutcome, bake_executable, baked_image, classify_command,
-    eval_script, load_image, parse_bake_args, parse_build_args, parse_check_args,
-    parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args,
-    start_from_environment,
+    eval_script, load_image, nearest_project_root, parse_bake_args, parse_build_args,
+    parse_check_args, parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args,
+    parse_worker_args, start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -65,6 +65,24 @@ fn project_command(args: &[OsString], command: &str) -> Result<(), String> {
         Err(format!(
             "{command} is not implemented by the experimental host"
         ))
+    }
+}
+
+fn check_command(args: &[OsString]) -> Result<(), String> {
+    let outcome = parse_check_args(&args[1..]).map_err(|error| format!("check: {error:?}"))?;
+    match outcome {
+        ParseOutcome::Help => {
+            print!("{CHECK_USAGE}");
+            Ok(())
+        }
+        ParseOutcome::Parsed(options) => {
+            let root = nearest_project_root(&options.directory)
+                .map_err(|error| format!("check: {error:?}"))?;
+            Err(format!(
+                "check observation/indexing is not implemented by the experimental host (root: {})",
+                root.display()
+            ))
+        }
     }
 }
 
@@ -169,7 +187,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             unsafe { runtime.run_cli(&args) }.map_err(|error| format!("cli: {error:?}"))
         }
-        CommandKind::Check => project_command(&args, "check"),
+        CommandKind::Check => check_command(&args),
         CommandKind::Build => project_command(&args, "build"),
         CommandKind::Install => project_command(&args, "install"),
         CommandKind::Run => project_command(&args, "run"),
