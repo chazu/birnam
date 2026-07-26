@@ -3918,3 +3918,18 @@ explicitly so the recovery surface cannot silently shrink.
   successfully. The comparator remains fail-closed with zero missing or
   unusable cases and exactly the two pre-existing accepted crossings:
   `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
+### R6.48 Clean R6 acceptance after host preflight repair (2026-07-26)
+
+- Rust host descriptor and floor preflight now preserve the exact target/ABI and
+  missing-floor diagnostics even when the later Codegen dylib is unavailable.
+  The relocated install-smoke therefore completes all `118/118` nested steps;
+  the prior `collection.zig:336:29` fixture crash is no longer present.
+- The focused Rust replacement invocation passes cleanly at `166/166` steps and
+  `91/91` tests. Optimized `verify` passes at `290/290` steps with `506/512`
+  tests passed and six explicitly skipped tests; project, relocation, LSP, and
+  release legs remain green.
+- R6 now fails closed on any non-zero focused or verify status and pins these
+  clean summaries directly. The comparator remains unchanged and fail-closed:
+  zero missing or unusable cases, with only `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` accepted.

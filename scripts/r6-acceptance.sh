@@ -6,9 +6,9 @@
 # latest Rust-Lang replacement gates pass, that the committed, noise-qualified
 # Zig/Rust pair is unchanged, and that its only threshold crossings are the
 # two tradeoffs accepted for the Rust-floor cutover. The focused native-rung
-# harness and complete verify each admit only the same exact, separately
-# recorded pre-existing fixture crash. Any changed result, functional failure,
-# or additional regression fails closed.
+# harness and complete verify must now complete without the previously
+# recorded fixture crash. Any changed result, functional failure, or additional
+# regression fails closed.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -75,6 +75,10 @@ readonly expected_rust_image_cross_floor_tests=1
 readonly expected_rust_image_cross_floor_reverse_tests=1
 readonly expected_rust_image_zig_store_tests=1
 readonly expected_rust_image_rejection_tests=1
+readonly expected_focused_steps=166
+readonly expected_verify_steps=290
+readonly expected_verify_tests=506
+readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
@@ -88,37 +92,14 @@ functional_status=$?
 set -e
 cat "$functional"
 if [ "$functional_status" -ne 0 ]; then
-  # The clean native-rung harness can reproduce the same deterministic
-  # sortedModules fixture crash as optimized verify: install-smoke reaches
-  # collection.vSortBy at collection.zig:336:29 after all Rust replacement
-  # tests have passed. Accept only this exact focused signature; any changed
-  # command, stack location, nested summary, focused summary, or extra failure
-  # remains fail-closed.
-  known_functional_markers=(
-    "Segmentation fault at address"
-    "/src/id/collection.zig:336:29:"
-    "scripts/install-smoke.sh: line 92:"
-    "test-install"
-    "Build Summary: 116/118 steps succeeded; 1 failed"
-    "test-install transitive failure"
-    "test-native-rung-harness transitive failure"
-    "Build Summary: 164/166 steps succeeded; 1 failed; ${expected_focused_tests}/${expected_focused_tests} tests passed"
-  )
-  for marker in "${known_functional_markers[@]}"; do
-    marker_count=$(grep -F -c -- "$marker" "$functional" || true)
-    [ "$marker_count" -ge 1 ] || {
-      echo "r6-acceptance: latest Rust-Lang functional gates failed outside the recorded native-rung fixture exception" >&2
-      echo "  missing marker: $marker" >&2
-      exit 1
-    }
-  done
-  echo "r6-acceptance: accepted the recorded native-rung sortedModules fixture crash; all focused tests passed" >&2
+  echo "r6-acceptance: latest Rust-Lang functional gates failed" >&2
+  exit 1
 fi
 
 # Pin the lifecycle boundary to the current accepted test set. A target that
 # accidentally discovers fewer tests or reports a duplicated/partial target
 # must not silently keep R6 green.
-focused_test_summary_count=$(grep -Ec "^Build Summary: [0-9]+/[0-9]+ steps succeeded;( [0-9]+ failed;)? ${expected_focused_tests}/${expected_focused_tests} tests passed$" "$functional" || true)
+focused_test_summary_count=$(grep -Fc "Build Summary: ${expected_focused_steps}/${expected_focused_steps} steps succeeded; ${expected_focused_tests}/${expected_focused_tests} tests passed" "$functional" || true)
 [ "$focused_test_summary_count" -eq 1 ] || {
   echo "r6-acceptance: focused Rust replacement set no longer reports exactly ${expected_focused_tests}/${expected_focused_tests} passing tests" >&2
   exit 1
@@ -438,38 +419,14 @@ verify_status=$?
 set -e
 cat "$verify"
 [ "$verify_status" -eq 0 ] || {
-  # The current cross-layer closure has two deterministic failures outside the
-  # Rust replacement boundary: the relocated install-smoke docgen path reaches
-  # collection.vSortBy and crashes once through the native-rung harness and
-  # once through the direct verify install step. Keep this exception exact:
-  # both crash reports, the install-smoke command count, the source stack,
-  # nested and final summaries, and the transitive-failure marker must match.
-  # Any changed or additional failure still fails the gate.
-  known_verify_markers=(
-    "Segmentation fault at address"
-    "/src/id/collection.zig:336:29:"
-    "scripts/install-smoke.sh: line 92:"
-    "error: the following command exited with error code 134:"
-    "Build Summary: 116/118 steps succeeded; 1 failed"
-    "test-install transitive failure"
-    "Build Summary: 286/290 steps succeeded; 2 failed; 506/512 tests passed; 6 skipped"
-    "verify transitive failure"
-  )
-  for marker in "${known_verify_markers[@]}"; do
-    marker_count=$(grep -F -c -- "$marker" "$verify" || true)
-    expected_marker_count=1
-    case "$marker" in
-      "Segmentation fault at address"|"scripts/install-smoke.sh: line 92:"|"error: the following command exited with error code 134:")
-        expected_marker_count=2
-        ;;
-    esac
-    [ "$marker_count" -eq "$expected_marker_count" ] || {
-      echo "r6-acceptance: optimized cross-layer verify failed outside the recorded fixture exception" >&2
-      echo "  missing or repeated marker: $marker (expected=$expected_marker_count count=$marker_count)" >&2
-      exit 1
-    }
-  done
-  echo "r6-acceptance: accepted the two recorded install-smoke sortedModules fixture crashes; all other optimized verify steps passed" >&2
+  echo "r6-acceptance: optimized cross-layer verify failed" >&2
+  exit 1
+}
+
+verify_summary_count=$(grep -Fc "Build Summary: ${expected_verify_steps}/${expected_verify_steps} steps succeeded; ${expected_verify_tests}/512 tests passed; ${expected_verify_skipped} skipped" "$verify" || true)
+[ "$verify_summary_count" -eq 1 ] || {
+  echo "r6-acceptance: optimized verify no longer reports the accepted ${expected_verify_steps}/${expected_verify_steps}, ${expected_verify_tests}/512, ${expected_verify_skipped}-skipped snapshot" >&2
+  exit 1
 }
 
 zig_result="bench/results/v0.11.0-zig-2fe44d2-c8b632e8882358672a0de5a24897a735c09af2f080cb1aea55510e021fc3d6b1.json"
