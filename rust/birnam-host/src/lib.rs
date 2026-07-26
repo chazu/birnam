@@ -5676,8 +5676,15 @@ impl HostRuntime {
         let project = if let Some(project) = unsafe { global_named(api, "Project") } {
             project
         } else {
-            let object =
-                unsafe { global_named(api, "Object") }.ok_or(ProjectBridgeError::MissingObject)?;
+            let object = {
+                let imported = unsafe { (api.import)(c"Object".as_ptr()) };
+                if imported != api.nilObj {
+                    imported
+                } else {
+                    unsafe { global_named(api, "Object") }
+                        .ok_or(ProjectBridgeError::MissingObject)?
+                }
+            };
             let selector = unsafe { (api.intern)(c"clone".as_ptr()) };
             let project = unsafe { (api.send)(object, selector, std::ptr::null(), 0) };
             if project == api.nilObj || send_is_error(api, project) {
@@ -5699,12 +5706,14 @@ impl HostRuntime {
         if exported == api.nilObj {
             return Err(ProjectBridgeError::GlobalRejected);
         }
-        let globals =
-            unsafe { global_named(api, "Globals") }.ok_or(ProjectBridgeError::GlobalRejected)?;
+        let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+        if globals == api.nilObj {
+            return Err(ProjectBridgeError::GlobalRejected);
+        }
         let put_selector = unsafe { (api.intern)(c"at:put:".as_ptr()) };
         let name = unsafe { (api.intern)(c"Project".as_ptr()) };
         let result = unsafe { (api.send)(globals, put_selector, [name, project].as_ptr(), 2) };
-        if result == api.nilObj || send_is_error(api, result) {
+        if send_is_error(api, result) {
             return Err(ProjectBridgeError::GlobalRejected);
         }
         PROJECT_BRIDGE_RUNTIME.store(

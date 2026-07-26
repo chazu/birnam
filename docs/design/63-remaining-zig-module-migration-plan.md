@@ -3454,6 +3454,18 @@ allowances.
   fails closed at the expected missing installed floor, and R6 remains
   accepted at `91/91`.
 
+### R7.86 Rust host live LSP protocol checkpoint (2026-07-26)
+
+- The bridge now resolves core `Object` and `Globals` through the frozen IdApi
+  import table, matching the canonical host bootstrap instead of assuming both
+  are ordinary `Globals` entries.
+- With the installed Debug floor and compiled runtime modules selected through
+  `BIRNAM_LIB_DIR`/`BIRNAM_ID_DYLIB`, Rust `--lsp` completed a real framed
+  `initialize` → `shutdown` → `exit` exchange. It returned the expected
+  capabilities JSON, stayed protocol-clean on stdout, and exited zero. The
+  uninstalled-checkout probe still fails closed before startup at the missing
+  floor. Focused host tests/clippy and R6 remain green at 55 and `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
