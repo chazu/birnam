@@ -3304,6 +3304,16 @@ allowances.
 - Rust-host formatting, check, 52-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.72 Rust host build CLI smoke checkpoint (2026-07-26)
+
+- `birnam-rust-experimental build --help` is resource-free and exposes the
+  Rust build grammar. A direct uninstalled-checkout `build .` reaches startup
+  and fails closed on the expected missing installed
+  `target/lib/libbirnam_id.dylib`; no cwd/checkout fallback was added.
+- The canonical build path therefore remains install-layout-bound while the
+  Rust implementation grows behind its explicit executable. R6 remains
+  accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
