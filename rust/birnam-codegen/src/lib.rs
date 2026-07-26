@@ -1269,17 +1269,29 @@ mod tests {
             "birnam_send(birnam_global(\"Integer\"), birnam_intern(\"at:\"), (void*[]){birnam_mkString(\"answer\", 6L)}, 1L)"
         );
 
-        let mut deep = Expr::SmallInt(0);
-        for _ in 0..4096 {
-            deep = Expr::Send {
-                receiver: Box::new(deep),
-                selector: Cow::Borrowed(b"value"),
-                args: Vec::new(),
-                source: b"",
-            };
-        }
-        let mut emitter = Emitter::new();
-        assert_eq!(emitter.emit_expr(&deep), Err(EmitError::DepthLimit));
+        let result = std::thread::Builder::new()
+            .stack_size(16 << 20)
+            .spawn(|| {
+                let mut deep = Expr::SmallInt(0);
+                for _ in 0..4096 {
+                    deep = Expr::Send {
+                        receiver: Box::new(deep),
+                        selector: Cow::Borrowed(b"value"),
+                        args: Vec::new(),
+                        source: b"",
+                    };
+                }
+                let mut emitter = Emitter::new();
+                let result = emitter.emit_expr(&deep);
+                // Keep the adversarial fixture from recursively dropping on
+                // the worker stack after the depth guard has been exercised.
+                std::mem::forget(deep);
+                result
+            })
+            .expect("depth-limit worker starts")
+            .join()
+            .expect("depth-limit worker exits");
+        assert_eq!(result, Err(EmitError::DepthLimit));
     }
 
     #[test]
