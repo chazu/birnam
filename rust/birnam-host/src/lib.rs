@@ -1235,10 +1235,26 @@ pub struct HostRuntime {
     pub resources: Resources,
     pub stack: LoadedStack,
     pub isolate: IsolateHooks,
+    pub policy: StartupPolicy,
     pub self_hosted: Vec<LoadedSelfHostedModule>,
 }
 
 impl HostRuntime {
+    /// Establish the GC execution boundary used by every host operation. The
+    /// anchor must remain live until all synchronous sends/evaluations finish.
+    ///
+    /// # Safety
+    ///
+    /// The runtime must remain on the floor owner thread and `anchor` must stay
+    /// in scope while the evaluation boundary is active.
+    pub unsafe fn prepare_execution(&self, anchor: &mut usize) {
+        let api = self.stack.api();
+        unsafe { (api.gcSetStackBottom)(anchor as *mut usize as usize) };
+        if self.policy.precise_gc {
+            unsafe { (api.gcSetPrecise)(1) };
+        }
+    }
+
     /// Load one compiled host/runtime module through the Birnam Module
     /// manager. The manager owns its executable-relative path and dependency
     /// closure; Rust supplies only the requested identity.
@@ -1305,20 +1321,31 @@ impl HostRuntime {
 pub struct StartupPolicy {
     pub force_source: bool,
     pub skip_stdlib: bool,
+    pub precise_gc: bool,
 }
 
 impl StartupPolicy {
     pub const fn from_flags(force_source: bool, skip_stdlib: bool) -> Self {
+        Self::from_flags_with_precision(force_source, skip_stdlib, false)
+    }
+
+    pub const fn from_flags_with_precision(
+        force_source: bool,
+        skip_stdlib: bool,
+        precise_gc: bool,
+    ) -> Self {
         Self {
             force_source,
             skip_stdlib,
+            precise_gc,
         }
     }
 
     pub fn from_environment() -> Self {
-        Self::from_flags(
+        Self::from_flags_with_precision(
             env::var_os("BIRNAM_FORCE_SOURCE").is_some(),
             env::var_os("BIRNAM_NO_STDLIB").is_some(),
+            env::var_os("BIRNAM_GC_PRECISE").is_some(),
         )
     }
 }
@@ -1877,6 +1904,7 @@ pub unsafe fn start(
         resources,
         stack,
         isolate,
+        policy,
         self_hosted,
     })
 }
@@ -2404,6 +2432,7 @@ mod tests {
             StartupPolicy {
                 force_source: true,
                 skip_stdlib: false,
+                precise_gc: false,
             }
         );
         assert_eq!(
@@ -2411,8 +2440,10 @@ mod tests {
             StartupPolicy {
                 force_source: false,
                 skip_stdlib: true,
+                precise_gc: false,
             }
         );
+        assert!(StartupPolicy::from_flags_with_precision(false, false, true).precise_gc);
     }
 
     #[test]

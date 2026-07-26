@@ -2499,10 +2499,11 @@ allowances.
   bootstrap into one opt-in runtime object. Resource resolution remains an
   explicit caller-owned input, so diagnostics can finish before any dylib is
   opened.
-- Startup policy has two exact environment-derived flags: `BIRNAM_FORCE_SOURCE`
-  and `BIRNAM_NO_STDLIB`. The runtime does not set a GC stack bottom implicitly;
-  each owner-thread execution boundary must set its own live stack anchor, as
-  the existing Zig host does.
+- Startup policy preserves the exact environment-derived flags
+  `BIRNAM_FORCE_SOURCE`, `BIRNAM_NO_STDLIB`, and `BIRNAM_GC_PRECISE`. The
+  runtime does not set a GC stack bottom implicitly; each owner-thread
+  execution boundary must set its own live stack anchor, as the existing Zig
+  host does.
 - Fourteen offline Rust tests pass with warnings denied. This is still not a
   shipped executable: command dispatch, REPL/project/image/isolate paths,
   release rollback, and canonical-switch evidence remain before R7 closure.
@@ -2683,6 +2684,19 @@ allowances.
   running host.
 - Thirty-two offline Rust tests pass with warnings denied. REPL/CLI loops and
   project workflows remain later execution seams.
+
+### R7.25 Rust host GC-boundary checkpoint (2026-07-26)
+
+- `StartupPolicy` now preserves `BIRNAM_GC_PRECISE` alongside source/stdlib
+  policy. `HostRuntime::prepare_execution` is the sole Rust-host helper for
+  setting the GC stack bottom and enabling precise mode before a synchronous
+  operation.
+- The anchor is explicitly borrowed and must remain live on the owner thread;
+  startup never stores a stale stack address. This matches the existing Zig
+  host's per-entrypoint discipline and preserves conservative/precise GC
+  invariants.
+- Thirty-two offline Rust tests pass with warnings denied. The focused host
+  suite remains opt-in; no canonical executable switch has occurred.
 
 ## 12. Commit and review discipline
 
