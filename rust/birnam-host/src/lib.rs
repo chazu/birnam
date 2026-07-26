@@ -1283,6 +1283,16 @@ pub struct ProjectSnapshot {
     pub projects: Vec<ProjectObservation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectResolutionObservation {
+    pub project_root: String,
+    pub manifest: String,
+    pub project_name: String,
+    pub main: Option<String>,
+    pub load_roots: Vec<String>,
+    pub modules: Vec<ProjectSourceObservation>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectSnapshotError {
     MissingVector,
@@ -1835,6 +1845,22 @@ impl<'a> ProjectManifestDecoder<'a> {
         )
     }
 
+    unsafe fn bytes(
+        &self,
+        value: birnam_abi::Oop,
+        field: &'static str,
+    ) -> Result<Vec<u8>, ProjectManifestDecodeError> {
+        if value == self.api.nilObj || unsafe { (self.api.vtableOf)(value) } != self.api.string_vt {
+            return Err(ProjectManifestDecodeError::InvalidString(field));
+        }
+        let mut length = 0usize;
+        let bytes = unsafe { (self.api.stringBytes)(value, &mut length) };
+        if bytes.is_null() {
+            return Err(ProjectManifestDecodeError::InvalidString(field));
+        }
+        Ok(unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec())
+    }
+
     unsafe fn strings(
         &self,
         value: birnam_abi::Oop,
@@ -2180,6 +2206,95 @@ pub unsafe fn decode_project_manifest(
         run,
         wrapped,
         test_sources,
+    })
+}
+
+/// Decode the pointer-free resolution map returned by Birnam's
+/// `ProjectPolicy resolveSnapshot:` selector. The policy remains responsible
+/// for provider selection and ordering; this copies only its selected module
+/// records for the host's later compile/check boundary.
+///
+/// # Safety
+///
+/// `api` and `resolution` must belong to the same live runtime, and all Oops
+/// must remain valid for the duration of this synchronous decode.
+pub unsafe fn decode_project_resolution(
+    api: &IdApi,
+    resolution: birnam_abi::Oop,
+) -> Result<ProjectResolutionObservation, ProjectManifestDecodeError> {
+    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    if resolution == api.nilObj || unsafe { (api.vtableOf)(resolution) } != decoder.map_vt {
+        return Err(ProjectManifestDecodeError::NotMap);
+    }
+    let project_root =
+        unsafe { decoder.string(decoder.at(resolution, "projectRoot")?, "projectRoot")? };
+    let manifest = unsafe { decoder.string(decoder.at(resolution, "manifest")?, "manifest")? };
+    let project_name =
+        unsafe { decoder.string(decoder.at(resolution, "projectName")?, "projectName")? };
+    let main_value = unsafe { decoder.at(resolution, "main")? };
+    let main = if main_value == api.nilObj {
+        None
+    } else {
+        Some(unsafe { decoder.string(main_value, "main")? })
+    };
+    let load_roots =
+        unsafe { decoder.strings(decoder.at(resolution, "loadRoots")?, "loadRoots", false)? };
+    let modules_value = unsafe { decoder.at(resolution, "modules")? };
+    if modules_value == api.nilObj || unsafe { (api.vtableOf)(modules_value) } != decoder.vector_vt
+    {
+        return Err(ProjectManifestDecodeError::InvalidList("modules"));
+    }
+    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
+    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+    let size = unsafe { (api.send)(modules_value, size_selector, std::ptr::null(), 0) };
+    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
+        return Err(ProjectManifestDecodeError::InvalidList("modules"));
+    }
+    let mut modules = Vec::with_capacity(unsafe { (api.smallIntValue)(size) as usize });
+    for index in 0..unsafe { (api.smallIntValue)(size) } {
+        let item = unsafe {
+            (api.send)(
+                modules_value,
+                at_selector,
+                [(api.mkSmallInt)(index)].as_ptr(),
+                1,
+            )
+        };
+        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
+            return Err(ProjectManifestDecodeError::InvalidMap("module"));
+        }
+        let name = unsafe { decoder.string(decoder.at(item, "name")?, "module.name")? };
+        let path = unsafe { decoder.string(decoder.at(item, "path")?, "module.path")? };
+        let sources =
+            unsafe { decoder.strings(decoder.at(item, "sources")?, "module.sources", false)? };
+        let project_root =
+            unsafe { decoder.string(decoder.at(item, "projectRoot")?, "module.projectRoot")? };
+        let source = unsafe { decoder.bytes(decoder.at(item, "source")?, "module.source")? };
+        let requires =
+            unsafe { decoder.strings(decoder.at(item, "requires")?, "module.requires", false)? };
+        let source_digest =
+            unsafe { decoder.string(decoder.at(item, "sourceDigest")?, "module.sourceDigest")? };
+        let revision_digest = unsafe {
+            decoder.string(decoder.at(item, "revisionDigest")?, "module.revisionDigest")?
+        };
+        modules.push(ProjectSourceObservation {
+            name,
+            path,
+            sources,
+            project_root,
+            source,
+            requires,
+            source_digest,
+            revision_digest,
+        });
+    }
+    Ok(ProjectResolutionObservation {
+        project_root,
+        manifest,
+        project_name,
+        main,
+        load_roots,
+        modules,
     })
 }
 

@@ -3067,6 +3067,19 @@ allowances.
   clippy pass. R6 remains accepted at focused `91/91` with the two existing
   benchmark allowances.
 
+### R7.54 Rust host policy-resolution decoder checkpoint (2026-07-26)
+
+- `decode_project_resolution` now copies the Birnam policy result into owned
+  Rust records, including exact source bytes, selected module paths, ordered
+  `requires`, project roots, manifest, main, and load roots. Invalid map/vector
+  shapes remain typed adapter failures.
+- The decoder is deliberately downstream of `ProjectPolicy`: it performs no
+  provider lookup, dependency traversal, or module reordering. It prepares the
+  next check/compile boundary while preserving the source metadata needed by
+  the existing Codegen compile protocol.
+- The Rust host check, 44-test suite, formatting, and warnings-denied clippy
+  pass. R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
