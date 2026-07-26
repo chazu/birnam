@@ -2507,3 +2507,15 @@ explicitly so the recovery surface cannot silently shrink.
   Rust Image shell `2/2`, mapped Image Codegen `1/1`, Rust Codegen runtime
   `26/26`, with only `query.aggregate +5.8%` and `compile.stage1-stdlib
   +11.9%` accepted.
+
+### R6.32 Zig-writer/Rust-reader cross-floor checkpoint (2026-07-25)
+
+- The first cross-floor Image matrix cell is executable: Zig Image publishes a
+  compatible v4 data-only image while Rust Store and Rust Codegen remain the
+  live authorities; the Rust Image reader is then reloaded in the same clean
+  process and restores the fact after an intervening retraction.
+- The data-only result correctly answers `false` (there is no mapped code unit),
+  while the authority digest, record framing, Store replacement, and v4 fact
+  decoding all succeed. The new isolated target is pinned at `1/1` and the
+  focused R6 aggregate advances to `85/85`; the existing Image shell remains
+  `2/2` and mapped Image Codegen remains `1/1`.

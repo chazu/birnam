@@ -38,6 +38,7 @@ latest_tests=(
   test-rust-ffi-abort
   test-rust-image-shell
   test-rust-image-codegen
+  test-rust-image-cross-floor
   test-rust-image-save
   test-rust-prelude
   test-rust-prelude-rust-error
@@ -49,12 +50,14 @@ latest_tests=(
   test-rust-collection
   test-rust-error
 )
-# Accepted on 2026-07-25 after the Rust Image-to-Rust Codegen mapped-unit proof:
-# the focused matrix is 84 tests; the mixed dynamic Rust Image shell remains 2
-# passing tests, and the mapped-unit proof runs as one isolated test process.
+# Accepted on 2026-07-25 after the Rust Image-to-Rust Codegen mapped-unit proof
+# and the first Zig-writer/Rust-reader cross-floor proof: the focused matrix is
+# 85 tests; the mixed dynamic Rust Image shell remains 2 passing tests, and
+# each isolated Image proof runs as one test process.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=84
+readonly expected_focused_tests=85
 readonly expected_rust_image_shell_tests=2
+readonly expected_rust_image_cross_floor_tests=1
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
@@ -165,6 +168,20 @@ seen && /^[^ ]/ { exit }
 ' "$functional" | grep -Ec '^\+- run test 1 passed ' || true)
 [ "$rust_image_codegen_test_count" -eq 1 ] || {
   echo "r6-acceptance: isolated Rust Image-to-Rust Codegen target no longer has one passing test" >&2
+  exit 1
+}
+rust_image_cross_floor_success_count=$(grep -Fc 'test-rust-image-cross-floor success' "$functional" || true)
+[ "$rust_image_cross_floor_success_count" -eq 1 ] || {
+  echo "r6-acceptance: Zig Image-to-Rust Image cross-floor target was not executed" >&2
+  exit 1
+}
+rust_image_cross_floor_test_count=$(awk '
+/^test-rust-image-cross-floor success$/ { seen=1; next }
+seen && /^\+- run test / { print; exit }
+seen && /^[^ ]/ { exit }
+' "$functional" | grep -Ec "^\\+- run test ${expected_rust_image_cross_floor_tests} passed " || true)
+[ "$rust_image_cross_floor_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Zig Image-to-Rust Image cross-floor target no longer has ${expected_rust_image_cross_floor_tests} passing test" >&2
   exit 1
 }
 rust_image_save_success_count=$(grep -Fc 'test-rust-image-save success' "$functional" || true)

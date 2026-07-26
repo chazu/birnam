@@ -1751,6 +1751,45 @@ pub fn build(b: *std.Build) void {
     test_rust_image_codegen_step.dependOn(&run_rust_image_codegen.step);
     test_step.dependOn(&run_rust_image_codegen.step);
 
+    const rust_image_cross_floor_tests = b.addTest(.{
+        .root_module = rust_image_shell_mod,
+        .filters = &.{"Rust Image reads a Zig-authored v4 data image"},
+    });
+    rust_image_cross_floor_tests.rdynamic = true;
+    rust_image_cross_floor_tests.linkLibC();
+    rust_image_cross_floor_tests.linkLibrary(libtcc_lib);
+    const run_rust_image_cross_floor = b.addRunArtifact(rust_image_cross_floor_tests);
+    run_rust_image_cross_floor.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_image_cross_floor.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_image_cross_floor.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_image_cross_floor.setEnvironmentVariable(
+        "BIRNAM_RUST_IMAGE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_image_rust.dylib"),
+    );
+    run_rust_image_cross_floor.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_image_cross_floor.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_image_cross_floor.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_image_cross_floor.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_image_cross_floor.step.dependOn(bootstrap_install);
+    const test_rust_image_cross_floor_step = b.step(
+        "test-rust-image-cross-floor",
+        "Run the Zig Image writer to Rust Image reader cross-floor proof",
+    );
+    test_rust_image_cross_floor_step.dependOn(&run_rust_image_cross_floor.step);
+    test_step.dependOn(&run_rust_image_cross_floor.step);
+
     const rust_tcc_image_mod = b.createModule(.{
         .root_source_file = b.path("src/id/image_test.zig"),
         .target = target,

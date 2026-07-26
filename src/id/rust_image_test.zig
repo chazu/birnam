@@ -12,6 +12,7 @@ const artifact_inspector = @import("artifact_inspector.zig");
 const collection = @import("collection.zig");
 const codegen = @import("codegen.zig");
 const err_mod = @import("error.zig");
+const zig_image = @import("image.zig");
 const lang = @import("lang.zig");
 const peg = @import("peg.zig");
 const prelude = @import("prelude.zig");
@@ -573,4 +574,40 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     );
     try std.testing.expect(api.isSmallInt(rebuilt_fact) != 0);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(rebuilt_fact));
+}
+
+test "Rust Image reads a Zig-authored v4 data image" {
+    const api = setupWithRustCodegen();
+    const runtime_store = api.import("Store") orelse return error.StoreMissing;
+    const system = api.import("System") orelse return error.SystemMissing;
+    const entity = api.intern("rust_image_cross_floor_entity");
+    const attribute = api.intern("rust_image_cross_floor_attribute");
+    const value = api.mkSmallInt(707);
+    _ = send(api, runtime_store, "assert:attr:value:", &.{ entity, attribute, value });
+    defer _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+    const directory = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(directory);
+    const image_path = try std.fs.path.join(allocator, &.{ directory, "zig-writer.image" });
+    defer allocator.free(image_path);
+
+    // Install the Zig orchestration only for publication. Rust Store and Rust
+    // Codegen remain the live authorities, so this isolates the Image writer
+    // half of the cross-floor matrix.
+    zig_image.bringUp(api);
+    try std.testing.expect(send(api, system, "saveImage:", &.{str(api, image_path)}) == system);
+    try std.testing.expectEqual(api.intern("saved"), send(api, send(api, system, "imageSaveReport", &.{}), "status", &.{}));
+
+    _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+    loadImageModule(api);
+
+    // A data-only v4 image is accepted by Rust Image and answers false because
+    // there is no mapped code unit. The fact must still be restored wholesale.
+    try std.testing.expect(send(api, system, "loadImage:", &.{str(api, image_path)}) == api.falseObj);
+    const recovered = send(api, runtime_store, "currentValue:attr:", &.{ entity, attribute });
+    try std.testing.expect(api.isSmallInt(recovered) != 0);
+    try std.testing.expectEqual(@as(i64, 707), api.smallIntValue(recovered));
 }
