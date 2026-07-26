@@ -3610,6 +3610,19 @@ allowances.
   Rust-floor execution, and Zig-floor rollback execution; no checkout, cwd,
   or removed compatibility fixture was consulted as a runtime input.
 
+### R7.97 Rust host canonical-switch checkpoint (2026-07-26)
+
+- The default `-Dhost-impl` is now Rust. The installed `bin/birnam` is the
+  Rust host, while the Zig executable is always published as the explicit
+  `bin/birnam-zig-oracle`; no implicit second host or fallback search was
+  introduced. The Rust help contract names the canonical host and its rollback
+  oracle directly.
+- Post-switch focused project/check, LSP, Store-stack, source-fallback, and
+  image-save smokes pass. Full optimized `zig build verify` passes at
+  `291/291` steps with `506/512` tests and six explicit skips. The canonical
+  switch is one focused commit (`35af4ea`); the Zig oracle remains available for
+  rollback and frozen-image compatibility during the observation window.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
@@ -4027,3 +4040,16 @@ explicitly so the recovery surface cannot silently shrink.
   exactly the two accepted crossings: `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`. No benchmark allowance, fixture exception,
   ABI contract, or dynamic-library boundary changed.
+
+### R6.50 R6 acceptance after canonical Rust-host switch (2026-07-26)
+
+- The first post-switch `BIRNAM_R6_ISOLATE_IMPL=rust mise run
+  r6-acceptance` passes with the updated lifecycle pins: focused `167/167`
+  steps and `91/91` tests, Rust Alien live `63/63` steps and `9/9` tests, and
+  optimized verify `291/291` steps with `506/512` tests and six explicit skips.
+  The one-step increase is the required installed `birnam-zig-oracle` rollback
+  artifact, not a new test or relaxed behavior.
+- The comparator remains fail-closed with zero missing or unusable cases and
+  exactly `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`; no
+  benchmark allowance, fixture exception, ABI, image, or dynamic-library
+  boundary changed.
