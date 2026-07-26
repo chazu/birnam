@@ -8,6 +8,8 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 # explicitly while the canonical `BIRNAM_BIN` remains the Rust host.
 target_dir=${BIRNAM_RUST_ID_TARGET_DIR:-$repo/.cargo-target/rust-id-abi-fixture}
 bin=${BIRNAM_ID_FIXTURE_BIN:-${BIRNAM_BIN:-$repo/zig-out/bin/birnam}}
+bin_root=$(cd "$(dirname "$bin")/.." && pwd)
+lib_dir=${BIRNAM_LIB_DIR:-$bin_root/lib}
 
 probe_profile() {
   local profile=$1
@@ -20,6 +22,7 @@ probe_profile() {
   local digest
   digest=$(shasum -a 256 "$dylib" | awk '{print $1}')
   BIRNAM_BIN="$bin" \
+    BIRNAM_IMAGE_DYLIB="${BIRNAM_IMAGE_DYLIB:-$lib_dir/libbirnam_id_image_zig.dylib}" \
     BIRNAM_ID_DYLIB="$dylib" \
     BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 \
     BIRNAM_ID_FLOOR_SHA256="$digest" \
