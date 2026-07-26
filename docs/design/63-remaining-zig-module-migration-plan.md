@@ -2607,3 +2607,22 @@ explicitly so the recovery surface cannot silently shrink.
   Rust Alien live `9/9`. Optimized verify/install/harness remained green, with
   only the accepted snapshot allowances `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`.
+
+### R6.39 Rust Image rejected-save no-overwrite checkpoint (2026-07-26)
+
+- The durable-generation bootstrap proof now pre-creates a sentinel target and
+  confirms that a rejected Rust Image save leaves the existing bytes unchanged.
+  This pins the no-partial-activation boundary independently of the absent
+  publication authority: the report remains `rejected`, code capture may still
+  be observed as one unit, and no failed preflight can truncate or replace the
+  prior image.
+- An explicit publication experiment was kept out of the gate. The live
+  bootstrap fixture currently contains 146 unsupported Store facts, so admitting
+  publication there would weaken the all-facts-admissible invariant. The next
+  writer slice must first reduce that rejection set through supported vtable,
+  slot, or registered-recovery work; it must not bypass the preflight.
+- The focused matrix remains `87/87`; Rust Image shell `2/2`, mapped
+  Image-to-Codegen `1/1`, durable-generation bootstrap `1/1`, cross-floor `1/1`,
+  rejection `1/1`, and Rust Alien live `9/9` all pass. A fresh full R6 run also
+  passed optimized verify/install/harness with only the accepted snapshot
+  crossings `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
