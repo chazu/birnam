@@ -326,6 +326,30 @@ Implementation checkpoints (2026-07-24):
    Alien struct conversion, image save/load, and project builds after that
    commit; the Zig collection remains the rollback fixture.
 
+### R1.5 Rust Collection canonical switch and post-switch observation (2026-07-26)
+
+- `9198944` makes Rust Collection the default canonical owner of
+  `libbirnam_id_collection.dylib`; the Zig implementation remains installed as
+  `libbirnam_id_collection_zig.dylib` and selectable with
+  `-Dcollection-impl=zig` for rollback.
+- The canonical switch exposed two Zig/Rust parity gaps in the shipped
+  self-hosted path. `de42db8` added the missing stable `sortBy:` protocol used
+  by `modules/doc.birnam`; `2122a71` matched the Zig contract for a non-String
+  `String>>split:` separator (`#[self]`). The Rust integration corpus now
+  exercises both behaviors, including descending keyed order and identity of
+  the returned string.
+- The post-switch observation passes the complete
+  `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` gate: focused `167/167`
+  steps and `91/91` tests, Rust Alien live `63/63` steps and `9/9` tests, and
+  optimized verify `291/291` steps with `506/512` tests and six explicit
+  skips. Relocated install-smoke and the `343/343` self-hosted suite pass with
+  Rust Collection canonical.
+- The benchmark comparator remains fail-closed with zero missing or unusable
+  cases and exactly the two accepted crossings, `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`. No ABI, image, GC-layout, MOP, or dynamic
+  library boundary was changed; the explicit Zig artifact is the rollback
+  seam.
+
 **R1 exit gate:** `CollectionVt`, `Vector`, `VectorNode`, `Range`, `Map`,
 `MapNode`, `StringBuilder`, Object/nil methods, Integer `to:`, every retained
 native String/Vector/Map selector, all exports and mixed layouts pass the
