@@ -385,6 +385,10 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     const sentinel_value = api.mkSmallInt(33);
     _ = send(api, runtime_store, "assert:attr:value:", &.{ sentinel_entity, sentinel_attribute, sentinel_value });
     defer _ = send(api, runtime_store, "retract:attr:value:", &.{ sentinel_entity, sentinel_attribute, sentinel_value });
+    const heap_layout = [_]u8{idapi.slot_raw};
+    const heap_vt = api.proto(api.object_vt);
+    api.setLayout(heap_vt, &heap_layout, heap_layout.len, idapi.slot_raw);
+    _ = api.exportObj("RustImageHeapVt", heap_vt);
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -441,12 +445,24 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
 
     var facts_payload: std.ArrayList(u8) = .{};
     defer facts_payload.deinit(allocator);
-    std.mem.writeInt(u64, &u64_bytes, 1, .little);
+    std.mem.writeInt(u64, &u64_bytes, 2, .little);
     try facts_payload.appendSlice(allocator, &u64_bytes);
-    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    std.mem.writeInt(u32, &u32_bytes, 2, .little);
     try facts_payload.appendSlice(allocator, &u32_bytes);
     try facts_payload.append(allocator, 0);
     std.mem.writeInt(u64, &u64_bytes, 1, .little);
+    try facts_payload.appendSlice(allocator, &u64_bytes);
+    for ([_][]const u8{ "rust_image_heap_entity", "rust_image_heap_value" }) |name| {
+        try facts_payload.append(allocator, 5);
+        std.mem.writeInt(u32, &u32_bytes, @intCast(name.len), .little);
+        try facts_payload.appendSlice(allocator, u32_bytes[0..4]);
+        try facts_payload.appendSlice(allocator, name);
+    }
+    try facts_payload.append(allocator, 7);
+    std.mem.writeInt(u32, &u32_bytes, 0, .little);
+    try facts_payload.appendSlice(allocator, u32_bytes[0..4]);
+    try facts_payload.append(allocator, 0);
+    std.mem.writeInt(u64, &u64_bytes, 2, .little);
     try facts_payload.appendSlice(allocator, &u64_bytes);
     for ([_][]const u8{ "rust_image_recovered_entity", "rust_image_recovered_attribute" }) |name| {
         try facts_payload.append(allocator, 5);
@@ -457,6 +473,19 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     try facts_payload.append(allocator, 3);
     std.mem.writeInt(i64, &u64_bytes, 42, .little);
     try facts_payload.appendSlice(allocator, &u64_bytes);
+
+    var heap_payload: std.ArrayList(u8) = .{};
+    defer heap_payload.deinit(allocator);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try heap_payload.appendSlice(allocator, &u32_bytes);
+    const heap_name = "RustImageHeapVt";
+    std.mem.writeInt(u32, &u32_bytes, heap_name.len, .little);
+    try heap_payload.appendSlice(allocator, &u32_bytes);
+    try heap_payload.appendSlice(allocator, heap_name);
+    std.mem.writeInt(u32, &u32_bytes, 1, .little);
+    try heap_payload.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 0x1122_3344_5566_7788, .little);
+    try heap_payload.appendSlice(allocator, &u64_bytes);
 
     // A checksum-valid but non-dylib code unit must fail during read-only
     // admission, before image facts or heap state can be replayed. The Rust
@@ -493,6 +522,7 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     try std.testing.expectEqual(staged_before, try stagedImageCodeCount());
 
     try appendImageRecord(&image, allocator, 5, &authority);
+    try appendImageRecord(&image, allocator, 3, heap_payload.items);
     try appendImageRecord(&image, allocator, 2, facts_payload.items);
     try appendImageRecord(&image, allocator, 4, code_payload.items);
     try tmp.dir.writeFile(.{ .sub_path = "rust-image-mapped.image", .data = image.items });
@@ -517,6 +547,16 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
     );
     try std.testing.expect(api.isSmallInt(recovered) != 0);
     try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(recovered));
+    const heap_value = send(
+        api,
+        runtime_store,
+        "currentValue:attr:",
+        &.{ api.intern("rust_image_heap_entity"), api.intern("rust_image_heap_value") },
+    );
+    try std.testing.expect(heap_value != api.nilObj);
+    try std.testing.expectEqual(api.import("RustImageHeapVt"), api.vtableOf(heap_value));
+    const heap_slots: [*]usize = @ptrCast(@alignCast(heap_value.?));
+    try std.testing.expectEqual(@as(usize, 0x1122_3344_5566_7788), heap_slots[0]);
     const globals = api.import("Globals") orelse return error.GlobalsMissing;
     const mapped = send(api, globals, "at:", &.{api.intern("rustImageMapped")});
     try std.testing.expect(api.isSmallInt(mapped) != 0);

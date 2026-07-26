@@ -2479,3 +2479,20 @@ explicitly so the recovery surface cannot silently shrink.
   Codegen `1/1`, and Rust Codegen runtime `26/26`; the complete R6 gate remains
   green with only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
   accepted for this snapshot.
+
+### R6.30 Integrated heap-relocation recovery checkpoint (2026-07-25)
+
+- The same admitted image now includes one exported-vtable Heap object with a
+  raw word and a Facts `HeapRef` pointing at it, followed by a scalar fact and
+  the captured code record. The Rust Codegen materializer allocates the object,
+  fills its raw slot, resolves the relocation, and only then starts the Store
+  image transaction; the integration proof reads back both the relocated
+  object and scalar value before checking mapped execution.
+- The fixture therefore exercises the complete v4 ordering at the Rust Image
+  orchestration boundary: authority → heap → facts → derive → mapped code.
+  The malformed-code preflight still runs first and leaves the original
+  sentinel and staging directory unchanged.
+- The focused counts remain `84/84`, Rust Image shell `2/2`, mapped Image
+  Codegen `1/1`, and Rust Codegen runtime `26/26`; the full R6 acceptance is
+  green with no allowance beyond `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`.
