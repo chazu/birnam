@@ -75,8 +75,11 @@ readonly expected_rust_image_cross_floor_tests=1
 readonly expected_rust_image_cross_floor_reverse_tests=1
 readonly expected_rust_image_zig_store_tests=1
 readonly expected_rust_image_rejection_tests=1
-readonly expected_focused_steps=166
-readonly expected_verify_steps=290
+# Rust is now the canonical host. Its explicit installed Zig oracle is a
+# required rollback/compatibility artifact, adding one deterministic install
+# step to both the focused replacement graph and complete verify graph.
+readonly expected_focused_steps=167
+readonly expected_verify_steps=291
 readonly expected_verify_tests=506
 readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
