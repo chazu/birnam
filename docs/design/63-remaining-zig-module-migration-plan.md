@@ -3577,6 +3577,27 @@ allowances.
   This records the new checked-in corpus rather than weakening parity or
   accepting the stale digest.
 
+### R7.95 Rust host project-contract and concurrent-gate checkpoint (2026-07-26)
+
+- Rust `check` now preserves the installed host's full human report contract:
+  project/manifest identity, wrapped libraries, test sources, dependency-ordered
+  module composition, resolution digest, and compile diagnostics. The Rust host
+  keeps its JSON contract unchanged. A dedicated Rust project smoke covers
+  human and JSON check output plus build, run, and test success/error boundaries;
+  the existing verbose fixture remains the Zig-host contract.
+- The explicit `-Dhost-impl=rust` install now publishes the Zig executable as
+  `birnam-zig-oracle` alongside canonical Rust `birnam`. Frozen pre-rewrite
+  image compatibility therefore stays on the explicit Zig oracle, while the
+  Rust host's own project/LSP/source/image/repl tests remain direct observations.
+  The Rust ABI and Store smokes use separate Cargo target directories so
+  `verify`'s parallel scheduler cannot replace a dylib under test.
+- Validation: `cargo fmt --check`, the Rust host's `55/55` tests, and
+  warnings-denied Clippy pass; `test-rust-store-stack -Dhost-impl=rust` passes
+  `89/89`; and `zig build verify -Dhost-impl=rust -Doptimize=ReleaseSafe`
+  passes at `290/290` steps with `506/512` tests and six explicit skips. The
+  canonical R6 comparator remains unchanged and still admits only
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
@@ -3981,3 +4002,16 @@ explicitly so the recovery surface cannot silently shrink.
   clean summaries directly. The comparator remains unchanged and fail-closed:
   zero missing or unusable cases, with only `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` accepted.
+
+### R6.49 R6 rerun after Rust host project-gate closure (2026-07-26)
+
+- The latest `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun passes
+  after the Rust-host project-contract and concurrent-Cargo gate fixes. The
+  focused replacement matrix is `166/166` steps and `91/91` tests; the
+  sequential Rust Alien live boundary is `62/62` steps and `9/9` tests; and
+  optimized verify is `290/290` steps with `506/512` tests and six explicit
+  skips.
+- The comparator remains fail-closed with zero missing or unusable cases and
+  exactly the two accepted crossings: `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%`. No benchmark allowance, fixture exception,
+  ABI contract, or dynamic-library boundary changed.
