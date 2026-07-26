@@ -3171,6 +3171,111 @@ pub unsafe fn decode_project_artifact_record(
     })
 }
 
+fn append_toml_string(output: &mut String, key: &str, value: &str) {
+    output.push_str(key);
+    output.push_str(" = \"");
+    append_toml_escaped(output, value);
+    output.push_str("\"\n");
+}
+
+fn append_toml_escaped(output: &mut String, value: &str) {
+    for byte in value.bytes() {
+        match byte {
+            b'\\' => output.push_str("\\\\"),
+            b'"' => output.push_str("\\\""),
+            b'\n' => output.push_str("\\n"),
+            b'\r' => output.push_str("\\r"),
+            b'\t' => output.push_str("\\t"),
+            0x00..=0x1f => output.push_str(&format!("\\u{byte:04x}")),
+            _ => output.push(byte as char),
+        }
+    }
+}
+
+fn append_toml_inline_string(output: &mut String, first: &mut bool, key: &str, value: &str) {
+    if !*first {
+        output.push_str(", ");
+    }
+    *first = false;
+    output.push_str(key);
+    output.push_str(" = \"");
+    append_toml_escaped(output, value);
+    output.push('"');
+}
+
+fn append_toml_inline_array(output: &mut String, first: &mut bool, key: &str, values: &[String]) {
+    if !*first {
+        output.push_str(", ");
+    }
+    *first = false;
+    output.push_str(key);
+    output.push_str(" = [");
+    for (index, value) in values.iter().enumerate() {
+        if index != 0 {
+            output.push_str(", ");
+        }
+        output.push('"');
+        append_toml_escaped(output, value);
+        output.push('"');
+    }
+    output.push(']');
+}
+
+fn append_toml_artifact(output: &mut String, artifact: &ProjectPreviousArtifact) {
+    output.push_str("{ ");
+    let mut first = true;
+    append_toml_inline_string(output, &mut first, "name", &artifact.name);
+    append_toml_inline_string(output, &mut first, "path", &artifact.path);
+    append_toml_inline_string(output, &mut first, "source", &artifact.source);
+    append_toml_inline_array(output, &mut first, "sources", &artifact.sources);
+    append_toml_inline_string(output, &mut first, "source_digest", &artifact.source_digest);
+    append_toml_inline_string(
+        output,
+        &mut first,
+        "revision_digest",
+        &artifact.revision_digest,
+    );
+    append_toml_inline_array(output, &mut first, "requires", &artifact.requires);
+    append_toml_inline_string(output, &mut first, "checksum", &artifact.checksum);
+    output.push_str(" },\n");
+}
+
+fn append_toml_native(output: &mut String, artifact: &ProjectPreviousNativeArtifact) {
+    output.push_str("{ ");
+    let mut first = true;
+    append_toml_inline_string(output, &mut first, "name", &artifact.name);
+    append_toml_inline_string(output, &mut first, "path", &artifact.path);
+    append_toml_inline_string(output, &mut first, "checksum", &artifact.checksum);
+    output.push_str(" },\n");
+}
+
+/// Serialize the policy-owned artifact record in the persisted
+/// `birnam-artifacts-v3` snake_case form. Transient observed checksums are
+/// intentionally omitted; they are recomputed from bytes whenever the record
+/// is loaded for a later policy decision.
+pub fn encode_project_build_record(record: &ProjectBuildRecord) -> Vec<u8> {
+    let mut output = String::new();
+    append_toml_string(&mut output, "schema", "birnam-artifacts-v3");
+    append_toml_string(&mut output, "project_root", &record.project_root);
+    append_toml_string(&mut output, "target", &record.target);
+    append_toml_string(&mut output, "profile", &record.profile);
+    append_toml_string(&mut output, "tool_version", &record.tool_version);
+    append_toml_string(&mut output, "built_at", &record.built_at);
+    append_toml_string(&mut output, "artifact_abi", &record.artifact_abi);
+    append_toml_string(&mut output, "resolution_digest", &record.resolution_digest);
+    output.push_str("artifacts = [\n");
+    for artifact in &record.artifacts {
+        append_toml_artifact(&mut output, artifact);
+    }
+    output.push_str("]\n");
+    output.push_str("native = [\n");
+    for artifact in &record.native {
+        append_toml_native(&mut output, artifact);
+    }
+    output.push_str("]\n");
+    output.into_bytes()
+}
+
 fn safe_record_relative_path(path: &str) -> Option<&Path> {
     let path = Path::new(path);
     if path.is_absolute()
@@ -6209,6 +6314,37 @@ mod tests {
             Some(String::from_utf8_lossy(&sha256_hex(b"native-bytes")).into_owned())
         );
         std::fs::remove_dir_all(root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn build_record_encoder_writes_snake_case_and_omits_observations() {
+        let record = ProjectBuildRecord {
+            project_root: "/tmp/project".to_owned(),
+            target: "aarch64-macos".to_owned(),
+            profile: "debug".to_owned(),
+            tool_version: "dev".to_owned(),
+            artifact_abi: String::from_utf8_lossy(birnam_artifact::ABI).into_owned(),
+            resolution_digest: "digest".to_owned(),
+            built_at: "now".to_owned(),
+            artifacts: vec![ProjectPreviousArtifact {
+                name: "app".to_owned(),
+                path: "lib/libbirnam_app.dylib".to_owned(),
+                source: "/tmp/project/src/app.birnam".to_owned(),
+                sources: vec!["/tmp/project/src/app.birnam".to_owned()],
+                source_digest: "source".to_owned(),
+                revision_digest: "revision".to_owned(),
+                requires: vec!["core".to_owned()],
+                checksum: "checksum".to_owned(),
+                observed_checksum: Some("observed".to_owned()),
+            }],
+            native: Vec::new(),
+        };
+        let encoded = String::from_utf8(encode_project_build_record(&record)).expect("TOML UTF-8");
+        assert!(encoded.contains("artifact_abi = \""));
+        assert!(encoded.contains("source_digest = \"source\""));
+        assert!(encoded.contains("requires = [\"core\"]"));
+        assert!(!encoded.contains("observedChecksum"));
+        assert!(!encoded.contains("observed_checksum"));
     }
 
     #[test]

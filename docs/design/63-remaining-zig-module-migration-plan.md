@@ -3263,6 +3263,19 @@ allowances.
 - Rust-host formatting, check, 50-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.69 Rust host artifact-record serialization checkpoint (2026-07-26)
+
+- `encode_project_build_record` now writes the policy-owned record as
+  `birnam-artifacts-v3` TOML with the shipped snake_case keys, inline artifact
+  and native arrays, escaped strings, source composition/dependency metadata,
+  and checksums. Transient `observedChecksum` values are deliberately not
+  persisted and will be recomputed on the next load.
+- This is a pure serialization boundary: it does not create files, replace a
+  build directory, load dylibs, or activate modules. The following slice will
+  add durable file I/O and recovery-safe publication around this serializer.
+- Rust-host formatting, check, 51-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
