@@ -1161,6 +1161,13 @@ pub enum WorkerError {
     Failed(c_int),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeModuleError {
+    EmbeddedNul,
+    MissingModuleManager,
+    LoadRejected,
+}
+
 type IsolateDriverFn =
     unsafe extern "C" fn(*mut IdApi, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
 type IsolateBootErrorFn = unsafe extern "C" fn(*mut IdApi, c_int, *const c_char, *const u8, usize);
@@ -1232,6 +1239,29 @@ pub struct HostRuntime {
 }
 
 impl HostRuntime {
+    /// Load one compiled host/runtime module through the Birnam Module
+    /// manager. The manager owns its executable-relative path and dependency
+    /// closure; Rust supplies only the requested identity.
+    ///
+    /// # Safety
+    ///
+    /// The runtime must remain on the selected floor's owner thread for the
+    /// synchronous manager send.
+    pub unsafe fn load_runtime_module(&self, name: &str) -> Result<(), RuntimeModuleError> {
+        let Some(module_manager) = (unsafe { global_named(self.stack.api(), "Module") }) else {
+            return Err(RuntimeModuleError::MissingModuleManager);
+        };
+        let name = CString::new(name).map_err(|_| RuntimeModuleError::EmbeddedNul)?;
+        let api = self.stack.api();
+        let selector = unsafe { (api.intern)(c"load:".as_ptr()) };
+        let name = unsafe { (api.intern)(name.as_ptr()) };
+        let result = unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
+        if result == api.nilObj || send_is_error(api, result) {
+            return Err(RuntimeModuleError::LoadRejected);
+        }
+        Ok(())
+    }
+
     /// Run one isolate worker over an inherited channel descriptor. The driver
     /// borrows the receiver/selector and never takes ownership of the fd.
     ///
@@ -2649,6 +2679,14 @@ mod tests {
     fn worker_status_zero_is_success_and_nonzero_is_preserved() {
         assert_eq!(WorkerError::Failed(7), WorkerError::Failed(7));
         assert_ne!(WorkerError::Failed(1), WorkerError::Failed(2));
+    }
+
+    #[test]
+    fn runtime_module_names_are_checked_before_manager_sends() {
+        assert_ne!(
+            RuntimeModuleError::EmbeddedNul,
+            RuntimeModuleError::MissingModuleManager
+        );
     }
 
     #[test]

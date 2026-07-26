@@ -2672,6 +2672,18 @@ allowances.
 - The focused Rust suite remains green at thirty-one tests with warnings
   denied.
 
+### R7.24 Rust host runtime-module checkpoint (2026-07-26)
+
+- `HostRuntime::load_runtime_module` now loads compiled host tools such as
+  `repl`, `socket`, `cli`, and `test` through the self-hosted Module manager.
+  Rust passes only the validated identity; manager path resolution and
+  dependency activation remain Birnam-owned.
+- Embedded-NUL names, missing managers, nil answers, and Error-valued answers
+  are typed failures before callers can mistake a partial tool load for a
+  running host.
+- Thirty-two offline Rust tests pass with warnings denied. REPL/CLI loops and
+  project workflows remain later execution seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
