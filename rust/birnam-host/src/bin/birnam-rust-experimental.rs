@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use birnam_host::{
     CommandKind, ImageLoadOutcome, ParseOutcome, bake_executable, baked_image, classify_command,
     eval_script, load_image, parse_bake_args, parse_build_args, parse_check_args,
-    parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args,
+    parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args,
     start_from_environment,
 };
 
@@ -65,6 +65,13 @@ fn project_command(args: &[OsString], command: &str) -> Result<(), String> {
             "{command} is not implemented by the experimental host"
         ))
     }
+}
+
+fn worker_command(args: &[OsString]) -> Result<(), String> {
+    parse_worker_args(&args[1..])
+        .map(|_| ())
+        .map_err(|error| format!("--worker: {error:?}"))
+        .and_then(|_| Err("--worker is not implemented by the experimental host".to_owned()))
 }
 
 fn run(args: Vec<OsString>) -> Result<(), String> {
@@ -156,6 +163,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Install => project_command(&args, "install"),
         CommandKind::Run => project_command(&args, "run"),
         CommandKind::Test => project_command(&args, "test"),
+        CommandKind::Worker => worker_command(&args),
         other => Err(format!(
             "{other:?} is not implemented by the experimental host"
         )),

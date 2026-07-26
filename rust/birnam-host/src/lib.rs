@@ -159,6 +159,23 @@ pub enum ToolingParseError {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerOptions {
+    pub image: PathBuf,
+    pub receiver: String,
+    pub selector: String,
+    pub channel_fd: c_int,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkerParseError {
+    Arity { expected: usize, actual: usize },
+    MissingChannelFlag(String),
+    InvalidChannelFd(String),
+    NonUtf8Receiver,
+    NonUtf8Selector,
+}
+
 pub const BAKE_MAGIC: &[u8; 8] = b"BIRNMEXE";
 pub const BAKE_TRAILER_LEN: usize = 16;
 
@@ -930,6 +947,49 @@ pub fn parse_compile_module_args<T: AsRef<std::ffi::OsStr>>(
     Ok(CompileModuleOptions {
         source: PathBuf::from(args[0].as_ref()),
         output: PathBuf::from(args[1].as_ref()),
+    })
+}
+
+/// Parse the private isolate-worker route without opening the image or floor.
+/// The channel descriptor remains an inherited integer; ownership and worker
+/// protocol execution stay with the isolate hook.
+pub fn parse_worker_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<WorkerOptions, WorkerParseError> {
+    if args.len() != 5 {
+        return Err(WorkerParseError::Arity {
+            expected: 5,
+            actual: args.len(),
+        });
+    }
+    if args[3].as_ref() != std::ffi::OsStr::new("--channel-fd") {
+        return Err(WorkerParseError::MissingChannelFlag(
+            args[3].as_ref().to_string_lossy().into_owned(),
+        ));
+    }
+    let receiver = args[1]
+        .as_ref()
+        .to_str()
+        .ok_or(WorkerParseError::NonUtf8Receiver)?
+        .to_owned();
+    let selector = args[2]
+        .as_ref()
+        .to_str()
+        .ok_or(WorkerParseError::NonUtf8Selector)?
+        .to_owned();
+    let channel_fd = args[4]
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| WorkerParseError::InvalidChannelFd("non-UTF-8".to_owned()))?
+        .parse::<c_int>()
+        .map_err(|_| {
+            WorkerParseError::InvalidChannelFd(args[4].as_ref().to_string_lossy().into_owned())
+        })?;
+    Ok(WorkerOptions {
+        image: PathBuf::from(args[0].as_ref()),
+        receiver,
+        selector,
+        channel_fd,
     })
 }
 
@@ -3154,6 +3214,31 @@ mod tests {
                 expected: 1,
                 actual: 0,
             })
+        );
+    }
+
+    #[test]
+    fn worker_parser_preserves_channel_and_named_dispatch_operands() {
+        assert_eq!(
+            parse_worker_args(&["saved.image", "Receiver", "handle:", "--channel-fd", "17",])
+                .expect("worker operands parse"),
+            WorkerOptions {
+                image: PathBuf::from("saved.image"),
+                receiver: "Receiver".to_owned(),
+                selector: "handle:".to_owned(),
+                channel_fd: 17,
+            }
+        );
+        assert_eq!(
+            parse_worker_args::<&str>(&["image", "receiver"]),
+            Err(WorkerParseError::Arity {
+                expected: 5,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            parse_worker_args(&["image", "receiver", "handle:", "--wrong", "17"]),
+            Err(WorkerParseError::MissingChannelFlag("--wrong".to_owned()))
         );
     }
 

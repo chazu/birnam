@@ -2807,6 +2807,19 @@ allowances.
   denied. No project command or LSP route consumes this boundary yet, and the
   canonical Zig adapter remains the only filesystem observation implementation.
 
+### R7.34 Rust host isolate-worker argument checkpoint (2026-07-26)
+
+- The private `--worker <image> <receiver> <selector> --channel-fd <fd>` shape
+  now has a typed Rust parser. It preserves the image path, named receiver and
+  selector, inherited descriptor, exact channel flag, and arity errors before
+  any image recovery or floor access.
+- The experimental executable validates this route and then reports the
+  explicit unsupported-worker boundary. It does not close the inherited fd,
+  invent boot-error framing, or bypass the retained Isolate hook; those remain
+  the next execution slice.
+- The focused host suite advances to thirty-six tests with warnings denied,
+  and valid/invalid worker smoke invocations both avoid runtime loading.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
