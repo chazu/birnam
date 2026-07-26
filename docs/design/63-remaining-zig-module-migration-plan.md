@@ -2721,6 +2721,16 @@ allowances.
 - Thirty-three offline Rust tests pass with warnings denied. Project-aware REPL
   configuration, socket mode, and CLI dispatch remain later seams.
 
+### R7.28 Rust host socket-REPL checkpoint (2026-07-26)
+
+- `HostRuntime::serve_socket` now loads `socket` before `repl` and delegates
+  `serveOn:bind:` with the validated port and bind string. The socket server,
+  framing, and request execution remain self-hosted language/runtime policy.
+- Embedded-NUL bind values and nil/Error server responses fail explicitly; Rust
+  does not open listeners or duplicate the socket protocol.
+- Thirty-four offline Rust tests pass with warnings denied. Project-derived
+  socket configuration and CLI dispatch remain later seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

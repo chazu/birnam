@@ -1216,6 +1216,13 @@ pub enum ReplError {
     MalformedStep,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SocketReplError {
+    Module(RuntimeModuleError),
+    MissingRepl,
+    ServeRejected,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplStep {
     Done,
@@ -1499,6 +1506,38 @@ impl HostRuntime {
             unsafe { self.drain_isolates() };
         }
         unsafe { self.finish_repl(session) };
+        Ok(())
+    }
+
+    /// Serve the socket REPL through the self-hosted `Repl serveOn:bind:`
+    /// protocol. The socket module is loaded before Repl, matching the Zig
+    /// host's runtime-tool dependency order.
+    ///
+    /// # Safety
+    ///
+    /// The runtime must remain on the selected floor's owner thread and the
+    /// bind string must remain valid for the synchronous send.
+    pub unsafe fn serve_socket(&self, port: u16, bind: &str) -> Result<(), SocketReplError> {
+        unsafe { self.load_runtime_module("socket") }.map_err(SocketReplError::Module)?;
+        unsafe { self.load_runtime_module("repl") }.map_err(SocketReplError::Module)?;
+        let api = self.stack.api();
+        let Some(repl) = (unsafe { global_named(api, "Repl") }) else {
+            return Err(SocketReplError::MissingRepl);
+        };
+        let bind = CString::new(bind).map_err(|_| SocketReplError::ServeRejected)?;
+        let bind = unsafe { (api.mkString)(bind.as_bytes().as_ptr(), bind.as_bytes().len()) };
+        let selector = unsafe { (api.intern)(c"serveOn:bind:".as_ptr()) };
+        let result = unsafe {
+            (api.send)(
+                repl,
+                selector,
+                [(api.mkSmallInt)(i64::from(port)), bind].as_ptr(),
+                2,
+            )
+        };
+        if send_is_error(api, result) {
+            return Err(SocketReplError::ServeRejected);
+        }
         Ok(())
     }
 
@@ -2993,6 +3032,11 @@ mod tests {
     fn repl_step_tags_keep_done_evaluated_and_other_distinct() {
         assert_ne!(ReplStep::Done, ReplStep::Other);
         assert_ne!(ReplStep::Evaluated(std::ptr::null_mut()), ReplStep::Done);
+    }
+
+    #[test]
+    fn socket_repl_errors_remain_distinct_from_module_errors() {
+        assert_ne!(SocketReplError::MissingRepl, SocketReplError::ServeRejected);
     }
 
     #[test]
