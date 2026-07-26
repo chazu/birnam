@@ -1141,6 +1141,7 @@ pub struct LoadedSelfHostedModule {
 
 #[derive(Debug)]
 pub enum RuntimeStartError {
+    Resources(io::ErrorKind),
     Floor(FloorError),
     Module(ModuleError),
     IsolateHooks(IsolateHookError),
@@ -1848,6 +1849,18 @@ pub unsafe fn start(
         isolate,
         self_hosted,
     })
+}
+
+/// Resolve production resources and start the opt-in Rust host using the
+/// environment contract already shared with the Zig executable.
+///
+/// # Safety
+///
+/// Same owner-thread and frozen-ABI requirements as [`start`].
+pub unsafe fn start_from_environment() -> Result<HostRuntime, RuntimeStartError> {
+    let resources = resolve().map_err(|error| RuntimeStartError::Resources(error.kind()))?;
+    // SAFETY: forwarded to the documented startup boundary.
+    unsafe { start(resources, StartupPolicy::from_environment()) }
 }
 
 const RTLD_LAZY: i32 = 1;

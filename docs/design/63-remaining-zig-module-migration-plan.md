@@ -2661,6 +2661,17 @@ allowances.
   routing, image/receiver validation, and end-to-end process lifecycle remain
   later host seams.
 
+### R7.23 Rust host environment-start checkpoint (2026-07-26)
+
+- `birnam-host::start_from_environment` now composes the one resolver and the
+  exact `BIRNAM_FORCE_SOURCE`/`BIRNAM_NO_STDLIB` policy into a future entrypoint.
+  Resource-resolution failures remain typed before any floor load.
+- No executable duplicates environment parsing or resource fallback, and the
+  startup API remains opt-in. The owner-thread, stack-anchor, ABI, and rollback
+  prerequisites are unchanged.
+- The focused Rust suite remains green at thirty-one tests with warnings
+  denied.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
