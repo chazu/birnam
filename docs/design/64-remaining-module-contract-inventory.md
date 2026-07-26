@@ -449,3 +449,12 @@ R0.6 current-owner projection (2026-07-26):
   metadata only. Its load order now includes Codegen before Prelude and names
   dynamic libraries plus explicit implementation fixtures; it is not a runtime
   fallback graph.
+
+R0.7 R6 gate refresh (2026-07-26):
+
+- The Rust Codegen emitter parity slice added baked-global binding coverage and
+  the expected-rejection/byte-parity tests to the existing runtime artifact.
+- `mise run r6-acceptance` passed with the pinned focused aggregate at `93/93`
+  tests and `170/170` steps; optimized verify passed at `295/295` steps with
+  `508/514` tests passed and six skips. The comparator retained exactly the
+  accepted `query.aggregate` and `compile.stage1-stdlib` crossings.

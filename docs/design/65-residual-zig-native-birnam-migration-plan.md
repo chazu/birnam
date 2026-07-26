@@ -210,6 +210,21 @@ diagnostics against the Zig oracle; preserve spans and lexical bytes instead of
 reformatting source through Rust numeric/string formatters. Stress the existing
 bounded depth and source-size limits.
 
+C1.2 acceptance checkpoint (2026-07-26):
+
+- Rust global references now use the frozen baked-symbol ABI: each distinct
+  selector is emitted as a deterministic `__g<i>` slot and read through
+  `birnam_global_b`; JIT units bind the interned symbol addresses and artifact
+  units re-derive them in `__birnam_unit_init`.
+- `test-rust-codegen-runtime` includes the expected-rejection contract probe
+  and an 11-source pure-emitter byte/diagnostic corpus against the Zig oracle.
+  The corpus covers literals, sends, lexical lets, vectors, maps, blocks,
+  symbols, globals, strings, and invalid syntax.
+- The R6 pins now require the resulting `93/93` focused tests (`170/170`
+  steps), `28` Rust Codegen runtime tests, and optimized verify at `295/295`
+  steps with `508/514` tests passed and six explicit skips. The complete R6
+  wrapper passed with only the two previously accepted benchmark crossings.
+
 ### C1.3 Runtime IdApi adapter
 
 Move the compiler-facing Rust runtime to the frozen `Codegen` and `Reflect`

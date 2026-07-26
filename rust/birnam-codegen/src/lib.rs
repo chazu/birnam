@@ -13,6 +13,7 @@ pub struct Emitter {
     bytes: Vec<u8>,
     function_defs: Vec<u8>,
     bound_names: Vec<Vec<u8>>,
+    baked_globals: Vec<Vec<u8>>,
     next_block: usize,
     artifact_mode: bool,
     artifact_salt: u64,
@@ -555,6 +556,7 @@ extern void* birnam_nil(void);
 extern void* birnam_true(void);
 extern void* birnam_false(void);
 extern void* birnam_global(const char* name);
+extern void* birnam_global_b(void* sym);
 extern void* birnam_global_set(const char* name, void* value);
 extern void* birnam_ensurePrivateVtable(void* obj);
 extern void* birnam_install_method(void* vt, void* sel, void* method, const char* src, long n);
@@ -654,6 +656,16 @@ impl Emitter {
         Self {
             artifact_mode: true,
             artifact_salt: salt,
+            ..Self::default()
+        }
+    }
+
+    /// Construct an emitter for the requested translation-unit mode. Global
+    /// references use the frozen baked-symbol ABI in both JIT and artifact
+    /// output; only the declaration spelling differs by mode.
+    pub fn new_for_artifact(artifact: bool) -> Self {
+        Self {
+            artifact_mode: artifact,
             ..Self::default()
         }
     }
@@ -783,8 +795,29 @@ impl Emitter {
             self.bytes.extend_from_slice(b"b_");
             self.bytes.extend_from_slice(name);
         } else {
-            self.emit_global(name);
+            let index = self.bake_global(name);
+            self.bytes.extend_from_slice(b"birnam_global_b(");
+            if self.artifact_mode {
+                self.bytes.extend_from_slice(b"__g");
+            } else {
+                self.bytes.extend_from_slice(b"(void*)__g");
+            }
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b")");
         }
+    }
+
+    fn bake_global(&mut self, name: &[u8]) -> usize {
+        if let Some(index) = self
+            .baked_globals
+            .iter()
+            .position(|baked| baked.as_slice() == name)
+        {
+            return index;
+        }
+        let index = self.baked_globals.len();
+        self.baked_globals.push(name.to_vec());
+        index
     }
 
     pub fn emit_send(&mut self, receiver: &[u8], selector: &[u8], args: &[&[u8]]) {
@@ -1181,6 +1214,10 @@ impl Emitter {
     pub fn finish_parts(self) -> (Vec<u8>, Vec<u8>) {
         (self.function_defs, self.bytes)
     }
+
+    pub fn baked_globals(&self) -> &[Vec<u8>] {
+        &self.baked_globals
+    }
 }
 
 #[cfg(test)]
@@ -1266,7 +1303,7 @@ mod tests {
         emitter.emit_expr(&expression).unwrap();
         assert_eq!(
             String::from_utf8(emitter.finish()).unwrap(),
-            "birnam_send(birnam_global(\"Integer\"), birnam_intern(\"at:\"), (void*[]){birnam_mkString(\"answer\", 6L)}, 1L)"
+            "birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"at:\"), (void*[]){birnam_mkString(\"answer\", 6L)}, 1L)"
         );
 
         let result = std::thread::Builder::new()
@@ -1507,7 +1544,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(birnam_global(\"x\"), birnam_intern(\"foo:bar:\"), (void*[]){MKV(1L), MKV(2L)}, 2L)"
+            b"birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"foo:bar:\"), (void*[]){MKV(1L), MKV(2L)}, 2L)"
         );
     }
 
@@ -1580,7 +1617,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(birnam_send(birnam_send(birnam_global(\"Vector\"), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"add:\"), (void*[]){MKV(1L)}, 1L), birnam_intern(\"add:\"), (void*[]){MKV(2L)}, 1L)"
+            b"birnam_send(birnam_send(birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"add:\"), (void*[]){MKV(1L)}, 1L), birnam_intern(\"add:\"), (void*[]){MKV(2L)}, 1L)"
         );
 
         let map_source = b"{#a -> 1}";
@@ -1604,7 +1641,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(birnam_send(birnam_global(\"Map\"), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"at:put:\"), (void*[]){birnam_intern(\"a\"), MKV(1L)}, 2L)"
+            b"birnam_send(birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"at:put:\"), (void*[]){birnam_intern(\"a\"), MKV(1L)}, 2L)"
         );
 
         let logic_source = b"?p";
@@ -1620,7 +1657,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(birnam_global(\"LogicVar\"), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"p\")}, 1L)"
+            b"birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"p\")}, 1L)"
         );
     }
 

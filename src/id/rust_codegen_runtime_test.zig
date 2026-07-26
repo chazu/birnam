@@ -12,6 +12,20 @@ const idapi = @import("idapi.zig");
 
 const ModuleInit = *const fn (*idapi.IdApi, ?*anyopaque) callconv(.c) ?*anyopaque;
 
+const pureEmitterCorpus = [_][]const u8{
+    "42",
+    "[1 + 2]",
+    "let x := 10; [x + 2]",
+    "#[1 2 3]",
+    "{\"a\" -> 1, \"b\" -> 2}",
+    "[:n | [n + 1]]",
+    "-3.25",
+    "\"line\\ntext\"",
+    "#answer",
+    "[1 >= 0]",
+    "let globalProbe := 7; globalProbe",
+};
+
 fn duplicateMopObserver(self: idapi.Oop, args: [*]const idapi.Oop, n: usize) callconv(.c) idapi.Oop {
     _ = args;
     _ = n;
@@ -124,6 +138,44 @@ test "C1.1 expected rejection: Rust Codegen is not the frozen authority surface"
         "codegen-contract: expected-rejection selectors={d} frozen={d} canonical-exports=absent collector=absent\n",
         .{ actual_count, parsed.value.codegen_selectors.len },
     );
+}
+
+fn emitBytes(api: *idapi.IdApi, codegen: idapi.Oop, source: []const u8) ![]const u8 {
+    const source_obj = api.mkString(source.ptr, source.len);
+    const result = api.send(codegen, api.intern("emit:"), &.{source_obj}, 1);
+    if (result == api.nilObj) return error.EmitFailed;
+    var length: usize = 0;
+    const bytes = api.stringBytes(result, &length);
+    return bytes[0..length];
+}
+
+fn generatedBody(bytes: []const u8) ![]const u8 {
+    const marker = "void* __ev";
+    const offset = std.mem.indexOf(u8, bytes, marker) orelse return error.MissingEntryPoint;
+    return std.mem.trimRight(u8, bytes[offset..], "\n");
+}
+
+test "C1.2 Rust emitter matches the Zig oracle on the frozen pure corpus" {
+    const api = try setup();
+    const rust_codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    for (pureEmitterCorpus) |source| {
+        const rust_bytes = try emitBytes(api, rust_codegen, source);
+        var zig_output = zig_codegen.emitProgramForTesting(api.mkString(source.ptr, source.len), false) orelse
+            return error.ZigEmitFailed;
+        defer zig_output.deinit(std.heap.c_allocator);
+        const zig_bytes = zig_output.items;
+        const rust_body = try generatedBody(rust_bytes);
+        const zig_body = try generatedBody(zig_bytes);
+        if (!std.mem.eql(u8, rust_body, zig_body)) {
+            std.debug.print("codegen-parity: body lengths rust={d} zig={d}\n", .{ rust_body.len, zig_body.len });
+            std.debug.print("codegen-parity: mismatch source={s}\\nRUST={s}\\nZIG={s}\\n", .{ source, rust_bytes, zig_bytes });
+            return error.EmittedBytesMismatch;
+        }
+    }
+    const invalid = "[1 +";
+    try std.testing.expectError(error.EmitFailed, emitBytes(api, rust_codegen, invalid));
+    try std.testing.expect(zig_codegen.emitProgramForTesting(api.mkString(invalid.ptr, invalid.len), false) == null);
+    std.debug.print("codegen-parity: pure corpus={d} sources and invalid diagnostic refusal passed\n", .{pureEmitterCorpus.len});
 }
 
 fn appendImageField(
