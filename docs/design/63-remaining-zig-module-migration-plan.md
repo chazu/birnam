@@ -3529,6 +3529,22 @@ allowances.
   checkpoint. Rust-host 55-test/clippy, optimized verify, and the accepted R6
   `91/91` snapshot remain green.
 
+### R7.92 Rust host LSP success-contract checkpoint (2026-07-26)
+
+- The Rust Project bridge now wraps successful `ProjectPolicy` resolutions with
+  the shared `ok: true` field required by the LSP cache, while preserving typed
+  policy failures (`moduleNotFound`, dependency-cycle, and related kinds) with
+  their original message. Previously a valid dependency project lacked that
+  bit, so LSP treated it as a failure and waited for diagnostics that could
+  never satisfy the full navigation smoke barrier.
+- The explicit `-Dhost-impl=rust` installed tree now passes the complete
+  workspace/project LSP protocol smoke, including dependency navigation,
+  UTF-16 diagnostics, versioned changes, save/close, and shutdown. Rust-host
+  55-test/clippy and relocated install smoke remain green.
+- This closes an observation defect only. The canonical `birnam` executable,
+  release mapping, and rollback selection remain Zig-owned until the R7
+  pre-switch acceptance and observation window authorize a switch.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
