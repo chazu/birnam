@@ -3129,6 +3129,17 @@ allowances.
 - Rust-host formatting, check, 45-test suite, and warnings-denied clippy pass;
   R6 remains accepted at focused `91/91`.
 
+### R7.59 Rust host diagnostic-parity checkpoint (2026-07-26)
+
+- `parse_project_compile_diagnostic` now mirrors Zig's first-line
+  `line:column: message` extraction, preserving full detail while exposing
+  optional source positions and a fallback message for non-conforming text.
+- Human and JSON Rust `check` output now includes parsed line/column fields
+  when available, with the same `compileFailed` kind and detail payload. No
+  source execution or publication boundary changed.
+- Rust-host formatting, check, 46-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

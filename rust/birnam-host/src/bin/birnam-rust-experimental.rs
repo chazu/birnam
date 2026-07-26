@@ -113,7 +113,18 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
                         );
                     } else {
                         for diagnostic in &result.diagnostics {
-                            println!("{}: compileFailed: {}", diagnostic.path, diagnostic.detail);
+                            if let (Some(line), Some(column)) = (diagnostic.line, diagnostic.column)
+                            {
+                                println!(
+                                    "{}:{}:{}: compileFailed: {}",
+                                    diagnostic.path, line, column, diagnostic.message
+                                );
+                            } else {
+                                println!(
+                                    "{}: compileFailed: {}",
+                                    diagnostic.path, diagnostic.message
+                                );
+                            }
                         }
                     }
                 }
@@ -131,11 +142,18 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
                             print!(",");
                         }
                         print!(
-                            "{{\"kind\":\"compileFailed\",\"message\":\"{}\",\"detail\":\"{}\",\"path\":\"{}\"}}",
-                            json_escape(&diagnostic.detail),
+                            "{{\"kind\":\"compileFailed\",\"message\":\"{}\",\"detail\":\"{}\",\"path\":\"{}\"",
+                            json_escape(&diagnostic.message),
                             json_escape(&diagnostic.detail),
                             json_escape(&diagnostic.path),
                         );
+                        if let Some(line) = diagnostic.line {
+                            print!(",\"line\":{}", line);
+                        }
+                        if let Some(column) = diagnostic.column {
+                            print!(",\"column\":{}", column);
+                        }
+                        print!("}}");
                     }
                     println!("]}}");
                 }

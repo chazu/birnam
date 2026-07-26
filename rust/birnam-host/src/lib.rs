@@ -1298,6 +1298,9 @@ pub struct ProjectCompileDiagnostic {
     pub module: String,
     pub path: String,
     pub detail: String,
+    pub message: String,
+    pub line: Option<usize>,
+    pub column: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1407,6 +1410,37 @@ fn create_check_temp_directory() -> Result<CheckTempDirectory, io::ErrorKind> {
         }
     }
     Err(io::ErrorKind::AlreadyExists)
+}
+
+/// Parse the first line of Codegen's frozen `line:column: message` diagnostic
+/// text. Non-conforming diagnostics preserve their complete first line and do
+/// not invent source positions.
+pub fn parse_project_compile_diagnostic(
+    module: &str,
+    path: &str,
+    detail: &str,
+) -> ProjectCompileDiagnostic {
+    let first_line = detail.split('\n').next().unwrap_or(detail);
+    let mut fields = first_line.splitn(3, ':');
+    let line = fields
+        .next()
+        .and_then(|value| value.trim().parse::<usize>().ok());
+    let column = fields
+        .next()
+        .and_then(|value| value.trim().parse::<usize>().ok());
+    let message = if line.is_some() && column.is_some() {
+        fields.next().unwrap_or_default().trim().to_owned()
+    } else {
+        first_line.to_owned()
+    };
+    ProjectCompileDiagnostic {
+        module: module.to_owned(),
+        path: path.to_owned(),
+        detail: detail.to_owned(),
+        message,
+        line,
+        column,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2959,11 +2993,11 @@ impl HostRuntime {
                 } else {
                     "compiler did not provide a diagnostic".to_owned()
                 };
-                diagnostics.push(ProjectCompileDiagnostic {
-                    module: module.name.clone(),
-                    path: module.path.clone(),
-                    detail,
-                });
+                diagnostics.push(parse_project_compile_diagnostic(
+                    &module.name,
+                    &module.path,
+                    &detail,
+                ));
             }
         }
         drop(temporary);
@@ -4856,6 +4890,26 @@ mod tests {
                 &[module("two"), module("one")]
             )
         );
+    }
+
+    #[test]
+    fn compile_diagnostic_parser_preserves_positions_and_fallback_text() {
+        let parsed = parse_project_compile_diagnostic(
+            "demo",
+            "/tmp/demo.birnam",
+            "12:7: unexpected selector\nfull detail",
+        );
+        assert_eq!(parsed.module, "demo");
+        assert_eq!(parsed.path, "/tmp/demo.birnam");
+        assert_eq!(parsed.line, Some(12));
+        assert_eq!(parsed.column, Some(7));
+        assert_eq!(parsed.message, "unexpected selector");
+        assert_eq!(parsed.detail, "12:7: unexpected selector\nfull detail");
+
+        let fallback = parse_project_compile_diagnostic("demo", "/tmp/demo.birnam", "not located");
+        assert_eq!(fallback.line, None);
+        assert_eq!(fallback.column, None);
+        assert_eq!(fallback.message, "not located");
     }
 
     #[test]
