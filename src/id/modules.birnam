@@ -159,10 +159,10 @@
     ifTrue: [| [Error kind: [Artifact lastFailure]
                    message: ["could not inspect artifact: " , p]]]
     ifFalse: [|
-      let kindOk := [[descriptor kind] = #module];
+      let kindOk := [[descriptor kind] == #module];
       [kindOk
         ifTrue: [|
-          let identityOk := [[descriptor identity] = name];
+          let identityOk := [[descriptor identity] == name];
           [identityOk
             ifTrue: [| descriptor]
             ifFalse: [| [Error kind: #artifactIdentityMismatch
