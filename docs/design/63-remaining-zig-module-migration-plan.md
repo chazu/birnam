@@ -2519,3 +2519,14 @@ explicitly so the recovery surface cannot silently shrink.
   decoding all succeed. The new isolated target is pinned at `1/1` and the
   focused R6 aggregate advances to `85/85`; the existing Image shell remains
   `2/2` and mapped Image Codegen remains `1/1`.
+
+### R6.33 Reader corruption-rejection checkpoint (2026-07-25)
+
+- The Rust Image reader now has an isolated fail-closed proof for duplicate
+  authority records and truncated authority payloads. Both malformed v4 inputs
+  are rejected during read-only framing before recovery begins, and a live
+  sentinel fact remains unchanged after both attempts.
+- The new rejection target is pinned at `1/1`; the focused aggregate advances
+  to `86/86`. Rust Image shell remains `2/2`, the Zig-writer/Rust-reader cell
+  remains `1/1`, and mapped Image Codegen remains `1/1`; benchmark allowances
+  remain exactly `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.

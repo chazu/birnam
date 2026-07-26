@@ -611,3 +611,58 @@ test "Rust Image reads a Zig-authored v4 data image" {
     try std.testing.expect(api.isSmallInt(recovered) != 0);
     try std.testing.expectEqual(@as(i64, 707), api.smallIntValue(recovered));
 }
+
+test "Rust Image rejects duplicate and truncated authority before Store mutation" {
+    const api = setupWithRustCodegen();
+    const runtime_store = api.import("Store") orelse return error.StoreMissing;
+    const system = api.import("System") orelse return error.SystemMissing;
+    const sentinel_entity = api.intern("rust_image_corruption_sentinel_entity");
+    const sentinel_attribute = api.intern("rust_image_corruption_sentinel_attribute");
+    const sentinel_value = api.mkSmallInt(919);
+    _ = send(api, runtime_store, "assert:attr:value:", &.{ sentinel_entity, sentinel_attribute, sentinel_value });
+    defer _ = send(api, runtime_store, "retract:attr:value:", &.{ sentinel_entity, sentinel_attribute, sentinel_value });
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+    const directory = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(directory);
+    const duplicate_path = try std.fs.path.join(allocator, &.{ directory, "duplicate-authority.image" });
+    defer allocator.free(duplicate_path);
+    const truncated_path = try std.fs.path.join(allocator, &.{ directory, "truncated-authority.image" });
+    defer allocator.free(truncated_path);
+
+    var duplicate: std.ArrayList(u8) = .{};
+    defer duplicate.deinit(allocator);
+    try duplicate.appendSlice(allocator, "BIRNAMIM");
+    var u32_bytes: [4]u8 = undefined;
+    var u64_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u32, &u32_bytes, 4, .little);
+    try duplicate.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 0x0102_0304, .little);
+    try duplicate.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, imageArchTag(), .little);
+    try duplicate.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, imageAbiHash(), .little);
+    try duplicate.appendSlice(allocator, &u64_bytes);
+    const authority = [_]u8{0} ** 64;
+    try appendImageRecord(&duplicate, allocator, 5, &authority);
+    try appendImageRecord(&duplicate, allocator, 5, &authority);
+    try tmp.dir.writeFile(.{ .sub_path = "duplicate-authority.image", .data = duplicate.items });
+
+    var truncated_bytes: std.ArrayList(u8) = .{};
+    defer truncated_bytes.deinit(allocator);
+    try truncated_bytes.appendSlice(allocator, duplicate.items[0 .. 8 + 4 + 4 + 4 + 8]);
+    std.mem.writeInt(u32, &u32_bytes, 5, .little);
+    try truncated_bytes.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, 64, .little);
+    try truncated_bytes.appendSlice(allocator, &u64_bytes);
+    try truncated_bytes.appendSlice(allocator, "short");
+    try tmp.dir.writeFile(.{ .sub_path = "truncated-authority.image", .data = truncated_bytes.items });
+
+    try std.testing.expect(send(api, system, "loadImage:", &.{str(api, duplicate_path)}) == api.nilObj);
+    try std.testing.expect(send(api, system, "loadImage:", &.{str(api, truncated_path)}) == api.nilObj);
+    const retained = send(api, runtime_store, "currentValue:attr:", &.{ sentinel_entity, sentinel_attribute });
+    try std.testing.expect(api.isSmallInt(retained) != 0);
+    try std.testing.expectEqual(@as(i64, 919), api.smallIntValue(retained));
+}
