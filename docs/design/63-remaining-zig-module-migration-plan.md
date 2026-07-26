@@ -2696,3 +2696,20 @@ explicitly so the recovery surface cannot silently shrink.
 - The comparator remains fail-closed and unchanged: no missing or unusable
   cases, with only `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%` accepted.
+
+### R6.44 Rust Image publication-authority hardening checkpoint (2026-07-26)
+
+- Rust Image publication is now explicitly coupled to the Rust writer-authority
+  selection. A publication request without `BIRNAM_RUST_IMAGE_WRITER_AUTHORITY=rust`
+  rejects with a dedicated detail and leaves the target path absent; it cannot
+  silently publish through canonical Zig Codegen/Store state.
+- The isolated authority-rejection target passes `1/1`; the publication,
+  authority-rejection, and reverse cross-floor targets pass `3/3` together. A
+  fresh `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes at focused
+  `90/90`, with Image shell `2/2`, publication/authority-rejection and both
+  Image cross-floor directions each `1/1`, mapped Image-to-Codegen/bootstrap/
+  rejection targets `1/1`, and Rust Alien live `9/9`. Optimized verify/install/
+  native-rung checks remain green.
+- The comparator remains unchanged and fail-closed: no missing or unusable
+  cases, with only `query.aggregate +5.8%` and
+  `compile.stage1-stdlib +11.9%` accepted.
