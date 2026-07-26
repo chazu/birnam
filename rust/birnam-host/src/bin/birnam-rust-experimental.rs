@@ -50,6 +50,75 @@ fn json_escape(value: &str) -> String {
     escaped
 }
 
+fn print_check_human(result: &birnam_host::ProjectCheckResult) {
+    let resolution = &result.resolution;
+    println!("project: {}", resolution.project_root);
+    println!("manifest: {}", resolution.manifest);
+    println!("name: {}", resolution.project_name);
+    if let Some(main) = &resolution.main {
+        println!("main: {main}");
+    }
+    if !result.wrapped.is_empty() {
+        println!("wrapped:");
+        for wrapped in &result.wrapped {
+            println!("  {} -> lib/lib{}.dylib", wrapped.name, wrapped.name);
+        }
+    }
+    if let Some(test_sources) = &result.test_sources
+        && !test_sources.is_empty()
+    {
+        println!("tests:");
+        for source in test_sources {
+            let path = PathBuf::from(source);
+            if path.is_absolute() {
+                println!("  {}", path.display());
+            } else {
+                println!(
+                    "  {}",
+                    PathBuf::from(&resolution.project_root).join(path).display()
+                );
+            }
+        }
+    }
+    println!("module-order:");
+    for module in &resolution.modules {
+        print!("  #{} <- {}", module.name, module.sources.join(" + "));
+        if !module.requires.is_empty() {
+            let requires = module
+                .requires
+                .iter()
+                .map(|name| format!("#{name}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            print!(" requires {requires}");
+        }
+        println!();
+    }
+    println!("resolution-digest: {}", result.resolution_digest);
+    if result.diagnostics.is_empty() {
+        println!(
+            "checked {} module{}; no compile diagnostics",
+            resolution.modules.len(),
+            if resolution.modules.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
+        );
+    } else {
+        for diagnostic in &result.diagnostics {
+            if let (Some(line), Some(column)) = (diagnostic.line, diagnostic.column) {
+                println!(
+                    "{}:{}:{}: compileFailed: {}",
+                    diagnostic.path, line, column, diagnostic.message
+                );
+            } else {
+                println!("{}: compileFailed: {}", diagnostic.path, diagnostic.message);
+            }
+        }
+    }
+}
+
 fn check_command(args: &[OsString]) -> Result<(), String> {
     let outcome = parse_check_args(&args[1..]).map_err(|error| format!("check: {error:?}"))?;
     match outcome {
@@ -67,32 +136,7 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
             let resolution = &result.resolution;
             match options.format {
                 OutputFormat::Human => {
-                    if result.diagnostics.is_empty() {
-                        println!(
-                            "checked {} module{}; no compile diagnostics",
-                            resolution.modules.len(),
-                            if resolution.modules.len() == 1 {
-                                ""
-                            } else {
-                                "s"
-                            }
-                        );
-                    } else {
-                        for diagnostic in &result.diagnostics {
-                            if let (Some(line), Some(column)) = (diagnostic.line, diagnostic.column)
-                            {
-                                println!(
-                                    "{}:{}:{}: compileFailed: {}",
-                                    diagnostic.path, line, column, diagnostic.message
-                                );
-                            } else {
-                                println!(
-                                    "{}: compileFailed: {}",
-                                    diagnostic.path, diagnostic.message
-                                );
-                            }
-                        }
-                    }
+                    print_check_human(&result);
                 }
                 OutputFormat::Json => {
                     print!(

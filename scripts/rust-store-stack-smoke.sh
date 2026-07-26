@@ -2,7 +2,10 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-target_dir="$repo/.cargo-target"
+# The verify graph runs this smoke beside the Rust ABI fixture.  Keep Cargo's
+# build outputs separate so concurrent debug/release builds cannot replace a
+# dylib while the other script is loading it.
+target_dir=${BIRNAM_RUST_STORE_TARGET_DIR:-$repo/.cargo-target/rust-store-stack}
 bin=${BIRNAM_BIN:-$repo/zig-out/bin/birnam}
 libdir=${BIRNAM_LIB_DIR:-$repo/zig-out/lib}
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ ${BIRNAM_HOST_IMPL:-zig} == rust ]]; then
+  exec bash "$(dirname "$0")/rust-project-check-smoke.sh"
+fi
+
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"
 runtime_lib="$(cd "$(dirname "$bin")/../lib" && pwd -P)"
 tmp="$(mktemp -d /tmp/birnam-project-check.XXXXXX)"

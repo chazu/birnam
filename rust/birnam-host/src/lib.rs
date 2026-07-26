@@ -1519,6 +1519,8 @@ pub struct ProjectCompileDiagnostic {
 pub struct ProjectCheckResult {
     pub resolution: ProjectResolutionObservation,
     pub resolution_digest: String,
+    pub wrapped: Vec<ProjectWrappedObservation>,
+    pub test_sources: Option<Vec<String>>,
     pub diagnostics: Vec<ProjectCompileDiagnostic>,
 }
 
@@ -4961,6 +4963,14 @@ impl HostRuntime {
         })?;
         let resolution_digest =
             project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let root_observation = snapshot
+            .projects
+            .iter()
+            .find(|project| project.root == resolution.project_root);
+        let wrapped = root_observation
+            .map(|project| project.wrapped.clone())
+            .unwrap_or_default();
+        let test_sources = root_observation.and_then(|project| project.test_sources.clone());
         let temporary = create_check_temp_directory()
             .map_err(|kind| ProjectCheckError::TempDirectory { kind })?;
         let api = self.stack.api();
@@ -5012,6 +5022,8 @@ impl HostRuntime {
         Ok(ProjectCheckResult {
             resolution,
             resolution_digest,
+            wrapped,
+            test_sources,
             diagnostics,
         })
     }

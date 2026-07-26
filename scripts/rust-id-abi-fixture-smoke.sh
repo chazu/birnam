@@ -2,8 +2,12 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-target_dir="$repo/.cargo-target"
-bin=${BIRNAM_BIN:-$repo/zig-out/bin/birnam}
+# This fixture is an ABI/image compatibility proof, not a Rust-host CLI
+# contract.  During the Rust-host rehearsal the installed Zig oracle is the
+# authority that can read the pre-rewrite image; callers may provide it
+# explicitly while the canonical `BIRNAM_BIN` remains the Rust host.
+target_dir=${BIRNAM_RUST_ID_TARGET_DIR:-$repo/.cargo-target/rust-id-abi-fixture}
+bin=${BIRNAM_ID_FIXTURE_BIN:-${BIRNAM_BIN:-$repo/zig-out/bin/birnam}}
 
 probe_profile() {
   local profile=$1

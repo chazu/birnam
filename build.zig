@@ -455,6 +455,12 @@ pub fn build(b: *std.Build) void {
     });
     rust_store_stack_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
     rust_store_stack_smoke.setEnvironmentVariable("BIRNAM_LIB_DIR", b.getInstallPath(.lib, ""));
+    if (selected_host == .rust) {
+        // Its Zig-Store oracle leg invokes the project smoke as a Rust-host
+        // observation. Select the Rust-specific contract instead of applying
+        // the Zig host's verbose report assertions to the Rust executable.
+        rust_store_stack_smoke.setEnvironmentVariable("BIRNAM_HOST_IMPL", "rust");
+    }
     const test_rust_store_stack_step = b.step(
         "test-rust-store-stack",
         "Run image and REPL integration through Rust Store debug and release dylibs",
@@ -478,6 +484,15 @@ pub fn build(b: *std.Build) void {
         "scripts/rust-id-abi-fixture-smoke.sh",
     });
     rust_id_abi_fixture_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    if (selected_host == .rust) {
+        // The frozen pre-rewrite image is a compatibility/oracle fixture. It
+        // is not part of the observational Rust-host CLI contract, so keep
+        // that proof on the explicitly installed Zig host during rehearsal.
+        rust_id_abi_fixture_smoke.setEnvironmentVariable(
+            "BIRNAM_ID_FIXTURE_BIN",
+            b.getInstallPath(.bin, "birnam-zig-oracle"),
+        );
+    }
     const test_rust_id_abi_fixture_step = b.step(
         "test-rust-id-abi-fixture",
         "Run the frozen native client and pre-rewrite image against both Rust profiles",
@@ -2786,10 +2801,11 @@ pub fn build(b: *std.Build) void {
     const install_zig_host = b.addInstallArtifact(siphon_exe, .{
         .dest_sub_path = if (selected_host == .zig) "birnam" else "birnam-zig-oracle",
     });
-    if (selected_host == .zig) {
-        b.getInstallStep().dependOn(&install_zig_host.step);
-        bootstrap_install.dependOn(&install_zig_host.step);
-    }
+    // Keep the Zig executable available as an explicit rollback/oracle
+    // binary even while the Rust host is selected.  Compatibility fixtures
+    // may need the Zig image reader during the Rust-host observation window.
+    b.getInstallStep().dependOn(&install_zig_host.step);
+    bootstrap_install.dependOn(&install_zig_host.step);
 
     // Birnam module source is embedded in its compiled unit. Native floor
     // sources and authored guides remain separate documentation resources.
@@ -3045,6 +3061,9 @@ pub fn build(b: *std.Build) void {
 
     const project_check_smoke = b.addSystemCommand(&.{ "bash", "scripts/project-check-smoke.sh" });
     project_check_smoke.setEnvironmentVariable("BIRNAM_BIN", b.getInstallPath(.bin, "birnam"));
+    if (selected_host == .rust) {
+        project_check_smoke.setEnvironmentVariable("BIRNAM_HOST_IMPL", "rust");
+    }
     project_check_smoke.step.dependOn(stage1);
     const project_check_step = b.step("test-project-check", "Run source-project resolution and build smoke tests");
     project_check_step.dependOn(&project_check_smoke.step);
