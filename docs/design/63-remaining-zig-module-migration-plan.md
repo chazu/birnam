@@ -3223,6 +3223,19 @@ allowances.
 - Rust-host formatting, check, 49-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.66 Rust host staged artifact compilation checkpoint (2026-07-26)
+
+- `HostRuntime::compile_project_artifact` now sends the existing Codegen
+  `compile:output:root:` selector into a caller-owned staging path, reads the
+  resulting bytes, validates the inert descriptor's kind, identity, ABI,
+  target, source/revision digests, and dependency list, and returns a fresh
+  SHA-256 checksum. Codegen diagnostics remain typed and owned by Rust.
+- This adapter has no activation or publication authority: a compiled dylib is
+  only bytes in the supplied staging directory. Descriptor mismatches and
+  missing outputs fail before a later reuse/publish stage can consume them.
+- Rust-host formatting, check, 50-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

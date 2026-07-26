@@ -1346,6 +1346,23 @@ pub enum ProjectArtifactPlanValidationError {
     InvalidPublication(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectCompiledArtifactValidationError {
+    Descriptor(birnam_artifact::Error),
+    KindMismatch,
+    IdentityMismatch { expected: String, actual: Vec<u8> },
+    SourceDigestMismatch,
+    RevisionDigestMismatch,
+    DependencyMismatch { index: usize, actual: Vec<u8> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectArtifactCompileError {
+    CodegenRejected { module: String, detail: String },
+    ReadOutput { path: PathBuf, kind: io::ErrorKind },
+    Descriptor(ProjectCompiledArtifactValidationError),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
@@ -2757,6 +2774,52 @@ pub fn validate_project_artifact_plan(
     Ok(())
 }
 
+/// Validate one Codegen-produced module artifact before it can be copied into
+/// a published build. The descriptor is inert bytes at this boundary; no
+/// dynamic library is loaded and no module is activated.
+pub fn validate_project_compiled_artifact(
+    module: &ProjectSourceObservation,
+    bytes: &[u8],
+) -> Result<(), ProjectCompiledArtifactValidationError> {
+    let descriptor = birnam_artifact::inspect(bytes)
+        .map_err(ProjectCompiledArtifactValidationError::Descriptor)?;
+    if descriptor.kind != b"module" {
+        return Err(ProjectCompiledArtifactValidationError::KindMismatch);
+    }
+    if descriptor.identity != module.name.as_bytes() {
+        return Err(ProjectCompiledArtifactValidationError::IdentityMismatch {
+            expected: module.name.clone(),
+            actual: descriptor.identity.to_vec(),
+        });
+    }
+    if descriptor.source_digest != module.source_digest.as_bytes() {
+        return Err(ProjectCompiledArtifactValidationError::SourceDigestMismatch);
+    }
+    if descriptor.revision_digest != module.revision_digest.as_bytes() {
+        return Err(ProjectCompiledArtifactValidationError::RevisionDigestMismatch);
+    }
+    for (index, (expected, actual)) in module
+        .requires
+        .iter()
+        .zip(descriptor.requires.iter())
+        .enumerate()
+    {
+        if actual != expected.as_bytes() {
+            return Err(ProjectCompiledArtifactValidationError::DependencyMismatch {
+                index,
+                actual: actual.to_vec(),
+            });
+        }
+    }
+    if descriptor.requires.count() != module.requires.len() {
+        return Err(ProjectCompiledArtifactValidationError::DependencyMismatch {
+            index: module.requires.len(),
+            actual: Vec::new(),
+        });
+    }
+    Ok(())
+}
+
 /// Decode the persisted `birnam-artifacts-v3` record before it participates in
 /// a later reuse decision. The file remains an untrusted input; this function
 /// only copies and validates its structural metadata.
@@ -3573,6 +3636,73 @@ impl HostRuntime {
             resolution_digest,
             diagnostics,
         })
+    }
+
+    /// Compile one observed module into a caller-owned staging path. The
+    /// Codegen result is read back and checked against the module's inert
+    /// descriptor before its checksum is returned; activation and publication
+    /// remain separate host operations.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for the Codegen send. `output` must be an isolated staging path
+    /// whose parent already exists.
+    pub unsafe fn compile_project_artifact(
+        &self,
+        module: &ProjectSourceObservation,
+        output: &Path,
+    ) -> Result<String, ProjectArtifactCompileError> {
+        let api = self.stack.api();
+        let selector = unsafe { (api.intern)(c"compile:output:root:".as_ptr()) };
+        let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+        let output_bytes = path_bytes(output);
+        let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+        let root_value = unsafe {
+            (api.mkString)(
+                module.project_root.as_bytes().as_ptr(),
+                module.project_root.len(),
+            )
+        };
+        let result = unsafe {
+            (api.send)(
+                self.codegen,
+                selector,
+                [source, output_value, root_value].as_ptr(),
+                3,
+            )
+        };
+        if result == api.nilObj || send_is_error(api, result) {
+            let last_error_selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
+            let detail_value =
+                unsafe { (api.send)(self.codegen, last_error_selector, std::ptr::null(), 0) };
+            let detail = if detail_value != api.nilObj
+                && unsafe { (api.vtableOf)(detail_value) } == api.string_vt
+            {
+                let mut length = 0usize;
+                let bytes = unsafe { (api.stringBytes)(detail_value, &mut length) };
+                if bytes.is_null() {
+                    "compiler did not provide a diagnostic".to_owned()
+                } else {
+                    String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(bytes, length) })
+                        .into_owned()
+                }
+            } else {
+                "compiler did not provide a diagnostic".to_owned()
+            };
+            return Err(ProjectArtifactCompileError::CodegenRejected {
+                module: module.name.clone(),
+                detail,
+            });
+        }
+        let bytes =
+            std::fs::read(output).map_err(|error| ProjectArtifactCompileError::ReadOutput {
+                path: output.to_path_buf(),
+                kind: error.kind(),
+            })?;
+        validate_project_compiled_artifact(module, &bytes)
+            .map_err(ProjectArtifactCompileError::Descriptor)?;
+        Ok(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
     }
 
     /// Ask Birnam policy for a side-effect-free artifact plan. The request
@@ -5745,6 +5875,30 @@ mod tests {
                 index: 0,
                 field: "path"
             })
+        ));
+    }
+
+    #[test]
+    fn compiled_artifact_validation_checks_descriptor_identity_and_metadata() {
+        let module = ProjectSourceObservation {
+            name: "root".to_owned(),
+            path: "/tmp/project/root.birnam".to_owned(),
+            sources: vec!["/tmp/project/root.birnam".to_owned()],
+            project_root: "/tmp/project".to_owned(),
+            source: Vec::new(),
+            requires: vec!["dep".to_owned()],
+            source_digest: "source".to_owned(),
+            revision_digest: "revision".to_owned(),
+        };
+        let bytes = artifact_fixture(b"root", &[b"dep"]);
+        validate_project_compiled_artifact(&module, &bytes)
+            .expect("compiled descriptor matches module observation");
+
+        let mut wrong_revision = module.clone();
+        wrong_revision.revision_digest = "changed".to_owned();
+        assert!(matches!(
+            validate_project_compiled_artifact(&wrong_revision, &bytes),
+            Err(ProjectCompiledArtifactValidationError::RevisionDigestMismatch)
         ));
     }
 
