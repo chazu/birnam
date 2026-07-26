@@ -3381,6 +3381,19 @@ allowances.
   activation; no checkout fallback was added.
 - R6 remains accepted at focused `91/91`.
 
+### R7.79 Rust host isolated test-worker checkpoint (2026-07-26)
+
+- Root observation now retains configured/discovered test sources. The Rust
+  `test` command can build once when requested, spawn one fresh
+  `--project-test-worker` process per source, and report per-source status plus
+  aggregate failures. Workers validate the published build, preflight/activate
+  artifacts, and evaluate only their assigned test source.
+- The worker parser preserves exact project/test paths and restricts profiles
+  to debug/release. No test worker shares Store or mutable runtime state with
+  another worker; startup remains installed-layout-bound.
+- Rust-host formatting, check, 54-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

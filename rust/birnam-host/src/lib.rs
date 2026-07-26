@@ -106,6 +106,20 @@ pub struct TestOptions {
     pub profile: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectTestWorkerOptions {
+    pub project_root: PathBuf,
+    pub profile: String,
+    pub test_source: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectTestWorkerParseError {
+    WrongArity,
+    NonUtf8Profile,
+    InvalidProfile(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplMode {
     None,
@@ -785,6 +799,30 @@ pub fn parse_test_args<T: AsRef<std::ffi::OsStr>>(
     })
 }
 
+/// Parse the private project-test worker triplet emitted by the Rust test
+/// driver. The worker receives no user flags and preserves exact paths.
+pub fn parse_project_test_worker_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ProjectTestWorkerOptions, ProjectTestWorkerParseError> {
+    if args.len() != 3 {
+        return Err(ProjectTestWorkerParseError::WrongArity);
+    }
+    let profile = args[1]
+        .as_ref()
+        .to_str()
+        .ok_or(ProjectTestWorkerParseError::NonUtf8Profile)?;
+    if profile != "debug" && profile != "release" {
+        return Err(ProjectTestWorkerParseError::InvalidProfile(
+            profile.to_owned(),
+        ));
+    }
+    Ok(ProjectTestWorkerOptions {
+        project_root: PathBuf::from(args[0].as_ref()),
+        profile: profile.to_owned(),
+        test_source: PathBuf::from(args[2].as_ref()),
+    })
+}
+
 fn run_value<T: AsRef<std::ffi::OsStr>>(
     option: &'static str,
     value: &T,
@@ -1282,6 +1320,7 @@ pub struct ProjectObservation {
     pub wrapped: Vec<ProjectWrappedObservation>,
     pub dependencies: Vec<ProjectDependencyObservation>,
     pub sources: Vec<ProjectSourceObservation>,
+    pub test_sources: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3882,6 +3921,44 @@ impl HostRuntime {
         Ok(())
     }
 
+    unsafe fn activate_project_build(
+        &self,
+        build: &ProjectBuildResult,
+    ) -> Result<(), ProjectRunError> {
+        let project_lib = build.output_root.join("lib");
+        let api = self.stack.api();
+        let alien = unsafe { (api.import)(c"Alien".as_ptr()) };
+        if alien != api.nilObj {
+            let path = path_bytes(&project_lib);
+            let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
+            let selector = unsafe { (api.intern)(c"libraryDir:".as_ptr()) };
+            let result = unsafe { (api.send)(alien, selector, [value].as_ptr(), 1) };
+            if result == api.nilObj || send_is_error(api, result) {
+                return Err(ProjectRunError::NativeDirectoryRejected);
+            }
+        }
+        let mut paths = Vec::with_capacity(build.record.artifacts.len());
+        for artifact in &build.record.artifacts {
+            let Some(relative) = safe_record_relative_path(&artifact.path) else {
+                return Err(ProjectRunError::ArtifactPreflight(
+                    ArtifactPreflightError::Read {
+                        path: PathBuf::from(&artifact.path),
+                        kind: io::ErrorKind::InvalidInput,
+                    },
+                ));
+            };
+            let path = build.output_root.join(relative);
+            preflight_artifact(&path, Some(artifact.name.as_bytes()))
+                .map_err(ProjectRunError::ArtifactPreflight)?;
+            paths.push((path, artifact.name.clone()));
+        }
+        for (path, name) in paths {
+            unsafe { activate_artifact(self, &path, Some(name.as_bytes())) }
+                .map_err(ProjectRunError::ArtifactActivation)?;
+        }
+        Ok(())
+    }
+
     /// Run a project main after validating/building its publication, loading
     /// project modules through the canonical Module manager, and installing
     /// ProjectArgs. Repl/socket follow the observed run policy unless the CLI
@@ -4018,6 +4095,29 @@ impl HostRuntime {
     /// See [`HostRuntime::run_project_with_tool_version`].
     pub unsafe fn run_project(&self, options: &RunOptions) -> Result<(), ProjectRunError> {
         unsafe { self.run_project_with_tool_version(options, env!("CARGO_PKG_VERSION")) }
+    }
+
+    /// Validate/activate one published project and evaluate one test source in
+    /// a fresh worker process. The caller owns worker lifecycle and output.
+    ///
+    /// # Safety
+    ///
+    /// See [`HostRuntime::run_project_with_tool_version`].
+    pub unsafe fn run_project_test_source(
+        &self,
+        project_root: &Path,
+        test_source: &Path,
+        target: &str,
+        profile: &str,
+        tool_version: &str,
+    ) -> Result<(), ProjectRunError> {
+        let build =
+            unsafe { self.validate_project_build(project_root, target, profile, tool_version) }
+                .map_err(ProjectRunError::Build)?;
+        unsafe { self.activate_project_build(&build) }?;
+        unsafe { eval_script(self, test_source) }
+            .map(|_| ())
+            .map_err(ProjectRunError::Main)
     }
 
     /// Lazily install the Birnam-owned project policy module. Filesystem
@@ -4247,6 +4347,7 @@ impl HostRuntime {
                 wrapped: manifest.wrapped,
                 dependencies: dependencies.clone(),
                 sources,
+                test_sources: manifest.test_sources,
             },
             dependencies,
         ))
@@ -7438,6 +7539,26 @@ mod tests {
             expanded,
             "cc -o /tmp/build/native/libdemo.dylib -I/tmp/project -L/tmp/build/lib /tmp/build/obj.o {unknown}"
         );
+    }
+
+    #[test]
+    fn project_test_worker_parser_preserves_paths_and_profile() {
+        let parsed = parse_project_test_worker_args(&[
+            "/tmp/project",
+            "release",
+            "/tmp/project/tests/app.birnam",
+        ])
+        .expect("worker arguments parse");
+        assert_eq!(parsed.project_root, Path::new("/tmp/project"));
+        assert_eq!(parsed.profile, "release");
+        assert_eq!(
+            parsed.test_source,
+            Path::new("/tmp/project/tests/app.birnam")
+        );
+        assert!(matches!(
+            parse_project_test_worker_args(&["/tmp/project", "fast", "test.birnam"]),
+            Err(ProjectTestWorkerParseError::InvalidProfile(value)) if value == "fast"
+        ));
     }
 
     #[test]

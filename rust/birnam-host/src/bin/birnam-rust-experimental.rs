@@ -1,14 +1,16 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
     CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, ProjectBuildRequest,
     bake_executable, baked_image, classify_command, eval_script, host_target_identity, load_image,
-    parse_bake_args, parse_build_args, parse_check_args, parse_install_args, parse_rebuild_args,
-    parse_run_args, parse_test_args, parse_worker_args, start_from_environment,
+    parse_bake_args, parse_build_args, parse_check_args, parse_install_args,
+    parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
+    parse_worker_args, start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -29,44 +31,6 @@ const RUN_USAGE: &str = "usage: birnam run [directory] [--build] [--profile debu
 fn fail(message: impl std::fmt::Display) -> ExitCode {
     eprintln!("birnam-rust-experimental: {message}");
     ExitCode::from(1)
-}
-
-fn project_command(args: &[OsString], command: &str) -> Result<(), String> {
-    let tail = &args[1..];
-    let is_help = match command {
-        "check" => parse_check_args(tail)
-            .map(|outcome| matches!(outcome, ParseOutcome::Help))
-            .map_err(|error| format!("{command}: {error:?}"))?,
-        "build" => parse_build_args(tail)
-            .map(|outcome| matches!(outcome, ParseOutcome::Help))
-            .map_err(|error| format!("{command}: {error:?}"))?,
-        "install" => parse_install_args(tail)
-            .map(|outcome| matches!(outcome, ParseOutcome::Help))
-            .map_err(|error| format!("{command}: {error:?}"))?,
-        "test" => parse_test_args(tail)
-            .map(|outcome| matches!(outcome, ParseOutcome::Help))
-            .map_err(|error| format!("{command}: {error:?}"))?,
-        "run" => parse_run_args(tail)
-            .map(|outcome| matches!(outcome, ParseOutcome::Help))
-            .map_err(|error| format!("{command}: {error:?}"))?,
-        _ => unreachable!("unsupported project command parser: {command}"),
-    };
-    if is_help {
-        let usage = match command {
-            "check" => CHECK_USAGE,
-            "build" => BUILD_USAGE,
-            "install" => INSTALL_USAGE,
-            "test" => TEST_USAGE,
-            "run" => RUN_USAGE,
-            _ => unreachable!("unsupported project command usage: {command}"),
-        };
-        print!("{usage}");
-        Ok(())
-    } else {
-        Err(format!(
-            "{command} is not implemented by the experimental host"
-        ))
-    }
 }
 
 fn json_escape(value: &str) -> String {
@@ -271,6 +235,107 @@ fn run_project_command(args: &[OsString]) -> Result<(), String> {
     }
 }
 
+fn test_worker_command(args: &[OsString]) -> Result<(), String> {
+    let options = parse_project_test_worker_args(&args[1..])
+        .map_err(|error| format!("project-test-worker: {error:?}"))?;
+    let runtime =
+        unsafe { start_from_environment() }.map_err(|error| format!("startup: {error:?}"))?;
+    let mut anchor = 0usize;
+    unsafe { runtime.prepare_execution(&mut anchor) };
+    let target = host_target_identity();
+    unsafe {
+        runtime
+            .run_project_test_source(
+                &options.project_root,
+                &options.test_source,
+                &target,
+                &options.profile,
+                VERSION.trim(),
+            )
+            .map_err(|error| format!("project-test-worker: {error:?}"))
+    }
+}
+
+fn test_command(args: &[OsString]) -> Result<(), String> {
+    let outcome = parse_test_args(&args[1..]).map_err(|error| format!("test: {error:?}"))?;
+    match outcome {
+        ParseOutcome::Help => {
+            print!("{TEST_USAGE}");
+            Ok(())
+        }
+        ParseOutcome::Parsed(options) => {
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            let target = host_target_identity();
+            if options.build {
+                let built_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|error| format!("test: clock: {error}"))?
+                    .as_secs()
+                    .to_string();
+                let request = ProjectBuildRequest {
+                    start: &options.directory,
+                    target: &target,
+                    profile: &options.profile,
+                    tool_version: VERSION.trim(),
+                    built_at: &built_at,
+                };
+                unsafe { runtime.build_project(&request) }
+                    .map_err(|error| format!("test: {error:?}"))?;
+            }
+            let snapshot = unsafe { runtime.observe_project_snapshot(&options.directory) }
+                .map_err(|error| format!("test: {error:?}"))?;
+            let root = snapshot
+                .projects
+                .first()
+                .ok_or_else(|| "test: project observation was empty".to_owned())?;
+            let sources = root
+                .test_sources
+                .clone()
+                .ok_or_else(|| "test: no test sources were configured or discovered".to_owned())?;
+            if sources.is_empty() {
+                return Err("test: no test sources were configured or discovered".to_owned());
+            }
+            let executable =
+                env::current_exe().map_err(|error| format!("test: executable: {error}"))?;
+            let mut failures = 0usize;
+            for source in &sources {
+                let test_path = PathBuf::from(&root.root).join(source);
+                println!("== {} ==", test_path.display());
+                let output = std::process::Command::new(&executable)
+                    .arg("--project-test-worker")
+                    .arg(&root.root)
+                    .arg(&options.profile)
+                    .arg(&test_path)
+                    .output()
+                    .map_err(|error| format!("test: could not start {source}: {error}"))?;
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+                if output.status.success() {
+                    println!("ok   {}", test_path.display());
+                } else {
+                    println!("FAIL {}", test_path.display());
+                    failures += 1;
+                }
+            }
+            println!(
+                "test: {} source{}; {} failure{}",
+                sources.len(),
+                if sources.len() == 1 { "" } else { "s" },
+                failures,
+                if failures == 1 { "" } else { "s" }
+            );
+            if failures == 0 {
+                Ok(())
+            } else {
+                Err("test: one or more workers failed".to_owned())
+            }
+        }
+    }
+}
+
 fn worker_command(args: &[OsString]) -> Result<(), String> {
     let options = parse_worker_args(&args[1..]).map_err(|error| format!("--worker: {error:?}"))?;
     let runtime =
@@ -376,7 +441,8 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Build => build_command(&args),
         CommandKind::Install => install_command(&args),
         CommandKind::Run => run_project_command(&args),
-        CommandKind::Test => project_command(&args, "test"),
+        CommandKind::Test => test_command(&args),
+        CommandKind::ProjectTestWorker => test_worker_command(&args),
         CommandKind::Worker => worker_command(&args),
         other => Err(format!(
             "{other:?} is not implemented by the experimental host"
