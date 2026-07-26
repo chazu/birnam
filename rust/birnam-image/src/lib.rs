@@ -1092,11 +1092,15 @@ struct FactCollection {
     writer: FactsWriter,
     heap: HeapPreflight,
     kept: u32,
+    recovered: u32,
+    recoveries_needing_code: u32,
     rejected: u32,
 }
 
 struct FactPreflight {
     kept: u32,
+    recovered: u32,
+    recoveries_needing_code: u32,
     rejected: u32,
     facts_payload: Vec<u8>,
     heap_payload: Option<Vec<u8>>,
@@ -1320,6 +1324,18 @@ unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
     unsafe { (api.send)(receiver, intern(api, selector), arguments.as_ptr(), 0) }
 }
 
+unsafe fn send2(api: &IdApi, receiver: Oop, selector: &[u8], first: Oop, second: Oop) -> Oop {
+    let arguments = [first, second];
+    unsafe {
+        (api.send)(
+            receiver,
+            intern(api, selector),
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    }
+}
+
 unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
     if pointer.is_null() {
         return None;
@@ -1327,6 +1343,52 @@ unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
     // SAFETY: IdApi returns process-owned NUL-terminated names that remain
     // valid for the loaded floor's lifetime.
     Some(unsafe { CStr::from_ptr(pointer) }.to_bytes())
+}
+
+unsafe fn symbol_bytes<'a>(api: &IdApi, object: Oop) -> Option<&'a [u8]> {
+    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.symbol_vt {
+        return None;
+    }
+    unsafe { c_string_bytes((api.symbolName)(object)) }
+}
+
+unsafe fn has_global_recovery_source(api: &IdApi, store: Oop, attribute: Oop) -> bool {
+    let source_entity = unsafe { intern(api, b"__globalsrc__\0") };
+    (unsafe { send2(api, store, b"hasValue:attr:\0", source_entity, attribute) }) == api.trueObj
+}
+
+#[derive(Clone, Copy)]
+enum DeferredFactClass {
+    Source,
+    Code,
+    Reject,
+}
+
+unsafe fn deferred_fact_class(
+    api: &IdApi,
+    store: Oop,
+    entity: Oop,
+    attribute: Oop,
+) -> DeferredFactClass {
+    let Some(entity_name) = (unsafe { symbol_bytes(api, entity) }) else {
+        return DeferredFactClass::Reject;
+    };
+    let Some(attribute_name) = (unsafe { symbol_bytes(api, attribute) }) else {
+        return DeferredFactClass::Reject;
+    };
+    if entity_name == b"__globals__" {
+        if attribute_name.starts_with(b"__") {
+            return DeferredFactClass::Code;
+        }
+        if unsafe { has_global_recovery_source(api, store, attribute) } {
+            return DeferredFactClass::Source;
+        }
+        return DeferredFactClass::Reject;
+    }
+    if unsafe { (api.vtableOf)(entity) } == api.vtable_vt {
+        return DeferredFactClass::Code;
+    }
+    DeferredFactClass::Reject
 }
 
 unsafe fn encode_runtime_oop(
@@ -1390,12 +1452,19 @@ unsafe fn encode_runtime_oop(
     true
 }
 
-fn record_fact_counts(kept: u32, rejected: u32, recovered_slots: u32, rejected_slots: u32) {
+fn record_fact_counts(
+    kept: u32,
+    recovered: u32,
+    rejected: u32,
+    recovered_slots: u32,
+    rejected_slots: u32,
+) {
     let mut report = runtime()
         .report
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     report.saved_facts = kept;
+    report.recovered_facts = recovered;
     report.rejected_facts = rejected;
     report.recovered_slots = recovered_slots;
     report.rejected_slots = rejected_slots;
@@ -1680,6 +1749,8 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     if store.is_null() || store == api.nilObj {
         return FactPreflight {
             kept: 0,
+            recovered: 0,
+            recoveries_needing_code: 0,
             rejected: 0,
             facts_payload: Vec::new(),
             heap_payload: Some(Vec::new()),
@@ -1693,6 +1764,8 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     if collector_vt.is_null() {
         return FactPreflight {
             kept: 0,
+            recovered: 0,
+            recoveries_needing_code: 0,
             rejected: 0,
             facts_payload: Vec::new(),
             heap_payload: None,
@@ -1712,6 +1785,8 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     if collector.is_null() {
         return FactPreflight {
             kept: 0,
+            recovered: 0,
+            recoveries_needing_code: 0,
             rejected: 0,
             facts_payload: Vec::new(),
             heap_payload: None,
@@ -1729,6 +1804,8 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
             writer: FactsWriter::new(basis),
             heap: HeapPreflight::new(),
             kept: 0,
+            recovered: 0,
+            recoveries_needing_code: 0,
             rejected: 0,
         });
     }
@@ -1748,6 +1825,8 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     let Some(mut collection) = collection else {
         return FactPreflight {
             kept: 0,
+            recovered: 0,
+            recoveries_needing_code: 0,
             rejected: 0,
             facts_payload: Vec::new(),
             heap_payload: None,
@@ -1766,6 +1845,8 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
         .unwrap_or(false);
     FactPreflight {
         kept: collection.kept,
+        recovered: collection.recovered,
+        recoveries_needing_code: collection.recoveries_needing_code,
         rejected: collection.rejected,
         facts_payload,
         heap_payload,
@@ -1830,6 +1911,8 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
         "Rust Image writer rejected preflight payload"
     } else if !authority_available {
         "Rust Image generation authority is not available"
+    } else if preflight.recoveries_needing_code != 0 && !code_captured {
+        "Rust Image deferred facts require a compiled image unit"
     } else if !code_captured {
         "Rust Image code capture failed"
     } else if composed.is_none() {
@@ -1839,6 +1922,7 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
     });
     record_fact_counts(
         preflight.kept,
+        preflight.recovered,
         preflight.rejected,
         preflight.recovered_slots,
         preflight.rejected_slots,
@@ -2070,13 +2154,34 @@ unsafe extern "C" fn collector_collect(_self_object: Oop, _args: *const Oop, cou
             && encode_runtime_oop(api, &mut fields, arguments[1], &mut collection.heap)
             && encode_runtime_oop(api, &mut fields, arguments[2], &mut collection.heap)
     };
-    if !encoded
-        || collection
+    let fact_written = encoded
+        && collection
             .writer
             .fact_encoded(op as u8, tx as u64, fields.as_bytes())
-            .is_err()
-    {
-        collection.rejected = collection.rejected.saturating_add(1);
+            .is_ok();
+    if !fact_written {
+        if encoded {
+            collection.rejected = collection.rejected.saturating_add(1);
+        } else {
+            let store = unsafe { (api.import)(c"Store".as_ptr()) };
+            match if store.is_null() || store == api.nilObj {
+                DeferredFactClass::Reject
+            } else {
+                unsafe { deferred_fact_class(api, store, arguments[0], arguments[1]) }
+            } {
+                DeferredFactClass::Source => {
+                    collection.recovered = collection.recovered.saturating_add(1);
+                }
+                DeferredFactClass::Code => {
+                    collection.recovered = collection.recovered.saturating_add(1);
+                    collection.recoveries_needing_code =
+                        collection.recoveries_needing_code.saturating_add(1);
+                }
+                DeferredFactClass::Reject => {
+                    collection.rejected = collection.rejected.saturating_add(1);
+                }
+            }
+        }
     } else {
         collection.kept = collection.kept.saturating_add(1);
     }

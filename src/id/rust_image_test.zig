@@ -393,7 +393,7 @@ test "Rust Image live probe accepts Zig Codegen authority without publishing" {
     var detail_len: usize = 0;
     const detail = api.stringBytes(api.send(report, api.intern("detail"), &.{}, 0), &detail_len);
     try std.testing.expectEqualStrings(
-        "Rust Image fact preflight rejected unsupported values",
+        "Rust Image code mapping/rebuild orchestration is not installed",
         detail[0..detail_len],
     );
     try std.testing.expect(!pathExists(path));
