@@ -1533,6 +1533,36 @@ pub enum ProjectWrappedBuildError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectInstallError {
+    CreateStage {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    InvalidArtifactPath {
+        name: String,
+        path: String,
+    },
+    ReadSource {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    CopyStage {
+        source: PathBuf,
+        destination: PathBuf,
+        kind: io::ErrorKind,
+    },
+    SyncStage {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Publish {
+        source: PathBuf,
+        destination: PathBuf,
+        kind: io::ErrorKind,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectBuildRecordWriteError {
     Create { path: PathBuf, kind: io::ErrorKind },
     Write { path: PathBuf, kind: io::ErrorKind },
@@ -4878,6 +4908,119 @@ impl HostRuntime {
             record,
             artifacts,
         })
+    }
+
+    /// Install a verified build's exact module/native set into the resolved
+    /// runtime library directory. Files are copied and synced in a private
+    /// staging directory, then renamed individually; no source compilation or
+    /// runtime activation occurs here.
+    pub fn install_project_build(
+        &self,
+        build: &ProjectBuildResult,
+    ) -> Result<usize, ProjectInstallError> {
+        std::fs::create_dir_all(&self.resources.lib_dir).map_err(|error| {
+            ProjectInstallError::CreateStage {
+                path: self.resources.lib_dir.clone(),
+                kind: error.kind(),
+            }
+        })?;
+        let process = std::process::id();
+        let stage = (0..128u32)
+            .map(|attempt| {
+                self.resources
+                    .lib_dir
+                    .join(format!(".birnam-install-{process}-{attempt}"))
+            })
+            .find(|path| !path.exists())
+            .ok_or(ProjectInstallError::CreateStage {
+                path: self.resources.lib_dir.clone(),
+                kind: io::ErrorKind::AlreadyExists,
+            })?;
+        std::fs::create_dir(&stage).map_err(|error| ProjectInstallError::CreateStage {
+            path: stage.clone(),
+            kind: error.kind(),
+        })?;
+        let result = (|| {
+            let mut entries =
+                Vec::with_capacity(build.record.artifacts.len() + build.record.native.len());
+            entries.extend(
+                build
+                    .record
+                    .artifacts
+                    .iter()
+                    .map(|artifact| (artifact.name.as_str(), artifact.path.as_str())),
+            );
+            entries.extend(
+                build
+                    .record
+                    .native
+                    .iter()
+                    .map(|artifact| (artifact.name.as_str(), artifact.path.as_str())),
+            );
+            let mut sources = Vec::with_capacity(entries.len());
+            for (name, relative_path) in entries {
+                let Some(relative) = safe_record_relative_path(relative_path) else {
+                    return Err(ProjectInstallError::InvalidArtifactPath {
+                        name: name.to_owned(),
+                        path: relative_path.to_owned(),
+                    });
+                };
+                let Some(filename) = relative.file_name().and_then(|value| value.to_str()) else {
+                    return Err(ProjectInstallError::InvalidArtifactPath {
+                        name: name.to_owned(),
+                        path: relative_path.to_owned(),
+                    });
+                };
+                let source = build.output_root.join(relative);
+                let destination = stage.join(filename);
+                let bytes =
+                    std::fs::read(&source).map_err(|error| ProjectInstallError::ReadSource {
+                        path: source.clone(),
+                        kind: error.kind(),
+                    })?;
+                std::fs::write(&destination, &bytes).map_err(|error| {
+                    ProjectInstallError::CopyStage {
+                        source: source.clone(),
+                        destination: destination.clone(),
+                        kind: error.kind(),
+                    }
+                })?;
+                let file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .open(&destination)
+                    .map_err(|error| ProjectInstallError::CopyStage {
+                        source: source.clone(),
+                        destination: destination.clone(),
+                        kind: error.kind(),
+                    })?;
+                file.sync_all()
+                    .map_err(|error| ProjectInstallError::SyncStage {
+                        path: destination.clone(),
+                        kind: error.kind(),
+                    })?;
+                sources.push(destination);
+            }
+            for source in &sources {
+                let Some(filename) = source.file_name() else {
+                    return Err(ProjectInstallError::Publish {
+                        source: source.clone(),
+                        destination: self.resources.lib_dir.clone(),
+                        kind: io::ErrorKind::InvalidInput,
+                    });
+                };
+                let destination = self.resources.lib_dir.join(filename);
+                std::fs::rename(source, &destination).map_err(|error| {
+                    ProjectInstallError::Publish {
+                        source: source.clone(),
+                        destination: destination.clone(),
+                        kind: error.kind(),
+                    }
+                })?;
+            }
+            Ok(sources.len())
+        })();
+        let _ = std::fs::remove_dir_all(&stage);
+        result
     }
 
     /// Read one source file and ask Codegen for its static module metadata.

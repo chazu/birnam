@@ -3339,6 +3339,19 @@ allowances.
 - Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.75 Rust host install checkpoint (2026-07-26)
+
+- `HostRuntime::install_project_build` now copies the verified record-selected
+  module and wrapped-native set into a private directory below the resolved
+  runtime `lib`, syncs each staged file, and renames the exact basenames into
+  place. `birnam-rust-experimental install` supports both `--build` and
+  validated no-rebuild paths.
+- Unsafe record paths, missing sources, copy/sync failures, and rename failures
+  are typed; no source compilation occurs unless `--build` is explicit, and no
+  module activation occurs during install.
+- Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

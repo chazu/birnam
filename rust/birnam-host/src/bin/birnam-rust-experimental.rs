@@ -202,6 +202,57 @@ fn build_command(args: &[OsString]) -> Result<(), String> {
     }
 }
 
+fn install_command(args: &[OsString]) -> Result<(), String> {
+    let outcome = parse_install_args(&args[1..]).map_err(|error| format!("install: {error:?}"))?;
+    match outcome {
+        ParseOutcome::Help => {
+            print!("{INSTALL_USAGE}");
+            Ok(())
+        }
+        ParseOutcome::Parsed(options) => {
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            let target = host_target_identity();
+            let build = if options.build {
+                let built_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|error| format!("install: clock: {error}"))?
+                    .as_secs()
+                    .to_string();
+                let request = ProjectBuildRequest {
+                    start: &options.directory,
+                    target: &target,
+                    profile: &options.profile,
+                    tool_version: VERSION.trim(),
+                    built_at: &built_at,
+                };
+                unsafe { runtime.build_project(&request) }
+            } else {
+                unsafe {
+                    runtime.validate_project_build(
+                        &options.directory,
+                        &target,
+                        &options.profile,
+                        VERSION.trim(),
+                    )
+                }
+            }
+            .map_err(|error| format!("install: {error:?}"))?;
+            let count = runtime
+                .install_project_build(&build)
+                .map_err(|error| format!("install: {error:?}"))?;
+            println!(
+                "installed {count} artifact{} into {}",
+                if count == 1 { "" } else { "s" },
+                runtime.resources.lib_dir.display()
+            );
+            Ok(())
+        }
+    }
+}
+
 fn worker_command(args: &[OsString]) -> Result<(), String> {
     let options = parse_worker_args(&args[1..]).map_err(|error| format!("--worker: {error:?}"))?;
     let runtime =
@@ -305,7 +356,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         }
         CommandKind::Check => check_command(&args),
         CommandKind::Build => build_command(&args),
-        CommandKind::Install => project_command(&args, "install"),
+        CommandKind::Install => install_command(&args),
         CommandKind::Run => project_command(&args, "run"),
         CommandKind::Test => project_command(&args, "test"),
         CommandKind::Worker => worker_command(&args),
