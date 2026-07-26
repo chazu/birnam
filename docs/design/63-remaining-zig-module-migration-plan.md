@@ -2621,6 +2621,11 @@ explicitly so the recovery surface cannot silently shrink.
   publication there would weaken the all-facts-admissible invariant. The next
   writer slice must first reduce that rejection set through supported vtable,
   slot, or registered-recovery work; it must not bypass the preflight.
+- A temporary diagnostic narrowed those rejections to SymbolVt-keyed facts whose
+  values are anonymous BlockVt closures. This matches the Zig writer's
+  `serialVtable`/`deferredFactClass` boundary: an unowned block vtable has no
+  durable restoration recipe, so it remains rejected rather than being silently
+  serialized as a heap object.
 - The focused matrix remains `87/87`; Rust Image shell `2/2`, mapped
   Image-to-Codegen `1/1`, durable-generation bootstrap `1/1`, cross-floor `1/1`,
   rejection `1/1`, and Rust Alien live `9/9` all pass. A fresh full R6 run also
