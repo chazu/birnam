@@ -2543,6 +2543,17 @@ allowances.
 - Twenty offline Rust tests pass with warnings denied. Project execution and
   test-process isolation remain later host seams.
 
+### R7.13 Rust host run parser checkpoint (2026-07-26)
+
+- The Rust host now parses `run`'s full host-owned option surface: directory,
+  `--build`, profile, `--no-repl`/`--repl`/`--repl=none|tty|socket`, socket bind,
+  and ports constrained to `0..=65535`.
+- A literal `--` ends host parsing and preserves every remaining argument as an
+  opaque OS argument, including leading dashes. Invalid modes/ports, missing
+  values, duplicate directories, and unknown host flags are explicit errors.
+- Twenty-two offline Rust tests pass with warnings denied. REPL startup,
+  project resolution, and child-process execution remain later seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

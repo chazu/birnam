@@ -101,6 +101,34 @@ pub struct TestOptions {
     pub profile: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplMode {
+    None,
+    Tty,
+    Socket,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunOptions {
+    pub directory: PathBuf,
+    pub build: bool,
+    pub profile: String,
+    pub repl: Option<ReplMode>,
+    pub socket_bind: Option<String>,
+    pub socket_port: Option<u16>,
+    pub arguments: Vec<std::ffi::OsString>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunParseError {
+    UnknownOption(String),
+    MissingValue(&'static str),
+    InvalidValue { option: &'static str, value: String },
+    DuplicateDirectory,
+    UnexpectedAfterHelp,
+    NonUtf8Value(&'static str),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseOutcome<T> {
     Parsed(T),
@@ -302,6 +330,131 @@ pub fn parse_test_args<T: AsRef<std::ffi::OsStr>>(
             profile,
         }),
     })
+}
+
+fn run_value<T: AsRef<std::ffi::OsStr>>(
+    option: &'static str,
+    value: &T,
+) -> Result<String, RunParseError> {
+    value
+        .as_ref()
+        .to_str()
+        .map(str::to_owned)
+        .ok_or(RunParseError::NonUtf8Value(option))
+}
+
+fn run_profile(value: String) -> Result<String, RunParseError> {
+    if value == "debug" || value == "release" {
+        Ok(value)
+    } else {
+        Err(RunParseError::InvalidValue {
+            option: "--profile",
+            value,
+        })
+    }
+}
+
+fn run_repl(value: String) -> Result<ReplMode, RunParseError> {
+    match value.as_str() {
+        "none" => Ok(ReplMode::None),
+        "tty" => Ok(ReplMode::Tty),
+        "socket" => Ok(ReplMode::Socket),
+        _ => Err(RunParseError::InvalidValue {
+            option: "--repl",
+            value,
+        }),
+    }
+}
+
+pub fn parse_run_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<RunOptions>, RunParseError> {
+    let mut directory = None;
+    let mut build = false;
+    let mut profile = String::from("debug");
+    let mut repl = None;
+    let mut socket_bind = None;
+    let mut socket_port = None;
+    let mut arguments = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let token = args[index].as_ref();
+        if token == std::ffi::OsStr::new("--") {
+            arguments.extend(args[index + 1..].iter().map(|arg| arg.as_ref().to_owned()));
+            break;
+        }
+        if token == std::ffi::OsStr::new("--help") || token == std::ffi::OsStr::new("-h") {
+            if index + 1 != args.len() {
+                return Err(RunParseError::UnexpectedAfterHelp);
+            }
+            return Ok(ParseOutcome::Help);
+        }
+        let token_text = token.to_string_lossy();
+        if token == std::ffi::OsStr::new("--build") {
+            build = true;
+        } else if token == std::ffi::OsStr::new("--profile") {
+            index += 1;
+            let value = args
+                .get(index)
+                .ok_or(RunParseError::MissingValue("--profile"))
+                .and_then(|value| run_value("--profile", value))?;
+            profile = run_profile(value)?;
+        } else if let Some(value) = token_text.strip_prefix("--profile=") {
+            profile = run_profile(value.to_owned())?;
+        } else if token == std::ffi::OsStr::new("--no-repl") {
+            repl = Some(ReplMode::None);
+        } else if token == std::ffi::OsStr::new("--repl") {
+            repl = Some(ReplMode::Tty);
+        } else if let Some(value) = token_text.strip_prefix("--repl=") {
+            repl = Some(run_repl(value.to_owned())?);
+        } else if token == std::ffi::OsStr::new("--repl-bind") {
+            index += 1;
+            let value = args
+                .get(index)
+                .ok_or(RunParseError::MissingValue("--repl-bind"))
+                .and_then(|value| run_value("--repl-bind", value))?;
+            if value.is_empty() {
+                return Err(RunParseError::MissingValue("--repl-bind"));
+            }
+            socket_bind = Some(value);
+        } else if let Some(value) = token_text.strip_prefix("--repl-bind=") {
+            if value.is_empty() {
+                return Err(RunParseError::MissingValue("--repl-bind"));
+            }
+            socket_bind = Some(value.to_owned());
+        } else if token == std::ffi::OsStr::new("--repl-port") {
+            index += 1;
+            let value = args
+                .get(index)
+                .ok_or(RunParseError::MissingValue("--repl-port"))
+                .and_then(|value| run_value("--repl-port", value))?;
+            socket_port = Some(value.parse().map_err(|_| RunParseError::InvalidValue {
+                option: "--repl-port",
+                value,
+            })?);
+        } else if let Some(value) = token_text.strip_prefix("--repl-port=") {
+            socket_port = Some(value.parse().map_err(|_| RunParseError::InvalidValue {
+                option: "--repl-port",
+                value: value.to_owned(),
+            })?);
+        } else if token_text.starts_with('-') {
+            return Err(RunParseError::UnknownOption(token_text.into_owned()));
+        } else if directory.is_some() {
+            return Err(RunParseError::DuplicateDirectory);
+        } else {
+            directory = Some(PathBuf::from(token));
+        }
+        index += 1;
+    }
+    Ok(ParseOutcome::Parsed(RunOptions {
+        directory: directory.unwrap_or_else(|| PathBuf::from(".")),
+        build,
+        profile,
+        repl,
+        socket_bind,
+        socket_port,
+        arguments,
+    }))
 }
 
 /// Classify only the top-level command family. Subcommand option validation
@@ -1654,6 +1807,67 @@ mod tests {
         assert_eq!(
             parse_install_args(&["--wat"]),
             Err(ProjectParseError::UnknownOption("--wat".to_owned()))
+        );
+    }
+
+    #[test]
+    fn run_parser_preserves_repl_and_socket_options() {
+        assert_eq!(
+            parse_run_args(&[
+                "project",
+                "--build",
+                "--profile=release",
+                "--repl=socket",
+                "--repl-bind",
+                "127.0.0.1",
+                "--repl-port=4400",
+                "--",
+                "--user-flag",
+                "value",
+            ])
+            .expect("run options parse"),
+            ParseOutcome::Parsed(RunOptions {
+                directory: PathBuf::from("project"),
+                build: true,
+                profile: "release".to_owned(),
+                repl: Some(ReplMode::Socket),
+                socket_bind: Some("127.0.0.1".to_owned()),
+                socket_port: Some(4400),
+                arguments: vec![
+                    std::ffi::OsString::from("--user-flag"),
+                    std::ffi::OsString::from("value"),
+                ],
+            })
+        );
+    }
+
+    #[test]
+    fn run_parser_preserves_default_and_rejects_invalid_repl_values() {
+        assert_eq!(
+            parse_run_args::<&str>(&[]).expect("run defaults parse"),
+            ParseOutcome::Parsed(RunOptions {
+                directory: PathBuf::from("."),
+                build: false,
+                profile: "debug".to_owned(),
+                repl: None,
+                socket_bind: None,
+                socket_port: None,
+                arguments: Vec::new(),
+            })
+        );
+        assert_eq!(
+            parse_run_args(&["--repl=web"]),
+            Err(RunParseError::InvalidValue {
+                option: "--repl",
+                value: "web".to_owned(),
+            })
+        );
+        assert_eq!(
+            parse_run_args(&["--repl-port=70000"]),
+            Err(RunParseError::InvalidValue {
+                option: "--repl-port",
+                value: "70000".to_owned(),
+            })
         );
     }
 }
