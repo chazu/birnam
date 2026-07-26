@@ -2814,11 +2814,26 @@ allowances.
   selector, inherited descriptor, exact channel flag, and arity errors before
   any image recovery or floor access.
 - The experimental executable validates this route and then reports the
-  explicit unsupported-worker boundary. It does not close the inherited fd,
-  invent boot-error framing, or bypass the retained Isolate hook; those remain
-  the next execution slice.
+  execution boundary. It does not close the inherited fd, invent boot-error
+  framing, or bypass the retained Isolate hook; the caller still owns channel
+  closure and worker failure reporting.
 - The focused host suite advances to thirty-six tests with warnings denied,
-  and valid/invalid worker smoke invocations both avoid runtime loading.
+  and malformed worker smoke avoids runtime loading before the execution slice.
+
+### R7.35 Rust host isolate-worker execution checkpoint (2026-07-26)
+
+- `HostRuntime::run_worker_image` now recovers the explicit worker image,
+  validates `DispatchGeneration current` and the 64-byte Codegen generation
+  digest, enforces the one-argument selector rule, resolves the receiver via
+  Globals/import, checks the live vtable chain, and invokes the retained
+  Isolate worker driver.
+- The inherited descriptor remains borrowed exactly as the existing worker
+  contract requires. Rust does not close it or synthesize boot-error frames;
+  the process/channel owner remains responsible for those operations while
+  the driver reports its status through the existing hook.
+- Focused tests and all-target clippy remain green. A valid worker smoke reaches
+  the expected missing-floor boundary in an uninstalled tree; malformed worker
+  syntax still fails before startup.
 
 ## 12. Commit and review discipline
 

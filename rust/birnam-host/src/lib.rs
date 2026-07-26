@@ -1237,6 +1237,21 @@ pub enum WorkerError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkerStartupError {
+    Image(ImageError),
+    EmbeddedNul,
+    MissingDispatchGeneration,
+    InvalidDispatchGeneration,
+    MissingCodegen,
+    InvalidGenerationDigest,
+    WrongArity,
+    MissingGlobals,
+    ReceiverNotFound,
+    SelectorNotFound,
+    Driver(WorkerError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeModuleError {
     EmbeddedNul,
     MissingModuleManager,
@@ -1755,6 +1770,71 @@ impl HostRuntime {
         }
     }
 
+    /// Recover one worker image, validate its durable generation, resolve the
+    /// named receiver/selector through Globals/import and the live vtable
+    /// chain, then invoke the retained isolate driver. The inherited channel
+    /// descriptor remains borrowed; the caller owns close/error framing.
+    ///
+    /// # Safety
+    ///
+    /// `fd` must be a live inherited isolate channel, `image` must be readable
+    /// by the selected runtime, and the caller must keep the GC anchor live on
+    /// the floor owner thread for the complete operation.
+    pub unsafe fn run_worker_image(
+        &self,
+        image: &Path,
+        receiver_name: &str,
+        selector_name: &str,
+        fd: c_int,
+    ) -> Result<(), WorkerStartupError> {
+        unsafe { load_image(self, image, false) }.map_err(WorkerStartupError::Image)?;
+        let api = self.stack.api();
+        let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
+            return Err(WorkerStartupError::MissingDispatchGeneration);
+        };
+        let current_selector = unsafe { (api.intern)(c"current".as_ptr()) };
+        let current = unsafe { (api.send)(generations, current_selector, std::ptr::null(), 0) };
+        if current == api.nilObj || send_is_error(api, current) {
+            return Err(WorkerStartupError::InvalidDispatchGeneration);
+        }
+        let codegen =
+            unsafe { global_named(api, "Codegen") }.ok_or(WorkerStartupError::MissingCodegen)?;
+        let digest_selector = unsafe { (api.intern)(c"currentGenerationDigest".as_ptr()) };
+        let digest = unsafe { (api.send)(codegen, digest_selector, std::ptr::null(), 0) };
+        if digest == api.nilObj || unsafe { (api.vtableOf)(digest) } != api.string_vt {
+            return Err(WorkerStartupError::InvalidGenerationDigest);
+        }
+        let mut digest_len = 0usize;
+        let digest_bytes = unsafe { (api.stringBytes)(digest, &mut digest_len) };
+        if digest_bytes.is_null() || digest_len != 64 {
+            return Err(WorkerStartupError::InvalidGenerationDigest);
+        }
+        if !selector_has_arity_one(selector_name) {
+            return Err(WorkerStartupError::WrongArity);
+        }
+        let receiver_name =
+            CString::new(receiver_name).map_err(|_| WorkerStartupError::EmbeddedNul)?;
+        let selector_name =
+            CString::new(selector_name).map_err(|_| WorkerStartupError::EmbeddedNul)?;
+        let globals =
+            unsafe { global_named(api, "Globals") }.ok_or(WorkerStartupError::MissingGlobals)?;
+        let receiver_symbol = unsafe { (api.intern)(receiver_name.as_ptr()) };
+        let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
+        let mut receiver =
+            unsafe { (api.send)(globals, at_selector, [receiver_symbol].as_ptr(), 1) };
+        if receiver == api.nilObj {
+            receiver = unsafe { (api.import)(receiver_name.as_ptr()) };
+        }
+        if receiver == api.nilObj {
+            return Err(WorkerStartupError::ReceiverNotFound);
+        }
+        let selector = unsafe { (api.intern)(selector_name.as_ptr()) };
+        if !unsafe { receiver_has_selector(api, receiver, selector) } {
+            return Err(WorkerStartupError::SelectorNotFound);
+        }
+        unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)
+    }
+
     /// # Safety
     ///
     /// The host must remain on the floor owner thread.
@@ -2027,6 +2107,41 @@ unsafe fn global_named(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
     let selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let value = unsafe { (api.send)(globals, selector, [name].as_ptr(), 1) };
     (value != api.nilObj).then_some(value)
+}
+
+fn selector_has_arity_one(selector: &str) -> bool {
+    let colons = selector.bytes().filter(|byte| *byte == b':').count();
+    if colons != 0 {
+        colons == 1
+    } else {
+        selector
+            .bytes()
+            .next()
+            .is_some_and(|byte| !byte.is_ascii_alphabetic())
+    }
+}
+
+unsafe fn receiver_has_selector(
+    api: &IdApi,
+    receiver: birnam_abi::Oop,
+    selector: birnam_abi::Oop,
+) -> bool {
+    let mut vtable = unsafe { (api.vtableOf)(receiver) };
+    while vtable != api.nilObj {
+        let mut index = 0usize;
+        loop {
+            let candidate = unsafe { (api.vtableSelectorAt)(vtable, index) };
+            if candidate == api.nilObj {
+                break;
+            }
+            if candidate == selector {
+                return true;
+            }
+            index = index.saturating_add(1);
+        }
+        vtable = unsafe { (api.vtableParent)(vtable) };
+    }
+    false
 }
 
 unsafe fn mark_module_loaded(api: &IdApi, module_manager: birnam_abi::Oop, name: &str) {

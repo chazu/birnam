@@ -14,6 +14,7 @@ const VERSION: &str = include_str!("../../../../VERSION");
 const USAGE: &str = "birnam-rust-experimental — opt-in Rust host\n\n\
 Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
            --repl, --listen <port>, doc, docgen, init, wrap,\n\
+           --worker <image> <receiver> <selector> --channel-fd <fd>,\n\
            --bake <image> <exe>, --rebuild <image>\n\
 Project commands and --lsp remain on the canonical Zig host.\n";
 
@@ -68,10 +69,20 @@ fn project_command(args: &[OsString], command: &str) -> Result<(), String> {
 }
 
 fn worker_command(args: &[OsString]) -> Result<(), String> {
-    parse_worker_args(&args[1..])
-        .map(|_| ())
-        .map_err(|error| format!("--worker: {error:?}"))
-        .and_then(|_| Err("--worker is not implemented by the experimental host".to_owned()))
+    let options = parse_worker_args(&args[1..]).map_err(|error| format!("--worker: {error:?}"))?;
+    let runtime =
+        unsafe { start_from_environment() }.map_err(|error| format!("startup: {error:?}"))?;
+    let mut anchor = 0usize;
+    unsafe { runtime.prepare_execution(&mut anchor) };
+    unsafe {
+        runtime.run_worker_image(
+            &options.image,
+            &options.receiver,
+            &options.selector,
+            options.channel_fd,
+        )
+    }
+    .map_err(|error| format!("worker: {error:?}"))
 }
 
 fn run(args: Vec<OsString>) -> Result<(), String> {
