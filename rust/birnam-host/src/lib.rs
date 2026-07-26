@@ -1155,6 +1155,11 @@ pub enum IsolateHookError {
     MissingSymbol(&'static str),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkerError {
+    Failed(c_int),
+}
+
 type IsolateDriverFn =
     unsafe extern "C" fn(*mut IdApi, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
 type IsolateBootErrorFn = unsafe extern "C" fn(*mut IdApi, c_int, *const c_char, *const u8, usize);
@@ -1223,6 +1228,46 @@ pub struct HostRuntime {
     pub stack: LoadedStack,
     pub isolate: IsolateHooks,
     pub self_hosted: Vec<LoadedSelfHostedModule>,
+}
+
+impl HostRuntime {
+    /// Run one isolate worker over an inherited channel descriptor. The driver
+    /// borrows the receiver/selector and never takes ownership of the fd.
+    ///
+    /// # Safety
+    ///
+    /// `fd` must be a live inherited channel owned by the caller; `receiver` and
+    /// `selector` must be live Oops from this runtime; the caller must remain on
+    /// the floor owner thread for the complete worker loop.
+    pub unsafe fn run_worker(
+        &self,
+        fd: c_int,
+        receiver: birnam_abi::Oop,
+        selector: birnam_abi::Oop,
+    ) -> Result<(), WorkerError> {
+        let api = self.stack.api() as *const IdApi as *mut IdApi;
+        let status = unsafe { self.isolate.driver(api, fd, receiver, selector) };
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(WorkerError::Failed(status))
+        }
+    }
+
+    /// # Safety
+    ///
+    /// The host must remain on the floor owner thread.
+    pub unsafe fn drain_isolates(&self) {
+        unsafe { self.isolate.drain() };
+    }
+
+    /// # Safety
+    ///
+    /// The host must remain on the floor owner thread and must not use this
+    /// runtime's isolate hooks after shutdown.
+    pub unsafe fn shutdown_isolates(&self) {
+        unsafe { self.isolate.shutdown() };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2585,6 +2630,12 @@ mod tests {
     #[test]
     fn image_outcomes_keep_mapping_and_source_recovery_distinct() {
         assert_ne!(ImageLoadOutcome::Mapped, ImageLoadOutcome::SourceRecovery);
+    }
+
+    #[test]
+    fn worker_status_zero_is_success_and_nonzero_is_preserved() {
+        assert_eq!(WorkerError::Failed(7), WorkerError::Failed(7));
+        assert_ne!(WorkerError::Failed(1), WorkerError::Failed(2));
     }
 
     #[test]

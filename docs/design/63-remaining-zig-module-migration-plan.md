@@ -2649,6 +2649,18 @@ allowances.
 - The focused Rust suite remains green at thirty tests with warnings denied.
   Worker routing and process lifecycle remain later host seams.
 
+### R7.22 Rust host worker-driver checkpoint (2026-07-26)
+
+- `HostRuntime` now exposes the isolate worker driver plus explicit drain and
+  shutdown operations. The driver preserves the exported status code, borrows
+  the receiver/selector, and leaves inherited-channel ownership with the
+  caller.
+- Every operation documents the floor owner-thread and channel lifetime rules;
+  no host mutex, copied Oop, or hidden fd close was introduced.
+- Thirty-one offline Rust tests pass with warnings denied. Worker argument
+  routing, image/receiver validation, and end-to-end process lifecycle remain
+  later host seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
