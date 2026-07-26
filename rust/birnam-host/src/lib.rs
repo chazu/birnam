@@ -1329,7 +1329,8 @@ pub struct ProjectArtifactPlan {
     pub target: String,
     pub profile: String,
     pub tool_version: String,
-    pub built_at: String,
+    pub artifact_abi: String,
+    pub built_at: Option<String>,
     pub resolution_digest: String,
     pub artifacts: Vec<ProjectArtifactPlanEntry>,
     pub publication: String,
@@ -2522,13 +2523,29 @@ pub unsafe fn decode_project_artifact_plan(
     if record == api.nilObj || unsafe { (api.vtableOf)(record) } != decoder.map_vt {
         return Err(ProjectManifestDecodeError::InvalidMap("artifact record"));
     }
+    let schema = unsafe { decoder.string(decoder.at(record, "schema")?, "schema")? };
+    if schema != "birnam-artifacts-v3" {
+        return Err(ProjectManifestDecodeError::InvalidSchema(schema));
+    }
     let project_root =
         unsafe { decoder.string(decoder.at(record, "projectRoot")?, "projectRoot")? };
     let target = unsafe { decoder.string(decoder.at(record, "target")?, "target")? };
     let profile = unsafe { decoder.string(decoder.at(record, "profile")?, "profile")? };
     let tool_version =
         unsafe { decoder.string(decoder.at(record, "toolVersion")?, "toolVersion")? };
-    let built_at = unsafe { decoder.string(decoder.at(record, "builtAt")?, "builtAt")? };
+    let artifact_abi =
+        unsafe { decoder.string(decoder.at(record, "artifactAbi")?, "artifactAbi")? };
+    if artifact_abi.as_bytes() != birnam_artifact::ABI {
+        return Err(ProjectManifestDecodeError::InvalidSchema(format!(
+            "unsupported artifact ABI {artifact_abi}"
+        )));
+    }
+    let built_at_value = unsafe { decoder.at(record, "builtAt")? };
+    let built_at = if built_at_value == api.nilObj {
+        None
+    } else {
+        Some(unsafe { decoder.string(built_at_value, "builtAt")? })
+    };
     let resolution_digest =
         unsafe { decoder.string(decoder.at(record, "resolutionDigest")?, "resolutionDigest")? };
     let publication = unsafe { decoder.string(decoder.at(plan, "publication")?, "publication")? };
@@ -2596,6 +2613,7 @@ pub unsafe fn decode_project_artifact_plan(
         target,
         profile,
         tool_version,
+        artifact_abi,
         built_at,
         resolution_digest,
         artifacts,

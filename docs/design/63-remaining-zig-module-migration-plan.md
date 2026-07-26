@@ -3197,6 +3197,18 @@ allowances.
 - Rust-host formatting, check, 48-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.64 Rust host artifact-plan schema alignment checkpoint (2026-07-26)
+
+- The Rust artifact-plan decoder now matches the shipped Birnam policy shape:
+  the nested plan record requires `birnam-artifacts-v3` and the frozen artifact
+  ABI, while `builtAt` is optional because `ProjectPolicy artifactPlan:` does
+  not emit it. This prevents a later build boundary from rejecting a valid
+  policy plan or accepting a foreign artifact ABI.
+- No policy ownership or effect boundary changed. Rust still copies the plan;
+  it does not reinterpret action decisions, compile, reuse, load, or publish.
+- Rust-host formatting, check, 48-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
