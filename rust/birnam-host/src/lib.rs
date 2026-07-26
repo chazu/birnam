@@ -109,6 +109,147 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_id_image",
 ];
 
+/// Source-backed self-hosted modules. `modules` is intentionally separate:
+/// the manager must be installed first because it implements the dependency
+/// registration and ordering protocol used by the remaining modules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelfHostedModule {
+    pub name: &'static str,
+    pub source: &'static [u8],
+}
+
+pub const SELF_HOSTED_MODULES: &[SelfHostedModule] = &[
+    SelfHostedModule {
+        name: "stdlib",
+        source: include_bytes!("../../../src/id/stdlib.birnam"),
+    },
+    SelfHostedModule {
+        name: "compiledUnit",
+        source: include_bytes!("../../../src/id/compiled-unit.birnam"),
+    },
+    SelfHostedModule {
+        name: "toml",
+        source: include_bytes!("../../../src/id/toml.birnam"),
+    },
+    SelfHostedModule {
+        name: "config",
+        source: include_bytes!("../../../src/id/config.birnam"),
+    },
+    SelfHostedModule {
+        name: "appConfig",
+        source: include_bytes!("../../../src/id/app-config.birnam"),
+    },
+    SelfHostedModule {
+        name: "isolate",
+        source: include_bytes!("../../../src/id/isolate.birnam"),
+    },
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootstrapOrderError {
+    UnknownSelfHostedDependency { module: String, dependency: String },
+    Cycle { module: String },
+}
+
+/// Scan the first `requires: #[...]` declaration using the same deliberately
+/// small source convention as the Zig host. Dependencies outside the
+/// self-hosted inventory are native/kernel modules and are already loaded.
+pub fn self_hosted_requires(source: &[u8]) -> Vec<String> {
+    let Some(requires_at) = source
+        .windows(b"requires:".len())
+        .position(|window| window == b"requires:")
+    else {
+        return Vec::new();
+    };
+    let rest = &source[requires_at + b"requires:".len()..];
+    let Some(vector_at) = rest.windows(2).position(|window| window == b"#[") else {
+        return Vec::new();
+    };
+    let mut result = Vec::new();
+    let mut index = vector_at + 2;
+    while index < rest.len() && rest[index] != b']' {
+        if rest[index] == b'#' {
+            let start = index + 1;
+            let mut end = start;
+            while end < rest.len() && (rest[end].is_ascii_alphanumeric() || rest[end] == b'_') {
+                end += 1;
+            }
+            if end > start {
+                result.push(String::from_utf8_lossy(&rest[start..end]).into_owned());
+            }
+            index = end;
+        } else {
+            index += 1;
+        }
+    }
+    result
+}
+
+/// Return the stable dependency order used by self-hosted boot. Ties retain
+/// the declared inventory order, while native/kernel dependencies are treated
+/// as already satisfied by `LoadedStack`.
+pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError> {
+    let mut dependencies: Vec<Vec<String>> = SELF_HOSTED_MODULES
+        .iter()
+        .map(|module| self_hosted_requires(module.source))
+        .collect();
+    for (index, module) in SELF_HOSTED_MODULES.iter().enumerate() {
+        dependencies[index].retain(|dependency| {
+            SELF_HOSTED_MODULES
+                .iter()
+                .any(|candidate| candidate.name == dependency)
+        });
+        for dependency in self_hosted_requires(module.source) {
+            if !SELF_HOSTED_MODULES
+                .iter()
+                .any(|candidate| candidate.name == dependency)
+                && dependency != "modules"
+            {
+                // The source declaration names a non-self-hosted module. Keep
+                // the distinction explicit so a typo cannot silently reorder
+                // the self-hosted layer.
+                let is_kernel = SCRIPT_MODULES.iter().any(|name| {
+                    name.strip_prefix("libbirnam_id_")
+                        .is_some_and(|kernel| kernel == dependency)
+                        || (*name == "libbirnam_store" && dependency == "store")
+                });
+                if !is_kernel {
+                    return Err(BootstrapOrderError::UnknownSelfHostedDependency {
+                        module: module.name.to_owned(),
+                        dependency,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut order = Vec::with_capacity(SELF_HOSTED_MODULES.len());
+    while order.len() < SELF_HOSTED_MODULES.len() {
+        let mut progress = false;
+        for (index, module) in SELF_HOSTED_MODULES.iter().enumerate() {
+            if order.contains(&module.name)
+                || !dependencies[index]
+                    .iter()
+                    .all(|dependency| order.contains(&dependency.as_str()))
+            {
+                continue;
+            }
+            order.push(module.name);
+            progress = true;
+        }
+        if !progress {
+            let module = SELF_HOSTED_MODULES
+                .iter()
+                .find(|module| !order.contains(&module.name))
+                .expect("incomplete order must have a remaining module");
+            return Err(BootstrapOrderError::Cycle {
+                module: module.name.to_owned(),
+            });
+        }
+    }
+    Ok(order)
+}
+
 /// Process-lifetime native stack owned by the host. Higher rungs are opened
 /// through `IdApi`; successful handles are retained because methods/finalizers
 /// may retain code pointers after `module_init` returns.
@@ -582,5 +723,42 @@ mod tests {
             EarlyAction::Continue
         );
         assert_eq!(classify_early_args::<&str>(&[]), EarlyAction::Continue);
+    }
+
+    #[test]
+    fn embedded_self_hosted_sources_preserve_declared_dependencies() {
+        let compiled_unit = SELF_HOSTED_MODULES
+            .iter()
+            .find(|module| module.name == "compiledUnit")
+            .expect("compiledUnit source is embedded");
+        assert_eq!(
+            self_hosted_requires(compiled_unit.source),
+            ["modules", "stdlib"]
+        );
+        let config = SELF_HOSTED_MODULES
+            .iter()
+            .find(|module| module.name == "config")
+            .expect("config source is embedded");
+        assert_eq!(self_hosted_requires(config.source), ["toml"]);
+    }
+
+    #[test]
+    fn self_hosted_boot_order_is_stable_and_dependency_safe() {
+        assert_eq!(
+            self_hosted_boot_order().expect("embedded graph is acyclic"),
+            [
+                "stdlib",
+                "compiledUnit",
+                "toml",
+                "config",
+                "appConfig",
+                "isolate"
+            ]
+        );
+    }
+
+    #[test]
+    fn dependency_scanner_ignores_sources_without_a_declaration() {
+        assert!(self_hosted_requires(b"// no dependency declaration\n").is_empty());
     }
 }

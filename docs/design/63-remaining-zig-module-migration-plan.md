@@ -2432,6 +2432,22 @@ allowances.
   selection changed, and no module fallback to source, cwd, checkout, or a
   manifest was introduced.
 
+### R7.5 Rust host embedded self-hosted inventory checkpoint (2026-07-26)
+
+- `birnam-host` now embeds the six ordinary self-hosted source modules using
+  the repository's declared resource files. The module-manager source remains
+  a separate first step because it implements the registration and ordering
+  protocol consumed by the other modules; project policy remains lazy.
+- Rust mirrors the existing `requires: #[...]` scan and computes a stable
+  dependency order with declared-order tie breaking. Native/kernel dependencies
+  are treated as already satisfied by `LoadedStack`; unknown self-hosted names
+  and cycles are hard errors rather than silent fallback or reordered loading.
+- Ten offline Rust unit tests cover the embedded declarations and exact boot
+  order in addition to the prior resolver, floor, loader, and CLI checks. This
+  checkpoint still does not execute source or select the Rust host; the next
+  slice must add the explicit Codegen source-record/eval boundary and preserve
+  the manager-first, source-recovery-only bootstrap policy.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
