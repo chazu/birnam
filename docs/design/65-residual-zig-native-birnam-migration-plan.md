@@ -333,10 +333,14 @@ C2.1 Image authority checkpoint (2026-07-26):
   unchanged benchmark snapshot with exactly `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`.
 - The all-production `test-native-rung-harness` is intentionally outside this
-  scoped matrix because its nested Rust-host install/docgen fixture currently
-  does not terminate. It is not reported as passed, and the script retains an
-  explicit `BIRNAM_R6_REQUIRE_VERIFY=1` mode for requiring the complete
-  cross-layer verify graph.
+  scoped matrix because its nested Rust-host install/docgen fixture now reaches
+  the relocated docgen check but fails the expected `tag:body:` registration.
+  It is not reported as passed, and the script retains an explicit
+  `BIRNAM_R6_REQUIRE_VERIFY=1` mode for requiring the complete cross-layer
+  verify graph.
+- The post-`c1890f6` rerun still passes this exact scoped boundary; the changed
+  failure location is recorded as C2 host-integration work rather than folded
+  into the R6 acceptance claim.
 - The latest broad Rust-host run still exposes unresolved C2 integration work
   in `test-lsp-project`, `test-source-fallback`, `test-repl`,
   `test-isolate-process`, `test-project-check`, and `test-install`. Those

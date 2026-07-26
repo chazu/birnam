@@ -27,8 +27,10 @@ python3 scripts/check-native-rung-baseline.py
 # just below as a sequential target to avoid Cargo/clean-prefix contention.
 # The focused set keeps failures attributable to the latest replacement rung.
 # The native-rung harness is intentionally excluded: its nested production
-# install/docgen fixture is currently non-terminating under the Rust host. Run
-# this matrix serially: the Image-to-Codegen admission fixture and the other
+# install/docgen fixture currently reaches the relocated docgen assertion but
+# fails because the Rust-host output does not yet contain the expected
+# `tag:body:` registration. Run this matrix serially: the Image-to-Codegen
+# admission fixture and the other
 # clean-prefix targets share the installed dynamic-module staging boundary and
 # can otherwise race when Zig schedules their test processes concurrently.
 latest_tests=(
@@ -420,7 +422,7 @@ grep -Eq '^\+- run test 9 passed ' "$live" || {
   exit 1
 }
 
-# The complete cross-layer verify graph includes the non-terminating production
+# The complete cross-layer verify graph includes the failing production
 # install/docgen harness and currently exposes additional Rust-host integration
 # failures. Keep it available as an explicit continuation check rather than
 # allowing R6 to report a false green. Set BIRNAM_R6_REQUIRE_VERIFY=1 when the
