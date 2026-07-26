@@ -2598,6 +2598,17 @@ allowances.
 - Twenty-seven offline Rust tests pass with warnings denied. REPL loop,
   diagnostics rendering, and project/image execution remain later seams.
 
+### R7.18 Rust host image-load checkpoint (2026-07-26)
+
+- A started `HostRuntime` can now call `System loadImage:rebuild:` and expose
+  the exact mapped-versus-source-recovery result. Nil/unknown responses are
+  rejected; false recovery invokes the existing Codegen `replayMethods` and
+  `replayAliens` hooks without inventing a second decoder or image format.
+- Image paths remain opaque host strings and all sends use the selected floor's
+  IdApi. The caller still owns the live GC stack anchor and owner-thread rule.
+- Twenty-eight offline Rust tests pass with warnings denied. Image entry-point
+  dispatch, diagnostics, and release rollback observation remain later seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

@@ -175,6 +175,19 @@ pub enum ScriptError {
     EvaluationRejected,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageLoadOutcome {
+    Mapped,
+    SourceRecovery,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageError {
+    MissingSystem,
+    LoadRejected,
+    UnexpectedStatus,
+}
+
 pub const MAX_SCRIPT_BYTES: usize = 16 << 20;
 
 /// Append an image trailer to a runtime byte sequence. The runtime remains a
@@ -253,6 +266,50 @@ pub unsafe fn eval_script(
         return Err(ScriptError::EvaluationRejected);
     }
     Ok(result)
+}
+
+/// Load an image through the Birnam `System` protocol. A true answer means
+/// compiled code was mapped; false means the runtime must use its recorded
+/// source recovery path, for which the existing `replayMethods` and
+/// `replayAliens` hooks are invoked after the image decoder returns.
+///
+/// # Safety
+///
+/// The runtime must remain on the selected floor's owner thread, and the
+/// caller must establish a valid GC stack bottom for the synchronous sends.
+pub unsafe fn load_image(
+    runtime: &HostRuntime,
+    path: &Path,
+    rebuild: bool,
+) -> Result<ImageLoadOutcome, ImageError> {
+    let api = runtime.stack.api();
+    let system = unsafe { (api.import)(c"System".as_ptr()) };
+    if system == api.nilObj {
+        return Err(ImageError::MissingSystem);
+    }
+    let path_bytes = path_bytes(path);
+    let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
+    let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
+    let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+    if status == api.nilObj {
+        return Err(ImageError::LoadRejected);
+    }
+    if status == api.trueObj {
+        return Ok(ImageLoadOutcome::Mapped);
+    }
+    if status != api.falseObj {
+        return Err(ImageError::UnexpectedStatus);
+    }
+
+    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    if codegen != api.nilObj {
+        let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
+        unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) };
+        let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
+        unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
+    }
+    Ok(ImageLoadOutcome::SourceRecovery)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2125,5 +2182,10 @@ mod tests {
     #[test]
     fn script_source_limit_matches_the_shipped_host_contract() {
         assert_eq!(MAX_SCRIPT_BYTES, 16 << 20);
+    }
+
+    #[test]
+    fn image_outcomes_keep_mapping_and_source_recovery_distinct() {
+        assert_ne!(ImageLoadOutcome::Mapped, ImageLoadOutcome::SourceRecovery);
     }
 }
