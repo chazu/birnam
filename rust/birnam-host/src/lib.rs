@@ -1304,6 +1304,16 @@ pub enum ProjectCompositionPlanError {
     EntryListedAsPart,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectObservationError {
+    DuplicateModuleProvider {
+        name: String,
+        first: PathBuf,
+        second: PathBuf,
+    },
+    DuplicateModulePart(PathBuf),
+}
+
 /// Validate one manifest module composition and return its project-rooted path
 /// order. This consumes already-parsed manifest values; it does not parse TOML
 /// or inspect source contents.
@@ -1337,6 +1347,37 @@ pub fn project_composition_paths(
         paths.push(project_root.join(path));
     }
     Ok(paths)
+}
+
+/// Enforce the project observation's one-provider and one-part ownership laws
+/// before a snapshot reaches Birnam policy.
+pub fn validate_project_observations(
+    modules: &[ProjectSourceObservation],
+) -> Result<(), ProjectObservationError> {
+    let mut providers = HashSet::with_capacity(modules.len());
+    let mut parts = HashSet::new();
+    for module in modules {
+        if !providers.insert(module.name.clone()) {
+            let first = modules
+                .iter()
+                .find(|candidate| candidate.name == module.name && candidate.path != module.path)
+                .map(|candidate| PathBuf::from(&candidate.path))
+                .unwrap_or_else(|| PathBuf::from(&module.path));
+            return Err(ProjectObservationError::DuplicateModuleProvider {
+                name: module.name.clone(),
+                first,
+                second: PathBuf::from(&module.path),
+            });
+        }
+        for path in &module.sources {
+            if !parts.insert(path.clone()) {
+                return Err(ProjectObservationError::DuplicateModulePart(PathBuf::from(
+                    path,
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3922,6 +3963,36 @@ mod tests {
             Err(ProjectCompositionPlanError::DuplicatePart(
                 "src/part.birnam".to_owned()
             ))
+        );
+    }
+
+    #[test]
+    fn observation_validation_rejects_duplicate_providers_and_parts() {
+        let module = |name: &str, path: &str, sources: &[&str]| ProjectSourceObservation {
+            name: name.to_owned(),
+            path: path.to_owned(),
+            sources: sources.iter().map(|source| (*source).to_owned()).collect(),
+            project_root: "/tmp/project".to_owned(),
+            source: Vec::new(),
+            requires: Vec::new(),
+            source_digest: "source".to_owned(),
+            revision_digest: "revision".to_owned(),
+        };
+        assert!(matches!(
+            validate_project_observations(&[
+                module("one", "/tmp/one", &["/tmp/one"]),
+                module("one", "/tmp/two", &["/tmp/two"]),
+            ]),
+            Err(ProjectObservationError::DuplicateModuleProvider { .. })
+        ));
+        assert_eq!(
+            validate_project_observations(&[
+                module("one", "/tmp/one", &["/tmp/shared"]),
+                module("two", "/tmp/two", &["/tmp/shared"]),
+            ]),
+            Err(ProjectObservationError::DuplicateModulePart(PathBuf::from(
+                "/tmp/shared"
+            )))
         );
     }
 

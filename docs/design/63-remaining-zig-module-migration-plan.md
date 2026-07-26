@@ -2988,6 +2988,18 @@ allowances.
 - The focused host suite advances to thirty-nine tests with warnings denied;
   manifest extraction and cross-module duplicate ownership remain pending.
 
+### R7.48 Rust host observation-invariant checkpoint (2026-07-26)
+
+- `validate_project_observations` now enforces one provider per module name and
+  one source-part owner across the typed observation set, returning the first
+  and second paths for duplicate-provider diagnostics.
+- These are host observation invariants matching the Zig adapter's
+  `duplicateModuleProvider`/`duplicateModulePart` boundaries; no dependency
+  provider selection or ProjectPolicy semantic rule moved into Rust.
+- The focused host suite advances to forty tests with warnings denied. The
+  remaining project gap is assembling complete dependency-closure observations
+  from manifest values and source metadata.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
