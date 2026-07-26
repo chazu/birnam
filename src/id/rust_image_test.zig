@@ -658,6 +658,30 @@ test "Rust Codegen bootstraps and retains its durable generation authority" {
     try std.testing.expectEqual(initialized, send(api, generations, "current", &.{}));
 }
 
+test "Rust Image publishes a complete image under explicit Rust authority" {
+    const api = setupWithRustCodegen();
+    try initializeRustAuthorityGeneration(api);
+
+    const system = api.import("System") orelse return error.SystemMissing;
+    const report = send(api, system, "imageSaveReport", &.{});
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const directory = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(directory);
+    const image_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/rust-published.image", .{directory});
+    defer std.testing.allocator.free(image_path);
+
+    try std.testing.expectEqual(system, send(api, system, "saveImage:", &.{str(api, image_path)}));
+    try std.testing.expectEqual(api.intern("saved"), send(api, report, "status", &.{}));
+    try std.testing.expect(api.smallIntValue(send(api, report, "recoveredFacts", &.{})) > 0);
+    try std.testing.expectEqual(@as(i64, 0), api.smallIntValue(send(api, report, "rejectedFacts", &.{})));
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, report, "codeUnits", &.{})));
+    try std.testing.expect(pathExists(image_path));
+    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, image_path, 1 << 30);
+    defer std.testing.allocator.free(image);
+    try std.testing.expect(std.mem.startsWith(u8, image, "BIRNAMIM"));
+}
+
 test "Rust Image reads a Zig-authored v4 data image" {
     const api = setupWithRustCodegen();
     const runtime_store = api.import("Store") orelse return error.StoreMissing;

@@ -1510,6 +1510,10 @@ unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
     Some(codegen)
 }
 
+fn rust_image_publication_selected() -> bool {
+    std::env::var("BIRNAM_RUST_IMAGE_PUBLICATION").ok().as_deref() == Some("rust")
+}
+
 unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
     let codegen = unsafe { writer_codegen_authority(api) }?;
     let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
@@ -1857,7 +1861,7 @@ unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     }
 }
 
-unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+unsafe extern "C" fn system_save_image(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         reject_save("saveImage: expects one String path");
@@ -1903,6 +1907,34 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
         }
         _ => None,
     };
+    let publication_requested = rust_image_publication_selected();
+    let published = if publication_requested {
+        composed.as_ref().is_some_and(|bytes| {
+            let path_bytes = unsafe { runtime_image_path_bytes(api, path) };
+            path_bytes.is_some_and(|path_bytes| {
+                publish_atomic(Path::new(OsStr::from_bytes(&path_bytes)), bytes).is_ok()
+            })
+        })
+    } else {
+        false
+    };
+    if published {
+        record_fact_counts(
+            preflight.kept,
+            preflight.recovered,
+            preflight.rejected,
+            preflight.recovered_slots,
+            preflight.rejected_slots,
+        );
+        let mut report = runtime()
+            .report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        report.status = ReportStatus::Saved;
+        report.detail_len = 0;
+        report.code_units = u32::from(code_captured);
+        return self_object;
+    }
     reject_save(if !preflight.heap_ok {
         "Rust Image heap preflight rejected unsupported layout"
     } else if preflight.rejected != 0 {
@@ -1917,6 +1949,8 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
         "Rust Image code capture failed"
     } else if composed.is_none() {
         "Rust Image code record composition failed"
+    } else if publication_requested {
+        "Rust Image atomic publication failed"
     } else {
         "Rust Image code mapping/rebuild orchestration is not installed"
     });

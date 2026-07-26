@@ -1794,6 +1794,50 @@ pub fn build(b: *std.Build) void {
     test_rust_image_bootstrap_step.dependOn(&run_rust_image_bootstrap.step);
     test_step.dependOn(&run_rust_image_bootstrap.step);
 
+    // Publication is isolated from the durable-generation bootstrap: this
+    // target explicitly opts into Rust Image's atomic writer authority and
+    // proves that complete preflight bytes reach the destination unchanged.
+    const rust_image_publication_tests = b.addTest(.{
+        .root_module = rust_image_shell_mod,
+        .filters = &.{"Rust Image publishes a complete image under explicit Rust authority"},
+    });
+    rust_image_publication_tests.rdynamic = true;
+    rust_image_publication_tests.linkLibC();
+    rust_image_publication_tests.linkLibrary(libtcc_lib);
+    const run_rust_image_publication = b.addRunArtifact(rust_image_publication_tests);
+    run_rust_image_publication.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_image_publication.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_image_publication.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_image_publication.setEnvironmentVariable(
+        "BIRNAM_RUST_IMAGE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_image_rust.dylib"),
+    );
+    run_rust_image_publication.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_image_publication.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_image_publication.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_image_publication.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_image_publication.setEnvironmentVariable("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY", "rust");
+    run_rust_image_publication.setEnvironmentVariable("BIRNAM_RUST_IMAGE_PUBLICATION", "rust");
+    run_rust_image_publication.step.dependOn(bootstrap_install);
+    const test_rust_image_publication_step = b.step(
+        "test-rust-image-publication",
+        "Run the explicit Rust Image atomic-publication proof in isolation",
+    );
+    test_rust_image_publication_step.dependOn(&run_rust_image_publication.step);
+    test_step.dependOn(&run_rust_image_publication.step);
+
     const rust_image_cross_floor_tests = b.addTest(.{
         .root_module = rust_image_shell_mod,
         .filters = &.{"Rust Image reads a Zig-authored v4 data image"},
