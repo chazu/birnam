@@ -2889,6 +2889,19 @@ allowances.
 - The thirty-seven-test host suite, clippy, and check help/root smoke checks
   pass. Build/install/run/test remain behind the same explicit boundary.
 
+### R7.40 Rust host project-manifest preparation checkpoint (2026-07-26)
+
+- `HostRuntime::prepare_project_manifest` composes canonical nearest-root
+  discovery with the self-hosted TOML boundary and returns a typed
+  `(projectRoot, manifestMap)` pair. Discovery and parsing failures remain
+  distinct and no source is evaluated.
+- This is the complete pre-observation entrypoint for a future Rust project
+  adapter: it supplies the root and parsed manifest while leaving source/CST
+  indexing, dependency observation, snapshot materialization, and
+  ProjectPolicy resolution as explicit later operations.
+- The focused host suite remains at thirty-seven passing tests with warnings
+  denied. No build/install/run/test command is promoted past its boundary.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

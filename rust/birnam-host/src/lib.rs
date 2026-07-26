@@ -1279,6 +1279,12 @@ pub enum ProjectManifestError {
     ParseRejected,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectPreparationError {
+    Discovery(ProjectDiscoveryError),
+    Manifest(ProjectManifestError),
+}
+
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
 /// filesystem half of project observation only; it never parses the manifest
 /// or selects a module provider.
@@ -1663,6 +1669,26 @@ impl HostRuntime {
             return Err(ProjectManifestError::ParseRejected);
         }
         Ok(result)
+    }
+
+    /// Compose nearest-root discovery with self-hosted manifest parsing. The
+    /// returned path is canonical and the returned Map is the live parsed TOML
+    /// value; source indexing and ProjectPolicy invocation remain separate
+    /// operations so callers cannot accidentally mix observation and policy.
+    ///
+    /// # Safety
+    ///
+    /// The returned Map is owned by this runtime's Store. Keep a live GC anchor
+    /// and remain on the floor owner thread while using it.
+    pub unsafe fn prepare_project_manifest(
+        &self,
+        start: &Path,
+    ) -> Result<(PathBuf, birnam_abi::Oop), ProjectPreparationError> {
+        let root = nearest_project_root(start).map_err(ProjectPreparationError::Discovery)?;
+        let manifest = root.join("birnam.toml");
+        let parsed = unsafe { self.parse_project_manifest(&manifest) }
+            .map_err(ProjectPreparationError::Manifest)?;
+        Ok((root, parsed))
     }
 
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
