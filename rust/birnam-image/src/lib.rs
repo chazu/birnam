@@ -217,6 +217,17 @@ impl<'a> Image<'a> {
         })
     }
 
+    /// Perform the complete read-only admission required before a higher
+    /// layer may consider loading this image. No runtime objects are resolved
+    /// or mutated; mapping, source rebuild, and Store replay remain outside
+    /// the codec boundary.
+    pub fn preflight(bytes: &'a [u8], architecture: u32, abi_hash: u64) -> Result<Self, Error> {
+        let image = Self::parse(bytes)?;
+        image.header.require(architecture, abi_hash)?;
+        image.validate_facts()?;
+        Ok(image)
+    }
+
     pub fn code(&self) -> Option<Code<'a>> {
         self.code
     }
@@ -1056,6 +1067,7 @@ const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r6-shell\0";
 const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
 const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
 const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
+const MAX_IMAGE_BYTES: u64 = 1 << 30;
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -1450,6 +1462,43 @@ unsafe fn capture_generation_code(
     bytes.filter(|bytes| !bytes.is_empty())
 }
 
+fn preflight_image_path(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
+        return false;
+    }
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_IMAGE_BYTES {
+        return false;
+    }
+    Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
+}
+
+unsafe fn preflight_runtime_image(api: &IdApi, path: Oop) -> bool {
+    if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
+        return false;
+    }
+    let mut length = 0;
+    let bytes = unsafe { (api.stringBytes)(path, &mut length) };
+    if bytes.is_null() && length != 0 {
+        return false;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        // SAFETY: stringBytes supplies `length` readable bytes for this live String.
+        unsafe { core::slice::from_raw_parts(bytes, length) }
+    };
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    preflight_image_path(Path::new(text))
+}
+
 unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
     let store = unsafe { (api.import)(c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
@@ -1630,10 +1679,16 @@ unsafe extern "C" fn system_save_image(_self_object: Oop, args: *const Oop, coun
 
 unsafe extern "C" fn system_load_image(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if count != 1 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
         return api.nilObj;
     }
-    api.nilObj
+    // Admission is deliberately read-only in this slice. A valid image is
+    // reported as data-only until mapped activation and source rebuild are
+    // installed by later R6 authorities.
+    api.falseObj
 }
 
 unsafe extern "C" fn system_load_image_rebuild(
@@ -1642,10 +1697,13 @@ unsafe extern "C" fn system_load_image_rebuild(
     count: usize,
 ) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 2 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if count != 2 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
         return api.nilObj;
     }
-    api.nilObj
+    api.falseObj
 }
 
 unsafe extern "C" fn system_image_save_report(
@@ -2107,13 +2165,8 @@ mod tests {
         )
         .unwrap();
 
-        let image = Image::parse(&bytes).unwrap();
-        image
-            .header
-            .require(IMAGE_ARCH_TAG, runtime_abi_hash())
-            .unwrap();
+        let image = Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).unwrap();
         assert_eq!(image.authority.digest, &digest);
-        image.validate_facts().unwrap();
         assert_eq!(image.code().unwrap().unit, code);
 
         let mut records = image.records();
@@ -2157,6 +2210,32 @@ mod tests {
         let code_record = records.next_record().unwrap().unwrap();
         assert_eq!(code_record.kind, RecordKind::Code);
         assert_eq!(records.next_record().unwrap(), None);
+    }
+
+    #[test]
+    fn image_path_admission_is_bounded_and_read_only() {
+        let (facts_payload, heap_payload) = supported_preflight_fixture();
+        let digest = [b'a'; AUTHORITY_DIGEST_LEN];
+        let bytes = compose_complete_image(
+            IMAGE_ARCH_TAG,
+            runtime_abi_hash(),
+            &facts_payload,
+            &heap_payload,
+            &digest,
+            wyhash(0, b"unit"),
+            b"unit",
+        )
+        .unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "birnam-rust-image-admission-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::write(&path, &bytes).unwrap();
+        assert!(preflight_image_path(&path));
+        fs::write(&path, b"not an image").unwrap();
+        assert!(!preflight_image_path(&path));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -2406,7 +2485,7 @@ mod tests {
         let digest = [b'g'; AUTHORITY_DIGEST_LEN];
         let mut bytes = header(1, 99);
         bytes.extend_from_slice(&record(RecordKind::Authority, &digest));
-        let image = Image::parse(&bytes).unwrap();
+        let image = Image::preflight(&bytes, 1, 99).unwrap();
         assert_eq!(image.header.architecture, 1);
         assert_eq!(image.authority.digest, &digest);
         assert_eq!(image.code(), None);
@@ -2415,12 +2494,20 @@ mod tests {
         code_payload.extend_from_slice(&digest);
         code_payload.extend_from_slice(b"unit");
         bytes.extend_from_slice(&record(RecordKind::Code, &code_payload));
-        let image = Image::parse(&bytes).unwrap();
+        let image = Image::preflight(&bytes, 1, 99).unwrap();
         assert_eq!(image.code().unwrap().unit, b"unit");
         assert_eq!(
             image.records().next_record().unwrap().unwrap().kind,
             RecordKind::Authority
         );
+        assert!(matches!(
+            Image::preflight(&bytes, 2, 99),
+            Err(Error::ArchitectureMismatch)
+        ));
+        assert!(matches!(
+            Image::preflight(&bytes, 1, 100),
+            Err(Error::AbiMismatch)
+        ));
     }
 
     #[test]
