@@ -2408,6 +2408,16 @@ allowances.
   executable has matching CLI, bootstrap, project, image, isolate, and release
   evidence.
 
+### R7.3 Rust host early-CLI checkpoint (2026-07-26)
+
+- The host crate now classifies `--help`, `-h`, `--version`, and `-V` before
+  resource or floor access. All other arguments remain opaque for the later
+  command-dispatch port; this keeps the early tooling path independent of any
+  runtime dylib and avoids accidentally introducing a second argument grammar.
+- Seven offline Rust tests cover layout, overrides, digest, pre-load failure,
+  and pure early-CLI classification. No shipped executable or canonical host
+  selection changes in this checkpoint.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
