@@ -806,6 +806,11 @@ pub fn build(b: *std.Build) void {
         "Exercise the explicit Rust Codegen emitter through IdApi and Rust PEG",
     );
     test_rust_codegen_runtime_step.dependOn(&run_rust_codegen_runtime_test.step);
+    const test_codegen_contract_step = b.step(
+        "test-codegen-contract",
+        "Run the frozen Codegen/Reflect/collector comparator, including expected Rust rejection",
+    );
+    test_codegen_contract_step.dependOn(&run_rust_codegen_runtime_test.step);
     test_step.dependOn(&run_rust_codegen_runtime_test.step);
 
     const rust_codegen_stack_test_mod = b.createModule(.{

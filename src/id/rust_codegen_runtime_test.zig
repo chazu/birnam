@@ -36,7 +36,7 @@ fn load(api: *idapi.IdApi, variable: []const u8) !void {
     _ = init(api, null);
 }
 
-fn setup() !*idapi.IdApi {
+fn setupRustOnly() !*idapi.IdApi {
     const api = floor.api();
     artifact_inspector.bringUp(api);
     collection.bringUp(api);
@@ -45,8 +45,85 @@ fn setup() !*idapi.IdApi {
     try load(api, "BIRNAM_RUST_TCC_DYLIB");
     try load(api, "BIRNAM_RUST_STORE_DYLIB");
     try load(api, "BIRNAM_RUST_CODEGEN_DYLIB");
+    return api;
+}
+
+fn setup() !*idapi.IdApi {
+    const api = try setupRustOnly();
     zig_codegen.bringUp(api);
     return api;
+}
+
+const AuthorityManifest = struct {
+    schema_version: u32,
+    codegen_selectors: []const []const u8,
+    reflect_selectors: []const []const u8,
+    exported_symbols: []const []const u8,
+};
+
+fn directSelectorCount(api: *idapi.IdApi, vt: idapi.Oop) usize {
+    var count: usize = 0;
+    var index: usize = 0;
+    while (api.vtableSelectorAt(vt, index)) |selector| : (index += 1) {
+        _ = selector;
+        count += 1;
+    }
+    return count;
+}
+
+fn hasDirectSelector(api: *idapi.IdApi, vt: idapi.Oop, expected: []const u8) bool {
+    var index: usize = 0;
+    while (api.vtableSelectorAt(vt, index)) |selector| : (index += 1) {
+        if (std.mem.eql(u8, std.mem.span(api.symbolName(selector)), expected)) return true;
+    }
+    return false;
+}
+
+test "C1.1 expected rejection: Rust Codegen is not the frozen authority surface" {
+    const api = try setupRustOnly();
+    const parsed = try std.json.parseFromSlice(
+        AuthorityManifest,
+        std.testing.allocator,
+        @embedFile("fixtures/codegen-authority-v1.json"),
+        .{},
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(u32, 1), parsed.value.schema_version);
+
+    const rust_vt = api.import("RustCodegenVt") orelse return error.MissingRustCodegenVt;
+    const actual_count = directSelectorCount(api, rust_vt);
+
+    var exact = actual_count == parsed.value.codegen_selectors.len;
+    for (parsed.value.codegen_selectors) |expected| {
+        if (!hasDirectSelector(api, rust_vt, expected)) exact = false;
+    }
+    var index: usize = 0;
+    while (api.vtableSelectorAt(rust_vt, index)) |selector| : (index += 1) {
+        const name = std.mem.span(api.symbolName(selector));
+        var known = false;
+        for (parsed.value.codegen_selectors) |expected| {
+            if (std.mem.eql(u8, name, expected)) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) exact = false;
+    }
+
+    // This is deliberately an expected rejection until C1.6. The opt-in Rust
+    // object and its Rust-only direct surface must remain visibly distinct from
+    // the frozen Codegen/Reflect/collector family exports.
+    try std.testing.expect(!exact);
+    try std.testing.expect(api.import("RustCodegen") != null);
+    try std.testing.expect(api.import("CodegenVt") == null);
+    try std.testing.expect(api.import("Codegen") == null);
+    try std.testing.expect(api.import("ReflectVt") == null);
+    try std.testing.expect(api.import("Reflect") == null);
+    try std.testing.expect(api.import("ReflectFactCollectorVt") == null);
+    std.debug.print(
+        "codegen-contract: expected-rejection selectors={d} frozen={d} canonical-exports=absent collector=absent\n",
+        .{ actual_count, parsed.value.codegen_selectors.len },
+    );
 }
 
 fn appendImageField(

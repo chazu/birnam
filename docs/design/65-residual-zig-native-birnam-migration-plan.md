@@ -196,7 +196,10 @@ runtime's `RustCodegen`/`RustCodegenVt` names and Rust-only direct methods are
 not accepted as canonical aliases. Include `discardCandidate:` and
 `releaseCandidate:` and every frozen Reflect family/selector in the required
 set. C1.1 intentionally lands with an expected-rejection test for the current
-Rust fixture; parity is not claimed until C1.6.
+Rust fixture; parity is not claimed until C1.6. The named
+`test-codegen-contract` target must report the Rust selector-count/set diff,
+the opt-in `RustCodegen` export, and the absence of canonical `Codegen`,
+`Reflect`, and `ReflectFactCollectorVt` exports before it passes.
 
 ### C1.2 Pure emitter parity
 

@@ -108,6 +108,9 @@ test "N6.1: Codegen and Reflect authority surfaces are exact and frozen" {
     try std.testing.expectEqual(@as(u32, 1), parsed.value.schema_version);
     try expectFrozenSelectors(api, api.import("CodegenVt").?, parsed.value.codegen_selectors);
     try expectFrozenSelectors(api, api.import("ReflectVt").?, parsed.value.reflect_selectors);
+    const collector_vt = api.import("ReflectFactCollectorVt") orelse return error.MissingReflectFactCollectorVt;
+    try expectFrozenSelectors(api, collector_vt, &.{"value:value:value:"});
+    try std.testing.expectEqual(idapi.slot_raw, api.slotKind(collector_vt, 0));
     try std.testing.expectEqual(@as(usize, 16), parsed.value.exported_symbols.len);
 }
 
