@@ -234,6 +234,13 @@ pub enum ArtifactPreflightError {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactActivationError {
+    Preflight(ArtifactPreflightError),
+    MissingModuleManager,
+    ActivationRejected,
+}
+
 /// Append an image trailer to a runtime byte sequence. The runtime remains a
 /// valid executable because the loader ignores trailing bytes; recovery uses
 /// [`baked_image`] to select the exact image slice.
@@ -417,6 +424,52 @@ pub fn preflight_artifact(
     Ok(ArtifactPlan {
         entries: preflight.entries,
     })
+}
+
+/// Preflight and activate an artifact through the Birnam Module manager. The
+/// preflight is completed before any object send; activation remains owned by
+/// the self-hosted manager so its Store/MOP/closure rules stay authoritative.
+///
+/// # Safety
+///
+/// The runtime must remain on the selected floor's owner thread, and the
+/// caller must establish a valid GC stack bottom for synchronous sends.
+pub unsafe fn activate_artifact(
+    runtime: &HostRuntime,
+    path: &Path,
+    expected_identity: Option<&[u8]>,
+) -> Result<(), ArtifactActivationError> {
+    preflight_artifact(path, expected_identity).map_err(ArtifactActivationError::Preflight)?;
+    let api = runtime.stack.api();
+    let Some(module_manager) = (unsafe { global_named(api, "Module") }) else {
+        return Err(ArtifactActivationError::MissingModuleManager);
+    };
+    let directory = path.parent().unwrap_or_else(|| Path::new("."));
+    let directory_bytes = path_bytes(directory);
+    let directory_value =
+        unsafe { (api.mkString)(directory_bytes.as_ptr(), directory_bytes.len()) };
+    let lib_dir_selector = unsafe { (api.intern)(c"libDir:".as_ptr()) };
+    unsafe {
+        (api.send)(
+            module_manager,
+            lib_dir_selector,
+            [directory_value].as_ptr(),
+            1,
+        )
+    };
+    let alien = unsafe { (api.import)(c"Alien".as_ptr()) };
+    if alien != api.nilObj {
+        let selector = unsafe { (api.intern)(c"libraryDir:".as_ptr()) };
+        unsafe { (api.send)(alien, selector, [directory_value].as_ptr(), 1) };
+    }
+    let path_bytes = path_bytes(path);
+    let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let selector = unsafe { (api.intern)(c"loadArtifact:".as_ptr()) };
+    let result = unsafe { (api.send)(module_manager, selector, [path_value].as_ptr(), 1) };
+    if result == api.nilObj || send_is_error(api, result) {
+        return Err(ArtifactActivationError::ActivationRejected);
+    }
+    Ok(())
 }
 
 /// Evaluate one source file through the started host's Codegen object. This is

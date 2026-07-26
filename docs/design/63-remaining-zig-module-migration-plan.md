@@ -2623,6 +2623,19 @@ allowances.
   denied, including real temporary sibling fixtures for ordering, mismatch,
   and missing-dependency rejection.
 
+### R7.20 Rust host artifact-activation checkpoint (2026-07-26)
+
+- `birnam-host::activate_artifact` now enforces the Rust preflight before any
+  activation send, sets the Birnam `Module` and `Alien` directory roots to the
+  selected artifact directory, then delegates the closure to
+  `Module loadArtifact:`.
+- Rust never opens an artifact dylib or calls an initializer directly in this
+  path. Nil/Error activation answers are explicit failures; Module remains the
+  Store/MOP/closure authority.
+- The focused Rust suite remains green at thirty tests with warnings denied.
+  A shipped Rust command, artifact diagnostics, and rollback observation are
+  still required before canonical host selection.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
