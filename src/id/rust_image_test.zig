@@ -218,6 +218,16 @@ test "Rust Image shell preserves report layout and selector surface" {
     try std.testing.expectEqualStrings("Rust Image generation authority is not available", writer_detail[0..detail_len]);
     try std.testing.expect(send(api, system, "loadImage:", &.{str(api, "shell.image")}) == api.nilObj);
     try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, "shell.image"), api.trueObj }) == api.nilObj);
+
+    var malformed_tmp = std.testing.tmpDir(.{});
+    defer malformed_tmp.cleanup();
+    try malformed_tmp.dir.writeFile(.{ .sub_path = "malformed.image", .data = "not an image" });
+    const malformed_dir = try malformed_tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(malformed_dir);
+    const malformed_path = try std.fs.path.join(std.testing.allocator, &.{ malformed_dir, "malformed.image" });
+    defer std.testing.allocator.free(malformed_path);
+    try std.testing.expect(send(api, system, "loadImage:", &.{str(api, malformed_path)}) == api.nilObj);
+    try std.testing.expect(send(api, system, "loadImage:rebuild:", &.{ str(api, malformed_path), api.trueObj }) == api.nilObj);
     try std.testing.expect(send(api, system, "bakeExe:", &.{str(api, "shell-exe")}) == api.nilObj);
 
     const collector_vt = api.import("ImageCollectorVt") orelse return error.ImageCollectorVtMissing;
