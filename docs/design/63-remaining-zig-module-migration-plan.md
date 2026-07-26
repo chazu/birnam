@@ -2376,6 +2376,22 @@ allowances.
    Design 61 R8 closure. Retain frozen compatibility dylibs where required for
    old images and rollback.
 
+### R7.1 Rust host resource-resolution checkpoint (2026-07-26)
+
+- `rust/birnam-host` now contains the first host-owned Rust slice: a pure,
+  allocation-owning resolver for the installed executable-relative layout.
+  It mirrors `runtime_resources.zig`'s `prefix`, `lib`, source, Rust workspace,
+  guide, and default `libbirnam_id.dylib` paths.
+- The resolver accepts only the three existing narrow overrides
+  (`BIRNAM_LIB_DIR`, `BIRNAM_ID_DYLIB`, and `BIRNAM_RUST_WORKSPACE_DIR`),
+  normalizes them lexically, and never probes the checkout, cwd, a manifest, or
+  the filesystem for fallback resources. It does not load a dylib or inspect
+  an artifact; those remain later host boundaries.
+- Four Rust unit tests pin the default layout, exact override scope, derived
+  id-dylib behavior, and nonexistent-path normalization. `cargo test`, offline
+  clippy with warnings denied, and the existing full R6 gate are the required
+  follow-on checks before wiring this resolver into a host executable.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
