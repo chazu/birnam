@@ -275,6 +275,9 @@ C1.4 adapter checkpoint (2026-07-26):
 - The rollback fixture now drives the adapter through successor preparation and
   rollback after collection, and verifies that the predecessor method and
   exact Store mirror facts return unchanged.
+- The prepared-candidate discard fixture also uses the adapter, proving that a
+  rejected publication leaves the candidate facts and dispatch dictionary
+  untouched.
 
 ### C1.5 Generated artifact/TCC boundary
 
