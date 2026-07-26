@@ -1336,6 +1336,16 @@ pub struct ProjectArtifactPlan {
     pub publication: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectArtifactPlanValidationError {
+    MetadataMismatch(&'static str),
+    ArtifactCount { expected: usize, actual: usize },
+    ArtifactMismatch { index: usize, field: &'static str },
+    InvalidAction { index: usize, action: String },
+    ChecksumMismatch { index: usize, action: String },
+    InvalidPublication(String),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
@@ -1467,6 +1477,7 @@ pub enum ProjectArtifactPlanError {
     Snapshot(ProjectSnapshotError),
     Policy(ProjectPolicyError),
     Decode(ProjectManifestDecodeError),
+    Validation(ProjectArtifactPlanValidationError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2621,6 +2632,131 @@ pub unsafe fn decode_project_artifact_plan(
     })
 }
 
+/// Validate a decoded artifact plan against the host-observed resolution and
+/// the request identity. This is a fail-closed adapter check: Birnam policy
+/// chooses compile versus reuse, while Rust rejects plans whose metadata or
+/// paths could make a later effectful stage address a different artifact.
+pub fn validate_project_artifact_plan(
+    plan: &ProjectArtifactPlan,
+    request: &ProjectArtifactPlanRequest<'_>,
+) -> Result<(), ProjectArtifactPlanValidationError> {
+    if plan.project_root != request.resolution.project_root {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "projectRoot",
+        ));
+    }
+    if plan.target != request.target {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "target",
+        ));
+    }
+    if plan.profile != request.profile {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "profile",
+        ));
+    }
+    if plan.tool_version != request.tool_version {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "toolVersion",
+        ));
+    }
+    if plan.artifact_abi.as_bytes() != birnam_artifact::ABI {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "artifactAbi",
+        ));
+    }
+    if plan.resolution_digest != request.resolution_digest {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "resolutionDigest",
+        ));
+    }
+    if let Some(built_at) = &plan.built_at
+        && built_at != request.built_at
+    {
+        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
+            "builtAt",
+        ));
+    }
+    if plan.publication != "publish" {
+        return Err(ProjectArtifactPlanValidationError::InvalidPublication(
+            plan.publication.clone(),
+        ));
+    }
+    if plan.artifacts.len() != request.resolution.modules.len() {
+        return Err(ProjectArtifactPlanValidationError::ArtifactCount {
+            expected: request.resolution.modules.len(),
+            actual: plan.artifacts.len(),
+        });
+    }
+    for (index, (artifact, module)) in plan
+        .artifacts
+        .iter()
+        .zip(&request.resolution.modules)
+        .enumerate()
+    {
+        let expected_path = format!("lib/libbirnam_{}.dylib", module.name);
+        if artifact.name != module.name {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "name",
+            });
+        }
+        if artifact.path != expected_path {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "path",
+            });
+        }
+        if artifact.source != module.path {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "source",
+            });
+        }
+        if artifact.sources != module.sources {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "sources",
+            });
+        }
+        if artifact.source_digest != module.source_digest {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "sourceDigest",
+            });
+        }
+        if artifact.revision_digest != module.revision_digest {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "revisionDigest",
+            });
+        }
+        if artifact.requires != module.requires {
+            return Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index,
+                field: "requires",
+            });
+        }
+        match artifact.action.as_str() {
+            "compile" if artifact.checksum.is_none() => {}
+            "reuse" if artifact.checksum.is_some() => {}
+            "compile" | "reuse" => {
+                return Err(ProjectArtifactPlanValidationError::ChecksumMismatch {
+                    index,
+                    action: artifact.action.clone(),
+                });
+            }
+            action => {
+                return Err(ProjectArtifactPlanValidationError::InvalidAction {
+                    index,
+                    action: action.to_owned(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Decode the persisted `birnam-artifacts-v3` record before it participates in
 /// a later reuse decision. The file remains an untrusted input; this function
 /// only copies and validates its structural metadata.
@@ -3469,7 +3605,11 @@ impl HostRuntime {
                 ProjectPolicyError::ResolutionRejected,
             ));
         }
-        unsafe { decode_project_artifact_plan(api, plan) }.map_err(ProjectArtifactPlanError::Decode)
+        let plan = unsafe { decode_project_artifact_plan(api, plan) }
+            .map_err(ProjectArtifactPlanError::Decode)?;
+        validate_project_artifact_plan(&plan, request)
+            .map_err(ProjectArtifactPlanError::Validation)?;
+        Ok(plan)
     }
 
     /// Read one source file and ask Codegen for its static module metadata.
@@ -5533,6 +5673,78 @@ mod tests {
             observe_project_build_record(Path::new("/tmp/build"), record),
             Err(ProjectBuildRecordObservationError::InvalidPath(path))
                 if path == Path::new("../outside.dylib")
+        ));
+    }
+
+    #[test]
+    fn artifact_plan_validation_preserves_policy_identity_and_action_pairing() {
+        let module = ProjectSourceObservation {
+            name: "app".to_owned(),
+            path: "/tmp/project/src/app.birnam".to_owned(),
+            sources: vec!["/tmp/project/src/app.birnam".to_owned()],
+            project_root: "/tmp/project".to_owned(),
+            source: b"App := Object clone".to_vec(),
+            requires: vec!["core".to_owned()],
+            source_digest: "source".to_owned(),
+            revision_digest: "revision".to_owned(),
+        };
+        let resolution = ProjectResolutionObservation {
+            project_root: "/tmp/project".to_owned(),
+            manifest: "/tmp/project/birnam.toml".to_owned(),
+            project_name: "demo".to_owned(),
+            main: None,
+            load_roots: vec!["/tmp/project/src".to_owned()],
+            modules: vec![module.clone()],
+        };
+        let request = ProjectArtifactPlanRequest {
+            resolution: &resolution,
+            wrapped: &[],
+            previous: None,
+            target: "aarch64-macos",
+            profile: "debug",
+            tool_version: "dev",
+            built_at: "now",
+            resolution_digest: "digest",
+        };
+        let mut plan = ProjectArtifactPlan {
+            project_root: "/tmp/project".to_owned(),
+            target: "aarch64-macos".to_owned(),
+            profile: "debug".to_owned(),
+            tool_version: "dev".to_owned(),
+            artifact_abi: String::from_utf8_lossy(birnam_artifact::ABI).into_owned(),
+            built_at: Some("now".to_owned()),
+            resolution_digest: "digest".to_owned(),
+            artifacts: vec![ProjectArtifactPlanEntry {
+                name: "app".to_owned(),
+                path: "lib/libbirnam_app.dylib".to_owned(),
+                action: "compile".to_owned(),
+                source: module.path.clone(),
+                sources: module.sources.clone(),
+                source_digest: module.source_digest.clone(),
+                revision_digest: module.revision_digest.clone(),
+                requires: module.requires.clone(),
+                checksum: None,
+            }],
+            publication: "publish".to_owned(),
+        };
+        validate_project_artifact_plan(&plan, &request).expect("policy plan validates");
+
+        plan.artifacts[0].action = "reuse".to_owned();
+        assert!(matches!(
+            validate_project_artifact_plan(&plan, &request),
+            Err(ProjectArtifactPlanValidationError::ChecksumMismatch {
+                index: 0,
+                action
+            }) if action == "reuse"
+        ));
+        plan.artifacts[0].action = "compile".to_owned();
+        plan.artifacts[0].path = "../escape.dylib".to_owned();
+        assert!(matches!(
+            validate_project_artifact_plan(&plan, &request),
+            Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index: 0,
+                field: "path"
+            })
         ));
     }
 

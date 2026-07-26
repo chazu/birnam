@@ -3209,6 +3209,20 @@ allowances.
 - Rust-host formatting, check, 48-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.65 Rust host artifact-plan validation checkpoint (2026-07-26)
+
+- `validate_project_artifact_plan` now checks policy output against the
+  host-observed resolution and request identity before any future compile or
+  reuse adapter consumes it: project/target/profile/tool/digest/ABI metadata,
+  optional build timestamp, dependency-first module order, canonical
+  `lib/libbirnam_<name>.dylib` paths, source metadata, action values, checksum
+  presence, and `publish` intent.
+- A malformed, reordered, path-changing, or action/checksum-inconsistent plan
+  is rejected as a typed validation error. Policy still owns the decision;
+  Rust only enforces the boundary invariants needed to make later effects safe.
+- Rust-host formatting, check, 49-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
