@@ -1356,6 +1356,7 @@ pub struct ProjectPreviousArtifact {
     pub revision_digest: String,
     pub requires: Vec<String>,
     pub checksum: String,
+    pub observed_checksum: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1363,6 +1364,7 @@ pub struct ProjectPreviousNativeArtifact {
     pub name: String,
     pub path: String,
     pub checksum: String,
+    pub observed_checksum: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1463,6 +1465,12 @@ pub enum ProjectArtifactPlanError {
     Snapshot(ProjectSnapshotError),
     Policy(ProjectPolicyError),
     Decode(ProjectManifestDecodeError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectBuildRecordObservationError {
+    InvalidPath(PathBuf),
+    Read { path: PathBuf, kind: io::ErrorKind },
 }
 
 struct CheckTempDirectory(PathBuf);
@@ -2671,6 +2679,7 @@ pub unsafe fn decode_project_build_record(
             },
             requires: unsafe { decoder.strings(decoder.at(item, "requires")?, "requires", false)? },
             checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "checksum")? },
+            observed_checksum: None,
         });
     }
     let native_count = decode_vector_size(native_value, "native")?;
@@ -2693,6 +2702,7 @@ pub unsafe fn decode_project_build_record(
             name: unsafe { decoder.string(decoder.at(item, "name")?, "name")? },
             path: unsafe { decoder.string(decoder.at(item, "path")?, "path")? },
             checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "checksum")? },
+            observed_checksum: None,
         });
     }
     Ok(ProjectBuildRecord {
@@ -2706,6 +2716,77 @@ pub unsafe fn decode_project_build_record(
         artifacts,
         native,
     })
+}
+
+fn safe_record_relative_path(path: &str) -> Option<&Path> {
+    let path = Path::new(path);
+    if path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::CurDir | Component::ParentDir | Component::RootDir
+            )
+        })
+    {
+        return None;
+    }
+    Some(path)
+}
+
+/// Observe checksums for a decoded build record without trusting its stored
+/// values. Only safe relative paths below `build_root` are read; absent files
+/// remain observable as `None` for Birnam's later reuse policy.
+pub fn observe_project_build_record(
+    build_root: &Path,
+    mut record: ProjectBuildRecord,
+) -> Result<ProjectBuildRecord, ProjectBuildRecordObservationError> {
+    for artifact in &mut record.artifacts {
+        let Some(relative) = safe_record_relative_path(&artifact.path) else {
+            return Err(ProjectBuildRecordObservationError::InvalidPath(
+                PathBuf::from(&artifact.path),
+            ));
+        };
+        let path = build_root.join(relative);
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                artifact.observed_checksum =
+                    Some(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                artifact.observed_checksum = None
+            }
+            Err(error) => {
+                return Err(ProjectBuildRecordObservationError::Read {
+                    path,
+                    kind: error.kind(),
+                });
+            }
+        }
+    }
+    for artifact in &mut record.native {
+        let Some(relative) = safe_record_relative_path(&artifact.path) else {
+            return Err(ProjectBuildRecordObservationError::InvalidPath(
+                PathBuf::from(&artifact.path),
+            ));
+        };
+        let path = build_root.join(relative);
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                artifact.observed_checksum =
+                    Some(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                artifact.observed_checksum = None
+            }
+            Err(error) => {
+                return Err(ProjectBuildRecordObservationError::Read {
+                    path,
+                    kind: error.kind(),
+                });
+            }
+        }
+    }
+    Ok(record)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5242,6 +5323,98 @@ mod tests {
             sha256_hex(b"abc"),
             *b"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn build_record_observation_hashes_present_artifacts_and_leaves_missing_unobserved() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-build-record-observation-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("native")).expect("fixture directory creates");
+        std::fs::write(root.join("module.dylib"), b"module-bytes").expect("module writes");
+        std::fs::write(root.join("native/helper.dylib"), b"native-bytes").expect("native writes");
+        let record = ProjectBuildRecord {
+            project_root: "/tmp/project".to_owned(),
+            target: "host".to_owned(),
+            profile: "debug".to_owned(),
+            tool_version: "dev".to_owned(),
+            artifact_abi: "birnam-artifact-v1".to_owned(),
+            resolution_digest: "resolution".to_owned(),
+            built_at: "now".to_owned(),
+            artifacts: vec![
+                ProjectPreviousArtifact {
+                    name: "module".to_owned(),
+                    path: "module.dylib".to_owned(),
+                    source: "module.birnam".to_owned(),
+                    sources: vec!["module.birnam".to_owned()],
+                    source_digest: "source".to_owned(),
+                    revision_digest: "revision".to_owned(),
+                    requires: Vec::new(),
+                    checksum: "stale".to_owned(),
+                    observed_checksum: None,
+                },
+                ProjectPreviousArtifact {
+                    name: "missing".to_owned(),
+                    path: "missing.dylib".to_owned(),
+                    source: "missing.birnam".to_owned(),
+                    sources: vec!["missing.birnam".to_owned()],
+                    source_digest: "source".to_owned(),
+                    revision_digest: "revision".to_owned(),
+                    requires: Vec::new(),
+                    checksum: "stale".to_owned(),
+                    observed_checksum: Some("old-observation".to_owned()),
+                },
+            ],
+            native: vec![ProjectPreviousNativeArtifact {
+                name: "helper".to_owned(),
+                path: "native/helper.dylib".to_owned(),
+                checksum: "stale".to_owned(),
+                observed_checksum: None,
+            }],
+        };
+
+        let observed = observe_project_build_record(&root, record).expect("record observes");
+        assert_eq!(
+            observed.artifacts[0].observed_checksum,
+            Some(String::from_utf8_lossy(&sha256_hex(b"module-bytes")).into_owned())
+        );
+        assert_eq!(observed.artifacts[1].observed_checksum, None);
+        assert_eq!(
+            observed.native[0].observed_checksum,
+            Some(String::from_utf8_lossy(&sha256_hex(b"native-bytes")).into_owned())
+        );
+        std::fs::remove_dir_all(root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn build_record_observation_rejects_path_escape_before_reading() {
+        let record = ProjectBuildRecord {
+            project_root: "/tmp/project".to_owned(),
+            target: "host".to_owned(),
+            profile: "debug".to_owned(),
+            tool_version: "dev".to_owned(),
+            artifact_abi: "birnam-artifact-v1".to_owned(),
+            resolution_digest: "resolution".to_owned(),
+            built_at: "now".to_owned(),
+            artifacts: vec![ProjectPreviousArtifact {
+                name: "escape".to_owned(),
+                path: "../outside.dylib".to_owned(),
+                source: "escape.birnam".to_owned(),
+                sources: vec!["escape.birnam".to_owned()],
+                source_digest: "source".to_owned(),
+                revision_digest: "revision".to_owned(),
+                requires: Vec::new(),
+                checksum: "stale".to_owned(),
+                observed_checksum: None,
+            }],
+            native: Vec::new(),
+        };
+        assert!(matches!(
+            observe_project_build_record(Path::new("/tmp/build"), record),
+            Err(ProjectBuildRecordObservationError::InvalidPath(path))
+                if path == Path::new("../outside.dylib")
+        ));
     }
 
     #[test]

@@ -3166,6 +3166,20 @@ allowances.
 - Rust-host formatting, check, 46-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.62 Rust host artifact-checksum observation checkpoint (2026-07-26)
+
+- `observe_project_build_record` now re-reads persisted artifact and native
+  paths below an explicit build root and records fresh SHA-256 observations;
+  stored checksums remain untrusted input. Missing files stay observable as
+  `None`, while absolute paths and parent-directory escapes are rejected before
+  any filesystem read.
+- The observation boundary is still read-only: it does not load dynamic
+  libraries, execute wrappers, compile sources, or publish artifacts. Reuse
+  eligibility remains a later policy decision that must compare identity,
+  source/revision/resolution metadata, and observed bytes.
+- Rust-host formatting, check, 48-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
