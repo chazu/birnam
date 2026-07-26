@@ -2637,8 +2637,8 @@ explicitly so the recovery surface cannot silently shrink.
   boundary after deferred Store facts are classified with the Zig recovery
   rules; its rejected save still captures one code unit, creates no target, and
   leaves any pre-existing target bytes untouched. The focused shell assertion
-  was updated to pin that observable boundary rather than the obsolete generic
-  fact-preflight diagnostic.
+  now also requires `recoveredFacts > 0` and `rejectedFacts == 0`, pinning the
+  accounting change rather than only the final diagnostic.
 - `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes with the existing
   fail-closed pins: optimized verify/install/native-rung harness are green,
   focused `154/154` steps and `87/87` tests pass, Rust Image shell is `2/2`,
