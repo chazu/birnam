@@ -3492,6 +3492,19 @@ allowances.
   tests/clippy, optimized verify, and R6 `91/91` remain required before the
   checkpoint commit.
 
+### R7.89 Rust host LSP failure-diagnostic checkpoint (2026-07-26)
+
+- Rust `Project snapshotForUri:` now returns the canonical failure map shape
+  (`ok: false`, `kind`, `message`) for URI, observation, snapshot, and policy
+  failures instead of collapsing them to nil. This keeps the LSP's existing
+  project-resolution diagnostic path visible and preserves fail-closed
+  behavior.
+- A live installed-floor probe against `file:///tmp` with a missing project
+  emitted `textDocument/publishDiagnostics` with `code: projectResolutionFailed`
+  and the typed discovery message, then completed shutdown/exit successfully.
+  Focused 55-test/clippy validation and the accepted R6 `91/91` snapshot remain
+  unchanged.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

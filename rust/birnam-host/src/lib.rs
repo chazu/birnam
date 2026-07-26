@@ -4009,6 +4009,35 @@ unsafe fn bridge_string(api: &IdApi, value: birnam_abi::Oop) -> Option<String> {
     Some(String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(bytes, length) }).into_owned())
 }
 
+unsafe fn project_bridge_failure(api: &IdApi, kind: &str, message: &str) -> birnam_abi::Oop {
+    let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api) }) else {
+        return api.nilObj;
+    };
+    let Ok(mut result) = (unsafe { builder.new_map() }) else {
+        return api.nilObj;
+    };
+    let Ok(updated) = (unsafe { builder.put(result, "ok", api.falseObj) }) else {
+        return api.nilObj;
+    };
+    result = updated;
+    let Ok(updated) =
+        (unsafe { builder.put(result, "kind", (api.mkString)(kind.as_ptr(), kind.len())) })
+    else {
+        return api.nilObj;
+    };
+    result = updated;
+    let Ok(updated) = (unsafe {
+        builder.put(
+            result,
+            "message",
+            (api.mkString)(message.as_ptr(), message.len()),
+        )
+    }) else {
+        return api.nilObj;
+    };
+    updated
+}
+
 unsafe extern "C" fn project_path_for_uri_native(
     _: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -4026,7 +4055,9 @@ unsafe extern "C" fn project_path_for_uri_native(
         return api.nilObj;
     };
     let Ok(path) = project_path_from_uri(&uri) else {
-        return api.nilObj;
+        return unsafe {
+            project_bridge_failure(api, "projectUriInvalid", "could not decode workspace URI")
+        };
     };
     let bytes = path_bytes(&path);
     unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
@@ -4049,7 +4080,9 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
         return api.nilObj;
     };
     let Ok(path) = project_path_from_uri(&uri) else {
-        return api.nilObj;
+        return unsafe {
+            project_bridge_failure(api, "projectUriInvalid", "could not decode workspace URI")
+        };
     };
     let start = if std::fs::metadata(&path)
         .map(|metadata| metadata.is_dir())
@@ -4059,13 +4092,27 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
     } else {
         path.parent().map(Path::to_path_buf).unwrap_or(path)
     };
-    let Ok(snapshot) = (unsafe { runtime.observe_project_snapshot(&start) }) else {
-        return api.nilObj;
+    let snapshot = match unsafe { runtime.observe_project_snapshot(&start) } {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            let message = format!("{error:?}");
+            return unsafe { project_bridge_failure(api, "projectResolutionFailed", &message) };
+        }
     };
-    let Ok(snapshot) = (unsafe { runtime.materialize_project_snapshot(&snapshot) }) else {
-        return api.nilObj;
+    let snapshot = match unsafe { runtime.materialize_project_snapshot(&snapshot) } {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            let message = format!("{error:?}");
+            return unsafe { project_bridge_failure(api, "projectSnapshotFailed", &message) };
+        }
     };
-    unsafe { runtime.resolve_project_snapshot(snapshot) }.unwrap_or(api.nilObj)
+    match unsafe { runtime.resolve_project_snapshot(snapshot) } {
+        Ok(resolution) => resolution,
+        Err(error) => {
+            let message = format!("{error:?}");
+            unsafe { project_bridge_failure(api, "projectResolutionFailed", &message) }
+        }
+    }
 }
 
 impl HostRuntime {
