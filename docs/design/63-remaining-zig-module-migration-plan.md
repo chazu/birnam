@@ -3505,6 +3505,17 @@ allowances.
   Focused 55-test/clippy validation and the accepted R6 `91/91` snapshot remain
   unchanged.
 
+### R7.90 Rust host Project-bridge single-owner checkpoint (2026-07-26)
+
+- `install_project_bridge` now rejects a second live `HostRuntime` from
+  overwriting the process-global callback pointer. Reinstallation by the same
+  runtime remains idempotent, while `HostRuntime::drop` releases its exact
+  pointer. This preserves the one-floor/one-owner invariant for the native
+  Project callbacks.
+- Rust-host formatting, 55-test suite, warnings-denied clippy, and the pinned
+  R6 baseline remain green; the accepted R6 matrix stays `91/91` with only
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%` admitted.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

@@ -3822,6 +3822,7 @@ pub enum CliError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectBridgeError {
+    AlreadyOwned,
     MissingObject,
     CloneRejected,
     GlobalRejected,
@@ -5720,6 +5721,11 @@ impl HostRuntime {
     /// owner thread for all synchronous sends.
     pub unsafe fn install_project_bridge(&self) -> Result<(), ProjectBridgeError> {
         let api = self.stack.api();
+        let runtime_pointer = self as *const HostRuntime as *mut HostRuntime;
+        let owner = PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire);
+        if !owner.is_null() && owner != runtime_pointer {
+            return Err(ProjectBridgeError::AlreadyOwned);
+        }
         let project = if let Some(project) = unsafe { global_named(api, "Project") } {
             project
         } else {
@@ -5763,10 +5769,17 @@ impl HostRuntime {
         if send_is_error(api, result) {
             return Err(ProjectBridgeError::GlobalRejected);
         }
-        PROJECT_BRIDGE_RUNTIME.store(
-            self as *const HostRuntime as *mut HostRuntime,
-            Ordering::Release,
-        );
+        if PROJECT_BRIDGE_RUNTIME
+            .compare_exchange(
+                std::ptr::null_mut(),
+                runtime_pointer,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err_and(|owner| owner != runtime_pointer)
+        {
+            return Err(ProjectBridgeError::AlreadyOwned);
+        }
         Ok(())
     }
 
