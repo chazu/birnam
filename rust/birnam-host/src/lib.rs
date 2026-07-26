@@ -151,6 +151,12 @@ pub enum BootstrapOrderError {
     Cycle { module: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootstrapSourceError {
+    RecordRejected,
+    EvaluationRejected,
+}
+
 /// Scan the first `requires: #[...]` declaration using the same deliberately
 /// small source convention as the Zig host. Dependencies outside the
 /// self-hosted inventory are native/kernel modules and are already loaded.
@@ -248,6 +254,46 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
         }
     }
     Ok(order)
+}
+
+fn send_is_error(api: &IdApi, value: birnam_abi::Oop) -> bool {
+    if unsafe { (api.isExported)(c"Error".as_ptr()) } == 0 {
+        return false;
+    }
+    let is_error = unsafe { (api.intern)(c"isError".as_ptr()) };
+    unsafe { (api.send)(value, is_error, std::ptr::null(), 0) == api.trueObj }
+}
+
+/// Execute one embedded self-hosted module through the frozen Codegen
+/// protocol. This deliberately exposes only source recovery: selecting a
+/// precompiled dylib, checking its load result, and deciding whether to fall
+/// back to this helper remain explicit host policy at the next layer.
+///
+/// # Safety
+///
+/// `api` must be the live table returned by the selected floor, `codegen` must
+/// be a live Codegen object from that table, and both must remain valid for
+/// the duration of the synchronous sends.
+pub unsafe fn record_and_eval_source(
+    api: &IdApi,
+    codegen: birnam_abi::Oop,
+    module: &SelfHostedModule,
+) -> Result<birnam_abi::Oop, BootstrapSourceError> {
+    let name = CString::new(module.name).map_err(|_| BootstrapSourceError::RecordRejected)?;
+    let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+    let name_symbol = unsafe { (api.intern)(name.as_ptr()) };
+    let record_selector = unsafe { (api.intern)(c"recordModuleSource:named:".as_ptr()) };
+    let recorded =
+        unsafe { (api.send)(codegen, record_selector, [source, name_symbol].as_ptr(), 2) };
+    if send_is_error(api, recorded) {
+        return Err(BootstrapSourceError::RecordRejected);
+    }
+    let eval_selector = unsafe { (api.intern)(c"eval:".as_ptr()) };
+    let evaluated = unsafe { (api.send)(codegen, eval_selector, [source].as_ptr(), 1) };
+    if send_is_error(api, evaluated) {
+        return Err(BootstrapSourceError::EvaluationRejected);
+    }
+    Ok(evaluated)
 }
 
 /// Process-lifetime native stack owned by the host. Higher rungs are opened
@@ -760,5 +806,20 @@ mod tests {
     #[test]
     fn dependency_scanner_ignores_sources_without_a_declaration() {
         assert!(self_hosted_requires(b"// no dependency declaration\n").is_empty());
+    }
+
+    #[test]
+    fn embedded_self_hosted_inventory_is_nonempty_and_unique() {
+        for (index, module) in SELF_HOSTED_MODULES.iter().enumerate() {
+            assert!(!module.name.is_empty());
+            assert!(!module.source.is_empty());
+            assert!(
+                SELF_HOSTED_MODULES[index + 1..]
+                    .iter()
+                    .all(|other| other.name != module.name),
+                "duplicate self-hosted module name: {}",
+                module.name
+            );
+        }
     }
 }

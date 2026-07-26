@@ -2448,6 +2448,20 @@ allowances.
   slice must add the explicit Codegen source-record/eval boundary and preserve
   the manager-first, source-recovery-only bootstrap policy.
 
+### R7.6 Rust host source-recovery boundary checkpoint (2026-07-26)
+
+- `birnam-host` exposes one unsafe, explicitly documented source-recovery
+  operation: it creates the embedded source string, records it with
+  `recordModuleSource:named:`, then evaluates it with `eval:`. A rejected
+  record and a rejected evaluation are distinct errors, and the helper checks
+  the exported `Error` protocol when available.
+- The helper does not choose a precompiled dylib, perform a fallback search, or
+  initialize Codegen itself. Callers must supply the selected floor's live API
+  and Codegen object, keeping the floor/MOP authority and bootstrap policy at
+  the host orchestration seam.
+- Eleven offline Rust tests pass with warnings denied. The operation remains
+  opt-in and does not change Zig host selection or the R6 gate.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
