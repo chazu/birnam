@@ -1280,6 +1280,13 @@ pub enum ProjectManifestError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectSourceWalkError {
+    ReadDirectory { path: PathBuf, kind: io::ErrorKind },
+    ReadEntry { path: PathBuf, kind: io::ErrorKind },
+    InvalidRoot(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectPreparationError {
     Discovery(ProjectDiscoveryError),
     Manifest(ProjectManifestError),
@@ -1359,6 +1366,59 @@ pub fn nearest_project_root(start: &Path) -> Result<PathBuf, ProjectDiscoveryErr
         }
         current = parent.to_path_buf();
     }
+}
+
+fn collect_project_source_tree(
+    root: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), ProjectSourceWalkError> {
+    let entries =
+        std::fs::read_dir(root).map_err(|error| ProjectSourceWalkError::ReadDirectory {
+            path: root.to_path_buf(),
+            kind: error.kind(),
+        })?;
+    for entry in entries {
+        let entry = entry.map_err(|error| ProjectSourceWalkError::ReadEntry {
+            path: root.to_path_buf(),
+            kind: error.kind(),
+        })?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| ProjectSourceWalkError::ReadEntry {
+                path: path.clone(),
+                kind: error.kind(),
+            })?;
+        if file_type.is_dir() {
+            collect_project_source_tree(&path, files)?;
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .is_some_and(|extension| extension == "birnam")
+        {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Collect `.birnam` files below project-relative source roots in deterministic
+/// lexical order. Directory traversal is read-only; source composition and
+/// Codegen metadata remain separate operations.
+pub fn collect_project_source_files(
+    project_root: &Path,
+    source_roots: &[String],
+) -> Result<Vec<PathBuf>, ProjectSourceWalkError> {
+    let mut files = Vec::new();
+    for source_root in source_roots {
+        let relative = Path::new(source_root);
+        if relative.is_absolute() {
+            return Err(ProjectSourceWalkError::InvalidRoot(relative.to_path_buf()));
+        }
+        collect_project_source_tree(&project_root.join(relative), &mut files)?;
+    }
+    files.sort();
+    Ok(files)
 }
 
 /// Decode the frozen Codegen `#moduleMetadata` vector without evaluating any
@@ -3664,6 +3724,23 @@ mod tests {
             std::fs::canonicalize(&root).expect("fixture root canonicalizes")
         );
         std::fs::remove_dir_all(&root).expect("project fixture removes");
+    }
+
+    #[test]
+    fn source_walk_collects_only_birnam_files_in_lexical_order() {
+        let root =
+            std::env::temp_dir().join(format!("birnam-host-source-walk-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src/nested")).expect("source fixture creates");
+        std::fs::write(root.join("src/z.birnam"), b"z").expect("source fixture writes");
+        std::fs::write(root.join("src/nested/a.birnam"), b"a").expect("source fixture writes");
+        std::fs::write(root.join("src/ignore.txt"), b"ignore").expect("source fixture writes");
+        let files =
+            collect_project_source_files(&root, &["src".to_owned()]).expect("source walk succeeds");
+        assert_eq!(
+            files,
+            vec![root.join("src/nested/a.birnam"), root.join("src/z.birnam")]
+        );
+        std::fs::remove_dir_all(&root).expect("source fixture removes");
     }
 
     #[test]

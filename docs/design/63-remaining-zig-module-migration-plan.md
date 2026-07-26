@@ -2940,6 +2940,18 @@ allowances.
 - The focused host suite and all-target clippy remain green at thirty-seven
   tests; full source-tree traversal and dependency closure are still pending.
 
+### R7.44 Rust host source-tree observation checkpoint (2026-07-26)
+
+- `collect_project_source_files` now recursively walks each project-relative
+  source root, admits only regular `.birnam` files, skips unrelated entries,
+  and returns deterministic lexical order. Read-directory, entry, and invalid
+  absolute-root failures are typed.
+- The traversal is read-only and does not follow source metadata, compose
+  module parts, parse manifests, or choose providers. It can feed the existing
+  `observe_project_source` boundary once manifest module composition is wired.
+- The focused host suite advances to thirty-eight tests with warnings denied;
+  dependency closure and full source indexing remain pending.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
