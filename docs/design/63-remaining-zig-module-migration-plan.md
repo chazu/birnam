@@ -3466,6 +3466,18 @@ allowances.
   uninstalled-checkout probe still fails closed before startup at the missing
   floor. Focused host tests/clippy and R6 remain green at 55 and `91/91`.
 
+### R7.87 Rust host project-aware LSP observation checkpoint (2026-07-26)
+
+- A live installed-floor probe now initializes Rust LSP with the repository
+  `file://` workspace URI, opens `modules/cli.birnam`, and receives a clean
+  `textDocument/publishDiagnostics` notification before shutdown/exit. This
+  exercises both bridge selectors through the real LSP request loop: URI
+  decoding/path admission, project snapshot observation/policy resolution, and
+  authored-source diagnostics.
+- The response remains protocol-only on stdout and exits zero. The focused
+  55-test/clippy suite, optimized Zig verify, and R6 `91/91` acceptance remain
+  green.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
