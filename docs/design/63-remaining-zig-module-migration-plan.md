@@ -2519,6 +2519,18 @@ allowances.
 - Sixteen offline Rust tests pass with warnings denied. The classifier remains
   opt-in and does not change the canonical Zig executable or R6 gate.
 
+### R7.11 Rust host check/build parser checkpoint (2026-07-26)
+
+- Pure Rust parsers now cover the first project commands: `check` accepts one
+  directory plus `--format human|json` (including `--format=`), and `build`
+  accepts one directory plus `--profile debug|release` (including
+  `--profile=`). Defaults remain `.`/human and `.`/debug respectively.
+- Help exits, missing values, invalid values, unknown options, and duplicate
+  directories are distinct parse outcomes. No parser path resolves a project,
+  reads TOML, loads a floor, or interprets runtime `--` payloads.
+- Eighteen offline Rust tests pass with warnings denied. Execution of these
+  commands remains a later host seam; Zig remains canonical.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

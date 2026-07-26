@@ -69,6 +69,158 @@ pub enum CommandError {
     UnknownOption(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    Human,
+    Json,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckOptions {
+    pub directory: PathBuf,
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildOptions {
+    pub directory: PathBuf,
+    pub profile: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseOutcome<T> {
+    Parsed(T),
+    Help,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectParseError {
+    UnknownOption(String),
+    MissingValue(&'static str),
+    InvalidValue { option: &'static str, value: String },
+    DuplicateDirectory,
+    UnexpectedAfterHelp,
+    NonUtf8Value(&'static str),
+}
+
+fn option_value<T: AsRef<std::ffi::OsStr>>(
+    option: &'static str,
+    value: &T,
+) -> Result<String, ProjectParseError> {
+    value
+        .as_ref()
+        .to_str()
+        .map(str::to_owned)
+        .ok_or(ProjectParseError::NonUtf8Value(option))
+}
+
+fn parse_profile(value: String) -> Result<String, ProjectParseError> {
+    if value == "debug" || value == "release" {
+        Ok(value)
+    } else {
+        Err(ProjectParseError::InvalidValue {
+            option: "--profile",
+            value,
+        })
+    }
+}
+
+pub fn parse_check_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<CheckOptions>, ProjectParseError> {
+    let mut directory = None;
+    let mut format = OutputFormat::Human;
+    let mut index = 0;
+    while index < args.len() {
+        let token = args[index].as_ref();
+        if token == std::ffi::OsStr::new("--help") || token == std::ffi::OsStr::new("-h") {
+            if index + 1 != args.len() {
+                return Err(ProjectParseError::UnexpectedAfterHelp);
+            }
+            return Ok(ParseOutcome::Help);
+        }
+        let token_text = token.to_string_lossy();
+        if token == std::ffi::OsStr::new("--format") {
+            index += 1;
+            let value = args
+                .get(index)
+                .ok_or(ProjectParseError::MissingValue("--format"))
+                .and_then(|value| option_value("--format", value))?;
+            format = match value.as_str() {
+                "human" => OutputFormat::Human,
+                "json" => OutputFormat::Json,
+                _ => {
+                    return Err(ProjectParseError::InvalidValue {
+                        option: "--format",
+                        value,
+                    });
+                }
+            };
+        } else if let Some(value) = token_text.strip_prefix("--format=") {
+            format = match value {
+                "human" => OutputFormat::Human,
+                "json" => OutputFormat::Json,
+                _ => {
+                    return Err(ProjectParseError::InvalidValue {
+                        option: "--format",
+                        value: value.to_owned(),
+                    });
+                }
+            };
+        } else if token_text.starts_with('-') {
+            return Err(ProjectParseError::UnknownOption(token_text.into_owned()));
+        } else if directory.is_some() {
+            return Err(ProjectParseError::DuplicateDirectory);
+        } else {
+            directory = Some(PathBuf::from(token));
+        }
+        index += 1;
+    }
+    Ok(ParseOutcome::Parsed(CheckOptions {
+        directory: directory.unwrap_or_else(|| PathBuf::from(".")),
+        format,
+    }))
+}
+
+pub fn parse_build_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<BuildOptions>, ProjectParseError> {
+    let mut directory = None;
+    let mut profile = String::from("debug");
+    let mut index = 0;
+    while index < args.len() {
+        let token = args[index].as_ref();
+        if token == std::ffi::OsStr::new("--help") || token == std::ffi::OsStr::new("-h") {
+            if index + 1 != args.len() {
+                return Err(ProjectParseError::UnexpectedAfterHelp);
+            }
+            return Ok(ParseOutcome::Help);
+        }
+        let token_text = token.to_string_lossy();
+        if token == std::ffi::OsStr::new("--profile") {
+            index += 1;
+            let value = args
+                .get(index)
+                .ok_or(ProjectParseError::MissingValue("--profile"))
+                .and_then(|value| option_value("--profile", value))?;
+            profile = parse_profile(value)?;
+        } else if let Some(value) = token_text.strip_prefix("--profile=") {
+            profile = parse_profile(value.to_owned())?;
+        } else if token_text.starts_with('-') {
+            return Err(ProjectParseError::UnknownOption(token_text.into_owned()));
+        } else if directory.is_some() {
+            return Err(ProjectParseError::DuplicateDirectory);
+        } else {
+            directory = Some(PathBuf::from(token));
+        }
+        index += 1;
+    }
+    Ok(ParseOutcome::Parsed(BuildOptions {
+        directory: directory.unwrap_or_else(|| PathBuf::from(".")),
+        profile,
+    }))
+}
+
 /// Classify only the top-level command family. Subcommand option validation
 /// remains a later parser seam; this function therefore cannot consume a
 /// project directory or reinterpret `--` arguments as host flags.
@@ -1338,6 +1490,51 @@ mod tests {
         assert_eq!(
             classify_command(&["--rebuild"]).expect("rebuild is top-level"),
             CommandKind::Rebuild
+        );
+    }
+
+    #[test]
+    fn check_parser_preserves_defaults_formats_and_help() {
+        assert_eq!(
+            parse_check_args::<&str>(&[]).expect("defaults parse"),
+            ParseOutcome::Parsed(CheckOptions {
+                directory: PathBuf::from("."),
+                format: OutputFormat::Human,
+            })
+        );
+        assert_eq!(
+            parse_check_args(&["--format=json", "project"]).expect("format and directory parse"),
+            ParseOutcome::Parsed(CheckOptions {
+                directory: PathBuf::from("project"),
+                format: OutputFormat::Json,
+            })
+        );
+        assert_eq!(
+            parse_check_args(&["--help"]).expect("help parses"),
+            ParseOutcome::Help
+        );
+    }
+
+    #[test]
+    fn build_parser_preserves_profile_aliases_and_validation() {
+        assert_eq!(
+            parse_build_args(&["--profile", "release", "project"])
+                .expect("profile and directory parse"),
+            ParseOutcome::Parsed(BuildOptions {
+                directory: PathBuf::from("project"),
+                profile: "release".to_owned(),
+            })
+        );
+        assert_eq!(
+            parse_build_args(&["--profile=fast"]),
+            Err(ProjectParseError::InvalidValue {
+                option: "--profile",
+                value: "fast".to_owned(),
+            })
+        );
+        assert_eq!(
+            parse_build_args(&["one", "two"]),
+            Err(ProjectParseError::DuplicateDirectory)
         );
     }
 }
