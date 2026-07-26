@@ -3290,6 +3290,20 @@ allowances.
 - Rust-host formatting, check, 52-test suite, and warnings-denied clippy pass.
   R6 remains accepted at focused `91/91`.
 
+### R7.71 Rust host core build command checkpoint (2026-07-26)
+
+- `HostRuntime::build_project` now wires the first end-to-end Rust project
+  build for projects with no wrapped native modules: observe/resolve, load and
+  re-observe a prior record, invoke/validate policy, stage compile/reuse,
+  obtain the policy-owned record, write it, and atomically publish the stage.
+  Any wrapped declaration fails explicitly instead of being silently omitted.
+- The experimental executable's `build` command now runs this path with the
+  frozen host target identity, profile, tool version, and timestamp. Install,
+  run, test, wrapper execution, and activation remain separate work; this
+  checkpoint publishes only the project build directory.
+- Rust-host formatting, check, 52-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

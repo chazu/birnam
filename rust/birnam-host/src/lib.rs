@@ -124,6 +124,12 @@ pub struct RunOptions {
     pub arguments: Vec<std::ffi::OsString>,
 }
 
+/// Return the frozen `<arch>-<os>` build target identity used by the Zig
+/// project adapter and artifact policy.
+pub fn host_target_identity() -> String {
+    format!("{}-{}", env::consts::ARCH, env::consts::OS)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunParseError {
     UnknownOption(String),
@@ -1394,6 +1400,22 @@ pub struct ProjectArtifactRecordRequest<'a> {
     pub resolution_digest: &'a str,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectBuildRequest<'a> {
+    pub start: &'a Path,
+    pub target: &'a str,
+    pub profile: &'a str,
+    pub tool_version: &'a str,
+    pub built_at: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectBuildResult {
+    pub output_root: PathBuf,
+    pub record: ProjectBuildRecord,
+    pub artifacts: Vec<ProjectStagedArtifact>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectArtifactStageError {
     CreateDirectory {
@@ -1441,6 +1463,23 @@ pub enum ProjectArtifactRecordError {
     Snapshot(ProjectSnapshotError),
     Policy(ProjectPolicyError),
     Decode(ProjectManifestDecodeError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectBuildError {
+    Observation(ProjectObservationBuildError),
+    Snapshot(ProjectSnapshotError),
+    Policy(ProjectPolicyError),
+    Resolution(ProjectManifestDecodeError),
+    ManifestRead { path: PathBuf, kind: io::ErrorKind },
+    BuildRecord(ProjectBuildRecordLoadError),
+    Plan(ProjectArtifactPlanError),
+    StageDirectory { path: PathBuf, kind: io::ErrorKind },
+    WrappedUnsupported(Vec<String>),
+    Stage(ProjectArtifactStageError),
+    Record(ProjectArtifactRecordError),
+    Write(ProjectBuildRecordWriteError),
+    Publish(ProjectBuildPublicationError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1585,6 +1624,7 @@ pub enum ProjectObservationBuildError {
     Source(ProjectSourceIndexError),
     Observation(ProjectObservationError),
     MissingMain(PathBuf),
+    EmptyClosure,
     DependencyCycle(PathBuf),
 }
 
@@ -4373,6 +4413,127 @@ impl HostRuntime {
         }
         unsafe { decode_project_artifact_record(api, record) }
             .map_err(ProjectArtifactRecordError::Decode)
+    }
+
+    /// Execute the Rust-hosted core project build for projects without wrapped
+    /// native modules. Observation and policy remain ahead of every effect;
+    /// the stage is removed on all failures and only a complete stage is
+    /// published atomically.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread for all observation, policy, and Codegen sends.
+    pub unsafe fn build_project(
+        &self,
+        request: &ProjectBuildRequest<'_>,
+    ) -> Result<ProjectBuildResult, ProjectBuildError> {
+        let snapshot = unsafe { self.observe_project_snapshot(request.start) }
+            .map_err(ProjectBuildError::Observation)?;
+        let root = snapshot
+            .projects
+            .first()
+            .ok_or(ProjectBuildError::Observation(
+                ProjectObservationBuildError::EmptyClosure,
+            ))?;
+        if !root.wrapped.is_empty() {
+            return Err(ProjectBuildError::WrappedUnsupported(
+                root.wrapped.iter().map(|item| item.name.clone()).collect(),
+            ));
+        }
+        let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
+            .map_err(ProjectBuildError::Snapshot)?;
+        let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
+            .map_err(ProjectBuildError::Policy)?;
+        let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
+            .map_err(ProjectBuildError::Resolution)?;
+        let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
+            ProjectBuildError::ManifestRead {
+                path: PathBuf::from(&resolution.manifest),
+                kind: error.kind(),
+            }
+        })?;
+        let resolution_digest =
+            project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let build_root = PathBuf::from(&resolution.project_root).join(".birnam/build");
+        let target_root = build_root.join(request.target);
+        std::fs::create_dir_all(&target_root).map_err(|error| {
+            ProjectBuildError::StageDirectory {
+                path: target_root.clone(),
+                kind: error.kind(),
+            }
+        })?;
+        let final_root = target_root.join(request.profile);
+        let record_path = final_root.join("artifacts.toml");
+        let previous = match unsafe { self.load_project_build_record(&record_path) } {
+            Ok(record) => Some(record),
+            Err(ProjectBuildRecordLoadError::Manifest(ProjectManifestError::Read {
+                kind: io::ErrorKind::NotFound,
+                ..
+            })) => None,
+            Err(error) => return Err(ProjectBuildError::BuildRecord(error)),
+        };
+        let plan_request = ProjectArtifactPlanRequest {
+            resolution: &resolution,
+            wrapped: &root.wrapped,
+            previous: previous.as_ref(),
+            target: request.target,
+            profile: request.profile,
+            tool_version: request.tool_version,
+            built_at: request.built_at,
+            resolution_digest: &resolution_digest,
+        };
+        let plan = unsafe { self.plan_project_artifacts(&plan_request) }
+            .map_err(ProjectBuildError::Plan)?;
+        let process = std::process::id();
+        let stage_root = (0..128u32)
+            .map(|attempt| target_root.join(format!(".staging-{process}-{attempt}")))
+            .find(|path| !path.exists())
+            .ok_or(ProjectBuildError::StageDirectory {
+                path: target_root.clone(),
+                kind: io::ErrorKind::AlreadyExists,
+            })?;
+        std::fs::create_dir(&stage_root).map_err(|error| ProjectBuildError::StageDirectory {
+            path: stage_root.clone(),
+            kind: error.kind(),
+        })?;
+        let result = (|| {
+            let stage_request = ProjectArtifactStageRequest {
+                resolution: &resolution,
+                plan: &plan,
+                previous: previous.as_ref(),
+                previous_root: previous.as_ref().map(|_| final_root.as_path()),
+                stage_root: &stage_root,
+            };
+            let artifacts = unsafe { self.stage_project_artifacts(&stage_request) }
+                .map_err(ProjectBuildError::Stage)?;
+            let record_request = ProjectArtifactRecordRequest {
+                resolution: &resolution,
+                staged: &artifacts,
+                native: &[],
+                wrapped: &root.wrapped,
+                target: request.target,
+                profile: request.profile,
+                tool_version: request.tool_version,
+                built_at: request.built_at,
+                resolution_digest: &resolution_digest,
+            };
+            let record = unsafe { self.record_project_artifacts(&record_request) }
+                .map_err(ProjectBuildError::Record)?;
+            write_project_build_record(&stage_root.join("artifacts.toml"), &record)
+                .map_err(ProjectBuildError::Write)?;
+            publish_project_build(&stage_root, &final_root, &target_root)
+                .map_err(ProjectBuildError::Publish)?;
+            Ok(ProjectBuildResult {
+                output_root: final_root.clone(),
+                record,
+                artifacts,
+            })
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_dir_all(&stage_root);
+        }
+        result
     }
 
     /// Read one source file and ask Codegen for its static module metadata.

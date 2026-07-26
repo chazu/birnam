@@ -2,12 +2,13 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
-    CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, bake_executable, baked_image,
-    classify_command, eval_script, load_image, parse_bake_args, parse_build_args, parse_check_args,
-    parse_install_args, parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args,
-    start_from_environment,
+    CommandKind, ImageLoadOutcome, OutputFormat, ParseOutcome, ProjectBuildRequest,
+    bake_executable, baked_image, classify_command, eval_script, host_target_identity, load_image,
+    parse_bake_args, parse_build_args, parse_check_args, parse_install_args, parse_rebuild_args,
+    parse_run_args, parse_test_args, parse_worker_args, start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -163,6 +164,44 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
     }
 }
 
+fn build_command(args: &[OsString]) -> Result<(), String> {
+    let outcome = parse_build_args(&args[1..]).map_err(|error| format!("build: {error:?}"))?;
+    match outcome {
+        ParseOutcome::Help => {
+            print!("{BUILD_USAGE}");
+            Ok(())
+        }
+        ParseOutcome::Parsed(options) => {
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            let built_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| format!("build: clock: {error}"))?
+                .as_secs()
+                .to_string();
+            let target = host_target_identity();
+            let request = ProjectBuildRequest {
+                start: &options.directory,
+                target: &target,
+                profile: &options.profile,
+                tool_version: VERSION.trim(),
+                built_at: &built_at,
+            };
+            let result = unsafe { runtime.build_project(&request) }
+                .map_err(|error| format!("build: {error:?}"))?;
+            println!(
+                "built {} module{} at {}",
+                result.artifacts.len(),
+                if result.artifacts.len() == 1 { "" } else { "s" },
+                result.output_root.display()
+            );
+            Ok(())
+        }
+    }
+}
+
 fn worker_command(args: &[OsString]) -> Result<(), String> {
     let options = parse_worker_args(&args[1..]).map_err(|error| format!("--worker: {error:?}"))?;
     let runtime =
@@ -265,7 +304,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.run_cli(&args) }.map_err(|error| format!("cli: {error:?}"))
         }
         CommandKind::Check => check_command(&args),
-        CommandKind::Build => project_command(&args, "build"),
+        CommandKind::Build => build_command(&args),
         CommandKind::Install => project_command(&args, "install"),
         CommandKind::Run => project_command(&args, "run"),
         CommandKind::Test => project_command(&args, "test"),
