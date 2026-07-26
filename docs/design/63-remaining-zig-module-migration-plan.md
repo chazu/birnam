@@ -2575,6 +2575,17 @@ allowances.
 - Twenty-four offline Rust tests pass with warnings denied. Actual image bake,
   rebuild recovery, and compile-module execution remain later host seams.
 
+### R7.16 Rust host bake-trailer checkpoint (2026-07-26)
+
+- Rust now implements the standalone executable trailer contract as pure
+  encode/decode: `[runtime][image][little-endian u64 length][BIRNMEXE]`.
+  Empty images, length overflow, truncation, bad magic, and out-of-range
+  lengths are rejected without I/O.
+- The recovered slice is borrowed directly from the original bytes, preserving
+  the exact image payload and avoiding a second image format or copy boundary.
+- Twenty-six offline Rust tests pass with warnings denied. Filesystem bake,
+  image runtime recovery, and rollback selection remain later host seams.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
