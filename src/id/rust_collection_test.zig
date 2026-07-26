@@ -171,6 +171,11 @@ test "Rust Collection vector protocol preserves persistent indexed values" {
     try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, joined, "size", &.{})));
     try std.testing.expectEqual(@as(i64, 20), api.smallIntValue(send(api, joined, "at:", &.{api.mkSmallInt(2)})));
 
+    const string = api.mkString("abc", 3);
+    const split_non_string = send(api, string, "split:", &.{api.mkSmallInt(42)});
+    try std.testing.expectEqual(@as(i64, 1), api.smallIntValue(send(api, split_non_string, "size", &.{})));
+    try std.testing.expectEqual(string, send(api, split_non_string, "at:", &.{api.mkSmallInt(0)}));
+
     const integer_range = send(api, api.mkSmallInt(3), "to:", &.{api.mkSmallInt(5)});
     try std.testing.expectEqual(range_vt, api.vtableOf(integer_range));
     try std.testing.expectEqual(@as(i64, 3), api.smallIntValue(send(api, integer_range, "size", &.{})));

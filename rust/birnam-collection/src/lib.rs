@@ -1872,6 +1872,10 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
     let Some(separator) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
+    if unsafe { (api.vtableOf)(separator) } != api.string_vt {
+        let result = unsafe { empty_vector(api, runtime()) };
+        return unsafe { vector_push(api, runtime(), result, self_object) };
+    }
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
