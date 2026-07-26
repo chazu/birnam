@@ -3314,6 +3314,18 @@ allowances.
   Rust implementation grows behind its explicit executable. R6 remains
   accepted at focused `91/91`.
 
+### R7.73 Rust host wrapped-native staging checkpoint (2026-07-26)
+
+- Wrapped builds now run direct argv commands with the existing `{output}`,
+  `{project}`, `{build}`, and `{lib}` substitutions; no shell interpolation is
+  introduced. Each wrapper output is required, copied into staged `lib/`, and
+  recorded with a fresh checksum for policy's native record.
+- Non-zero exits, spawn failures, missing outputs, and copy/read failures are
+  typed. The core Rust build now accepts wrapped declarations while retaining
+  the same complete-stage/atomic-publication boundary.
+- Rust-host formatting, check, 53-test suite, and warnings-denied clippy pass.
+  R6 remains accepted at focused `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

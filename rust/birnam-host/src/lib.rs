@@ -1475,11 +1475,40 @@ pub enum ProjectBuildError {
     BuildRecord(ProjectBuildRecordLoadError),
     Plan(ProjectArtifactPlanError),
     StageDirectory { path: PathBuf, kind: io::ErrorKind },
-    WrappedUnsupported(Vec<String>),
+    Wrapped(ProjectWrappedBuildError),
     Stage(ProjectArtifactStageError),
     Record(ProjectArtifactRecordError),
     Write(ProjectBuildRecordWriteError),
     Publish(ProjectBuildPublicationError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectWrappedBuildError {
+    EmptyCommand {
+        name: String,
+    },
+    Spawn {
+        name: String,
+        kind: io::ErrorKind,
+    },
+    Failed {
+        name: String,
+        code: Option<i32>,
+        detail: String,
+    },
+    MissingOutput {
+        name: String,
+        path: PathBuf,
+    },
+    ReadOutput {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    CopyOutput {
+        source: PathBuf,
+        destination: PathBuf,
+        kind: io::ErrorKind,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2979,6 +3008,39 @@ fn previous_artifact<'a>(
         .find(|artifact| artifact.name == name)
 }
 
+/// Expand the placeholder protocol used by wrapped build commands without
+/// invoking a shell. Unknown braces are preserved as literal command text.
+pub fn expand_project_wrapped_argument(
+    input: &str,
+    project_root: &Path,
+    output: &Path,
+    build_root: &Path,
+    lib_root: &Path,
+) -> String {
+    let replacements = [
+        ("{output}", output),
+        ("{project}", project_root),
+        ("{build}", build_root),
+        ("{lib}", lib_root),
+    ];
+    let mut result = String::with_capacity(input.len());
+    let mut rest = input;
+    while !rest.is_empty() {
+        let Some((index, token, path)) = replacements
+            .iter()
+            .filter_map(|(token, path)| rest.find(token).map(|index| (index, *token, *path)))
+            .min_by_key(|(index, _, _)| *index)
+        else {
+            result.push_str(rest);
+            break;
+        };
+        result.push_str(&rest[..index]);
+        result.push_str(&path.to_string_lossy());
+        rest = &rest[index + token.len()..];
+    }
+    result
+}
+
 /// Decode the persisted `birnam-artifacts-v3` record before it participates in
 /// a later reuse decision. The file remains an untrusted input; this function
 /// only copies and validates its structural metadata.
@@ -4312,6 +4374,104 @@ impl HostRuntime {
         Ok(staged)
     }
 
+    /// Execute wrapped native build commands directly (never through a shell),
+    /// expand the frozen placeholders, and copy each produced dylib into the
+    /// module library area of the same disposable stage.
+    pub fn stage_project_wrapped(
+        &self,
+        project_root: &Path,
+        wrapped: &[ProjectWrappedObservation],
+        stage_root: &Path,
+    ) -> Result<Vec<ProjectPreviousNativeArtifact>, ProjectWrappedBuildError> {
+        let lib_root = stage_root.join("lib");
+        std::fs::create_dir_all(&lib_root).map_err(|error| {
+            ProjectWrappedBuildError::CopyOutput {
+                source: stage_root.to_path_buf(),
+                destination: lib_root.clone(),
+                kind: error.kind(),
+            }
+        })?;
+        let native_root = stage_root.join("native");
+        let mut result = Vec::with_capacity(wrapped.len());
+        for item in wrapped {
+            let command_root = native_root.join(&item.name);
+            std::fs::create_dir_all(&command_root).map_err(|error| {
+                ProjectWrappedBuildError::CopyOutput {
+                    source: native_root.clone(),
+                    destination: command_root.clone(),
+                    kind: error.kind(),
+                }
+            })?;
+            let filename = format!("lib{}.dylib", item.name);
+            let output = command_root.join(&filename);
+            let staged_output = lib_root.join(&filename);
+            let _ = std::fs::remove_file(&output);
+            for command in &item.build {
+                if command.is_empty() {
+                    return Err(ProjectWrappedBuildError::EmptyCommand {
+                        name: item.name.clone(),
+                    });
+                }
+                let expanded = command
+                    .iter()
+                    .map(|argument| {
+                        expand_project_wrapped_argument(
+                            argument,
+                            project_root,
+                            &output,
+                            stage_root,
+                            &lib_root,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let output_result = std::process::Command::new(&expanded[0])
+                    .args(&expanded[1..])
+                    .current_dir(project_root)
+                    .output()
+                    .map_err(|error| ProjectWrappedBuildError::Spawn {
+                        name: item.name.clone(),
+                        kind: error.kind(),
+                    })?;
+                if !output_result.status.success() {
+                    let mut detail = String::from_utf8_lossy(&output_result.stdout).into_owned();
+                    detail.push_str(&String::from_utf8_lossy(&output_result.stderr));
+                    detail.truncate(16 << 20);
+                    return Err(ProjectWrappedBuildError::Failed {
+                        name: item.name.clone(),
+                        code: output_result.status.code(),
+                        detail,
+                    });
+                }
+            }
+            if !output.is_file() {
+                return Err(ProjectWrappedBuildError::MissingOutput {
+                    name: item.name.clone(),
+                    path: output,
+                });
+            }
+            std::fs::copy(&output, &staged_output).map_err(|error| {
+                ProjectWrappedBuildError::CopyOutput {
+                    source: output.clone(),
+                    destination: staged_output.clone(),
+                    kind: error.kind(),
+                }
+            })?;
+            let bytes = std::fs::read(&staged_output).map_err(|error| {
+                ProjectWrappedBuildError::ReadOutput {
+                    path: staged_output.clone(),
+                    kind: error.kind(),
+                }
+            })?;
+            result.push(ProjectPreviousNativeArtifact {
+                name: item.name.clone(),
+                path: format!("lib/{filename}"),
+                checksum: String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned(),
+                observed_checksum: None,
+            });
+        }
+        Ok(result)
+    }
+
     /// Ask Birnam policy for a side-effect-free artifact plan. The request
     /// carries only typed resolution metadata; no files are compiled, loaded,
     /// or published by this boundary.
@@ -4436,11 +4596,6 @@ impl HostRuntime {
             .ok_or(ProjectBuildError::Observation(
                 ProjectObservationBuildError::EmptyClosure,
             ))?;
-        if !root.wrapped.is_empty() {
-            return Err(ProjectBuildError::WrappedUnsupported(
-                root.wrapped.iter().map(|item| item.name.clone()).collect(),
-            ));
-        }
         let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
             .map_err(ProjectBuildError::Snapshot)?;
         let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
@@ -4507,10 +4662,17 @@ impl HostRuntime {
             };
             let artifacts = unsafe { self.stage_project_artifacts(&stage_request) }
                 .map_err(ProjectBuildError::Stage)?;
+            let native = self
+                .stage_project_wrapped(
+                    Path::new(&resolution.project_root),
+                    &root.wrapped,
+                    &stage_root,
+                )
+                .map_err(ProjectBuildError::Wrapped)?;
             let record_request = ProjectArtifactRecordRequest {
                 resolution: &resolution,
                 staged: &artifacts,
-                native: &[],
+                native: &native,
                 wrapped: &root.wrapped,
                 target: request.target,
                 profile: request.profile,
@@ -6783,6 +6945,21 @@ mod tests {
             validate_project_compiled_artifact(&wrong_revision, &bytes),
             Err(ProjectCompiledArtifactValidationError::RevisionDigestMismatch)
         ));
+    }
+
+    #[test]
+    fn wrapped_argument_expansion_replaces_all_frozen_placeholders() {
+        let expanded = expand_project_wrapped_argument(
+            "cc -o {output} -I{project} -L{lib} {build}/obj.o {unknown}",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/build/native/libdemo.dylib"),
+            Path::new("/tmp/build"),
+            Path::new("/tmp/build/lib"),
+        );
+        assert_eq!(
+            expanded,
+            "cc -o /tmp/build/native/libdemo.dylib -I/tmp/project -L/tmp/build/lib /tmp/build/obj.o {unknown}"
+        );
     }
 
     #[test]
