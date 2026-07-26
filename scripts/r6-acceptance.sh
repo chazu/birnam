@@ -450,9 +450,9 @@ cat "$verify"
     "/src/id/collection.zig:336:29:"
     "scripts/install-smoke.sh: line 92:"
     "error: the following command exited with error code 134:"
-    "Build Summary: 111/113 steps succeeded; 1 failed"
+    "Build Summary: 116/118 steps succeeded; 1 failed"
     "test-install transitive failure"
-    "Build Summary: 263/267 steps succeeded; 2 failed; 486/492 tests passed; 6 skipped"
+    "Build Summary: 286/290 steps succeeded; 2 failed; 506/512 tests passed; 6 skipped"
     "verify transitive failure"
   )
   for marker in "${known_verify_markers[@]}"; do
