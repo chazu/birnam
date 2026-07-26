@@ -2271,6 +2271,20 @@ are separately installed and tested.
   accepted comparator crossings remain `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`.
 
+### R6.25 Rust Image dynamic malformed-load rejection checkpoint (2026-07-25)
+
+- `17b1712` extends the existing Rust Image shell proof with a temporary
+  malformed image file. Both `loadImage:` and `loadImage:rebuild:` must return
+  `nil`; the target remains absent from any Store or runtime image state. This
+  exercises the dynamic path wrapper around the pure admission seam without
+  adding a third shell target or changing the fixed gate count.
+- `zig fmt --check src/id/rust_image_test.zig` and the optimized shell pass
+  (`2/2`). The full `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` rerun
+  passed after `17b1712` with focused `82/82`, Rust Alien live `9/9`, both Rust
+  Image CLI save profile receipts, optimized verify/install/harness legs, and
+  zero missing/unusable cases. The only accepted comparator crossings remain
+  `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
+
 1. Port library handle ownership and `dlopen`/`dlsym`/`dlclose` policy with
    explicit path and dependency validation.
 2. Port signature parsing and C ABI classification (scalar, pointer, float,
