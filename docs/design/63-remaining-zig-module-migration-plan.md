@@ -4108,3 +4108,30 @@ explicitly so the recovery surface cannot silently shrink.
   exactly `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`; no
   benchmark allowance, fixture exception, ABI, image, or dynamic-library
   boundary changed.
+
+### R6.51 R6 acceptance after canonical Rust Image switch (2026-07-26)
+
+- Commit `8c06801` makes Rust Image the installed canonical
+  `libbirnam_id_image.dylib`; the Zig Image owner remains available only as
+  the explicitly named `libbirnam_id_image_zig.dylib` rollback reader. The
+  host's mixed-authority recovery path may load that reader for a failed
+  canonical Rust Image attempt, then immediately reloads the Rust canonical
+  Image selectors.
+- Canonical Rust Image startup now initializes the current dispatch generation
+  for script-host image saves and permits ordinary Codegen-authority
+  publication. The explicit Rust fixture still requires its dedicated writer
+  authority, so this does not weaken the publication-rejection proof.
+- Commit `b1f759e` adds the explicit `BIRNAM_IMAGE_DYLIB` rollback override to
+  the Zig oracle used by the frozen pre-rewrite fixture. The oracle therefore
+  reads the committed image through Zig Image even while the installed
+  canonical image name is Rust; no frozen artifact, ABI, or image-v4 bytes were
+  changed.
+- A fresh `BIRNAM_R6_ISOLATE_IMPL=rust mise run r6-acceptance` passes with
+  focused `167/167` steps and `91/91` tests, Rust Alien live `63/63` steps and
+  `9/9` tests, and optimized verify `291/291` steps with `506/512` tests and
+  six explicit skips. The frozen native client/image fixture passes for both
+  Rust profiles, and relocated install-smoke remains green.
+- The comparator remains fail-closed with zero missing or unusable cases and
+  exactly `query.aggregate +5.8%` plus `compile.stage1-stdlib +11.9%`; no
+  benchmark allowance, frozen fixture, ABI, image-v4, or dynamic-library
+  boundary changed.
