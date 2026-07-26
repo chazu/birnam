@@ -2533,6 +2533,9 @@ unsafe extern "C" fn rust_codegen_map_image_code(
 
     let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let mut staged_path = std::env::temp_dir().into_os_string().into_vec();
+    if !staged_path.ends_with(b"/") {
+        staged_path.push(b'/');
+    }
     staged_path.extend_from_slice(b"birnam-image-code-");
     staged_path.extend_from_slice(std::process::id().to_string().as_bytes());
     staged_path.push(b'-');

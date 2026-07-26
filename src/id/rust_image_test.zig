@@ -5,6 +5,7 @@
 //! must remain fail-closed until those later authorities are installed.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const floor = @import("floor_adapter_test.zig");
 const idapi = @import("idapi.zig");
 const artifact_inspector = @import("artifact_inspector.zig");
@@ -39,6 +40,17 @@ fn str(api: *idapi.IdApi, bytes: []const u8) Oop {
 
 fn send(api: *idapi.IdApi, receiver: Oop, selector: [*:0]const u8, args: []const Oop) Oop {
     return api.send(receiver, api.intern(selector), args.ptr, args.len);
+}
+
+fn loadModule(api: *idapi.IdApi, variable: []const u8) void {
+    const path = std.posix.getenv(variable) orelse
+        std.debug.panic("{s} must select a dynamic module", .{variable});
+    const handle = dlopen(path.ptr, 0x1) orelse
+        std.debug.panic("could not load dynamic module {s}", .{variable});
+    const raw_init = dlsym(handle, "module_init") orelse
+        std.debug.panic("dynamic module {s} has no module_init", .{variable});
+    const init: ModuleInit = @ptrCast(@alignCast(raw_init));
+    _ = init(api, null);
 }
 
 fn loadImageModule(api: *idapi.IdApi) void {
@@ -76,6 +88,84 @@ fn setupWithZigCodegen() *idapi.IdApi {
     relational.bringUp(api);
     loadImageModule(api);
     return api;
+}
+
+fn setupWithRustCodegen() *idapi.IdApi {
+    const api = floor.api();
+    const existing_codegen = api.import("Codegen");
+    artifact_inspector.bringUp(api);
+    collection.bringUp(api);
+    loadModule(api, "BIRNAM_RUST_PEG_DYLIB");
+    lang.bringUp(api);
+    loadModule(api, "BIRNAM_RUST_TCC_DYLIB");
+    if (existing_codegen == null or existing_codegen == api.nilObj) {
+        loadModule(api, "BIRNAM_RUST_STORE_DYLIB");
+    }
+    loadModule(api, "BIRNAM_RUST_CODEGEN_DYLIB");
+    if (existing_codegen == null or existing_codegen == api.nilObj) {
+        codegen.bringUp(api);
+    }
+    prelude.bringUp(api);
+    err_mod.bringUp(api);
+    relational.bringUp(api);
+    loadImageModule(api);
+    return api;
+}
+
+fn imageArchTag() u32 {
+    return switch (builtin.cpu.arch) {
+        .aarch64 => 1,
+        .x86_64 => 2,
+        else => 0,
+    };
+}
+
+fn imageAbiHash() u64 {
+    const names = [_][]const u8{
+        "birnam_send",
+        "birnam_intern",
+        "birnam_mkSmallInt",
+        "birnam_smallIntValue",
+        "birnam_mkFloat",
+        "birnam_floatValue",
+        "birnam_mkString",
+        "birnam_nil",
+        "birnam_true",
+        "birnam_false",
+        "birnam_objectVt",
+        "birnam_proto",
+        "birnam_method",
+        "birnam_alloc",
+        "birnam_cstr",
+        "birnam_free_cstr",
+        "birnam_layoutAllOops",
+        "birnam_global",
+        "birnam_candidate_validate_binding",
+    };
+    var hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for (names) |name| {
+        for (name) |byte| {
+            hash ^= byte;
+            hash = hash *% 0x100000001b3;
+        }
+    }
+    var version: u32 = 2;
+    for (0..4) |_| {
+        hash ^= @as(u64, version & 0xff);
+        hash = hash *% 0x100000001b3;
+        version >>= 8;
+    }
+    return hash;
+}
+
+fn appendImageRecord(image: *std.ArrayList(u8), allocator: std.mem.Allocator, kind: u32, payload: []const u8) !void {
+    var u32_bytes: [4]u8 = undefined;
+    var u64_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u32, &u32_bytes, kind, .little);
+    try image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, payload.len, .little);
+    try image.appendSlice(allocator, &u64_bytes);
+    try image.appendSlice(allocator, payload);
 }
 
 fn initializeAuthorityGeneration(api: *idapi.IdApi) !void {
@@ -270,4 +360,94 @@ test "Rust Image live probe accepts Zig Codegen authority without publishing" {
         detail[0..detail_len],
     );
     try std.testing.expect(!pathExists(path));
+}
+
+test "Rust Image delegates an admitted code unit to Rust Codegen" {
+    if (std.posix.getenv("BIRNAM_RUST_IMAGE_CODEGEN_TEST") == null) return error.SkipZigTest;
+    const api = setupWithRustCodegen();
+    const rust_codegen = api.import("RustCodegen") orelse return error.RustCodegenMissing;
+    const runtime_store = api.import("Store") orelse return error.StoreMissing;
+    const sentinel_entity = api.intern("rust_image_sentinel_entity");
+    const sentinel_attribute = api.intern("rust_image_sentinel_attribute");
+    const sentinel_value = api.mkSmallInt(33);
+    _ = send(api, runtime_store, "assert:attr:value:", &.{ sentinel_entity, sentinel_attribute, sentinel_value });
+    defer _ = send(api, runtime_store, "retract:attr:value:", &.{ sentinel_entity, sentinel_attribute, sentinel_value });
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+    const directory = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(directory);
+    const artifact_path = try std.fs.path.join(allocator, &.{ directory, "rust-image-mapped.dylib" });
+    defer allocator.free(artifact_path);
+    const image_path = try std.fs.path.join(allocator, &.{ directory, "rust-image-mapped.image" });
+    defer allocator.free(image_path);
+
+    const source = "[Globals at: #rustImageMapped put: 91]";
+    const artifact = api.mkString(artifact_path.ptr, artifact_path.len);
+    const compiled = api.send(rust_codegen, api.intern("compile:output:"), &.{ str(api, source), artifact }, 2);
+    try std.testing.expect(compiled != api.nilObj);
+    var compiled_len: usize = 0;
+    const compiled_bytes = api.stringBytes(compiled, &compiled_len);
+    try std.testing.expectEqualStrings(artifact_path, compiled_bytes[0..compiled_len]);
+    const artifact_bytes = try std.fs.cwd().readFileAlloc(allocator, artifact_path, 64 * 1024 * 1024);
+    defer allocator.free(artifact_bytes);
+
+    var code_payload: std.ArrayList(u8) = .{};
+    defer code_payload.deinit(allocator);
+    var u64_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &u64_bytes, std.hash.Wyhash.hash(0, artifact_bytes), .little);
+    try code_payload.appendSlice(allocator, &u64_bytes);
+    try code_payload.appendNTimes(allocator, 0, 64);
+    try code_payload.appendSlice(allocator, artifact_bytes);
+
+    var image: std.ArrayList(u8) = .{};
+    defer image.deinit(allocator);
+    try image.appendSlice(allocator, "BIRNAMIM");
+    var u32_bytes: [4]u8 = undefined;
+    std.mem.writeInt(u32, &u32_bytes, 4, .little);
+    try image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, 0x0102_0304, .little);
+    try image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u32, &u32_bytes, imageArchTag(), .little);
+    try image.appendSlice(allocator, &u32_bytes);
+    std.mem.writeInt(u64, &u64_bytes, imageAbiHash(), .little);
+    try image.appendSlice(allocator, &u64_bytes);
+    var authority: [64]u8 = .{0} ** 64;
+    if (api.import("Codegen")) |zig_codegen| {
+        const digest = send(api, zig_codegen, "currentGenerationDigest", &.{});
+        if (api.vtableOf(digest) == api.string_vt) {
+            var digest_len: usize = 0;
+            const digest_bytes = api.stringBytes(digest, &digest_len);
+            if (digest_len == authority.len) {
+                std.mem.copyForwards(u8, &authority, digest_bytes[0..digest_len]);
+            }
+        }
+    }
+    std.mem.copyForwards(u8, code_payload.items[8 .. 8 + authority.len], &authority);
+    try appendImageRecord(&image, allocator, 5, &authority);
+    try appendImageRecord(&image, allocator, 4, code_payload.items);
+    try tmp.dir.writeFile(.{ .sub_path = "rust-image-mapped.image", .data = image.items });
+
+    const system = api.import("System") orelse return error.SystemMissing;
+    const loaded = send(api, system, "loadImage:", &.{str(api, image_path)});
+    if (loaded != api.trueObj) {
+        const diagnostic = send(api, rust_codegen, "lastError", &.{});
+        if (api.vtableOf(diagnostic) == api.string_vt) {
+            var diagnostic_len: usize = 0;
+            const diagnostic_bytes = api.stringBytes(diagnostic, &diagnostic_len);
+            std.debug.print("Rust Image mapped diagnostic={s}\n", .{diagnostic_bytes[0..diagnostic_len]});
+        }
+    }
+    try std.testing.expect(loaded == api.trueObj);
+    const retained = send(api, runtime_store, "currentValue:attr:", &.{ sentinel_entity, sentinel_attribute });
+    try std.testing.expect(api.isSmallInt(retained) != 0);
+    try std.testing.expectEqual(@as(i64, 33), api.smallIntValue(retained));
+    const globals = api.import("Globals") orelse return error.GlobalsMissing;
+    const mapped = send(api, globals, "at:", &.{api.intern("rustImageMapped")});
+    try std.testing.expect(api.isSmallInt(mapped) != 0);
+    try std.testing.expectEqual(@as(i64, 91), api.smallIntValue(mapped));
+
+    const rebuilt = send(api, system, "loadImage:rebuild:", &.{ str(api, image_path), api.trueObj });
+    try std.testing.expect(rebuilt == api.falseObj);
 }

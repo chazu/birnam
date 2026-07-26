@@ -1678,6 +1678,22 @@ pub fn build(b: *std.Build) void {
         "BIRNAM_RUST_IMAGE_DYLIB",
         b.getInstallPath(.lib, "libbirnam_id_image_rust.dylib"),
     );
+    run_rust_image_shell.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_image_shell.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_image_shell.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_image_shell.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
     run_rust_image_shell.step.dependOn(bootstrap_install);
     const test_rust_image_shell_step = b.step(
         "test-rust-image-shell",
@@ -1685,6 +1701,50 @@ pub fn build(b: *std.Build) void {
     );
     test_rust_image_shell_step.dependOn(&run_rust_image_shell.step);
     test_step.dependOn(&run_rust_image_shell.step);
+
+    // The mapped Rust Codegen handoff runs in a fresh process. The ordinary
+    // shell target intentionally exercises the mixed Zig-authority lifecycle;
+    // keeping this recovery test isolated prevents one test's dynamic-module
+    // reload state from changing another test's loader owner.
+    const rust_image_codegen_tests = b.addTest(.{
+        .root_module = rust_image_shell_mod,
+        .filters = &.{"Rust Image delegates an admitted code unit to Rust Codegen"},
+    });
+    rust_image_codegen_tests.rdynamic = true;
+    rust_image_codegen_tests.linkLibC();
+    rust_image_codegen_tests.linkLibrary(libtcc_lib);
+    const run_rust_image_codegen = b.addRunArtifact(rust_image_codegen_tests);
+    run_rust_image_codegen.setEnvironmentVariable("BIRNAM_RUST_IMAGE_CODEGEN_TEST", "1");
+    run_rust_image_codegen.setEnvironmentVariable("BIRNAM_ID_DYLIB", conformance_floor);
+    run_rust_image_codegen.setEnvironmentVariable("BIRNAM_ID_FLOOR_IDENTITY", conformance_identity);
+    run_rust_image_codegen.setEnvironmentVariable("BIRNAM_ID_FLOOR_SHA256", conformance_digest);
+    run_rust_image_codegen.setEnvironmentVariable(
+        "BIRNAM_RUST_IMAGE_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_image_rust.dylib"),
+    );
+    run_rust_image_codegen.setEnvironmentVariable(
+        "BIRNAM_RUST_PEG_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_peg_rust.dylib"),
+    );
+    run_rust_image_codegen.setEnvironmentVariable(
+        "BIRNAM_RUST_TCC_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_tcc_rust.dylib"),
+    );
+    run_rust_image_codegen.setEnvironmentVariable(
+        "BIRNAM_RUST_STORE_DYLIB",
+        b.pathFromRoot(b.fmt(".cargo-target/{s}/libbirnam_store.dylib", .{rust_floor_profile})),
+    );
+    run_rust_image_codegen.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    run_rust_image_codegen.step.dependOn(bootstrap_install);
+    const test_rust_image_codegen_step = b.step(
+        "test-rust-image-codegen",
+        "Run the Rust Image to Rust Codegen mapped-unit recovery proof in isolation",
+    );
+    test_rust_image_codegen_step.dependOn(&run_rust_image_codegen.step);
+    test_step.dependOn(&run_rust_image_codegen.step);
 
     const rust_tcc_image_mod = b.createModule(.{
         .root_source_file = b.path("src/id/image_test.zig"),

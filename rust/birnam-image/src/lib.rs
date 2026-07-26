@@ -70,9 +70,10 @@ fn authority_digest_from_bytes(bytes: &[u8]) -> Option<[u8; AUTHORITY_DIGEST_LEN
 }
 
 use std::collections::HashMap;
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1068,6 +1069,13 @@ const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
 const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
 const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
 const MAX_IMAGE_BYTES: u64 = 1 << 30;
+const RUST_CODEGEN_NAME: &[u8] = b"RustCodegen\0";
+const RUST_CODEGEN_PREFLIGHT_IMAGE: &[u8] = b"preflightImage:\0";
+const RUST_CODEGEN_BEGIN_IMAGE_RECOVERY: &[u8] = b"beginImageDispatchRecovery\0";
+const RUST_CODEGEN_END_IMAGE_RECOVERY: &[u8] = b"endImageDispatchRecovery\0";
+const RUST_CODEGEN_REPLAY_IMAGE_FACTS: &[u8] = b"replayImageFacts:\0";
+const RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS: &[u8] = b"deriveImageMethodTargets\0";
+const RUST_CODEGEN_MAP_IMAGE_CODE: &[u8] = b"mapImageCode:\0";
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -1462,6 +1470,7 @@ unsafe fn capture_generation_code(
     bytes.filter(|bytes| !bytes.is_empty())
 }
 
+#[cfg(test)]
 fn preflight_image_path(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
@@ -1478,25 +1487,177 @@ fn preflight_image_path(path: &Path) -> bool {
     Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
 }
 
-unsafe fn preflight_runtime_image(api: &IdApi, path: Oop) -> bool {
+#[derive(Clone, Copy, Default)]
+struct ImageFeatures {
+    has_facts: bool,
+    has_heap: bool,
+    has_code: bool,
+}
+
+fn inspect_image_path(path_bytes: &[u8]) -> Option<ImageFeatures> {
+    let path = Path::new(OsStr::from_bytes(path_bytes));
+    let metadata = fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    if u64::try_from(bytes.len()).ok()? > MAX_IMAGE_BYTES {
+        return None;
+    }
+    let image = Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).ok()?;
+    let mut features = ImageFeatures::default();
+    let mut records = image.records();
+    while let Some(record) = records.next_record().ok()? {
+        match record.kind {
+            RecordKind::Facts => features.has_facts = true,
+            RecordKind::Heap => features.has_heap = true,
+            RecordKind::Code => features.has_code = true,
+            RecordKind::Authority => {}
+        }
+    }
+    Some(features)
+}
+
+unsafe fn runtime_image_path_bytes(api: &IdApi, path: Oop) -> Option<Vec<u8>> {
     if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
-        return false;
+        return None;
     }
     let mut length = 0;
     let bytes = unsafe { (api.stringBytes)(path, &mut length) };
     if bytes.is_null() && length != 0 {
-        return false;
+        return None;
     }
     let bytes = if length == 0 {
-        &[]
+        &[][..]
     } else {
         // SAFETY: stringBytes supplies `length` readable bytes for this live String.
         unsafe { core::slice::from_raw_parts(bytes, length) }
     };
-    let Ok(text) = std::str::from_utf8(bytes) else {
+    Some(bytes.to_vec())
+}
+
+unsafe fn inspect_runtime_image(api: &IdApi, path: Oop) -> Option<ImageFeatures> {
+    let path_bytes = unsafe { runtime_image_path_bytes(api, path) }?;
+    inspect_image_path(&path_bytes)
+}
+
+unsafe fn preflight_runtime_image(api: &IdApi, path: Oop) -> bool {
+    unsafe { inspect_runtime_image(api, path) }.is_some()
+}
+
+unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: &[u8]) -> bool {
+    let vtable = unsafe { (api.vtableOf)(target) };
+    if vtable.is_null() {
         return false;
+    }
+    let selector = unsafe { intern(api, selector) };
+    let mut index = 0usize;
+    loop {
+        let entry = unsafe { (api.vtableSelectorAt)(vtable, index) };
+        if entry.is_null() {
+            return false;
+        }
+        if entry == selector {
+            return true;
+        }
+        index = index.saturating_add(1);
+    }
+}
+
+unsafe fn rust_codegen_image_authority(api: &IdApi) -> Option<Oop> {
+    let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+    if codegen.is_null() || codegen == api.nilObj {
+        return None;
+    }
+    for selector in [
+        RUST_CODEGEN_PREFLIGHT_IMAGE,
+        RUST_CODEGEN_BEGIN_IMAGE_RECOVERY,
+        RUST_CODEGEN_END_IMAGE_RECOVERY,
+        RUST_CODEGEN_REPLAY_IMAGE_FACTS,
+        RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS,
+        RUST_CODEGEN_MAP_IMAGE_CODE,
+    ] {
+        if !unsafe { direct_method_present(api, codegen, selector) } {
+            return None;
+        }
+    }
+    Some(codegen)
+}
+
+unsafe fn send_image_unary(api: &IdApi, receiver: Oop, selector: &[u8], argument: Oop) -> Oop {
+    let arguments = [argument];
+    unsafe {
+        (api.send)(
+            receiver,
+            intern(api, selector),
+            arguments.as_ptr(),
+            arguments.len(),
+        )
+    }
+}
+
+unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
+    let Some(features) = (unsafe { inspect_runtime_image(api, path) }) else {
+        return api.nilObj;
     };
-    preflight_image_path(Path::new(text))
+    let Some(codegen) = (unsafe { rust_codegen_image_authority(api) }) else {
+        // The Rust Image shell may coexist with the Zig Codegen authority. In
+        // that mixed process this slice only admits the image; the canonical
+        // Zig loader remains responsible for mutation and mapping.
+        return api.falseObj;
+    };
+    if unsafe { send_image_unary(api, codegen, RUST_CODEGEN_PREFLIGHT_IMAGE, path) }
+        != api.trueObj
+    {
+        return api.nilObj;
+    }
+    if unsafe { (api.send)(codegen, intern(api, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY), ptr::null(), 0) }
+        != api.trueObj
+    {
+        return api.nilObj;
+    }
+
+    let outcome = (|| -> Result<Oop, ()> {
+        if features.has_facts || features.has_heap {
+            let replayed = unsafe {
+                send_image_unary(api, codegen, RUST_CODEGEN_REPLAY_IMAGE_FACTS, path)
+            };
+            if replayed == api.nilObj {
+                return Err(());
+            }
+        }
+        if rebuild || !features.has_code {
+            return Ok(api.falseObj);
+        }
+        let derived = unsafe {
+            (api.send)(
+                codegen,
+                intern(api, RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS),
+                ptr::null(),
+                0,
+            )
+        };
+        if derived == api.nilObj {
+            return Err(());
+        }
+        let mapped = unsafe { send_image_unary(api, codegen, RUST_CODEGEN_MAP_IMAGE_CODE, path) };
+        if mapped == api.nilObj {
+            return Err(());
+        }
+        Ok(api.trueObj)
+    })();
+    let ended = unsafe {
+        (api.send)(
+            codegen,
+            intern(api, RUST_CODEGEN_END_IMAGE_RECOVERY),
+            ptr::null(),
+            0,
+        )
+    };
+    if ended != api.trueObj {
+        return api.nilObj;
+    }
+    outcome.unwrap_or(api.nilObj)
 }
 
 unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
@@ -1685,10 +1846,7 @@ unsafe extern "C" fn system_load_image(_self_object: Oop, args: *const Oop, coun
     if count != 1 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
         return api.nilObj;
     }
-    // Admission is deliberately read-only in this slice. A valid image is
-    // reported as data-only until mapped activation and source rebuild are
-    // installed by later R6 authorities.
-    api.falseObj
+    unsafe { load_with_rust_codegen(api, arguments[0], false) }
 }
 
 unsafe extern "C" fn system_load_image_rebuild(
@@ -1703,7 +1861,7 @@ unsafe extern "C" fn system_load_image_rebuild(
     if count != 2 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
         return api.nilObj;
     }
-    api.falseObj
+    unsafe { load_with_rust_codegen(api, arguments[0], arguments[1] == api.trueObj) }
 }
 
 unsafe extern "C" fn system_image_save_report(
