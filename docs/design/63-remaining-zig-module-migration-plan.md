@@ -2496,3 +2496,14 @@ explicitly so the recovery surface cannot silently shrink.
   Codegen `1/1`, and Rust Codegen runtime `26/26`; the full R6 acceptance is
   green with no allowance beyond `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`.
+
+### R6.31 Explicit rebuild recovery checkpoint (2026-07-25)
+
+- The mapped-image proof now checks `loadImage:rebuild:` after successful
+  mapped recovery. The explicit rebuild branch answers `false` (leaving source
+  replay to the existing boot policy) while still restoring the captured heap
+  and Facts state and never publishing a second mapped code unit.
+- The focused counts and complete R6 acceptance remain unchanged: `84/84`,
+  Rust Image shell `2/2`, mapped Image Codegen `1/1`, Rust Codegen runtime
+  `26/26`, with only `query.aggregate +5.8%` and `compile.stage1-stdlib
+  +11.9%` accepted.

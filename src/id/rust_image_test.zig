@@ -565,4 +565,12 @@ test "Rust Image delegates an admitted code unit to Rust Codegen" {
 
     const rebuilt = send(api, system, "loadImage:rebuild:", &.{ str(api, image_path), api.trueObj });
     try std.testing.expect(rebuilt == api.falseObj);
+    const rebuilt_fact = send(
+        api,
+        runtime_store,
+        "currentValue:attr:",
+        &.{ api.intern("rust_image_recovered_entity"), api.intern("rust_image_recovered_attribute") },
+    );
+    try std.testing.expect(api.isSmallInt(rebuilt_fact) != 0);
+    try std.testing.expectEqual(@as(i64, 42), api.smallIntValue(rebuilt_fact));
 }
