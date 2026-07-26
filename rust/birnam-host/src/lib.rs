@@ -5,8 +5,9 @@
 //! overrides accepted by the existing Zig host. Loading a floor or any higher
 //! rung remains a later host boundary.
 
+use std::collections::HashSet;
 use std::env;
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, OsStr};
 use std::io;
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
@@ -190,6 +191,49 @@ pub enum ImageError {
 
 pub const MAX_SCRIPT_BYTES: usize = 16 << 20;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactEntry {
+    pub path: PathBuf,
+    pub identity: Vec<u8>,
+    pub requires: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactPlan {
+    pub entries: Vec<ArtifactEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactPreflightError {
+    Read {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+    Parse {
+        path: PathBuf,
+        error: birnam_artifact::Error,
+    },
+    KindMismatch {
+        path: PathBuf,
+    },
+    IdentityMismatch {
+        path: PathBuf,
+        expected: Vec<u8>,
+        actual: Vec<u8>,
+    },
+    DependencyCycle {
+        identity: Vec<u8>,
+    },
+    NativeRequirementMissing {
+        path: PathBuf,
+        requirement: Vec<u8>,
+    },
+    InvalidDependencyName {
+        path: PathBuf,
+        dependency: Vec<u8>,
+    },
+}
+
 /// Append an image trailer to a runtime byte sequence. The runtime remains a
 /// valid executable because the loader ignores trailing bytes; recovery uses
 /// [`baked_image`] to select the exact image slice.
@@ -224,6 +268,155 @@ pub fn baked_image(bytes: &[u8]) -> Option<&[u8]> {
         return None;
     }
     Some(&bytes[length_start - image_len..length_start])
+}
+
+fn artifact_path_from_bytes(bytes: &[u8]) -> Option<&Path> {
+    if bytes.is_empty() || bytes.contains(&0) {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        Some(Path::new(OsStr::from_bytes(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        std::str::from_utf8(bytes).ok().map(Path::new)
+    }
+}
+
+fn sibling_artifact_path(directory: &Path, identity: &[u8]) -> Option<PathBuf> {
+    let mut filename = Vec::with_capacity(b"libbirnam_".len() + identity.len() + b".dylib".len());
+    filename.extend_from_slice(b"libbirnam_");
+    filename.extend_from_slice(identity);
+    filename.extend_from_slice(b".dylib");
+    artifact_path_from_bytes(&filename).map(|path| directory.join(path))
+}
+
+fn read_artifact_bytes(path: &Path) -> Result<Vec<u8>, ArtifactPreflightError> {
+    let metadata = std::fs::metadata(path).map_err(|error| ArtifactPreflightError::Read {
+        path: path.to_path_buf(),
+        kind: error.kind(),
+    })?;
+    if metadata.len() > birnam_artifact::MAX_ARTIFACT_BYTES as u64 {
+        return Err(ArtifactPreflightError::Parse {
+            path: path.to_path_buf(),
+            error: birnam_artifact::Error::ArtifactTooLarge,
+        });
+    }
+    std::fs::read(path).map_err(|error| ArtifactPreflightError::Read {
+        path: path.to_path_buf(),
+        kind: error.kind(),
+    })
+}
+
+struct ArtifactPreflight {
+    entries: Vec<ArtifactEntry>,
+    visiting: HashSet<Vec<u8>>,
+    inspected: HashSet<Vec<u8>>,
+}
+
+impl ArtifactPreflight {
+    fn walk(
+        &mut self,
+        path: &Path,
+        expected_identity: Option<&[u8]>,
+    ) -> Result<(), ArtifactPreflightError> {
+        let bytes = read_artifact_bytes(path)?;
+        let descriptor =
+            birnam_artifact::inspect(&bytes).map_err(|error| ArtifactPreflightError::Parse {
+                path: path.to_path_buf(),
+                error,
+            })?;
+        if descriptor.kind != b"module" {
+            return Err(ArtifactPreflightError::KindMismatch {
+                path: path.to_path_buf(),
+            });
+        }
+        if let Some(expected) = expected_identity
+            && descriptor.identity != expected
+        {
+            return Err(ArtifactPreflightError::IdentityMismatch {
+                path: path.to_path_buf(),
+                expected: expected.to_vec(),
+                actual: descriptor.identity.to_vec(),
+            });
+        }
+        let identity = descriptor.identity.to_vec();
+        if self.inspected.contains(&identity) {
+            return Ok(());
+        }
+        if !self.visiting.insert(identity.clone()) {
+            return Err(ArtifactPreflightError::DependencyCycle { identity });
+        }
+        let directory = path.parent().unwrap_or_else(|| Path::new("."));
+        for requirement in descriptor.native_requires.iter() {
+            if requirement.is_empty() || requirement.contains(&0) || requirement.contains(&b'/') {
+                return Err(ArtifactPreflightError::NativeRequirementMissing {
+                    path: path.to_path_buf(),
+                    requirement: requirement.to_vec(),
+                });
+            }
+            let Some(requirement_path) = artifact_path_from_bytes(requirement) else {
+                return Err(ArtifactPreflightError::NativeRequirementMissing {
+                    path: path.to_path_buf(),
+                    requirement: requirement.to_vec(),
+                });
+            };
+            if std::fs::metadata(directory.join(requirement_path)).is_err() {
+                return Err(ArtifactPreflightError::NativeRequirementMissing {
+                    path: path.to_path_buf(),
+                    requirement: requirement.to_vec(),
+                });
+            }
+        }
+        let requires: Vec<Vec<u8>> = descriptor
+            .requires
+            .iter()
+            .map(|requirement| requirement.to_vec())
+            .collect();
+        for requirement in &requires {
+            if requirement.contains(&0) || requirement.contains(&b'/') {
+                return Err(ArtifactPreflightError::InvalidDependencyName {
+                    path: path.to_path_buf(),
+                    dependency: requirement.clone(),
+                });
+            }
+            let Some(dependency_path) = sibling_artifact_path(directory, requirement) else {
+                return Err(ArtifactPreflightError::InvalidDependencyName {
+                    path: path.to_path_buf(),
+                    dependency: requirement.clone(),
+                });
+            };
+            self.walk(&dependency_path, Some(requirement))?;
+        }
+        self.visiting.remove(&identity);
+        self.inspected.insert(identity.clone());
+        self.entries.push(ArtifactEntry {
+            path: path.to_path_buf(),
+            identity,
+            requires,
+        });
+        Ok(())
+    }
+}
+
+/// Validate an artifact and its complete sibling dependency closure before any
+/// activation. This is the Rust-host replacement seam for the Zig preflight
+/// helper: it consumes the same pointer-free descriptor parser and performs no
+/// IdApi allocation, module load, or initializer call.
+pub fn preflight_artifact(
+    path: &Path,
+    expected_identity: Option<&[u8]>,
+) -> Result<ArtifactPlan, ArtifactPreflightError> {
+    let mut preflight = ArtifactPreflight {
+        entries: Vec::new(),
+        visiting: HashSet::new(),
+        inspected: HashSet::new(),
+    };
+    preflight.walk(path, expected_identity)?;
+    Ok(ArtifactPlan {
+        entries: preflight.entries,
+    })
 }
 
 /// Evaluate one source file through the started host's Codegen object. This is
@@ -1730,6 +1923,36 @@ fn normalize_absolute(path: &Path) -> io::Result<PathBuf> {
 mod tests {
     use super::*;
 
+    fn artifact_field(value: &[u8], output: &mut Vec<u8>) {
+        output.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        output.extend_from_slice(value);
+    }
+
+    fn artifact_list(values: &[&[u8]], output: &mut Vec<u8>) {
+        output.extend_from_slice(&(values.len() as u32).to_le_bytes());
+        for value in values {
+            artifact_field(value, output);
+        }
+    }
+
+    fn artifact_fixture(identity: &[u8], requires: &[&[u8]]) -> Vec<u8> {
+        let mut payload = Vec::new();
+        artifact_field(b"module", &mut payload);
+        artifact_field(identity, &mut payload);
+        artifact_field(birnam_artifact::ABI, &mut payload);
+        artifact_field(birnam_artifact::TARGET, &mut payload);
+        artifact_field(b"source", &mut payload);
+        artifact_field(b"revision", &mut payload);
+        artifact_list(requires, &mut payload);
+        artifact_list(&[], &mut payload);
+        artifact_list(&[], &mut payload);
+        let mut output = Vec::new();
+        output.extend_from_slice(birnam_artifact::DESCRIPTOR_MAGIC);
+        output.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        output.extend_from_slice(&payload);
+        output
+    }
+
     #[test]
     fn uses_one_normalized_executable_relative_layout() {
         let resources = resolve_from_exe_dir(Path::new("/opt/birnam/bin"), Overrides::default())
@@ -2187,5 +2410,48 @@ mod tests {
     #[test]
     fn image_outcomes_keep_mapping_and_source_recovery_distinct() {
         assert_ne!(ImageLoadOutcome::Mapped, ImageLoadOutcome::SourceRecovery);
+    }
+
+    #[test]
+    fn artifact_preflight_walks_siblings_dependency_first() {
+        let root =
+            std::env::temp_dir().join(format!("birnam-host-preflight-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let root_path = root.join("libbirnam_root.dylib");
+        let dependency_path = root.join("libbirnam_dep.dylib");
+        std::fs::write(&root_path, artifact_fixture(b"root", &[b"dep"]))
+            .expect("root fixture writes");
+        std::fs::write(&dependency_path, artifact_fixture(b"dep", &[]))
+            .expect("dependency fixture writes");
+        let plan = preflight_artifact(&root_path, Some(b"root")).expect("closure preflights");
+        assert_eq!(
+            plan.entries
+                .iter()
+                .map(|entry| entry.identity.as_slice())
+                .collect::<Vec<_>>(),
+            vec![b"dep".as_slice(), b"root".as_slice()]
+        );
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_identity_mismatch_and_missing_sibling() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-error-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let root_path = root.join("libbirnam_root.dylib");
+        std::fs::write(&root_path, artifact_fixture(b"root", &[b"dep"]))
+            .expect("root fixture writes");
+        assert!(matches!(
+            preflight_artifact(&root_path, Some(b"other")),
+            Err(ArtifactPreflightError::IdentityMismatch { .. })
+        ));
+        assert!(matches!(
+            preflight_artifact(&root_path, Some(b"root")),
+            Err(ArtifactPreflightError::Read { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
     }
 }

@@ -10,6 +10,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
+birnam-artifact = { path = "../birnam-artifact" }
 
 [lints]
 workspace = true

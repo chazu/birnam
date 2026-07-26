@@ -2609,6 +2609,20 @@ allowances.
 - Twenty-eight offline Rust tests pass with warnings denied. Image entry-point
   dispatch, diagnostics, and release rollback observation remain later seams.
 
+### R7.19 Rust host artifact-preflight checkpoint (2026-07-26)
+
+- `birnam-host` now owns an internal sibling-closure preflight over the existing
+  pointer-free `birnam-artifact` descriptor parser. It validates module kind,
+  optional root identity, native requirements, dependency identities, and
+  dependency cycles before any IdApi allocation, `dlopen`, or initializer.
+- The plan is dependency-first and records each identity once, matching the
+  Zig preflight's visiting/inspected closure semantics. Invalid dependency names
+  cannot escape the selected artifact directory.
+- The host now depends on the existing parser crate rather than creating a
+  second descriptor wire format. Thirty offline Rust tests pass with warnings
+  denied, including real temporary sibling fixtures for ordering, mismatch,
+  and missing-dependency rejection.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and
