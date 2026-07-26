@@ -695,6 +695,45 @@ test "Rust Image publishes a complete image under explicit Rust authority" {
     try std.testing.expectEqual(@as(i64, 818), api.smallIntValue(recovered));
 }
 
+test "Zig Image reads a Rust-authored v4 data image" {
+    const api = setupWithRustCodegen();
+    try initializeRustAuthorityGeneration(api);
+
+    const runtime_store = api.import("Store") orelse return error.StoreMissing;
+    const entity = api.intern("rust_writer_zig_reader_entity");
+    const attribute = api.intern("rust_writer_zig_reader_attribute");
+    const value = api.mkSmallInt(909);
+    _ = send(api, runtime_store, "assert:attr:value:", &.{ entity, attribute, value });
+    defer _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+
+    const system = api.import("System") orelse return error.SystemMissing;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const allocator = std.testing.allocator;
+    const directory = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(directory);
+    const image_path = try std.fs.path.join(allocator, &.{ directory, "rust-writer-zig-reader.image" });
+    defer allocator.free(image_path);
+
+    // The Rust Image writer is selected by the isolated target's explicit
+    // authority/publication environment. Publish before installing the Zig
+    // Image methods so the reader half is unambiguously the canonical Zig
+    // implementation.
+    try std.testing.expectEqual(system, send(api, system, "saveImage:", &.{str(api, image_path)}));
+    try std.testing.expectEqual(api.intern("saved"), send(api, send(api, system, "imageSaveReport", &.{}), "status", &.{}));
+    try std.testing.expect(pathExists(image_path));
+
+    _ = send(api, runtime_store, "retract:attr:value:", &.{ entity, attribute, value });
+    zig_image.bringUp(api);
+
+    // Rust publication must remain readable by the canonical Zig orchestration
+    // and restore Store state before any mapped-code decision is surfaced.
+    try std.testing.expectEqual(api.trueObj, send(api, system, "loadImage:", &.{str(api, image_path)}));
+    const recovered = send(api, runtime_store, "currentValue:attr:", &.{ entity, attribute });
+    try std.testing.expect(api.isSmallInt(recovered) != 0);
+    try std.testing.expectEqual(@as(i64, 909), api.smallIntValue(recovered));
+}
+
 test "Rust Image reads a Zig-authored v4 data image" {
     const api = setupWithRustCodegen();
     const runtime_store = api.import("Store") orelse return error.StoreMissing;
