@@ -3028,6 +3028,19 @@ allowances.
   The accepted R6 gate remains unchanged at focused `91/91`, with only the
   two recorded benchmark allowances.
 
+### R7.51 Rust host dependency-root resolution checkpoint (2026-07-26)
+
+- `resolve_project_dependency_paths` now resolves each decoded dependency
+  path against the canonical owning project root, canonicalizes the existing
+  target, preserves its manifest name, and returns deterministic name order.
+  Absolute paths fail before filesystem access; canonicalization failures
+  retain the dependency name, joined path, and OS error kind.
+- This is still observation only. It does not parse a dependency manifest,
+  recurse the closure, evaluate source, or select a module provider; those
+  remain the next explicit host seams.
+- The focused Rust host suite advances to 42 tests, with Rust-host formatting,
+  check, and warnings-denied clippy green. R6 remains accepted at `91/91`.
+
 ## 12. Commit and review discipline
 
 Every implementation slice lands as a small commit after its focused tests and

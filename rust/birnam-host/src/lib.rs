@@ -1455,6 +1455,19 @@ pub enum ProjectManifestDecodeError {
     InvalidTestSource(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectDependencyResolutionError {
+    InvalidPath {
+        name: String,
+        path: PathBuf,
+    },
+    Canonicalize {
+        name: String,
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
+}
+
 /// Find the nearest canonical directory containing `birnam.toml`. This is the
 /// filesystem half of project observation only; it never parses the manifest
 /// or selects a module provider.
@@ -1496,6 +1509,40 @@ pub fn nearest_project_root(start: &Path) -> Result<PathBuf, ProjectDiscoveryErr
         }
         current = parent.to_path_buf();
     }
+}
+
+/// Resolve manifest dependency paths against one canonical project root. This
+/// is filesystem observation only: it preserves manifest names, canonicalizes
+/// each existing target, and does not parse a dependency manifest or choose a
+/// provider. Recursive closure assembly remains a separate operation.
+pub fn resolve_project_dependency_paths(
+    project_root: &Path,
+    dependencies: &[ProjectDependencyObservation],
+) -> Result<Vec<ProjectDependencyObservation>, ProjectDependencyResolutionError> {
+    let mut resolved = Vec::with_capacity(dependencies.len());
+    for dependency in dependencies {
+        let relative = Path::new(&dependency.root);
+        if relative.is_absolute() {
+            return Err(ProjectDependencyResolutionError::InvalidPath {
+                name: dependency.name.clone(),
+                path: relative.to_path_buf(),
+            });
+        }
+        let joined = project_root.join(relative);
+        let root = std::fs::canonicalize(&joined).map_err(|error| {
+            ProjectDependencyResolutionError::Canonicalize {
+                name: dependency.name.clone(),
+                path: joined.clone(),
+                kind: error.kind(),
+            }
+        })?;
+        resolved.push(ProjectDependencyObservation {
+            name: dependency.name.clone(),
+            root: root.to_string_lossy().into_owned(),
+        });
+    }
+    resolved.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(resolved)
 }
 
 fn collect_project_source_tree(
@@ -4378,6 +4425,59 @@ mod tests {
             vec![root.join("src/nested/a.birnam"), root.join("src/z.birnam")]
         );
         std::fs::remove_dir_all(&root).expect("source fixture removes");
+    }
+
+    #[test]
+    fn dependency_paths_canonicalize_without_reordering_names() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-dependency-paths-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("deps/zeta")).expect("dependency fixture creates");
+        std::fs::create_dir_all(root.join("deps/alpha")).expect("dependency fixture creates");
+        let resolved = resolve_project_dependency_paths(
+            &root,
+            &[
+                ProjectDependencyObservation {
+                    name: "zeta".to_owned(),
+                    root: "deps/zeta".to_owned(),
+                },
+                ProjectDependencyObservation {
+                    name: "alpha".to_owned(),
+                    root: "deps/alpha".to_owned(),
+                },
+            ],
+        )
+        .expect("dependency paths resolve");
+        assert_eq!(
+            resolved
+                .iter()
+                .map(|dependency| dependency.name.as_str())
+                .collect::<Vec<_>>(),
+            ["alpha", "zeta"]
+        );
+        assert_eq!(
+            resolved[0].root,
+            std::fs::canonicalize(root.join("deps/alpha"))
+                .expect("dependency root canonicalizes")
+                .to_string_lossy()
+        );
+        std::fs::remove_dir_all(&root).expect("dependency fixture removes");
+    }
+
+    #[test]
+    fn dependency_paths_reject_absolute_targets_before_filesystem_access() {
+        let result = resolve_project_dependency_paths(
+            Path::new("/tmp/project"),
+            &[ProjectDependencyObservation {
+                name: "escape".to_owned(),
+                root: "/tmp/outside".to_owned(),
+            }],
+        );
+        assert!(matches!(
+            result,
+            Err(ProjectDependencyResolutionError::InvalidPath { name, .. }) if name == "escape"
+        ));
     }
 
     #[test]
