@@ -385,6 +385,11 @@ C2.1 Image authority checkpoint (2026-07-26):
   source adapter preserves the late-bound `defineMethod:on:as:doc:` hook. The
   complete Rust-host `test-repl` suite now passes `343/343` tests; the focused
   Rust Codegen runtime and workspace Cargo suites remain green.
+- A fresh scoped R6 rerun at `33e5d38` passes the accepted `171/171` build-step
+  and `99/99` test matrix, Rust Alien `66/66` plus `9/9`, and the exact two
+  benchmark crossings (`query.aggregate +5.8%`, `compile.stage1-stdlib
+  +11.9%`). The strict full-verify mode remains a separate audit because the
+  native-rung harness is intentionally outside this replacement-floor gate.
 
 ## 7. Phase C2 — image and host integration
 
