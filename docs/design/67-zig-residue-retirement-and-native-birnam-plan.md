@@ -408,6 +408,38 @@ rollback vector remain unchanged. This checkpoint records the exact hash before
 the Codegen runtime, canonical, stack, Zig-store, selection-refusal,
 distribution, and authority gates.
 
+### P2.3 Codegen readiness receipt (2026-07-27)
+
+Candidate checkpoint: `bccd9d4`. The focused Codegen matrix passed:
+
+```text
+Build Summary: 139/139 steps succeeded; 42/42 tests passed
+codegen-selection: Rust canonical selection, retained fixtures, and unknown-choice refusal passed
+codegen-distribution: packaged Rust canonical and explicit Zig rollback loads passed
+codegen-dylib-audit: exact exported Codegen authority surface passed
+```
+
+The Rust runtime contract covers the frozen selector/export surface, pure CST
+parity and invalid-diagnostic refusal, deterministic lowering/emission,
+receiver-first trampolines, stack behavior, and Zig-store compatibility. The
+canonical Rust Codegen dylib exports exactly one `module_init`; the explicit
+Zig rollback dylib remains a separate complete-vector authority.
+
+The standalone selector-refusal and packaged-distribution scripts pass at the
+same candidate. The fixture-free archive proof passes both independent cycles:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Codegen **retain-ready** for evidence purposes. The canonical
+Rust Codegen provider, explicit Zig Codegen oracle, and complete full-Zig
+rollback vector remain installed; no provider deletion, mixed-vector recovery,
+or benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
