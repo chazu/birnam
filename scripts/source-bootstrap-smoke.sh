@@ -44,6 +44,13 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
   CARGO_TARGET_DIR="$scratch/.cargo-target" \
     cargo test --workspace --locked --offline
   zig build -Dfloor=rust "${host_option[@]}" "${codegen_option[@]}"
+  # The archive boundary exercises the shared Rust/Zig preflight bytes in both
+  # supported optimization modes; the ordinary build above is only the
+  # fixture-free bootstrap/install proof.
+  zig build test-artifact-preflight \
+    -Dfloor=rust -Dartifact-inspector-impl=rust -Doptimize=Debug
+  zig build test-artifact-preflight \
+    -Dfloor=rust -Dartifact-inspector-impl=rust -Doptimize=ReleaseSafe
 )
 
 test -x "$scratch/zig-out/bin/birnam"
