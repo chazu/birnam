@@ -224,6 +224,17 @@ pub fn build(b: *std.Build) void {
     test_remaining_zig_boundary_step.dependOn(&remaining_zig_boundary_smoke.step);
     test_step.dependOn(&remaining_zig_boundary_smoke.step);
 
+    const rust_host_zig_helper_boundary = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-rust-host-zig-helper-boundary.py",
+    });
+    const test_rust_host_zig_helper_boundary_step = b.step(
+        "test-rust-host-zig-helper-boundary",
+        "Prove the Rust host has no source or dynamic dependency on Zig helpers",
+    );
+    test_rust_host_zig_helper_boundary_step.dependOn(&rust_host_zig_helper_boundary.step);
+    test_step.dependOn(&rust_host_zig_helper_boundary.step);
+
     const remaining_rung_clean_prefix = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-rung-clean-prefix.sh",
