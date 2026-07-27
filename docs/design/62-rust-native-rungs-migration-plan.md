@@ -6,7 +6,7 @@
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
 > complete; N3.5.1 through N3.5.4 and N4.1 through N4.4 are complete; N5.1
 > through N5.4 and N6.1 are complete; N6.2 through N6.6 have executable
-> opt-in slices in progress; N6.7 remains pending. N7.1 is now complete for
+> opt-in slices in progress; N6.7 is complete. N7.1 is now complete for
 > the Rust Prelude surface and canonical selection; its closure record is
 > cross-referenced to [63 — Remaining Zig Module Migration](63-remaining-zig-module-migration-plan.md).
 >
@@ -2341,6 +2341,34 @@ From a clean checkout with no Birnam artifacts:
 This is a cold-independence and determinism proof, not a self-application
 fixpoint. `C_N == C_(N+1)` applies only if a compiler implemented in Birnam later
 compiles itself.
+
+#### N6.7 closure record (2026-07-27)
+
+The fixture-free proof is now executable in two layers. Commit `e37ac1a`
+serializes the Rust workspace tests in `scripts/source-bootstrap-smoke.sh` so
+the archive/FFI checks have one deterministic order. Commit `93bca05` adds
+`scripts/rust-cold-compiler-determinism.sh`, which performs two independent
+`git archive HEAD` cycles, removes `abi/fixtures/idapi-v1`, rejects prebuilt
+Birnam artifacts, builds the Rust workspace with the pinned Rust 1.95 toolchain,
+and builds the explicit all-Rust native closure with isolated Zig and Cargo
+caches and prefixes. Each cycle then passes the Rust PEG generated-C and
+descriptor receipt (`94960557ad83060565f82ef2db310c111f565ec003b5306b5a89852d1932876c`),
+the 76-file source-corpus receipt (`8cd4303f04fcff97`), and Rust PEG metadata
+parity. The two cycles compare those receipts plus the installed dylib
+path/install-name contracts. Dylib bytes are deliberately not compared because
+release binaries embed each archive's temporary prefix; the stable install-name
+contract is the relevant load-boundary evidence.
+
+The companion `source-bootstrap-smoke.sh` run passes Rust production and Zig
+rollback builds, artifact preflight, relocated project/LSP execution, and both
+Rust and Zig floor identities. The strict `scripts/r6-acceptance.sh` run passes
+the full `305/305` verify-step, `516/522` test, six-skip pin, benchmark comparator,
+and strict Z3 production/rollback archive selector. Together these receipts
+close N6.7: the Rust compiler path is independently bootstrappable and
+deterministic, while Zig remains only the declared toolchain/oracle for
+unmigrated rungs and rollback evidence. This does not claim a Birnam
+self-application fixpoint or retire the Zig oracle before the Design 61
+observation decision.
 
 The Rust compiler becomes default only in a separate commit after this gate.
 The Zig compiler remains an oracle through an observation window covering
