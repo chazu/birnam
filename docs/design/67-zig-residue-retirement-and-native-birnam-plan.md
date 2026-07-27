@@ -646,6 +646,14 @@ canonical Rust Relational provider, explicit Zig Relational oracle, and complete
 full-Zig rollback vector remain installed; no provider deletion, mixed-vector
 recovery, or benchmark allowance change is authorized by this receipt.
 
+### P2.9 Alien candidate checkpoint
+
+The Alien candidate is evidence-only: Rust Alien is already the canonical
+provider, while the canonical Zig Alien implementation and its complete rollback
+vector remain unchanged. This checkpoint records the exact hash before the
+Rust-TCC Alien suite, live loader/ABI corpus, and canonical Alien selection
+gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
