@@ -514,6 +514,6 @@ lookup paths, so it does not accidentally load the canonical Rust Codegen
 while exercising the Zig oracle. The checked-in PEG source-corpus digest moved
 to `8cd4303f04fcff97` after the corpus reached 76 files. The strict summary
 pin was advanced in `13819ab`; `BIRNAM_R6_REQUIRE_VERIFY=1 bash
-scripts/r6-acceptance.sh` now passes with `304/304` verify steps, `514/520`
+scripts/r6-acceptance.sh` now passes with `304/304` verify steps, `516/522`
 tests, `6` skipped, and only `query.aggregate +5.8%` and
 `compile.stage1-stdlib +11.9%` accepted by the comparator.

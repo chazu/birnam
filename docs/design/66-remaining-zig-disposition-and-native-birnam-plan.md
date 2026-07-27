@@ -33,7 +33,7 @@ it is now green. The pre-rewrite image fixture runs through the explicit Zig
 oracle and Zig Image/Codegen rollback dylibs; stale compiled-unit authority is
 skipped for source recovery rather than rejecting the image. The strict command
 `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` reports `304/304`
-verify steps, `514/520` tests, and `6` skipped. This closes the compatibility
+verify steps, `516/522` tests, and `6` skipped. This closes the compatibility
 follow-up without widening R6's benchmark allowance or changing a frozen
 contract.
 
@@ -226,7 +226,7 @@ now passes through the explicit Zig oracle/rollback boundary.
 The checked-in graph/checker covers every repo-wide Zig file; every residue
 edge has an owner and disposition; digest/decoy/negative fixtures fail closed;
 the scoped R6 gate is green at `173/173` and `99/99`; the strict audit is green
-at `304/304`, `514/520`, and `6` skipped; and the worktree is clean. No helper
+at `304/304`, `516/522`, and `6` skipped; and the worktree is clean. No helper
 has moved yet. Z1 diagnostic/observation work may proceed, and the strict
 snapshot is now the required baseline for Z1 authority changes.
 
@@ -501,7 +501,7 @@ recovery require it.
 
 The scoped gate remains `bash scripts/r6-acceptance.sh`; it includes the
 optimized relocated native-rung harness. The strict compatibility audit is
-green at the pinned `304/304`, `514/520`, `6`-skipped snapshot, and
+green at the pinned `304/304`, `516/522`, `6`-skipped snapshot, and
 Z1/Z2/Z3 authority or distribution changes still require
 `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
 
