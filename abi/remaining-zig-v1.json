@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "Design 66 Z0.1 repo-wide Zig residue graph; diagnostic/checker evidence only",
-  "captured_commit": "66ea543",
+  "captured_commit": "83fd6f7",
   "generated_from": [
     "rg --files -g \"*.zig\"",
     "rg --files -g \"*.birnam\"",
@@ -926,6 +926,7 @@
       "scripts/repl-golden.sh",
       "scripts/rust-artifact-preflight-smoke.sh",
       "scripts/rust-codegen-distribution-smoke.sh",
+      "scripts/rust-cold-compiler-determinism.sh",
       "scripts/rust-dispatch-reentry-smoke.sh",
       "scripts/rust-dylib-audit.sh",
       "scripts/rust-env-loader-smoke.sh",
