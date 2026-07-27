@@ -36,14 +36,30 @@ resolve, not permission to widen R6 or weaken a contract.
 | --- | --- | --- | --- |
 | Zig host oracle | `src/id/main.zig` | retain as explicit `birnam-zig-oracle` until a separately approved retirement | Rust `bin/birnam` is the only canonical host |
 | Zig host helpers | `project.zig`, `project_build.zig`, `project_check.zig`, `runtime_resources.zig` | keep only for the oracle/build while Rust host proves equivalent observation | Rust owns filesystem/process/resource observation; Birnam modules own policy |
-| Artifact oracle/build seam | `artifact.zig`, `artifact_inspector.zig`, `artifact_preflight.zig` | Rust `birnam-artifact` and Rust host own production inspection/preflight; Zig copies remain fixtures until retirement | no second closure/preflight authority |
+| Artifact oracle/build seam | `artifact.zig`, `artifact_inspector.zig`, `artifact_preflight.zig` | split pure codec, dynamic IdApi projection, and host closure; Zig copies remain fixtures until retirement | no second closure/preflight authority |
 | Dynamic Zig rungs | `id.zig`, `store.zig`, `peg.zig`, `lang.zig`, `tcc.zig`, `codegen.zig`, `prelude.zig`, `collection.zig`, `error.zig`, `isolate.zig`, `relational.zig`, `alien.zig`, `image.zig` | retain named rollback/oracle fixtures; retire one only after its fixture/recovery decision | never selected by ambient search or canonical default |
 | Evidence tools | `*_test.zig`, `gc_baseline.zig`, `membership_bench.zig`, ABI probes, sentinels | retain as evidence or replace with an equivalent Rust/native test | test code is not a runtime provider |
 | Native policy | `*.birnam` under `src/id` and `modules` | remain canonical native Birnam; convert only duplicated policy, never the policy surface itself | one message/protocol authority |
 
-`idapi.zig` is a build/oracle ABI dependency, not a disposable test helper.
+`idapi.zig` is a build/Zig-oracle ABI dependency, not a disposable test helper.
 `artifact_preflight_sentinel.zig` is an explicit negative fixture. Neither is
 silently removed during this plan.
+
+### 1.2 Artifact ownership split
+
+The artifact surface has three non-overlapping owners:
+
+1. `birnam-artifact` is a pure, stateless descriptor codec/parser. It owns no
+   IdApi, globals, closure decisions, activation, or `module_init`.
+2. `libbirnam_id_artifact.dylib` is the sole `Artifact`/`ArtifactVt` IdApi
+   projection and its dynamic `module_init` owner.
+3. The Rust host is the sole sibling-closure, path-containment, preflight
+   ordering, and activation gate. It may call the pure codec and load the
+   dynamic projection, but it exports neither `Artifact` nor a competing
+   `module_init`.
+
+Parity tests use identical inert bytes at all three boundaries and assert that
+no layer publishes a second schema, closure, or activation authority.
 
 ## 2. Invariants and design decisions
 
@@ -78,9 +94,11 @@ silently removed during this plan.
    and declared dynamic names. It never searches cwd, checkout source, ambient
    loader paths, stale compatibility names, or an unpinned manifest.
 9. **Bootstrap independence.** Production Rust/native closure may be
-   bootstrapped from another language. It must not require a Zig compiler,
-   prebuilt Birnam image, compiled module, or Zig runtime library in a clean
-   archive build.
+   bootstrapped from another language. For this plan, “no Zig compiler” means
+   no Zig *Birnam compiler implementation or runtime artifact* is required or
+   loaded; the Zig toolchain may still orchestrate packaging until a separate
+   toolchain-retirement plan exists. A clean archive build must not require a
+   prebuilt Birnam image or compiled module.
 10. **Native-Birnam policy remains single-owned.** `project-policy.birnam`,
     `stdlib.birnam`, `modules/*.birnam`, and related source modules remain the
     language-level policy/protocol authority. Rust replaces observation and IO
@@ -93,17 +111,25 @@ Zig helper.
 
 ### Z0.1 Build the authoritative file graph
 
-1. Enumerate all `src/id/*.zig`, `modules/*.birnam`, `src/id/*.birnam`, Rust
-   crates, build targets, install destinations, and test scripts. Record the
-   current commit and selected defaults in a generated, reviewable report.
-2. For each Zig file, classify it as canonical production, Rust-oracle,
+1. Enumerate repo-wide `rg --files -g '*.zig'` (including `build.zig`,
+   `abi/`, vendor/generated files, probes, and scripts), all
+   `modules/*.birnam`, `src/id/*.birnam`, Rust crates, build targets, install
+   destinations, and test scripts. Record the current commit and selected
+   defaults in a generated, reviewable report. Every vendor/generated/build
+   file must receive an explicit classification rather than being dropped.
+2. For each Zig file, classify it as canonical production, Zig oracle,
    build-only, test/evidence, or native-policy bridge. A file may have more
    than one use; record each edge rather than collapsing it to “test-only.”
-3. Trace runtime edges from Rust `bin/birnam`: resource resolution, dynamic
+3. Check the report with a checked-in `abi/remaining-zig-v1.json` manifest and
+   `scripts/check-remaining-zig-inventory.py`, exposed as
+   `zig build test-remaining-zig-inventory`. The checker must fail on an
+   unclassified Zig file, missing owner/disposition, or a dynamic dependency
+   that is not a declared library name.
+4. Trace runtime edges from Rust `bin/birnam`: resource resolution, dynamic
    names, `dlopen` calls, embedded source, Codegen/Image calls, project policy
    messages, and artifact validation. The graph must distinguish build-time
    Zig compilation from runtime loading.
-4. Add a manifest scope note that names only dynamic runtime providers. Rust
+5. Add a manifest scope note that names only dynamic runtime providers. Rust
    crate names, Zig source paths, static TCC objects, and test executables are
    not runtime dependencies.
 
@@ -119,16 +145,22 @@ Zig helper.
 4. Add a policy-authority fixture: mutate a self-hosted `.birnam` method,
    observe the Store mirror transition, and assert no Rust native vtable is
    installed as a competing policy implementation.
-5. Run `zig build test-install test-project-check test-lsp-project
+5. Pair each load trace with identity/digest receipts: every canonical
+   production dylib must byte-match its `_rust` fixture and must differ from
+   its `_zig` fixture (or record an explicit identical-fixture decision).
+   Name `test-floor-rust` as the existing Debug/ReleaseSafe floor matrix.
+6. Run `zig build test-install test-project-check test-lsp-project
    test-rust-codegen-distribution -Doptimize=ReleaseSafe`, the Debug/Release
    Rust floor matrix, and the scoped R6 gate. Record exact counts and the
    strict-audit `tag:body:` boundary separately.
 
 ### Z0 exit gate
 
-The graph is checked in; every residue edge has an owner and disposition;
-decoy/negative fixtures fail closed; the scoped R6 gate is unchanged and
-green; and the worktree is clean. No helper has moved yet.
+The checked-in graph/checker covers every repo-wide Zig file; every residue
+edge has an owner and disposition; digest/decoy/negative fixtures fail closed;
+the scoped R6 gate is unchanged and green; and the worktree is clean. No
+helper has moved yet. The known strict `tag:body:` failure may be recorded at
+Z0, but Z1 authority changes are blocked until strict mode is green.
 
 ## 4. Phase Z1 — Rust host and artifact closure
 
@@ -159,10 +191,10 @@ the Zig oracle build intact.
    rules in `artifact.zig`, `artifact_inspector.zig`, and `artifact_preflight.zig`.
    Mark which are schema parsing, which are host closure policy, and which are
    activation checks.
-2. Make Rust `birnam-artifact` the sole production schema/inspection
-   implementation and Rust host the sole closure/preflight owner. The dynamic
-   `Artifact` rung remains one installed provider; no crate may silently add a
-   second `module_init` authority.
+2. Enforce the three-owner split from §1.2: `birnam-artifact` remains pure,
+   `libbirnam_id_artifact.dylib` remains the sole `Artifact`/`ArtifactVt`
+   projection, and Rust host remains the sole closure/preflight authority. No
+   crate may silently add a second `module_init` authority.
 3. Port negative cases first: wrong kind, identity/digest mismatch, missing
    dependency, incomplete closure, malformed bytes, wrong install root,
    duplicate providers, and aborting initializer unreachable during preflight.
@@ -180,14 +212,25 @@ Land these as separate commits, each with focused green tests:
    no behavior change.
 2. `test: prove Rust host ignores Zig helper paths` — decoy/load-trace and
    negative relocation fixtures.
-3. `refactor: complete Rust resource observation boundary` — only typed Rust
-   observation code, with project/check/install/LSP parity.
+3. `test: prove Rust resource observation boundary` — only typed Rust
+   observation assertions, with project/check/install/LSP parity; do not
+   rewrite already-landed host behavior without a diagnosed gap.
 4. `refactor: make Rust artifact preflight authoritative` — schema/closure
    split, negative corpus, and no-partial-publication proof.
 5. `docs: record Z1 cross-floor acceptance` — exact counts, digests, and
    remaining oracle edges.
 
-### Z1 exit gate
+### Z1 precondition and exit gate
+
+Before Z1.3 commits 3–4 (the resource/artifact authority changes), repair the
+relocated docgen fixture's `tag:body:` registration and require:
+
+```text
+BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
+```
+
+to pass. The scoped gate alone is sufficient for Z0 diagnostics, not for a
+host/artifact authority change.
 
 From a clean archive and unrelated cwd, Rust host project/check/build/run/
 install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
@@ -202,9 +245,12 @@ Z2 proves that policy remains in `.birnam` while Rust owns observation.
 1. Inventory every message sent by Rust host to `Module`, `Config`, `Toml`,
    `Project`, `CompiledUnit`, `ProjectPolicy`, and `stdlib`. For each message,
    name its native-Birnam definition and its Rust observation adapter.
-2. Remove any Rust-side policy branch that duplicates a `.birnam` method. If a
-   missing policy operation is discovered, add it to the appropriate
-   `.birnam` module and test it through the ordinary Codegen/dispatch path.
+2. Remove only Rust branches that independently choose providers, ordering,
+   compile/reuse, or publication outcomes already owned by `.birnam`. Retain
+   boundary validation of policy results: shape/vocabulary, path containment,
+   target/ABI, source and revision digests, checksums, and atomic-publication
+   preconditions. If a missing policy operation is discovered, add it to the
+   appropriate `.birnam` module and test it through ordinary Codegen/dispatch.
 3. Exercise method replacement/removal, Store backfill, inherited lookup,
    failed candidate activation, and rollback while project policy is loaded.
    Assert the exact MOP consistency law after every transition.
@@ -219,17 +265,20 @@ Z2 proves that policy remains in `.birnam` while Rust owns observation.
 
 All shipped policy behavior is reached through native Birnam modules; Rust
 contains only observation/IO/FFI glue; MOP/Store traces remain exact; and
-Rust-host project workflows pass except for any explicitly named pre-existing
-strict fixture blocker.
+Rust-host project workflows and strict verification pass. A named strict
+fixture blocker is a stop condition here, not an accepted exception.
 
 ## 6. Phase Z3 — production/fixture separation
 
 Z3 makes the distribution boundary honest without deleting rollback evidence.
 
-1. Build two independent prefixes from a git archive: the production Rust
-   prefix and an explicit Zig-oracle prefix. The production prefix must not
-   require a Zig compiler implementation, Zig host, or Zig fixture dylib at
-   runtime.
+1. Add an explicit distribution selection to the existing build driver (for
+   example `-Ddistribution=production|rollback|test`) so a production bundle
+   can omit `_zig` libraries and `birnam-zig-oracle` while test/rollback bundles
+   retain them. The Zig toolchain may still orchestrate this build; the
+   production process must not load a Zig Birnam implementation or runtime
+   artifact. Build two independent prefixes from a git archive: production
+   Rust and explicit Zig rollback.
 2. Verify every production `dlopen` with `DYLD_PRINT_LIBRARIES` (or the
    platform equivalent) and compare against the declared dynamic-only graph.
    Any `_zig` load is a hard failure.
@@ -247,7 +296,8 @@ Z3 makes the distribution boundary honest without deleting rollback evidence.
 
 Two clean prefixes, load traces, receipts, source/bootstrap, project,
 relocation, image, wire, and generated-C fixtures pass. The Rust bundle has no
-runtime Zig dependency; rollback remains recoverable and explicit.
+runtime Zig dependency or `_zig` artifact; rollback remains recoverable and
+explicit in its separate prefix.
 
 ## 7. Phase Z4 — rung fixture retirement decisions
 
@@ -277,7 +327,7 @@ recovery require it.
 | host closure | Rust host starts and runs with no Zig helper/runtime load |
 | artifact | Rust schema + host preflight parity, negative/atomic corpus |
 | policy | `.birnam` remains the only policy authority; MOP law after mutations |
-| bootstrap | two fixture-free archive builds, no Zig compiler/runtime required |
+| bootstrap | two archive builds with no Zig Birnam implementation/runtime required; toolchain use recorded |
 | relocation | second cwd/prefix, decoy paths ignored, exact dynamic load trace |
 | compatibility | old image, generated-C, BISO, ABI, and native-client fixtures |
 | rollback | explicit Zig prefix/receipt works and cannot be ambiently selected |
@@ -285,9 +335,9 @@ recovery require it.
 | strict audit | broad verify/harness failure is either fixed or separately named |
 
 The scoped gate remains `bash scripts/r6-acceptance.sh`; it is not widened to
-hide the current `tag:body:` strict fixture failure. The strict audit is
-`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` and must be
-reported separately until that fixture is repaired.
+hide the current `tag:body:` strict fixture failure. Z0 may report that
+failure separately, but Z1/Z2/Z3 authority or distribution changes require
+`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
 
 ## 9. Commit discipline and stop conditions
 
