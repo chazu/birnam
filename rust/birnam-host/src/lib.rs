@@ -9216,6 +9216,40 @@ mod tests {
     }
 
     #[test]
+    fn artifact_preflight_path_only_root_does_not_infer_filename_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-path-only-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let path = root.join("unrelated-filename.dylib");
+        std::fs::write(&path, artifact_fixture(b"actual", &[])).expect("fixture writes");
+        let plan = preflight_artifact(&path, None).expect("path-only root preflights");
+        assert_eq!(plan.entries[0].identity, b"actual");
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_sibling_identity_mismatch() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-impostor-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let root_path = root.join("root.dylib");
+        let dependency_path = root.join("libbirnam_dep.dylib");
+        std::fs::write(&root_path, artifact_fixture(b"root", &[b"dep"]))
+            .expect("root fixture writes");
+        std::fs::write(&dependency_path, artifact_fixture(b"impostor", &[]))
+            .expect("impostor fixture writes");
+        assert!(matches!(
+            preflight_artifact(&root_path, Some(b"root")),
+            Err(ArtifactPreflightError::IdentityMismatch { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
     fn artifact_preflight_rejects_identity_mismatch_and_missing_sibling() {
         let root = std::env::temp_dir().join(format!(
             "birnam-host-preflight-error-{}",
@@ -9255,6 +9289,29 @@ mod tests {
             preflight_artifact(&root_path, Some(b"root")),
             Err(ArtifactPreflightError::KindMismatch { .. })
         ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_sentinel_bytes_are_never_activated() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-sentinel-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let path = root.join("candidate.dylib");
+        let mut bytes = b"sentinel initializer: MUST NOT EXECUTE\n".to_vec();
+        bytes.extend_from_slice(&artifact_fixture(b"sentinel", &[]));
+        std::fs::write(&path, &bytes).expect("sentinel fixture writes");
+        let target = root.join("existing-target");
+        std::fs::write(&target, b"prior-publication").expect("target writes");
+        let plan = preflight_artifact(&path, Some(b"sentinel"))
+            .expect("inert sentinel descriptor preflights");
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(
+            std::fs::read(&target).expect("target remains readable"),
+            b"prior-publication"
+        );
         std::fs::remove_dir_all(&root).expect("fixture directory removes");
     }
 }
