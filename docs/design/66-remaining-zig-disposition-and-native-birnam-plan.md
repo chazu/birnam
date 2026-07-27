@@ -1,6 +1,7 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **draft; adversarial review required before implementation** (2026-07-27).
+Status: **reviewed GO; Z0 implementation may begin** (2026-07-27). Z1–Z3
+authority/distribution changes remain gated on strict R6 as specified below.
 
 Design 63 and Design 65 port the production dynamic rungs and the Rust host.
 This plan starts at that boundary. It covers the Zig code that remains after
@@ -395,5 +396,19 @@ failure separately, but Z1/Z2/Z3 authority or distribution changes require
 | Z4 per-rung retirement decisions | 1–3 days per rung | old-image/client recovery |
 
 The first checkpoint is Z0.1–Z0.2 and must land before any host-helper or
-fixture move. This draft is intentionally not implementation authority until
-the adversarial review records **GO** and all review corrections are applied.
+fixture move.
+
+## 11. Adversarial review record
+
+The 2026-07-27 adversarial review initially found artifact-owner ambiguity,
+strict-gate contradictions, bootstrap wording that conflated the Zig toolchain
+with the Zig Birnam implementation, missing boundary-validation protection,
+an incomplete repo-wide residue map, an underspecified rollback vector, and an
+acceptance count that did not name both independent production prefixes. The
+plan was revised through commits `1c6db24`, `f2782cf`, `d9b4c5f`, and `5305e80`.
+
+The final follow-up returned **GO**: the four artifact roles, strict R6
+preconditions, production/rollback separation, full Zig rollback manifest,
+native-Birnam activation ownership, digest checks, bootstrap meaning, and
+dual-production reproducibility evidence are explicit and landable. No
+implementation Z1–Z3 authority change may bypass the strict gate.
