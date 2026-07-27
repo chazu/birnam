@@ -281,9 +281,10 @@ The combined Z1 observation/preflight run passes at `100/100` build steps for
 `test-rust-resource-resolution`, `test-rust-artifact-authority`,
 `test-rust-artifact-preflight`, relocated `test-project-check`, and relocated
 `test-lsp-project`. This closes the diagnostic portion of Z1.1/Z1.2 without
-changing provider selection, schema, activation, or native policy. Z1.3
-authority commits remain gated by the separately documented pre-rewrite-image
-compatibility disposition.
+changing provider selection, schema, activation, or native policy. The
+pre-rewrite-image strict prerequisite that originally gated Z1.3 is now
+satisfied by `4bcaa5d` and `13819ab`; the remaining Z1.3 work is test/docs-only
+parity closure until a separately diagnosed ownership or behavior gap exists.
 
 ## 4. Phase Z1 — Rust host and artifact closure
 
@@ -351,16 +352,18 @@ Land these as separate commits, each with focused green tests:
 
 ### Z1 precondition and exit gate
 
-Before Z1.3 commits 3–4 (the resource/artifact authority changes), repair the
-pre-rewrite image compatibility fixture (or record a separately approved
-compatibility disposition) and require:
+The historical precondition for Z1.3 commits 3–4 was repair or disposition of
+the pre-rewrite image compatibility fixture. That prerequisite is satisfied by
+`4bcaa5d` and `13819ab`; require the following strict gate before and after any
+future behavior or ownership change:
 
 ```text
 BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
 ```
 
-to pass. The scoped gate is sufficient for Z0 and Z1 diagnostic/observation
-work, not for a host/artifact authority change.
+to pass. The current Z1.3 parity closure remains diagnostic/test-only; no
+authority mutation is implied until its exit matrix is complete and a separate
+review identifies a concrete gap.
 
 From a clean archive and unrelated cwd, Rust host project/check/build/run/
 install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
@@ -384,7 +387,7 @@ Z2 proves that policy remains in `.birnam` while Rust owns observation.
 3. Exercise method replacement/removal, Store backfill, inherited lookup,
    failed candidate activation, and rollback while project policy is loaded.
    Assert the exact MOP consistency law after every transition.
-4. After the Z1 strict prerequisite is repaired, run project
+4. With the Z1 strict prerequisite now green, run project
    check/build/run/test, docgen, LSP, source fallback, image save/rebuild, and
    isolate smoke from a relocated prefix. Any recurrence of the relocated
    docgen or pre-rewrite image failure is a stop; retain the assertion rather
