@@ -20,7 +20,7 @@ test ! -e "$tmp/birnam/share/birnam/runtime.toml"
 
 # The IdApi JSON is repository-side compatibility evidence, not a runtime
 # manifest or distributed artifact. Its tiny Zig carrier is test-only too.
-if find "$tmp/birnam" -type f \( -name 'idapi-v1.json' -o -name 'idapi_manifest.zig' \) | grep -q .; then
+if find "$tmp/birnam" -type f \( -name 'idapi-v1.json' -o -name 'idapi_manifest.zig' \) -print -quit | grep -q .; then
   echo "install-smoke: build/test-only IdApi manifest evidence was installed" >&2
   exit 1
 fi
@@ -28,7 +28,7 @@ fi
 # Production Birnam source lives in compiled-unit metadata, not a parallel
 # installed source tree.
 test ! -e "$tmp/birnam/share/birnam/modules"
-if find "$tmp/birnam/share/birnam" -type f -name '*.birnam' | grep -q .; then
+if find "$tmp/birnam/share/birnam" -type f -name '*.birnam' -print -quit | grep -q .; then
   echo "install-smoke: loose Birnam module source was installed" >&2
   exit 1
 fi
@@ -107,7 +107,7 @@ for dylib in "${required_dylibs[@]}"; do
 done
 if [[ "$distribution" == production ]]; then
   test ! -e "$tmp/birnam/bin/birnam-zig-oracle"
-  if find "$tmp/birnam/lib" -type f -name '*_zig.dylib' | grep -q .; then
+  if find "$tmp/birnam/lib" -type f -name '*_zig.dylib' -print -quit | grep -q .; then
     echo "install-smoke: production bundle contains Zig fixtures" >&2
     exit 1
   fi
@@ -121,8 +121,10 @@ mkdir -p "$work"
 cd "$work"
 unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB
 
-"$bin" doc time nowMillis | grep -q 'nowMillis'
-"$bin" doc image saveImage: | grep -q 'saveImage:'
+"$bin" doc time nowMillis >"$tmp/doc-time.out"
+grep -q 'nowMillis' "$tmp/doc-time.out"
+"$bin" doc image saveImage: >"$tmp/doc-image.out"
+grep -q 'saveImage:' "$tmp/doc-image.out"
 "$bin" docgen reference.html >/dev/null
 grep -q 'id="guide-01-language"' reference.html
 grep -q 'id="guide-04-images"' reference.html
@@ -172,14 +174,18 @@ let suite := [TestSuite named: "Installed Project" module: #app];
 EOF
 "$bin" check "$tmp/project" >/dev/null
 "$bin" build "$tmp/project" >/dev/null
-"$bin" run "$tmp/project" | grep -q '^installed-project-ok$'
-"$bin" test "$tmp/project" | grep -q 'ok   project module active'
+"$bin" run "$tmp/project" >"$tmp/project-run.out"
+grep -q '^installed-project-ok$' "$tmp/project-run.out"
+"$bin" test "$tmp/project" >"$tmp/project-test.out"
+grep -q 'ok   project module active' "$tmp/project-test.out"
 
 image="$tmp/relocated.image"
 printf 'let RelocatedImageValue := 41\nlet RelocatedWorker := [Object clone]\n[Reflect defineMethod: #handle: on: RelocatedWorker as: [:self :value | value]]\n[System saveImage: "%s"]\n:quit\n' "$image" | "$bin" --repl >/dev/null
 test -s "$image"
-printf '[RelocatedImageValue + 1]\n:quit\n' | "$bin" "$image" | grep -q 'birnam> 42'
-printf '[RelocatedImageValue + 1]\n:quit\n' | "$bin" --rebuild "$image" | grep -q 'birnam> 42'
+printf '[RelocatedImageValue + 1]\n:quit\n' | "$bin" "$image" >"$tmp/image-run.out"
+grep -q 'birnam> 42' "$tmp/image-run.out"
+printf '[RelocatedImageValue + 1]\n:quit\n' | "$bin" --rebuild "$image" >"$tmp/image-rebuild.out"
+grep -q 'birnam> 42' "$tmp/image-rebuild.out"
 
 # An image saved by a non-REPL script does not contain Repl. Its boot fallback
 # must install the process-local REPL from the relocated compiled unit.
