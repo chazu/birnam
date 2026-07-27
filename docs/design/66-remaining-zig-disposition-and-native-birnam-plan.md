@@ -865,6 +865,10 @@ rust-runtime-churn: 32 isolate start/request/stop cycles passed
 zig build test-cross-floor-images -Doptimize=ReleaseSafe -j1 --summary all
 Build Summary: 2/2 steps succeeded
 test-cross-floor-images success
+
+zig build test-cross-floor-errors -Doptimize=ReleaseSafe -j1 --summary all
+Build Summary: 2/2 steps succeeded
+test-cross-floor-errors success
 ```
 
 This is not yet a retirement acceptance. The supplementary
