@@ -910,6 +910,33 @@ but not a release-cycle history. Keep the floor fixture retained until the
 next release/rollback observation repeats the Z4.1 compatibility matrix and a
 human-approved retention or retirement decision is recorded.
 
+### Z4.3 Store fixture decision — retain explicit Zig rollback (2026-07-27)
+
+The next rung is Store. Its canonical provider is Rust
+`libbirnam_store.dylib`; its explicit rollback fixture is
+`libbirnam_store_zig.dylib`, owned by `store-rollback`. The current installed
+snapshot records Rust Release digest
+`sha256:03f044c7c44cd920dda097338e8130c658683fea3f4155ec7276b8a589267d2c`
+and Zig fixture digest
+`sha256:e6a76a807f37dffdcf1105de17b8abee387c4f6b2ba9c0bc3721fa12f982ef88`.
+
+The consistency-law characterization remains green for the Zig Store oracle
+and Rust Debug/Release providers:
+
+```text
+bash scripts/rust-store-mop-smoke.sh
+rust-store-mop: Zig Store + Zig-floor oracle passed the characterization suite
+rust-store-mop: debug passed the Store consistency-law suite
+rust-store-mop: release passed the Store consistency-law suite
+```
+
+**Decision: retain** `libbirnam_store_zig.dylib` and `src/id/store.zig` as the
+named rollback fixture. Store owns its fact timeline while its MOP mirror is
+derived; the fixture remains useful for cross-floor characterization and
+explicit rollback, and no human-approved release history authorizes deleting
+it. Any future retirement must repeat the named release/rollback matrix and
+prove the MOP consistency law after image and recovery mutations.
+
 ## 8. Acceptance matrix
 
 | Cell | Required evidence |
