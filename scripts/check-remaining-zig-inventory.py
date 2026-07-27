@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "abi/remaining-zig-v1.json"
+EDGE_MANIFEST = REPO / "abi/remaining-zig-edges-v1.json"
 KINDS = {
     "canonical-production",
     "zig-oracle",
@@ -22,6 +23,9 @@ KINDS = {
 }
 DYNAMIC_NAME = re.compile(r"^libbirnam_[a-z0-9_]+\.dylib$")
 STEP_NAME = re.compile(r'\.step\(\s*"([^"]+)"')
+EDGE_KINDS = {"runtime-dlopen", "build-input", "oracle", "evidence", "native-policy"}
+EDGE_PHASES = {"P0", "P1", "P2", "P3", "P4"}
+EDGE_CONTEXTS = {"production", "rollback", "oracle", "build", "evidence"}
 
 
 def fail(message: str) -> None:
@@ -125,6 +129,62 @@ def main() -> None:
     expected_dynamic.update(f"{module}.dylib" for module in re.findall(r'"(libbirnam_[^"]+)"', match.group(1)))
     if set(names) != expected_dynamic:
         fail(f"declared dynamic names differ from runtime load order; expected={sorted(expected_dynamic)}, declared={sorted(names)}")
+
+    try:
+        edge_manifest = json.loads(EDGE_MANIFEST.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read residue edge manifest: {exc}")
+    if edge_manifest.get("schema_version") != 1:
+        fail("unsupported residue edge schema version")
+    if set(edge_manifest.get("allowed_edge_kinds", [])) != EDGE_KINDS:
+        fail("residue edge kinds are not frozen")
+    if set(edge_manifest.get("allowed_phases", [])) != EDGE_PHASES:
+        fail("residue edge phases are not frozen")
+    if set(edge_manifest.get("allowed_selection_contexts", [])) != EDGE_CONTEXTS:
+        fail("residue edge selection contexts are not frozen")
+    edges = edge_manifest.get("edges")
+    if not isinstance(edges, list) or not edges:
+        fail("residue edge table must be a non-empty array")
+    seen_edges = set()
+    edge_kinds = set()
+    runtime_contexts: dict[str, set[str]] = {}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            fail("residue edge entries must be objects")
+        required = ("source", "consumer", "provider", "edge_kind", "phase", "selection_context")
+        if any(not isinstance(edge.get(field), str) or not edge[field].strip() for field in required):
+            fail("residue edge entries require non-empty source/consumer/provider/kind/phase/context")
+        edge_kind = edge["edge_kind"]
+        if edge_kind not in EDGE_KINDS:
+            fail(f"unsupported residue edge kind: {edge_kind}")
+        if edge["phase"] not in EDGE_PHASES:
+            fail(f"unsupported residue edge phase: {edge['phase']}")
+        if edge["selection_context"] not in EDGE_CONTEXTS:
+            fail(f"unsupported residue edge selection context: {edge['selection_context']}")
+        source = Path(edge["source"])
+        if source.is_absolute() or ".." in source.parts or not (REPO / source).is_file():
+            fail(f"residue edge source does not exist safely: {edge['source']}")
+        provider = edge["provider"]
+        if edge_kind == "runtime-dlopen":
+            if not DYNAMIC_NAME.fullmatch(provider) or provider not in names:
+                fail(f"runtime residue edge names undeclared dynamic provider: {provider}")
+            runtime_contexts.setdefault(provider, set()).add(edge["selection_context"])
+        else:
+            provider_path = Path(provider)
+            if provider_path.is_absolute() or ".." in provider_path.parts or not (REPO / provider_path).is_file():
+                fail(f"residue edge provider does not exist safely: {provider}")
+        key = tuple(edge[field] for field in required)
+        if key in seen_edges:
+            fail(f"duplicate residue edge: {edge}")
+        seen_edges.add(key)
+        edge_kinds.add(edge_kind)
+    if edge_kinds != EDGE_KINDS:
+        fail(f"residue edge table lacks representative kinds: {sorted(EDGE_KINDS - edge_kinds)}")
+    if set(runtime_contexts) != set(names):
+        fail(f"residue edge table does not cover every dynamic provider: missing={sorted(set(names) - set(runtime_contexts))}")
+    for provider, contexts in runtime_contexts.items():
+        if not {"production", "rollback"}.issubset(contexts):
+            fail(f"dynamic provider lacks production/rollback edge contexts: {provider}")
 
     print(
         "remaining-zig-inventory: ok "

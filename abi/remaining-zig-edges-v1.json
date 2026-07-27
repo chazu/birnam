@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "scope": "Design 67 P0 checked residue edges; dynamic_dependencies remain in remaining-zig-v1.json",
+  "allowed_edge_kinds": [
+    "runtime-dlopen",
+    "build-input",
+    "oracle",
+    "evidence",
+    "native-policy"
+  ],
+  "allowed_phases": ["P0", "P1", "P2", "P3", "P4"],
+  "allowed_selection_contexts": [
+    "production",
+    "rollback",
+    "oracle",
+    "build",
+    "evidence"
+  ],
+  "edges": [
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_artifact.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_artifact.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_store.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_store.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_peg.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_peg.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_lang.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_lang.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_tcc.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_tcc.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_codegen.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_codegen.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_prelude.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_prelude.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_collection.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_collection.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_error.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_error.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_isolate.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_isolate.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_relational.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_relational.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_alien.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_alien.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host production",
+      "provider": "libbirnam_id_image.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "production"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "Zig oracle rollback",
+      "provider": "libbirnam_id_image.dylib",
+      "edge_kind": "runtime-dlopen",
+      "phase": "P0",
+      "selection_context": "rollback"
+    },
+    {
+      "source": "build.zig",
+      "consumer": "Zig build driver",
+      "provider": "rust/birnam-host/Cargo.toml",
+      "edge_kind": "build-input",
+      "phase": "P0",
+      "selection_context": "build"
+    },
+    {
+      "source": "src/id/main.zig",
+      "consumer": "birnam-zig-oracle",
+      "provider": "src/id/id.zig",
+      "edge_kind": "oracle",
+      "phase": "P0",
+      "selection_context": "oracle"
+    },
+    {
+      "source": "scripts/rust-cold-compiler-determinism.sh",
+      "consumer": "cold compiler gate",
+      "provider": "src/id/rust_peg_codegen_parity_test.zig",
+      "edge_kind": "evidence",
+      "phase": "P0",
+      "selection_context": "evidence"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host policy bridge",
+      "provider": "src/id/project-policy.birnam",
+      "edge_kind": "native-policy",
+      "phase": "P0",
+      "selection_context": "production"
+    }
+  ]
+}
