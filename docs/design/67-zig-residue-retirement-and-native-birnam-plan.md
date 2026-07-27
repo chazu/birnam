@@ -611,6 +611,41 @@ complete rollback vector remain unchanged. This checkpoint records the exact
 hash before the kernel, Rust-vs-Zig Store callback, full suite, and selector
 gates.
 
+### P2.8 Relational readiness receipt (2026-07-27)
+
+Candidate checkpoint: `fd52728`. The focused Relational matrix passed:
+
+```text
+Build Summary: 74/74 steps succeeded; 66/66 tests passed
+relational-selection-smoke: Rust canonical, Zig rollback, and fail-closed choice passed
+test-rust-relational success: 14 tests passed
+test-rust-relational-zig-store success: 14 tests passed
+test-relational success: 38 tests passed with Rust selected
+```
+
+The contract covers scalar classification, Store callback ownership and
+transaction windows, joins, predicates, negation, disjunction, recursive and
+mutual fixpoints, distinct aggregates, grouped aggregates, pull cardinality,
+and nested references. The Rust-vs-Zig-Store matrix preserves the cross-floor
+callback boundary. The canonical Rust Relational dylib exports exactly one
+`module_init`; the explicit Zig Relational rollback dylib remains a separate
+complete-vector authority.
+
+The selector smoke passes independently at the same candidate, and the
+exact-hash archive receipts pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Relational **retain-ready** for evidence purposes. The
+canonical Rust Relational provider, explicit Zig Relational oracle, and complete
+full-Zig rollback vector remain installed; no provider deletion, mixed-vector
+recovery, or benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
