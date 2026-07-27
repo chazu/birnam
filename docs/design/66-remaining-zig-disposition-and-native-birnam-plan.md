@@ -319,10 +319,14 @@ Z3 makes the distribution boundary honest without deleting rollback evidence.
 
 ### Z3 exit gate
 
-Two clean prefixes, load traces, receipts, source/bootstrap, project,
-relocation, image, wire, and generated-C fixtures pass. The Rust bundle has no
-runtime Zig dependency or `_zig` artifact; rollback remains recoverable and
-explicit in its separate prefix.
+All three outputs pass: production archive/prefix A, an independently built
+production archive/prefix B, and a separately built full-Zig rollback
+archive/prefix. Both production receipts satisfy the Rust closure/load/digest
+checks; the rollback receipt satisfies `abi/rollback-prefix-v1.json`. All
+three exercise source/bootstrap, project, relocation, image, wire, and
+generated-C fixtures. Production bundles have no runtime Zig dependency or
+`_zig` artifact; rollback remains recoverable and explicit in its separate
+prefix.
 
 ## 7. Phase Z4 — rung fixture retirement decisions
 
