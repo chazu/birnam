@@ -247,6 +247,12 @@ checker now reports 68 test scripts and 118 build targets. This proves the
 resolver observations remain aligned without selecting a provider or moving
 any Zig helper.
 
+Commit `6b4df47` hardens the Rust project-check smoke so human/JSON check,
+build, run, and test all execute from `/tmp` with `BIRNAM_LIB_DIR`,
+`BIRNAM_ID_DYLIB`, and `BIRNAM_RUST_WORKSPACE_DIR` unset. The relocated
+project flow passes through the executable-relative Rust resolver, preserving
+the existing diagnostic and policy boundaries.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
