@@ -328,7 +328,7 @@ C2.1 Image authority checkpoint (2026-07-26):
 ### R6 scoped replacement-gate checkpoint (2026-07-26)
 
 - `scripts/r6-acceptance.sh` now accepts the latest Rust replacement matrix as
-  its default R6 boundary: `171/171` build steps and `98/98` tests, the
+  its default R6 boundary: `171/171` build steps and `99/99` tests, the
   sequential Rust Alien boundary at `66/66` steps and `9/9` tests, and the
   unchanged benchmark snapshot with exactly `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`.
@@ -351,6 +351,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   `test-install`. Those failures remain visible continuation work; this
   checkpoint accepts only the replacement-floor R6 evidence and does not claim
   C2 host completion.
+- Rust Codegen `evalPersisting:` now retains its TCC unit whenever the emitted
+  source contains blocks, matching the Zig evaluator's lifetime rule. The
+  forced-collection regression is part of the focused matrix, advancing the
+  Rust Codegen runtime target to `31/31` and the R6 total to `99/99`; this fixes
+  the prior `test-repl` SIGBUS, while its remaining semantic failures stay
+  outside the scoped replacement claim.
 - The Rust Codegen artifact emitter now applies the shared selector-arity rule
   to binary operators as well as keyword selectors. The previous colon-only
   count emitted `=` method trampolines that dropped their operand and called
