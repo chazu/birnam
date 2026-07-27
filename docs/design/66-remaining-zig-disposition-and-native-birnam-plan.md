@@ -33,7 +33,7 @@ The broad strict audit remains separate from the default scoped invocation, but
 it is now green. The pre-rewrite image fixture runs through the explicit Zig
 oracle and Zig Image/Codegen rollback dylibs; stale compiled-unit authority is
 skipped for source recovery rather than rejecting the image. The strict command
-`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` reports `304/304`
+`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` reports `305/305`
 verify steps, `516/522` tests, and `6` skipped. This closes the compatibility
 follow-up without widening R6's benchmark allowance or changing a frozen
 contract.
@@ -227,7 +227,7 @@ now passes through the explicit Zig oracle/rollback boundary.
 The checked-in graph/checker covers every repo-wide Zig file; every residue
 edge has an owner and disposition; digest/decoy/negative fixtures fail closed;
 the scoped R6 gate is green at `173/173` and `99/99`; the strict audit is green
-at `304/304`, `516/522`, and `6` skipped; and the worktree is clean. No helper
+at `305/305`, `516/522`, and `6` skipped; and the worktree is clean. No helper
 has moved yet. Z1 diagnostic/observation work may proceed, and the strict
 snapshot is now the required baseline for Z1 authority changes.
 
@@ -276,7 +276,7 @@ Commit `7a8ee06` adds the Rust host preflight negative corpus as
 identity mismatch/missing sibling, and wrong-kind rejection (`3/3` Rust host
 tests), complementing the Zig oracle's eight-case preflight fixture. The
 negative checks run before any activation path and leave the authority split
-unchanged; inventory is now 70 test scripts and 120 build targets.
+unchanged; inventory is now 72 test scripts and 121 build targets.
 
 The combined Z1 observation/preflight run passes at `100/100` build steps for
 `test-rust-resource-resolution`, `test-rust-artifact-authority`,
@@ -447,7 +447,7 @@ mise exec -- env BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
 ```
 
 It passed the scoped Rust replacement matrix and live Rust Alien boundary, then
-the full optimized graph at `304/304` steps, `516/522` tests, and `6` skipped.
+the full optimized graph at `305/305` steps, `516/522` tests, and `6` skipped.
 The accepted benchmark comparator remained unchanged: exactly
 `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`, with no missing or
 unusable cases. The only gate repair was the fail-closed inventory update in
@@ -607,7 +607,7 @@ recovery require it.
 
 The scoped gate remains `bash scripts/r6-acceptance.sh`; it includes the
 optimized relocated native-rung harness. The strict compatibility audit is
-green at the pinned `304/304`, `516/522`, `6`-skipped snapshot, and
+green at the pinned `305/305`, `516/522`, `6`-skipped snapshot, and
 Z1/Z2/Z3 authority or distribution changes still require
 `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
 
