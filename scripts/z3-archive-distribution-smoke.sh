@@ -5,6 +5,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd -P)
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-z3-archive.XXXXXX")
+scratch=$(cd "$scratch" && pwd -P)
 trap 'rm -rf "$scratch"' EXIT
 
 canonical=(
