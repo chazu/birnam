@@ -632,6 +632,26 @@ The trace is still a local-prefix receipt. Z3 remains open for two independent
 clean archive production prefixes, persisted load/digest receipts, and the
 full compatibility/release fixture matrix.
 
+### Z3.4 execution record — independent archive prefixes (2026-07-27)
+
+Commits `2a73745`, `4b98975`, `0ef5cfc`, and `99a1a45` add
+`test-z3-archive-distribution`. The smoke creates two separate `git archive
+HEAD` checkouts with independent Zig and Cargo caches, removes only the
+checked-in compatibility fixture that is explicitly excluded from bootstrap,
+and builds both as `-Ddistribution=production`. It then creates a third clean
+archive rollback prefix, runs `check-rollback-prefix.py`, and traces all three
+from decoy working directories.
+
+The accepted result is:
+
+```text
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+This closes the independent-prefix/load-receipt sub-step. The Z3 exit gate
+still requires the source/bootstrap, project, relocation, image, wire,
+generated-C, old-client, and release-bundle fixture legs on these prefixes.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
