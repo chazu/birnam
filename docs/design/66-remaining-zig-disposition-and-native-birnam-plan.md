@@ -227,6 +227,17 @@ clean. No helper has moved yet. The pre-rewrite image compatibility failure is
 recorded at Z0; Z1 diagnostic/observation work may proceed, but Z1 authority
 changes remain blocked until the explicit strict compatibility audit is green.
 
+### Z1.1 diagnostic checkpoint (2026-07-27)
+
+Commit `6d29519` adds the fail-closed Rust-host helper-boundary audit. It scans
+both Rust host source files for forbidden `project.zig`, `project_build.zig`,
+`project_check.zig`, and `runtime_resources.zig` references, requires the
+explicit Rust resource resolver and `BIRNAM_LIB_DIR`/`BIRNAM_ID_DYLIB` override
+markers, and rejects a future path-based `dlopen` coupling. The focused target
+passes at `2/2` steps; the existing Z0.2 decoy/relocation load trace remains
+the dynamic evidence. The inventory checker now reports 67 test scripts and
+117 build targets. No provider selection or runtime authority changed.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
