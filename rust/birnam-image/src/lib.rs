@@ -1075,6 +1075,7 @@ const RUST_CODEGEN_PREFLIGHT_IMAGE: &[u8] = b"preflightImage:\0";
 const RUST_CODEGEN_BEGIN_IMAGE_RECOVERY: &[u8] = b"beginImageDispatchRecovery\0";
 const RUST_CODEGEN_END_IMAGE_RECOVERY: &[u8] = b"endImageDispatchRecovery\0";
 const RUST_CODEGEN_REPLAY_IMAGE_FACTS: &[u8] = b"replayImageFacts:\0";
+const RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS: &[u8] = b"replayStaleImageFacts:\0";
 const RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS: &[u8] = b"deriveImageMethodTargets\0";
 const RUST_CODEGEN_MAP_IMAGE_CODE: &[u8] = b"mapImageCode:\0";
 
@@ -1708,6 +1709,7 @@ unsafe fn rust_codegen_image_authority(api: &IdApi) -> Option<Oop> {
         RUST_CODEGEN_BEGIN_IMAGE_RECOVERY,
         RUST_CODEGEN_END_IMAGE_RECOVERY,
         RUST_CODEGEN_REPLAY_IMAGE_FACTS,
+        RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS,
         RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS,
         RUST_CODEGEN_MAP_IMAGE_CODE,
     ] {
@@ -1752,6 +1754,18 @@ unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
         if let Some(current) = unsafe { current_generation_digest(api) } {
             if let Some(image_authority) = features.authority_digest {
                 if current != image_authority {
+                    if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) }
+                        != api.trueObj
+                    {
+                        return api.nilObj;
+                    }
+                    let replayed = unsafe {
+                        send_image_unary(api, codegen, RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS, path)
+                    };
+                    let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
+                    if replayed == api.nilObj || ended != api.trueObj {
+                        return api.nilObj;
+                    }
                     return api.falseObj;
                 }
             }

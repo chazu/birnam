@@ -86,6 +86,7 @@ const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const PREFLIGHT_IMAGE_SELECTOR: &[u8] = b"preflightImage:\0";
 const MAP_IMAGE_CODE_SELECTOR: &[u8] = b"mapImageCode:\0";
 const REPLAY_IMAGE_FACTS_SELECTOR: &[u8] = b"replayImageFacts:\0";
+const REPLAY_STALE_IMAGE_FACTS_SELECTOR: &[u8] = b"replayStaleImageFacts:\0";
 const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
@@ -3271,6 +3272,27 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
+    unsafe { rust_codegen_replay_image_facts_impl(pointer, count, false) }
+}
+
+/// Replay facts from a structurally valid image whose generation belongs to a
+/// previous authority. This entry point is intentionally separate from the
+/// ordinary replay selector: only the Rust Image loader may use it, after it
+/// has admitted the image framing and selected source recovery for a stale
+/// generation. The caller must already be inside the image-recovery phase.
+unsafe extern "C" fn rust_codegen_replay_stale_image_facts(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { rust_codegen_replay_image_facts_impl(pointer, count, true) }
+}
+
+unsafe fn rust_codegen_replay_image_facts_impl(
+    pointer: *const Oop,
+    count: usize,
+    allow_stale_authority: bool,
+) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen replayImageFacts: received invalid arguments"));
     if values.len() != 1 {
@@ -3302,7 +3324,9 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
         note_error(b"RustCodegen image facts framing is invalid");
         return api.nilObj;
     }
-    if !unsafe { image_authority_matches_durable(api, image.authority.digest) } {
+    if !allow_stale_authority
+        && !unsafe { image_authority_matches_durable(api, image.authority.digest) }
+    {
         note_error(b"RustCodegen image facts authority is stale");
         return api.nilObj;
     }
@@ -7405,6 +7429,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, REPLAY_IMAGE_FACTS_SELECTOR),
             rust_codegen_replay_image_facts,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, REPLAY_STALE_IMAGE_FACTS_SELECTOR),
+            rust_codegen_replay_stale_image_facts,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
