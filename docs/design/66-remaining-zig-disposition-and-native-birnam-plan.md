@@ -238,6 +238,15 @@ passes at `2/2` steps; the existing Z0.2 decoy/relocation load trace remains
 the dynamic evidence. The inventory checker now reports 67 test scripts and
 117 build targets. No provider selection or runtime authority changed.
 
+Commit `c1e3c9d` adds `test-rust-resource-resolution`, an explicit Z1.1
+observation-boundary smoke. It runs the three executable-relative layout and
+narrow-override cases in `src/id/runtime_resources.zig` and the corresponding
+Rust `birnam-host` tests, including the rule that a `lib_dir` override supplies
+the default `libbirnam_id.dylib` path. The target passes, and the inventory
+checker now reports 68 test scripts and 118 build targets. This proves the
+resolver observations remain aligned without selecting a provider or moving
+any Zig helper.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
