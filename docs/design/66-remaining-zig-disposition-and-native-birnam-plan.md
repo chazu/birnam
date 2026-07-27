@@ -674,10 +674,33 @@ gap was found. Z2.0's read-only message/owner inventory is the next seam; its
 existing review gate remains unchanged, and no implementation Z1–Z3 authority
 change may bypass strict R6.
 
-The next 2026-07-27 adversarial pass is **NO-GO to exit Z2.0** until the
-inventory is per-callsite and checker-backed, selector bindings resolve to
-literals (or explicit dynamic markers), native definitions are verified, the
-`DispatchGeneration` owner is corrected to `compiled-unit.birnam`, and the
-review records either one exact Z2.1 seam or an explicit no-seam conclusion.
-Those bounded read-only fixes are in progress; no runtime or MOP invariant has
-been changed.
+The next 2026-07-27 adversarial pass was **NO-GO to exit Z2.0** until the
+inventory was per-callsite and checker-backed, selector bindings resolved to
+literals (or explicit dynamic markers), native definitions were verified, the
+`DispatchGeneration` owner was corrected to `compiled-unit.birnam`, and the
+review recorded either one exact Z2.1 seam or an explicit no-seam conclusion.
+The bounded read-only hardening landed in `f3f109a` (source-derived callsite
+behavior, canonical Rust owners, and separate Zig oracle references),
+`c008d87` (brace-bounded post-use windows, effect/handling consistency, and
+checker-backed focused/integration/uncovered test evidence), and `6e964c9`
+(honest host-start/Store-MOP coverage plus the explicitly uncovered
+EvolutionIntent `fulfill` arm). No runtime or MOP invariant changed.
+
+The final 2026-07-27 adversarial review is **GO to close Z2.0**. The manifest
+contains 120 send callsites across 56 reviewed functions, 31 named global
+lookups, canonical Rust/native owners, resolved selector literals, verified
+definitions, source-observed validation, and `z2_1_seam.status=none`. The
+strict R6 gate passed at `6e964c9` with the pinned `305/305` verify steps,
+`516/522` tests, six skips, live Alien green, `missing=0`, `unusable=0`, and
+only the accepted snapshot regressions `query.aggregate +5.8%` and
+`compile.stage1-stdlib +11.9%`. The archive/source-bootstrap smoke also
+passed on its identical retry, covering Rust production, explicit Zig
+rollback, artifact parity, and relocated project/LSP behavior. A single
+first archive attempt hit a transient Alien-loader SIGABRT; the identical
+rerun passed and no Alien/runtime change is attributable to this read-only
+inventory.
+
+Z2.1 has no removal seam in this inventory. Do not remove, retarget, or
+reinterpret a runtime/provider owner based on Z2.0 alone; any future seam
+requires its own invariant review, explicit owner/disposition change, and a
+fresh strict R6 gate.
