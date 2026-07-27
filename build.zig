@@ -199,6 +199,20 @@ pub fn build(b: *std.Build) void {
     test_remaining_rung_manifest_step.dependOn(&remaining_rung_manifest.step);
     test_step.dependOn(&remaining_rung_manifest.step);
 
+    // Design 66 Z0.1: every repository Zig file and every runtime dynamic
+    // provider must have an explicit owner/disposition. The checker is a
+    // diagnostic graph gate; it does not select or load a provider.
+    const remaining_zig_inventory = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-remaining-zig-inventory.py",
+    });
+    const test_remaining_zig_inventory_step = b.step(
+        "test-remaining-zig-inventory",
+        "Verify the Design 66 repo-wide Zig residue inventory",
+    );
+    test_remaining_zig_inventory_step.dependOn(&remaining_zig_inventory.step);
+    test_step.dependOn(&remaining_zig_inventory.step);
+
     const remaining_rung_clean_prefix = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-rung-clean-prefix.sh",

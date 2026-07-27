@@ -1,0 +1,949 @@
+{
+  "schema_version": 1,
+  "scope": "Design 66 Z0.1 repo-wide Zig residue graph; diagnostic/checker evidence only",
+  "captured_commit": "66ea543",
+  "generated_from": [
+    "rg --files -g \"*.zig\"",
+    "rg --files -g \"*.birnam\"",
+    "rg --files -g \"Cargo.toml\"",
+    "rg --files scripts -g \"*.sh\" -g \"*.py\"",
+    "build.zig .step declarations"
+  ],
+  "defaults": {
+    "host_impl": "rust",
+    "codegen_impl": "rust",
+    "optimize": "ReleaseSafe",
+    "runtime_resolution": "installed-prefix-and-declared-dynamic-names-only"
+  },
+  "scope_note": "dynamic_dependencies names only runtime dynamic libraries. Rust crate names, Zig source paths, static TCC objects, test executables, and native Birnam sources are not runtime dependencies.",
+  "allowed_kinds": [
+    "canonical-production",
+    "zig-oracle",
+    "build-only",
+    "shared-contract",
+    "test-evidence",
+    "native-policy-bridge"
+  ],
+  "files": [
+    {
+      "path": "abi/idapi_manifest.zig",
+      "kind": "shared-contract",
+      "owner": "abi-contract",
+      "disposition": "retained-contract"
+    },
+    {
+      "path": "build.zig",
+      "kind": "build-only",
+      "owner": "build-driver",
+      "disposition": "retained-orchestration"
+    },
+    {
+      "path": "scripts/prototype-conformance-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-dispatch-reentry-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-env-loader-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-ffi-abort-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-floor-shell-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-gc-metadata-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-heap-layout-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-id-spike-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-loader-fixture.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-membership-bench.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/rust-stack-root-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/scalar-conformance-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "scripts/string-conformance-probe.zig",
+      "kind": "test-evidence",
+      "owner": "migration-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/alien.zig",
+      "kind": "zig-oracle",
+      "owner": "alien-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/alien_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/artifact.zig",
+      "kind": "shared-contract",
+      "owner": "artifact-contract",
+      "disposition": "retained-contract"
+    },
+    {
+      "path": "src/id/artifact_inspector.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-artifact-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/artifact_inspector_benchmark_test.zig",
+      "kind": "test-evidence",
+      "owner": "benchmark-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/artifact_inspector_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/artifact_preflight.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-artifact-preflight-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/artifact_preflight_sentinel.zig",
+      "kind": "test-evidence",
+      "owner": "artifact-negative-fixture",
+      "disposition": "retained-negative-fixture"
+    },
+    {
+      "path": "src/id/artifact_preflight_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/codegen.zig",
+      "kind": "zig-oracle",
+      "owner": "codegen-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/codegen_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/collection.zig",
+      "kind": "zig-oracle",
+      "owner": "collection-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/collection_gc_test.zig",
+      "kind": "test-evidence",
+      "owner": "gc-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/collection_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/conformance_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/error.zig",
+      "kind": "zig-oracle",
+      "owner": "error-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/error_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/floor_adapter_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/gc_baseline.zig",
+      "kind": "test-evidence",
+      "owner": "gc-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/gc_layout_mark_test.zig",
+      "kind": "test-evidence",
+      "owner": "gc-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/id.zig",
+      "kind": "zig-oracle",
+      "owner": "id-floor-oracle",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/idapi.zig",
+      "kind": "shared-contract",
+      "owner": "abi-contract",
+      "disposition": "retained-contract"
+    },
+    {
+      "path": "src/id/idapi_abi_test.zig",
+      "kind": "test-evidence",
+      "owner": "abi-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/image.zig",
+      "kind": "zig-oracle",
+      "owner": "image-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/image_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/isolate.zig",
+      "kind": "zig-oracle",
+      "owner": "isolate-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/isolate_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/lang.zig",
+      "kind": "zig-oracle",
+      "owner": "lang-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/lang_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/main.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-host-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/membership_bench.zig",
+      "kind": "test-evidence",
+      "owner": "benchmark-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/native_rung_singleton_probe_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/null_args_conformance_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/peg.zig",
+      "kind": "zig-oracle",
+      "owner": "peg-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/peg_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/prelude.zig",
+      "kind": "zig-oracle",
+      "owner": "prelude-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/prelude_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/project.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-project-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/project_build.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-project-build-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/project_check.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-project-check-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/relational.zig",
+      "kind": "zig-oracle",
+      "owner": "relational-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/relational_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/remaining_rung_cross_floor_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rung_adapter_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/runtime_resources.zig",
+      "kind": "zig-oracle",
+      "owner": "zig-resource-oracle",
+      "disposition": "retained-zig-oracle"
+    },
+    {
+      "path": "src/id/rust_alien_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_codegen_canonical_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_codegen_runtime_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_codegen_stack_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_collection_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_error_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_idapi_abi_test.zig",
+      "kind": "test-evidence",
+      "owner": "abi-evidence",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_image_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_isolate_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_codegen_parity_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_codegen_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_cst_parity_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_diagnostics_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_lang_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_metadata_parity_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_pattern_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_source_corpus_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_peg_stress_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_prelude_io_probe.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_prelude_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_relational_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_store_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/rust_tcc_shell_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/store.zig",
+      "kind": "zig-oracle",
+      "owner": "store-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/store_image_backfill_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/store_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    },
+    {
+      "path": "src/id/tcc.zig",
+      "kind": "zig-oracle",
+      "owner": "tcc-rollback",
+      "disposition": "retained-explicit-rollback"
+    },
+    {
+      "path": "src/id/tcc_test.zig",
+      "kind": "test-evidence",
+      "owner": "id-test-suite",
+      "disposition": "retained-evidence"
+    }
+  ],
+  "dynamic_dependencies": [
+    {
+      "name": "libbirnam_id.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_artifact.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_store.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_peg.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_lang.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_tcc.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_codegen.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_prelude.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_collection.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_error.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_isolate.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_relational.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_alien.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    },
+    {
+      "name": "libbirnam_id_image.dylib",
+      "role": "canonical-runtime-provider",
+      "owner": "Rust canonical; Zig explicit oracle/rollback fixture",
+      "canonical": true
+    }
+  ],
+  "graph": {
+    "birnam_sources": [
+      "abi/fixtures/idapi-v1/image-source.birnam",
+      "bench/compare.birnam",
+      "bench/gc.birnam",
+      "bench/image.birnam",
+      "bench/micro.birnam",
+      "bench/nil.birnam",
+      "bench/parse.birnam",
+      "bench/relational.birnam",
+      "bench/smoke.birnam",
+      "docs/guide/style-proof.birnam",
+      "examples/address-book.birnam",
+      "examples/ancestors.birnam",
+      "examples/aot.birnam",
+      "examples/app.birnam",
+      "examples/auto-gc.birnam",
+      "examples/bank-ledger.birnam",
+      "examples/collections.birnam",
+      "examples/config/app.birnam",
+      "examples/errors.birnam",
+      "examples/ffi.birnam",
+      "examples/fizzbuzz.birnam",
+      "examples/gc.birnam",
+      "examples/http-docs.birnam",
+      "examples/http-server.birnam",
+      "examples/image.birnam",
+      "examples/isolates/build-image.birnam",
+      "examples/isolates/copied-values.birnam",
+      "examples/isolates/failures.birnam",
+      "examples/isolates/two-workers.birnam",
+      "examples/isolates/worker.birnam",
+      "examples/json-demo.birnam",
+      "examples/logue/logue-core.birnam",
+      "examples/logue/logue-test.birnam",
+      "examples/logue/logue.birnam",
+      "examples/lsp-server.birnam",
+      "examples/minesweeper/minesweeper.birnam",
+      "examples/peg-csv.birnam",
+      "examples/pipeline.birnam",
+      "examples/predicates.birnam",
+      "examples/primes.birnam",
+      "examples/pull.birnam",
+      "examples/repl-server.birnam",
+      "examples/stdlib.birnam",
+      "examples/time-travel.birnam",
+      "examples/toml-demo.birnam",
+      "examples/word-frequency.birnam",
+      "modules/app-config-test.birnam",
+      "modules/bench.birnam",
+      "modules/block-test.birnam",
+      "modules/cli-test.birnam",
+      "modules/cli.birnam",
+      "modules/compiled-unit-docs.birnam",
+      "modules/compiled-unit-test.birnam",
+      "modules/doc-test.birnam",
+      "modules/doc.birnam",
+      "modules/file.birnam",
+      "modules/html-test.birnam",
+      "modules/html.birnam",
+      "modules/http.birnam",
+      "modules/json.birnam",
+      "modules/log.birnam",
+      "modules/lsp.birnam",
+      "modules/markdown-test.birnam",
+      "modules/markdown.birnam",
+      "modules/modules-test.birnam",
+      "modules/os.birnam",
+      "modules/process.birnam",
+      "modules/project-policy-test.birnam",
+      "modules/random-test.birnam",
+      "modules/random.birnam",
+      "modules/repl.birnam",
+      "modules/run-tests.birnam",
+      "modules/socket.birnam",
+      "modules/stdlib-test.birnam",
+      "modules/test.birnam",
+      "modules/time.birnam",
+      "modules/zigdoc.birnam",
+      "scripts/isolate-failures-smoke.birnam",
+      "scripts/isolate-fixture-module.birnam",
+      "scripts/isolate-fixture.birnam",
+      "scripts/isolate-smoke.birnam",
+      "src/id/app-config.birnam",
+      "src/id/compiled-unit.birnam",
+      "src/id/config.birnam",
+      "src/id/isolate.birnam",
+      "src/id/modules.birnam",
+      "src/id/project-policy.birnam",
+      "src/id/stdlib.birnam",
+      "src/id/toml.birnam",
+      "wrapped/linenoise/linenoise.birnam",
+      "wrapped/termbox2/termbox2.birnam"
+    ],
+    "rust_crates": [
+      "Cargo.toml",
+      "rust/birnam-abi/Cargo.toml",
+      "rust/birnam-alien/Cargo.toml",
+      "rust/birnam-artifact/Cargo.toml",
+      "rust/birnam-codegen-runtime/Cargo.toml",
+      "rust/birnam-codegen/Cargo.toml",
+      "rust/birnam-collection/Cargo.toml",
+      "rust/birnam-error/Cargo.toml",
+      "rust/birnam-host/Cargo.toml",
+      "rust/birnam-id/Cargo.toml",
+      "rust/birnam-image/Cargo.toml",
+      "rust/birnam-isolate/Cargo.toml",
+      "rust/birnam-lang/Cargo.toml",
+      "rust/birnam-peg/Cargo.toml",
+      "rust/birnam-prelude/Cargo.toml",
+      "rust/birnam-relational/Cargo.toml",
+      "rust/birnam-store/Cargo.toml",
+      "rust/birnam-tcc/Cargo.toml"
+    ],
+    "build_targets": [
+      "artifact-inspector-benchmark",
+      "baseline-id-gc",
+      "bench-id-membership",
+      "bench-rust-id-membership",
+      "bootstrap-install",
+      "stage1",
+      "test",
+      "test-artifact-preflight",
+      "test-artifact-selection",
+      "test-birnam",
+      "test-codegen-authority",
+      "test-codegen-contract",
+      "test-codegen-selection-refusal",
+      "test-collection-gc",
+      "test-cross-floor-artifacts",
+      "test-cross-floor-errors",
+      "test-cross-floor-images",
+      "test-emacs",
+      "test-floor-rust",
+      "test-floor-zig",
+      "test-gc-layout-mark",
+      "test-id-abi",
+      "test-id-abi-fixture",
+      "test-id-conformance",
+      "test-image-save",
+      "test-install",
+      "test-isolate-process",
+      "test-lang-selection",
+      "test-lsp-project",
+      "test-main",
+      "test-native-rung-baseline",
+      "test-native-rung-harness",
+      "test-native-rung-inventory",
+      "test-native-rung-selection",
+      "test-native-rung-singleton",
+      "test-prelude-selection",
+      "test-project-check",
+      "test-prototype-conformance",
+      "test-relational-selection",
+      "test-remaining-rung-clean-prefix",
+      "test-remaining-rung-cross-floor",
+      "test-remaining-rung-manifest",
+      "test-remaining-zig-inventory",
+      "test-repl",
+      "test-rust-alien-live",
+      "test-rust-artifact",
+      "test-rust-codegen-canonical",
+      "test-rust-codegen-distribution",
+      "test-rust-codegen-runtime",
+      "test-rust-codegen-stack",
+      "test-rust-codegen-zig-store",
+      "test-rust-collection",
+      "test-rust-dispatch-reentry",
+      "test-rust-dylib-audit",
+      "test-rust-env-loader",
+      "test-rust-error",
+      "test-rust-ffi-abort",
+      "test-rust-gc-metadata",
+      "test-rust-heap-layout",
+      "test-rust-id-abi-fixture",
+      "test-rust-id-spike",
+      "test-rust-image-bootstrap",
+      "test-rust-image-codegen",
+      "test-rust-image-cross-floor",
+      "test-rust-image-cross-floor-reverse",
+      "test-rust-image-publication",
+      "test-rust-image-publication-rejection",
+      "test-rust-image-rejection",
+      "test-rust-image-save",
+      "test-rust-image-shell",
+      "test-rust-image-zig-store",
+      "test-rust-isolate",
+      "test-rust-lang",
+      "test-rust-lang-diagnostics",
+      "test-rust-lang-parity",
+      "test-rust-lower-rungs",
+      "test-rust-native-memory",
+      "test-rust-peg-codegen",
+      "test-rust-peg-codegen-full",
+      "test-rust-peg-codegen-parity",
+      "test-rust-peg-cst-parity",
+      "test-rust-peg-diagnostics",
+      "test-rust-peg-installed",
+      "test-rust-peg-lang",
+      "test-rust-peg-lang-full",
+      "test-rust-peg-metadata-parity",
+      "test-rust-peg-pattern",
+      "test-rust-peg-shell",
+      "test-rust-peg-source-corpus",
+      "test-rust-peg-stress",
+      "test-rust-prelude",
+      "test-rust-prelude-io",
+      "test-rust-prelude-rust-error",
+      "test-rust-relational",
+      "test-rust-relational-zig-store",
+      "test-rust-runtime-churn",
+      "test-rust-stack-root",
+      "test-rust-store-core",
+      "test-rust-store-mop",
+      "test-rust-store-stack",
+      "test-rust-tcc-alien",
+      "test-rust-tcc-artifact",
+      "test-rust-tcc-audit",
+      "test-rust-tcc-image",
+      "test-rust-tcc-shell",
+      "test-scalar-conformance",
+      "test-source-fallback",
+      "test-store-image-backfill",
+      "test-string-conformance",
+      "test-tcc-selection",
+      "test-termbox-load",
+      "verify",
+      "verify-floor-repeat",
+      "verify-floor-rust",
+      "verify-floor-zig"
+    ],
+    "test_scripts": [
+      "scripts/artifact-inspector-baseline.sh",
+      "scripts/artifact-preflight-sentinel.sh",
+      "scripts/assert-child-abort.sh",
+      "scripts/bench-compare.sh",
+      "scripts/bench-host-check.sh",
+      "scripts/bench.sh",
+      "scripts/check-native-rung-baseline.py",
+      "scripts/check-native-rung-inventory.py",
+      "scripts/check-remaining-rung-manifest.py",
+      "scripts/check-remaining-zig-inventory.py",
+      "scripts/codegen-dylib-audit.sh",
+      "scripts/codegen-selection-refusal.sh",
+      "scripts/cross-floor-artifact-smoke.sh",
+      "scripts/cross-floor-error-smoke.sh",
+      "scripts/cross-floor-image-smoke.sh",
+      "scripts/dist.sh",
+      "scripts/emacs-test.sh",
+      "scripts/floor-verify.sh",
+      "scripts/image-save-smoke.sh",
+      "scripts/install-smoke.sh",
+      "scripts/isolate-smoke.sh",
+      "scripts/lang-selection-smoke.sh",
+      "scripts/lsp-project-smoke.sh",
+      "scripts/native-rung-harness.sh",
+      "scripts/native-rung-selection-smoke.sh",
+      "scripts/native-rung-selection.sh",
+      "scripts/null-args-conformance.sh",
+      "scripts/prelude-selection-smoke.sh",
+      "scripts/project-check-smoke.sh",
+      "scripts/prototype-conformance-smoke.sh",
+      "scripts/r6-acceptance.sh",
+      "scripts/relational-selection-smoke.sh",
+      "scripts/release.sh",
+      "scripts/remaining-rung-clean-prefix.sh",
+      "scripts/repeat-floor-verification.sh",
+      "scripts/repl-golden.sh",
+      "scripts/rust-codegen-distribution-smoke.sh",
+      "scripts/rust-dispatch-reentry-smoke.sh",
+      "scripts/rust-dylib-audit.sh",
+      "scripts/rust-env-loader-smoke.sh",
+      "scripts/rust-ffi-abort-smoke.sh",
+      "scripts/rust-floor-shell-smoke.sh",
+      "scripts/rust-gc-metadata-smoke.sh",
+      "scripts/rust-heap-layout-smoke.sh",
+      "scripts/rust-id-abi-fixture-smoke.sh",
+      "scripts/rust-id-spike-smoke.sh",
+      "scripts/rust-image-save-smoke.sh",
+      "scripts/rust-lower-rung-matrix.sh",
+      "scripts/rust-membership-bench.sh",
+      "scripts/rust-native-memory-smoke.sh",
+      "scripts/rust-peg-installed-smoke.sh",
+      "scripts/rust-peg-shell-smoke.sh",
+      "scripts/rust-project-check-smoke.sh",
+      "scripts/rust-runtime-churn-smoke.sh",
+      "scripts/rust-stack-root-smoke.sh",
+      "scripts/rust-store-mop-smoke.sh",
+      "scripts/rust-store-stack-smoke.sh",
+      "scripts/rust-tcc-artifact-smoke.sh",
+      "scripts/rust-tcc-dylib-audit.sh",
+      "scripts/scalar-conformance-smoke.sh",
+      "scripts/source-bootstrap-smoke.sh",
+      "scripts/source-fallback.sh",
+      "scripts/string-conformance-smoke.sh",
+      "scripts/tcc-selection-smoke.sh",
+      "scripts/termbox-load-smoke.sh"
+    ],
+    "install_destinations": [
+      "bin/birnam",
+      "bin/birnam-zig",
+      "lib/libbirnam_*.dylib",
+      "lib/lib*.dylib",
+      "share/birnam/**"
+    ]
+  }
+}
