@@ -2456,12 +2456,14 @@ pub fn build(b: *std.Build) void {
                 }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_artifact")) {
+            var zig_artifact_oracle_step: ?*std.Build.Step = null;
             if (include_rollback_fixtures) {
                 const install_zig_artifact_oracle = b.addInstallArtifact(lib, .{
                     .dest_sub_path = "libbirnam_id_artifact_zig.dylib",
                 });
                 b.getInstallStep().dependOn(&install_zig_artifact_oracle.step);
                 bootstrap_install.dependOn(&install_zig_artifact_oracle.step);
+                zig_artifact_oracle_step = &install_zig_artifact_oracle.step;
             }
 
             const selected_artifact_step: *std.Build.Step = if (artifact_inspector_impl == .rust) blk: {
@@ -2493,6 +2495,14 @@ pub fn build(b: *std.Build) void {
                 const install_zig_artifact = b.addInstallArtifact(lib, .{
                     .dest_sub_path = "libbirnam_id_artifact.dylib",
                 });
+                // The selection receipt checks both the canonical path and the
+                // explicit implementation path. Make the latter a direct
+                // prerequisite of the selected step; attaching it only to the
+                // global install graph permits a parallel checker to observe
+                // the canonical file before the `_zig` fixture is copied.
+                if (zig_artifact_oracle_step) |oracle_step| {
+                    install_zig_artifact.step.dependOn(oracle_step);
+                }
                 b.getInstallStep().dependOn(&install_zig_artifact.step);
                 bootstrap_install.dependOn(&install_zig_artifact.step);
                 break :blk &install_zig_artifact.step;
