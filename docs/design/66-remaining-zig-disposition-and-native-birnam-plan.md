@@ -619,6 +619,19 @@ This is a receipt contract, not the full release proof: the production
 load-trace, two independent archive prefixes, and old compatibility fixture
 legs remain open under Z3.
 
+### Z3.3 execution record — canonical loader traces (2026-07-27)
+
+Commit `8cfc9f2` extends `test-distribution-selection` with isolated
+`DYLD_PRINT_LIBRARIES=1` runs from decoy working directories. The production
+trace contains every declared canonical dynamic name and no `_zig` dylib or
+Zig oracle executable. The rollback trace contains the same canonical names
+and no `_rust` fixture. This proves the selector is exercised by the loader,
+not merely by prefix directory enumeration.
+
+The trace is still a local-prefix receipt. Z3 remains open for two independent
+clean archive production prefixes, persisted load/digest receipts, and the
+full compatibility/release fixture matrix.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
