@@ -727,16 +727,23 @@ pub unsafe fn load_image(
             .resources
             .lib_dir
             .join("libbirnam_id_image_zig.dylib");
-        runtime
-            .stack
-            .load_module(&zig_image)
-            .map_err(|_| ImageError::LoadRejected)?;
-        status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
-        let rust_image = runtime.resources.lib_dir.join("libbirnam_id_image.dylib");
-        runtime
-            .stack
-            .load_module(&rust_image)
-            .map_err(|_| ImageError::LoadRejected)?;
+        // A production prefix deliberately omits the Zig rollback fixture.
+        // In that distribution Rust Image's false answer must continue into
+        // the Rust Codegen source-recovery path; only attempt the compatibility
+        // retry when the explicitly named Zig provider is actually installed.
+        if zig_image.is_file() {
+            runtime
+                .stack
+                .load_module(&zig_image)
+                .map_err(|_| ImageError::LoadRejected)?;
+            status =
+                unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+            let rust_image = runtime.resources.lib_dir.join("libbirnam_id_image.dylib");
+            runtime
+                .stack
+                .load_module(&rust_image)
+                .map_err(|_| ImageError::LoadRejected)?;
+        }
     }
     if status == api.nilObj {
         return Err(ImageError::LoadRejected);
