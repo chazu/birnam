@@ -177,14 +177,17 @@ fixture is moved.
 ### P0.1 receipt (2026-07-27)
 
 Commit `95681f2` adds and checks `abi/remaining-zig-edges-v1.json` without
-changing provider selection. The checker now freezes the five edge kinds, five
-phase values, and five selection contexts; validates safe source/provider paths;
-requires representative rows for runtime, build, oracle, evidence, and native
-policy; and requires every one of the 14 declared dynamic providers in both
-production and complete-vector rollback contexts. The receipt is green:
+changing provider selection. Commit `3ead579` hardens that checker with
+`derived_edge_families`: every build-only/shared-contract path, Zig oracle,
+test-evidence path, Birnam policy source, and Rust crate expands into a checked
+edge row. The checker freezes the five edge kinds, five phase values, and five
+selection contexts; validates safe source/provider paths; requires every one of
+the 14 declared dynamic providers in both production and complete-vector
+rollback contexts; and reports the complete expanded table rather than a
+representative-only sample. The hardened receipt is green:
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 edge_rows=320 derived_edge_rows=288
 test-remaining-zig-inventory success
 ```
 
@@ -213,10 +216,10 @@ or unusable cases. No provider selection or runtime authority changed in P0.
 
 ### P0 exit gate
 
-The checker is green, `edges[]` is complete, no source or test path is mistaken
-for a dynamic dependency, decoys are ignored, and the strict R6 receipt is
-recorded. P0 lands as one documentation/checker commit. No runtime behavior or
-provider selection changes.
+The checker is green, `edges[]` plus its derived families are complete, no
+source or test path is mistaken for a dynamic dependency, decoys are ignored,
+and the strict R6 receipt is recorded. P0 lands as a documentation/checker
+commit. No runtime behavior or provider selection changes.
 
 ## 5. Phase P1 — host and artifact residue revalidation
 
