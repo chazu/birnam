@@ -274,6 +274,14 @@ tests), complementing the Zig oracle's seven-case preflight fixture. The
 negative checks run before any activation path and leave the authority split
 unchanged; inventory is now 70 test scripts and 120 build targets.
 
+The combined Z1 observation/preflight run passes at `100/100` build steps for
+`test-rust-resource-resolution`, `test-rust-artifact-authority`,
+`test-rust-artifact-preflight`, relocated `test-project-check`, and relocated
+`test-lsp-project`. This closes the diagnostic portion of Z1.1/Z1.2 without
+changing provider selection, schema, activation, or native policy. Z1.3
+authority commits remain gated by the separately documented pre-rewrite-image
+compatibility disposition.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
