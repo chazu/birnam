@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -18,6 +19,67 @@ SEND_MARKERS = ("api.send", "stack.api().send")
 def fail(message: str) -> None:
     print(f"rust-host-message-owner-inventory: {message}", file=sys.stderr)
     raise SystemExit(1)
+
+
+def send_surface(lines: list[str], callsites: list[int]) -> str:
+    source = "\n".join(lines) + "\n"
+    offsets: list[int] = []
+    offset = 0
+    for line in lines:
+        offsets.append(offset)
+        offset += len(line) + 1
+
+    details: list[str] = []
+    for line in callsites:
+        position = source.find("send", offsets[line - 1])
+        opening = source.find("(", position)
+        if position < 0 or opening < 0:
+            fail(f"cannot parse send callsite at line {line}")
+        depth = 0
+        closing = None
+        for index in range(opening, len(source)):
+            if source[index] in "([{":
+                depth += 1
+            elif source[index] in ")]}":
+                depth -= 1
+                if depth == 0:
+                    closing = index
+                    break
+        if closing is None:
+            fail(f"unterminated send callsite at line {line}")
+
+        parts: list[str] = []
+        current = ""
+        nested = 0
+        for character in source[opening + 1 : closing]:
+            if character in "([{":
+                nested += 1
+            elif character in ")]}":
+                nested -= 1
+            if character == "," and nested == 0:
+                if current.strip():
+                    parts.append(current.strip())
+                current = ""
+            else:
+                current += character
+        if current.strip():
+            parts.append(current.strip())
+        if len(parts) < 3:
+            fail(f"send callsite at line {line} has fewer than three arguments")
+
+        function = "?"
+        for source_line in range(line - 1, -1, -1):
+            match = re.search(r"\bfn\s+([A-Za-z0-9_]+)", lines[source_line])
+            if match:
+                function = match.group(1)
+                break
+        normalize = lambda value: re.sub(r"\s+", " ", value)
+        arity = parts[-1] if re.fullmatch(r"\d+L?", parts[-1]) else "unknown"
+        details.append(
+            f"{line}|{function}|{normalize(parts[0])}|{normalize(parts[1])}|{arity}"
+        )
+    payload = ("\n".join(details) + "\n").encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def main() -> None:
@@ -47,6 +109,13 @@ def main() -> None:
     )
     if recorded_send != actual_send:
         fail(f"send callsite coverage drifted; expected={actual_send}, recorded={recorded_send}")
+    actual_surface_digest = send_surface(lines, actual_send)
+    if actual_surface_digest != manifest.get("send_callsite_surface_sha256"):
+        fail(
+            "send receiver/selector/arity surface drifted; "
+            f"expected={manifest.get('send_callsite_surface_sha256')}, "
+            f"actual={actual_surface_digest}"
+        )
 
     recorded_globals = manifest.get("global_lookups")
     if not isinstance(recorded_globals, dict):
