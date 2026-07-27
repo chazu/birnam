@@ -293,6 +293,27 @@ These are revalidation receipts only. The Rust host remains the canonical
 observer, `Module loadArtifact:` remains the sole activation/publication owner,
 and the Zig helper/oracle and complete rollback vector remain recoverable.
 
+### R6 gate refresh receipt (2026-07-27)
+
+The latest P0/P1 inventory, boundary, owner, and artifact checks are now part
+of the scoped R6 matrix. Commit `bb387d8` pins the expanded matrix at
+`183/183` build steps and `99/99` tests; the five added targets contribute
+steps, not runtime test cases, and their receipts are asserted explicitly:
+
+```text
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14
+remaining-zig-boundary: rust_receipts=14 zig_oracle_receipts=14 canonical_load_trace=ok oracle_load_trace=ok policy_authority=ok
+rust-host-message-owner-inventory: ok send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56 disposition=read-only
+rust-artifact-authority: codec=pointer-free projection=single-module-init host=preflight-before-activation policy=native-loadArtifact
+rust-artifact-preflight: shared eight-case dependency, identity, format, path, native, and real-sentinel corpus passed (debug)
+```
+
+The strict rerun at that commit also passes `305/305` verify steps, `516/522`
+tests, six skips, both Z3 receipts, and exactly the existing two benchmark
+crossings (`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`), with
+zero missing or unusable cases. No provider selection, benchmark allowance, or
+rollback policy changed.
+
 ## 6. Phase P2 — per-rung retirement-readiness, no vector mutation
 
 The Rust implementations already own the canonical dynamic providers. P2
