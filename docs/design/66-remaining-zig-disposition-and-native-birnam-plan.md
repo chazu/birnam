@@ -253,6 +253,12 @@ build, run, and test all execute from `/tmp` with `BIRNAM_LIB_DIR`,
 project flow passes through the executable-relative Rust resolver, preserving
 the existing diagnostic and policy boundaries.
 
+Commit `9a52221` applies the same relocation boundary to the LSP smoke: the
+Rust host starts from `/tmp` with all runtime resource overrides unset while
+serving absolute project URIs. Workspace diagnostics, UTF-16 positions,
+versioned changes, navigation, and shutdown still pass, so LSP observation
+does not depend on cwd or checkout paths.
+
 Commit `ecbe02d` adds `test-rust-artifact-authority`, a fail-closed static
 ownership check. It requires the allocation-free Rust descriptor codec, one
 dynamic `ArtifactVt`/`module_init` projection, host preflight before the
