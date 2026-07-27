@@ -29,6 +29,11 @@ archive_source() {
   local source="$scratch/$label/source"
   mkdir -p "$source"
   git -C "$repo" archive HEAD | tar -x -C "$source"
+  fixture_dir="$source/abi/fixtures/idapi-v1"
+  case "$fixture_dir" in
+    "$source"/*) rm -rf "$fixture_dir" ;;
+    *) echo "z3-archive: refused unsafe fixture path" >&2; exit 1 ;;
+  esac
   if find "$source" -type f \( -name birnam -o -name '*.dylib' -o -name '*.so' -o -name '*.image' -o -name '*.bim' \) -print -quit | grep -q .; then
     echo "z3-archive: clean archive $label contains a prebuilt Birnam artifact" >&2
     exit 1
