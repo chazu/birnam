@@ -1,8 +1,8 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO for the residue map and authority boundaries; Z0 is
-R6-accepted and the Z1 archive/evidence closure is green, with the final
-strict rerun and adversarial closure review pending** (2026-07-27). Z1–Z3
+Status: **reviewed GO for the residue map, authority boundaries, and Z1
+closure; Z0 and the Z1 strict/archive evidence are accepted** (2026-07-27).
+Z1–Z3
 authority/distribution changes remain gated on the explicit strict gate as
 specified below.
 
@@ -284,8 +284,8 @@ The combined Z1 observation/preflight run passes at `100/100` build steps for
 `test-lsp-project`. This closes the diagnostic portion of Z1.1/Z1.2 without
 changing provider selection, schema, activation, or native policy. The
 pre-rewrite-image strict prerequisite that originally gated Z1.3 is now
-satisfied by `4bcaa5d` and `13819ab`; the remaining Z1.3 work is test/docs-only
-parity closure until a separately diagnosed ownership or behavior gap exists.
+satisfied by `4bcaa5d` and `13819ab`; the Z1.3 test/docs-only parity closure is
+complete, with no ownership or behavior gap identified.
 
 The parity closure then found and fixed one typed-diagnostic drift. A missing
 Rust sibling previously surfaced as `artifactUnavailable`, while the Zig
@@ -398,9 +398,9 @@ install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
 and Zig oracle negative corpora must agree on the typed matrix; the MOP/policy
 fixture remains single-owned; source-free relocation and strict path checks
 pass. The Zig oracle still builds explicitly. The named archive acceptance
-below now passes from a clean archive, including install and normalized
-parity; Z1 remains open only until the strict gate is rerun after these
-closure commits and the final review is recorded.
+below passes from a clean archive, including install and normalized parity, and
+the strict gate has passed after the closure commits. Z1 is closed by the
+archive, strict rerun, and final adversarial review recorded below.
 
 The required archive acceptance is:
 
@@ -437,6 +437,22 @@ stable detail, and first-failure token) emitted independently by Rust and Zig.
 No prebuilt Birnam artifact was present and no source/checkout fallback was
 used. The remaining Zig edges are the explicit oracle/rollback prefix and the
 noncanonical Zig fixture libraries; no production provider changed.
+
+### Z1 strict R6 acceptance record (2026-07-27)
+
+After the archive closure, the strict gate was rerun at commit `9075d26`:
+
+```text
+mise exec -- env BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
+```
+
+It passed the scoped Rust replacement matrix and live Rust Alien boundary, then
+the full optimized graph at `304/304` steps, `516/522` tests, and `6` skipped.
+The accepted benchmark comparator remained unchanged: exactly
+`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`, with no missing or
+unusable cases. The only gate repair was the fail-closed inventory update in
+`9075d26`, registering the already-executed
+`scripts/artifact-preflight-parity-smoke.sh` in `abi/remaining-zig-v1.json`.
 
 ## 5. Phase Z2 — native-Birnam policy closure
 
@@ -616,10 +632,13 @@ an incomplete repo-wide residue map, an underspecified rollback vector, and an
 acceptance count that did not name both independent production prefixes. The
 plan was revised through commits `1c6db24`, `f2782cf`, `d9b4c5f`, and `5305e80`.
 
-The first follow-up returned **GO** on the authority boundaries, but the
-latest follow-up remains **NO-GO to close Z1** despite strict R6 passing. It
-requires the clean-archive acceptance record, the shared-byte/common-result
-matrix, real sentinel coverage, failed-preflight atomic evidence, nested-kind
-parity, digest/install-root/stale-receipt cases, and this Z2.0/Z2.1 split.
-Those are evidence and planning corrections only; no implementation Z1–Z3
-authority change may bypass the strict gate.
+The first follow-up returned **GO** on the authority boundaries. A subsequent
+adversarial pass was temporarily **NO-GO to close Z1** pending the clean
+archive, normalized eight-row parity, real sentinel, failed-preflight atomic,
+nested-kind, digest/install-root/stale-receipt, and Z2.0/Z2.1 evidence. Those
+gaps are now closed by archive commit `67714fe` and strict-gate fix `9075d26`.
+The final 2026-07-27 review is **GO to close Z1**: no remaining invariant,
+authority, artifact-owner, MOP/Store, rollback, archive, parity, or strict-gate
+gap was found. Z2.0's read-only message/owner inventory is the next seam; its
+existing review gate remains unchanged, and no implementation Z1–Z3 authority
+change may bypass strict R6.
