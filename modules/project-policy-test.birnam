@@ -85,6 +85,16 @@
 
 let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
 
+[s test: "native policy method edits remain source-owned" do: [:t |
+  [Reflect defineMethod: #policyAuthorityProbe on: ProjectPolicyTest as: [:self | "policy-owned"]];
+  let methods := [Reflect allMethodsOf: ProjectPolicyTest];
+  let method := [methods detect: [:entry |
+    [[entry at: #selector] = #policyAuthorityProbe]]];
+  [t expect: [method at: #target] equals: #ProjectPolicyTest describes: "policy edit names its source target"];
+  [t expect: [[method at: #method] = #primitive] equals: false describes: "policy edit is not a native primitive"];
+  [t expect: [ProjectPolicyTest policyAuthorityProbe] equals: "policy-owned" describes: "policy edit dispatches"];
+  [Reflect removeMethod: #policyAuthorityProbe on: ProjectPolicyTest]]];
+
 [s test: "resolution is deterministic and dependency-first" do: [:t |
   let leafSource := [ProjectPolicyTest source: "leaf" requires: #[]];
   let depSource := [ProjectPolicyTest source: "dep" requires: #["leaf"]];

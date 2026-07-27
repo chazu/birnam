@@ -213,6 +213,17 @@ pub fn build(b: *std.Build) void {
     test_remaining_zig_inventory_step.dependOn(&remaining_zig_inventory.step);
     test_step.dependOn(&remaining_zig_inventory.step);
 
+    const remaining_zig_boundary_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/remaining-zig-boundary-smoke.sh",
+    });
+    const test_remaining_zig_boundary_step = b.step(
+        "test-remaining-zig-boundary",
+        "Prove Rust canonical loading, explicit Zig rollback, and policy authority",
+    );
+    test_remaining_zig_boundary_step.dependOn(&remaining_zig_boundary_smoke.step);
+    test_step.dependOn(&remaining_zig_boundary_smoke.step);
+
     const remaining_rung_clean_prefix = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-rung-clean-prefix.sh",

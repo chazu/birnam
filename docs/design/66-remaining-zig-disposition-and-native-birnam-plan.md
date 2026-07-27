@@ -181,6 +181,28 @@ manifests, 65 test/evidence scripts, 115 build targets, and 14 dynamic
 providers. This is an ownership/diagnostic graph only; no provider selection,
 runtime loading, or artifact authority changed in Z0.1.
 
+### Z0.2 implementation checkpoint (2026-07-27)
+
+The committed `test-remaining-zig-boundary` fixture builds independent
+ReleaseSafe Rust-canonical and Zig-host oracle prefixes. It emits 14 receipts
+per prefix and requires every canonical Rust artifact to match its independent
+Rust digest and differ from the Zig fixture; the oracle performs the inverse
+check. A `DYLD_PRINT_LIBRARIES` trace from a separate decoy cwd proves all 14
+canonical names load from the installed prefix and no `_zig`, `_rust`, cwd, or
+source-decoy path is opened. The oracle trace records the same canonical load
+order without an implicit Rust fixture.
+
+The current build has no `-Dstore` or `-Dalien` selector. The Zig-host oracle
+receipt therefore labels those two canonical loads `rust-shared` while proving
+their Zig fixtures remain distinct; Z3 must add explicit production/rollback
+distribution selection before either can claim a full Zig rollback vector.
+The policy fixture extends `modules/project-policy-test.birnam` with a method
+edit, dispatch assertion, and non-`#primitive` MOP marker, and the installed
+Rust host runs the complete source-backed suite: `346 passed, 0 failed`.
+
+The bounded slice is diagnostic/negative evidence only; it does not move a
+helper or alter canonical provider selection.
+
 ### Z0 exit gate
 
 The checked-in graph/checker covers every repo-wide Zig file; every residue
