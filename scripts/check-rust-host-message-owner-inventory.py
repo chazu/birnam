@@ -496,18 +496,35 @@ def main() -> None:
         ):
             fail(f"send callsite row {line} supporting test target is not named")
         expected_target = required_direct_target({**actual, "effect_class": row["effect_class"]})
-        explicitly_uncovered = line == 6452 and kind == "uncovered" and not direct
+        explicitly_uncovered = (
+            actual["function"] == "run_repl"
+            and actual["selector_literal"] == "fulfill"
+            and kind == "uncovered"
+            and not direct
+        )
         if expected_target is not None and not explicitly_uncovered and (not direct or target != expected_target):
             fail(
                 f"send callsite row {line} requires direct {expected_target} evidence, "
                 f"got kind={kind!r}, target={target!r}, direct={direct!r}"
             )
-        if line == 6452 and supporting_target != "test-repl":
-            fail("send callsite row 6452 must retain test-repl as supporting-only evidence")
-        if line == 7708 and (not direct or target != "test-project-check"):
-            fail("send callsite row 7708 must use the host-starting project target directly")
-        if line == 7708 and supporting_target != "test-rust-store-mop":
-            fail("send callsite row 7708 must retain test-rust-store-mop as supporting evidence")
+        if (
+            actual["function"] == "run_repl"
+            and actual["selector_literal"] == "fulfill"
+            and supporting_target != "test-repl"
+        ):
+            fail("run_repl fulfill must retain test-repl as supporting-only evidence")
+        if (
+            actual["function"] == "start"
+            and actual["selector_literal"] == "backfillMirror"
+            and (not direct or target != "test-project-check")
+        ):
+            fail("start backfillMirror must use the host-starting project target directly")
+        if (
+            actual["function"] == "start"
+            and actual["selector_literal"] == "backfillMirror"
+            and supporting_target != "test-rust-store-mop"
+        ):
+            fail("start backfillMirror must retain test-rust-store-mop as supporting evidence")
         definition = row["native_definition"]
         if not isinstance(definition, dict):
             fail(f"send callsite row {line} has no native_definition object")

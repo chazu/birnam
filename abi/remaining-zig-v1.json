@@ -772,6 +772,7 @@
       "test-cross-floor-artifacts",
       "test-cross-floor-errors",
       "test-cross-floor-images",
+      "test-distribution-selection",
       "test-emacs",
       "test-floor-rust",
       "test-floor-zig",
@@ -872,6 +873,7 @@
       "test-string-conformance",
       "test-tcc-selection",
       "test-termbox-load",
+      "test-z3-archive-distribution",
       "verify",
       "verify-floor-repeat",
       "verify-floor-rust",
@@ -889,6 +891,7 @@
       "scripts/check-native-rung-inventory.py",
       "scripts/check-remaining-rung-manifest.py",
       "scripts/check-remaining-zig-inventory.py",
+      "scripts/check-rollback-prefix.py",
       "scripts/check-rust-artifact-authority.py",
       "scripts/check-rust-host-message-owner-inventory.py",
       "scripts/check-rust-host-zig-helper-boundary.py",
@@ -898,6 +901,7 @@
       "scripts/cross-floor-error-smoke.sh",
       "scripts/cross-floor-image-smoke.sh",
       "scripts/dist.sh",
+      "scripts/distribution-selection-smoke.sh",
       "scripts/emacs-test.sh",
       "scripts/floor-verify.sh",
       "scripts/image-save-smoke.sh",
@@ -948,8 +952,9 @@
       "scripts/source-bootstrap-smoke.sh",
       "scripts/source-fallback.sh",
     "scripts/string-conformance-smoke.sh",
-    "scripts/tcc-selection-smoke.sh",
-    "scripts/termbox-load-smoke.sh"
+      "scripts/tcc-selection-smoke.sh",
+      "scripts/termbox-load-smoke.sh",
+      "scripts/z3-archive-distribution-smoke.sh"
     ],
     "install_destinations": [
       "bin/birnam",
