@@ -12,7 +12,8 @@ export LC_ALL=C
 
 zig_output=$(mktemp "${TMPDIR:-/tmp}/birnam-resource-zig.XXXXXX")
 rust_output=$(mktemp "${TMPDIR:-/tmp}/birnam-resource-rust.XXXXXX")
-trap 'rm -f "$zig_output" "$rust_output"' EXIT
+sentinel=$(mktemp "${TMPDIR:-/tmp}/birnam-resource-sentinel.XXXXXX.dylib")
+trap 'rm -f "$zig_output" "$rust_output" "$sentinel"' EXIT
 
 zig test src/id/runtime_resources.zig -OReleaseSafe >"$zig_output" 2>&1
 grep -F '1/3 runtime_resources.test.runtime resources use one normalized executable-relative layout...OK' "$zig_output" >/dev/null
@@ -20,7 +21,9 @@ grep -F '2/3 runtime_resources.test.runtime resource overrides remain narrow and
 grep -F '3/3 runtime_resources.test.a lib override supplies the default id dylib...OK' "$zig_output" >/dev/null
 grep -F 'All 3 tests passed.' "$zig_output" >/dev/null
 
-cargo test -p birnam-host --lib --offline >"$rust_output"
+zig build-lib -dynamic -lc src/id/artifact_preflight_sentinel.zig -femit-bin="$sentinel"
+BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
+  cargo test -p birnam-host --lib --offline >"$rust_output"
 for test_name in \
   uses_one_normalized_executable_relative_layout \
   overrides_remain_narrow_and_exact \
