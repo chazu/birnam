@@ -504,6 +504,11 @@ impl ArtifactPreflight {
                 match error {
                     ArtifactPreflightError::IdentityMismatch { .. }
                     | ArtifactPreflightError::DependencyCycle { .. } => return Err(error),
+                    // A nested descriptor's kind is a structural contract
+                    // failure, not an unavailable dependency. Preserve the
+                    // Zig oracle's typed diagnostic instead of collapsing it
+                    // into the recursive dependency wrapper.
+                    ArtifactPreflightError::KindMismatch { .. } => return Err(error),
                     _ => {
                         return Err(ArtifactPreflightError::DependencyInvalid {
                             path: dependency_path,
@@ -8078,6 +8083,54 @@ mod tests {
         artifact_fixture_with_kind(b"module", identity, requires)
     }
 
+    fn decode_shared_fixture() -> Vec<(String, String, Vec<u8>)> {
+        include_str!("../../../src/id/artifact-preflight-v1.txt")
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    return None;
+                }
+                let (key, encoded) = line.split_once('|').expect("shared fixture row");
+                assert!(encoded.len() % 2 == 0, "shared fixture hex is even");
+                let bytes = (0..encoded.len())
+                    .step_by(2)
+                    .map(|index| {
+                        u8::from_str_radix(&encoded[index..index + 2], 16)
+                            .expect("shared fixture hex byte")
+                    })
+                    .collect();
+                let (case, filename) = key.split_once('/').expect("shared fixture path");
+                Some((case.to_owned(), filename.to_owned(), bytes))
+            })
+            .collect()
+    }
+
+    fn write_shared_case(root: &std::path::Path, case: &str) -> std::path::PathBuf {
+        std::fs::create_dir_all(root).expect("shared fixture directory creates");
+        let rows = decode_shared_fixture()
+            .into_iter()
+            .filter(|(name, _, _)| name == case)
+            .collect::<Vec<_>>();
+        assert!(!rows.is_empty(), "shared fixture case exists");
+        let mut root_path = None;
+        for (_, filename, mut bytes) in rows {
+            if case == "sentinel" && filename == "root.dylib" {
+                if let Ok(path) = std::env::var("BIRNAM_PREFLIGHT_SENTINEL_DYLIB") {
+                    let mut dylib = std::fs::read(path).expect("real sentinel dylib reads");
+                    dylib.extend_from_slice(&bytes);
+                    bytes = dylib;
+                }
+            }
+            let path = root.join(&filename);
+            std::fs::write(&path, bytes).expect("shared fixture writes");
+            if filename == "root.dylib" {
+                root_path = Some(path);
+            }
+        }
+        root_path.expect("shared fixture root")
+    }
+
     #[test]
     fn uses_one_normalized_executable_relative_layout() {
         let resources = resolve_from_exe_dir(Path::new("/opt/birnam/bin"), Overrides::default())
@@ -9398,5 +9451,82 @@ mod tests {
             b"prior-publication"
         );
         std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_shared_fixture_matrix_matches_zig_cases() {
+        let cases = [
+            "path-only-root",
+            "supplied-identity-mismatch",
+            "wrong-kind-before-walk",
+            "sibling-identity-mismatch",
+            "missing-sibling",
+            "ordered-valid-closure",
+            "sentinel",
+        ];
+        for case in cases {
+            let root = std::env::temp_dir().join(format!(
+                "birnam-host-shared-preflight-{case}-{}",
+                std::process::id()
+            ));
+            let root_path = write_shared_case(&root, case);
+            let existing_target = root.join("existing-target");
+            std::fs::write(&existing_target, b"prior-publication").expect("target writes");
+            let result = match case {
+                "path-only-root" => preflight_artifact(&root_path, None),
+                "supplied-identity-mismatch" => {
+                    preflight_artifact(&root_path, Some(b"expectedIdentity"))
+                }
+                "wrong-kind-before-walk" => preflight_artifact(&root_path, Some(b"candidate")),
+                "sibling-identity-mismatch" => preflight_artifact(&root_path, None),
+                "missing-sibling" => preflight_artifact(&root_path, None),
+                "ordered-valid-closure" => preflight_artifact(&root_path, Some(b"root")),
+                "sentinel" => preflight_artifact(&root_path, Some(b"sentinel")),
+                _ => unreachable!(),
+            };
+            match case {
+                "path-only-root" | "ordered-valid-closure" | "sentinel" => {
+                    let plan = result.expect("shared fixture valid case");
+                    let identities = plan
+                        .entries
+                        .iter()
+                        .map(|entry| entry.identity.as_slice())
+                        .collect::<Vec<_>>();
+                    let expected = match case {
+                        "path-only-root" => vec![b"actualIdentity".as_slice()],
+                        "ordered-valid-closure" => {
+                            vec![b"dependency".as_slice(), b"root".as_slice()]
+                        }
+                        "sentinel" => vec![b"sentinel".as_slice()],
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(identities, expected, "shared fixture plan drifted: {case}");
+                }
+                "supplied-identity-mismatch" | "sibling-identity-mismatch" => {
+                    assert!(matches!(
+                        result,
+                        Err(ArtifactPreflightError::IdentityMismatch { .. })
+                    ));
+                }
+                "wrong-kind-before-walk" => {
+                    assert!(matches!(
+                        result,
+                        Err(ArtifactPreflightError::KindMismatch { .. })
+                    ));
+                }
+                "missing-sibling" => {
+                    assert!(matches!(
+                        result,
+                        Err(ArtifactPreflightError::DependencyInvalid { .. })
+                    ));
+                    assert_eq!(
+                        std::fs::read(&existing_target).expect("target remains readable"),
+                        b"prior-publication"
+                    );
+                }
+                _ => unreachable!(),
+            }
+            std::fs::remove_dir_all(&root).expect("shared fixture directory removes");
+        }
     }
 }
