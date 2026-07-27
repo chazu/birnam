@@ -293,18 +293,36 @@ fn note_error(message: &[u8]) {
     }
 }
 
-unsafe fn note_syntax_error(api: &IdApi, lang: Oop) {
+unsafe fn note_syntax_error(api: &IdApi, lang: Oop, source_object: Oop) {
     let offset = unsafe { send0(api, lang, FURTHEST_FAIL_SELECTOR) };
     if unsafe { (api.isSmallInt)(offset) } == 0 {
         note_error(b"RustCodegen syntax error");
         return;
     }
-    let mut message = b"RustCodegen syntax error at byte ".to_vec();
-    message.extend_from_slice(
-        unsafe { (api.smallIntValue)(offset) }
-            .to_string()
-            .as_bytes(),
-    );
+    let source = unsafe { string_bytes(api, source_object) }.unwrap_or_default();
+    let raw_offset = unsafe { (api.smallIntValue)(offset) };
+    let clamped = raw_offset.clamp(0, source.len() as i64) as usize;
+    let line_start = source[..clamped]
+        .iter()
+        .rposition(|&byte| byte == b'\n')
+        .map_or(0, |index| index + 1);
+    let line = source[..clamped]
+        .iter()
+        .filter(|&&byte| byte == b'\n')
+        .count()
+        + 1;
+    let column = clamped - line_start + 1;
+    let line_end = source[clamped..]
+        .iter()
+        .position(|&byte| byte == b'\n')
+        .map_or(source.len(), |index| clamped + index);
+    let mut message = format!("{line}:{column}: syntax error\n").into_bytes();
+    message.extend_from_slice(&source[line_start..line_end]);
+    message.push(b'\n');
+    for &byte in &source[line_start..clamped] {
+        message.push(if byte == b'\t' { b'\t' } else { b' ' });
+    }
+    message.push(b'^');
     note_error(&message);
 }
 
@@ -3495,7 +3513,7 @@ unsafe fn emit_source(
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
     let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
-        unsafe { note_syntax_error(api, lang) };
+        unsafe { note_syntax_error(api, lang, source_object) };
         return None;
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;

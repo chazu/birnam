@@ -1133,7 +1133,7 @@ test "Rust Codegen publishes and clears a diagnostic" {
     try std.testing.expect(diagnostic != api.nilObj);
     var length: usize = 0;
     const bytes = api.stringBytes(diagnostic, &length);
-    try std.testing.expect(std.mem.indexOf(u8, bytes[0..length], "syntax error at byte") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes[0..length], "1:2: syntax error\n[\n ^") != null);
 
     const good_source = api.mkString("7", 1);
     const value = api.send(codegen, api.intern("eval:"), &.{good_source}, 1);
