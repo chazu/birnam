@@ -1,8 +1,9 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO; Z0 is R6-accepted and Z1 diagnostics are complete**
-(2026-07-27). Z1–Z3 authority/distribution changes remain gated on the
-explicit compatibility audit as specified below.
+Status: **reviewed GO; Z0 is R6-accepted, Z1 diagnostics are complete, and
+the strict compatibility audit is green** (2026-07-27). Z1–Z3
+authority/distribution changes remain gated on the explicit strict gate as
+specified below.
 
 Design 63 and Design 65 port the production dynamic rungs and the Rust host.
 This plan starts at that boundary. It covers the Zig code that remains after
@@ -27,12 +28,14 @@ unchanged. The scoped R6 gate is green at 173/173 build steps and 99/99 tests,
 with the Rust Alien boundary at 66/66 steps and 9/9 tests; the comparator
 admits only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
-The broad strict audit remains separate: the relocated all-migrated
-`test-native-rung-harness` install/docgen fixture now passes. The remaining
-strict failure is the compatibility-only pre-rewrite image fixture under the
-canonical Rust host (`LoadRejected`; the explicit Zig oracle leg reports
-`ImageLoadFailed`). That is evidence for the image-compatibility follow-up,
-not permission to widen R6 or weaken a contract.
+The broad strict audit remains separate from the default scoped invocation, but
+it is now green. The pre-rewrite image fixture runs through the explicit Zig
+oracle and Zig Image/Codegen rollback dylibs; stale compiled-unit authority is
+skipped for source recovery rather than rejecting the image. The strict command
+`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` reports `304/304`
+verify steps, `514/520` tests, and `6` skipped. This closes the compatibility
+follow-up without widening R6's benchmark allowance or changing a frozen
+contract.
 
 ### 1.1 Remaining Zig categories
 
@@ -215,17 +218,17 @@ the sequential live Rust Alien slice is `66/66` steps and `9/9` tests. The
 benchmark comparator reports no new regressions or missing cases and admits
 only the frozen `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
 crossings. The native-rung harness is now part of this accepted scoped graph;
-strict mode remains a separate compatibility audit at the pre-rewrite image
-fixture.
+strict mode is a separate compatibility audit whose pre-rewrite image fixture
+now passes through the explicit Zig oracle/rollback boundary.
 
 ### Z0 exit gate
 
 The checked-in graph/checker covers every repo-wide Zig file; every residue
 edge has an owner and disposition; digest/decoy/negative fixtures fail closed;
-the scoped R6 gate is green at `173/173` and `99/99`; and the worktree is
-clean. No helper has moved yet. The pre-rewrite image compatibility failure is
-recorded at Z0; Z1 diagnostic/observation work may proceed, but Z1 authority
-changes remain blocked until the explicit strict compatibility audit is green.
+the scoped R6 gate is green at `173/173` and `99/99`; the strict audit is green
+at `304/304`, `514/520`, and `6` skipped; and the worktree is clean. No helper
+has moved yet. Z1 diagnostic/observation work may proceed, and the strict
+snapshot is now the required baseline for Z1 authority changes.
 
 ### Z1.1 diagnostic checkpoint (2026-07-27)
 
@@ -476,11 +479,11 @@ recovery require it.
 | performance | existing R6 comparator; no unrecorded benchmark allowance |
 | strict audit | strict R6 passes before and after every Z1–Z3 authority/distribution change |
 
-The scoped gate remains `bash scripts/r6-acceptance.sh`; it now includes the
-optimized relocated native-rung harness and is not widened to hide the
-pre-rewrite image compatibility failure. Z0 and completed diagnostic Z1 work
-report that failure separately, but Z1/Z2/Z3 authority or distribution changes
-require `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
+The scoped gate remains `bash scripts/r6-acceptance.sh`; it includes the
+optimized relocated native-rung harness. The strict compatibility audit is
+green at the pinned `304/304`, `514/520`, `6`-skipped snapshot, and
+Z1/Z2/Z3 authority or distribution changes still require
+`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
 
 ## 9. Commit discipline and stop conditions
 

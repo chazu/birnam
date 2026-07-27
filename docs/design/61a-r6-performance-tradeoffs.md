@@ -506,3 +506,15 @@ with only the two frozen crossings above. Strict mode is still an explicit
 compatibility audit: its remaining failure is the pre-rewrite image fixture
 (`LoadRejected` on the canonical Rust host), not the relocated docgen or
 native-rung install path.
+
+The pre-rewrite compatibility audit was closed on 2026-07-27 in `4bcaa5d`.
+The Zig Image reader now skips stale compiled-unit records and recovers from
+source when the image authority generation is not current. The frozen fixture
+runner also selects the explicit Zig Codegen rollback dylib through both host
+lookup paths, so it does not accidentally load the canonical Rust Codegen
+while exercising the Zig oracle. The checked-in PEG source-corpus digest moved
+to `8cd4303f04fcff97` after the corpus reached 76 files. The strict summary
+pin was advanced in `13819ab`; `BIRNAM_R6_REQUIRE_VERIFY=1 bash
+scripts/r6-acceptance.sh` now passes with `304/304` verify steps, `514/520`
+tests, `6` skipped, and only `query.aggregate +5.8%` and
+`compile.stage1-stdlib +11.9%` accepted by the comparator.
