@@ -654,6 +654,38 @@ vector remain unchanged. This checkpoint records the exact hash before the
 Rust-TCC Alien suite, live loader/ABI corpus, and canonical Alien selection
 gates.
 
+### P2.9 Alien readiness receipt (2026-07-27)
+
+Candidate checkpoint: `ad7c27a`. The focused Alien matrix passed:
+
+```text
+Build Summary: 73/73 steps succeeded; 95/95 tests passed
+test-rust-tcc-alien success: 43 tests passed
+test-rust-alien-live success: 9 tests passed
+test-alien success: 43 tests passed with Rust selected
+test-distribution-selection success: production omits Zig; rollback is a complete Zig vector
+```
+
+The contract covers Rust-TCC scalar and aggregate Alien wrappers, callbacks,
+GC roots and release, loader ownership/unload refusal, hostile signature
+rejection, typed buffers, pointer/out-parameter handling, and the live ABI
+corpus. The canonical Rust Alien dylib exports exactly one `module_init`; the
+explicit Zig Alien rollback dylib remains a separate complete-vector authority.
+
+The exact-hash archive receipts pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Alien **retain-ready** for evidence purposes. The canonical
+Rust Alien provider, explicit Zig Alien oracle, and complete full-Zig rollback
+vector remain installed; no provider deletion, mixed-vector recovery, or
+benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
