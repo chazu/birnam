@@ -38,7 +38,7 @@ def function_region(lines: list[str], line: int) -> tuple[str, int, int]:
     return function, start, end
 
 
-def send_parts(lines: list[str], line: int) -> list[str]:
+def send_extent(lines: list[str], line: int) -> tuple[str, int, int, int, int]:
     source = "\n".join(lines) + "\n"
     offsets: list[int] = []
     offset = 0
@@ -62,6 +62,12 @@ def send_parts(lines: list[str], line: int) -> list[str]:
                 break
     if closing is None:
         fail(f"unterminated send callsite at line {line}")
+    closing_line = source.count("\n", 0, closing) + 1
+    return source, position, opening, closing_line, closing
+
+
+def send_parts(lines: list[str], line: int) -> list[str]:
+    source, _, opening, _, closing = send_extent(lines, line)
 
     parts: list[str] = []
     current = ""
@@ -111,6 +117,7 @@ def send_callsite(lines: list[str], line: int) -> dict[str, object]:
     selector_binding = normalize(parts[1])
     selector_literal = resolved_selector(lines, line, selector_binding)
     arity = int(parts[-1].rstrip("L")) if re.fullmatch(r"\d+L?", parts[-1]) else "dynamic"
+    behavior = observed_behavior(lines, line)
     return {
         "line": line,
         "function": function,
@@ -118,6 +125,106 @@ def send_callsite(lines: list[str], line: int) -> dict[str, object]:
         "selector_binding": selector_binding,
         "selector_literal": selector_literal,
         "arity": arity,
+        **behavior,
+    }
+
+
+def observed_behavior(lines: list[str], line: int) -> dict[str, object]:
+    source, position, _, closing_line, closing = send_extent(lines, line)
+    function, start, end = function_region(lines, line)
+    prefix = source[max(0, position - 240) : position]
+    binding = None
+    binding_matches = list(
+        re.finditer(
+            r"(?:let|const)\s+(?:mut\s+)?([A-Za-z0-9_]+)\s*=\s*unsafe\s*\{",
+            prefix,
+            flags=re.MULTILINE,
+        )
+    )
+    # A few recovery paths deliberately reassign an existing binding rather
+    # than introducing a new `let`. Capture those assignments as retained
+    # send results too, while keeping selector/helper assignments out of the
+    # result classification by requiring the unsafe block to start here.
+    binding_matches.extend(
+        re.finditer(
+            r"(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)\s*=\s*unsafe\s*\{",
+            prefix,
+            flags=re.MULTILINE,
+        )
+    )
+    for match in reversed(binding_matches):
+        tail = prefix[match.end() :]
+        if "}" not in tail:
+            binding = match.group(1)
+            break
+    condition = False
+    for match in re.finditer(r"\b(?:if|while)\s+unsafe\s*\{", prefix, re.MULTILINE):
+        tail = prefix[match.end() :]
+        if "}" not in tail:
+            condition = True
+            break
+    after = source[closing + 1 : closing + 160]
+    comparison = bool(re.match(r"\s*==", after))
+    returned = bool(
+        re.search(r"(?:Ok|Some|return)\s*\(\s*unsafe\s*\{[^}]*$", prefix)
+        or re.search(r"\|[^\n]*\|\s*unsafe\s*\{[^}]*$", prefix)
+    )
+    if binding is not None:
+        handling = f"bound:{binding}"
+    elif condition or comparison:
+        handling = "conditional"
+    elif returned:
+        handling = "returned"
+    else:
+        handling = "ignored"
+
+    post_lines: list[int] = []
+    post_snippets: list[str] = []
+    if binding is not None:
+        pattern = re.compile(rf"\b{re.escape(binding)}\b")
+        for index in range(closing_line, end + 1):
+            if index == line:
+                continue
+            line_text = lines[index - 1]
+            # A later retry/reassignment is another send call, not evidence
+            # that the first result was validated. Keep the callsite's own
+            # post-send branches and conversions only.
+            if any(marker in line_text for marker in SEND_MARKERS):
+                continue
+            if pattern.search(line_text):
+                post_lines.append(index)
+                post_snippets.append(re.sub(r"\s+", " ", line_text).strip())
+    pre_lines = [
+        re.sub(r"\s+", " ", lines[index - 1]).strip()
+        for index in range(max(start + 1, line - 3), line)
+        if lines[index - 1].strip()
+    ]
+    pre_evidence = " | ".join(pre_lines[-2:]) or "function entry"
+    if handling == "ignored":
+        post_evidence = "return ignored at this callsite"
+    elif handling == "conditional":
+        post_evidence = "send result is the enclosing condition"
+    elif handling == "returned":
+        post_evidence = "send result returned to the enclosing caller or closure"
+    elif post_snippets:
+        post_evidence = " | ".join(
+            f"line {number}: {snippet}" for number, snippet in zip(post_lines[:4], post_snippets[:4])
+        )
+    else:
+        post_evidence = f"bound as {binding}; no later branch in {function}"
+    return {
+        "send_result": {
+            "handling": handling,
+            "binding": binding,
+            "post_use_lines": post_lines[:4],
+            "post_use_snippets": post_snippets[:4],
+        },
+        "pre_post_send_branches": f"pre: {pre_evidence}; post: {post_evidence}",
+        "retained_validation": (
+            f"observed {handling}; {post_evidence}"
+            if handling != "ignored"
+            else "observed ignored return; no validation at this callsite"
+        ),
     }
 
 
@@ -131,6 +238,48 @@ def send_surface(lines: list[str], callsites: list[int]) -> str:
         )
     payload = ("\n".join(details) + "\n").encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def verify_definition(owner: str, path: Path, selector: str, line: int) -> None:
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    if owner.startswith("native-birnam:"):
+        pattern = rf"Reflect\s+defineMethod:\s*#" + re.escape(selector) + r"(?=\s|$)"
+        if not re.search(pattern, text):
+            fail(
+                f"send callsite row {line} native Birnam definition does not register "
+                f"#{selector} with Reflect: {path}"
+            )
+        return
+    if not (owner.startswith("rust-dynamic:") or owner.startswith("id-runtime:")):
+        fail(f"send callsite row {line} has unknown owner kind {owner!r}")
+    escaped = re.escape(selector)
+    direct = re.search(
+        rf"\([^)]*\.method\).*?intern\([^)]*b\"{escaped}\\0\"\)",
+        text,
+        flags=re.DOTALL,
+    )
+    if direct:
+        return
+    constants = re.findall(
+        rf"const\s+([A-Z0-9_]+):[^=]+ = b\"{escaped}\\0\"", text
+    )
+    if any(
+        re.search(rf"\([^)]*\.method\).*?intern\([^)]*\b{re.escape(name)}\b", text, re.DOTALL)
+        for name in constants
+    ):
+        return
+    if owner.startswith("id-runtime:") and re.search(
+        rf"b\"{escaped}\\0\"|b\"{escaped}\"", text
+    ) and re.search(rf"selectors\.[A-Za-z0-9_]+.*?{escaped.replace('\\', '')}", text, re.DOTALL):
+        return
+    if re.search(rf"\(b\"{escaped}\\0\",\s*[A-Za-z_][A-Za-z0-9_]*\)", text) and re.search(
+        r"\([^)]*\.method\)", text
+    ):
+        return
+    fail(
+        f"send callsite row {line} Rust definition does not register "
+        f"{selector!r} through api.method: {path}"
+    )
 
 
 def main() -> None:
@@ -217,6 +366,7 @@ def main() -> None:
         "selector_binding",
         "selector_literal",
         "arity",
+        "send_result",
         "actual_owner",
         "native_definition",
         "effect_class",
@@ -244,6 +394,9 @@ def main() -> None:
             "selector_binding",
             "selector_literal",
             "arity",
+            "send_result",
+            "pre_post_send_branches",
+            "retained_validation",
         ):
             if row[field] != actual[field]:
                 fail(
@@ -273,10 +426,23 @@ def main() -> None:
         definition_path = REPO / path
         if not definition_path.is_file():
             fail(f"send callsite row {line} native definition path does not exist: {path}")
-        if not selector.startswith("dynamic:") and selector not in definition_path.read_text(
-            encoding="utf-8", errors="ignore"
-        ):
-            fail(f"send callsite row {line} native definition does not contain {selector!r}")
+        if not selector.startswith("dynamic:"):
+            verify_definition(
+                row["actual_owner"], definition_path, selector, line
+            )
+        reference = row.get("reference_definition")
+        if reference is not None:
+            if not isinstance(reference, dict):
+                fail(f"send callsite row {line} reference_definition is not an object")
+            reference_path = reference.get("path")
+            reference_selector = reference.get("selector")
+            if not isinstance(reference_path, str) or not isinstance(reference_selector, str):
+                fail(f"send callsite row {line} reference_definition is incomplete")
+            reference_file = REPO / reference_path
+            if not reference_file.is_file() or reference_selector not in reference_file.read_text(
+                encoding="utf-8", errors="ignore"
+            ):
+                fail(f"send callsite row {line} Zig oracle reference is stale")
     if row_lines != set(actual_calls):
         fail(
             "send callsite review coverage drifted; "
