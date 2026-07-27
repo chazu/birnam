@@ -286,6 +286,21 @@ pre-rewrite-image strict prerequisite that originally gated Z1.3 is now
 satisfied by `4bcaa5d` and `13819ab`; the remaining Z1.3 work is test/docs-only
 parity closure until a separately diagnosed ownership or behavior gap exists.
 
+The parity closure then found and fixed one typed-diagnostic drift. A missing
+Rust sibling previously surfaced as `artifactUnavailable`, while the Zig
+oracle's preflight contract is `artifactDependencyInvalid`; `26290af` pinned
+the red case and `7796f2e` normalized only that recursive dependency error.
+`c4ee447` expands the shared-byte Rust corpus to ten focused cases: the seven
+Zig behaviors (path-only root, supplied identity mismatch, wrong kind before
+walk, sibling identity mismatch, missing sibling, ordered valid closure, and
+inert abort-sentinel bytes) plus malformed bytes, duplicate descriptors, path
+escape, and missing native requirements. The corpus passes in Debug and
+ReleaseSafe/release; the valid path returns an ordered permission plan and no
+activation call. `752e948` adds a frozen-image regression that changes the
+image/code generation authority together and proves stale code is not mapped
+(`mappedCode == false`) until recorded source replay is requested. No provider,
+schema, activation, Store, or MOP authority changed in this closure.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
@@ -367,9 +382,11 @@ review identifies a concrete gap.
 
 From a clean archive and unrelated cwd, Rust host project/check/build/run/
 install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
-and Zig oracle negative corpora agree; the MOP/policy fixture remains
-single-owned; source-free relocation and strict path checks pass. The Zig
-oracle still builds explicitly.
+and Zig oracle negative corpora must agree on the typed matrix; the MOP/policy
+fixture remains single-owned; source-free relocation and strict path checks
+pass. The Zig oracle still builds explicitly. Z1 remains open until this
+cross-floor matrix is exercised from a clean archive/relocated prefix and the
+strict gate is rerun after the closure commits.
 
 ## 5. Phase Z2 — native-Birnam policy closure
 
