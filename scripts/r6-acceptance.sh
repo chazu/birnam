@@ -6,10 +6,9 @@
 # latest Rust-Lang replacement gates pass, that the committed, noise-qualified
 # Zig/Rust pair is unchanged, and that its only threshold crossings are the
 # two tradeoffs accepted for the Rust-floor cutover. R6 is scoped to the
-# replacement matrix below; the all-production install harness and broad host
-# integration graph are tracked continuation work and are not silently treated
-# as passed. Any changed result, functional failure, or additional regression
-# fails closed.
+# replacement matrix below; strict mode additionally audits the all-production
+# install harness and broad host integration graph. Any changed result,
+# functional failure, or additional regression fails closed.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -425,11 +424,10 @@ grep -Eq '^\+- run test 9 passed ' "$live" || {
   exit 1
 }
 
-# The complete cross-layer verify graph includes the failing production
-# install/docgen harness and currently exposes additional Rust-host integration
-# failures. Keep it available as an explicit continuation check rather than
-# allowing R6 to report a false green. Set BIRNAM_R6_REQUIRE_VERIFY=1 when the
-# full graph is required for a local audit.
+# The complete cross-layer verify graph is an explicit strict audit. It now
+# passes at the pinned accepted snapshot, including the production install,
+# docgen, parity, and relocated-host checks. Keep it opt-in so the scoped gate
+# remains fast; set BIRNAM_R6_REQUIRE_VERIFY=1 when the full graph is required.
 if [[ ${BIRNAM_R6_REQUIRE_VERIFY:-0} == 1 ]]; then
   verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
   trap 'rm -f "$functional" "$live" "$verify"' EXIT
@@ -450,7 +448,7 @@ if [[ ${BIRNAM_R6_REQUIRE_VERIFY:-0} == 1 ]]; then
     exit 1
   }
 else
-  echo "r6-acceptance: full cross-layer verify deferred (set BIRNAM_R6_REQUIRE_VERIFY=1 to require it)"
+  echo "r6-acceptance: full cross-layer verify not requested (set BIRNAM_R6_REQUIRE_VERIFY=1 to require it)"
 fi
 
 zig_result="bench/results/v0.11.0-zig-2fe44d2-c8b632e8882358672a0de5a24897a735c09af2f080cb1aea55510e021fc3d6b1.json"
