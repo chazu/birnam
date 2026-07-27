@@ -203,6 +203,16 @@ Rust host runs the complete source-backed suite: `346 passed, 0 failed`.
 The bounded slice is diagnostic/negative evidence only; it does not move a
 helper or alter canonical provider selection.
 
+### Post-Z0.2 R6 checkpoint (2026-07-27)
+
+The current scoped gate was rerun after the boundary fixture and policy-test
+changes. It remains green at `171/171` focused build steps and `99/99` tests;
+the sequential live Rust Alien slice is `66/66` steps and `9/9` tests. The
+benchmark comparator reports no new regressions or missing cases and admits
+only the frozen `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
+crossings. Strict mode remains separately deferred at the known relocated
+docgen `tag:body:` boundary.
+
 ### Z0 exit gate
 
 The checked-in graph/checker covers every repo-wide Zig file; every residue
