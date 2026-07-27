@@ -3,8 +3,9 @@
 Status: execution in progress. C0/C1, the Rust Image authority slice, C2 host
 integration, clean bootstrap/prefix evidence, and the canonical Rust Codegen
 switch are landed. The scoped Rust replacement gate is accepted; packaged
-distribution receipts, the release/rollback observation window, and the
-remaining C3/C4 disposition work remain ahead.
+distribution receipts and the release/rollback observation window are landed;
+remaining C4 disposition work and the separate strict full-verify audit remain
+ahead.
 
 ## 1. Outcome and scope
 
@@ -406,6 +407,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   scoped R6 rerun all pass after the switch (`171/171` build steps, `99/99`
   tests, Rust Alien `66/66` plus `9/9`, and only the recorded benchmark
   crossings `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`).
+- The C3 packaged-distribution smoke builds independent Rust-canonical and
+  Zig-rollback ReleaseSafe prefixes, runs the relocated install smoke, traces
+  the actual `dlopen` path, and emits digest-bearing receipts. Both prefixes
+  load their canonical Codegen path; the Rust receipt records the Rust
+  canonical/fixture digest plus the explicit Zig rollback digest, and the Zig
+  receipt records the inverse rollback pair.
 
 ## 7. Phase C2 — image and host integration
 
@@ -446,10 +453,13 @@ C2.1 Image authority checkpoint (2026-07-26):
    a packaged distribution whose `bin/birnam` actually loads Rust Codegen.
    Verify the canonical Rust Codegen digest and the explicit Zig rollback
    digest in every receipt. No benchmark allowance is admitted without a
-   dated, named comparator decision.
+   dated, named comparator decision. **Completed by
+   `test-rust-codegen-distribution`.**
 4. Observe one clean Rust-Codegen release/rollback cycle before changing
-   distribution defaults. A distribution containing only Zig Codegen is not
-   evidence for this plan. Do not delete Zig source or fixtures in this phase.
+   distribution defaults. **Completed by the paired Rust/Zig prefixes in
+   `test-rust-codegen-distribution`.** A distribution containing only Zig
+   Codegen is not evidence for this plan. Do not delete Zig source or fixtures
+   in this phase.
 
 ## 9. Phase C4 — host/helper disposition
 
