@@ -2,8 +2,8 @@
 
 Status: execution in progress. C0/C1 and the Rust Image authority slice are
 landed; the scoped Rust replacement gate is accepted. C2 host integration is
-partly green, with the full Rust-host REPL semantic suite still continuation
-work before the canonical Codegen switch.
+green through the full Rust-host REPL semantic suite; clean bootstrap/prefix
+evidence and the canonical Codegen switch remain ahead.
 
 ## 1. Outcome and scope
 
@@ -379,6 +379,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   workers. It also repairs Rust-host receiver/vtable termination and the
   narrow worker fallback. The focused R6 gate remains unchanged at `99/99`
   tests and `171/171` steps, with the two recorded benchmark crossings only.
+- Commit `33e5d38` closes the remaining Rust-host semantic gaps: revision names
+  are interned from NUL-terminated buffers, rollback validates the effective
+  inherited operation ledger (including untouched predecessors), and the Rust
+  source adapter preserves the late-bound `defineMethod:on:as:doc:` hook. The
+  complete Rust-host `test-repl` suite now passes `343/343` tests; the focused
+  Rust Codegen runtime and workspace Cargo suites remain green.
 
 ## 7. Phase C2 — image and host integration
 
