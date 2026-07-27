@@ -1840,6 +1840,63 @@ unsafe extern "C" fn rust_codegen_module_source_for(
     api.nilObj
 }
 
+/// Register source exported by a successfully loaded Rust artifact.
+///
+/// Artifact mode installs precompiled method trampolines directly through the
+/// generated ABI, so it does not pass through `recordModuleSource:named:`.
+/// Preserve the same durable source projection by admitting the validated
+/// source bytes only after the artifact initializer/entry point succeeds.
+unsafe fn register_artifact_source(
+    api: &IdApi,
+    identity: &[u8],
+    expected_digest: &[u8],
+    source: &[u8],
+) -> bool {
+    if sha256_hex(source).as_slice() != expected_digest {
+        note_error(b"RustCodegen artifact source digest is incompatible");
+        return false;
+    }
+    // Only module-bearing artifacts contribute to the durable source
+    // projection. Image generations and other ad-hoc compile outputs carry
+    // the same source export for diagnostics, but deliberately have no
+    // revision identity and must not collide with an earlier path-derived
+    // artifact entry.
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let name = unsafe { intern_bytes(api, identity) };
+    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, source_object) }) else {
+        return true;
+    };
+    if metadata.name != identity {
+        note_error(b"RustCodegen artifact source identity is incompatible");
+        return false;
+    }
+    let Ok(mut modules) = MODULE_SOURCES.lock() else {
+        note_error(b"RustCodegen module source registry is unavailable");
+        return false;
+    };
+    if let Some(&(_, existing_source)) = modules.iter().find(|&&(existing_name, _)| {
+        unsafe { symbol_bytes(api, existing_name as Oop) }
+            .as_deref()
+            .is_some_and(|existing_name| existing_name == identity)
+    }) {
+        if unsafe { string_bytes(api, existing_source as Oop) }.as_deref() == Some(source) {
+            return true;
+        }
+        note_error(b"RustCodegen duplicate module source");
+        return false;
+    }
+    modules.push((name as usize, source_object as usize));
+    true
+}
+
 unsafe extern "C" fn rust_codegen_seal_initial_generation(
     _self_object: Oop,
     pointer: *const Oop,
@@ -6138,6 +6195,25 @@ unsafe extern "C" fn rust_codegen_load(
     // and Method ABI entry point.
     let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
     let entry: Method = unsafe { core::mem::transmute(entry_symbol) };
+    let artifact_source = {
+        let source_symbol = unsafe { (api.dlsym)(handle, c"__birnam_artifact_source".as_ptr()) };
+        let source_len_symbol =
+            unsafe { (api.dlsym)(handle, c"__birnam_artifact_source_len".as_ptr()) };
+        if source_symbol.is_null() && source_len_symbol.is_null() {
+            None
+        } else if source_symbol.is_null() || source_len_symbol.is_null() {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact source export is incomplete",
+                )
+            };
+        } else {
+            let source_len = unsafe { *(source_len_symbol.cast::<usize>()) };
+            Some(unsafe { core::slice::from_raw_parts(source_symbol.cast::<u8>(), source_len) })
+        }
+    };
     if IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire) {
         unsafe { dlclose(handle) };
         return api.trueObj;
@@ -6146,7 +6222,27 @@ unsafe extern "C" fn rust_codegen_load(
     if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
         handles.push(handle as usize);
     }
-    unsafe { entry(api.nilObj, ptr::null(), 0) }
+    let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let is_error = !error_vt.is_null()
+        && error_vt != api.nilObj
+        && unsafe { (api.vtableOf)(result) } == error_vt;
+    if result == api.nilObj || is_error {
+        return result;
+    }
+    if let Some(source) = artifact_source {
+        if !unsafe {
+            register_artifact_source(
+                api,
+                parsed_descriptor.identity,
+                parsed_descriptor.source_digest,
+                source,
+            )
+        } {
+            return api.nilObj;
+        }
+    }
+    result
 }
 
 unsafe extern "C" fn rust_codegen_load_host_capability(
