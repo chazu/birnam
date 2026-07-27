@@ -400,6 +400,14 @@ TCC, explicit `libbirnam_id_tcc_zig.dylib` oracle, and complete-vector rollback
 remain installed; no provider deletion, mixed-vector recovery, or benchmark
 allowance change is authorized by this receipt.
 
+### P2.3 Codegen candidate checkpoint
+
+The Codegen candidate is evidence-only: Rust Codegen is already the canonical
+provider, while the canonical Zig Codegen implementation and its complete
+rollback vector remain unchanged. This checkpoint records the exact hash before
+the Codegen runtime, canonical, stack, Zig-store, selection-refusal,
+distribution, and authority gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
