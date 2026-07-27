@@ -1,9 +1,8 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO for the residue map, authority boundaries, and Z1/Z2.0
-closure; Z0 and the Z1/Z2 strict/archive evidence are accepted** (2026-07-27).
-Z3 was reopened by the adversarial review recorded below and remains gated on
-the hardened strict gate and a follow-up review.
+Status: **reviewed GO for the residue map, authority boundaries, Z1/Z2.0,
+and Z3 closure; Z0 and the Z1/Z2/Z3 strict/archive evidence are accepted**
+(2026-07-27).
 
 Design 63 and Design 65 port the production dynamic rungs and the Rust host.
 This plan starts at that boundary. It covers the Zig code that remains after
@@ -656,7 +655,8 @@ generated-C, old-client, and release-bundle fixture legs on these prefixes.
 Commit `d2045de` extends the archive smoke across all three prefixes. Each
 clean production/rollback archive runs source evaluation, Rust-host or
 Zig-host project check/build/run/install/test, LSP, image save, Isolate wire
-fixtures, and a separate-process Rust-TCC generated-C artifact activation.
+fixtures, and a separate-process activation using the selected canonical TCC
+provider.
 The accepted receipt is:
 
 ```text
@@ -794,8 +794,20 @@ r6-acceptance: PASS
 The hardened Z3 execution gate is now green: the strict invocation itself
 executes the distribution-selection and clean-archive targets after optimized
 verify, and the archive receipt includes both independent Rust production
-prefixes plus the full-Zig rollback prefix. Z3 closure still awaits the
-follow-up adversarial review below.
+prefixes plus the full-Zig rollback prefix.
+
+### Z3.12 adversarial review — closure (2026-07-27)
+
+The final adversarial review returned **GO** for Z3 closure at commit
+`23b2c6b`. It found no remaining invariant, authority, ABI/image/wire,
+rollback, archive, receipt, confinement, stale-recovery, or strict-gate
+blocker. The review confirmed that production uses Rust host/Image/Codegen
+providers, rollback uses the complete canonical Zig vector including Zig TCC,
+all traced Birnam dylibs are confined to their selected prefix or bundle, and
+strict R6 reports `305/305` verify steps, `516/522` tests, six documented
+skips, and only the two pinned benchmark regressions. A non-blocking note is
+that the load-trace parser assumes paths without spaces; generated prefixes
+currently satisfy that constraint.
 
 ## 7. Phase Z4 — rung fixture retirement decisions
 
