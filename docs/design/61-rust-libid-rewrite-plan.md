@@ -1,8 +1,9 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Status:** R0 through R7 are complete as of 2026-07-23. The Rust floor is the
-> verified default, the Zig oracle remains available, and the R8 observation
-> window/retirement checkpoint is pending. This plan
+> verified default, the post-cutover R8 observation checkpoint is complete as
+> of 2026-07-27, and the Zig oracle remains deliberately retained for a later,
+> separately reviewed retirement decision. This plan
 > replaces the
 > implementation of
 > `libbirnam_id.dylib` with Rust while preserving the current
@@ -2227,10 +2228,39 @@ checkpoint. R8 retirement may begin only after one of these is recorded:
    exercised workloads, Rust-floor regressions (including none), and final
    dual-floor comparison evidence.
 
-Until then the five retirement steps above are deliberately blocked. Ordinary
-development continues on the Rust floor; any floor defect must add a
+Ordinary development continues on the Rust floor; any floor defect must add a
 language-neutral regression and run it against the Zig oracle before the fix is
 accepted.
+
+### R8.1 — Post-cutover observation checkpoint, 2026-07-27
+
+The named equivalent observation window runs from the R7 cutover baseline
+(`ed47556`, 2026-07-23) through the current descendant (`d985cd4`, 2026-07-27).
+It exercises the required release and rollback workloads:
+
+- the strict Rust-default `BIRNAM_R6_REQUIRE_VERIFY=1 bash
+  scripts/r6-acceptance.sh` graph (`305/305` verify steps, `516/522` tests,
+  six skips, the two recorded benchmark crossings only, and strict Z3
+  production/rollback receipts);
+- two independent fixture-free Rust cold-compiler archives, the relocated
+  project/LSP/source bootstrap matrix, and Rust production versus explicit Zig
+  rollback floor identities; and
+- a ReleaseSafe `scripts/dist.sh` descendant bundle whose relocated
+  `install-smoke` passes compiled closure, tools, projects, images, isolates,
+  and diagnostics. The production bundle rejects `_zig` libraries and the
+  staged `bin/birnam` loads the Rust canonical floor.
+
+No Rust-floor regression was observed during this window. The final dual-floor
+comparison remains explicit: Rust is the ordinary installed owner, while the
+Zig floor and named rollback dylibs still boot the same fixtures under the
+source-bootstrap matrix. This satisfies the observation checkpoint without
+silently converting a release smoke into a source-deletion authorization.
+
+The retirement decision is therefore intentionally separate and conservative:
+keep `src/id/id.zig`, `idapi.zig`, the Zig floor dylib, and frozen compatibility
+fixtures until a later reviewed commit supplies replacement recovery evidence
+for every remaining Zig higher rung. No rollback path is reconstructed from
+Git history, and no dynamic boundary or ABI/image/wire contract is changed.
 
 Git history is the implementation archive. Do not keep a dead second floor in
 the production tree indefinitely.
@@ -2386,8 +2416,11 @@ may dominate; phase gates take precedence over either estimate.
 - [x] Default cutover is isolated from Zig retirement.
 - [x] Developer Zig-floor rebuild and previous-release rollback are both tested
       and documented without assuming an unshipped oracle.
-- [ ] One observation checkpoint completes before the Zig floor is deleted.
+- [x] One named post-cutover observation checkpoint completes; Zig-floor
+      retirement remains a separate reviewed decision and the rollback fixture
+      is retained.
 - [x] Cold bootstrap passes with frozen ABI/image fixtures unavailable and Cargo
       operating `--locked --offline`.
-- [x] Design 61 records the complete cutover evidence; R8 retirement remains a
-      later checkpoint.
+- [x] Design 61 records the complete cutover and post-cutover observation
+      evidence; Zig-floor retirement remains a later, separately reviewed
+      decision.
