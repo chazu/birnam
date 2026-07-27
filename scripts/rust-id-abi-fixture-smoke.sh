@@ -23,6 +23,7 @@ probe_profile() {
   digest=$(shasum -a 256 "$dylib" | awk '{print $1}')
   BIRNAM_BIN="$bin" \
     BIRNAM_IMAGE_DYLIB="${BIRNAM_IMAGE_DYLIB:-$lib_dir/libbirnam_id_image_zig.dylib}" \
+    BIRNAM_CODEGEN_DYLIB="${BIRNAM_CODEGEN_DYLIB:-$lib_dir/libbirnam_id_codegen_zig.dylib}" \
     BIRNAM_ID_DYLIB="$dylib" \
     BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 \
     BIRNAM_ID_FLOOR_SHA256="$digest" \

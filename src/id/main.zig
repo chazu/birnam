@@ -1184,12 +1184,15 @@ fn loadStack(a: std.mem.Allocator, api: *IdApi) !void {
     defer a.free(lib_dir);
     const store_override = std.posix.getenv("BIRNAM_STORE_DYLIB");
     const tcc_override = std.posix.getenv("BIRNAM_TCC_DYLIB");
+    const codegen_override = std.posix.getenv("BIRNAM_CODEGEN_DYLIB");
     const image_override = std.posix.getenv("BIRNAM_IMAGE_DYLIB");
     for (script_modules) |m| {
         const ps = if (store_override != null and std.mem.eql(u8, m, "libbirnam_store"))
             try a.dupe(u8, store_override.?)
         else if (tcc_override != null and std.mem.eql(u8, m, "libbirnam_id_tcc"))
             try a.dupe(u8, tcc_override.?)
+        else if (codegen_override != null and std.mem.eql(u8, m, "libbirnam_id_codegen"))
+            try a.dupe(u8, codegen_override.?)
         else if (image_override != null and std.mem.eql(u8, m, "libbirnam_id_image"))
             try a.dupe(u8, image_override.?)
         else
@@ -2357,9 +2360,13 @@ var host_isolate_shutdown: ?IsolateShutdownFn = null;
 
 fn resolveHostPhaseFunctions(a: std.mem.Allocator, api: *IdApi) !void {
     if (host_enter_running != null) return;
-    const dir = try resolveLibDir(a);
-    defer a.free(dir);
-    const path = try std.fs.path.join(a, &.{ dir, "libbirnam_id_codegen.dylib" });
+    const path = if (std.posix.getenv("BIRNAM_CODEGEN_DYLIB")) |override| blk: {
+        break :blk try a.dupe(u8, override);
+    } else blk: {
+        const dir = try resolveLibDir(a);
+        defer a.free(dir);
+        break :blk try std.fs.path.join(a, &.{ dir, "libbirnam_id_codegen.dylib" });
+    };
     defer a.free(path);
     const path_z = try a.dupeZ(u8, path);
     defer a.free(path_z);

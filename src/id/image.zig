@@ -1183,8 +1183,11 @@ pub fn loadImage(path: []const u8) bool {
         const derived = g_api.send(cg, g_api.intern("deriveImageMethodTargets"), &[_]Oop{}, 0);
         if (derived == null or derived == g_api.nilObj or
             (g_api.isExported("ErrorVt") != 0 and g_api.vtableOf(derived) == g_api.import("ErrorVt"))) return false;
-        for (code_records.items) |payload|
-            if (!loadedGenerationMatchesAuthority() or !loadCode(payload)) return false;
+        if (loadedGenerationMatchesAuthority()) {
+            for (code_records.items) |payload| {
+                if (!loadCode(payload)) return false;
+            }
+        }
     }
     return true;
 }

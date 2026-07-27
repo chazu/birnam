@@ -1602,7 +1602,7 @@ pub fn build(b: *std.Build) void {
         []const u8,
         "peg-source-digest",
         "Expected whole-source-corpus digest for the explicitly selected PEG dylib",
-    ) orelse "1b00447e7eb89af7";
+    ) orelse "8cd4303f04fcff97";
     run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_RUST_PEG_DYLIB", source_parity_peg_dylib);
     run_rust_peg_source_corpus.setEnvironmentVariable("BIRNAM_RUST_PEG_SOURCE_DIGEST", source_parity_digest);
     run_rust_peg_source_corpus.step.dependOn(bootstrap_install);
