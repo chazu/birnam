@@ -97,10 +97,39 @@ trace_prefix() {
   esac
 }
 
+exercise_prefix() {
+  local label=$1
+  local source=$2
+  local prefix=$3
+  local host_impl=$4
+  local libdir="$prefix/lib"
+
+  BIRNAM_LIB_DIR="$libdir" "$prefix/bin/birnam" "$source/bench/nil.birnam" >/dev/null
+  BIRNAM_BIN="$prefix/bin/birnam" \
+    BIRNAM_HOST_IMPL="$host_impl" \
+    bash "$source/scripts/project-check-smoke.sh" >/dev/null
+  BIRNAM_BIN="$prefix/bin/birnam" \
+    bash "$source/scripts/lsp-project-smoke.sh" >/dev/null
+  (
+    cd "$source"
+    BIRNAM_BIN="$prefix/bin/birnam" bash scripts/isolate-smoke.sh >/dev/null
+    BIRNAM_BIN="$prefix/bin/birnam" \
+      BIRNAM_LIB_DIR="$libdir" \
+      bash scripts/image-save-smoke.sh >/dev/null
+  )
+  BIRNAM_BIN="$prefix/bin/birnam" \
+    BIRNAM_LIB_DIR="$libdir" \
+    BIRNAM_RUST_TCC_DYLIB="$libdir/libbirnam_id_tcc_rust.dylib" \
+    bash "$source/scripts/rust-tcc-artifact-smoke.sh" >/dev/null
+  echo "z3-archive: $label source/project/lsp/image/wire/generated-C fixtures=ok"
+}
+
 production_a=$(build_production production-a)
 production_b=$(build_production production-b)
 trace_prefix production-a "$production_a"
 trace_prefix production-b "$production_b"
+exercise_prefix production-a "$scratch/production-a/source" "$production_a" rust
+exercise_prefix production-b "$scratch/production-b/source" "$production_b" rust
 
 rollback_source="$scratch/rollback/source"
 archive_source rollback >/dev/null
@@ -116,5 +145,6 @@ mkdir -p "$scratch/rollback"
     >"$scratch/rollback/receipt.jsonl"
 )
 trace_prefix rollback "$rollback_prefix"
+exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
 
 echo "z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok"
