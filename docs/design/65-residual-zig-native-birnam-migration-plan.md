@@ -413,6 +413,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   load their canonical Codegen path; the Rust receipt records the Rust
   canonical/fixture digest plus the explicit Zig rollback digest, and the Zig
   receipt records the inverse rollback pair.
+- A fresh strict audit on 2026-07-27 reran the complete `171/171` focused
+  matrix and `66/66` plus `9/9` Alien matrix, then failed only in the broader
+  all-migrated `test-native-rung-harness` install path. Its relocated docgen
+  fixture still lacks the expected `tag:body:` registration. This remains a
+  strict-audit blocker and is intentionally not admitted into the scoped R6
+  replacement gate.
 
 ## 7. Phase C2 — image and host integration
 
