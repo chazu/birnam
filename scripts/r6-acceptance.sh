@@ -69,8 +69,9 @@ latest_tests=(
 # Image publication, publication-authority rejection, both Image cross-floor
 # directions, the Zig-Store cross-floor cell, and fail-closed
 # duplicate/truncated Image-record coverage, plus the Rust Codegen contract and
-# pure-emitter parity checks, the gated canonical publication probe, and the
-# Rust Codegen adapter candidate probe: the focused matrix is 97 tests;
+# pure-emitter parity checks, the retained-module-source collection check, the
+# gated canonical publication probe, and the Rust Codegen adapter candidate
+# probe: the focused matrix is 97 tests;
 # the mixed dynamic Rust Image shell remains 2 passing tests, and each isolated
 # Image proof runs as one test process. The publication change is
 # explicit-authority-only; no benchmark or fixture exception is widened here.

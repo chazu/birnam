@@ -341,6 +341,10 @@ C2.1 Image authority checkpoint (2026-07-26):
 - The post-`c1890f6` rerun still passes this exact scoped boundary; the changed
   failure location is recorded as C2 host-integration work rather than folded
   into the R6 acceptance claim.
+- The post-`45c2282` rerun also passes unchanged after Rust Codegen began
+  retaining validated artifact module sources. The focused runtime/image tests
+  therefore cover source recovery without widening R6 over the unresolved
+  Rust-host docgen path.
 - The latest broad Rust-host run still exposes unresolved C2 integration work
   in `test-lsp-project`, `test-source-fallback`, `test-repl`,
   `test-isolate-process`, `test-project-check`, and `test-install`. Those
