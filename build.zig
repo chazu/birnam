@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
         CodegenImpl,
         "codegen-impl",
         "Codegen implementation installed as canonical libbirnam_id_codegen.dylib (zig or rust)",
-    ) orelse .zig;
+    ) orelse .rust;
     const TccImpl = enum { zig, rust };
     const selected_tcc = b.option(
         TccImpl,
