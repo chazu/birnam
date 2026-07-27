@@ -771,6 +771,32 @@ z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
 The strict gate is still pending this hardened execution record and its
 follow-up review.
 
+### Z3.11 execution record — hardened strict R6 acceptance (2026-07-27)
+
+The first post-hardening strict run reached the existing verify graph but
+exposed a real artifact-install ordering race: the selected Zig artifact
+checker could start before its explicit `_zig` receipt path was copied. Commit
+`9472c96` makes that fixture install a direct prerequisite of the selected
+artifact step; the targeted `native-rung-harness.sh --rung=artifact-inspector=zig`
+then passed.
+
+The clean rerun passed:
+
+```text
+mise exec -- env BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
+Build Summary: 305/305 steps succeeded; 516/522 tests passed; 6 skipped
+distribution-selection: production omits Zig; rollback is a complete Zig vector
+test-z3-archive-distribution success
+r6-acceptance: PASS
+  accepted only for this snapshot: query.aggregate +5.8%, compile.stage1-stdlib +11.9%
+```
+
+The hardened Z3 execution gate is now green: the strict invocation itself
+executes the distribution-selection and clean-archive targets after optimized
+verify, and the archive receipt includes both independent Rust production
+prefixes plus the full-Zig rollback prefix. Z3 closure still awaits the
+follow-up adversarial review below.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
