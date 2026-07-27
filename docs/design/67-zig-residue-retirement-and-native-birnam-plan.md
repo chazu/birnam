@@ -280,6 +280,7 @@ compiler command passed both independent archives with these stable receipts:
 rust-cold-compiler: cycle-a archive passed
 rust-cold-compiler: cycle-b archive passed
 rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
 ```
 
 The focused artifact rerun also passed:
@@ -331,6 +332,32 @@ provider, so this checkpoint changes no provider selection, ABI, fixture, or
 rollback artifact. The exact commit hash is captured here before running the
 archive and focused gates; the following receipt commit records whether Lang
 is retain-ready or blocked.
+
+### P2.1 Lang readiness receipt (2026-07-27)
+
+Candidate checkpoint: `de88de3`. No Lang source, provider selection, ABI, or
+rollback artifact changed at this checkpoint. The focused Lang matrix passed:
+
+```text
+Build Summary: 74/74 steps succeeded; 8/8 tests passed
+lang-selection-smoke: Rust canonical, Zig rollback, and fail-closed choice passed
+```
+
+The fixture-free archive proof at the same hash passed both independent cycles:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+```
+
+The installed Rust Lang dylib exports exactly one `module_init`; the Rust Lang
+contract retains `Lang`, `LangVt`, `BirnamGrammar`, `parse:`, `grammar`, and
+`furthestFail`, with CST digest `0df93b8aea32fe0d`. These checks plus the prior
+N5.1–N5.4 behavior, diagnostics, and rollback records make Lang
+**retain-ready** for evidence purposes. The Zig Lang dylib remains installed as
+the explicit oracle and complete-vector rollback provider; no deletion or
+vector mutation is authorized by this receipt.
 
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
