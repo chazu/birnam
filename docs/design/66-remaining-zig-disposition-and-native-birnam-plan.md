@@ -1,7 +1,8 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO; Z0 implementation may begin** (2026-07-27). Z1–Z3
-authority/distribution changes remain gated on strict R6 as specified below.
+Status: **reviewed GO; Z0 is R6-accepted and Z1 diagnostics may begin**
+(2026-07-27). Z1–Z3 authority/distribution changes remain gated on the
+explicit compatibility audit as specified below.
 
 Design 63 and Design 65 port the production dynamic rungs and the Rust host.
 This plan starts at that boundary. It covers the Zig code that remains after
@@ -22,14 +23,16 @@ repository.
 The current default build selects Rust for the floor, Store, PEG, Lang, TCC,
 Codegen, Prelude, Collection, Error, Isolate, Relational, Alien, Image,
 Artifact, and host. The canonical dynamic names and `module_init` ABI are
-unchanged. The scoped R6 gate is green at 171/171 build steps and 99/99 tests,
+unchanged. The scoped R6 gate is green at 173/173 build steps and 99/99 tests,
 with the Rust Alien boundary at 66/66 steps and 9/9 tests; the comparator
 admits only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
-The broad strict audit remains separate: on 2026-07-27 it failed in the
-all-migrated `test-native-rung-harness` install fixture because relocated
-docgen still lacks `tag:body:` registration. That failure is evidence to
-resolve, not permission to widen R6 or weaken a contract.
+The broad strict audit remains separate: the relocated all-migrated
+`test-native-rung-harness` install/docgen fixture now passes. The remaining
+strict failure is the compatibility-only pre-rewrite image fixture under the
+canonical Rust host (`LoadRejected`; the explicit Zig oracle leg reports
+`ImageLoadFailed`). That is evidence for the image-compatibility follow-up,
+not permission to widen R6 or weaken a contract.
 
 ### 1.1 Remaining Zig categories
 
@@ -162,7 +165,7 @@ Zig helper.
 6. Run `zig build test-install test-project-check test-lsp-project
    test-rust-codegen-distribution -Doptimize=ReleaseSafe`, the Debug/Release
    Rust floor matrix, and the scoped R6 gate. Record exact counts and the
-   strict-audit `tag:body:` boundary separately.
+   strict-audit pre-rewrite image compatibility boundary separately.
 
 ### Z0.1 implementation checkpoint (2026-07-27)
 
@@ -203,23 +206,26 @@ Rust host runs the complete source-backed suite: `346 passed, 0 failed`.
 The bounded slice is diagnostic/negative evidence only; it does not move a
 helper or alter canonical provider selection.
 
-### Post-Z0.2 R6 checkpoint (2026-07-27)
+### Post-Z0.2/Z0.3 R6 checkpoint (2026-07-27)
 
-The current scoped gate was rerun after the boundary fixture and policy-test
-changes. It remains green at `171/171` focused build steps and `99/99` tests;
+The current scoped gate was rerun after the boundary fixture, policy-test, and
+explicit Codegen-audit changes. It remains green at `173/173` focused build
+steps and `99/99` tests;
 the sequential live Rust Alien slice is `66/66` steps and `9/9` tests. The
 benchmark comparator reports no new regressions or missing cases and admits
 only the frozen `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`
-crossings. Strict mode remains separately deferred at the known relocated
-docgen `tag:body:` boundary.
+crossings. The native-rung harness is now part of this accepted scoped graph;
+strict mode remains a separate compatibility audit at the pre-rewrite image
+fixture.
 
 ### Z0 exit gate
 
 The checked-in graph/checker covers every repo-wide Zig file; every residue
 edge has an owner and disposition; digest/decoy/negative fixtures fail closed;
-the scoped R6 gate is unchanged and green; and the worktree is clean. No
-helper has moved yet. The known strict `tag:body:` failure may be recorded at
-Z0, but Z1 authority changes are blocked until strict mode is green.
+the scoped R6 gate is green at `173/173` and `99/99`; and the worktree is
+clean. No helper has moved yet. The pre-rewrite image compatibility failure is
+recorded at Z0; Z1 diagnostic/observation work may proceed, but Z1 authority
+changes remain blocked until the explicit strict compatibility audit is green.
 
 ## 4. Phase Z1 — Rust host and artifact closure
 
@@ -288,14 +294,15 @@ Land these as separate commits, each with focused green tests:
 ### Z1 precondition and exit gate
 
 Before Z1.3 commits 3–4 (the resource/artifact authority changes), repair the
-relocated docgen fixture's `tag:body:` registration and require:
+pre-rewrite image compatibility fixture (or record a separately approved
+compatibility disposition) and require:
 
 ```text
 BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
 ```
 
-to pass. The scoped gate alone is sufficient for Z0 diagnostics, not for a
-host/artifact authority change.
+to pass. The scoped gate is sufficient for Z0 and Z1 diagnostic/observation
+work, not for a host/artifact authority change.
 
 From a clean archive and unrelated cwd, Rust host project/check/build/run/
 install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
@@ -321,8 +328,9 @@ Z2 proves that policy remains in `.birnam` while Rust owns observation.
    Assert the exact MOP consistency law after every transition.
 4. After the Z1 strict prerequisite is repaired, run project
    check/build/run/test, docgen, LSP, source fallback, image save/rebuild, and
-   isolate smoke from a relocated prefix. Any recurrence of the `tag:body:`
-   failure is a stop; retain the assertion rather than deleting it.
+   isolate smoke from a relocated prefix. Any recurrence of the relocated
+   docgen or pre-rewrite image failure is a stop; retain the assertion rather
+   than deleting it.
 5. Make one narrow commit per policy seam, followed by a documentation
    checkpoint. No dynamic Zig fixture is retired in Z2.
 
@@ -413,10 +421,11 @@ recovery require it.
 | performance | existing R6 comparator; no unrecorded benchmark allowance |
 | strict audit | strict R6 passes before and after every Z1–Z3 authority/distribution change |
 
-The scoped gate remains `bash scripts/r6-acceptance.sh`; it is not widened to
-hide the current `tag:body:` strict fixture failure. Z0 may report that
-failure separately, but Z1/Z2/Z3 authority or distribution changes require
-`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
+The scoped gate remains `bash scripts/r6-acceptance.sh`; it now includes the
+optimized relocated native-rung harness and is not widened to hide the
+pre-rewrite image compatibility failure. Z0 and diagnostic Z1 work may report
+that failure separately, but Z1/Z2/Z3 authority or distribution changes
+require `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
 
 ## 9. Commit discipline and stop conditions
 
