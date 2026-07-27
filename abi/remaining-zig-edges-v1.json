@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Design 67 P0 checked residue edges; dynamic_dependencies remain in remaining-zig-v1.json",
+  "scope": "Design 67 P0 checked residue authority edges and coverage inventory; dynamic_dependencies remain in remaining-zig-v1.json",
   "allowed_edge_kinds": [
     "runtime-dlopen",
     "build-input",
@@ -277,7 +277,7 @@
   "derived_edge_families": [
     {
       "source": "scripts/check-remaining-zig-inventory.py",
-      "consumer": "checked build graph",
+      "consumer": "checked build-graph coverage",
       "provider_graph_key": "rust_crates",
       "edge_kind": "build-input",
       "phase": "P0",
@@ -285,7 +285,7 @@
     },
     {
       "source": "scripts/check-remaining-zig-inventory.py",
-      "consumer": "checked build graph",
+      "consumer": "checked build-graph coverage",
       "provider_graph_key": "birnam_sources",
       "edge_kind": "build-input",
       "phase": "P0",
@@ -293,7 +293,7 @@
     },
     {
       "source": "scripts/check-remaining-zig-inventory.py",
-      "consumer": "checked residue manifest",
+      "consumer": "checked residue coverage",
       "provider_manifest_kind": "build-only",
       "edge_kind": "build-input",
       "phase": "P0",
@@ -301,7 +301,7 @@
     },
     {
       "source": "scripts/check-remaining-zig-inventory.py",
-      "consumer": "checked residue manifest",
+      "consumer": "checked residue coverage",
       "provider_manifest_kind": "shared-contract",
       "edge_kind": "build-input",
       "phase": "P0",
@@ -309,7 +309,7 @@
     },
     {
       "source": "build.zig",
-      "consumer": "Zig oracle/build graph",
+      "consumer": "checked oracle coverage",
       "provider_manifest_kind": "zig-oracle",
       "edge_kind": "oracle",
       "phase": "P0",
@@ -317,7 +317,7 @@
     },
     {
       "source": "scripts/check-remaining-zig-inventory.py",
-      "consumer": "checked evidence inventory",
+      "consumer": "checked evidence coverage",
       "provider_manifest_kind": "test-evidence",
       "edge_kind": "evidence",
       "phase": "P0",
@@ -325,7 +325,7 @@
     },
     {
       "source": "rust/birnam-host/src/lib.rs",
-      "consumer": "Rust host native policy observation",
+      "consumer": "checked native-policy coverage",
       "provider_graph_key": "birnam_sources",
       "edge_kind": "native-policy",
       "phase": "P0",

@@ -141,19 +141,22 @@ fixture is moved.
    explicit reason. The `dynamic_dependencies` array must continue to enumerate
    only `libbirnam_*.dylib` runtime providers.
 3. Add a separate checked `abi/remaining-zig-edges-v1.json` with an `edges[]`
-   table. Each row records `source`, `consumer`, `provider`, `edge_kind`
+   table. Explicit rows record `source`, `consumer`, `provider`, `edge_kind`
    (`runtime-dlopen`, `build-input`, `oracle`, `evidence`, or
-   `native-policy`), `phase`, and `selection_context`. Freeze the allowed
-   `phase` values to `P0`, `P1`, `P2`, `P3`, or `P4`, and the allowed
+   `native-policy`), `phase`, and `selection_context`. The table also contains
+   derived coverage families that expand against the checked manifest and
+   graph inventories. Those families prove category coverage; they are not a
+   claim to enumerate every transitive textual build/test reference. Freeze the
+   allowed `phase` values to `P0`, `P1`, `P2`, `P3`, or `P4`, and the allowed
    `selection_context` values to `production`, `rollback`, `oracle`, `build`,
-   or `evidence`; representative rows for each edge kind must be checked in.
-   The existing
-   `remaining-zig-v1.json` remains schema version 1; merging `edges[]` into it
-   would require an explicit schema-version-2 migration. The checker derives
-   runtime-dlopen rows from `dynamic_dependencies` and the Rust/Zig loader
-   traces, and derives build/evidence rows from the checked build graph and
-   script inventory; it fails closed on a missing or stale edge. Edge rows must
-   never be copied into `dynamic_dependencies`.
+   or `evidence`. The existing `remaining-zig-v1.json` remains schema version
+   1; merging this authority-edge/coverage inventory into it would require an
+   explicit schema-version-2 migration. The checker derives runtime-dlopen
+   coverage from `dynamic_dependencies`, validates explicit loader/policy
+   relations, and expands build/oracle/evidence coverage from the checked
+   manifest and graph inventories. It fails closed on missing coverage or stale
+   explicit rows. No edge row or coverage witness may be copied into
+   `dynamic_dependencies`.
 4. Record the baseline commit, selected defaults, Rust/Zig versions, and the
    strict R6 receipt in a dated P0 appendix.
 
@@ -180,14 +183,15 @@ Commit `95681f2` adds and checks `abi/remaining-zig-edges-v1.json` without
 changing provider selection. Commit `3ead579` hardens that checker with
 `derived_edge_families`: every build-only/shared-contract path, Zig oracle,
 test-evidence path, Birnam policy source, and Rust crate expands into a checked
-edge row. The checker freezes the five edge kinds, five phase values, and five
-selection contexts; validates safe source/provider paths; requires every one of
-the 14 declared dynamic providers in both production and complete-vector
-rollback contexts; and reports the complete expanded table rather than a
-representative-only sample. The hardened receipt is green:
+coverage witness. The checker freezes the five edge kinds, five phase values,
+and five selection contexts; validates safe source/provider paths; requires
+every one of the 14 declared dynamic providers in both production and
+complete-vector rollback contexts; and reports explicit authority rows plus
+the expanded coverage inventory rather than a representative-only sample. The
+hardened receipt is green:
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 edge_rows=320 derived_edge_rows=288
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=288
 test-remaining-zig-inventory success
 ```
 
@@ -216,10 +220,11 @@ or unusable cases. No provider selection or runtime authority changed in P0.
 
 ### P0 exit gate
 
-The checker is green, `edges[]` plus its derived families are complete, no
-source or test path is mistaken for a dynamic dependency, decoys are ignored,
-and the strict R6 receipt is recorded. P0 lands as a documentation/checker
-commit. No runtime behavior or provider selection changes.
+The checker is green, explicit authority rows and derived category coverage
+are complete for the checked inventory, no source or test path is mistaken for
+a dynamic dependency, decoys are ignored, and the strict R6 receipt is
+recorded. P0 lands as a documentation/checker commit. No runtime behavior or
+provider selection changes.
 
 ## 5. Phase P1 — host and artifact residue revalidation
 

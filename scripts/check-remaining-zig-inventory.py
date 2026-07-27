@@ -300,7 +300,7 @@ def main() -> None:
         f"zig_files={len(paths)} birnam_sources={len(graph['birnam_sources'])} "
         f"rust_crates={len(graph['rust_crates'])} test_scripts={len(graph['test_scripts'])} "
         f"build_targets={len(graph['build_targets'])} dynamic_dependencies={len(names)} "
-        f"edge_rows={len(edges) + derived_count} derived_edge_rows={derived_count}"
+        f"explicit_edge_rows={len(edges)} derived_coverage_rows={derived_count}"
     )
 
 
