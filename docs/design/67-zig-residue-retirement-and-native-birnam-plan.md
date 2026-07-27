@@ -531,6 +531,39 @@ provider, while the canonical Zig Error implementation and its complete rollback
 vector remain unchanged. This checkpoint records the exact hash before the
 standalone family, preload-order, and cross-floor diagnostic gates.
 
+### P2.6 Error readiness receipt (2026-07-27)
+
+Candidate checkpoint: `31e0ced`. The focused Error matrix passed:
+
+```text
+Build Summary: 70/70 steps succeeded; 6/6 tests passed
+test-rust-error success: both preload orders passed
+test-error success: 4 tests passed with Rust selected
+cross-floor-errors: specified kinds, messages, and syntax diagnostics match
+```
+
+The Rust Error contract preserves the standalone error family and
+`doesNotUnderstand` behavior in both Rust-first and Zig-first preload orders.
+The canonical Error suite covers propagation, partitioning, DNU, and
+zero-divide behavior. The independent cross-floor script confirms identical
+error kinds, messages, and syntax diagnostics for Zig and Rust floors. The
+canonical Rust Error dylib exports exactly one `module_init`; the explicit Zig
+Error rollback dylib remains a separate complete-vector authority.
+
+The exact-hash archive receipts pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Error **retain-ready** for evidence purposes. The canonical
+Rust Error provider, explicit Zig Error oracle, and complete full-Zig rollback
+vector remain installed; no provider deletion, mixed-vector recovery, or
+benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
