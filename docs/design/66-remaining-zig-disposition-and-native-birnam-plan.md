@@ -605,6 +605,20 @@ independent archive prefixes, `DYLD_PRINT_LIBRARIES` load receipts,
 `abi/rollback-prefix-v1.json`, old-client/image/generated-C fixtures, and the
 release-bundle no-ambient-fallback test are still required.
 
+### Z3.2 execution record — rollback manifest/checker (2026-07-27)
+
+Commit `e751b2d` adds `abi/rollback-prefix-v1.json` with the fourteen-name
+dynamic load order, the canonical Zig host/oracle mapping, fixture identities,
+and the digest/mixed-vector policy. `scripts/check-rollback-prefix.py` fails
+closed on missing or undeclared `_zig` fixtures, missing canonical names,
+unsafe paths, host mismatch, or any canonical digest that differs from its
+declared Zig fixture. `test-distribution-selection` now emits the checker
+receipt as part of its isolated rollback-prefix build.
+
+This is a receipt contract, not the full release proof: the production
+load-trace, two independent archive prefixes, and old compatibility fixture
+legs remain open under Z3.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
