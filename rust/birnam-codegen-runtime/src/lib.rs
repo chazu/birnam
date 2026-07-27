@@ -3863,11 +3863,11 @@ unsafe extern "C" fn rust_codegen_module_metadata(
         }
         result
     };
-    let name_symbol = unsafe { (api.intern)(metadata.name.as_ptr().cast()) };
+    let name_symbol = unsafe { intern_bytes(api, &metadata.name) };
     let require_symbols = metadata
         .requires
         .iter()
-        .map(|requirement| unsafe { (api.intern)(requirement.as_ptr().cast()) })
+        .map(|requirement| unsafe { intern_bytes(api, requirement) })
         .collect::<Vec<_>>();
     let digest = sha256_hex(&source);
     let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
@@ -3918,11 +3918,11 @@ unsafe extern "C" fn rust_codegen_source_revision(
         }
         result
     };
-    let name_symbol = unsafe { (api.intern)(metadata.name.as_ptr().cast()) };
+    let name_symbol = unsafe { intern_bytes(api, &metadata.name) };
     let require_symbols = metadata
         .requires
         .iter()
-        .map(|requirement| unsafe { (api.intern)(requirement.as_ptr().cast()) })
+        .map(|requirement| unsafe { intern_bytes(api, requirement) })
         .collect::<Vec<_>>();
     let requires_vector = make_vector(&require_symbols);
     let non_method_digest = unsafe {
@@ -5791,6 +5791,34 @@ unsafe fn candidate_operations_match_post(
     true
 }
 
+/// Return the effective operation ledger for a generation root. Newer
+/// generations shadow the same target/selector pair in their predecessors;
+/// untouched predecessor operations remain rollback obligations of the root.
+fn effective_candidate_operations(unit: usize) -> Vec<CandidateOperationState> {
+    let Ok(candidates) = CANDIDATES.lock() else {
+        return Vec::new();
+    };
+    let mut result = Vec::new();
+    let mut cursor = unit;
+    while cursor != 0 {
+        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == cursor)
+        else {
+            break;
+        };
+        for operation in &candidate.operations {
+            if result.iter().any(|existing: &CandidateOperationState| {
+                existing.target_name == operation.target_name
+                    && existing.selector == operation.selector
+            }) {
+                continue;
+            }
+            result.push(operation.clone());
+        }
+        cursor = candidate.predecessor;
+    }
+    result
+}
+
 unsafe extern "C" fn rust_codegen_reconcile_candidate(
     _self_object: Oop,
     pointer: *const Oop,
@@ -5804,7 +5832,7 @@ unsafe extern "C" fn rust_codegen_reconcile_candidate(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let (active, operations) = {
+    let active = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -5816,11 +5844,12 @@ unsafe extern "C" fn rust_codegen_reconcile_candidate(
             note_error(b"RustCodegen candidate unit is unknown");
             return api.nilObj;
         };
-        (candidate.active, candidate.operations.clone())
+        candidate.active
     };
     if !active {
         return values[0];
     }
+    let operations = effective_candidate_operations(values[0] as usize);
     if unsafe { candidate_operations_match_post(api, runtime, &operations) } {
         return values[0];
     }
@@ -5925,7 +5954,7 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let (name, prepared, active, predecessor, operations) = {
+    let (name, prepared, active, predecessor) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -5942,9 +5971,9 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
             candidate.prepared,
             candidate.active,
             candidate.predecessor,
-            candidate.operations.clone(),
         )
     };
+    let operations = effective_candidate_operations(values[0] as usize);
     let (prior, plan) = if let Some(raw_plan) = values.get(1).copied() {
         let Some((prior, plan)) =
             (unsafe { parse_publication_plan(api, values[0], name, raw_plan, b"rollback\0") })
@@ -7023,8 +7052,8 @@ unsafe extern "C" fn rust_reflect_define_method_sourced(
         abort("RustReflect defineMethod:on:as:source: expects four arguments");
     }
     let result = unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) };
-    if result != unsafe { api(runtime()) }.nilObj {
-        let api = unsafe { api(runtime()) };
+    let api = unsafe { api(runtime()) };
+    if result != api.nilObj {
         unsafe { record_method_operation(api, values[3]) };
     }
     result
@@ -7040,9 +7069,20 @@ unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
     if values.len() != 5 {
         abort("RustReflect defineMethod:on:as:doc:source: expects five arguments");
     }
-    let result = unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) };
-    if result != unsafe { api(runtime()) }.nilObj {
-        let api = unsafe { api(runtime()) };
+    let api = unsafe { api(runtime()) };
+    // Preserve the late-bound documentation hook.  The Zig source adapter
+    // sends the four-argument form so the Birnam stdlib can retain the
+    // receiver prototype and docstring; Rust's source adapter must do the
+    // same rather than silently dropping the doc payload.
+    let result = unsafe {
+        send(
+            api,
+            self_object,
+            b"defineMethod:on:as:doc:\0",
+            &values[..4],
+        )
+    };
+    if result != api.nilObj {
         unsafe { record_method_operation(api, values[4]) };
     }
     result
