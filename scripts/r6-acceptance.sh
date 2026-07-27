@@ -21,16 +21,15 @@ python3 scripts/check-native-rung-baseline.py
 
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
-# canonical/rollback selection checks (including Relational), and the explicit
-# Rust Codegen runtime and Rust-only
+# canonical/rollback selection checks (including Relational), the optimized
+# native-rung installation/relocation harness, and the explicit Rust Codegen
+# runtime and Rust-only
 # Store callback boundaries. The live Rust Alien callback/buffer fixture runs
 # just below as a sequential target to avoid Cargo/clean-prefix contention.
-# The focused set keeps failures attributable to the latest replacement rung.
-# The native-rung harness is intentionally excluded: its nested production
-# install/docgen fixture currently reaches the relocated docgen assertion but
-# fails because the Rust-host output does not yet contain the expected
-# `tag:body:` registration. Run this matrix serially: the Image-to-Codegen
-# admission fixture and the other
+# The focused set keeps failures attributable to the latest replacement rung;
+# the harness is included now that its relocated docgen and production install
+# assertions pass. Run this matrix serially: the Image-to-Codegen admission
+# fixture and the other
 # clean-prefix targets share the installed dynamic-module staging boundary and
 # can otherwise race when Zig schedules their test processes concurrently.
 latest_tests=(
@@ -38,6 +37,7 @@ latest_tests=(
   test-rust-lang-parity
   test-rust-lang-diagnostics
   test-lang-selection
+  test-native-rung-harness
   test-rust-codegen-runtime
   test-rust-codegen-canonical
   test-rust-codegen-stack
@@ -89,7 +89,7 @@ readonly expected_rust_image_rejection_tests=1
 # Rust is now the canonical host. Its explicit installed Zig oracle is a
 # required rollback/compatibility artifact, adding one deterministic install
 # step to the focused replacement graph and to the optional strict verify.
-readonly expected_focused_steps=171
+readonly expected_focused_steps=173
 readonly expected_verify_steps=296
 readonly expected_verify_tests=512
 readonly expected_verify_skipped=6
