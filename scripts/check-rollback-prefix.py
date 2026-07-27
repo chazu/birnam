@@ -37,6 +37,15 @@ def safe_relative(path: str, roots: tuple[str, ...]) -> None:
         fail(f"path is outside declared install roots: {path}")
 
 
+def resolved_under(path: Path, prefix: Path) -> str:
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(prefix)
+    except ValueError:
+        fail(f"resolved path escapes prefix: {path}")
+    return str(resolved)
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: check-rollback-prefix.py <prefix>")
@@ -76,6 +85,19 @@ def main() -> None:
         fail("rollback vector must contain fourteen unique canonical names")
 
     declared_fixtures: set[str] = set()
+    host_sha256 = digest(host_file)
+    host_fixture_sha256 = digest(host_oracle)
+    host_receipt = {
+        "kind": "host",
+        "path": host_path,
+        "fixture": host_fixture,
+        "identity": host["identity"],
+        "resolved_path": resolved_under(host_file, prefix),
+        "fixture_resolved_path": resolved_under(host_oracle, prefix),
+        "observed_identity": f"sha256:{host_sha256}",
+        "sha256": host_sha256,
+        "fixture_sha256": host_fixture_sha256,
+    }
     receipts: list[dict[str, str]] = []
     for entry in vector:
         canonical = entry.get("canonical")
@@ -99,6 +121,9 @@ def main() -> None:
                 "canonical": canonical,
                 "fixture": fixture,
                 "identity": identity,
+                "resolved_path": resolved_under(canonical_path, prefix),
+                "fixture_resolved_path": resolved_under(fixture_path, prefix),
+                "observed_identity": f"sha256:{canonical_sha256}",
                 "canonical_sha256": canonical_sha256,
                 "fixture_sha256": fixture_sha256,
             }
@@ -111,6 +136,7 @@ def main() -> None:
             f"actual={sorted(actual_fixtures)} declared={sorted(declared_fixtures)}"
         )
 
+    print(json.dumps(host_receipt, sort_keys=True, separators=(",", ":")))
     for receipt in receipts:
         print(json.dumps(receipt, sort_keys=True, separators=(",", ":")))
     print(

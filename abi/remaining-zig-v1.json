@@ -889,6 +889,7 @@
       "scripts/bench.sh",
       "scripts/check-native-rung-baseline.py",
       "scripts/check-native-rung-inventory.py",
+      "scripts/check-production-prefix.py",
       "scripts/check-remaining-rung-manifest.py",
       "scripts/check-remaining-zig-inventory.py",
       "scripts/check-rollback-prefix.py",

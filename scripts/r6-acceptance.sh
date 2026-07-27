@@ -430,7 +430,8 @@ grep -Eq '^\+- run test 9 passed ' "$live" || {
 # remains fast; set BIRNAM_R6_REQUIRE_VERIFY=1 when the full graph is required.
 if [[ ${BIRNAM_R6_REQUIRE_VERIFY:-0} == 1 ]]; then
   verify=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-verify.XXXXXX")
-  trap 'rm -f "$functional" "$live" "$verify"' EXIT
+  z3=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-z3.XXXXXX")
+  trap 'rm -f "$functional" "$live" "$verify" "$z3"' EXIT
 
   set +e
   zig build verify "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$verify" 2>&1
@@ -445,6 +446,28 @@ if [[ ${BIRNAM_R6_REQUIRE_VERIFY:-0} == 1 ]]; then
   verify_summary_count=$(grep -Fc "Build Summary: ${expected_verify_steps}/${expected_verify_steps} steps succeeded; ${expected_verify_tests}/${expected_verify_total_tests} tests passed; ${expected_verify_skipped} skipped" "$verify" || true)
   [ "$verify_summary_count" -eq 1 ] || {
     echo "r6-acceptance: optimized verify no longer reports the accepted ${expected_verify_steps}/${expected_verify_steps}, ${expected_verify_tests}/${expected_verify_total_tests}, ${expected_verify_skipped}-skipped snapshot" >&2
+    exit 1
+  }
+
+  # Design 66 Z3 is a strict distribution/rollback gate, not merely an
+  # inventory receipt. Run it after verify so the archive builds cannot race
+  # the broad cross-layer graph, and pin both receipts in strict R6 output.
+  set +e
+  zig build test-distribution-selection test-z3-archive-distribution \
+    -Doptimize=ReleaseSafe -j1 --summary all >"$z3" 2>&1
+  z3_status=$?
+  set -e
+  cat "$z3"
+  [ "$z3_status" -eq 0 ] || {
+    echo "r6-acceptance: strict Z3 distribution/archive gates failed" >&2
+    exit 1
+  }
+  grep -Fqx 'distribution-selection: production omits Zig; rollback is a complete Zig vector' "$z3" || {
+    echo "r6-acceptance: strict Z3 selector receipt was not emitted" >&2
+    exit 1
+  }
+  grep -Fqx 'z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok' "$z3" || {
+    echo "r6-acceptance: strict Z3 archive receipt was not emitted" >&2
     exit 1
   }
 else

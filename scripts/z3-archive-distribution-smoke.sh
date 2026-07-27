@@ -65,10 +65,12 @@ trace_prefix() {
   local trace="$scratch/$label/load.trace"
   mkdir -p "$cwd/src/id"
   printf 'not a library; trace decoy\n' >"$cwd/libbirnam_id.dylib"
+  printf 'not a compiled-unit provider; trace decoy\n' >"$cwd/libbirnam_stdlib.dylib"
   printf 'not a source provider; trace decoy\n' >"$cwd/src/id/main.zig"
   (
     cd "$cwd"
-    unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH BIRNAM_FORCE_SOURCE
+    unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH \
+      DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH DYLD_FALLBACK_FRAMEWORK_PATH BIRNAM_FORCE_SOURCE
     printf ':quit\n' | DYLD_PRINT_LIBRARIES=1 "$prefix/bin/birnam" --repl \
       >"$scratch/$label/repl.out" 2>"$trace"
   )
@@ -79,6 +81,16 @@ trace_prefix() {
       exit 1
     }
   done
+  while IFS= read -r loaded; do
+    case "$loaded" in
+      "$prefix"/*) ;;
+      *)
+        echo "z3-archive: $label loaded Birnam dylib outside selected prefix: $loaded" >&2
+        cat "$trace" >&2
+        exit 1
+        ;;
+    esac
+  done < <(awk 'match($0, /\/[^ ]*\/libbirnam[^ ]*\.dylib/) { print substr($0, RSTART, RLENGTH) }' "$trace" | sort -u)
   case "$label" in
     production-a|production-b)
       if grep -E '_zig\.dylib|birnam-zig-oracle' "$trace" >/dev/null; then
@@ -103,6 +115,10 @@ exercise_prefix() {
   local prefix=$3
   local host_impl=$4
   local libdir="$prefix/lib"
+  local tcc="$libdir/libbirnam_id_tcc_rust.dylib"
+  if [[ "$host_impl" == zig ]]; then
+    tcc="$libdir/libbirnam_id_tcc.dylib"
+  fi
 
   BIRNAM_LIB_DIR="$libdir" "$prefix/bin/birnam" "$source/bench/nil.birnam" >/dev/null
   BIRNAM_BIN="$prefix/bin/birnam" \
@@ -119,7 +135,7 @@ exercise_prefix() {
   )
   BIRNAM_BIN="$prefix/bin/birnam" \
     BIRNAM_LIB_DIR="$libdir" \
-    BIRNAM_RUST_TCC_DYLIB="$libdir/libbirnam_id_tcc_rust.dylib" \
+    BIRNAM_TCC_DYLIB="$tcc" \
     bash "$source/scripts/rust-tcc-artifact-smoke.sh" >/dev/null
   echo "z3-archive: $label source/project/lsp/image/wire/generated-C fixtures=ok"
 }
@@ -156,7 +172,7 @@ release_bundle() {
   cp -R "$prefix/bin" "$prefix/lib" "$prefix/share" "$bundle/"
   if [[ "$label" == production ]]; then
     test ! -e "$bundle/bin/birnam-zig-oracle"
-    if find "$bundle/lib" -type f -name '*_zig.dylib' | grep -q .; then
+    if find "$bundle/lib" -type f -name '*_zig.dylib' -print -quit | grep -q .; then
       echo "z3-archive: production release bundle contains Zig fixtures" >&2
       exit 1
     fi
@@ -165,11 +181,22 @@ release_bundle() {
   fi
   (
     cd "$cwd"
-    unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH BIRNAM_FORCE_SOURCE
+    unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH \
+      DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH DYLD_FALLBACK_FRAMEWORK_PATH BIRNAM_FORCE_SOURCE
     printf ':quit\n' | DYLD_PRINT_LIBRARIES=1 "$bundle/bin/birnam" --repl \
       >"$scratch/$label-bundle.out" 2>"$trace"
   )
   grep -F "$bundle/lib/libbirnam_id.dylib" "$trace" >/dev/null
+  while IFS= read -r loaded; do
+    case "$loaded" in
+      "$bundle"/*) ;;
+      *)
+        echo "z3-archive: $label release bundle loaded Birnam dylib outside bundle: $loaded" >&2
+        cat "$trace" >&2
+        exit 1
+        ;;
+    esac
+  done < <(awk 'match($0, /\/[^ ]*\/libbirnam[^ ]*\.dylib/) { print substr($0, RSTART, RLENGTH) }' "$trace" | sort -u)
   if [[ "$label" == production ]]; then
     ! grep -E '_zig\.dylib|birnam-zig-oracle' "$trace" >/dev/null
   else
@@ -198,12 +225,22 @@ mkdir -p "$scratch/rollback"
   python3 scripts/check-rollback-prefix.py "$rollback_prefix" \
     >"$scratch/rollback/receipt.jsonl"
 )
+python3 "$scratch/production-a/source/scripts/check-production-prefix.py" "$production_a" \
+  >"$scratch/production-a/receipt.jsonl"
+python3 "$scratch/production-b/source/scripts/check-production-prefix.py" "$production_b" \
+  >"$scratch/production-b/receipt.jsonl"
 trace_prefix rollback "$rollback_prefix"
 exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
-old_image_fixture production-a "$production_a" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1 "$rollback_prefix" "$rollback_prefix"
-old_image_fixture production-b "$production_b" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1 "$rollback_prefix" "$rollback_prefix"
+old_image_fixture production-a "$production_a" "$production_a/bin/birnam" rust-id-v1 "$production_a" "$production_a"
+old_image_fixture production-b "$production_b" "$production_b/bin/birnam" rust-id-v1 "$production_b" "$production_b"
 old_image_fixture rollback "$rollback_prefix" "$rollback_prefix/bin/birnam" zig-id-v1 "$rollback_prefix" "$rollback_prefix"
 release_bundle production "$production_a"
 release_bundle rollback "$rollback_prefix"
 
+echo "z3-archive: production-a receipt"
+cat "$scratch/production-a/receipt.jsonl"
+echo "z3-archive: production-b receipt"
+cat "$scratch/production-b/receipt.jsonl"
+echo "z3-archive: rollback receipt"
+cat "$scratch/rollback/receipt.jsonl"
 echo "z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok"
