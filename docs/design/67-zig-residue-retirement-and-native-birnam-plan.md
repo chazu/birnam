@@ -271,6 +271,12 @@ BIRNAM_HOST_IMPL=rust BIRNAM_CODEGEN_IMPL=rust \
 bash scripts/rust-cold-compiler-determinism.sh
 ```
 
+The source-bootstrap command has two explicit legs: a Rust-selected test bundle
+bootstrapped from source, and a separately built Zig-floor oracle prefix used
+only for comparison. The complete production/full-Zig rollback distinction is
+proved by the separate Z3 archive command; source-bootstrap is not itself a
+mixed-vector production receipt.
+
 Relocated production may never read the build checkout. Explicit source
 recovery may use packaged/embedded source or the supplied project root only;
 checkout fallback is a failure. P1 is split into one focused
@@ -310,7 +316,7 @@ of the scoped R6 matrix. Commit `bb387d8` pins the expanded matrix at
 steps, not runtime test cases, and their receipts are asserted explicitly:
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=288
 remaining-zig-boundary: rust_receipts=14 zig_oracle_receipts=14 canonical_load_trace=ok oracle_load_trace=ok policy_authority=ok
 rust-host-message-owner-inventory: ok send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56 disposition=read-only
 rust-artifact-authority: codec=pointer-free projection=single-module-init host=preflight-before-activation policy=native-loadArtifact
@@ -370,7 +376,7 @@ vector mutation is authorized by this receipt.
 ### P2.2 TCC candidate checkpoint
 
 The TCC candidate is evidence-only: Rust TCC is already available as the
-explicit replacement provider, while the canonical Zig TCC and its complete
+explicit replacement provider, while the retained Zig TCC rollback/oracle and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash
 before the TCC shell, artifact, export-audit, Alien, Image, and selection gates.
 
@@ -403,15 +409,15 @@ rust-cold-compiler: two independent fixture-free Rust archives produced identica
 z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
 ```
 
-These checks make TCC **retain-ready** for evidence purposes. The canonical Zig
-TCC, explicit `libbirnam_id_tcc_zig.dylib` oracle, and complete-vector rollback
+These checks make TCC **retain-ready** for evidence purposes. The retained Zig
+TCC rollback/oracle, explicit `libbirnam_id_tcc_zig.dylib` fixture, and complete-vector rollback
 remain installed; no provider deletion, mixed-vector recovery, or benchmark
 allowance change is authorized by this receipt.
 
 ### P2.3 Codegen candidate checkpoint
 
 The Codegen candidate is evidence-only: Rust Codegen is already the canonical
-provider, while the canonical Zig Codegen implementation and its complete
+provider, while the retained Zig Codegen rollback/oracle and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash before
 the Codegen runtime, canonical, stack, Zig-store, selection-refusal,
 distribution, and authority gates.
@@ -451,7 +457,7 @@ or benchmark allowance change is authorized by this receipt.
 ### P2.4 Prelude candidate checkpoint
 
 The Prelude candidate is evidence-only: Rust Prelude is already the canonical
-provider, while the canonical Zig Prelude implementation and its complete
+provider, while the retained Zig Prelude rollback/oracle and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash before
 the primitive-protocol, standalone-Rust-Error, subprocess-I/O, and selector
 gates.
@@ -490,7 +496,7 @@ or benchmark allowance change is authorized by this receipt.
 ### P2.5 Collection candidate checkpoint
 
 The Collection candidate is evidence-only: Rust Collection is already the
-canonical provider, while the canonical Zig Collection implementation and its
+canonical provider, while the retained Zig Collection rollback/oracle and its
 complete rollback vector remain unchanged. This checkpoint records the exact
 hash before the persistent-vector protocol and collector/layout gates.
 
@@ -535,7 +541,7 @@ recovery, or benchmark allowance change is authorized by this receipt.
 ### P2.6 Error candidate checkpoint
 
 The Error candidate is evidence-only: Rust Error is already the canonical
-provider, while the canonical Zig Error implementation and its complete rollback
+provider, while the retained Zig Error rollback/oracle and its complete rollback
 vector remain unchanged. This checkpoint records the exact hash before the
 standalone family, preload-order, and cross-floor diagnostic gates.
 
@@ -575,7 +581,7 @@ benchmark allowance change is authorized by this receipt.
 ### P2.7 Isolate candidate checkpoint
 
 The Isolate candidate is evidence-only: Rust Isolate is already the canonical
-provider, while the canonical Zig Isolate implementation and its complete
+provider, while the retained Zig Isolate rollback/oracle and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash before
 the wire-v1, worker-control-plane, malformed-payload, and process smoke gates.
 
@@ -614,7 +620,7 @@ or benchmark allowance change is authorized by this receipt.
 ### P2.8 Relational candidate checkpoint
 
 The Relational candidate is evidence-only: Rust Relational is already the
-canonical provider, while the canonical Zig Relational implementation and its
+canonical provider, while the retained Zig Relational rollback/oracle and its
 complete rollback vector remain unchanged. This checkpoint records the exact
 hash before the kernel, Rust-vs-Zig Store callback, full suite, and selector
 gates.
@@ -657,7 +663,7 @@ recovery, or benchmark allowance change is authorized by this receipt.
 ### P2.9 Alien candidate checkpoint
 
 The Alien candidate is evidence-only: Rust Alien is already the canonical
-provider, while the canonical Zig Alien implementation and its complete rollback
+provider, while the retained Zig Alien rollback/oracle and its complete rollback
 vector remain unchanged. This checkpoint records the exact hash before the
 Rust-TCC Alien suite, live loader/ABI corpus, and canonical Alien selection
 gates.
@@ -697,7 +703,7 @@ benchmark allowance change is authorized by this receipt.
 ### P2.10 Image candidate checkpoint
 
 The Image candidate is evidence-only: Rust Image is already the canonical
-provider, while the canonical Zig Image implementation and its complete
+provider, while the retained Zig Image rollback/oracle and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash before
 the shell, Codegen/bootstrap, publication, rejection, cross-floor, Zig-Store,
 and image-save gates.

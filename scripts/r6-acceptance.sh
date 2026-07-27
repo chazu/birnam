@@ -410,7 +410,7 @@ END { print count + 0 }
 # P0/P1 residue and authority checks are part of the current replacement gate.
 # They intentionally contribute build steps, not runtime test counts: each
 # receipt is asserted explicitly so a target cannot pass merely by exiting 0.
-grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14' "$functional" || {
+grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=288' "$functional" || {
   echo "r6-acceptance: remaining-Zig inventory receipt was not emitted" >&2
   exit 1
 }
