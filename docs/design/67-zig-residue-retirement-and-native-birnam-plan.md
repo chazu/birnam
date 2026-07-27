@@ -366,6 +366,40 @@ explicit replacement provider, while the canonical Zig TCC and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash
 before the TCC shell, artifact, export-audit, Alien, Image, and selection gates.
 
+### P2.2 TCC readiness receipt (2026-07-27)
+
+Candidate checkpoint: `9bd908d`. The focused TCC matrix passed with the three
+existing platform skips:
+
+```text
+Build Summary: 79/79 steps succeeded; 62/65 tests passed; 3 skipped
+tcc-selection-smoke: Rust canonical, Zig rollback, and fail-closed choice passed
+rust-tcc-dylib-audit: identity, exports, install name, and dependencies passed
+rust-tcc-artifact: separate-process AOT activation passed
+```
+
+The TCC contract proof covers the explicit `Tcc`, `TccVt`, and `TccUnitVt`
+surfaces, created/configured/relocated/installed/disposable/released state
+transitions, the full `birnam_*` runtime-symbol set, generated-C callback
+reentry, Alien and Image matrices, and the separate-process artifact path. The
+installed Rust TCC dylib exports exactly one `module_init` and the audit keeps
+the 22 runtime exports, `@rpath/libbirnam_id_tcc_rust.dylib` install name, and
+allowed Darwin dependencies fail-closed.
+
+The exact-hash archive receipts also pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make TCC **retain-ready** for evidence purposes. The canonical Zig
+TCC, explicit `libbirnam_id_tcc_zig.dylib` oracle, and complete-vector rollback
+remain installed; no provider deletion, mixed-vector recovery, or benchmark
+allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
