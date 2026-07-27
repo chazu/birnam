@@ -10,6 +10,12 @@ case "$host_impl" in
   *) echo "source-bootstrap: BIRNAM_HOST_IMPL must be zig or rust" >&2; exit 2 ;;
 esac
 host_option=(-Dhost-impl="$host_impl")
+codegen_impl=${BIRNAM_CODEGEN_IMPL:-zig}
+case "$codegen_impl" in
+  zig|rust) ;;
+  *) echo "source-bootstrap: BIRNAM_CODEGEN_IMPL must be zig or rust" >&2; exit 2 ;;
+esac
+codegen_option=(-Dcodegen-impl="$codegen_impl")
 
 # A git archive is the clean-checkout boundary. Compatibility fixtures are
 # deliberately removed: they are old-binary evidence, never bootstrap inputs.
@@ -37,7 +43,7 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
     cargo check --workspace --locked --offline
   CARGO_TARGET_DIR="$scratch/.cargo-target" \
     cargo test --workspace --locked --offline
-  zig build -Dfloor=rust "${host_option[@]}"
+  zig build -Dfloor=rust "${host_option[@]}" "${codegen_option[@]}"
 )
 
 test -x "$scratch/zig-out/bin/birnam"
@@ -53,7 +59,7 @@ BIRNAM_LIB_DIR="$scratch/zig-out/lib" \
 
 (
   cd "$scratch"
-  zig build -Dfloor=zig "${host_option[@]}" --prefix "$scratch/zig-oracle-prefix"
+  zig build -Dfloor=zig -Dcodegen-impl=zig "${host_option[@]}" --prefix "$scratch/zig-oracle-prefix"
 )
 cmp \
   "$scratch/zig-oracle-prefix/lib/libbirnam_id.dylib" \
