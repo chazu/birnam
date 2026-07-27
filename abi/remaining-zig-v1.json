@@ -878,6 +878,7 @@
     ],
     "test_scripts": [
       "scripts/artifact-inspector-baseline.sh",
+      "scripts/artifact-preflight-parity-smoke.sh",
       "scripts/artifact-preflight-sentinel.sh",
       "scripts/assert-child-abort.sh",
       "scripts/bench-compare.sh",
