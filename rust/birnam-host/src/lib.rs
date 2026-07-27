@@ -8131,6 +8131,73 @@ mod tests {
         root_path.expect("shared fixture root")
     }
 
+    fn shared_path_token(path: &Path) -> String {
+        path.file_name()
+            .expect("shared fixture path has a filename")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn shared_kind(path: &Path) -> String {
+        let bytes = std::fs::read(path).expect("shared fixture descriptor reads");
+        let descriptor = birnam_artifact::inspect(&bytes).expect("shared fixture descriptor parses");
+        String::from_utf8_lossy(descriptor.kind).into_owned()
+    }
+
+    fn record_shared_parity_row(
+        case: &str,
+        result: &Result<ArtifactPlan, ArtifactPreflightError>,
+    ) {
+        let Some(output) = std::env::var_os("BIRNAM_PREFLIGHT_PARITY_OUTPUT") else {
+            return;
+        };
+        let (outcome, detail, first) = match result {
+            Ok(plan) => (
+                "ok".to_owned(),
+                format!(
+                    "order={}",
+                    plan.entries
+                        .iter()
+                        .map(|entry| String::from_utf8_lossy(&entry.identity).into_owned())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+                "none".to_owned(),
+            ),
+            Err(ArtifactPreflightError::IdentityMismatch {
+                path,
+                expected,
+                actual,
+            }) => (
+                "identityMismatch".to_owned(),
+                format!(
+                    "expected={};actual={}",
+                    String::from_utf8_lossy(expected),
+                    String::from_utf8_lossy(actual)
+                ),
+                shared_path_token(path),
+            ),
+            Err(ArtifactPreflightError::KindMismatch { path }) => (
+                "kindMismatch".to_owned(),
+                format!("expected=module;actual={}", shared_kind(path)),
+                shared_path_token(path),
+            ),
+            Err(ArtifactPreflightError::DependencyInvalid { path, dependency }) => (
+                "dependencyInvalid".to_owned(),
+                format!("dependency={}", String::from_utf8_lossy(dependency)),
+                shared_path_token(path),
+            ),
+            Err(error) => panic!("shared parity case {case} emitted unsupported {error:?}"),
+        };
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(output)
+            .expect("shared parity output opens");
+        writeln!(file, "{case}|{outcome}|{detail}|first={first}")
+            .expect("shared parity row writes");
+    }
+
     #[test]
     fn uses_one_normalized_executable_relative_layout() {
         let resources = resolve_from_exe_dir(Path::new("/opt/birnam/bin"), Overrides::default())
@@ -9541,6 +9608,7 @@ mod tests {
                 "sentinel" => preflight_artifact(&root_path, Some(b"sentinel")),
                 _ => unreachable!(),
             };
+            record_shared_parity_row(case, &result);
             match case {
                 "path-only-root" | "ordered-valid-closure" | "sentinel" => {
                     let plan = result.expect("shared fixture valid case");

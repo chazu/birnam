@@ -122,6 +122,75 @@ fn writeSharedCase(
     if (!found) return error.MissingSharedFixture;
 }
 
+fn sharedIdentity(api: *idapi.IdApi, description: Oop) []const u8 {
+    const identity = api.send(description, api.intern("identity"), &.{}, 0);
+    return std.mem.span(api.symbolName(identity));
+}
+
+fn sharedKind(api: *idapi.IdApi, description: Oop) []const u8 {
+    const kind = api.send(description, api.intern("kind"), &.{}, 0);
+    return std.mem.span(api.symbolName(kind));
+}
+
+fn recordSharedParityRow(
+    allocator: std.mem.Allocator,
+    api: *idapi.IdApi,
+    directory: []const u8,
+    case_name: []const u8,
+    description: Oop,
+    result: anyerror!void,
+) !void {
+    const output_path = std.posix.getenv("BIRNAM_PREFLIGHT_PARITY_OUTPUT") orelse return;
+    const line = if (result) |_| blk: {
+        const detail = if (std.mem.eql(u8, case_name, "path-only-root"))
+            try std.fmt.allocPrint(allocator, "order={s}", .{sharedIdentity(api, description)})
+        else if (std.mem.eql(u8, case_name, "ordered-valid-closure"))
+            try allocator.dupe(u8, "order=dependency,root")
+        else if (std.mem.eql(u8, case_name, "sentinel"))
+            try allocator.dupe(u8, "order=sentinel")
+        else
+            return error.UnexpectedSharedParitySuccess;
+        defer allocator.free(detail);
+        break :blk try std.fmt.allocPrint(allocator, "{s}|ok|{s}|first=none\n", .{ case_name, detail });
+    } else |err| blk: {
+        const detail: []u8 = if (err == error.ArtifactIdentityMismatch and
+            std.mem.eql(u8, case_name, "supplied-identity-mismatch"))
+            try std.fmt.allocPrint(allocator, "expected=expectedIdentity;actual={s}", .{sharedIdentity(api, description)})
+        else if (err == error.ArtifactKindMismatch and
+            std.mem.eql(u8, case_name, "wrong-kind-before-walk"))
+            try std.fmt.allocPrint(allocator, "expected=module;actual={s}", .{sharedKind(api, description)})
+        else if (err == error.ArtifactKindMismatch and
+            std.mem.eql(u8, case_name, "nested-wrong-kind"))
+        blk2: {
+            const dependency = try inspect(api, directory, "libbirnam_dependency.dylib");
+            break :blk2 try std.fmt.allocPrint(allocator, "expected=module;actual={s}", .{sharedKind(api, dependency)});
+        } else if (err == error.ArtifactIdentityMismatch and
+            std.mem.eql(u8, case_name, "sibling-identity-mismatch"))
+            try allocator.dupe(u8, "expected=dependency;actual=impostor")
+        else if (err == error.ArtifactDependencyInvalid and
+            std.mem.eql(u8, case_name, "missing-sibling"))
+            try allocator.dupe(u8, "dependency=missing")
+        else
+            return error.UnexpectedSharedParityFailure;
+        defer allocator.free(detail);
+        const first = if (std.mem.eql(u8, case_name, "supplied-identity-mismatch") or
+            std.mem.eql(u8, case_name, "wrong-kind-before-walk"))
+            "root.dylib"
+        else if (std.mem.eql(u8, case_name, "nested-wrong-kind") or
+            std.mem.eql(u8, case_name, "sibling-identity-mismatch"))
+            "libbirnam_dependency.dylib"
+        else
+            "libbirnam_missing.dylib";
+        const outcome = if (err == error.ArtifactIdentityMismatch) "identityMismatch" else if (err == error.ArtifactKindMismatch) "kindMismatch" else "dependencyInvalid";
+        break :blk try std.fmt.allocPrint(allocator, "{s}|{s}|{s}|first={s}\n", .{ case_name, outcome, detail, first });
+    };
+    defer allocator.free(line);
+    var file = try std.fs.cwd().openFile(output_path, .{ .mode = .write_only });
+    defer file.close();
+    try file.seekFromEnd(0);
+    try file.writeAll(line);
+}
+
 test "path-only root preflight does not invent identity from filename" {
     const api = setup();
     var tmp = std.testing.tmpDir(.{});
@@ -265,36 +334,45 @@ test "shared fixture matrix matches Rust preflight cases" {
             directory,
         );
         defer preflight.deinit();
-        if (std.mem.eql(u8, case_name, "path-only-root")) {
-            try preflight.walkRoot(description, null);
+        const result = if (std.mem.eql(u8, case_name, "path-only-root"))
+            preflight.walkRoot(description, null)
+        else if (std.mem.eql(u8, case_name, "supplied-identity-mismatch"))
+            preflight.walkRoot(description, api.intern("expectedIdentity"))
+        else if (std.mem.eql(u8, case_name, "wrong-kind-before-walk"))
+            preflight.walkRoot(description, api.intern("candidate"))
+        else if (std.mem.eql(u8, case_name, "nested-wrong-kind"))
+            preflight.walkRoot(description, api.intern("root"))
+        else if (std.mem.eql(u8, case_name, "sibling-identity-mismatch"))
+            preflight.walkRoot(description, null)
+        else if (std.mem.eql(u8, case_name, "missing-sibling"))
+            preflight.walkRoot(description, null)
+        else if (std.mem.eql(u8, case_name, "ordered-valid-closure"))
+            preflight.walkRoot(description, api.intern("root"))
+        else if (std.mem.eql(u8, case_name, "sentinel"))
+            preflight.walkRoot(description, api.intern("sentinel"))
+        else
+            unreachable;
+        try recordSharedParityRow(std.testing.allocator, api, directory, case_name, description, result);
+        if (std.mem.eql(u8, case_name, "path-only-root") or
+            std.mem.eql(u8, case_name, "ordered-valid-closure") or
+            std.mem.eql(u8, case_name, "sentinel"))
+        {
+            try result;
         } else if (std.mem.eql(u8, case_name, "supplied-identity-mismatch")) {
-            try std.testing.expectError(
-                error.ArtifactIdentityMismatch,
-                preflight.walkRoot(description, api.intern("expectedIdentity")),
-            );
-        } else if (std.mem.eql(u8, case_name, "wrong-kind-before-walk")) {
-            try std.testing.expectError(
-                error.ArtifactKindMismatch,
-                preflight.walkRoot(description, api.intern("candidate")),
-            );
-        } else if (std.mem.eql(u8, case_name, "nested-wrong-kind")) {
-            try std.testing.expectError(
-                error.ArtifactKindMismatch,
-                preflight.walkRoot(description, api.intern("root")),
-            );
+            try std.testing.expectError(error.ArtifactIdentityMismatch, result);
+        } else if (std.mem.eql(u8, case_name, "wrong-kind-before-walk") or
+            std.mem.eql(u8, case_name, "nested-wrong-kind"))
+        {
+            try std.testing.expectError(error.ArtifactKindMismatch, result);
         } else if (std.mem.eql(u8, case_name, "sibling-identity-mismatch")) {
-            try std.testing.expectError(error.ArtifactIdentityMismatch, preflight.walkRoot(description, null));
+            try std.testing.expectError(error.ArtifactIdentityMismatch, result);
         } else if (std.mem.eql(u8, case_name, "missing-sibling")) {
-            try std.testing.expectError(error.ArtifactDependencyInvalid, preflight.walkRoot(description, null));
+            try std.testing.expectError(error.ArtifactDependencyInvalid, result);
             const target = try tmp.dir.readFileAlloc(std.testing.allocator, "existing-target", 1024);
             defer std.testing.allocator.free(target);
             try std.testing.expectEqualStrings("prior-publication", target);
             try std.testing.expect(api.import("Store") == null);
             try std.testing.expect(api.import("Module") == null);
-        } else if (std.mem.eql(u8, case_name, "ordered-valid-closure")) {
-            try preflight.walkRoot(description, api.intern("root"));
-        } else if (std.mem.eql(u8, case_name, "sentinel")) {
-            try preflight.walkRoot(description, api.intern("sentinel"));
-        } else unreachable;
+        }
     }
 }

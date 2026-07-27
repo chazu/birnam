@@ -210,5 +210,9 @@ if ! grep -q 'ok   policy edit is not a native primitive' "$policy_output" || \
   exit 1
 fi
 
+# Keep the Rust/Zig artifact negative corpus tied to one normalized result
+# contract while this boundary exercises relocated provider selection.
+bash scripts/artifact-preflight-parity-smoke.sh
+
 printf 'remaining-zig-boundary: rust_receipts=%d zig_oracle_receipts=%d canonical_load_trace=ok oracle_load_trace=ok policy_authority=ok\n' \
   "$rust_receipts" "$zig_receipts"

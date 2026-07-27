@@ -62,6 +62,7 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
   BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
     BIRNAM_RUST_ARTIFACT_PROFILE=release \
     bash scripts/rust-artifact-preflight-smoke.sh
+  bash scripts/artifact-preflight-parity-smoke.sh
 )
 
 test -x "$scratch/zig-out/bin/birnam"
