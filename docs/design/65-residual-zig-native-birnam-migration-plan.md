@@ -350,10 +350,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   `test-project-check` (`92/92`), `test-install` (`123/123`), and
   `test-isolate-process` (`92/92`) after the artifact-emitter, image-recovery,
   and worker-vtable fixes above. `test-repl` now reaches the complete module
-  suite but still exposes Rust-host semantic failures in Doc source recovery,
-  Reflect fact/source projection, and CompiledUnit lifecycle publication.
-  Those failures remain visible C2 continuation work; this checkpoint accepts
-  only the replacement-floor R6 evidence and does not claim C2 host completion.
+  suite but still exposes Rust-host semantic failures in the Doc module-source
+  badge/span path and CompiledUnit lifecycle publication-plan validation.
+  Reflect fact maps, method owners/sources, and kinded name errors are now
+  covered by commits `5dc3144`, `5be68ac`, and `19720c9`; the remaining failures
+  stay visible C2 continuation work. This checkpoint accepts only the
+  replacement-floor R6 evidence and does not claim C2 host completion.
 - Rust Codegen `evalPersisting:` now retains its TCC unit whenever the emitted
   source contains blocks, matching the Zig evaluator's lifetime rule. The
   forced-collection regression is part of the focused matrix, advancing the
