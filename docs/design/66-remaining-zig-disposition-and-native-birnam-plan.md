@@ -491,14 +491,15 @@ does not alter provider selection or runtime behavior.
 Commit `9a04538` adds the first semantic expansion: the 120 callsites are
 covered by 56 checker-backed function groups with actual-owner, effect-class,
 test, and disposition fields, while the 31 named globals retain their explicit
-owner classes. The checker rejects an uncovered or stale function group as well
-as a line-level callsite drift. Receiver/selector/arity details remain in the
-source callsite and are the next review refinement; no runtime behavior changed.
+owner classes. Commit `599cee0` additionally freezes a normalized
+receiver/selector/arity surface digest for all 120 calls. The checker rejects an
+uncovered or stale function group, line, or message surface. No runtime
+behavior changed.
 
-The next bounded Z2.0 step is to attach those receiver/selector/arity details
-and retained pre/post-send validation to the same rows. That expansion must
-remain checker-backed and read-only; only after it passes with the strict
-R6/archive gate may the review select one named policy seam for Z2.1.
+The next bounded Z2.0 step is to attach retained pre/post-send validation to
+the same rows. That expansion must remain checker-backed and read-only; only
+after it passes with the strict R6/archive gate may the review select one named
+policy seam for Z2.1.
 
 Z2.0 cannot exit on discovery alone. Its inventory, fail-closed checker, and
 strict R6/archive pass must be reviewed together; the review must select one
