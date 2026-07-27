@@ -53,13 +53,17 @@ The artifact surface has three non-overlapping owners:
    IdApi, globals, closure decisions, activation, or `module_init`.
 2. `libbirnam_id_artifact.dylib` is the sole `Artifact`/`ArtifactVt` IdApi
    projection and its dynamic `module_init` owner.
-3. The Rust host is the sole sibling-closure, path-containment, preflight
-   ordering, and activation gate. It may call the pure codec and load the
-   dynamic projection, but it exports neither `Artifact` nor a competing
-   `module_init`.
+3. The Rust host is the sole filesystem sibling-closure, path-containment,
+   and preflight-permission gate. `Module loadArtifact:` remains the sole
+   runtime dependency-ordering, initializer-delegation, Store/MOP-publication,
+   and activation authority. The host never invokes an artifact initializer
+   directly. It may call the pure codec and load the dynamic projection, but
+   it exports neither `Artifact` nor a competing `module_init`.
 
 Parity tests use identical inert bytes at all three boundaries and assert that
-no layer publishes a second schema, closure, or activation authority.
+no layer publishes a second schema, closure, or activation authority; the host
+preflight and `Module loadArtifact:` activation boundaries are tested
+independently.
 
 ## 2. Invariants and design decisions
 
@@ -190,11 +194,15 @@ the Zig oracle build intact.
 1. Enumerate the exact descriptor, dependency, identity, digest, and kind
    rules in `artifact.zig`, `artifact_inspector.zig`, and `artifact_preflight.zig`.
    Mark which are schema parsing, which are host closure policy, and which are
-   activation checks.
+   activation checks. Mark host permission checks separately from
+   `Module loadArtifact:` dependency ordering, initializer delegation, and
+   Store/MOP publication.
 2. Enforce the three-owner split from §1.2: `birnam-artifact` remains pure,
    `libbirnam_id_artifact.dylib` remains the sole `Artifact`/`ArtifactVt`
-   projection, and Rust host remains the sole closure/preflight authority. No
-   crate may silently add a second `module_init` authority.
+   projection, and Rust host remains the sole filesystem closure/preflight
+   permission authority. `Module loadArtifact:` remains the sole runtime
+   activation/publication authority; the host never calls an initializer
+   directly. No crate may silently add a second `module_init` authority.
 3. Port negative cases first: wrong kind, identity/digest mismatch, missing
    dependency, incomplete closure, malformed bytes, wrong install root,
    duplicate providers, and aborting initializer unreachable during preflight.
@@ -215,8 +223,10 @@ Land these as separate commits, each with focused green tests:
 3. `test: prove Rust resource observation boundary` — only typed Rust
    observation assertions, with project/check/install/LSP parity; do not
    rewrite already-landed host behavior without a diagnosed gap.
-4. `refactor: make Rust artifact preflight authoritative` — schema/closure
-   split, negative corpus, and no-partial-publication proof.
+4. `test: freeze Rust artifact authority split` — schema/closure/activation
+   ownership manifest, negative corpus, and no-partial-publication proof. A
+   behavior refactor is allowed only if Z1.2 identifies a specific parity or
+   ownership failure and it lands as its own diagnosed commit.
 5. `docs: record Z1 cross-floor acceptance` — exact counts, digests, and
    remaining oracle edges.
 
@@ -254,10 +264,10 @@ Z2 proves that policy remains in `.birnam` while Rust owns observation.
 3. Exercise method replacement/removal, Store backfill, inherited lookup,
    failed candidate activation, and rollback while project policy is loaded.
    Assert the exact MOP consistency law after every transition.
-4. Run project check/build/run/test, docgen, LSP, source fallback, image save/
-   rebuild, and isolate smoke from a relocated prefix. Keep the unresolved
-   `tag:body:` fixture failure visible; do not mark it passed by removing the
-   assertion.
+4. After the Z1 strict prerequisite is repaired, run project
+   check/build/run/test, docgen, LSP, source fallback, image save/rebuild, and
+   isolate smoke from a relocated prefix. Any recurrence of the `tag:body:`
+   failure is a stop; retain the assertion rather than deleting it.
 5. Make one narrow commit per policy seam, followed by a documentation
    checkpoint. No dynamic Zig fixture is retired in Z2.
 
@@ -282,9 +292,9 @@ Z3 makes the distribution boundary honest without deleting rollback evidence.
 2. Verify every production `dlopen` with `DYLD_PRINT_LIBRARIES` (or the
    platform equivalent) and compare against the declared dynamic-only graph.
    Any `_zig` load is a hard failure.
-3. Keep `_zig` libraries and `birnam-zig-oracle` in the test/rollback prefix
-   with identity/digest receipts. Do not install them into a production-only
-   artifact unless the release manifest labels them as rollback evidence.
+3. Keep `_zig` libraries and `birnam-zig-oracle` only in the separate
+   test/rollback prefix with identity/digest receipts. Production bundles
+   never contain a rollback-labeled `_zig` library or oracle executable.
 4. Run old image, generated-C, BISO, and native-client fixtures through the
    explicit oracle and current Rust production paths. A fixture mismatch is a
    release stop, not a contract change.
@@ -332,7 +342,7 @@ recovery require it.
 | compatibility | old image, generated-C, BISO, ABI, and native-client fixtures |
 | rollback | explicit Zig prefix/receipt works and cannot be ambiently selected |
 | performance | existing R6 comparator; no unrecorded benchmark allowance |
-| strict audit | broad verify/harness failure is either fixed or separately named |
+| strict audit | strict R6 passes before and after every Z1–Z3 authority/distribution change |
 
 The scoped gate remains `bash scripts/r6-acceptance.sh`; it is not widened to
 hide the current `tag:body:` strict fixture failure. Z0 may report that
@@ -342,9 +352,12 @@ failure separately, but Z1/Z2/Z3 authority or distribution changes require
 ## 9. Commit discipline and stop conditions
 
 - Every numbered implementation item is one small commit after focused tests.
-- Before each owner/disposition change, run `git diff --check`, the relevant
+- Before Z0 diagnostic-only changes, run `git diff --check`, the relevant
   Debug/ReleaseSafe target, install/relocation smoke, cross-floor corpus, and
-  the scoped R6 gate.
+  the scoped R6 gate. Before every Z1–Z3 owner/disposition or distribution
+  change, run those checks plus
+  `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh`; a strict failure
+  is a stop, not a named exception.
 - Keep unrelated worktree changes out of commits; preserve explicit rollback
   commits and receipts.
 - Stop for human decision only if a required replacement would change a frozen
