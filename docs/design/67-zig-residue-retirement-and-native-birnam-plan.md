@@ -603,6 +603,14 @@ Rust Isolate provider, explicit Zig Isolate oracle, and complete full-Zig
 rollback vector remain installed; no provider deletion, mixed-vector recovery,
 or benchmark allowance change is authorized by this receipt.
 
+### P2.8 Relational candidate checkpoint
+
+The Relational candidate is evidence-only: Rust Relational is already the
+canonical provider, while the canonical Zig Relational implementation and its
+complete rollback vector remain unchanged. This checkpoint records the exact
+hash before the kernel, Rust-vs-Zig Store callback, full suite, and selector
+gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
