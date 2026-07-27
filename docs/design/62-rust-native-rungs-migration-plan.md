@@ -6,7 +6,9 @@
 > N3.2b, N3.2c, and N3.3 are complete; N3.4a through N3.4i and N3.4 are
 > complete; N3.5.1 through N3.5.4 and N4.1 through N4.4 are complete; N5.1
 > through N5.4 and N6.1 are complete; N6.2 through N6.6 have executable
-> opt-in slices in progress; N6.7 remains pending.
+> opt-in slices in progress; N6.7 remains pending. N7.1 is now complete for
+> the Rust Prelude surface and canonical selection; its closure record is
+> cross-referenced to [63 — Remaining Zig Module Migration](63-remaining-zig-module-migration-plan.md).
 >
 > This plan begins after [61 — Rust libid Floor Rewrite](61-rust-libid-rewrite-plan.md)
 > reached R7. The Rust `libid` is the production floor; its Zig implementation
@@ -2353,6 +2355,42 @@ Migrate one dylib and one default-switch commit at a time in load order.
 Port primitive arithmetic, conversion, printing, filesystem/process/system
 calls, native loop primitives, dynamic module load, and stack/runtime controls.
 Keep already-derived arithmetic and library protocol in `stdlib.birnam`.
+
+#### N7.1 closure reconciliation (2026-07-27)
+
+N7.1 is complete for the planned Rust Prelude surface. The Rust dynamic rung
+now covers arithmetic and conversion, Boolean and block loops, Error-core and
+numeric fault construction, stringification, System output/file/environment
+I/O, source-file loading through the Codegen protocol, module loading, line
+input, and GC controls. The canonical build selects Rust Prelude; Zig remains
+available only through the explicit `-Dprelude-impl=zig` rollback/oracle path.
+Commit `8ba03b6` is the canonical cutover, and Design 63 R0.5 is the detailed
+execution record.
+
+The self-hosted handlers (`on:do:`, `ensure:`, `ifError:`, and
+`ifNotError:`) remain in `src/id/stdlib.birnam`, where they are the derived
+Error protocol authority. Process exit remains in `modules/os.birnam` through
+the Alien boundary; process orchestration is not duplicated in the Prelude.
+These boundaries preserve the one-policy-owner and one-message-authority
+invariants.
+
+The closure gates pass in a clean process:
+
+```text
+zig build test-prelude-selection
+zig build test-rust-prelude
+zig build test-rust-prelude-rust-error
+zig build test-rust-prelude-io
+zig build test-birnam
+```
+
+The strict R6 acceptance gate also passes at its frozen `305/305` verify-step,
+`516/522` test, and six-skip pin. The two documented comparator crossings
+remain the only accepted snapshot allowances: `query.aggregate +5.8%` and
+`compile.stage1-stdlib +11.9%`. Earlier slice entries that say source
+loading, process controls, handlers, or canonical selection “remain open” are
+historical checkpoints superseded by this reconciliation record; N7.2 is the
+next Rust-rung implementation phase.
 
 ### N7.2 — Collection
 
