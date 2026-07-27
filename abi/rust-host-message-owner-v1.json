@@ -217,7 +217,12 @@
         "selector": "libDir:"
       },
       "effect_class": "module-lifecycle:ignored",
-      "test": "strict R6 verify activate_artifact send at rust/birnam-host/src/lib.rs:575; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=activate_artifact line 575",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated activate_artifact runtime boundary"
     },
@@ -247,7 +252,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "module-lifecycle:ignored",
-      "test": "strict R6 verify activate_artifact send at rust/birnam-host/src/lib.rs:585; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=activate_artifact line 585",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "alien acquired by the validated activate_artifact runtime boundary"
     },
@@ -262,23 +272,26 @@
         "handling": "bound:result",
         "binding": "result",
         "post_use_lines": [
-          591,
-          600
+          591
         ],
         "post_use_snippets": [
-          "if result == api.nilObj || send_is_error(api, result) {",
-          "/// instead of treating a nil result as success."
+          "if result == api.nilObj || send_is_error(api, result) {"
         ]
       },
-      "pre_post_send_branches": "pre: let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) }; | let selector = unsafe { (api.intern)(c\"loadArtifact:\".as_ptr()) };; post: line 591: if result == api.nilObj || send_is_error(api, result) { | line 600: /// instead of treating a nil result as success.",
-      "retained_validation": "observed bound:result; line 591: if result == api.nilObj || send_is_error(api, result) { | line 600: /// instead of treating a nil result as success.",
+      "pre_post_send_branches": "pre: let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) }; | let selector = unsafe { (api.intern)(c\"loadArtifact:\".as_ptr()) };; post: line 591: if result == api.nilObj || send_is_error(api, result) {",
+      "retained_validation": "observed bound:result; line 591: if result == api.nilObj || send_is_error(api, result) {",
       "actual_owner": "native-birnam:src/id/modules.birnam",
       "native_definition": {
         "path": "src/id/modules.birnam",
         "selector": "loadArtifact:"
       },
       "effect_class": "module-lifecycle:bound:result",
-      "test": "strict R6 verify activate_artifact send at rust/birnam-host/src/lib.rs:590; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=activate_artifact line 590",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated activate_artifact runtime boundary"
     },
@@ -312,7 +325,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:result",
-      "test": "strict R6 verify eval_script send at rust/birnam-host/src/lib.rs:630; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=eval_script line 630",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated eval_script runtime boundary"
     },
@@ -346,7 +364,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:last_error",
-      "test": "strict R6 verify eval_script send at rust/birnam-host/src/lib.rs:632; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=eval_script line 632",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated eval_script runtime boundary"
     },
@@ -380,7 +403,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:result",
-      "test": "strict R6 verify compile_module send at rust/birnam-host/src/lib.rs:678; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=compile_module line 678",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated compile_module runtime boundary"
     },
@@ -395,20 +423,14 @@
         "handling": "bound:status",
         "binding": "status",
         "post_use_lines": [
-          719,
-          741,
-          744,
-          787
+          719
         ],
         "post_use_snippets": [
-          "if status == api.falseObj",
-          "if status == api.nilObj {",
-          "if status == api.trueObj {",
-          "if status != api.falseObj {"
+          "if status == api.falseObj"
         ]
       },
-      "pre_post_send_branches": "pre: let selector = unsafe { (api.intern)(c\"loadImage:rebuild:\".as_ptr()) }; | let mut status =; post: line 719: if status == api.falseObj | line 741: if status == api.nilObj { | line 744: if status == api.trueObj { | line 787: if status != api.falseObj {",
-      "retained_validation": "observed bound:status; line 719: if status == api.falseObj | line 741: if status == api.nilObj { | line 744: if status == api.trueObj { | line 787: if status != api.falseObj {",
+      "pre_post_send_branches": "pre: let selector = unsafe { (api.intern)(c\"loadImage:rebuild:\".as_ptr()) }; | let mut status =; post: line 719: if status == api.falseObj",
+      "retained_validation": "observed bound:status; line 719: if status == api.falseObj",
       "actual_owner": "rust-dynamic:rust/birnam-image/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-image/src/lib.rs",
@@ -420,7 +442,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:status",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:718; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 718",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "system acquired by the validated load_image runtime boundary"
     },
@@ -457,8 +484,13 @@
         "selector": "loadImage:rebuild:",
         "role": "Zig rollback/oracle only"
       },
-      "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:734; archive source-bootstrap-smoke",
+      "effect_class": "image-recovery:bound:status",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 734",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "system acquired by the validated load_image runtime boundary"
     },
@@ -473,16 +505,14 @@
         "handling": "bound:begun",
         "binding": "begun",
         "post_use_lines": [
-          754,
-          800
+          754
         ],
         "post_use_snippets": [
-          "if begun == api.nilObj || send_is_error(api, begun) {",
           "if begun == api.nilObj || send_is_error(api, begun) {"
         ]
       },
-      "pre_post_send_branches": "pre: if codegen != api.nilObj { | let begin_recovery = unsafe { (api.intern)(c\"beginImageDispatchRecovery\".as_ptr()) };; post: line 754: if begun == api.nilObj || send_is_error(api, begun) { | line 800: if begun == api.nilObj || send_is_error(api, begun) {",
-      "retained_validation": "observed bound:begun; line 754: if begun == api.nilObj || send_is_error(api, begun) { | line 800: if begun == api.nilObj || send_is_error(api, begun) {",
+      "pre_post_send_branches": "pre: if codegen != api.nilObj { | let begin_recovery = unsafe { (api.intern)(c\"beginImageDispatchRecovery\".as_ptr()) };; post: line 754: if begun == api.nilObj || send_is_error(api, begun) {",
+      "retained_validation": "observed bound:begun; line 754: if begun == api.nilObj || send_is_error(api, begun) {",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -494,7 +524,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:begun",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:753; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 753",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -524,7 +559,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:758; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 758",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -554,7 +594,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:760; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 760",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -584,7 +629,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:762; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 762",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -600,17 +650,15 @@
         "binding": "current_digest",
         "post_use_lines": [
           771,
-          844,
-          852
+          844
         ],
         "post_use_snippets": [
           "if current_digest != api.nilObj && !current_digest.is_null() {",
-          "let current_digest = unsafe {",
-          "if current_digest != api.nilObj && !current_digest.is_null() {"
+          "let current_digest = unsafe {"
         ]
       },
-      "pre_post_send_branches": "pre: unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) }; | let current_digest = unsafe {; post: line 771: if current_digest != api.nilObj && !current_digest.is_null() { | line 844: let current_digest = unsafe { | line 852: if current_digest != api.nilObj && !current_digest.is_null() {",
-      "retained_validation": "observed bound:current_digest; line 771: if current_digest != api.nilObj && !current_digest.is_null() { | line 844: let current_digest = unsafe { | line 852: if current_digest != api.nilObj && !current_digest.is_null() {",
+      "pre_post_send_branches": "pre: unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) }; | let current_digest = unsafe {; post: line 771: if current_digest != api.nilObj && !current_digest.is_null() { | line 844: let current_digest = unsafe {",
+      "retained_validation": "observed bound:current_digest; line 771: if current_digest != api.nilObj && !current_digest.is_null() { | line 844: let current_digest = unsafe {",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -622,7 +670,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:current_digest",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:764; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 764",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -638,17 +691,15 @@
         "binding": "sealed",
         "post_use_lines": [
           780,
-          853,
-          861
+          853
         ],
         "post_use_snippets": [
           "if sealed != api.trueObj {",
-          "let sealed = unsafe {",
-          "if sealed != api.trueObj {"
+          "let sealed = unsafe {"
         ]
       },
-      "pre_post_send_branches": "pre: if current_digest != api.nilObj && !current_digest.is_null() { | let sealed = unsafe {; post: line 780: if sealed != api.trueObj { | line 853: let sealed = unsafe { | line 861: if sealed != api.trueObj {",
-      "retained_validation": "observed bound:sealed; line 780: if sealed != api.trueObj { | line 853: let sealed = unsafe { | line 861: if sealed != api.trueObj {",
+      "pre_post_send_branches": "pre: if current_digest != api.nilObj && !current_digest.is_null() { | let sealed = unsafe {; post: line 780: if sealed != api.trueObj { | line 853: let sealed = unsafe {",
+      "retained_validation": "observed bound:sealed; line 780: if sealed != api.trueObj { | line 853: let sealed = unsafe {",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -660,7 +711,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:sealed",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:773; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 773",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -694,7 +750,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:begun",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:799; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 799",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -730,7 +791,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:replayed",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:804; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 804",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -760,7 +826,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:835; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 835",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -790,7 +861,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:841; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 841",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -820,7 +896,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:843; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 843",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -854,7 +935,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:current_digest",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:845; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 845",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -888,7 +974,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:sealed",
-      "test": "strict R6 verify load_image send at rust/birnam-host/src/lib.rs:854; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=load_image line 854",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary"
     },
@@ -922,7 +1013,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify decode_project_source_metadata send at rust/birnam-host/src/lib.rs:2592; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_source_metadata line 2592",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "metadata acquired by the validated decode_project_source_metadata runtime boundary"
     },
@@ -952,7 +1048,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:returned",
-      "test": "strict R6 verify decode_project_source_metadata send at rust/birnam-host/src/lib.rs:2598; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_source_metadata line 2598",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "metadata acquired by the validated decode_project_source_metadata runtime boundary"
     },
@@ -992,7 +1093,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:requires_size",
-      "test": "strict R6 verify decode_project_source_metadata send at rust/birnam-host/src/lib.rs:2638; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_source_metadata line 2638",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "requires_value acquired by the validated decode_project_source_metadata runtime boundary"
     },
@@ -1026,7 +1132,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:value",
-      "test": "strict R6 verify decode_project_source_metadata send at rust/birnam-host/src/lib.rs:2647; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_source_metadata line 2647",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "requires_value acquired by the validated decode_project_source_metadata runtime boundary"
     },
@@ -1056,7 +1167,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:returned",
-      "test": "strict R6 verify at send at rust/birnam-host/src/lib.rs:2697; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=at line 2697",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "map acquired by the validated at runtime boundary"
     },
@@ -1096,7 +1212,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify strings send at rust/birnam-host/src/lib.rs:2751; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=strings line 2751",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated strings runtime boundary"
     },
@@ -1130,7 +1251,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify strings send at rust/birnam-host/src/lib.rs:2761; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=strings line 2761",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated strings runtime boundary"
     },
@@ -1170,7 +1296,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify modules send at rust/birnam-host/src/lib.rs:2837; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=modules line 2837",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated modules runtime boundary"
     },
@@ -1208,7 +1339,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify modules send at rust/birnam-host/src/lib.rs:2846; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=modules line 2846",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated modules runtime boundary"
     },
@@ -1248,7 +1384,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify wrapped send at rust/birnam-host/src/lib.rs:2883; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=wrapped line 2883",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated wrapped runtime boundary"
     },
@@ -1286,7 +1427,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify wrapped send at rust/birnam-host/src/lib.rs:2892; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=wrapped line 2892",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated wrapped runtime boundary"
     },
@@ -1326,7 +1472,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:command_count",
-      "test": "strict R6 verify wrapped send at rust/birnam-host/src/lib.rs:2920; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=wrapped line 2920",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "build_value acquired by the validated wrapped runtime boundary"
     },
@@ -1362,7 +1513,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:command",
-      "test": "strict R6 verify wrapped send at rust/birnam-host/src/lib.rs:2931; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=wrapped line 2931",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "build_value acquired by the validated wrapped runtime boundary"
     },
@@ -1396,7 +1552,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:keys",
-      "test": "strict R6 verify dependencies send at rust/birnam-host/src/lib.rs:3000; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=dependencies line 3000",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated dependencies runtime boundary"
     },
@@ -1434,7 +1595,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify decode_project_resolution send at rust/birnam-host/src/lib.rs:3120; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_resolution line 3120",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "modules_value acquired by the validated decode_project_resolution runtime boundary"
     },
@@ -1474,7 +1640,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify decode_project_resolution send at rust/birnam-host/src/lib.rs:3127; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_resolution line 3127",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "modules_value acquired by the validated decode_project_resolution runtime boundary"
     },
@@ -1512,7 +1683,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify decode_project_artifact_plan send at rust/birnam-host/src/lib.rs:3257; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_artifact_plan line 3257",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_plan runtime boundary"
     },
@@ -1552,7 +1728,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify decode_project_artifact_plan send at rust/birnam-host/src/lib.rs:3264; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_artifact_plan line 3264",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_plan runtime boundary"
     },
@@ -1588,7 +1769,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify decode_project_build_record send at rust/birnam-host/src/lib.rs:3585; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_build_record line 3585",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated decode_project_build_record runtime boundary"
     },
@@ -1628,7 +1814,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify decode_project_build_record send at rust/birnam-host/src/lib.rs:3596; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_build_record line 3596",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "artifacts_value acquired by the validated decode_project_build_record runtime boundary"
     },
@@ -1668,7 +1859,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify decode_project_build_record send at rust/birnam-host/src/lib.rs:3634; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_build_record line 3634",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "native_value acquired by the validated decode_project_build_record runtime boundary"
     },
@@ -1706,7 +1902,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify decode_project_artifact_record send at rust/birnam-host/src/lib.rs:3710; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_artifact_record line 3710",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_record runtime boundary"
     },
@@ -1746,7 +1947,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify decode_project_artifact_record send at rust/birnam-host/src/lib.rs:3717; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_artifact_record line 3717",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_record runtime boundary"
     },
@@ -1786,7 +1992,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:native_size",
-      "test": "strict R6 verify decode_project_artifact_record send at rust/birnam-host/src/lib.rs:3763; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_artifact_record line 3763",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "native_value acquired by the validated decode_project_artifact_record runtime boundary"
     },
@@ -1826,7 +2037,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:item",
-      "test": "strict R6 verify decode_project_artifact_record send at rust/birnam-host/src/lib.rs:3772; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=decode_project_artifact_record line 3772",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "native_value acquired by the validated decode_project_artifact_record runtime boundary"
     },
@@ -1855,7 +2071,12 @@
         "selector": "load:"
       },
       "effect_class": "module-lifecycle:bound:result",
-      "test": "strict R6 verify load_runtime_module send at rust/birnam-host/src/lib.rs:4497; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=load_runtime_module line 4497",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated load_runtime_module runtime boundary"
     },
@@ -1889,7 +2110,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:result",
-      "test": "strict R6 verify load_host_runtime_module send at rust/birnam-host/src/lib.rs:4525; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=load_host_runtime_module line 4525",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.codegen acquired by the validated load_host_runtime_module runtime boundary"
     },
@@ -1914,7 +2140,12 @@
         "selector": "markLoaded:"
       },
       "effect_class": "module-lifecycle:ignored",
-      "test": "strict R6 verify load_host_runtime_module send at rust/birnam-host/src/lib.rs:4538; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=load_host_runtime_module line 4538",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated load_host_runtime_module runtime boundary"
     },
@@ -1948,7 +2179,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "module-lifecycle:bound:result",
-      "test": "strict R6 verify activate_project_build send at rust/birnam-host/src/lib.rs:4554; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=activate_project_build line 4554",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "alien acquired by the validated activate_project_build runtime boundary"
     },
@@ -1963,16 +2199,14 @@
         "handling": "bound:result",
         "binding": "result",
         "post_use_lines": [
-          4658,
-          4688
+          4658
         ],
         "post_use_snippets": [
-          "if result == api.nilObj || send_is_error(api, result) {",
           "if result == api.nilObj || send_is_error(api, result) {"
         ]
       },
-      "pre_post_send_branches": "pre: let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) }; | let selector = unsafe { (api.intern)(c\"libraryDir:\".as_ptr()) };; post: line 4658: if result == api.nilObj || send_is_error(api, result) { | line 4688: if result == api.nilObj || send_is_error(api, result) {",
-      "retained_validation": "observed bound:result; line 4658: if result == api.nilObj || send_is_error(api, result) { | line 4688: if result == api.nilObj || send_is_error(api, result) {",
+      "pre_post_send_branches": "pre: let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) }; | let selector = unsafe { (api.intern)(c\"libraryDir:\".as_ptr()) };; post: line 4658: if result == api.nilObj || send_is_error(api, result) {",
+      "retained_validation": "observed bound:result; line 4658: if result == api.nilObj || send_is_error(api, result) {",
       "actual_owner": "rust-dynamic:rust/birnam-alien/src/runtime.rs",
       "native_definition": {
         "path": "rust/birnam-alien/src/runtime.rs",
@@ -1984,7 +2218,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "module-lifecycle:bound:result",
-      "test": "strict R6 verify run_project_with_tool_version send at rust/birnam-host/src/lib.rs:4657; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=run_project_with_tool_version line 4657",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "alien acquired by the validated run_project_with_tool_version runtime boundary"
     },
@@ -2018,7 +2257,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:result",
-      "test": "strict R6 verify run_project_with_tool_version send at rust/birnam-host/src/lib.rs:4687; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=run_project_with_tool_version line 4687",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "globals acquired by the validated run_project_with_tool_version runtime boundary"
     },
@@ -2047,7 +2291,12 @@
         "selector": "suites"
       },
       "effect_class": "host-protocol:bound:suites",
-      "test": "strict R6 verify run_project_test_source send at rust/birnam-host/src/lib.rs:4750; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=run_project_test_source line 4750",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "test acquired by the validated run_project_test_source runtime boundary"
     },
@@ -2081,7 +2330,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:count",
-      "test": "strict R6 verify run_project_test_source send at rust/birnam-host/src/lib.rs:4755; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=run_project_test_source line 4755",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "suites acquired by the validated run_project_test_source runtime boundary"
     },
@@ -2110,7 +2364,12 @@
         "selector": "runAllSuitesWithRunner:"
       },
       "effect_class": "host-protocol:bound:result",
-      "test": "strict R6 verify run_project_test_source send at rust/birnam-host/src/lib.rs:4760; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=run_project_test_source line 4760",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "test acquired by the validated run_project_test_source runtime boundary"
     },
@@ -2139,7 +2398,12 @@
         "selector": "allPassed"
       },
       "effect_class": "host-protocol:bound:passed",
-      "test": "strict R6 verify run_project_test_source send at rust/birnam-host/src/lib.rs:4765; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=run_project_test_source line 4765",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "result acquired by the validated run_project_test_source runtime boundary"
     },
@@ -2172,7 +2436,12 @@
         "selector": "resolveSnapshot:"
       },
       "effect_class": "project-policy:bound:result",
-      "test": "strict R6 verify resolve_project_snapshot send at rust/birnam-host/src/lib.rs:4823; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=resolve_project_snapshot line 4823",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "policy acquired by the validated resolve_project_snapshot runtime boundary"
     },
@@ -2203,7 +2472,12 @@
         "selector": "parse:"
       },
       "effect_class": "toml-policy:bound:result",
-      "test": "strict R6 verify parse_project_manifest send at rust/birnam-host/src/lib.rs:4870; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=parse_project_manifest line 4870",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "toml acquired by the validated parse_project_manifest runtime boundary"
     },
@@ -2218,16 +2492,14 @@
         "handling": "bound:result",
         "binding": "result",
         "post_use_lines": [
-          5132,
-          5169
+          5132
         ],
         "post_use_snippets": [
-          "if result == api.nilObj || send_is_error(api, result) {",
-          "/// Codegen result is read back and checked against the module's inert"
+          "if result == api.nilObj || send_is_error(api, result) {"
         ]
       },
-      "pre_post_send_branches": "pre: let root = unsafe { (api.mkString)(root_bytes.as_ptr(), root_bytes.len()) }; | let result = unsafe {; post: line 5132: if result == api.nilObj || send_is_error(api, result) { | line 5169: /// Codegen result is read back and checked against the module's inert",
-      "retained_validation": "observed bound:result; line 5132: if result == api.nilObj || send_is_error(api, result) { | line 5169: /// Codegen result is read back and checked against the module's inert",
+      "pre_post_send_branches": "pre: let root = unsafe { (api.mkString)(root_bytes.as_ptr(), root_bytes.len()) }; | let result = unsafe {; post: line 5132: if result == api.nilObj || send_is_error(api, result) {",
+      "retained_validation": "observed bound:result; line 5132: if result == api.nilObj || send_is_error(api, result) {",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -2239,7 +2511,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:result",
-      "test": "strict R6 verify check_project send at rust/birnam-host/src/lib.rs:5125; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=check_project line 5125",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.codegen acquired by the validated check_project runtime boundary"
     },
@@ -2277,7 +2554,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:detail_value",
-      "test": "strict R6 verify check_project send at rust/birnam-host/src/lib.rs:5134; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=check_project line 5134",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.codegen acquired by the validated check_project runtime boundary"
     },
@@ -2311,7 +2593,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:result",
-      "test": "strict R6 verify compile_project_artifact send at rust/birnam-host/src/lib.rs:5195; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=compile_project_artifact line 5195",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.codegen acquired by the validated compile_project_artifact runtime boundary"
     },
@@ -2349,7 +2636,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:detail_value",
-      "test": "strict R6 verify compile_project_artifact send at rust/birnam-host/src/lib.rs:5205; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=compile_project_artifact line 5205",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.codegen acquired by the validated compile_project_artifact runtime boundary"
     },
@@ -2365,26 +2657,27 @@
         "binding": "plan",
         "post_use_lines": [
           5474,
-          5479,
-          5481,
-          5483
+          5479
         ],
         "post_use_snippets": [
           "if plan == api.nilObj || send_is_error(api, plan) {",
-          "let plan = unsafe { decode_project_artifact_plan(api, plan) }",
-          "validate_project_artifact_plan(&plan, request)",
-          "Ok(plan)"
+          "let plan = unsafe { decode_project_artifact_plan(api, plan) }"
         ]
       },
-      "pre_post_send_branches": "pre: }; | let selector = unsafe { (api.intern)(c\"artifactPlan:\".as_ptr()) };; post: line 5474: if plan == api.nilObj || send_is_error(api, plan) { | line 5479: let plan = unsafe { decode_project_artifact_plan(api, plan) } | line 5481: validate_project_artifact_plan(&plan, request) | line 5483: Ok(plan)",
-      "retained_validation": "observed bound:plan; line 5474: if plan == api.nilObj || send_is_error(api, plan) { | line 5479: let plan = unsafe { decode_project_artifact_plan(api, plan) } | line 5481: validate_project_artifact_plan(&plan, request) | line 5483: Ok(plan)",
+      "pre_post_send_branches": "pre: }; | let selector = unsafe { (api.intern)(c\"artifactPlan:\".as_ptr()) };; post: line 5474: if plan == api.nilObj || send_is_error(api, plan) { | line 5479: let plan = unsafe { decode_project_artifact_plan(api, plan) }",
+      "retained_validation": "observed bound:plan; line 5474: if plan == api.nilObj || send_is_error(api, plan) { | line 5479: let plan = unsafe { decode_project_artifact_plan(api, plan) }",
       "actual_owner": "native-birnam:src/id/project-policy.birnam",
       "native_definition": {
         "path": "src/id/project-policy.birnam",
         "selector": "artifactPlan:"
       },
       "effect_class": "project-policy:bound:plan",
-      "test": "strict R6 verify plan_project_artifacts send at rust/birnam-host/src/lib.rs:5473; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=plan_project_artifacts line 5473",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "policy acquired by the validated plan_project_artifacts runtime boundary"
     },
@@ -2415,7 +2708,12 @@
         "selector": "artifactRecord:artifacts:native:"
       },
       "effect_class": "project-policy:bound:record",
-      "test": "strict R6 verify record_project_artifacts send at rust/birnam-host/src/lib.rs:5542; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=record_project_artifacts line 5542",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "policy acquired by the validated record_project_artifacts runtime boundary"
     },
@@ -2444,7 +2742,12 @@
         "selector": "validateArtifacts:"
       },
       "effect_class": "project-policy:bound:valid",
-      "test": "strict R6 verify validate_project_build send at rust/birnam-host/src/lib.rs:5741; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=validate_project_build line 5741",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "policy acquired by the validated validate_project_build runtime boundary"
     },
@@ -2461,18 +2764,16 @@
         "post_use_lines": [
           5978,
           5981,
-          5984,
-          5987
+          5984
         ],
         "post_use_snippets": [
           "if metadata == api.nilObj {",
           "if send_is_error(api, metadata) {",
-          "Ok(ProjectSourceIndexOutcome::Metadata(metadata))",
-          "/// Combine static metadata with the host-owned source/path composition"
+          "Ok(ProjectSourceIndexOutcome::Metadata(metadata))"
         ]
       },
-      "pre_post_send_branches": "pre: let source = unsafe { (api.mkString)(source.as_ptr(), source.len()) }; | let selector = unsafe { (api.intern)(c\"moduleMetadataOf:\".as_ptr()) };; post: line 5978: if metadata == api.nilObj { | line 5981: if send_is_error(api, metadata) { | line 5984: Ok(ProjectSourceIndexOutcome::Metadata(metadata)) | line 5987: /// Combine static metadata with the host-owned source/path composition",
-      "retained_validation": "observed bound:metadata; line 5978: if metadata == api.nilObj { | line 5981: if send_is_error(api, metadata) { | line 5984: Ok(ProjectSourceIndexOutcome::Metadata(metadata)) | line 5987: /// Combine static metadata with the host-owned source/path composition",
+      "pre_post_send_branches": "pre: let source = unsafe { (api.mkString)(source.as_ptr(), source.len()) }; | let selector = unsafe { (api.intern)(c\"moduleMetadataOf:\".as_ptr()) };; post: line 5978: if metadata == api.nilObj { | line 5981: if send_is_error(api, metadata) { | line 5984: Ok(ProjectSourceIndexOutcome::Metadata(metadata))",
+      "retained_validation": "observed bound:metadata; line 5978: if metadata == api.nilObj { | line 5981: if send_is_error(api, metadata) { | line 5984: Ok(ProjectSourceIndexOutcome::Metadata(metadata))",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -2484,7 +2785,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:metadata",
-      "test": "strict R6 verify index_project_source send at rust/birnam-host/src/lib.rs:5977; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=index_project_source line 5977",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated index_project_source runtime boundary"
     },
@@ -2501,18 +2807,16 @@
         "post_use_lines": [
           6017,
           6020,
-          6023,
-          6026
+          6023
         ],
         "post_use_snippets": [
           "if metadata == api.nilObj {",
           "if send_is_error(api, metadata) {",
-          "let metadata = unsafe { decode_project_source_metadata(api, metadata) }",
-          "name: metadata.name,"
+          "let metadata = unsafe { decode_project_source_metadata(api, metadata) }"
         ]
       },
-      "pre_post_send_branches": "pre: let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) }; | let selector = unsafe { (api.intern)(c\"moduleMetadataOf:\".as_ptr()) };; post: line 6017: if metadata == api.nilObj { | line 6020: if send_is_error(api, metadata) { | line 6023: let metadata = unsafe { decode_project_source_metadata(api, metadata) } | line 6026: name: metadata.name,",
-      "retained_validation": "observed bound:metadata; line 6017: if metadata == api.nilObj { | line 6020: if send_is_error(api, metadata) { | line 6023: let metadata = unsafe { decode_project_source_metadata(api, metadata) } | line 6026: name: metadata.name,",
+      "pre_post_send_branches": "pre: let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) }; | let selector = unsafe { (api.intern)(c\"moduleMetadataOf:\".as_ptr()) };; post: line 6017: if metadata == api.nilObj { | line 6020: if send_is_error(api, metadata) { | line 6023: let metadata = unsafe { decode_project_source_metadata(api, metadata) }",
+      "retained_validation": "observed bound:metadata; line 6017: if metadata == api.nilObj { | line 6020: if send_is_error(api, metadata) { | line 6023: let metadata = unsafe { decode_project_source_metadata(api, metadata) }",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -2524,7 +2828,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:metadata",
-      "test": "strict R6 verify observe_project_source send at rust/birnam-host/src/lib.rs:6016; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=observe_project_source line 6016",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated observe_project_source runtime boundary"
     },
@@ -2541,18 +2850,16 @@
         "post_use_lines": [
           6058,
           6061,
-          6064,
-          6071
+          6064
         ],
         "post_use_snippets": [
           "if metadata == api.nilObj {",
           "if send_is_error(api, metadata) {",
-          "let metadata = unsafe { decode_project_source_metadata(api, metadata) }",
-          "name: metadata.name,"
+          "let metadata = unsafe { decode_project_source_metadata(api, metadata) }"
         ]
       },
-      "pre_post_send_branches": "pre: let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) }; | let selector = unsafe { (api.intern)(c\"moduleMetadataOf:\".as_ptr()) };; post: line 6058: if metadata == api.nilObj { | line 6061: if send_is_error(api, metadata) { | line 6064: let metadata = unsafe { decode_project_source_metadata(api, metadata) } | line 6071: name: metadata.name,",
-      "retained_validation": "observed bound:metadata; line 6058: if metadata == api.nilObj { | line 6061: if send_is_error(api, metadata) { | line 6064: let metadata = unsafe { decode_project_source_metadata(api, metadata) } | line 6071: name: metadata.name,",
+      "pre_post_send_branches": "pre: let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) }; | let selector = unsafe { (api.intern)(c\"moduleMetadataOf:\".as_ptr()) };; post: line 6058: if metadata == api.nilObj { | line 6061: if send_is_error(api, metadata) { | line 6064: let metadata = unsafe { decode_project_source_metadata(api, metadata) }",
+      "retained_validation": "observed bound:metadata; line 6058: if metadata == api.nilObj { | line 6061: if send_is_error(api, metadata) { | line 6064: let metadata = unsafe { decode_project_source_metadata(api, metadata) }",
       "actual_owner": "rust-dynamic:rust/birnam-codegen-runtime/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-codegen-runtime/src/lib.rs",
@@ -2564,7 +2871,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:metadata",
-      "test": "strict R6 verify observe_composed_project_source send at rust/birnam-host/src/lib.rs:6057; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=observe_composed_project_source line 6057",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated observe_composed_project_source runtime boundary"
     },
@@ -2600,7 +2912,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:source_paths",
-      "test": "strict R6 verify compose_project_sources send at rust/birnam-host/src/lib.rs:6107; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=compose_project_sources line 6107",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "vector_class acquired by the validated compose_project_sources runtime boundary"
     },
@@ -2636,7 +2953,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:updated",
-      "test": "strict R6 verify compose_project_sources send at rust/birnam-host/src/lib.rs:6114; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=compose_project_sources line 6114",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "source_paths acquired by the validated compose_project_sources runtime boundary"
     },
@@ -2669,7 +2991,12 @@
         "selector": "composeSources:"
       },
       "effect_class": "module-lifecycle:bound:result",
-      "test": "strict R6 verify compose_project_sources send at rust/birnam-host/src/lib.rs:6121; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=compose_project_sources line 6121",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module acquired by the validated compose_project_sources runtime boundary"
     },
@@ -2704,7 +3031,12 @@
         "selector": "clone"
       },
       "effect_class": "host-protocol:bound:project",
-      "test": "strict R6 verify install_project_bridge send at rust/birnam-host/src/lib.rs:6170; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=install_project_bridge line 6170",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "object acquired by the validated install_project_bridge runtime boundary"
     },
@@ -2738,7 +3070,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:result",
-      "test": "strict R6 verify install_project_bridge send at rust/birnam-host/src/lib.rs:6196; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=install_project_bridge line 6196",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "globals acquired by the validated install_project_bridge runtime boundary"
     },
@@ -2769,7 +3106,12 @@
         "selector": "run:source:rustWorkspace:guides:"
       },
       "effect_class": "cli-orchestration:bound:result",
-      "test": "strict R6 verify run_cli send at rust/birnam-host/src/lib.rs:6241; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=run_cli line 6241",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "cli acquired by the validated run_cli runtime boundary"
     },
@@ -2798,7 +3140,12 @@
         "selector": "consoleHostInit"
       },
       "effect_class": "repl-orchestration:bound:initialized",
-      "test": "strict R6 verify start_repl_mode send at rust/birnam-host/src/lib.rs:6317; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=start_repl_mode line 6317",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "repl acquired by the validated start_repl_mode runtime boundary"
     },
@@ -2827,7 +3174,12 @@
         "selector": "initializeCurrent"
       },
       "effect_class": "repl-orchestration:bound:generation",
-      "test": "strict R6 verify start_repl_mode send at rust/birnam-host/src/lib.rs:6326; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=start_repl_mode line 6326",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "generations acquired by the validated start_repl_mode runtime boundary"
     },
@@ -2856,7 +3208,12 @@
         "selector": "consoleHostReady"
       },
       "effect_class": "repl-orchestration:bound:ready",
-      "test": "strict R6 verify start_repl_mode send at rust/birnam-host/src/lib.rs:6335; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=start_repl_mode line 6335",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "repl acquired by the validated start_repl_mode runtime boundary"
     },
@@ -2885,7 +3242,12 @@
         "selector": "hostStep"
       },
       "effect_class": "repl-orchestration:bound:step",
-      "test": "strict R6 verify repl_step send at rust/birnam-host/src/lib.rs:6361; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=repl_step line 6361",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "session.repl acquired by the validated repl_step runtime boundary"
     },
@@ -2921,7 +3283,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:tag",
-      "test": "strict R6 verify repl_step send at rust/birnam-host/src/lib.rs:6366; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=repl_step line 6366",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "step acquired by the validated repl_step runtime boundary"
     },
@@ -2955,7 +3322,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:value",
-      "test": "strict R6 verify repl_step send at rust/birnam-host/src/lib.rs:6379; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=repl_step line 6379",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "step acquired by the validated repl_step runtime boundary"
     },
@@ -2980,7 +3352,12 @@
         "selector": "consoleDone"
       },
       "effect_class": "repl-orchestration:ignored",
-      "test": "strict R6 verify finish_repl send at rust/birnam-host/src/lib.rs:6397; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=finish_repl line 6397",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "session.repl acquired by the validated finish_repl runtime boundary"
     },
@@ -3009,7 +3386,12 @@
         "selector": "isIntent:"
       },
       "effect_class": "repl-orchestration:bound:is_intent",
-      "test": "strict R6 verify run_repl send at rust/birnam-host/src/lib.rs:6448; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=run_repl line 6448",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "intents acquired by the validated run_repl runtime boundary"
     },
@@ -3033,8 +3415,13 @@
         "path": "src/id/compiled-unit.birnam",
         "selector": "fulfill"
       },
-      "effect_class": "repl-orchestration:ignored",
-      "test": "strict R6 verify run_repl send at rust/birnam-host/src/lib.rs:6452; archive source-bootstrap-smoke",
+      "effect_class": "repl-orchestration:bound:value",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=run_repl line 6452",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated run_repl runtime boundary"
     },
@@ -3059,7 +3446,12 @@
         "selector": "printHostResult:"
       },
       "effect_class": "repl-orchestration:ignored",
-      "test": "strict R6 verify run_repl send at rust/birnam-host/src/lib.rs:6455; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=run_repl line 6455",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "session.repl acquired by the validated run_repl runtime boundary"
     },
@@ -3088,7 +3480,12 @@
         "selector": "serveOn:bind:"
       },
       "effect_class": "repl-orchestration:bound:result",
-      "test": "strict R6 verify serve_socket send at rust/birnam-host/src/lib.rs:6483; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-repl",
+        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=serve_socket line 6483",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "repl acquired by the validated serve_socket runtime boundary"
     },
@@ -3117,7 +3514,12 @@
         "selector": "current"
       },
       "effect_class": "dispatch-generation:bound:current",
-      "test": "strict R6 verify run_worker_image send at rust/birnam-host/src/lib.rs:6542; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=run_worker_image line 6542",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "generations acquired by the validated run_worker_image runtime boundary"
     },
@@ -3153,7 +3555,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:digest",
-      "test": "strict R6 verify run_worker_image send at rust/birnam-host/src/lib.rs:6549; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=run_worker_image line 6549",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated run_worker_image runtime boundary"
     },
@@ -3169,19 +3576,15 @@
         "binding": "receiver",
         "post_use_lines": [
           6571,
-          6572,
-          6574,
-          6578
+          6572
         ],
         "post_use_snippets": [
           "if receiver == api.nilObj {",
-          "receiver = unsafe { (api.import)(receiver_name.as_ptr()) };",
-          "if receiver == api.nilObj {",
-          "if !unsafe { receiver_has_selector(api, receiver, selector) }"
+          "receiver = unsafe { (api.import)(receiver_name.as_ptr()) };"
         ]
       },
-      "pre_post_send_branches": "pre: let at_selector = unsafe { (api.intern)(c\"at:\".as_ptr()) }; | let mut receiver =; post: line 6571: if receiver == api.nilObj { | line 6572: receiver = unsafe { (api.import)(receiver_name.as_ptr()) }; | line 6574: if receiver == api.nilObj { | line 6578: if !unsafe { receiver_has_selector(api, receiver, selector) }",
-      "retained_validation": "observed bound:receiver; line 6571: if receiver == api.nilObj { | line 6572: receiver = unsafe { (api.import)(receiver_name.as_ptr()) }; | line 6574: if receiver == api.nilObj { | line 6578: if !unsafe { receiver_has_selector(api, receiver, selector) }",
+      "pre_post_send_branches": "pre: let at_selector = unsafe { (api.intern)(c\"at:\".as_ptr()) }; | let mut receiver =; post: line 6571: if receiver == api.nilObj { | line 6572: receiver = unsafe { (api.import)(receiver_name.as_ptr()) };",
+      "retained_validation": "observed bound:receiver; line 6571: if receiver == api.nilObj { | line 6572: receiver = unsafe { (api.import)(receiver_name.as_ptr()) };",
       "actual_owner": "rust-dynamic:rust/birnam-store/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-store/src/lib.rs",
@@ -3193,7 +3596,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:receiver",
-      "test": "strict R6 verify run_worker_image send at rust/birnam-host/src/lib.rs:6570; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=run_worker_image line 6570",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "globals acquired by the validated run_worker_image runtime boundary"
     },
@@ -3209,19 +3617,15 @@
         "binding": "receiver",
         "post_use_lines": [
           6582,
-          6583,
-          6586,
-          6589
+          6583
         ],
         "post_use_snippets": [
           "if receiver == api.nilObj {",
-          "receiver = unsafe { (api.import)(receiver_name.as_ptr()) };",
-          "if receiver == api.nilObj || !unsafe { receiver_has_selector(api, receiver, selector) } {",
-          "unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)"
+          "receiver = unsafe { (api.import)(receiver_name.as_ptr()) };"
         ]
       },
-      "pre_post_send_branches": "pre: && unsafe { replay_worker_methods(api) } | {; post: line 6582: if receiver == api.nilObj { | line 6583: receiver = unsafe { (api.import)(receiver_name.as_ptr()) }; | line 6586: if receiver == api.nilObj || !unsafe { receiver_has_selector(api, receiver, selector) } { | line 6589: unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)",
-      "retained_validation": "observed bound:receiver; line 6582: if receiver == api.nilObj { | line 6583: receiver = unsafe { (api.import)(receiver_name.as_ptr()) }; | line 6586: if receiver == api.nilObj || !unsafe { receiver_has_selector(api, receiver, selector) } { | line 6589: unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)",
+      "pre_post_send_branches": "pre: && unsafe { replay_worker_methods(api) } | {; post: line 6582: if receiver == api.nilObj { | line 6583: receiver = unsafe { (api.import)(receiver_name.as_ptr()) };",
+      "retained_validation": "observed bound:receiver; line 6582: if receiver == api.nilObj { | line 6583: receiver = unsafe { (api.import)(receiver_name.as_ptr()) };",
       "actual_owner": "rust-dynamic:rust/birnam-store/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-store/src/lib.rs",
@@ -3232,8 +3636,13 @@
         "selector": "at:",
         "role": "Zig rollback/oracle only"
       },
-      "effect_class": "collection-shape:ignored",
-      "test": "strict R6 verify run_worker_image send at rust/birnam-host/src/lib.rs:6581; archive source-bootstrap-smoke",
+      "effect_class": "collection-shape:bound:receiver",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=run_worker_image line 6581",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "globals acquired by the validated run_worker_image runtime boundary"
     },
@@ -3263,7 +3672,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "error-diagnostic:conditional",
-      "test": "strict R6 verify send_is_error send at rust/birnam-host/src/lib.rs:6745; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=send_is_error line 6745",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated send_is_error runtime boundary"
     },
@@ -3279,17 +3693,15 @@
         "binding": "kind",
         "post_use_lines": [
           6754,
-          6758,
-          6764
+          6758
         ],
         "post_use_snippets": [
           "let kind_name = unsafe { (api.symbolName)(kind) };",
-          "let kind = unsafe { CStr::from_ptr(kind_name) }",
-          "Some((kind, message))"
+          "let kind = unsafe { CStr::from_ptr(kind_name) }"
         ]
       },
-      "pre_post_send_branches": "pre: } | let kind_selector = unsafe { (api.intern)(c\"kind\".as_ptr()) };; post: line 6754: let kind_name = unsafe { (api.symbolName)(kind) }; | line 6758: let kind = unsafe { CStr::from_ptr(kind_name) } | line 6764: Some((kind, message))",
-      "retained_validation": "observed bound:kind; line 6754: let kind_name = unsafe { (api.symbolName)(kind) }; | line 6758: let kind = unsafe { CStr::from_ptr(kind_name) } | line 6764: Some((kind, message))",
+      "pre_post_send_branches": "pre: } | let kind_selector = unsafe { (api.intern)(c\"kind\".as_ptr()) };; post: line 6754: let kind_name = unsafe { (api.symbolName)(kind) }; | line 6758: let kind = unsafe { CStr::from_ptr(kind_name) }",
+      "retained_validation": "observed bound:kind; line 6754: let kind_name = unsafe { (api.symbolName)(kind) }; | line 6758: let kind = unsafe { CStr::from_ptr(kind_name) }",
       "actual_owner": "rust-dynamic:rust/birnam-error/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-error/src/lib.rs",
@@ -3301,7 +3713,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "error-diagnostic:bound:kind",
-      "test": "strict R6 verify error_diagnostic send at rust/birnam-host/src/lib.rs:6753; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=error_diagnostic line 6753",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated error_diagnostic runtime boundary"
     },
@@ -3316,16 +3733,14 @@
         "handling": "bound:message",
         "binding": "message",
         "post_use_lines": [
-          6763,
-          6764
+          6763
         ],
         "post_use_snippets": [
-          "let message = unsafe { bridge_string(api, message) }.unwrap_or_default();",
-          "Some((kind, message))"
+          "let message = unsafe { bridge_string(api, message) }.unwrap_or_default();"
         ]
       },
-      "pre_post_send_branches": "pre: .into_owned(); | let message_selector = unsafe { (api.intern)(c\"message\".as_ptr()) };; post: line 6763: let message = unsafe { bridge_string(api, message) }.unwrap_or_default(); | line 6764: Some((kind, message))",
-      "retained_validation": "observed bound:message; line 6763: let message = unsafe { bridge_string(api, message) }.unwrap_or_default(); | line 6764: Some((kind, message))",
+      "pre_post_send_branches": "pre: .into_owned(); | let message_selector = unsafe { (api.intern)(c\"message\".as_ptr()) };; post: line 6763: let message = unsafe { bridge_string(api, message) }.unwrap_or_default();",
+      "retained_validation": "observed bound:message; line 6763: let message = unsafe { bridge_string(api, message) }.unwrap_or_default();",
       "actual_owner": "rust-dynamic:rust/birnam-error/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-error/src/lib.rs",
@@ -3337,7 +3752,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "error-diagnostic:bound:message",
-      "test": "strict R6 verify error_diagnostic send at rust/birnam-host/src/lib.rs:6762; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=error_diagnostic line 6762",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated error_diagnostic runtime boundary"
     },
@@ -3353,17 +3773,15 @@
         "binding": "vector",
         "post_use_lines": [
           6778,
-          6790,
-          6792
+          6790
         ],
         "post_use_snippets": [
           "if vector == api.nilObj || send_is_error(api, vector) {",
-          "vector = updated;",
-          "Ok(vector)"
+          "vector = updated;"
         ]
       },
-      "pre_post_send_branches": "pre: let new_selector = unsafe { (api.intern)(c\"new\".as_ptr()) }; | let add_selector = unsafe { (api.intern)(c\"add:\".as_ptr()) };; post: line 6778: if vector == api.nilObj || send_is_error(api, vector) { | line 6790: vector = updated; | line 6792: Ok(vector)",
-      "retained_validation": "observed bound:vector; line 6778: if vector == api.nilObj || send_is_error(api, vector) { | line 6790: vector = updated; | line 6792: Ok(vector)",
+      "pre_post_send_branches": "pre: let new_selector = unsafe { (api.intern)(c\"new\".as_ptr()) }; | let add_selector = unsafe { (api.intern)(c\"add:\".as_ptr()) };; post: line 6778: if vector == api.nilObj || send_is_error(api, vector) { | line 6790: vector = updated;",
+      "retained_validation": "observed bound:vector; line 6778: if vector == api.nilObj || send_is_error(api, vector) { | line 6790: vector = updated;",
       "actual_owner": "rust-dynamic:rust/birnam-collection/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-collection/src/lib.rs",
@@ -3375,7 +3793,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:vector",
-      "test": "strict R6 verify native_os_string_vector send at rust/birnam-host/src/lib.rs:6777; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=native_os_string_vector line 6777",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "vector_class acquired by the validated native_os_string_vector runtime boundary"
     },
@@ -3411,7 +3834,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:updated",
-      "test": "strict R6 verify native_os_string_vector send at rust/birnam-host/src/lib.rs:6786; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=native_os_string_vector line 6786",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "vector acquired by the validated native_os_string_vector runtime boundary"
     },
@@ -3447,7 +3875,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:value",
-      "test": "strict R6 verify new_vector send at rust/birnam-host/src/lib.rs:6820; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=new_vector line 6820",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.vector_class acquired by the validated new_vector runtime boundary"
     },
@@ -3483,7 +3916,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:value",
-      "test": "strict R6 verify new_map send at rust/birnam-host/src/lib.rs:6830; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=new_map line 6830",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "self.map_class acquired by the validated new_map runtime boundary"
     },
@@ -3519,7 +3957,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:updated",
-      "test": "strict R6 verify add send at rust/birnam-host/src/lib.rs:6844; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=add line 6844",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "vector acquired by the validated add runtime boundary"
     },
@@ -3555,7 +3998,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:updated",
-      "test": "strict R6 verify put send at rust/birnam-host/src/lib.rs:6860; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=put line 6860",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "map acquired by the validated put runtime boundary"
     },
@@ -3589,7 +4037,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:recorded",
-      "test": "strict R6 verify record_and_eval_source send at rust/birnam-host/src/lib.rs:7158; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=record_and_eval_source line 7158",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated record_and_eval_source runtime boundary"
     },
@@ -3625,7 +4078,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "codegen-protocol:bound:evaluated",
-      "test": "strict R6 verify record_and_eval_source send at rust/birnam-host/src/lib.rs:7163; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=record_and_eval_source line 7163",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated record_and_eval_source runtime boundary"
     },
@@ -3659,7 +4117,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "module-lifecycle:bound:loaded",
-      "test": "strict R6 verify load_self_hosted send at rust/birnam-host/src/lib.rs:7195; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=load_self_hosted line 7195",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated load_self_hosted runtime boundary"
     },
@@ -3693,7 +4156,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:value",
-      "test": "strict R6 verify global_named send at rust/birnam-host/src/lib.rs:7229; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=global_named line 7229",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "globals acquired by the validated global_named runtime boundary"
     },
@@ -3723,7 +4191,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:conditional",
-      "test": "strict R6 verify replay_worker_methods send at rust/birnam-host/src/lib.rs:7279; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=replay_worker_methods line 7279",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary"
     },
@@ -3759,7 +4232,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:replayed",
-      "test": "strict R6 verify replay_worker_methods send at rust/birnam-host/src/lib.rs:7283; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=replay_worker_methods line 7283",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary"
     },
@@ -3789,7 +4267,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "host-protocol:ignored",
-      "test": "strict R6 verify replay_worker_methods send at rust/birnam-host/src/lib.rs:7287; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=replay_worker_methods line 7287",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary"
     },
@@ -3819,7 +4302,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify replay_worker_methods send at rust/birnam-host/src/lib.rs:7289; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=replay_worker_methods line 7289",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary"
     },
@@ -3849,7 +4337,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:ignored",
-      "test": "strict R6 verify replay_worker_methods send at rust/birnam-host/src/lib.rs:7291; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=replay_worker_methods line 7291",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary"
     },
@@ -3883,7 +4376,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "image-recovery:bound:ended",
-      "test": "strict R6 verify replay_worker_methods send at rust/birnam-host/src/lib.rs:7293; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-image-bootstrap",
+        "evidence": "target=test-rust-image-bootstrap; category=image recovery; source=replay_worker_methods line 7293",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary"
     },
@@ -3908,7 +4406,12 @@
         "selector": "markLoaded:"
       },
       "effect_class": "module-lifecycle:ignored",
-      "test": "strict R6 verify mark_module_loaded send at rust/birnam-host/src/lib.rs:7302; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=mark_module_loaded line 7302",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated mark_module_loaded runtime boundary"
     },
@@ -3933,7 +4436,12 @@
         "selector": "kernel:"
       },
       "effect_class": "host-protocol:ignored",
-      "test": "strict R6 verify refresh_module_manager send at rust/birnam-host/src/lib.rs:7315; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=refresh_module_manager line 7315",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated refresh_module_manager runtime boundary"
     },
@@ -3958,7 +4466,12 @@
         "selector": "libDir:"
       },
       "effect_class": "module-lifecycle:ignored",
-      "test": "strict R6 verify refresh_module_manager send at rust/birnam-host/src/lib.rs:7320; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=refresh_module_manager line 7320",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated refresh_module_manager runtime boundary"
     },
@@ -3973,18 +4486,14 @@
         "handling": "bound:result",
         "binding": "result",
         "post_use_lines": [
-          7331,
-          7337,
-          7341
+          7331
         ],
         "post_use_snippets": [
-          "if result == api.nilObj {",
-          "if result == api.nilObj {",
-          "Some(result)"
+          "if result == api.nilObj {"
         ]
       },
-      "pre_post_send_branches": "pre: let new_selector = unsafe { (api.intern)(c\"new\".as_ptr()) }; | let add_selector = unsafe { (api.intern)(c\"add:\".as_ptr()) };; post: line 7331: if result == api.nilObj { | line 7337: if result == api.nilObj { | line 7341: Some(result)",
-      "retained_validation": "observed bound:result; line 7331: if result == api.nilObj { | line 7337: if result == api.nilObj { | line 7341: Some(result)",
+      "pre_post_send_branches": "pre: let new_selector = unsafe { (api.intern)(c\"new\".as_ptr()) }; | let add_selector = unsafe { (api.intern)(c\"add:\".as_ptr()) };; post: line 7331: if result == api.nilObj {",
+      "retained_validation": "observed bound:result; line 7331: if result == api.nilObj {",
       "actual_owner": "rust-dynamic:rust/birnam-collection/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-collection/src/lib.rs",
@@ -3996,7 +4505,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:result",
-      "test": "strict R6 verify dependency_vector send at rust/birnam-host/src/lib.rs:7330; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=dependency_vector line 7330",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "vector acquired by the validated dependency_vector runtime boundary"
     },
@@ -4031,8 +4545,13 @@
         "selector": "add:",
         "role": "Zig rollback/oracle only"
       },
-      "effect_class": "collection-shape:ignored",
-      "test": "strict R6 verify dependency_vector send at rust/birnam-host/src/lib.rs:7336; archive source-bootstrap-smoke",
+      "effect_class": "collection-shape:bound:result",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=dependency_vector line 7336",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "result acquired by the validated dependency_vector runtime boundary"
     },
@@ -4047,18 +4566,14 @@
         "handling": "bound:names",
         "binding": "names",
         "post_use_lines": [
-          7348,
-          7354,
-          7358
+          7348
         ],
         "post_use_snippets": [
-          "if names == api.nilObj {",
-          "if names == api.nilObj {",
-          "Some(names)"
+          "if names == api.nilObj {"
         ]
       },
-      "pre_post_send_branches": "pre: let new_selector = unsafe { (api.intern)(c\"new\".as_ptr()) }; | let add_selector = unsafe { (api.intern)(c\"add:\".as_ptr()) };; post: line 7348: if names == api.nilObj { | line 7354: if names == api.nilObj { | line 7358: Some(names)",
-      "retained_validation": "observed bound:names; line 7348: if names == api.nilObj { | line 7354: if names == api.nilObj { | line 7358: Some(names)",
+      "pre_post_send_branches": "pre: let new_selector = unsafe { (api.intern)(c\"new\".as_ptr()) }; | let add_selector = unsafe { (api.intern)(c\"add:\".as_ptr()) };; post: line 7348: if names == api.nilObj {",
+      "retained_validation": "observed bound:names; line 7348: if names == api.nilObj {",
       "actual_owner": "rust-dynamic:rust/birnam-collection/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-collection/src/lib.rs",
@@ -4070,7 +4585,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:names",
-      "test": "strict R6 verify requested_names send at rust/birnam-host/src/lib.rs:7347; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=requested_names line 7347",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "vector acquired by the validated requested_names runtime boundary"
     },
@@ -4105,8 +4625,13 @@
         "selector": "add:",
         "role": "Zig rollback/oracle only"
       },
-      "effect_class": "collection-shape:ignored",
-      "test": "strict R6 verify requested_names send at rust/birnam-host/src/lib.rs:7353; archive source-bootstrap-smoke",
+      "effect_class": "collection-shape:bound:names",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=requested_names line 7353",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "names acquired by the validated requested_names runtime boundary"
     },
@@ -4121,25 +4646,26 @@
         "handling": "bound:order",
         "binding": "order",
         "post_use_lines": [
-          7369,
-          7401,
-          7402
+          7369
         ],
         "post_use_snippets": [
-          "if order == api.nilObj || send_is_error(api, order) {",
-          "/// native kernel tier, asks the manager for dependency order, and falls back to",
-          "/// the declared order only when the manager/vector protocol is unavailable or"
+          "if order == api.nilObj || send_is_error(api, order) {"
         ]
       },
-      "pre_post_send_branches": "pre: let names = unsafe { requested_names(api, vector) }?; | let order_selector = unsafe { (api.intern)(c\"loadOrder:\".as_ptr()) };; post: line 7369: if order == api.nilObj || send_is_error(api, order) { | line 7401: /// native kernel tier, asks the manager for dependency order, and falls back to | line 7402: /// the declared order only when the manager/vector protocol is unavailable or",
-      "retained_validation": "observed bound:order; line 7369: if order == api.nilObj || send_is_error(api, order) { | line 7401: /// native kernel tier, asks the manager for dependency order, and falls back to | line 7402: /// the declared order only when the manager/vector protocol is unavailable or",
+      "pre_post_send_branches": "pre: let names = unsafe { requested_names(api, vector) }?; | let order_selector = unsafe { (api.intern)(c\"loadOrder:\".as_ptr()) };; post: line 7369: if order == api.nilObj || send_is_error(api, order) {",
+      "retained_validation": "observed bound:order; line 7369: if order == api.nilObj || send_is_error(api, order) {",
       "actual_owner": "native-birnam:src/id/modules.birnam",
       "native_definition": {
         "path": "src/id/modules.birnam",
         "selector": "loadOrder:"
       },
       "effect_class": "module-lifecycle:bound:order",
-      "test": "strict R6 verify order_from_manager send at rust/birnam-host/src/lib.rs:7368; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=order_from_manager line 7368",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated order_from_manager runtime boundary"
     },
@@ -4154,20 +4680,14 @@
         "handling": "bound:size",
         "binding": "size",
         "post_use_lines": [
-          7375,
-          7376,
-          7379,
-          7380
+          7375
         ],
         "post_use_snippets": [
-          "let size = unsafe { (api.smallIntValue)(size) };",
-          "if size < 0 {",
-          "let mut result = Vec::with_capacity(size as usize);",
-          "for index in 0..size as usize {"
+          "let size = unsafe { (api.smallIntValue)(size) };"
         ]
       },
-      "pre_post_send_branches": "pre: let size_selector = unsafe { (api.intern)(c\"size\".as_ptr()) }; | let at_selector = unsafe { (api.intern)(c\"at:\".as_ptr()) };; post: line 7375: let size = unsafe { (api.smallIntValue)(size) }; | line 7376: if size < 0 { | line 7379: let mut result = Vec::with_capacity(size as usize); | line 7380: for index in 0..size as usize {",
-      "retained_validation": "observed bound:size; line 7375: let size = unsafe { (api.smallIntValue)(size) }; | line 7376: if size < 0 { | line 7379: let mut result = Vec::with_capacity(size as usize); | line 7380: for index in 0..size as usize {",
+      "pre_post_send_branches": "pre: let size_selector = unsafe { (api.intern)(c\"size\".as_ptr()) }; | let at_selector = unsafe { (api.intern)(c\"at:\".as_ptr()) };; post: line 7375: let size = unsafe { (api.smallIntValue)(size) };",
+      "retained_validation": "observed bound:size; line 7375: let size = unsafe { (api.smallIntValue)(size) };",
       "actual_owner": "rust-dynamic:rust/birnam-collection/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-collection/src/lib.rs",
@@ -4179,7 +4699,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:size",
-      "test": "strict R6 verify order_from_manager send at rust/birnam-host/src/lib.rs:7374; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=order_from_manager line 7374",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "order acquired by the validated order_from_manager runtime boundary"
     },
@@ -4196,18 +4721,16 @@
         "post_use_lines": [
           7383,
           7386,
-          7390,
-          7393
+          7390
         ],
         "post_use_snippets": [
           "if name == api.nilObj {",
           "let name_ptr = unsafe { (api.symbolName)(name) };",
-          "let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes();",
-          ".find(|module| module.name.as_bytes() == name)?;"
+          "let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes();"
         ]
       },
-      "pre_post_send_branches": "pre: for index in 0..size as usize { | let index = unsafe { (api.mkSmallInt)(index as i64) };; post: line 7383: if name == api.nilObj { | line 7386: let name_ptr = unsafe { (api.symbolName)(name) }; | line 7390: let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes(); | line 7393: .find(|module| module.name.as_bytes() == name)?;",
-      "retained_validation": "observed bound:name; line 7383: if name == api.nilObj { | line 7386: let name_ptr = unsafe { (api.symbolName)(name) }; | line 7390: let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes(); | line 7393: .find(|module| module.name.as_bytes() == name)?;",
+      "pre_post_send_branches": "pre: for index in 0..size as usize { | let index = unsafe { (api.mkSmallInt)(index as i64) };; post: line 7383: if name == api.nilObj { | line 7386: let name_ptr = unsafe { (api.symbolName)(name) }; | line 7390: let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes();",
+      "retained_validation": "observed bound:name; line 7383: if name == api.nilObj { | line 7386: let name_ptr = unsafe { (api.symbolName)(name) }; | line 7390: let name = unsafe { CStr::from_ptr(name_ptr) }.to_bytes();",
       "actual_owner": "rust-dynamic:rust/birnam-collection/src/lib.rs",
       "native_definition": {
         "path": "rust/birnam-collection/src/lib.rs",
@@ -4219,7 +4742,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "collection-shape:bound:name",
-      "test": "strict R6 verify order_from_manager send at rust/birnam-host/src/lib.rs:7382; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=static inventory only; source=order_from_manager line 7382",
+        "direct": false
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "order acquired by the validated order_from_manager runtime boundary"
     },
@@ -4244,7 +4772,12 @@
         "selector": "named:requires:"
       },
       "effect_class": "module-lifecycle:ignored",
-      "test": "strict R6 verify bootstrap_self_hosted send at rust/birnam-host/src/lib.rs:7448; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=project activation/policy/publication; source=bootstrap_self_hosted line 7448",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "module_manager acquired by the validated bootstrap_self_hosted runtime boundary"
     },
@@ -4274,7 +4807,12 @@
         "role": "Zig rollback/oracle only"
       },
       "effect_class": "mop-mirror:ignored",
-      "test": "strict R6 verify start send at rust/birnam-host/src/lib.rs:7708; archive source-bootstrap-smoke",
+      "test": {
+        "kind": "integration",
+        "target": "test-rust-store-mop",
+        "evidence": "target=test-rust-store-mop; category=Store MOP mirror; source=start line 7708",
+        "direct": true
+      },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "store acquired by the validated start runtime boundary"
     }

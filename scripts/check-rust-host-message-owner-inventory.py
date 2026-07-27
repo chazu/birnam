@@ -14,6 +14,10 @@ REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "abi/rust-host-message-owner-v1.json"
 SOURCE = REPO / "rust/birnam-host/src/lib.rs"
 SEND_MARKERS = ("api.send", "stack.api().send")
+FUNCTION_RE = re.compile(
+    r'^\s*(?:(?:pub(?:\([^)]*\))?|unsafe|async|const|extern(?:\s+"[^"]+")?)\s+)*'
+    r'fn\s+([A-Za-z0-9_]+)'
+)
 
 
 def fail(message: str) -> None:
@@ -25,15 +29,23 @@ def function_region(lines: list[str], line: int) -> tuple[str, int, int]:
     function = "?"
     start = 0
     for index in range(line - 1, -1, -1):
-        match = re.search(r"\bfn\s+([A-Za-z0-9_]+)", lines[index])
+        match = FUNCTION_RE.search(lines[index])
         if match:
             function = match.group(1)
             start = index
             break
     end = len(lines)
-    for index in range(line, len(lines)):
-        if re.search(r"\bfn\s+[A-Za-z0-9_]+", lines[index]):
-            end = index
+    depth = 0
+    body_started = False
+    for index in range(start, len(lines)):
+        code = re.sub(r'"(?:\\.|[^"\\])*"', "", lines[index])
+        code = re.sub(r"'(?:\\.|[^'\\])'", "", code)
+        code = code.split("//", 1)[0]
+        depth += code.count("{") - code.count("}")
+        if "{" in code:
+            body_started = True
+        if body_started and depth == 0:
+            end = index + 1
             break
     return function, start, end
 
@@ -182,10 +194,25 @@ def observed_behavior(lines: list[str], line: int) -> dict[str, object]:
     post_snippets: list[str] = []
     if binding is not None:
         pattern = re.compile(rf"\b{re.escape(binding)}\b")
+        assignment = re.compile(
+            rf"(?:\b(?:let|const)\s+(?:mut\s+)?{re.escape(binding)}\b\s*=(?!=)|"
+            rf"(?<![A-Za-z0-9_]){re.escape(binding)}\s*=(?!=))"
+        )
         for index in range(closing_line, end + 1):
             if index == line:
                 continue
             line_text = lines[index - 1]
+            stripped = line_text.lstrip()
+            if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+                continue
+            if assignment.search(line_text):
+                # A later send-result assignment starts a new observation
+                # window. Do not attribute its branches to this callsite.
+                if any(marker in line_text for marker in SEND_MARKERS):
+                    break
+                post_lines.append(index)
+                post_snippets.append(re.sub(r"\s+", " ", line_text).strip())
+                break
             # A later retry/reassignment is another send call, not evidence
             # that the first result was validated. Keep the callsite's own
             # post-send branches and conversions only.
@@ -280,6 +307,31 @@ def verify_definition(owner: str, path: Path, selector: str, line: int) -> None:
         f"send callsite row {line} Rust definition does not register "
         f"{selector!r} through api.method: {path}"
     )
+
+
+def required_direct_target(call: dict[str, object]) -> str | None:
+    function = str(call["function"])
+    effect = str(call.get("effect_class", ""))
+    if effect.startswith("image-recovery:"):
+        return "test-rust-image-bootstrap"
+    if effect.startswith("mop-mirror:"):
+        return "test-rust-store-mop"
+    if effect.startswith("repl-orchestration:"):
+        return "test-repl"
+    if (
+        effect.startswith("module-lifecycle:")
+        or effect.startswith("project-policy:")
+        or effect.startswith("toml-policy:")
+        or function.startswith(("activate_", "build_project", "compile_project", "plan_project"))
+        or function.startswith(("record_project", "validate_project", "run_project", "install_project"))
+    ):
+        return "test-project-check"
+    return None
+
+
+def build_target_exists(target: str) -> bool:
+    build = (REPO / "build.zig").read_text(encoding="utf-8", errors="ignore")
+    return bool(re.search(rf'\bb\.step\(\s*"{re.escape(target)}"(?:,|\))', build))
 
 
 def main() -> None:
@@ -409,11 +461,40 @@ def main() -> None:
             "effect_class",
             "pre_post_send_branches",
             "retained_validation",
-            "test",
             "disposition",
         ):
             if not isinstance(row[field], str) or not row[field].strip():
                 fail(f"send callsite row {line} has no {field}")
+        if not row["effect_class"].endswith(":" + actual["send_result"]["handling"]):
+            fail(
+                f"send callsite row {line} effect handling disagrees: "
+                f"effect={row['effect_class']!r}, handling={actual['send_result']['handling']!r}"
+            )
+        test = row.get("test")
+        if not isinstance(test, dict):
+            fail(f"send callsite row {line} test evidence must be an object")
+        kind = test.get("kind")
+        target = test.get("target")
+        evidence = test.get("evidence")
+        direct = test.get("direct")
+        if kind not in {"focused", "integration", "uncovered"}:
+            fail(f"send callsite row {line} test kind is invalid")
+        if not isinstance(target, str) or not target.strip() or not build_target_exists(target):
+            fail(f"send callsite row {line} test target is not a named build target")
+        if not isinstance(evidence, str) or not evidence.strip():
+            fail(f"send callsite row {line} test evidence is empty")
+        if not isinstance(direct, bool):
+            fail(f"send callsite row {line} test direct flag is not boolean")
+        if kind == "uncovered" and direct:
+            fail(f"send callsite row {line} uncovered evidence cannot be direct")
+        if kind != "uncovered" and not direct:
+            fail(f"send callsite row {line} non-uncovered evidence must be direct")
+        expected_target = required_direct_target({**actual, "effect_class": row["effect_class"]})
+        if expected_target is not None and (not direct or target != expected_target):
+            fail(
+                f"send callsite row {line} requires direct {expected_target} evidence, "
+                f"got kind={kind!r}, target={target!r}, direct={direct!r}"
+            )
         definition = row["native_definition"]
         if not isinstance(definition, dict):
             fail(f"send callsite row {line} has no native_definition object")
