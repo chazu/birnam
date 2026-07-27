@@ -180,6 +180,32 @@ fn corruptFirstCodeUnit(bytes: []u8) !void {
     return error.NoCodeUnit;
 }
 
+fn staleGenerationAuthority(bytes: []u8) !void {
+    var authority: [64]u8 = undefined;
+    var have_authority = false;
+    var i: usize = image.MAGIC.len + 4 + 4 + 4 + 8;
+    while (i < bytes.len) {
+        if (i + 12 > bytes.len) return error.TruncatedRecord;
+        const kind = std.mem.readInt(u32, bytes[i..][0..4], .little);
+        const len: usize = @intCast(std.mem.readInt(u64, bytes[i + 4 ..][0..8], .little));
+        const payload_start = i + 12;
+        if (payload_start + len > bytes.len) return error.TruncatedRecord;
+        if (kind == 5) {
+            if (len != authority.len) return error.InvalidAuthority;
+            @memcpy(&authority, bytes[payload_start..][0..authority.len]);
+            authority[0] ^= 0x01;
+            @memcpy(bytes[payload_start..][0..authority.len], &authority);
+            have_authority = true;
+        } else if (kind == 4) {
+            if (!have_authority or len < 72) return error.InvalidCodeUnit;
+            @memcpy(bytes[payload_start + 8 ..][0..authority.len], &authority);
+            return;
+        }
+        i = payload_start + len;
+    }
+    return error.NoCodeUnit;
+}
+
 test "round-trip: leaf + vector + map globals survive save/load" {
     const api = setup();
     const globals = api.import("Globals").?;
@@ -390,6 +416,36 @@ test "round-trip: generation code is mapped by default and rebuilt from the same
     _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0); // what runImage does on the false branch
     try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(send(api.mkSmallInt(5), "cuImageProbe", &.{})));
     try std.testing.expectEqual(@as(i64, 29), api.smallIntValue(send(gAt(globals, "ImageReceiver"), "cuImageHandle:", &.{api.mkSmallInt(29)})));
+}
+
+test "stale generation authority selects source recovery without mapping code" {
+    const api = setupWithCompiledUnits();
+    const Codegen = api.import("Codegen").?;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const a = std.testing.allocator;
+    const dir = try tmp.dir.realpathAlloc(a, ".");
+    defer a.free(dir);
+    const path = try std.fs.path.join(a, &.{ dir, "stale-authority.image" });
+    defer a.free(path);
+
+    try std.testing.expect(image.saveImage(path));
+    var bytes = try std.fs.cwd().readFileAlloc(a, path, 1 << 30);
+    defer a.free(bytes);
+    bytes[0] = bytes[0];
+    try staleGenerationAuthority(bytes);
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+
+    const loaded = image.loadImage(path);
+    try std.testing.expect(loaded);
+    try std.testing.expect(!image.mappedCode());
+
+    // The stale `.code` record is deliberately not executable before replay.
+    // Replaying the recorded source is the only operation that restores the
+    // method surface after this authority mismatch.
+    _ = api.send(Codegen, api.intern("replayMethods"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(send(api.mkSmallInt(5), "cuImageProbe", &.{})));
 }
 
 test "round-trip: standalone script method sources are mapped and rebuilt" {
