@@ -448,6 +448,37 @@ rollback vector remain unchanged. This checkpoint records the exact hash before
 the primitive-protocol, standalone-Rust-Error, subprocess-I/O, and selector
 gates.
 
+### P2.4 Prelude readiness receipt (2026-07-27)
+
+Candidate checkpoint: `15e55aa`. The focused Prelude matrix passed:
+
+```text
+Build Summary: 73/73 steps succeeded; 4/4 tests passed
+prelude-selection-smoke: Rust canonical, Zig rollback, and fail-closed choice passed
+```
+
+The Rust Prelude contract covers the two primitive protocol tests, including
+integer arithmetic/comparison/loop behavior, the standalone Rust Error owner,
+and the System `load:` source-file path through Codegen. The subprocess probe
+also passed the `readLine`/`println` stdin/stdout boundary. The canonical Rust
+Prelude dylib exports exactly one `module_init`; the explicit Zig Prelude
+rollback dylib remains a separate complete-vector authority.
+
+The selector smoke passes independently at the same candidate, and the exact-
+hash archive receipts pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Prelude **retain-ready** for evidence purposes. The canonical
+Rust Prelude provider, explicit Zig Prelude oracle, and complete full-Zig
+rollback vector remain installed; no provider deletion, mixed-vector recovery,
+or benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
