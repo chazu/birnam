@@ -106,17 +106,15 @@ fn writeSharedCase(
         const bytes = try decodeSharedHex(allocator, encoded);
         defer allocator.free(bytes);
         if (std.mem.eql(u8, case_name, "sentinel") and std.mem.eql(u8, filename, "root.dylib")) {
-            if (std.posix.getenv("BIRNAM_PREFLIGHT_SENTINEL_DYLIB")) |sentinel_path| {
-                const dylib = try std.fs.cwd().readFileAlloc(allocator, sentinel_path, 1 << 30);
-                defer allocator.free(dylib);
-                const combined = try allocator.alloc(u8, dylib.len + bytes.len);
-                defer allocator.free(combined);
-                @memcpy(combined[0..dylib.len], dylib);
-                @memcpy(combined[dylib.len..], bytes);
-                try dir.writeFile(.{ .sub_path = filename, .data = combined });
-            } else {
-                try dir.writeFile(.{ .sub_path = filename, .data = bytes });
-            }
+            const sentinel_path = std.posix.getenv("BIRNAM_PREFLIGHT_SENTINEL_DYLIB") orelse
+                @panic("shared sentinel case requires a real sentinel dylib");
+            const dylib = try std.fs.cwd().readFileAlloc(allocator, sentinel_path, 1 << 30);
+            defer allocator.free(dylib);
+            const combined = try allocator.alloc(u8, dylib.len + bytes.len);
+            defer allocator.free(combined);
+            @memcpy(combined[0..dylib.len], dylib);
+            @memcpy(combined[dylib.len..], bytes);
+            try dir.writeFile(.{ .sub_path = filename, .data = combined });
         } else {
             try dir.writeFile(.{ .sub_path = filename, .data = bytes });
         }
@@ -246,6 +244,7 @@ test "shared fixture matrix matches Rust preflight cases" {
         "path-only-root",
         "supplied-identity-mismatch",
         "wrong-kind-before-walk",
+        "nested-wrong-kind",
         "sibling-identity-mismatch",
         "missing-sibling",
         "ordered-valid-closure",
@@ -277,6 +276,11 @@ test "shared fixture matrix matches Rust preflight cases" {
             try std.testing.expectError(
                 error.ArtifactKindMismatch,
                 preflight.walkRoot(description, api.intern("candidate")),
+            );
+        } else if (std.mem.eql(u8, case_name, "nested-wrong-kind")) {
+            try std.testing.expectError(
+                error.ArtifactKindMismatch,
+                preflight.walkRoot(description, api.intern("root")),
             );
         } else if (std.mem.eql(u8, case_name, "sibling-identity-mismatch")) {
             try std.testing.expectError(error.ArtifactIdentityMismatch, preflight.walkRoot(description, null));

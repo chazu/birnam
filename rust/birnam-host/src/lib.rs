@@ -8116,11 +8116,11 @@ mod tests {
         let mut root_path = None;
         for (_, filename, mut bytes) in rows {
             if case == "sentinel" && filename == "root.dylib" {
-                if let Ok(path) = std::env::var("BIRNAM_PREFLIGHT_SENTINEL_DYLIB") {
-                    let mut dylib = std::fs::read(path).expect("real sentinel dylib reads");
-                    dylib.extend_from_slice(&bytes);
-                    bytes = dylib;
-                }
+                let path = std::env::var("BIRNAM_PREFLIGHT_SENTINEL_DYLIB")
+                    .expect("shared sentinel case requires a real sentinel dylib");
+                let mut dylib = std::fs::read(path).expect("real sentinel dylib reads");
+                dylib.extend_from_slice(&bytes);
+                bytes = dylib;
             }
             let path = root.join(&filename);
             std::fs::write(&path, bytes).expect("shared fixture writes");
@@ -9514,6 +9514,7 @@ mod tests {
             "path-only-root",
             "supplied-identity-mismatch",
             "wrong-kind-before-walk",
+            "nested-wrong-kind",
             "sibling-identity-mismatch",
             "missing-sibling",
             "ordered-valid-closure",
@@ -9533,6 +9534,7 @@ mod tests {
                     preflight_artifact(&root_path, Some(b"expectedIdentity"))
                 }
                 "wrong-kind-before-walk" => preflight_artifact(&root_path, Some(b"candidate")),
+                "nested-wrong-kind" => preflight_artifact(&root_path, Some(b"root")),
                 "sibling-identity-mismatch" => preflight_artifact(&root_path, None),
                 "missing-sibling" => preflight_artifact(&root_path, None),
                 "ordered-valid-closure" => preflight_artifact(&root_path, Some(b"root")),
@@ -9564,6 +9566,12 @@ mod tests {
                     ));
                 }
                 "wrong-kind-before-walk" => {
+                    assert!(matches!(
+                        result,
+                        Err(ArtifactPreflightError::KindMismatch { .. })
+                    ));
+                }
+                "nested-wrong-kind" => {
                     assert!(matches!(
                         result,
                         Err(ArtifactPreflightError::KindMismatch { .. })

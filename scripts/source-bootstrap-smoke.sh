@@ -39,23 +39,47 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
 
 (
   cd "$scratch"
+  sentinel="$scratch/artifact-preflight-sentinel.dylib"
+  zig build-lib -dynamic -lc src/id/artifact_preflight_sentinel.zig -femit-bin="$sentinel"
   CARGO_TARGET_DIR="$scratch/.cargo-target" \
     cargo check --workspace --locked --offline
-  CARGO_TARGET_DIR="$scratch/.cargo-target" \
+  BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
+    CARGO_TARGET_DIR="$scratch/.cargo-target" \
     cargo test --workspace --locked --offline
   zig build -Dfloor=rust "${host_option[@]}" "${codegen_option[@]}"
   # The archive boundary exercises the shared Rust/Zig preflight bytes in both
   # supported optimization modes; the ordinary build above is only the
   # fixture-free bootstrap/install proof.
-  zig build test-artifact-preflight \
+  BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
+    zig build test-artifact-preflight \
     -Dfloor=rust -Dartifact-inspector-impl=rust -Doptimize=Debug
-  zig build test-artifact-preflight \
+  BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
+    zig build test-artifact-preflight \
     -Dfloor=rust -Dartifact-inspector-impl=rust -Doptimize=ReleaseSafe
+  BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
+    BIRNAM_RUST_ARTIFACT_PROFILE=debug \
+    bash scripts/rust-artifact-preflight-smoke.sh
+  BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
+    BIRNAM_RUST_ARTIFACT_PROFILE=release \
+    bash scripts/rust-artifact-preflight-smoke.sh
 )
 
 test -x "$scratch/zig-out/bin/birnam"
 test -f "$scratch/zig-out/lib/libbirnam_id.dylib"
 test -f "$scratch/zig-out/lib/libbirnam_id_zig.dylib"
+
+# Exercise the archived Rust host's project and LSP workflows from an
+# unrelated cwd. These scripts create their own projects and run check/build/
+# run/install/test plus the protocol smoke against the relocated prefix.
+(
+  cd /tmp
+  BIRNAM_BIN="$scratch/zig-out/bin/birnam" \
+    BIRNAM_HOST_IMPL=rust \
+    bash "$scratch/scripts/project-check-smoke.sh"
+  BIRNAM_BIN="$scratch/zig-out/bin/birnam" \
+    bash "$scratch/scripts/lsp-project-smoke.sh"
+)
+
 BIRNAM_LIB_DIR="$scratch/zig-out/lib" \
   BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 \
   "$scratch/zig-out/bin/birnam" "$scratch/bench/nil.birnam"
