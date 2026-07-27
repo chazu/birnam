@@ -671,6 +671,20 @@ client/generated-C compatibility corpus and the release-bundle/no-ambient-
 fallback assertion; the ordinary generated-C and runtime wire legs are now
 covered on all three prefixes.
 
+### Z3.6 execution record — pre-rewrite image/native-client corpus (2026-07-27)
+
+Commit `9eca519` adds the checked-in `abi/fixtures/idapi-v1` verifier to the
+three-prefix smoke. Each run uses the explicit Zig oracle host, the selected
+prefix floor, and the Zig Image/Codegen rollback providers required by the
+pre-rewrite recovery contract. The frozen native client, mapped image, and
+source-rebuild image paths all pass for both Rust production prefixes and the
+full-Zig rollback prefix; source recovery remains an explicit diagnostic, not
+an ambient fallback.
+
+The final Z3 release-bundle leg is still open: package a production bundle
+without the oracle, package the operator-selected rollback bundle, and prove
+both from unrelated cwd/loader environments with no ambient path fallback.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
