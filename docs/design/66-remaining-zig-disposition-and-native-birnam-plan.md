@@ -261,6 +261,13 @@ rejects a Rust-host artifact projection or exported `module_init`; the target
 passes, with the inventory at 69 test scripts and 119 build targets. No
 artifact schema, activation, or provider behavior changed.
 
+Commit `7a8ee06` adds the Rust host preflight negative corpus as
+`test-rust-artifact-preflight`. It exercises dependency-first closure,
+identity mismatch/missing sibling, and wrong-kind rejection (`3/3` Rust host
+tests), complementing the Zig oracle's seven-case preflight fixture. The
+negative checks run before any activation path and leave the authority split
+unchanged; inventory is now 70 test scripts and 120 build targets.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
