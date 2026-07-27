@@ -6,6 +6,7 @@ set -euo pipefail
 
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"
 bin="$(cd "$(dirname "$bin")" && pwd -P)/$(basename "$bin")"
+runtime_lib="$(cd "$(dirname "$bin")/../lib" && pwd -P)"
 tmp="$(mktemp -d /tmp/birnam-rust-project-check.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -52,7 +53,19 @@ grep -Eq 'built 1 module(s)? at ' <<<"$build"
 run="$(run_from_clean_cwd run "$tmp/project" --no-repl)"
 grep -Fxq 'rust-host-project-ok' <<<"$run"
 
+# Install from an unrelated cwd into a private runtime directory seeded with
+# the executable's shipped support libraries. This proves the install command
+# itself, rather than only the build/run/test paths, and leaves the prefix
+# under test untouched.
+install_lib="$tmp/install/lib"
+mkdir -p "$install_lib"
+cp "$runtime_lib"/*.dylib "$install_lib/"
+install_output="$(cd /tmp && BIRNAM_FORCE_SOURCE=1 BIRNAM_LIB_DIR="$install_lib" "$bin" install --build "$tmp/project")"
+grep -Fq "installed " <<<"$install_output"
+grep -Fq " into $install_lib" <<<"$install_output"
+test -f "$install_lib/libbirnam_app.dylib"
+
 test_output="$(run_from_clean_cwd test "$tmp/project")"
 test -n "$test_output"
 
-echo "rust-project-check: relocated check human/JSON, build, run, and test passed"
+echo "rust-project-check: relocated check human/JSON, build, run, install, and test passed"
