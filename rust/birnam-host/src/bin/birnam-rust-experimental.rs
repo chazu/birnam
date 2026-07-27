@@ -484,8 +484,8 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             let _ = unsafe { load_image(&mut runtime, &options.image, true) }
                 .map_err(|error| format!("image: {error:?}"))?;
-            let mut session =
-                unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;
+            let mut session = unsafe { runtime.start_repl_after_image() }
+                .map_err(|error| format!("repl: {error:?}"))?;
             unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
         }
         CommandKind::Script(path) => {
@@ -504,8 +504,8 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             let _ = unsafe { load_image(&mut runtime, &path, false) }
                 .map_err(|error| format!("image: {error:?}"))?;
-            let mut session =
-                unsafe { runtime.start_repl() }.map_err(|error| format!("repl: {error:?}"))?;
+            let mut session = unsafe { runtime.start_repl_after_image() }
+                .map_err(|error| format!("repl: {error:?}"))?;
             unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
         }
         CommandKind::Artifact(path) => {

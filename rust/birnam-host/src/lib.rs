@@ -778,7 +778,36 @@ pub unsafe fn load_image(
             return Err(ImageError::LoadRejected);
         }
         let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
-        unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) };
+        let replayed = unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) };
+        // A data-only image (and an explicit --rebuild of an image whose
+        // journal contains no user methods) still needs the self-hosted
+        // protocol layer. The canonical Zig recovery path reloads the
+        // embedded stdlib in this zero-replay case; do the same through the
+        // Rust host bootstrap so Config/Module/REPL globals cannot remain as
+        // stale image objects without their method surface.
+        let replay_count = if unsafe { (api.isSmallInt)(replayed) } != 0 {
+            unsafe { (api.smallIntValue)(replayed) }
+        } else {
+            0
+        };
+        let config_surface_missing = unsafe { global_named(api, "Config") }
+            .map(|config| unsafe {
+                let loads = (api.intern)(c"loads".as_ptr());
+                !receiver_has_selector(api, config, loads)
+            })
+            .unwrap_or(false);
+        if replay_count == 0 || config_surface_missing {
+            unsafe {
+                bootstrap_self_hosted(
+                    api,
+                    codegen,
+                    &runtime.resources,
+                    runtime.policy.force_source,
+                    false,
+                )
+            }
+            .map_err(|_| ImageError::LoadRejected)?;
+        }
         let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
         unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
         // Source-backed block globals are intentionally not serialized as
@@ -4479,13 +4508,11 @@ impl HostRuntime {
         if let Some(module_manager) = unsafe { global_named(self.stack.api(), "Module") } {
             let mark = unsafe { (self.stack.api().intern)(c"markLoaded:".as_ptr()) };
             let symbol = unsafe { (self.stack.api().intern)(name.as_ptr()) };
-            let marked =
-                unsafe { (self.stack.api().send)(module_manager, mark, [symbol].as_ptr(), 1) };
-            if marked == self.stack.api().nilObj || send_is_error(self.stack.api(), marked) {
-                return Err(RuntimeModuleError::LoadRejected {
-                    path: PathBuf::from(path.to_string_lossy().trim_end_matches('\0')),
-                });
-            }
+            // The canonical Zig host treats this as bookkeeping only: a host
+            // capability has already been installed by Codegen and does not
+            // become an application-generation module. Preserve that boundary
+            // by ignoring the manager's return value here as well.
+            unsafe { (self.stack.api().send)(module_manager, mark, [symbol].as_ptr(), 1) };
         }
         Ok(())
     }
@@ -6221,18 +6248,49 @@ impl HostRuntime {
     /// The caller must have called [`HostRuntime::prepare_execution`] with a
     /// live stack anchor and remain on the floor owner thread.
     pub unsafe fn start_repl(&self) -> Result<ReplSession, ReplError> {
+        unsafe { self.start_repl_mode(false) }
+    }
+
+    /// Start a REPL after image recovery. The image's Module manager may be a
+    /// restored application object, so ordinary `Module load:` is deliberately
+    /// not called here; the host-capability path is the process-local recovery
+    /// boundary and is used only when the restored Repl surface is absent.
+    ///
+    /// # Safety
+    ///
+    /// Same owner-thread and GC-anchor requirements as [`HostRuntime::start_repl`].
+    pub unsafe fn start_repl_after_image(&self) -> Result<ReplSession, ReplError> {
+        unsafe { self.start_repl_mode(true) }
+    }
+
+    unsafe fn start_repl_mode(&self, image_booted: bool) -> Result<ReplSession, ReplError> {
         // A normal boot can introduce Repl into G0. An image may already have
         // sealed its application generation, so recover the same process-local
         // host capability used by the Zig image path when ordinary loading is
         // rejected.
-        if unsafe { self.load_runtime_module("repl") }.is_err() {
+        let normal_load_rejected =
+            !image_booted && unsafe { self.load_runtime_module("repl") }.is_err();
+        let init_selector = unsafe { (self.stack.api().intern)(c"consoleHostInit".as_ptr()) };
+        // Image recovery may leave the restored Globals/Module objects in a
+        // partially rebuilt state where even reading `Repl` through the normal
+        // namespace path can recurse. Always refresh this process-local tool
+        // after an image; normal boots retain the selector-surface check.
+        let stale_repl = if image_booted {
+            true
+        } else {
+            unsafe { global_named(self.stack.api(), "Repl") }
+                .map(|repl| unsafe {
+                    !receiver_has_selector(self.stack.api(), repl, init_selector)
+                })
+                .unwrap_or(true)
+        };
+        if normal_load_rejected || stale_repl {
             unsafe { self.load_host_runtime_module("repl") }.map_err(ReplError::Module)?;
         }
         let api = self.stack.api();
         let Some(repl) = (unsafe { global_named(api, "Repl") }) else {
             return Err(ReplError::MissingRepl);
         };
-        let init_selector = unsafe { (api.intern)(c"consoleHostInit".as_ptr()) };
         let initialized = unsafe { (api.send)(repl, init_selector, std::ptr::null(), 0) };
         if send_is_error(api, initialized) {
             return Err(ReplError::InitializationRejected);

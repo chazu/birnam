@@ -3304,7 +3304,11 @@ unsafe extern "C" fn rust_codegen_replay_methods(
     for source in &replay_sources {
         clear_error();
         let operation_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
-        let emitted = unsafe { send(api, self_object, EMIT_SELECTOR, &[operation_source]) };
+        // Call the Rust implementation directly during recovery. The image
+        // may carry a stale Codegen vtable whose `emit:` dispatch would route
+        // back into an obsolete floor implementation (or recurse forever);
+        // replay is owned by this Rust Codegen authority.
+        let emitted = unsafe { rust_codegen_emit(self_object, [operation_source].as_ptr(), 1) };
         if emitted == api.nilObj || LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
             note_error(b"RustCodegen image method replay preflight failed");
             return api.nilObj;
@@ -3315,7 +3319,7 @@ unsafe extern "C" fn rust_codegen_replay_methods(
     for source in replay_sources {
         clear_error();
         let operation_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
-        let result = unsafe { send(api, self_object, EVAL_SELECTOR, &[operation_source]) };
+        let result = unsafe { rust_codegen_eval(self_object, [operation_source].as_ptr(), 1) };
         if result == api.nilObj
             || (!error_vt.is_null() && unsafe { (api.vtableOf)(result) } == error_vt)
         {
@@ -6208,7 +6212,13 @@ unsafe extern "C" fn rust_codegen_load(
             )
         };
     }
-    if parsed_descriptor.requires.count() != 0 {
+    // Host-capability loading is the explicit process-local UI escape hatch
+    // used by a recovered image. It must not mutate the sealed application
+    // generation or require that the UI unit's ordinary application-module
+    // dependencies were part of that image; the Zig path has the same rule.
+    // Ordinary Module load: remains dependency-checked and fail-closed.
+    let host_capability_loading = HOST_CAPABILITY_LOADING.load(Ordering::Acquire);
+    if parsed_descriptor.requires.count() != 0 && !host_capability_loading {
         let module = unsafe { global_by_name(api, runtime, b"Module") };
         if module.is_null() || module == api.nilObj {
             return unsafe {
