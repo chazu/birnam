@@ -6689,11 +6689,10 @@ unsafe fn reflect_method_descriptor(api: &IdApi, runtime: &Runtime, vt: Oop, sel
     } else {
         unsafe { intern(api, b"compiled\0") }
     };
-    let _ = unsafe { reflect_map_put(api, descriptor, b"selector\0", selector) };
-    let _ = unsafe { reflect_map_put(api, descriptor, b"owner\0", owner) };
-    let _ = unsafe { reflect_map_put(api, descriptor, b"target\0", target) };
-    let _ = unsafe { reflect_map_put(api, descriptor, b"method\0", method) };
-    descriptor
+    let descriptor = unsafe { reflect_map_put(api, descriptor, b"selector\0", selector) };
+    let descriptor = unsafe { reflect_map_put(api, descriptor, b"owner\0", owner) };
+    let descriptor = unsafe { reflect_map_put(api, descriptor, b"target\0", target) };
+    unsafe { reflect_map_put(api, descriptor, b"method\0", method) }
 }
 
 #[derive(Clone, Copy)]
@@ -7091,9 +7090,9 @@ unsafe extern "C" fn rust_reflect_facts_of(
         let mut facts = Vec::new();
         for row in unsafe { collect_reflect_facts(api, values[0]) } {
             let map = unsafe { reflect_new_map(api) };
-            let _ = unsafe { reflect_map_put(api, map, b"entity\0", row.entity) };
-            let _ = unsafe { reflect_map_put(api, map, b"attribute\0", row.attribute) };
-            let _ = unsafe { reflect_map_put(api, map, b"value\0", row.value) };
+            let map = unsafe { reflect_map_put(api, map, b"entity\0", row.entity) };
+            let map = unsafe { reflect_map_put(api, map, b"attribute\0", row.attribute) };
+            let map = unsafe { reflect_map_put(api, map, b"value\0", row.value) };
             facts.push(map);
         }
         unsafe { make_vector(api, vector, &facts) }
