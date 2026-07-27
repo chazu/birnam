@@ -9211,10 +9211,12 @@ mod tests {
             preflight_artifact(&root_path, Some(b"other")),
             Err(ArtifactPreflightError::IdentityMismatch { .. })
         ));
-        assert!(matches!(
-            preflight_artifact(&root_path, Some(b"root")),
-            Err(ArtifactPreflightError::Read { .. })
-        ));
+        let error = preflight_artifact(&root_path, Some(b"root"))
+            .expect_err("missing sibling must reject as a dependency failure");
+        assert!(
+            format!("{error:?}").starts_with("artifactDependencyInvalid:"),
+            "missing sibling diagnostic drifted: {error:?}"
+        );
         std::fs::remove_dir_all(&root).expect("fixture directory removes");
     }
 
