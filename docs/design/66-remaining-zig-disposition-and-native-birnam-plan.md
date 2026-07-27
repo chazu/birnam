@@ -253,6 +253,14 @@ build, run, and test all execute from `/tmp` with `BIRNAM_LIB_DIR`,
 project flow passes through the executable-relative Rust resolver, preserving
 the existing diagnostic and policy boundaries.
 
+Commit `ecbe02d` adds `test-rust-artifact-authority`, a fail-closed static
+ownership check. It requires the allocation-free Rust descriptor codec, one
+dynamic `ArtifactVt`/`module_init` projection, host preflight before the
+`loadArtifact:` send, and native-Birnam `Module loadArtifact:` policy. It
+rejects a Rust-host artifact projection or exported `module_init`; the target
+passes, with the inventory at 69 test scripts and 119 build targets. No
+artifact schema, activation, or provider behavior changed.
+
 ## 4. Phase Z1 — Rust host and artifact closure
 
 Z1 removes Zig helper dependence from the canonical host path while leaving
