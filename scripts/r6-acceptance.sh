@@ -90,8 +90,9 @@ readonly expected_rust_image_rejection_tests=1
 # required rollback/compatibility artifact, adding one deterministic install
 # step to the focused replacement graph and to the optional strict verify.
 readonly expected_focused_steps=173
-readonly expected_verify_steps=296
-readonly expected_verify_tests=512
+readonly expected_verify_steps=304
+readonly expected_verify_tests=514
+readonly expected_verify_total_tests=520
 readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
@@ -443,9 +444,9 @@ if [[ ${BIRNAM_R6_REQUIRE_VERIFY:-0} == 1 ]]; then
     exit 1
   }
 
-  verify_summary_count=$(grep -Fc "Build Summary: ${expected_verify_steps}/${expected_verify_steps} steps succeeded; ${expected_verify_tests}/514 tests passed; ${expected_verify_skipped} skipped" "$verify" || true)
+  verify_summary_count=$(grep -Fc "Build Summary: ${expected_verify_steps}/${expected_verify_steps} steps succeeded; ${expected_verify_tests}/${expected_verify_total_tests} tests passed; ${expected_verify_skipped} skipped" "$verify" || true)
   [ "$verify_summary_count" -eq 1 ] || {
-    echo "r6-acceptance: optimized verify no longer reports the accepted ${expected_verify_steps}/${expected_verify_steps}, ${expected_verify_tests}/514, ${expected_verify_skipped}-skipped snapshot" >&2
+    echo "r6-acceptance: optimized verify no longer reports the accepted ${expected_verify_steps}/${expected_verify_steps}, ${expected_verify_tests}/${expected_verify_total_tests}, ${expected_verify_skipped}-skipped snapshot" >&2
     exit 1
   }
 else
