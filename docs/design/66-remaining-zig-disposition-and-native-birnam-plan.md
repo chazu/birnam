@@ -403,14 +403,26 @@ and the strict gate is rerun after the closure commits.
 The required archive acceptance is:
 
 ```text
-(cd "$scratch" && BIRNAM_HOST_IMPL=rust BIRNAM_CODEGEN_IMPL=rust \
-  bash scripts/source-bootstrap-smoke.sh)
+mise exec -- env LC_ALL=C BIRNAM_HOST_IMPL=rust BIRNAM_CODEGEN_IMPL=rust \
+  bash scripts/source-bootstrap-smoke.sh
 ```
 
 The result record must name the archive commit, Rust selections,
 source/bootstrap and relocated-prefix results, the shared preflight matrix in
 Debug and ReleaseSafe, and the remaining explicit Zig-oracle edges. A green
 repo-local `zig build verify` does not substitute for this archive boundary.
+
+### Z1 archive acceptance record (2026-07-27)
+
+At archive commit `d6f91dd`, the command above passed from a clean temporary
+archive. Cargo checked and tested the workspace with the pinned Rust 1.95.0
+toolchain, the Rust-selected archive built and ran from its relocated prefix,
+and the explicit Zig oracle prefix also built and ran. The archive ran the
+shared preflight fixture in Debug and ReleaseSafe: 8 Zig rows and 11 Rust
+rows passed in each mode, including the real aborting sentinel dylib. No
+prebuilt Birnam artifact was present and no source/checkout fallback was used.
+The remaining Zig edges are the explicit oracle/rollback prefix and the
+noncanonical Zig fixture libraries; no production provider changed.
 
 ## 5. Phase Z2 — native-Birnam policy closure
 
