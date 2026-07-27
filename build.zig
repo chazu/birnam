@@ -3048,6 +3048,22 @@ pub fn build(b: *std.Build) void {
     test_codegen_authority_step.dependOn(&codegen_authority_audit.step);
     test_step.dependOn(&codegen_authority_audit.step);
 
+    const rust_codegen_boundary_audit = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-codegen-dylib-audit.sh",
+    });
+    rust_codegen_boundary_audit.setEnvironmentVariable(
+        "BIRNAM_RUST_CODEGEN_DYLIB",
+        b.getInstallPath(.lib, "libbirnam_id_codegen_rust.dylib"),
+    );
+    rust_codegen_boundary_audit.step.dependOn(b.getInstallStep());
+    const test_rust_codegen_boundary_step = b.step(
+        "test-rust-codegen-boundary",
+        "Audit the canonical Rust Codegen provider boundary",
+    );
+    test_rust_codegen_boundary_step.dependOn(&rust_codegen_boundary_audit.step);
+    test_step.dependOn(&rust_codegen_boundary_audit.step);
+
     const native_rung_singleton_probe_mod = b.createModule(.{
         .root_source_file = b.path("src/id/native_rung_singleton_probe_test.zig"),
         .target = target,

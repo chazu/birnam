@@ -6,6 +6,7 @@
 //! any Birnam value.
 
 pub mod candidate;
+#[cfg(feature = "module")]
 mod module;
 
 pub const ABI: &[u8] = b"birnam-artifact-generation-v1";

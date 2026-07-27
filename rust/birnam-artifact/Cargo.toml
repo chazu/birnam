@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = ["module"]
+module = []
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

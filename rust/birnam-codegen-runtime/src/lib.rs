@@ -6,13 +6,13 @@
 //! Codegen core, and returns deterministic generated C without invoking TCC.
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
-use birnam_artifact::candidate::{
+use birnam_artifact_codec::candidate::{
     CANDIDATE_ABI, CANDIDATE_MAGIC, CANDIDATE_PLATFORM, Manifest as CandidateManifest,
     Operation as CandidateOperation, inspect as inspect_candidate, inspect_manifest,
 };
-use birnam_artifact::inspect as inspect_artifact;
+use birnam_artifact_codec::inspect as inspect_artifact;
 use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
-use birnam_image::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
+use birnam_image_codec::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
 use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
 use core::ptr;

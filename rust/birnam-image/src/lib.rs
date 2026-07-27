@@ -9,6 +9,13 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+/// Provider-free image framing and codec surface.
+///
+/// The dynamic Image shell below is intentionally kept outside this module so
+/// Codegen and other pure consumers can depend on the codec without pulling a
+/// provider initializer into their dylib.
+pub mod codec {
+
 pub const MAGIC: &[u8; 8] = b"BIRNAMIM";
 pub const FORMAT_VERSION: u32 = 4;
 pub const ENDIAN_TAG: u32 = 0x0102_0304;
@@ -18,14 +25,17 @@ pub const AUTHORITY_DIGEST_LEN: usize = 64;
 pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
 pub const FIELD_LENGTH_PREFIX: usize = 4;
 
-const IMAGE_ARCH_TAG: u32 = if cfg!(target_arch = "aarch64") {
+#[cfg(any(feature = "module", test))]
+pub(crate) const IMAGE_ARCH_TAG: u32 = if cfg!(target_arch = "aarch64") {
     1
 } else if cfg!(target_arch = "x86_64") {
     2
 } else {
     0
 };
+#[cfg(any(feature = "module", test))]
 const RUNTIME_ABI_VERSION: u32 = 2;
+#[cfg(any(feature = "module", test))]
 const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
     b"birnam_send",
     b"birnam_intern",
@@ -48,7 +58,8 @@ const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
     b"birnam_candidate_validate_binding",
 ];
 
-fn runtime_abi_hash() -> u64 {
+#[cfg(any(feature = "module", test))]
+pub(crate) fn runtime_abi_hash() -> u64 {
     let mut hash = 0xcbf29ce484222325;
     for name in RUNTIME_SHIM_NAMES {
         for byte in *name {
@@ -65,15 +76,13 @@ fn runtime_abi_hash() -> u64 {
     hash
 }
 
-fn authority_digest_from_bytes(bytes: &[u8]) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+#[cfg(any(feature = "module", test))]
+pub(crate) fn authority_digest_from_bytes(bytes: &[u8]) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
     bytes.try_into().ok()
 }
 
-use std::collections::HashMap;
-use std::ffi::{CStr, OsStr};
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -989,7 +998,7 @@ const WYHASH_SECRET: [u64; 4] = [
     0x5899_65cc_7537_4cc3,
 ];
 
-fn wyhash(seed: u64, input: &[u8]) -> u64 {
+pub(crate) fn wyhash(seed: u64, input: &[u8]) -> u64 {
     let mut state = [seed ^ mix(seed ^ WYHASH_SECRET[0], WYHASH_SECRET[1]); 3];
     let (a, b) = if input.len() <= 16 {
         let mut a = 0;
@@ -1059,10 +1068,26 @@ fn mix(left: u64, right: u64) -> u64 {
     product as u64 ^ (product >> 64) as u64
 }
 
+}
+
+#[allow(unused_imports)]
+pub use codec::*;
+#[cfg(any(feature = "module", test))]
+pub(crate) use codec::{authority_digest_from_bytes, runtime_abi_hash, IMAGE_ARCH_TAG};
+
+#[cfg(feature = "module")]
+mod runtime {
+use super::*;
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
+use std::collections::HashMap;
+use std::ffi::{CStr, OsStr};
+use std::fs;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r6-shell\0";
 const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
@@ -2415,6 +2440,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
         unsafe { bring_up(api) };
     }
     ptr::null_mut()
+}
 }
 
 #[cfg(test)]

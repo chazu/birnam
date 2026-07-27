@@ -38,6 +38,7 @@ latest_tests=(
   test-lang-selection
   test-native-rung-harness
   test-rust-codegen-runtime
+  test-rust-codegen-boundary
   test-rust-codegen-canonical
   test-rust-codegen-stack
   test-rust-codegen-zig-store
@@ -126,6 +127,17 @@ focused_test_summary_count=$(grep -Fc "Build Summary: ${expected_focused_steps}/
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
 [ "$rust_codegen_success_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
+  exit 1
+}
+
+rust_codegen_boundary_success_count=$(grep -Fc 'test-rust-codegen-boundary success' "$functional" || true)
+[ "$rust_codegen_boundary_success_count" -eq 1 ] || {
+  echo "r6-acceptance: canonical Rust Codegen boundary audit was not executed" >&2
+  exit 1
+}
+rust_codegen_boundary_audit_count=$(grep -Fc 'rust-codegen-dylib-audit: exact canonical Rust Codegen boundary passed' "$functional" || true)
+[ "$rust_codegen_boundary_audit_count" -eq 1 ] || {
+  echo "r6-acceptance: canonical Rust Codegen boundary audit did not pass" >&2
   exit 1
 }
 rust_codegen_test_count=$(grep -Ec '^\+- run test 31 passed ' "$functional" || true)
