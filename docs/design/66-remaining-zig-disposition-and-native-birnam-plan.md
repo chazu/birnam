@@ -829,6 +829,57 @@ The final goal is not “no `.zig` files”; it is “no unreviewed Zig producti
 authority.” Zig source may remain as oracle/evidence where compatibility and
 recovery require it.
 
+### Z4.1 floor fixture decision — retain explicit Zig rollback (2026-07-27)
+
+The first rung decision covers the floor itself. The canonical provider is
+Rust `libbirnam_id.dylib`; the explicit rollback fixture is
+`libbirnam_id_zig.dylib`, owned by `id-rollback`. The snapshot lower-rung
+matrix recorded the Zig fixture digest `sha256:2f1bbd494b7b57f3b0fd9dea80e773e693de56fce8f0d88d64f96f0f95ca4df3`,
+Rust Debug digest
+`sha256:0c82bf5934f816942ebb46e90a9119fa4ba3a14f2695f4e754bce8162ffcef8d`,
+and Rust Release digest
+`sha256:56d09344738f5f6f12dd0c441105cce328b92e181d493594da3d835bdee11250`.
+The old-image/native-client corpus is the checked-in `abi/fixtures/idapi-v1`
+corpus plus the Z3 archive legs; recovery is source recovery or the explicit
+full-Zig prefix, never ambient floor selection.
+
+The isolated characterization evidence is green:
+
+```text
+bash scripts/rust-lower-rung-matrix.sh both
+lower-rung-matrix: zig-id-v1 passed 256 tests, dylib 2f1bbd494b7b57f3b0fd9dea80e773e693de56fce8f0d88d64f96f0f95ca4df3
+lower-rung-matrix: rust-id-v1 debug passed 256 tests, dylib 0c82bf5934f816942ebb46e90a9119fa4ba3a14f2695f4e754bce8162ffcef8d
+lower-rung-matrix: rust-id-v1 release passed 256 tests, dylib 56d09344738f5f6f12dd0c441105cce328b92e181d493594da3d835bdee11250
+lower-rung-matrix: isolated prefixes, caches, Cargo target, and temp roots preserved
+
+bash scripts/rust-store-mop-smoke.sh
+rust-store-mop: Zig Store + Zig-floor oracle passed the characterization suite
+rust-store-mop: debug passed the Store consistency-law suite
+rust-store-mop: release passed the Store consistency-law suite
+
+bash scripts/rust-runtime-churn-smoke.sh
+rust-runtime-churn: 1000 repeated module loads passed
+rust-runtime-churn: 16 mapped and 16 rebuilt image boots passed
+rust-runtime-churn: 32 isolate start/request/stop cycles passed
+```
+
+This is not yet a retirement acceptance. The supplementary
+`cross-floor-image-smoke.sh` currently tries to publish a new image from a
+Zig floor while Rust Image/Codegen are the canonical authorities; the correct
+result is a rejected publication (`#rejected`, followed by `LoadRejected`),
+so it cannot be used as a fresh-image cross-floor corpus. The supplementary
+`cross-floor-error-smoke.sh` batches independent error-valued expressions and
+therefore receives the host's `EvaluationRejected`; its individual probes
+pass when isolated. These harnesses need authority-correct redesign before a
+floor release cycle can be claimed.
+
+**Decision: retain** `libbirnam_id_zig.dylib` and `src/id/id.zig` as the
+explicit rollback/oracle vector. No fixture deletion, manifest retirement, or
+canonical owner change is authorized by Z4.1. The next Z4 slice must repair or
+replace the two supplementary probes, then repeat the old-image/client,
+forced-GC, MOP, image/wire/ABI, and hostile-input matrix in a named release
+and rollback prefix.
+
 ## 8. Acceptance matrix
 
 | Cell | Required evidence |
