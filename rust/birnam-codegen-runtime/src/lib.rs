@@ -6659,19 +6659,76 @@ unsafe fn reflect_new_map(api: &IdApi) -> Oop {
     unsafe { send0(api, map, NEW_SELECTOR) }
 }
 
-unsafe fn reflect_method_descriptor(api: &IdApi, runtime: &Runtime, vt: Oop, selector: Oop) -> Oop {
+unsafe fn reflect_method_source_for_target_selector(
+    api: &IdApi,
+    target: Oop,
+    selector: Oop,
+) -> Oop {
+    let Some(target_bytes) = (unsafe { symbol_bytes(api, target) }) else {
+        return api.nilObj;
+    };
+    let Some(selector_bytes) = (unsafe { symbol_bytes(api, selector) }) else {
+        return api.nilObj;
+    };
+    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
+        return api.nilObj;
+    };
+    let mut found = api.nilObj;
+    for source in sources {
+        let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
+        else {
+            continue;
+        };
+        for operation in metadata.operations {
+            if operation.install
+                && operation.target == target_bytes
+                && operation.selector == selector_bytes
+            {
+                found = unsafe { (api.mkString)(operation.source.as_ptr(), operation.source.len()) };
+            }
+        }
+    }
+    found
+}
+
+unsafe fn reflect_method_target_name(
+    api: &IdApi,
+    vt: Oop,
+    global_rows: &[ReflectFactRow],
+) -> Oop {
+    let owner = unsafe { (api.vtableOwner)(vt) };
+    if !owner.is_null() {
+        let exported = unsafe { reflect_exported_symbol(api, owner) };
+        if exported != api.nilObj {
+            return exported;
+        }
+        if let Some(row) = global_rows.iter().find(|row| row.value == owner) {
+            return row.attribute;
+        }
+    }
+    let exported = unsafe { reflect_exported_symbol(api, vt) };
+    if exported != api.nilObj {
+        return exported;
+    }
+    global_rows
+        .iter()
+        .find(|row| row.value == vt)
+        .map_or(api.nilObj, |row| row.attribute)
+}
+
+unsafe fn reflect_method_descriptor(
+    api: &IdApi,
+    runtime: &Runtime,
+    vt: Oop,
+    selector: Oop,
+    target: Oop,
+) -> Oop {
     let descriptor = unsafe { reflect_new_map(api) };
     if descriptor == api.nilObj {
         return api.nilObj;
     }
     let owner = unsafe { (api.vtableOwner)(vt) };
     let owner = if owner.is_null() { api.nilObj } else { owner };
-    let target = unsafe { reflect_exported_symbol(api, owner) };
-    let target = if target == api.nilObj {
-        unsafe { reflect_exported_symbol(api, vt) }
-    } else {
-        target
-    };
     let mirror = unsafe {
         send(
             api,
@@ -7027,6 +7084,8 @@ unsafe extern "C" fn rust_reflect_all_methods(
         if vector.is_null() || vector == api.nilObj {
             return api.nilObj;
         }
+        let globals = unsafe { intern(api, GLOBALS_ENTITY_NAME) };
+        let global_rows = unsafe { collect_reflect_facts(api, globals) };
         let mut entries = Vec::new();
         let mut seen = Vec::<Oop>::new();
         let mut vt = unsafe { (api.vtableOf)(values[0]) };
@@ -7041,7 +7100,10 @@ unsafe extern "C" fn rust_reflect_all_methods(
                     continue;
                 }
                 seen.push(selector);
-                entries.push(unsafe { reflect_method_descriptor(api, runtime, vt, selector) });
+                let target = unsafe { reflect_method_target_name(api, vt, &global_rows) };
+                entries.push(unsafe {
+                    reflect_method_descriptor(api, runtime, vt, selector, target)
+                });
             }
             vt = unsafe { (api.vtableParent)(vt) };
         }
@@ -7066,7 +7128,12 @@ unsafe extern "C" fn rust_reflect_method_source(
     if source != api.nilObj {
         return source;
     }
-    api.nilObj
+    let target = unsafe { send(api, values[0], b"at:\0", &[intern(api, b"target\0")]) };
+    let selector = unsafe { send(api, values[0], b"at:\0", &[intern(api, b"selector\0")]) };
+    if target == api.nilObj || selector == api.nilObj {
+        return api.nilObj;
+    }
+    unsafe { reflect_method_source_for_target_selector(api, target, selector) }
 }
 
 unsafe extern "C" fn rust_reflect_facts_of(
