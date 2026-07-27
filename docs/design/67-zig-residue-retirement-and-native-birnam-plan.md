@@ -269,6 +269,30 @@ checkout fallback is a failure. P1 is split into one focused
 test/implementation commit per diagnosed gap, followed by a separate
 documentation receipt commit.
 
+### P1 revalidation receipt (2026-07-27)
+
+At the post-P0 commit `e46d7bb`, the explicit Rust archive command passed Cargo
+check/test, Rust production and complete Zig rollback prefixes, relocated
+project/LSP execution, and the shared eight-case artifact corpus. The cold
+compiler command passed both independent archives with these stable receipts:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+```
+
+The focused artifact rerun also passed:
+
+```text
+rust-artifact-preflight: shared eight-case dependency, identity, format, path, native, and real-sentinel corpus passed (debug)
+rust-artifact-authority: codec=pointer-free projection=single-module-init host=preflight-before-activation policy=native-loadArtifact
+```
+
+These are revalidation receipts only. The Rust host remains the canonical
+observer, `Module loadArtifact:` remains the sole activation/publication owner,
+and the Zig helper/oracle and complete rollback vector remain recoverable.
+
 ## 6. Phase P2 — per-rung retirement-readiness, no vector mutation
 
 The Rust implementations already own the canonical dynamic providers. P2
