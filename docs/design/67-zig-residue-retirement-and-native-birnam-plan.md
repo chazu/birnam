@@ -694,6 +694,53 @@ rollback vector remain unchanged. This checkpoint records the exact hash before
 the shell, Codegen/bootstrap, publication, rejection, cross-floor, Zig-Store,
 and image-save gates.
 
+### P2.10 Image readiness receipt (2026-07-27)
+
+Candidate checkpoint: `a02d40f`. No Image source, provider selection, ABI,
+fixture, or rollback artifact changed at this checkpoint. The focused Image
+matrix passed:
+
+```text
+Build Summary: 120/120 steps succeeded; 10/10 tests passed
+```
+
+The complete Rust-selected Image suite also passed with the three existing
+platform skips:
+
+```text
+Build Summary: 66/66 steps succeeded; 16/19 tests passed; 3 skipped
+test-image success
+```
+
+The focused and full matrices cover the Image shell, Codegen/bootstrap,
+publication and rejection paths, cross-floor compatibility in both directions,
+Zig-Store interoperability, and image-save behavior. The independent receipts
+also pass:
+
+```text
+cross-floor-image: authority-correct image compatibility passed
+image-save-smoke: script image save passed
+rust-image-save: debug selected d94eab2ac05ef02e1487ef27e2f12a29c8671dfa62ce40bd95692dfd10575131
+rust-image-save: release selected ccbda792115518abd5463e4f2044b5ead9e1c171b0b84b145da063bf6f3a2542
+```
+
+The fixture-free archive proof passes both independent cycles, and the complete
+archive receipt remains authority-correct:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+The installed canonical Rust Image dylib and explicit Zig Image rollback dylib
+each export exactly one `module_init`. These checks make Image
+**retain-ready** for evidence purposes. The canonical Rust Image provider,
+explicit Zig Image oracle, and complete full-Zig rollback vector remain
+installed; no provider deletion, mixed-vector recovery, fixture mutation, or
+benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
