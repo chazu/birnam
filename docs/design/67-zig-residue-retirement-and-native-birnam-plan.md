@@ -193,6 +193,24 @@ to reserve `dynamic_dependencies` for installed dylib names only. The new edge
 table is a separate schema so build inputs, oracle sources, evidence scripts,
 and native policy cannot be mistaken for runtime providers.
 
+### P0.2 receipt (2026-07-27)
+
+At the post-P0.1 commit `95681f2`, the authority boundary and strict gate pass:
+
+```text
+remaining-zig-boundary: rust_receipts=14 zig_oracle_receipts=14 canonical_load_trace=ok oracle_load_trace=ok policy_authority=ok
+rust-host-message-owner-inventory: ok send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56 disposition=read-only
+rust-artifact-authority: codec=pointer-free projection=single-module-init host=preflight-before-activation policy=native-loadArtifact
+```
+
+The strict rerun `BIRNAM_R6_REQUIRE_VERIFY=1 bash
+scripts/r6-acceptance.sh` passes `305/305` verify steps, `516/522` tests, and
+six skips. Z3 emits `distribution-selection: production omits Zig; rollback is
+a complete Zig vector` and `z3-archive: production_a=clean production_b=clean
+rollback=full-zig traces=ok`. The benchmark comparator remains unchanged with
+exactly `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`, no missing
+or unusable cases. No provider selection or runtime authority changed in P0.
+
 ### P0 exit gate
 
 The checker is green, `edges[]` is complete, no source or test path is mistaken
