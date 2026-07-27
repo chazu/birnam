@@ -8048,6 +8048,15 @@ mod tests {
         identity: &[u8],
         requires: &[&[u8]],
     ) -> Vec<u8> {
+        artifact_fixture_with_kind_and_native(kind, identity, requires, &[])
+    }
+
+    fn artifact_fixture_with_kind_and_native(
+        kind: &[u8],
+        identity: &[u8],
+        requires: &[&[u8]],
+        native_requires: &[&[u8]],
+    ) -> Vec<u8> {
         let mut payload = Vec::new();
         artifact_field(kind, &mut payload);
         artifact_field(identity, &mut payload);
@@ -8056,7 +8065,7 @@ mod tests {
         artifact_field(b"source", &mut payload);
         artifact_field(b"revision", &mut payload);
         artifact_list(requires, &mut payload);
-        artifact_list(&[], &mut payload);
+        artifact_list(native_requires, &mut payload);
         artifact_list(&[], &mut payload);
         let mut output = Vec::new();
         output.extend_from_slice(birnam_artifact::DESCRIPTOR_MAGIC);
@@ -9288,6 +9297,82 @@ mod tests {
         assert!(matches!(
             preflight_artifact(&root_path, Some(b"root")),
             Err(ArtifactPreflightError::KindMismatch { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_malformed_descriptor_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-malformed-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let path = root.join("candidate.dylib");
+        std::fs::write(&path, b"not a descriptor").expect("malformed fixture writes");
+        assert!(matches!(
+            preflight_artifact(&path, None),
+            Err(ArtifactPreflightError::Parse { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_duplicate_descriptor_providers() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-duplicate-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let path = root.join("candidate.dylib");
+        let mut bytes = artifact_fixture(b"candidate", &[]);
+        bytes.extend_from_slice(&artifact_fixture(b"candidate", &[]));
+        std::fs::write(&path, bytes).expect("duplicate fixture writes");
+        assert!(matches!(
+            preflight_artifact(&path, None),
+            Err(ArtifactPreflightError::Parse { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_dependency_path_escape() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-path-escape-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let path = root.join("candidate.dylib");
+        std::fs::write(&path, artifact_fixture(b"candidate", &[b"../escape"]))
+            .expect("path escape fixture writes");
+        assert!(matches!(
+            preflight_artifact(&path, None),
+            Err(ArtifactPreflightError::InvalidDependencyName { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_missing_native_requirement() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-native-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let path = root.join("candidate.dylib");
+        std::fs::write(
+            &path,
+            artifact_fixture_with_kind_and_native(
+                b"module",
+                b"candidate",
+                &[],
+                &[b"libmissing-native.dylib"],
+            ),
+        )
+        .expect("native requirement fixture writes");
+        assert!(matches!(
+            preflight_artifact(&path, None),
+            Err(ArtifactPreflightError::NativeRequirementMissing { .. })
         ));
         std::fs::remove_dir_all(&root).expect("fixture directory removes");
     }
