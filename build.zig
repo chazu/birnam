@@ -249,6 +249,19 @@ pub fn build(b: *std.Build) void {
     test_rust_resource_resolution_step.dependOn(&rust_resource_resolution_smoke.step);
     test_step.dependOn(&rust_resource_resolution_smoke.step);
 
+    // Design 66 Z1.2: freeze the pure codec, dynamic Artifact projection,
+    // host preflight, and native-Birnam activation ownership split.
+    const rust_artifact_authority_check = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-rust-artifact-authority.py",
+    });
+    const test_rust_artifact_authority_step = b.step(
+        "test-rust-artifact-authority",
+        "Verify Rust artifact codec, projection, preflight, and policy roles",
+    );
+    test_rust_artifact_authority_step.dependOn(&rust_artifact_authority_check.step);
+    test_step.dependOn(&rust_artifact_authority_check.step);
+
     const remaining_rung_clean_prefix = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-rung-clean-prefix.sh",
