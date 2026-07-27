@@ -6645,26 +6645,13 @@ unsafe fn compile_reflect_trampoline(
         return None;
     }
     let arity = selector.iter().filter(|byte| **byte == b':').count();
-    let mut escaped_selector = String::new();
-    for byte in selector {
-        match byte {
-            b'\\' => escaped_selector.push_str("\\\\"),
-            b'"' => escaped_selector.push_str("\\\""),
-            byte if byte.is_ascii_graphic() || *byte == b' ' => {
-                escaped_selector.push(*byte as char)
-            }
-            _ => {
-                unsafe { dispose_unit(api, unit) };
-                return None;
-            }
-        }
-    }
+    let value_selector = "value:".repeat(arity + 1);
     let source = format!(
         "extern void* birnam_send(void*, void*, void**, long);\nextern void* birnam_intern(const char*);\nextern void* birnam_global(const char*);\nvoid* __tramp(void* self, void** args, long n) {{ (void)n; void* a[{}]; a[0] = self; for (long i = 0; i < {}; ++i) a[i + 1] = args[i]; return birnam_send(birnam_global(\"{}\"), birnam_intern(\"{}\"), a, {}L); }}\n",
         arity + 1,
         arity,
         String::from_utf8_lossy(key),
-        escaped_selector,
+        value_selector,
         arity + 1,
     );
     let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };

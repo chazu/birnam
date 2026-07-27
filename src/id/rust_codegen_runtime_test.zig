@@ -1074,6 +1074,27 @@ test "Rust Codegen invokes an emitted block before its owner is collected" {
     try std.testing.expectEqual(@as(i64, 4), api.smallIntValue(result));
 }
 
+test "Rust Reflect forwards method arguments through value selectors" {
+    const api = try setupRustOnly();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const reflect = api.import("RustReflectAdapter") orelse return error.MissingRustReflectAdapter;
+    const integer = api.import("Integer") orelse return error.MissingInteger;
+    const define = api.intern("defineMethod:on:as:");
+    const unary_source = "[:self | 321]";
+    const unary = api.send(codegen, api.intern("eval:"), &.{api.mkString(unary_source.ptr, unary_source.len)}, 1);
+    try std.testing.expect(unary != api.nilObj);
+    try std.testing.expect(api.send(reflect, define, &.{ api.intern("rustReflectUnary"), integer, unary }, 3) != api.nilObj);
+    const unary_result = api.send(api.mkSmallInt(1), api.intern("rustReflectUnary"), &.{}, 0);
+    try std.testing.expectEqual(@as(i64, 321), api.smallIntValue(unary_result));
+
+    const keyword_source = "[:self :other | other]";
+    const keyword = api.send(codegen, api.intern("eval:"), &.{api.mkString(keyword_source.ptr, keyword_source.len)}, 1);
+    try std.testing.expect(keyword != api.nilObj);
+    try std.testing.expect(api.send(reflect, define, &.{ api.intern("rustReflectAdd:"), integer, keyword }, 3) != api.nilObj);
+    const keyword_result = api.send(api.mkSmallInt(4), api.intern("rustReflectAdd:"), &.{api.mkSmallInt(5)}, 1);
+    try std.testing.expectEqual(@as(i64, 5), api.smallIntValue(keyword_result));
+}
+
 test "Rust Codegen writes a compiled dylib through Rust TCC" {
     const api = try setup();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
