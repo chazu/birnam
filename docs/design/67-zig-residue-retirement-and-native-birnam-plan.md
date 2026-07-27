@@ -524,6 +524,13 @@ canonical Rust Collection provider, explicit Zig Collection oracle, and complete
 full-Zig rollback vector remain installed; no provider deletion, mixed-vector
 recovery, or benchmark allowance change is authorized by this receipt.
 
+### P2.6 Error candidate checkpoint
+
+The Error candidate is evidence-only: Rust Error is already the canonical
+provider, while the canonical Zig Error implementation and its complete rollback
+vector remain unchanged. This checkpoint records the exact hash before the
+standalone family, preload-order, and cross-floor diagnostic gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
