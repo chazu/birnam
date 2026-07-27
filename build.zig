@@ -2835,7 +2835,11 @@ pub fn build(b: *std.Build) void {
     });
     codegen_authority_audit.setEnvironmentVariable(
         "BIRNAM_CODEGEN_DYLIB",
-        b.getInstallPath(.lib, "libbirnam_id_codegen.dylib"),
+        // This audit freezes the Zig Codegen authority surface.  The
+        // canonical name is Rust in the default build, so point the audit at
+        // the explicit Zig rollback artifact rather than comparing Rust's
+        // additional observation exports to the Zig manifest.
+        b.getInstallPath(.lib, "libbirnam_id_codegen_zig.dylib"),
     );
     codegen_authority_audit.step.dependOn(b.getInstallStep());
     const test_codegen_authority_step = b.step(
