@@ -6756,7 +6756,15 @@ unsafe extern "C" fn rust_reflect_name_of(
     let api = unsafe { api(runtime()) };
     let Some(name) = (unsafe { reflect_symbol_name(api, values[0]) }) else {
         note_error(b"RustReflect nameOf: expects a symbol");
-        return api.nilObj;
+        let error = unsafe { (api.import)(c"Error".as_ptr()) };
+        if error.is_null() || error == api.nilObj {
+            return api.nilObj;
+        }
+        let kind = unsafe { intern(api, b"notASymbol\0") };
+        let message = unsafe {
+            (api.mkString)(b"nameOf: expects a symbol".as_ptr(), b"nameOf: expects a symbol".len())
+        };
+        return unsafe { send(api, error, b"kind:message:\0", &[kind, message]) };
     };
     unsafe { (api.mkString)(name.as_ptr(), name.len()) }
 }
