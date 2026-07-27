@@ -1,6 +1,6 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO; Z0 is R6-accepted and Z1 diagnostics may begin**
+Status: **reviewed GO; Z0 is R6-accepted and Z1 diagnostics are complete**
 (2026-07-27). Z1–Z3 authority/distribution changes remain gated on the
 explicit compatibility audit as specified below.
 
@@ -478,8 +478,8 @@ recovery require it.
 
 The scoped gate remains `bash scripts/r6-acceptance.sh`; it now includes the
 optimized relocated native-rung harness and is not widened to hide the
-pre-rewrite image compatibility failure. Z0 and diagnostic Z1 work may report
-that failure separately, but Z1/Z2/Z3 authority or distribution changes
+pre-rewrite image compatibility failure. Z0 and completed diagnostic Z1 work
+report that failure separately, but Z1/Z2/Z3 authority or distribution changes
 require `BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` to pass.
 
 ## 9. Commit discipline and stop conditions
