@@ -346,10 +346,17 @@ C2.1 Image authority checkpoint (2026-07-26):
   therefore cover source recovery without widening R6 over the unresolved
   Rust-host docgen path.
 - The latest broad Rust-host run still exposes unresolved C2 integration work
-  in `test-lsp-project`, `test-source-fallback`, `test-repl`,
+  in `test-source-fallback`, `test-repl`,
   `test-isolate-process`, `test-project-check`, and `test-install`. Those
   failures remain visible continuation work; this checkpoint accepts only the
   replacement-floor R6 evidence and does not claim C2 host completion.
+- The Rust Codegen artifact emitter now applies the shared selector-arity rule
+  to binary operators as well as keyword selectors. The previous colon-only
+  count emitted `=` method trampolines that dropped their operand and called
+  `value:` instead of `value:value:`; the fix is covered by the emitter unit
+  regression and the Rust-host/Rust-Codegen `test-lsp-project` smoke now passes
+  `92/92` steps. This closes the LSP cell's first C2 semantic failure without
+  changing dispatch, MOP ownership, or the generated-C ABI.
 - The Rust isolate diagnostic seam now preserves `WorkerStartupError` as the
   frozen `birnam.boot-error.v1` record and decodes the remote kind/message into
   the host `IsolateFailure`. The process-isolate smoke remains blocked at the
