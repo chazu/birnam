@@ -584,6 +584,27 @@ generated-C fixtures. Production bundles have no runtime Zig dependency or
 `_zig` artifact; rollback remains recoverable and explicit in its separate
 prefix.
 
+### Z3.1 execution record — distribution selector slice (2026-07-27)
+
+Commit `69f9895` adds the explicit `-Ddistribution=production|rollback|test`
+selection to the build driver. The default `test` distribution preserves the
+existing fixture-rich development graph. `production` requires every
+canonical implementation selection to be Rust and omits every `_zig` dylib
+and `bin/birnam-zig-oracle`. `rollback` defaults and validates the complete
+Zig vector, including Store, Alien, and the canonical Zig host; it installs
+that host both as `bin/birnam` and as the explicit `bin/birnam-zig-oracle`.
+
+The focused `test-distribution-selection` smoke builds isolated production
+and rollback prefixes, checks all fourteen canonical dynamic names, rejects
+Zig artifacts from production, and compares every rollback canonical digest
+with its `_zig` fixture. The existing `test-prelude-selection` smoke remains
+green under the unchanged default test distribution.
+
+This closes only the selector/content sub-step. The Z3 exit gate remains open:
+independent archive prefixes, `DYLD_PRINT_LIBRARIES` load receipts,
+`abi/rollback-prefix-v1.json`, old-client/image/generated-C fixtures, and the
+release-bundle no-ambient-fallback test are still required.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
