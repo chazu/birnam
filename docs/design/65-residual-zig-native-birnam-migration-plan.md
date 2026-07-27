@@ -1,8 +1,9 @@
 # Residual Zig owners → Rust/native Birnam migration plan
 
-Status: design plan, not yet executed. Prepared after the Rust floor, all
-selected rungs, and Rust Image passed the scoped R6 replacement gate on
-2026-07-26; broad Rust-host integration remains continuation work in C2.
+Status: execution in progress. C0/C1 and the Rust Image authority slice are
+landed; the scoped Rust replacement gate is accepted. C2 host integration is
+partly green, with the full Rust-host REPL semantic suite still continuation
+work before the canonical Codegen switch.
 
 ## 1. Outcome and scope
 
@@ -345,12 +346,14 @@ C2.1 Image authority checkpoint (2026-07-26):
   retaining validated artifact module sources. The focused runtime/image tests
   therefore cover source recovery without widening R6 over the unresolved
   Rust-host docgen path.
-- A fresh broad Rust-host run now passes `test-source-fallback` (`92/92` steps)
-  after the artifact-emitter fix above. The remaining unresolved C2 integration
-  work is `test-repl`, `test-isolate-process`, `test-project-check`, and
-  `test-install`. Those failures remain visible continuation work; this
-  checkpoint accepts only the replacement-floor R6 evidence and does not claim
-  C2 host completion.
+- A fresh broad Rust-host run passes `test-source-fallback` (`92/92` steps),
+  `test-project-check` (`92/92`), `test-install` (`123/123`), and
+  `test-isolate-process` (`92/92`) after the artifact-emitter, image-recovery,
+  and worker-vtable fixes above. `test-repl` now reaches the complete module
+  suite but still exposes Rust-host semantic failures in Doc source recovery,
+  Reflect fact/source projection, and CompiledUnit lifecycle publication.
+  Those failures remain visible C2 continuation work; this checkpoint accepts
+  only the replacement-floor R6 evidence and does not claim C2 host completion.
 - Rust Codegen `evalPersisting:` now retains its TCC unit whenever the emitted
   source contains blocks, matching the Zig evaluator's lifetime rule. The
   forced-collection regression is part of the focused matrix, advancing the
@@ -366,9 +369,14 @@ C2.1 Image authority checkpoint (2026-07-26):
   changing dispatch, MOP ownership, or the generated-C ABI.
 - The Rust isolate diagnostic seam now preserves `WorkerStartupError` as the
   frozen `birnam.boot-error.v1` record and decodes the remote kind/message into
-  the host `IsolateFailure`. The process-isolate smoke remains blocked at the
-  separate fresh-image receiver/vtable recovery invariant; no selector guard
-  was weakened to make that smoke appear green.
+  the host `IsolateFailure`. The separate process-isolate smoke now passes after
+  Rust image method-source recovery and ABI-null-terminated receiver/vtable
+  traversal; no selector guard was weakened to make that smoke appear green.
+- Commit `f0c964e` makes Rust Codegen's method-operation journal and durable
+  generation source map authoritative across image save/replay and fresh
+  workers. It also repairs Rust-host receiver/vtable termination and the
+  narrow worker fallback. The focused R6 gate remains unchanged at `99/99`
+  tests and `171/171` steps, with the two recorded benchmark crossings only.
 
 ## 7. Phase C2 — image and host integration
 
