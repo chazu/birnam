@@ -1,6 +1,6 @@
 # 67 — Zig Residue Retirement and Native-Birnam Completion Plan
 
-> **Status:** Draft for adversarial review (2026-07-27). Design 61's Rust
+> **Status:** Reviewed GO for P0 at `d2be5ad` (2026-07-27). Design 61's Rust
 > floor, Design 62's Rust native rungs, Design 65's residual-owner audit, and
 > Design 66's Z0–Z4 evidence are the prerequisites. This plan does not
 > authorize a provider switch or delete a rollback fixture until its phase gate
@@ -143,7 +143,11 @@ fixture is moved.
 3. Add a separate checked `abi/remaining-zig-edges-v1.json` with an `edges[]`
    table. Each row records `source`, `consumer`, `provider`, `edge_kind`
    (`runtime-dlopen`, `build-input`, `oracle`, `evidence`, or
-   `native-policy`), `phase`, and `selection_context`. The existing
+   `native-policy`), `phase`, and `selection_context`. Freeze the allowed
+   `phase` values to `P0`, `P1`, `P2`, `P3`, or `P4`, and the allowed
+   `selection_context` values to `production`, `rollback`, `oracle`, `build`,
+   or `evidence`; representative rows for each edge kind must be checked in.
+   The existing
    `remaining-zig-v1.json` remains schema version 1; merging `edges[]` into it
    would require an explicit schema-version-2 migration. The checker derives
    runtime-dlopen rows from `dynamic_dependencies` and the Rust/Zig loader
@@ -189,7 +193,8 @@ it does not reopen a closed authority decision or move language policy.
    the Rust host observation function, its typed diagnostic, and its test.
 2. Exercise check/build/run/install/test/LSP and source-free relocation from a
    second cwd with `BIRNAM_LIB_DIR`, `BIRNAM_ID_DYLIB`, and workspace overrides
-   unset. Any checkout read must be explicit source recovery, never fallback.
+   unset. The build checkout must never be read; recovery may use only
+   packaged/embedded source or the supplied project root.
 3. Run the Rust helper-boundary static audit and the Zig-oracle comparison. A
    mismatch in failure kind/order is a diagnosed parity task, not a reason to
    route the Rust host through Zig.
@@ -233,7 +238,9 @@ The Rust implementations already own the canonical dynamic providers. P2
 gathers evidence for one rung at a time; it does not delete a Zig provider,
 change the rollback vector, or claim independent recovery. Process the first
 unreviewed rung after the retained floor/Store/PEG set (Lang), then TCC,
-Codegen, Prelude, Collection/Error, Isolate/Relational/Alien, and Image.
+Codegen, Prelude, Collection, Error, Isolate, Relational, Alien, and Image.
+Each named provider is its own slice; adjacent names are not a combined commit
+or rollback decision.
 
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
