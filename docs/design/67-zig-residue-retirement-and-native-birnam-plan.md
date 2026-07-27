@@ -174,6 +174,25 @@ fixture is moved.
    The pinned verify graph, six-skip allowance, benchmark comparator, and Z3
    production/rollback receipts must remain unchanged.
 
+### P0.1 receipt (2026-07-27)
+
+Commit `95681f2` adds and checks `abi/remaining-zig-edges-v1.json` without
+changing provider selection. The checker now freezes the five edge kinds, five
+phase values, and five selection contexts; validates safe source/provider paths;
+requires representative rows for runtime, build, oracle, evidence, and native
+policy; and requires every one of the 14 declared dynamic providers in both
+production and complete-vector rollback contexts. The receipt is green:
+
+```text
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14
+test-remaining-zig-inventory success
+```
+
+The existing `abi/remaining-zig-v1.json` remains schema version 1 and continues
+to reserve `dynamic_dependencies` for installed dylib names only. The new edge
+table is a separate schema so build inputs, oracle sources, evidence scripts,
+and native policy cannot be mistaken for runtime providers.
+
 ### P0 exit gate
 
 The checker is green, `edges[]` is complete, no source or test path is mistaken
