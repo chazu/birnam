@@ -232,6 +232,17 @@ pub fn build(b: *std.Build) void {
     test_codegen_selection_refusal_step.dependOn(&codegen_selection_refusal.step);
     test_step.dependOn(&codegen_selection_refusal.step);
 
+    const rust_codegen_distribution_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-codegen-distribution-smoke.sh",
+    });
+    const test_rust_codegen_distribution_step = b.step(
+        "test-rust-codegen-distribution",
+        "Verify packaged Rust Codegen loading and explicit Zig rollback receipts",
+    );
+    test_rust_codegen_distribution_step.dependOn(&rust_codegen_distribution_smoke.step);
+    test_step.dependOn(&rust_codegen_distribution_smoke.step);
+
     const tcc_selection_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/tcc-selection-smoke.sh",
