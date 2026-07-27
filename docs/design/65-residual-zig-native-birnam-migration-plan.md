@@ -2,10 +2,10 @@
 
 Status: execution in progress. C0/C1, the Rust Image authority slice, C2 host
 integration, clean bootstrap/prefix evidence, and the canonical Rust Codegen
-switch are landed. The scoped Rust replacement gate is accepted; packaged
-distribution receipts and the release/rollback observation window are landed;
-remaining C4 disposition work and the separate strict full-verify audit remain
-ahead.
+switch are landed. The scoped Rust replacement gate, packaged distribution
+receipts, release/rollback observation, C4 disposition, and strict full-verify
+audit are now accepted. Remaining Zig files are retained only where this plan
+assigns them oracle, rollback, build, or evidence authority.
 
 ## 1. Outcome and scope
 
@@ -413,12 +413,36 @@ C2.1 Image authority checkpoint (2026-07-26):
   load their canonical Codegen path; the Rust receipt records the Rust
   canonical/fixture digest plus the explicit Zig rollback digest, and the Zig
   receipt records the inverse rollback pair.
-- A fresh strict audit on 2026-07-27 reran the complete `171/171` focused
-  matrix and `66/66` plus `9/9` Alien matrix, then failed only in the broader
-  all-migrated `test-native-rung-harness` install path. Its relocated docgen
-  fixture still lacks the expected `tag:body:` registration. This remains a
-  strict-audit blocker and is intentionally not admitted into the scoped R6
-  replacement gate.
+- Historical note: a fresh strict audit on 2026-07-27 first reran the complete
+  `171/171` focused matrix and `66/66` plus `9/9` Alien matrix, then failed only
+  in the broader all-migrated `test-native-rung-harness` install path because
+  its relocated docgen fixture lacked the expected `tag:body:` registration.
+  The gate was subsequently revised and the failure is superseded by the
+  closure record below; it is retained here to explain the gate change.
+
+### C4 and strict-audit closure (2026-07-27)
+
+The earlier docgen registration failure was a harness/fixture mismatch, not a
+permission to weaken a runtime invariant. The revised strict gate now runs the
+accepted verify graph and the named Z3 distribution/rollback checks after that
+graph, serially and in isolated prefixes. `BIRNAM_R6_REQUIRE_VERIFY=1
+bash scripts/r6-acceptance.sh` passes the pinned `305/305` verify steps,
+`516/522` tests with six skips, the two recorded benchmark crossings only
+(`query.aggregate +5.8%`, `compile.stage1-stdlib +11.9%`), and the receipts:
+
+```text
+distribution-selection: production omits Zig; rollback is a complete Zig vector
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+This closes the separate strict audit without changing the dynamic-rung
+boundary, the Store/MOP law, the frozen ABI/image/wire contracts, or the
+rollback vectors. C4 is therefore closed as a disposition decision, not as a
+mass deletion: `src/id/main.zig`, the Zig rung implementations, `idapi.zig`,
+artifact-preflight helpers, project/build helpers, and probes remain named
+oracle/build/evidence surfaces. Rust owns the canonical production path; Zig
+is not a production authority, but remains recoverable until a later reviewed
+retirement decision supplies replacement fixtures and recovery evidence.
 
 ## 7. Phase C2 — image and host integration
 
