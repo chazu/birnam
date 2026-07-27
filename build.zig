@@ -235,6 +235,19 @@ pub fn build(b: *std.Build) void {
     test_rust_host_zig_helper_boundary_step.dependOn(&rust_host_zig_helper_boundary.step);
     test_step.dependOn(&rust_host_zig_helper_boundary.step);
 
+    // Design 66 Z2.0: keep every Rust-host IdApi.send and named global lookup
+    // in a fail-closed, read-only owner inventory before any policy seam moves.
+    const rust_host_message_owner_inventory = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-rust-host-message-owner-inventory.py",
+    });
+    const test_rust_host_message_owner_inventory_step = b.step(
+        "test-rust-host-message-owner-inventory",
+        "Verify the Design 66 Z2.0 Rust-host message/global owner inventory",
+    );
+    test_rust_host_message_owner_inventory_step.dependOn(&rust_host_message_owner_inventory.step);
+    test_step.dependOn(&rust_host_message_owner_inventory.step);
+
     // Design 66 Z1.1: keep the Rust and Zig executable-relative resource
     // observations covered by one explicit parity target. The target only
     // runs pure unit tests; provider selection remains outside this seam.
