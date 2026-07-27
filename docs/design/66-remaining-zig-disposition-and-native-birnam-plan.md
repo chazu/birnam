@@ -477,6 +477,23 @@ the diagnostic inventory from any later policy movement.
    duplicate policy discovery becomes a named reviewed seam and a stop
    condition.
 
+### Z2.0.1 source-coverage checkpoint (2026-07-27)
+
+Commit `abe237d` establishes the read-only coverage seam in
+`abi/rust-host-message-owner-v1.json` and
+`scripts/check-rust-host-message-owner-inventory.py`, exposed as
+`zig build test-rust-host-message-owner-inventory`. The checker currently
+freezes all 120 direct Rust-host `IdApi.send` callsite lines and all 31 named
+`global_named` lookup lines, rejects stale or missing lines, and records the 14
+named-global owner classes (native Birnam, Rust dynamic, or Id runtime). It
+does not alter provider selection or runtime behavior.
+
+The next bounded Z2.0 step is to expand each frozen callsite into the review
+fields above: receiver acquisition, selector/arity, effect class, retained
+validation/test, and disposition. That expansion must remain checker-backed and
+read-only; only after it passes with the strict R6/archive gate may the review
+select one named policy seam for Z2.1.
+
 Z2.0 cannot exit on discovery alone. Its inventory, fail-closed checker, and
 strict R6/archive pass must be reviewed together; the review must select one
 named policy seam for Z2.1 before any Z2.1 edit. Until that review checkpoint,
