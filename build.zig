@@ -15,36 +15,50 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const Distribution = enum { production, rollback, test_bundle };
+    const distribution = b.option(
+        Distribution,
+        "distribution",
+        "Installed-prefix contents (production, rollback, or test)",
+    ) orelse .test_bundle;
+    const include_rollback_fixtures = distribution != .production;
     const Floor = enum { zig, rust };
     const PegImpl = enum { zig, rust };
     const CodegenImpl = enum { zig, rust };
+    const StoreImpl = enum { zig, rust };
+    const AlienImpl = enum { zig, rust };
     const selected_floor = b.option(
         Floor,
         "floor",
         "Native id floor installed as libbirnam_id.dylib (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) Floor.zig else Floor.rust;
+    const selected_store = b.option(
+        StoreImpl,
+        "store-impl",
+        "Store implementation installed as libbirnam_store.dylib (zig or rust)",
+    ) orelse if (distribution == .rollback) StoreImpl.zig else StoreImpl.rust;
     const selected_peg = b.option(
         PegImpl,
         "peg",
         "PEG matcher installed as canonical libbirnam_id_peg.dylib (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) PegImpl.zig else PegImpl.rust;
     const selected_codegen = b.option(
         CodegenImpl,
         "codegen-impl",
         "Codegen implementation installed as canonical libbirnam_id_codegen.dylib (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) CodegenImpl.zig else CodegenImpl.rust;
     const TccImpl = enum { zig, rust };
     const selected_tcc = b.option(
         TccImpl,
         "tcc",
         "TCC implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) TccImpl.zig else TccImpl.rust;
     const LangImpl = enum { zig, rust };
     const selected_lang = b.option(
         LangImpl,
         "lang",
         "Language parser implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) LangImpl.zig else LangImpl.rust;
     const RungImpl = enum { zig, rust };
     const PreludeImpl = enum { zig, rust };
     const CollectionImpl = enum { zig, rust };
@@ -57,42 +71,69 @@ pub fn build(b: *std.Build) void {
         HostImpl,
         "host-impl",
         "Birnam executable implementation installed as bin/birnam (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) HostImpl.zig else HostImpl.rust;
     const artifact_inspector_impl = b.option(
         RungImpl,
         "artifact-inspector-impl",
         "Artifact-inspector implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) RungImpl.zig else RungImpl.rust;
     const selected_prelude = b.option(
         PreludeImpl,
         "prelude-impl",
         "Primitive prelude implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) PreludeImpl.zig else PreludeImpl.rust;
     const selected_collection = b.option(
         CollectionImpl,
         "collection-impl",
         "Collection implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) CollectionImpl.zig else CollectionImpl.rust;
     const selected_error = b.option(
         ErrorImpl,
         "error-impl",
         "Error implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) ErrorImpl.zig else ErrorImpl.rust;
     const selected_isolate = b.option(
         IsolateImpl,
         "isolate-impl",
         "Isolate implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) IsolateImpl.zig else IsolateImpl.rust;
     const selected_relational = b.option(
         RelationalImpl,
         "relational",
         "Relational implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) RelationalImpl.zig else RelationalImpl.rust;
     const selected_image = b.option(
         ImageImpl,
         "image-impl",
         "Image implementation installed under the canonical dylib name (zig or rust)",
-    ) orelse .rust;
+    ) orelse if (distribution == .rollback) ImageImpl.zig else ImageImpl.rust;
+    const selected_alien = b.option(
+        AlienImpl,
+        "alien-impl",
+        "Alien implementation installed as libbirnam_id_alien.dylib (zig or rust)",
+    ) orelse if (distribution == .rollback) AlienImpl.zig else AlienImpl.rust;
+    if (distribution == .production and
+        (selected_floor == .zig or selected_store == .zig or selected_peg == .zig or
+            selected_codegen == .zig or selected_tcc == .zig or selected_lang == .zig or
+            selected_host == .zig or selected_alien == .zig or
+            artifact_inspector_impl == .zig or selected_prelude == .zig or
+            selected_collection == .zig or selected_error == .zig or
+            selected_isolate == .zig or selected_relational == .zig or
+            selected_image == .zig))
+    {
+        @panic("production distribution requires Rust for every canonical implementation");
+    }
+    if (distribution == .rollback and
+        (selected_floor != .zig or selected_store != .zig or selected_peg != .zig or
+            selected_codegen != .zig or selected_tcc != .zig or selected_lang != .zig or
+            selected_host != .zig or selected_alien != .zig or
+            artifact_inspector_impl != .zig or selected_prelude != .zig or
+            selected_collection != .zig or selected_error != .zig or
+            selected_isolate != .zig or selected_relational != .zig or
+            selected_image != .zig))
+    {
+        @panic("rollback distribution requires a complete Zig implementation vector");
+    }
     const artifact_explicit_name = if (artifact_inspector_impl == .rust)
         "libbirnam_id_artifact_rust.dylib"
     else
@@ -223,6 +264,18 @@ pub fn build(b: *std.Build) void {
     );
     test_remaining_zig_boundary_step.dependOn(&remaining_zig_boundary_smoke.step);
     test_step.dependOn(&remaining_zig_boundary_smoke.step);
+
+    // Design 66 Z3: production must contain only canonical Rust providers,
+    // while rollback must be an explicit complete Zig vector.
+    const distribution_selection_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/distribution-selection-smoke.sh",
+    });
+    const test_distribution_selection_step = b.step(
+        "test-distribution-selection",
+        "Verify production and full-Zig rollback prefix contents",
+    );
+    test_distribution_selection_step.dependOn(&distribution_selection_smoke.step);
 
     const rust_host_zig_helper_boundary = b.addSystemCommand(&.{
         "python3",
@@ -2378,24 +2431,28 @@ pub fn build(b: *std.Build) void {
         if (m.lib_links_tcc) lib.linkLibrary(libtcc_lib);
         lib.linkLibC();
         if (std.mem.eql(u8, m.name, "birnam_id")) {
-            const install_zig_oracle = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_oracle.step);
-            bootstrap_install.dependOn(&install_zig_oracle.step);
-            if (selected_floor == .zig) {
-                const install_zig_floor = b.addInstallArtifact(lib, .{
-                    .dest_sub_path = "libbirnam_id.dylib",
+            if (include_rollback_fixtures) {
+                const install_zig_oracle = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_zig.dylib",
                 });
-                b.getInstallStep().dependOn(&install_zig_floor.step);
-                bootstrap_install.dependOn(&install_zig_floor.step);
+                b.getInstallStep().dependOn(&install_zig_oracle.step);
+                bootstrap_install.dependOn(&install_zig_oracle.step);
+                if (selected_floor == .zig) {
+                    const install_zig_floor = b.addInstallArtifact(lib, .{
+                        .dest_sub_path = "libbirnam_id.dylib",
+                    });
+                    b.getInstallStep().dependOn(&install_zig_floor.step);
+                    bootstrap_install.dependOn(&install_zig_floor.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_artifact")) {
-            const install_zig_artifact_oracle = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_artifact_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_artifact_oracle.step);
-            bootstrap_install.dependOn(&install_zig_artifact_oracle.step);
+            if (include_rollback_fixtures) {
+                const install_zig_artifact_oracle = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_artifact_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_artifact_oracle.step);
+                bootstrap_install.dependOn(&install_zig_artifact_oracle.step);
+            }
 
             const selected_artifact_step: *std.Build.Step = if (artifact_inspector_impl == .rust) blk: {
                 const install_rust_artifact = b.addInstallFileWithDir(
@@ -2440,7 +2497,6 @@ pub fn build(b: *std.Build) void {
             check.addArg(b.getInstallPath(.lib, "libbirnam_id_artifact.dylib"));
             check.addArg(b.getInstallPath(.lib, artifact_explicit_name));
             check.step.dependOn(selected_artifact_step);
-            check.step.dependOn(&install_zig_artifact_oracle.step);
             rung_selection_check = check;
 
             const test_artifact_selection_step = b.step(
@@ -2449,11 +2505,13 @@ pub fn build(b: *std.Build) void {
             );
             test_artifact_selection_step.dependOn(&check.step);
         } else if (std.mem.eql(u8, m.name, "birnam_store")) {
-            const install_zig_store_oracle = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_store_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_store_oracle.step);
-            bootstrap_install.dependOn(&install_zig_store_oracle.step);
+            if (include_rollback_fixtures) {
+                const install_zig_store_oracle = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_store_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_store_oracle.step);
+                bootstrap_install.dependOn(&install_zig_store_oracle.step);
+            }
 
             const install_rust_store = b.addInstallFileWithDir(
                 b.path(b.fmt(
@@ -2464,14 +2522,25 @@ pub fn build(b: *std.Build) void {
                 "libbirnam_store.dylib",
             );
             install_rust_store.step.dependOn(&rust_floor_build.step);
-            b.getInstallStep().dependOn(&install_rust_store.step);
-            bootstrap_install.dependOn(&install_rust_store.step);
+            if (selected_store == .rust) {
+                b.getInstallStep().dependOn(&install_rust_store.step);
+                bootstrap_install.dependOn(&install_rust_store.step);
+            }
+            if (selected_store == .zig) {
+                const install_zig_store_selected = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_store.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_store_selected.step);
+                bootstrap_install.dependOn(&install_zig_store_selected.step);
+            }
         } else if (std.mem.eql(u8, m.name, "birnam_id_peg")) {
-            const install_zig_peg_fixture = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_peg_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_peg_fixture.step);
-            bootstrap_install.dependOn(&install_zig_peg_fixture.step);
+            if (include_rollback_fixtures) {
+                const install_zig_peg_fixture = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_peg_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_peg_fixture.step);
+                bootstrap_install.dependOn(&install_zig_peg_fixture.step);
+            }
             const install_rust_peg = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_peg.dylib",
@@ -2496,16 +2565,20 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_peg_selected.step);
                 bootstrap_install.dependOn(&install_rust_peg_selected.step);
             } else {
-                const install_zig_peg = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_peg.step);
-                bootstrap_install.dependOn(&install_zig_peg.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_peg = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_peg.step);
+                    bootstrap_install.dependOn(&install_zig_peg.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_codegen")) {
-            const install_zig_codegen_fixture = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_codegen_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_codegen_fixture.step);
-            bootstrap_install.dependOn(&install_zig_codegen_fixture.step);
+            if (include_rollback_fixtures) {
+                const install_zig_codegen_fixture = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_codegen_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_codegen_fixture.step);
+                bootstrap_install.dependOn(&install_zig_codegen_fixture.step);
+            }
             if (selected_codegen == .rust) {
                 const install_rust_codegen_selected = b.addInstallFileWithDir(
                     b.path(b.fmt(
@@ -2519,16 +2592,20 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_codegen_selected.step);
                 bootstrap_install.dependOn(&install_rust_codegen_selected.step);
             } else {
-                const install_zig_codegen_selected = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_codegen_selected.step);
-                bootstrap_install.dependOn(&install_zig_codegen_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_codegen_selected = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_codegen_selected.step);
+                    bootstrap_install.dependOn(&install_zig_codegen_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_tcc")) {
-            const install_zig_tcc = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_tcc_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_tcc.step);
-            bootstrap_install.dependOn(&install_zig_tcc.step);
+            if (include_rollback_fixtures) {
+                const install_zig_tcc = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_tcc_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_tcc.step);
+                bootstrap_install.dependOn(&install_zig_tcc.step);
+            }
             const install_rust_tcc = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_tcc.dylib",
@@ -2553,18 +2630,22 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_tcc_selected.step);
                 bootstrap_install.dependOn(&install_rust_tcc_selected.step);
             } else {
-                const install_zig_tcc_selected = b.addInstallArtifact(lib, .{
-                    .dest_sub_path = "libbirnam_id_tcc.dylib",
-                });
-                b.getInstallStep().dependOn(&install_zig_tcc_selected.step);
-                bootstrap_install.dependOn(&install_zig_tcc_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_tcc_selected = b.addInstallArtifact(lib, .{
+                        .dest_sub_path = "libbirnam_id_tcc.dylib",
+                    });
+                    b.getInstallStep().dependOn(&install_zig_tcc_selected.step);
+                    bootstrap_install.dependOn(&install_zig_tcc_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_lang")) {
-            const install_zig_lang = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_lang_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_lang.step);
-            bootstrap_install.dependOn(&install_zig_lang.step);
+            if (include_rollback_fixtures) {
+                const install_zig_lang = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_lang_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_lang.step);
+                bootstrap_install.dependOn(&install_zig_lang.step);
+            }
             const install_rust_lang = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_lang.dylib",
@@ -2589,18 +2670,22 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_lang_selected.step);
                 bootstrap_install.dependOn(&install_rust_lang_selected.step);
             } else {
-                const install_zig_lang_selected = b.addInstallArtifact(lib, .{
-                    .dest_sub_path = "libbirnam_id_lang.dylib",
-                });
-                b.getInstallStep().dependOn(&install_zig_lang_selected.step);
-                bootstrap_install.dependOn(&install_zig_lang_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_lang_selected = b.addInstallArtifact(lib, .{
+                        .dest_sub_path = "libbirnam_id_lang.dylib",
+                    });
+                    b.getInstallStep().dependOn(&install_zig_lang_selected.step);
+                    bootstrap_install.dependOn(&install_zig_lang_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_prelude")) {
-            const install_zig_prelude = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_prelude_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_prelude.step);
-            bootstrap_install.dependOn(&install_zig_prelude.step);
+            if (include_rollback_fixtures) {
+                const install_zig_prelude = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_prelude_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_prelude.step);
+                bootstrap_install.dependOn(&install_zig_prelude.step);
+            }
             const install_rust_prelude = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_prelude.dylib",
@@ -2625,18 +2710,22 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_prelude_selected.step);
                 bootstrap_install.dependOn(&install_rust_prelude_selected.step);
             } else {
-                const install_zig_prelude_selected = b.addInstallArtifact(lib, .{
-                    .dest_sub_path = "libbirnam_id_prelude.dylib",
-                });
-                b.getInstallStep().dependOn(&install_zig_prelude_selected.step);
-                bootstrap_install.dependOn(&install_zig_prelude_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_prelude_selected = b.addInstallArtifact(lib, .{
+                        .dest_sub_path = "libbirnam_id_prelude.dylib",
+                    });
+                    b.getInstallStep().dependOn(&install_zig_prelude_selected.step);
+                    bootstrap_install.dependOn(&install_zig_prelude_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_collection")) {
-            const install_zig_collection = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_collection_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_collection.step);
-            bootstrap_install.dependOn(&install_zig_collection.step);
+            if (include_rollback_fixtures) {
+                const install_zig_collection = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_collection_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_collection.step);
+                bootstrap_install.dependOn(&install_zig_collection.step);
+            }
             const install_rust_collection = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_collection.dylib",
@@ -2664,16 +2753,20 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_collection_selected.step);
                 bootstrap_install.dependOn(&install_rust_collection_selected.step);
             } else {
-                const install_zig_collection_selected = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_collection_selected.step);
-                bootstrap_install.dependOn(&install_zig_collection_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_collection_selected = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_collection_selected.step);
+                    bootstrap_install.dependOn(&install_zig_collection_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_error")) {
-            const install_zig_error = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_error_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_error.step);
-            bootstrap_install.dependOn(&install_zig_error.step);
+            if (include_rollback_fixtures) {
+                const install_zig_error = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_error_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_error.step);
+                bootstrap_install.dependOn(&install_zig_error.step);
+            }
             const install_rust_error = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_error.dylib",
@@ -2698,16 +2791,20 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_error_selected.step);
                 bootstrap_install.dependOn(&install_rust_error_selected.step);
             } else {
-                const install_zig_error_selected = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_error_selected.step);
-                bootstrap_install.dependOn(&install_zig_error_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_error_selected = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_error_selected.step);
+                    bootstrap_install.dependOn(&install_zig_error_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_isolate")) {
-            const install_zig_isolate = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_isolate_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_isolate.step);
-            bootstrap_install.dependOn(&install_zig_isolate.step);
+            if (include_rollback_fixtures) {
+                const install_zig_isolate = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_isolate_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_isolate.step);
+                bootstrap_install.dependOn(&install_zig_isolate.step);
+            }
             const install_rust_isolate = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_isolate.dylib",
@@ -2732,16 +2829,20 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_isolate_selected.step);
                 bootstrap_install.dependOn(&install_rust_isolate_selected.step);
             } else {
-                const install_zig_isolate_selected = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_isolate_selected.step);
-                bootstrap_install.dependOn(&install_zig_isolate_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_isolate_selected = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_isolate_selected.step);
+                    bootstrap_install.dependOn(&install_zig_isolate_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_relational")) {
-            const install_zig_relational_fixture = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_relational_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_relational_fixture.step);
-            bootstrap_install.dependOn(&install_zig_relational_fixture.step);
+            if (include_rollback_fixtures) {
+                const install_zig_relational_fixture = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_relational_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_relational_fixture.step);
+                bootstrap_install.dependOn(&install_zig_relational_fixture.step);
+            }
             const install_rust_relational = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_relational.dylib",
@@ -2766,16 +2867,20 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_relational_selected.step);
                 bootstrap_install.dependOn(&install_rust_relational_selected.step);
             } else {
-                const install_zig_relational_selected = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_relational_selected.step);
-                bootstrap_install.dependOn(&install_zig_relational_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_relational_selected = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_relational_selected.step);
+                    bootstrap_install.dependOn(&install_zig_relational_selected.step);
+                }
             }
         } else if (std.mem.eql(u8, m.name, "birnam_id_alien")) {
-            const install_zig_alien = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_alien_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_alien.step);
-            bootstrap_install.dependOn(&install_zig_alien.step);
+            if (include_rollback_fixtures) {
+                const install_zig_alien = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_alien_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_alien.step);
+                bootstrap_install.dependOn(&install_zig_alien.step);
+            }
             const install_rust_alien = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_alien.dylib",
@@ -2790,23 +2895,33 @@ pub fn build(b: *std.Build) void {
             // Rust is canonical after the complete R5 callback/buffer/ABI and
             // child-abort exit gate. The Zig owner remains installed under an
             // explicit rollback/probe name.
-            const install_rust_alien_selected = b.addInstallFileWithDir(
-                b.path(b.fmt(
-                    ".cargo-target/{s}/libbirnam_alien.dylib",
-                    .{rust_floor_profile},
-                )),
-                .lib,
-                "libbirnam_id_alien.dylib",
-            );
-            install_rust_alien_selected.step.dependOn(&rust_floor_build.step);
-            b.getInstallStep().dependOn(&install_rust_alien_selected.step);
-            bootstrap_install.dependOn(&install_rust_alien_selected.step);
+            if (selected_alien == .rust) {
+                const install_rust_alien_selected = b.addInstallFileWithDir(
+                    b.path(b.fmt(
+                        ".cargo-target/{s}/libbirnam_alien.dylib",
+                        .{rust_floor_profile},
+                    )),
+                    .lib,
+                    "libbirnam_id_alien.dylib",
+                );
+                install_rust_alien_selected.step.dependOn(&rust_floor_build.step);
+                b.getInstallStep().dependOn(&install_rust_alien_selected.step);
+                bootstrap_install.dependOn(&install_rust_alien_selected.step);
+            } else if (include_rollback_fixtures) {
+                const install_zig_alien_selected = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_alien.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_alien_selected.step);
+                bootstrap_install.dependOn(&install_zig_alien_selected.step);
+            }
         } else if (std.mem.eql(u8, m.name, "birnam_id_image")) {
-            const install_zig_image = b.addInstallArtifact(lib, .{
-                .dest_sub_path = "libbirnam_id_image_zig.dylib",
-            });
-            b.getInstallStep().dependOn(&install_zig_image.step);
-            bootstrap_install.dependOn(&install_zig_image.step);
+            if (include_rollback_fixtures) {
+                const install_zig_image = b.addInstallArtifact(lib, .{
+                    .dest_sub_path = "libbirnam_id_image_zig.dylib",
+                });
+                b.getInstallStep().dependOn(&install_zig_image.step);
+                bootstrap_install.dependOn(&install_zig_image.step);
+            }
             const install_rust_image = b.addInstallFileWithDir(
                 b.path(b.fmt(
                     ".cargo-target/{s}/libbirnam_image.dylib",
@@ -2834,9 +2949,11 @@ pub fn build(b: *std.Build) void {
                 b.getInstallStep().dependOn(&install_rust_image_selected.step);
                 bootstrap_install.dependOn(&install_rust_image_selected.step);
             } else {
-                const install_zig_image_selected = b.addInstallArtifact(lib, .{});
-                b.getInstallStep().dependOn(&install_zig_image_selected.step);
-                bootstrap_install.dependOn(&install_zig_image_selected.step);
+                if (include_rollback_fixtures) {
+                    const install_zig_image_selected = b.addInstallArtifact(lib, .{});
+                    b.getInstallStep().dependOn(&install_zig_image_selected.step);
+                    bootstrap_install.dependOn(&install_zig_image_selected.step);
+                }
             }
         } else {
             const install_lib = b.addInstallArtifact(lib, .{});
@@ -3021,14 +3138,23 @@ pub fn build(b: *std.Build) void {
     siphon_mod.addOptions("build_opts", build_opts);
     const siphon_exe = b.addExecutable(.{ .name = "birnam-zig-oracle", .root_module = siphon_mod });
     siphon_exe.linkLibC();
-    const install_zig_host = b.addInstallArtifact(siphon_exe, .{
-        .dest_sub_path = if (selected_host == .zig) "birnam" else "birnam-zig-oracle",
-    });
-    // Keep the Zig executable available as an explicit rollback/oracle
-    // binary even while the Rust host is selected.  Compatibility fixtures
-    // may need the Zig image reader during the Rust-host observation window.
-    b.getInstallStep().dependOn(&install_zig_host.step);
-    bootstrap_install.dependOn(&install_zig_host.step);
+    // Test and rollback prefixes retain the Zig host only under its explicit
+    // oracle name. Rollback additionally copies that same executable to the
+    // canonical `bin/birnam` name; production has no Zig executable at all.
+    if (include_rollback_fixtures) {
+        const install_zig_host = b.addInstallArtifact(siphon_exe, .{
+            .dest_sub_path = "birnam-zig-oracle",
+        });
+        b.getInstallStep().dependOn(&install_zig_host.step);
+        bootstrap_install.dependOn(&install_zig_host.step);
+        if (selected_host == .zig) {
+            const install_zig_host_selected = b.addInstallArtifact(siphon_exe, .{
+                .dest_sub_path = "birnam",
+            });
+            b.getInstallStep().dependOn(&install_zig_host_selected.step);
+            bootstrap_install.dependOn(&install_zig_host_selected.step);
+        }
+    }
 
     // Birnam module source is embedded in its compiled unit. Native floor
     // sources and authored guides remain separate documentation resources.
