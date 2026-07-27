@@ -390,6 +390,15 @@ C2.1 Image authority checkpoint (2026-07-26):
   benchmark crossings (`query.aggregate +5.8%`, `compile.stage1-stdlib
   +11.9%`). The strict full-verify mode remains a separate audit because the
   native-rung harness is intentionally outside this replacement-floor gate.
+- Commit `ef248f5` parameterizes `scripts/source-bootstrap-smoke.sh` with an
+  explicit `BIRNAM_CODEGEN_IMPL` choice while keeping the Zig oracle build
+  explicit. Two independent fixture-free git-archive cycles pass with the
+  pinned Rust 1.95 toolchain, `BIRNAM_HOST_IMPL=rust`, and
+  `BIRNAM_CODEGEN_IMPL=rust`; each builds, runs, relocates, and exercises the
+  Rust production prefix plus the Zig rollback prefix. On this host the Cargo
+  workspace test run is serialized with `RUST_TEST_THREADS=1` because the
+  parallel 1.95 archive run is nondeterministically SIGSEGV-prone, while the
+  same package tests pass in isolation.
 
 ## 7. Phase C2 — image and host integration
 
