@@ -129,15 +129,18 @@ old_image_fixture() {
   local prefix=$2
   local host=$3
   local floor_identity=$4
+  local image_provider=$5
+  local codegen_provider=$6
   local fixture="$repo/abi/fixtures/idapi-v1"
+  echo "z3-archive: $label pre-rewrite image/native-client fixtures=running"
   (
     cd "$fixture"
     BIRNAM_BIN="$host" \
       BIRNAM_LIB_DIR="$prefix/lib" \
       BIRNAM_ID_DYLIB="$prefix/lib/libbirnam_id.dylib" \
       BIRNAM_ID_FLOOR_IDENTITY="$floor_identity" \
-      BIRNAM_IMAGE_DYLIB="$prefix/lib/libbirnam_id_image.dylib" \
-      BIRNAM_CODEGEN_DYLIB="$prefix/lib/libbirnam_id_codegen.dylib" \
+      BIRNAM_IMAGE_DYLIB="$image_provider/lib/libbirnam_id_image.dylib" \
+      BIRNAM_CODEGEN_DYLIB="$codegen_provider/lib/libbirnam_id_codegen.dylib" \
       bash verify.sh >/dev/null
   )
   echo "z3-archive: $label pre-rewrite image/native-client fixtures=ok"
@@ -165,8 +168,8 @@ mkdir -p "$scratch/rollback"
 )
 trace_prefix rollback "$rollback_prefix"
 exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
-old_image_fixture production-a "$production_a" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1
-old_image_fixture production-b "$production_b" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1
-old_image_fixture rollback "$rollback_prefix" "$rollback_prefix/bin/birnam" zig-id-v1
+old_image_fixture production-a "$production_a" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1 "$rollback_prefix" "$rollback_prefix"
+old_image_fixture production-b "$production_b" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1 "$rollback_prefix" "$rollback_prefix"
+old_image_fixture rollback "$rollback_prefix" "$rollback_prefix/bin/birnam" zig-id-v1 "$rollback_prefix" "$rollback_prefix"
 
 echo "z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok"
