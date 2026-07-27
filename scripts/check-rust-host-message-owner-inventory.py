@@ -163,7 +163,13 @@ def main() -> None:
         functions = group.get("functions")
         if not isinstance(functions, list) or not functions:
             fail(f"send function group {group.get('id')!r} has no functions")
-        for field in ("actual_owner", "effect_class", "test", "disposition"):
+        for field in (
+            "actual_owner",
+            "effect_class",
+            "test",
+            "retained_validation",
+            "disposition",
+        ):
             if not isinstance(group.get(field), str) or not group[field].strip():
                 fail(f"send function group {group.get('id')!r} has no {field}")
         for function in functions:
