@@ -164,6 +164,23 @@ Zig helper.
    Rust floor matrix, and the scoped R6 gate. Record exact counts and the
    strict-audit `tag:body:` boundary separately.
 
+### Z0.1 implementation checkpoint (2026-07-27)
+
+Commit `6defcfb` freezes the first diagnostic slice. `abi/remaining-zig-v1.json`
+records the captured defaults (`host_impl=rust`, `codegen_impl=rust`,
+`ReleaseSafe`), every repo-wide Zig path, the native-Birnam source graph, Rust
+crate manifests, build-step names, test scripts, install destinations, and the
+14 canonical dynamic library names. `scripts/check-remaining-zig-inventory.py`
+fails closed on an unclassified or stale Zig path, missing owner/disposition,
+graph drift, unsafe paths, or a dependency that is not a declared
+`libbirnam_*.dylib`. `zig build test-remaining-zig-inventory` exposes the same
+checker through the build graph and is included in the ordinary test step.
+
+The gate currently reports 88 Zig files, 91 Birnam sources, 18 Rust crate
+manifests, 65 test/evidence scripts, 115 build targets, and 14 dynamic
+providers. This is an ownership/diagnostic graph only; no provider selection,
+runtime loading, or artifact authority changed in Z0.1.
+
 ### Z0 exit gate
 
 The checked-in graph/checker covers every repo-wide Zig file; every residue
