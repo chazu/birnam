@@ -686,6 +686,14 @@ Rust Alien provider, explicit Zig Alien oracle, and complete full-Zig rollback
 vector remain installed; no provider deletion, mixed-vector recovery, or
 benchmark allowance change is authorized by this receipt.
 
+### P2.10 Image candidate checkpoint
+
+The Image candidate is evidence-only: Rust Image is already the canonical
+provider, while the canonical Zig Image implementation and its complete
+rollback vector remain unchanged. This checkpoint records the exact hash before
+the shell, Codegen/bootstrap, publication, rejection, cross-floor, Zig-Store,
+and image-save gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
