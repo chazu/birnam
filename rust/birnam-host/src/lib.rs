@@ -269,6 +269,10 @@ pub enum ArtifactPreflightError {
         expected: Vec<u8>,
         actual: Vec<u8>,
     },
+    DependencyInvalid {
+        path: PathBuf,
+        dependency: Vec<u8>,
+    },
     DependencyCycle {
         identity: Vec<u8>,
     },
@@ -311,6 +315,9 @@ impl fmt::Debug for ArtifactPreflightError {
             }
             Self::IdentityMismatch { path, .. } => {
                 write!(formatter, "artifactIdentityMismatch: {}", path.display())
+            }
+            Self::DependencyInvalid { path, .. } => {
+                write!(formatter, "artifactDependencyInvalid: {}", path.display())
             }
             Self::DependencyCycle { identity } => {
                 write!(formatter, "artifactDependencyCycle: {:?}", identity)
@@ -493,7 +500,18 @@ impl ArtifactPreflight {
                     dependency: requirement.clone(),
                 });
             };
-            self.walk(&dependency_path, Some(requirement))?;
+            if let Err(error) = self.walk(&dependency_path, Some(requirement)) {
+                match error {
+                    ArtifactPreflightError::IdentityMismatch { .. }
+                    | ArtifactPreflightError::DependencyCycle { .. } => return Err(error),
+                    _ => {
+                        return Err(ArtifactPreflightError::DependencyInvalid {
+                            path: dependency_path,
+                            dependency: requirement.clone(),
+                        });
+                    }
+                }
+            }
         }
         self.visiting.remove(&identity);
         self.inspected.insert(identity.clone());
