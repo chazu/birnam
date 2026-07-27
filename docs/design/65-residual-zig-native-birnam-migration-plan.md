@@ -1,18 +1,19 @@
 # Residual Zig owners → Rust/native Birnam migration plan
 
-Status: execution in progress. C0/C1 and the Rust Image authority slice are
-landed; the scoped Rust replacement gate is accepted. C2 host integration is
-green through the full Rust-host REPL semantic suite; clean bootstrap/prefix
-evidence and the canonical Codegen switch remain ahead.
+Status: execution in progress. C0/C1, the Rust Image authority slice, C2 host
+integration, clean bootstrap/prefix evidence, and the canonical Rust Codegen
+switch are landed. The scoped Rust replacement gate is accepted; packaged
+distribution receipts, the release/rollback observation window, and the
+remaining C3/C4 disposition work remain ahead.
 
 ## 1. Outcome and scope
 
-The remaining production Zig authority is the Codegen dynamic rung:
-`src/id/codegen.zig` → `libbirnam_id_codegen.dylib`. Its Rust successor exists
-as an opt-in `libbirnam_id_codegen_rust.dylib` (`birnam-codegen-runtime`), but
-it is not yet the canonical `Codegen` owner. This plan completes that port,
-proves it against the existing Zig authority, switches the canonical dynamic
-name, and keeps the Zig implementation as an explicit rollback fixture.
+The former production Zig authority was the Codegen dynamic rung:
+`src/id/codegen.zig`. Its Rust successor (`birnam-codegen-runtime`) now owns
+the canonical `libbirnam_id_codegen.dylib` name. The Zig implementation remains
+installed as the explicit `libbirnam_id_codegen_zig.dylib` rollback fixture.
+This plan records the proof against the existing Zig authority and completes
+the remaining distribution and disposition work without deleting that fixture.
 
 The Rust host is already the canonical `bin/birnam`. The remaining Zig host and
 its helper sources are retained as the explicit `birnam-zig-oracle` and as
@@ -40,7 +41,7 @@ the existing contracts and then makes the ownership metadata honest.
 | Relational | Rust `libbirnam_id_relational.dylib` | `libbirnam_id_relational_zig.dylib` | Retain both; Store owns facts, MOP mirror is derived |
 | Alien | Rust `libbirnam_id_alien.dylib` | `libbirnam_id_alien_zig.dylib` | Retain both; TCC and callback ABI remain frozen |
 | Image | Rust `libbirnam_id_image.dylib` | `libbirnam_id_image_zig.dylib` | Retain both; frozen images stay compatibility evidence |
-| Codegen | Zig `libbirnam_id_codegen.dylib` | no separate Zig rollback name yet | Port Rust, then switch canonical name; install Zig as explicit rollback |
+| Codegen | Rust `libbirnam_id_codegen.dylib` | Zig `libbirnam_id_codegen_zig.dylib` | Retain both; Rust is canonical and Zig is explicit rollback |
 | Host | Rust `bin/birnam` | `bin/birnam-zig-oracle` | Keep oracle for rollback/frozen images |
 | Project policy | `project-policy.birnam` and other Birnam modules | Zig oracle bridges in `project*.zig` | Keep policy in Birnam; Rust host owns observation/IO glue |
 | Test/ABI helpers | Zig tests and probes under `src/id` | checked-in fixtures | Retain; they are evidence, not runtime authorities |
@@ -399,6 +400,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   workspace test run is serialized with `RUST_TEST_THREADS=1` because the
   parallel 1.95 archive run is nondeterministically SIGSEGV-prone, while the
   same package tests pass in isolation.
+- Commit `12d9c60` makes Rust Codegen the default selected implementation;
+  `-Dcodegen-impl=zig` remains the explicit rollback selection. The canonical
+  Codegen test, relocated install smoke, Rust project-check smoke, and a fresh
+  scoped R6 rerun all pass after the switch (`171/171` build steps, `99/99`
+  tests, Rust Alien `66/66` plus `9/9`, and only the recorded benchmark
+  crossings `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`).
 
 ## 7. Phase C2 — image and host integration
 
@@ -429,7 +436,9 @@ C2.1 Image authority checkpoint (2026-07-26):
 ## 8. Phase C3 — canonical switch and observation window
 
 1. Change the default `-Dcodegen-impl` to Rust in one focused commit; retain
-   `-Dcodegen-impl=zig` as the documented rollback selection.
+   `-Dcodegen-impl=zig` as the documented rollback selection. **Completed by
+   `12d9c60`; subsequent C3 work validates the packaged path and observation
+   window.**
 2. Run focused Codegen, Store/MOP, Image, TCC, Alien, project, LSP, and
    relocation suites in Debug and ReleaseSafe. Run `BIRNAM_R6_ISOLATE_IMPL=rust
    mise run r6-acceptance` and record exact counts and comparator output.
