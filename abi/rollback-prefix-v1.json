@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "role": "Design 66 Z3 full-Zig rollback-prefix receipt contract",
+  "distribution": "rollback",
+  "allowed_install_roots": ["<prefix>/bin", "<prefix>/lib"],
+  "canonical_host": {
+    "path": "bin/birnam",
+    "fixture": "bin/birnam-zig-oracle",
+    "identity": "zig-host-oracle-v1"
+  },
+  "dynamic_load_order": [
+    "libbirnam_id.dylib",
+    "libbirnam_store.dylib",
+    "libbirnam_id_artifact.dylib",
+    "libbirnam_id_peg.dylib",
+    "libbirnam_id_lang.dylib",
+    "libbirnam_id_tcc.dylib",
+    "libbirnam_id_codegen.dylib",
+    "libbirnam_id_prelude.dylib",
+    "libbirnam_id_collection.dylib",
+    "libbirnam_id_error.dylib",
+    "libbirnam_id_isolate.dylib",
+    "libbirnam_id_relational.dylib",
+    "libbirnam_id_alien.dylib",
+    "libbirnam_id_image.dylib"
+  ],
+  "vector": [
+    {"canonical": "libbirnam_id.dylib", "fixture": "libbirnam_id_zig.dylib", "identity": "zig-id-v1"},
+    {"canonical": "libbirnam_store.dylib", "fixture": "libbirnam_store_zig.dylib", "identity": "zig-store-oracle-v1"},
+    {"canonical": "libbirnam_id_artifact.dylib", "fixture": "libbirnam_id_artifact_zig.dylib", "identity": "zig-artifact-oracle-v1"},
+    {"canonical": "libbirnam_id_peg.dylib", "fixture": "libbirnam_id_peg_zig.dylib", "identity": "zig-peg-oracle-v1"},
+    {"canonical": "libbirnam_id_lang.dylib", "fixture": "libbirnam_id_lang_zig.dylib", "identity": "zig-lang-oracle-v1"},
+    {"canonical": "libbirnam_id_tcc.dylib", "fixture": "libbirnam_id_tcc_zig.dylib", "identity": "zig-tcc-oracle-v1"},
+    {"canonical": "libbirnam_id_codegen.dylib", "fixture": "libbirnam_id_codegen_zig.dylib", "identity": "zig-codegen-oracle-v1"},
+    {"canonical": "libbirnam_id_prelude.dylib", "fixture": "libbirnam_id_prelude_zig.dylib", "identity": "zig-prelude-oracle-v1"},
+    {"canonical": "libbirnam_id_collection.dylib", "fixture": "libbirnam_id_collection_zig.dylib", "identity": "zig-collection-oracle-v1"},
+    {"canonical": "libbirnam_id_error.dylib", "fixture": "libbirnam_id_error_zig.dylib", "identity": "zig-error-oracle-v1"},
+    {"canonical": "libbirnam_id_isolate.dylib", "fixture": "libbirnam_id_isolate_zig.dylib", "identity": "zig-isolate-oracle-v1"},
+    {"canonical": "libbirnam_id_relational.dylib", "fixture": "libbirnam_id_relational_zig.dylib", "identity": "zig-relational-oracle-v1"},
+    {"canonical": "libbirnam_id_alien.dylib", "fixture": "libbirnam_id_alien_zig.dylib", "identity": "zig-alien-oracle-v1"},
+    {"canonical": "libbirnam_id_image.dylib", "fixture": "libbirnam_id_image_zig.dylib", "identity": "zig-image-oracle-v1"}
+  ],
+  "digest": {
+    "algorithm": "sha256",
+    "rule": "each canonical path must have the same digest as its declared Zig fixture",
+    "receipt_fields": ["canonical", "fixture", "identity", "canonical_sha256", "fixture_sha256"]
+  },
+  "mixed_vector_policy": "reject any canonical provider not mapped above; Rust fixtures may remain as non-canonical evidence"
+}

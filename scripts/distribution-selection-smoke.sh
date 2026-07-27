@@ -50,6 +50,7 @@ done
 
 rollback="$work/rollback"
 zig build install -Doptimize=ReleaseSafe -Ddistribution=rollback --prefix "$rollback" >/dev/null
+python3 scripts/check-rollback-prefix.py "$rollback" >"$work/rollback-receipt.jsonl"
 [[ -x "$rollback/bin/birnam" ]] || {
   echo "distribution-selection: rollback missing canonical Zig host" >&2
   exit 1
