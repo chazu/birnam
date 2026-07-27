@@ -1,10 +1,9 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO for the residue map, authority boundaries, and Z1
-closure; Z0 and the Z1 strict/archive evidence are accepted** (2026-07-27).
-Z1–Z3
-authority/distribution changes remain gated on the explicit strict gate as
-specified below.
+Status: **reviewed GO for the residue map, authority boundaries, and Z1/Z2.0
+closure; Z0 and the Z1/Z2 strict/archive evidence are accepted** (2026-07-27).
+Z3 was reopened by the adversarial review recorded below and remains gated on
+the hardened strict gate and a follow-up review.
 
 Design 63 and Design 65 port the production dynamic rungs and the Rust host.
 This plan starts at that boundary. It covers the Zig code that remains after
@@ -30,12 +29,12 @@ with the Rust Alien boundary at 66/66 steps and 9/9 tests; the comparator
 admits only `query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`.
 
 The broad strict audit remains separate from the default scoped invocation, but
-it is now green. The pre-rewrite image fixture runs through the explicit Zig
-oracle and Zig Image/Codegen rollback dylibs; stale compiled-unit authority is
-skipped for source recovery rather than rejecting the image. The strict command
-`BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh` reports `305/305`
-verify steps, `516/522` tests, and `6` skipped. This closes the compatibility
-follow-up without widening R6's benchmark allowance or changing a frozen
+its prior baseline is green. The pre-rewrite image fixture is retained as
+compatibility evidence: rollback uses the explicit Zig oracle and Zig
+Image/Codegen dylibs, while production uses its own Rust host/Image/Codegen
+providers. The hardened strict command now runs the distribution-selection and
+clean-archive Z3 targets after the optimized verify graph; its final result is
+recorded below without widening R6's benchmark allowance or changing a frozen
 contract.
 
 ### 1.1 Remaining Zig categories
@@ -674,9 +673,9 @@ covered on all three prefixes.
 ### Z3.6 execution record — pre-rewrite image/native-client corpus (2026-07-27)
 
 Commit `9eca519` adds the checked-in `abi/fixtures/idapi-v1` verifier to the
-three-prefix smoke. Each run uses the explicit Zig oracle host, the selected
-prefix floor, and the Zig Image/Codegen rollback providers required by the
-pre-rewrite recovery contract. The frozen native client, mapped image, and
+three-prefix smoke. The rollback run uses the explicit Zig oracle host and Zig
+Image/Codegen providers; each production run uses its own Rust host, Rust Image,
+and Rust Codegen providers. The frozen native client, mapped image, and
 source-rebuild image paths all pass for both Rust production prefixes and the
 full-Zig rollback prefix; source recovery remains an explicit diagnostic, not
 an ambient fallback.
@@ -728,6 +727,49 @@ r6-acceptance: PASS
 This closes the Z3 exit gate. Production and rollback bundles remain separate,
 all three clean archive prefixes have full fixture receipts, and the strict
 R6 comparator still admits only the two pre-recorded tradeoffs.
+
+That closure record is historical. The hardened strict gate and a follow-up
+adversarial review supersede it below.
+
+### Z3.9 adversarial review — reopened gate (2026-07-27)
+
+The next adversarial pass returned **NO-GO** for Z3 closure. It found five
+concrete evidence gaps: the production old-image leg still used rollback
+providers; rollback generated-C used the Rust TCC fixture; production receipts
+were not retained with observed identities, SHA-256 digests, and resolved
+loader paths; no-ambient checks did not reject every loaded `libbirnam*.dylib`
+outside the selected prefix/bundle; and strict R6 did not execute the Z3
+distribution targets. Z3 was reopened; no invariant or benchmark allowance
+was weakened.
+
+### Z3.10 execution record — hardened receipts, confinement, and compatibility (2026-07-27)
+
+Commit `08f4fa5` hardens the distribution smoke and strict gate. Production
+old-image/native-client runs now select each production prefix's Rust
+host/Image/Codegen trio; rollback selects the complete Zig trio and canonical
+Zig TCC. Production receipts cover the host and all fourteen canonical dynamic
+paths with resolved-prefix checks, SHA-256 digests, and digest-derived observed
+identities; rollback receipts retain the manifest identity plus the same
+observed digest/path evidence. Decoy floor/stdlib files and cleared loader
+override variables are exercised, and every traced Birnam dylib is required to
+resolve under the selected prefix or release bundle.
+
+Commits `d54e2b9` and `cfbb36d` close the old-image Rust path without weakening
+malformed-image rejection: a structurally valid stale generation is admitted
+to an explicit source-recovery transaction, where Rust Codegen replays facts
+through a recovery-only selector; ordinary preflight and replay continue to
+reject stale authorities. Focused Rust Image/Codegen tests pass, and the full
+archive matrix now reports:
+
+```text
+z3-archive: production-a pre-rewrite image/native-client fixtures=ok
+z3-archive: production-b pre-rewrite image/native-client fixtures=ok
+z3-archive: rollback pre-rewrite image/native-client fixtures=ok
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+The strict gate is still pending this hardened execution record and its
+follow-up review.
 
 ## 7. Phase Z4 — rung fixture retirement decisions
 
