@@ -479,6 +479,13 @@ Rust Prelude provider, explicit Zig Prelude oracle, and complete full-Zig
 rollback vector remain installed; no provider deletion, mixed-vector recovery,
 or benchmark allowance change is authorized by this receipt.
 
+### P2.5 Collection candidate checkpoint
+
+The Collection candidate is evidence-only: Rust Collection is already the
+canonical provider, while the canonical Zig Collection implementation and its
+complete rollback vector remain unchanged. This checkpoint records the exact
+hash before the persistent-vector protocol and collector/layout gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
