@@ -1361,6 +1361,28 @@ fn make_failure(api: &IdApi, class: &[u8], kind: &[u8], message: &[u8]) -> Oop {
     make_failure_objects(api, class_o, kind_o, message_o, api.nilObj, api.nilObj)
 }
 
+fn make_failure_from_record(
+    api: &IdApi,
+    class: &[u8],
+    schema: &[u8],
+    payload: &[u8],
+    fallback_kind: &[u8],
+    fallback_message: &[u8],
+) -> Oop {
+    let class_z = class
+        .iter()
+        .copied()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
+    match decode_oop_error_record(api, schema, payload) {
+        Ok((kind, message)) => {
+            make_failure_objects(api, class_o, kind, message, api.nilObj, api.nilObj)
+        }
+        Err(_) => make_failure(api, class, fallback_kind, fallback_message),
+    }
+}
+
 fn oop_text(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
     if value.is_null() {
         return None;
@@ -1526,6 +1548,17 @@ unsafe extern "C" fn isolate_start(_: Oop, args: *const Oop, count: usize) -> Oo
             );
         }
     };
+    if ready.header.kind == FrameKind::BootError {
+        terminate_entry(&mut entry);
+        return make_failure_from_record(
+            api,
+            b"boot",
+            BOOT_ERROR_SCHEMA,
+            &ready.payload,
+            b"invalidBootError",
+            b"worker sent an invalid boot error record",
+        );
+    }
     if ready.header.kind != FrameKind::Ready {
         terminate_entry(&mut entry);
         return make_failure(api, b"boot", b"expectedReady", b"worker did not send ready");

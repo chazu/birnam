@@ -1,16 +1,17 @@
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{CString, OsString};
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
-    CommandKind, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy, bake_executable,
-    baked_image, classify_command, compile_module, eval_script, host_target_identity, load_image,
-    parse_bake_args, parse_build_args, parse_check_args, parse_compile_module_args,
-    parse_install_args, parse_project_test_worker_args, parse_rebuild_args, parse_run_args,
-    parse_test_args, parse_worker_args, preflight_artifact, resolve, start, start_from_environment,
+    CommandKind, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy,
+    WorkerStartupError, bake_executable, baked_image, classify_command, compile_module,
+    eval_script, host_target_identity, load_image, parse_bake_args, parse_build_args,
+    parse_check_args, parse_compile_module_args, parse_install_args,
+    parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
+    parse_worker_args, preflight_artifact, resolve, start, start_from_environment,
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
@@ -411,15 +412,42 @@ fn worker_command(args: &[OsString]) -> Result<(), String> {
         unsafe { start_from_environment() }.map_err(|error| format!("startup: {error:?}"))?;
     let mut anchor = 0usize;
     unsafe { runtime.prepare_execution(&mut anchor) };
-    unsafe {
+    let result = unsafe {
         runtime.run_worker_image(
             &options.image,
             &options.receiver,
             &options.selector,
             options.channel_fd,
         )
+    };
+    let Err(error) = result else {
+        return Ok(());
+    };
+    let kind = match &error {
+        WorkerStartupError::Image(_) => "imageRecoveryFailed",
+        WorkerStartupError::MissingDispatchGeneration => "noDispatchGeneration",
+        WorkerStartupError::InvalidDispatchGeneration => "invalidCurrentGeneration",
+        WorkerStartupError::MissingCodegen => "noCodegen",
+        WorkerStartupError::InvalidGenerationDigest => "invalidCurrentGeneration",
+        WorkerStartupError::WrongArity => "wrongArity",
+        WorkerStartupError::MissingGlobals => "noGlobals",
+        WorkerStartupError::ReceiverNotFound => "receiverNotFound",
+        WorkerStartupError::SelectorNotFound => "selectorNotFound",
+        WorkerStartupError::Driver(_) => "workerFailed",
+        WorkerStartupError::EmbeddedNul => "embeddedNul",
+    };
+    let kind = CString::new(kind).expect("static worker diagnostic kind has no NUL");
+    let message = format!("{error:?}");
+    unsafe {
+        runtime.isolate.boot_error(
+            runtime.stack.api() as *const _ as *mut _,
+            options.channel_fd,
+            kind.as_ptr(),
+            message.as_ptr(),
+            message.len(),
+        );
     }
-    .map_err(|error| format!("worker: {error:?}"))
+    Err(format!("worker: {error:?}"))
 }
 
 fn run(args: Vec<OsString>) -> Result<(), String> {
