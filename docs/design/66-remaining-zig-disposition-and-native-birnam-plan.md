@@ -861,6 +861,10 @@ bash scripts/rust-runtime-churn-smoke.sh
 rust-runtime-churn: 1000 repeated module loads passed
 rust-runtime-churn: 16 mapped and 16 rebuilt image boots passed
 rust-runtime-churn: 32 isolate start/request/stop cycles passed
+
+zig build test-cross-floor-images -Doptimize=ReleaseSafe -j1 --summary all
+Build Summary: 2/2 steps succeeded
+test-cross-floor-images success
 ```
 
 This is not yet a retirement acceptance. The supplementary
