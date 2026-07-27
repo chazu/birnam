@@ -868,15 +868,17 @@ This is not yet a retirement acceptance. The supplementary
 Zig floor while Rust Image/Codegen are the canonical authorities; the correct
 result is a rejected publication (`#rejected`, followed by `LoadRejected`),
 so it cannot be used as a fresh-image cross-floor corpus. The supplementary
-`cross-floor-error-smoke.sh` batches independent error-valued expressions and
-therefore receives the host's `EvaluationRejected`; its individual probes
-pass when isolated. These harnesses need authority-correct redesign before a
-floor release cycle can be claimed.
+`cross-floor-error-smoke.sh` was repaired by `cd3102b` to run each
+error-valued expression independently and accept the host's documented
+`EvaluationRejected` status only when both floors emit the exact kind/message
+pair; the full hostile-input and syntax matrix now passes. The image probe
+still needs authority-correct redesign before a floor release cycle can be
+claimed.
 
 **Decision: retain** `libbirnam_id_zig.dylib` and `src/id/id.zig` as the
 explicit rollback/oracle vector. No fixture deletion, manifest retirement, or
 canonical owner change is authorized by Z4.1. The next Z4 slice must repair or
-replace the two supplementary probes, then repeat the old-image/client,
+replace the remaining image probe, then repeat the old-image/client,
 forced-GC, MOP, image/wire/ABI, and hostile-input matrix in a named release
 and rollback prefix.
 
