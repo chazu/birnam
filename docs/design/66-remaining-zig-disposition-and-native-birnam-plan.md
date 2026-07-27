@@ -1,8 +1,8 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
 Status: **reviewed GO for the residue map and authority boundaries; Z0 is
-R6-accepted, while Z1 evidence closure is still in progress** (2026-07-27).
-The strict compatibility audit is green, but Z1–Z3
+R6-accepted and the Z1 archive/evidence closure is green, with the final
+strict rerun and adversarial closure review pending** (2026-07-27). Z1–Z3
 authority/distribution changes remain gated on the explicit strict gate as
 specified below.
 
@@ -274,7 +274,7 @@ artifact schema, activation, or provider behavior changed.
 Commit `7a8ee06` adds the Rust host preflight negative corpus as
 `test-rust-artifact-preflight`. It exercises dependency-first closure,
 identity mismatch/missing sibling, and wrong-kind rejection (`3/3` Rust host
-tests), complementing the Zig oracle's seven-case preflight fixture. The
+tests), complementing the Zig oracle's eight-case preflight fixture. The
 negative checks run before any activation path and leave the authority split
 unchanged; inventory is now 70 test scripts and 120 build targets.
 
@@ -293,11 +293,12 @@ oracle's preflight contract is `artifactDependencyInvalid`; `26290af` pinned
 the red case and `7796f2e` normalized only that recursive dependency error.
 This is a separately diagnosed diagnostic-normalization fix, not an authority
 change. `96e555c` adds one checked-in inert descriptor-byte corpus consumed by
-both Rust and Zig. Its seven common rows cover path-only root, supplied
-identity mismatch, wrong kind before walk, sibling identity mismatch, missing
-sibling, ordered valid closure, and the real aborting sentinel dylib; both
-processes report normalized typed outcomes, and the nested wrong-kind case
-preserves `artifactKindMismatch`. The corpus also keeps the existing malformed,
+both Rust and Zig. Its eight common rows cover path-only root, supplied
+identity mismatch, wrong kind before walk, nested wrong kind, sibling identity
+mismatch, missing sibling, ordered valid closure, and the real aborting
+sentinel dylib; both processes report normalized typed outcomes, and the
+nested wrong-kind case preserves `artifactKindMismatch`. The corpus also keeps
+the existing malformed,
 duplicate, path-escape, and native-requirement Rust cases. `5991f8f` records
 source/revision digest rejection, absolute install-root rejection, stale
 receipt replacement, and the failed-preflight existing-target assertion. The
@@ -396,9 +397,10 @@ From a clean archive and unrelated cwd, Rust host project/check/build/run/
 install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
 and Zig oracle negative corpora must agree on the typed matrix; the MOP/policy
 fixture remains single-owned; source-free relocation and strict path checks
-pass. The Zig oracle still builds explicitly. Z1 remains open until the named
-archive acceptance below is exercised from a clean archive/relocated prefix
-and the strict gate is rerun after the closure commits.
+pass. The Zig oracle still builds explicitly. The named archive acceptance
+below now passes from a clean archive, including install and normalized
+parity; Z1 remains open only until the strict gate is rerun after these
+closure commits and the final review is recorded.
 
 The required archive acceptance is:
 
@@ -414,7 +416,7 @@ repo-local `zig build verify` does not substitute for this archive boundary.
 
 ### Z1 archive acceptance record (2026-07-27)
 
-At archive commit `a5d5c5a`, the command above passed from a clean temporary
+At archive commit `67714fe`, the command above passed from a clean temporary
 archive. Cargo checked and tested the workspace with the pinned Rust 1.95.0
 toolchain, the Rust-selected archive built and ran from its relocated prefix,
 and the explicit Zig oracle prefix also built and ran. The archive exercised
@@ -430,6 +432,8 @@ dependency and the real aborting sentinel dylib, in all four required modes:
 
 The relocated Rust project smoke covered check, JSON check, build, run,
 install, and test from an unrelated cwd; the relocated LSP smoke also passed.
+The archive also diffed the eight normalized shared-corpus rows (outcome,
+stable detail, and first-failure token) emitted independently by Rust and Zig.
 No prebuilt Birnam artifact was present and no source/checkout fallback was
 used. The remaining Zig edges are the explicit oracle/rollback prefix and the
 noncanonical Zig fixture libraries; no production provider changed.
