@@ -359,6 +359,13 @@ N5.1–N5.4 behavior, diagnostics, and rollback records make Lang
 the explicit oracle and complete-vector rollback provider; no deletion or
 vector mutation is authorized by this receipt.
 
+### P2.2 TCC candidate checkpoint
+
+The TCC candidate is evidence-only: Rust TCC is already available as the
+explicit replacement provider, while the canonical Zig TCC and its complete
+rollback vector remain unchanged. This checkpoint records the exact hash
+before the TCC shell, artifact, export-audit, Alien, Image, and selection gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
