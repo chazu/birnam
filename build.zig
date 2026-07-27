@@ -808,7 +808,7 @@ pub fn build(b: *std.Build) void {
     });
     const cross_floor_image_step = b.step(
         "test-cross-floor-images",
-        "Save with each floor and semantically verify mapped and rebuilt images with both",
+        "Verify authority-correct production image save and explicit Zig rollback image compatibility",
     );
     cross_floor_image_step.dependOn(&cross_floor_image_smoke.step);
 
