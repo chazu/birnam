@@ -315,7 +315,7 @@ def required_direct_target(call: dict[str, object]) -> str | None:
     if effect.startswith("image-recovery:"):
         return "test-rust-image-bootstrap"
     if effect.startswith("mop-mirror:"):
-        return "test-rust-store-mop"
+        return "test-project-check" if function == "start" else "test-rust-store-mop"
     if effect.startswith("repl-orchestration:"):
         return "test-repl"
     if (
@@ -489,12 +489,25 @@ def main() -> None:
             fail(f"send callsite row {line} uncovered evidence cannot be direct")
         if kind != "uncovered" and not direct:
             fail(f"send callsite row {line} non-uncovered evidence must be direct")
+        supporting_target = test.get("supporting_target")
+        if supporting_target is not None and (
+            not isinstance(supporting_target, str)
+            or not build_target_exists(supporting_target)
+        ):
+            fail(f"send callsite row {line} supporting test target is not named")
         expected_target = required_direct_target({**actual, "effect_class": row["effect_class"]})
-        if expected_target is not None and (not direct or target != expected_target):
+        explicitly_uncovered = line == 6452 and kind == "uncovered" and not direct
+        if expected_target is not None and not explicitly_uncovered and (not direct or target != expected_target):
             fail(
                 f"send callsite row {line} requires direct {expected_target} evidence, "
                 f"got kind={kind!r}, target={target!r}, direct={direct!r}"
             )
+        if line == 6452 and supporting_target != "test-repl":
+            fail("send callsite row 6452 must retain test-repl as supporting-only evidence")
+        if line == 7708 and (not direct or target != "test-project-check"):
+            fail("send callsite row 7708 must use the host-starting project target directly")
+        if line == 7708 and supporting_target != "test-rust-store-mop":
+            fail("send callsite row 7708 must retain test-rust-store-mop as supporting evidence")
         definition = row["native_definition"]
         if not isinstance(definition, dict):
             fail(f"send callsite row {line} has no native_definition object")

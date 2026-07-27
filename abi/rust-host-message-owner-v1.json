@@ -3417,10 +3417,11 @@
       },
       "effect_class": "repl-orchestration:bound:value",
       "test": {
-        "kind": "integration",
-        "target": "test-repl",
-        "evidence": "target=test-repl; category=REPL/evolution orchestration; source=run_repl line 6452",
-        "direct": true
+        "kind": "uncovered",
+        "target": "test-rust-host-message-owner-inventory",
+        "evidence": "target=test-rust-host-message-owner-inventory; category=EvolutionIntent fulfill arm is not directly exercised; source=run_repl line 6452",
+        "direct": false,
+        "supporting_target": "test-repl"
       },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "value acquired by the validated run_repl runtime boundary"
@@ -4809,9 +4810,10 @@
       "effect_class": "mop-mirror:ignored",
       "test": {
         "kind": "integration",
-        "target": "test-rust-store-mop",
-        "evidence": "target=test-rust-store-mop; category=Store MOP mirror; source=start line 7708",
-        "direct": true
+        "target": "test-project-check",
+        "evidence": "target=test-project-check; category=Rust host startup; source=start line 7708",
+        "direct": true,
+        "supporting_target": "test-rust-store-mop"
       },
       "disposition": "retain; read-only Z2.0 coverage",
       "receiver_acquisition": "store acquired by the validated start runtime boundary"
