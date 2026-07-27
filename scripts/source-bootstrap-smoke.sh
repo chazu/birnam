@@ -16,6 +16,10 @@ case "$codegen_impl" in
   *) echo "source-bootstrap: BIRNAM_CODEGEN_IMPL must be zig or rust" >&2; exit 2 ;;
 esac
 codegen_option=(-Dcodegen-impl="$codegen_impl")
+# Cargo's FFI-heavy archive tests are deterministic only when the test
+# harness is serialized. Keep the override available for diagnosis, but make
+# the clean-bootstrap proof stable by default.
+rust_test_threads=${RUST_TEST_THREADS:-1}
 
 # A git archive is the clean-checkout boundary. Compatibility fixtures are
 # deliberately removed: they are old-binary evidence, never bootstrap inputs.
@@ -45,6 +49,7 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
     cargo check --workspace --locked --offline
   BIRNAM_PREFLIGHT_SENTINEL_DYLIB="$sentinel" \
     CARGO_TARGET_DIR="$scratch/.cargo-target" \
+    RUST_TEST_THREADS="$rust_test_threads" \
     cargo test --workspace --locked --offline
   zig build -Dfloor=rust "${host_option[@]}" "${codegen_option[@]}"
   # The archive boundary exercises the shared Rust/Zig preflight bytes in both
