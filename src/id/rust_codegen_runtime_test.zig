@@ -2010,7 +2010,9 @@ test "Rust Codegen loads a host capability through its explicit entrypoint" {
     const output = api.mkString(path.ptr, path.len);
     try std.testing.expectEqual(output, api.send(old_codegen, api.intern("compile:output:"), &.{ source, output }, 2));
     try std.testing.expectEqual(api.trueObj, api.send(rust_codegen, api.intern("sealInitialGeneration"), &.{}, 0));
-    try std.testing.expectEqual(api.nilObj, api.send(rust_codegen, api.intern("load:"), &.{output}, 1));
+    const rejected = api.send(rust_codegen, api.intern("load:"), &.{output}, 1);
+    try std.testing.expect(rejected != api.nilObj);
+    try std.testing.expectEqual(api.intern("moduleIntroductionNotAvailable"), api.send(rejected, api.intern("kind"), &.{}, 0));
     const loaded = api.send(rust_codegen, api.intern("loadHostCapability:"), &.{output}, 1);
     try std.testing.expect(loaded != api.nilObj);
     try std.testing.expectEqual(

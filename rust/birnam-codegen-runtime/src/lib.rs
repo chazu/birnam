@@ -293,6 +293,15 @@ fn note_error(message: &[u8]) {
     }
 }
 
+unsafe fn error_value(api: &IdApi, kind: &[u8]) -> Oop {
+    let factory = unsafe { (api.import)(c"Error".as_ptr()) };
+    if factory.is_null() || factory == api.nilObj {
+        return api.nilObj;
+    }
+    let kind = unsafe { intern_bytes(api, kind) };
+    unsafe { send(api, factory, b"kind:\0", &[kind]) }
+}
+
 unsafe fn note_syntax_error(api: &IdApi, lang: Oop, source_object: Oop) {
     let offset = unsafe { send0(api, lang, FURTHEST_FAIL_SELECTOR) };
     if unsafe { (api.isSmallInt)(offset) } == 0 {
@@ -770,12 +779,7 @@ pub unsafe extern "C" fn birnam_candidate_validate_binding(
     removal: c_long,
 ) -> Oop {
     unsafe {
-        birnam_rust_codegen_candidate_validate_binding(
-            target_name,
-            selector_name,
-            arity,
-            removal,
-        )
+        birnam_rust_codegen_candidate_validate_binding(target_name, selector_name, arity, removal)
     }
 }
 
@@ -951,6 +955,7 @@ fn artifact_source(
     requires: &[Vec<u8>],
     native_requires: &[Vec<u8>],
     generated: &[u8],
+    include_source: bool,
 ) -> Vec<u8> {
     let mut payload = Vec::new();
     descriptor_field(&mut payload, b"module");
@@ -973,19 +978,24 @@ fn artifact_source(
     output.extend_from_slice(ARTIFACT_ABI);
     output.extend_from_slice(b"\";\nconst char __birnam_artifact_identity[] = \"");
     append_c_string(&mut output, identity);
-    output.extend_from_slice(b"\";\nconst unsigned char __birnam_artifact_source[] = {");
-    for (index, byte) in source.iter().enumerate() {
-        if index != 0 {
-            output.push(b',');
+    if include_source {
+        output.extend_from_slice(b"\";\nconst unsigned char __birnam_artifact_source[] = {");
+        for (index, byte) in source.iter().enumerate() {
+            if index != 0 {
+                output.push(b',');
+            }
+            output.extend_from_slice(byte.to_string().as_bytes());
         }
-        output.extend_from_slice(byte.to_string().as_bytes());
+        if source.is_empty() {
+            output.push(b'0');
+        }
+        output.extend_from_slice(b"};\nconst unsigned long __birnam_artifact_source_len = ");
+        output.extend_from_slice(source.len().to_string().as_bytes());
+        output.extend_from_slice(b"UL;\n");
+    } else {
+        output.extend_from_slice(b"\";\n");
     }
-    if source.is_empty() {
-        output.push(b'0');
-    }
-    output.extend_from_slice(b"};\nconst unsigned long __birnam_artifact_source_len = ");
-    output.extend_from_slice(source.len().to_string().as_bytes());
-    output.extend_from_slice(b"UL;\nconst unsigned char __birnam_artifact_descriptor[] = {");
+    output.extend_from_slice(b"const unsigned char __birnam_artifact_descriptor[] = {");
     for (index, byte) in descriptor.iter().enumerate() {
         if index != 0 {
             output.push(b',');
@@ -1996,6 +2006,12 @@ unsafe extern "C" fn rust_codegen_initialize_current_generation(
             note_error(b"RustCodegen durable generation does not match its projection");
             return api.nilObj;
         }
+        if let Ok(mut sealed) = INITIAL_GENERATION_SEALED.lock() {
+            *sealed = true;
+        } else {
+            note_error(b"RustCodegen initial generation seal is unavailable");
+            return api.nilObj;
+        }
         ACTIVE_GENERATION.store(durable as usize, Ordering::Release);
         return durable;
     }
@@ -2774,11 +2790,20 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
             return api.nilObj;
         };
         program.extend_from_slice(&bytes);
-        program.extend_from_slice(b";\n");
+        let mut end = bytes.len();
+        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+            end -= 1;
+        }
+        if end == 0 || bytes[end - 1] != b';' {
+            program.extend_from_slice(b";\n");
+        } else {
+            program.push(b'\n');
+        }
     }
     let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
     let arguments = [source_object, values[0]];
-    unsafe { rust_codegen_compile_output(self_object, arguments.as_ptr(), arguments.len()) }
+    let _ = self_object;
+    unsafe { rust_codegen_compile_output_impl(arguments.as_ptr(), arguments.len(), false, true) }
 }
 
 /// Validate a portable v4 image without changing the live runtime.
@@ -3931,7 +3956,7 @@ unsafe extern "C" fn rust_codegen_compile_output(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
-    unsafe { rust_codegen_compile_output_impl(pointer, count, false) }
+    unsafe { rust_codegen_compile_output_impl(pointer, count, false, false) }
 }
 
 unsafe extern "C" fn rust_codegen_compile_output_root(
@@ -3939,13 +3964,14 @@ unsafe extern "C" fn rust_codegen_compile_output_root(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
-    unsafe { rust_codegen_compile_output_impl(pointer, count, true) }
+    unsafe { rust_codegen_compile_output_impl(pointer, count, true, false) }
 }
 
 unsafe fn rust_codegen_compile_output_impl(
     pointer: *const Oop,
     count: usize,
     source_path_is_root: bool,
+    image_artifact: bool,
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen compile:output: received invalid arguments"));
@@ -3991,14 +4017,21 @@ unsafe fn rust_codegen_compile_output_impl(
         note_error(b"RustCodegen output path was not a String");
         return api.nilObj;
     };
-    let (identity, requires, native_requires) = match unsafe { artifact_metadata(api, values[0]) } {
-        Some((Some((identity, requires)), native_requires)) => {
-            (identity, requires, native_requires)
+    let (identity, requires, native_requires) = if image_artifact {
+        let native_requires = unsafe { artifact_metadata(api, values[0]) }
+            .map(|(_, native_requires)| native_requires)
+            .unwrap_or_default();
+        (artifact_identity(&path_bytes), Vec::new(), native_requires)
+    } else {
+        match unsafe { artifact_metadata(api, values[0]) } {
+            Some((Some((identity, requires)), native_requires)) => {
+                (identity, requires, native_requires)
+            }
+            Some((None, native_requires)) => {
+                (artifact_identity(&path_bytes), Vec::new(), native_requires)
+            }
+            None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
         }
-        Some((None, native_requires)) => {
-            (artifact_identity(&path_bytes), Vec::new(), native_requires)
-        }
-        None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
     };
     let source_digest = sha256_hex(&source_bytes);
     let revision_digest = unsafe { parse_revision_metadata(api, values[0]) }
@@ -4012,6 +4045,7 @@ unsafe fn rust_codegen_compile_output_impl(
         &requires,
         &native_requires,
         &source.bytes,
+        !image_artifact,
     );
     let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
@@ -4124,6 +4158,7 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
         &metadata.requires,
         &native_requires,
         &candidate_generated,
+        true,
     );
     let tcc = runtime.tcc as Oop;
     if tcc.is_null() || tcc == api.nilObj {
@@ -5676,6 +5711,8 @@ unsafe extern "C" fn rust_codegen_end_image_dispatch_recovery(
     if count != 0 {
         abort("RustCodegen endImageDispatchRecovery: expects no arguments");
     }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
     IMAGE_DISPATCH_RECOVERY.store(false, Ordering::Release);
     let previous = IMAGE_PREVIOUS_PHASE.load(Ordering::Acquire);
     let _ = RUNTIME_PHASE.compare_exchange(
@@ -5684,7 +5721,7 @@ unsafe extern "C" fn rust_codegen_end_image_dispatch_recovery(
         Ordering::AcqRel,
         Ordering::Acquire,
     );
-    unsafe { api(runtime()) }.trueObj
+    api.trueObj
 }
 
 unsafe extern "C" fn rust_codegen_prepare_rollback(
@@ -6063,17 +6100,6 @@ unsafe extern "C" fn rust_codegen_load(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    if INITIAL_GENERATION_SEALED
-        .lock()
-        .ok()
-        .is_some_and(|sealed| *sealed)
-        && !HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
-        && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        && !IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire)
-    {
-        note_error(b"RustCodegen module introduction is not available");
-        return api.nilObj;
-    }
     let Some(mut path) = (unsafe { string_bytes(api, values[0]) }) else {
         note_error(b"RustCodegen load path was not a String");
         return api.nilObj;
@@ -6232,6 +6258,16 @@ unsafe extern "C" fn rust_codegen_load(
             Some(unsafe { core::slice::from_raw_parts(source_symbol.cast::<u8>(), source_len) })
         }
     };
+    if INITIAL_GENERATION_SEALED
+        .lock()
+        .ok()
+        .is_some_and(|sealed| *sealed)
+        && !HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
+        && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        && !IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire)
+    {
+        return unsafe { error_value(api, b"moduleIntroductionNotAvailable") };
+    }
     if IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire) {
         unsafe { dlclose(handle) };
         return api.trueObj;
@@ -7497,6 +7533,7 @@ mod tests {
             &[],
             &[],
             b"void* __ev(void* self, void** args, long n){}",
+            true,
         );
         assert!(
             output

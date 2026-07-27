@@ -691,7 +691,8 @@ pub unsafe fn load_image(
     let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
-    let mut status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+    let mut status =
+        unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
     if status == api.falseObj
         && env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
     {
@@ -718,6 +719,46 @@ pub unsafe fn load_image(
         return Err(ImageError::LoadRejected);
     }
     if status == api.trueObj {
+        // A mapped image still cannot carry native Alien trampolines. Reopen
+        // the Rust Codegen recovery boundary for the same replay/derivation
+        // hooks used by source recovery before exposing the image to the REPL.
+        // Without this, image-resident methods that call an Alien wrapper keep
+        // the stale process from the saving runtime and silently read zeros.
+        let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+        if codegen != api.nilObj {
+            let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
+            let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
+            if begun == api.nilObj || send_is_error(api, begun) {
+                return Err(ImageError::LoadRejected);
+            }
+            let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
+            unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
+            let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
+            unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
+            let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
+            unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
+            let current_digest = unsafe {
+                (api.send)(
+                    codegen,
+                    (api.intern)(c"currentGenerationDigest".as_ptr()),
+                    std::ptr::null(),
+                    0,
+                )
+            };
+            if current_digest != api.nilObj && !current_digest.is_null() {
+                let sealed = unsafe {
+                    (api.send)(
+                        codegen,
+                        (api.intern)(c"sealInitialGeneration".as_ptr()),
+                        std::ptr::null(),
+                        0,
+                    )
+                };
+                if sealed != api.trueObj {
+                    return Err(ImageError::LoadRejected);
+                }
+            }
+        }
         return Ok(ImageLoadOutcome::Mapped);
     }
     if status != api.falseObj {
@@ -748,6 +789,27 @@ pub unsafe fn load_image(
         unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
         let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
         unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
+        let current_digest = unsafe {
+            (api.send)(
+                codegen,
+                (api.intern)(c"currentGenerationDigest".as_ptr()),
+                std::ptr::null(),
+                0,
+            )
+        };
+        if current_digest != api.nilObj && !current_digest.is_null() {
+            let sealed = unsafe {
+                (api.send)(
+                    codegen,
+                    (api.intern)(c"sealInitialGeneration".as_ptr()),
+                    std::ptr::null(),
+                    0,
+                )
+            };
+            if sealed != api.trueObj {
+                return Err(ImageError::LoadRejected);
+            }
+        }
     }
     Ok(ImageLoadOutcome::SourceRecovery)
 }
