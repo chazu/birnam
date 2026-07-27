@@ -885,6 +885,31 @@ named Rust release and explicit Zig rollback cycle, then repeat the old-image/cl
 forced-GC, MOP, image/wire/ABI, and hostile-input matrix in a named release
 and rollback prefix.
 
+### Z4.2 named release/rollback observation (2026-07-27)
+
+The first named observation completed without changing fixture disposition.
+The production ReleaseSafe bundle and relocated smoke passed:
+
+```text
+scripts/dist.sh
+install-smoke: relocated compiled closure, tools, projects, images, isolates, and diagnostics passed
+==> done: zig-out/dist/birnam-0.11.0-aarch64-macos.tar.gz
+```
+
+The explicit rollback distribution-selection target passed independently:
+
+```text
+zig build test-distribution-selection -Doptimize=ReleaseSafe -j1 --summary all
+distribution-selection: production omits Zig; rollback is a complete Zig vector
+Build Summary: 2/2 steps succeeded
+test-distribution-selection success
+```
+
+This establishes one Rust production and one full-Zig rollback observation,
+but not a release-cycle history. Keep the floor fixture retained until the
+next release/rollback observation repeats the Z4.1 compatibility matrix and a
+human-approved retention or retirement decision is recorded.
+
 ## 8. Acceptance matrix
 
 | Cell | Required evidence |
