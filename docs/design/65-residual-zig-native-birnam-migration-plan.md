@@ -328,7 +328,7 @@ C2.1 Image authority checkpoint (2026-07-26):
 ### R6 scoped replacement-gate checkpoint (2026-07-26)
 
 - `scripts/r6-acceptance.sh` now accepts the latest Rust replacement matrix as
-  its default R6 boundary: `171/171` build steps and `97/97` tests, the
+  its default R6 boundary: `171/171` build steps and `98/98` tests, the
   sequential Rust Alien boundary at `66/66` steps and `9/9` tests, and the
   unchanged benchmark snapshot with exactly `query.aggregate +5.8%` and
   `compile.stage1-stdlib +11.9%`.

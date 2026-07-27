@@ -71,12 +71,12 @@ latest_tests=(
 # duplicate/truncated Image-record coverage, plus the Rust Codegen contract and
 # pure-emitter parity checks, the retained-module-source collection check, the
 # gated canonical publication probe, and the Rust Codegen adapter candidate
-# probe: the focused matrix is 97 tests;
+# probe: the focused matrix is 98 tests;
 # the mixed dynamic Rust Image shell remains 2 passing tests, and each isolated
 # Image proof runs as one test process. The publication change is
 # explicit-authority-only; no benchmark or fixture exception is widened here.
 # Keep these pins centralized so adding or removing a test cannot silently widen R6.
-readonly expected_focused_tests=97
+readonly expected_focused_tests=98
 readonly expected_rust_image_shell_tests=2
 readonly expected_rust_image_bootstrap_tests=1
 readonly expected_rust_image_publication_tests=1
@@ -122,9 +122,9 @@ rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$func
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
   exit 1
 }
-rust_codegen_test_count=$(grep -Ec '^\+- run test 29 passed ' "$functional" || true)
+rust_codegen_test_count=$(grep -Ec '^\+- run test 30 passed ' "$functional" || true)
 [ "$rust_codegen_test_count" -eq 1 ] || {
-  echo "r6-acceptance: Rust Codegen runtime test set no longer has 29 passing tests" >&2
+  echo "r6-acceptance: Rust Codegen runtime test set no longer has 30 passing tests" >&2
   exit 1
 }
 rust_codegen_callback_test_count=$(awk '
