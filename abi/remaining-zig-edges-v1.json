@@ -273,5 +273,63 @@
       "phase": "P0",
       "selection_context": "production"
     }
+  ],
+  "derived_edge_families": [
+    {
+      "source": "scripts/check-remaining-zig-inventory.py",
+      "consumer": "checked build graph",
+      "provider_graph_key": "rust_crates",
+      "edge_kind": "build-input",
+      "phase": "P0",
+      "selection_context": "build"
+    },
+    {
+      "source": "scripts/check-remaining-zig-inventory.py",
+      "consumer": "checked build graph",
+      "provider_graph_key": "birnam_sources",
+      "edge_kind": "build-input",
+      "phase": "P0",
+      "selection_context": "build"
+    },
+    {
+      "source": "scripts/check-remaining-zig-inventory.py",
+      "consumer": "checked residue manifest",
+      "provider_manifest_kind": "build-only",
+      "edge_kind": "build-input",
+      "phase": "P0",
+      "selection_context": "build"
+    },
+    {
+      "source": "scripts/check-remaining-zig-inventory.py",
+      "consumer": "checked residue manifest",
+      "provider_manifest_kind": "shared-contract",
+      "edge_kind": "build-input",
+      "phase": "P0",
+      "selection_context": "build"
+    },
+    {
+      "source": "build.zig",
+      "consumer": "Zig oracle/build graph",
+      "provider_manifest_kind": "zig-oracle",
+      "edge_kind": "oracle",
+      "phase": "P0",
+      "selection_context": "oracle"
+    },
+    {
+      "source": "scripts/check-remaining-zig-inventory.py",
+      "consumer": "checked evidence inventory",
+      "provider_manifest_kind": "test-evidence",
+      "edge_kind": "evidence",
+      "phase": "P0",
+      "selection_context": "evidence"
+    },
+    {
+      "source": "rust/birnam-host/src/lib.rs",
+      "consumer": "Rust host native policy observation",
+      "provider_graph_key": "birnam_sources",
+      "edge_kind": "native-policy",
+      "phase": "P0",
+      "selection_context": "production"
+    }
   ]
 }

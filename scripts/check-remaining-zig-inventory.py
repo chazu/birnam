@@ -26,6 +26,15 @@ STEP_NAME = re.compile(r'\.step\(\s*"([^"]+)"')
 EDGE_KINDS = {"runtime-dlopen", "build-input", "oracle", "evidence", "native-policy"}
 EDGE_PHASES = {"P0", "P1", "P2", "P3", "P4"}
 EDGE_CONTEXTS = {"production", "rollback", "oracle", "build", "evidence"}
+DERIVED_MANIFEST_KINDS = {
+    "canonical-production",
+    "zig-oracle",
+    "build-only",
+    "shared-contract",
+    "test-evidence",
+    "native-policy-bridge",
+}
+DERIVED_GRAPH_KEYS = {"birnam_sources", "rust_crates", "test_scripts", "build_targets"}
 
 
 def fail(message: str) -> None:
@@ -145,10 +154,14 @@ def main() -> None:
     edges = edge_manifest.get("edges")
     if not isinstance(edges, list) or not edges:
         fail("residue edge table must be a non-empty array")
+    derived_families = edge_manifest.get("derived_edge_families")
+    if not isinstance(derived_families, list) or not derived_families:
+        fail("derived residue edge families must be a non-empty array")
     seen_edges = set()
     edge_kinds = set()
     runtime_contexts: dict[str, set[str]] = {}
-    for edge in edges:
+
+    def validate_edge(edge: dict, *, derived: bool = False) -> tuple[str, ...]:
         if not isinstance(edge, dict):
             fail("residue edge entries must be objects")
         required = ("source", "consumer", "provider", "edge_kind", "phase", "selection_context")
@@ -178,6 +191,52 @@ def main() -> None:
             fail(f"duplicate residue edge: {edge}")
         seen_edges.add(key)
         edge_kinds.add(edge_kind)
+        return key
+
+    for edge in edges:
+        validate_edge(edge)
+
+    paths_by_kind = {
+        kind: sorted(item["path"] for item in files if item["kind"] == kind)
+        for kind in DERIVED_MANIFEST_KINDS
+    }
+    graph_by_key = {
+        key: sorted(value)
+        for key, value in graph.items()
+        if key in DERIVED_GRAPH_KEYS and isinstance(value, list)
+    }
+    derived_count = 0
+    for family in derived_families:
+        if not isinstance(family, dict):
+            fail("derived residue edge families must be objects")
+        required_family = ("source", "consumer", "edge_kind", "phase", "selection_context")
+        if any(not isinstance(family.get(field), str) or not family[field].strip() for field in required_family):
+            fail("derived edge families require non-empty source/consumer/kind/phase/context")
+        selectors = [key for key in ("provider_manifest_kind", "provider_graph_key") if key in family]
+        if len(selectors) != 1:
+            fail("derived edge families require exactly one provider selector")
+        selector = selectors[0]
+        if selector == "provider_manifest_kind":
+            provider_key = family[selector]
+            if provider_key not in DERIVED_MANIFEST_KINDS:
+                fail(f"unsupported derived manifest kind: {provider_key}")
+            providers = paths_by_kind[provider_key]
+        else:
+            provider_key = family[selector]
+            if provider_key not in DERIVED_GRAPH_KEYS or provider_key not in graph_by_key:
+                fail(f"unsupported derived graph key: {provider_key}")
+            providers = graph_by_key[provider_key]
+        for provider in providers:
+            edge = {
+                "source": family["source"],
+                "consumer": family["consumer"],
+                "provider": provider,
+                "edge_kind": family["edge_kind"],
+                "phase": family["phase"],
+                "selection_context": family["selection_context"],
+            }
+            validate_edge(edge, derived=True)
+            derived_count += 1
     if edge_kinds != EDGE_KINDS:
         fail(f"residue edge table lacks representative kinds: {sorted(EDGE_KINDS - edge_kinds)}")
     if set(runtime_contexts) != set(names):
@@ -186,11 +245,62 @@ def main() -> None:
         if not {"production", "rollback"}.issubset(contexts):
             fail(f"dynamic provider lacks production/rollback edge contexts: {provider}")
 
+    coverage_requirements = {
+        "build-only": "build-input",
+        "shared-contract": "build-input",
+        "zig-oracle": "oracle",
+        "test-evidence": "evidence",
+    }
+    for kind, edge_kind in coverage_requirements.items():
+        expected = set(paths_by_kind[kind])
+        observed = {
+            edge["provider"]
+            for edge in edges
+            if edge["edge_kind"] == edge_kind
+        }
+        observed.update(
+            edge["provider"]
+            for family in derived_families
+            if family["edge_kind"] == edge_kind
+            for edge in (
+                {"provider": provider}
+                for provider in (
+                    paths_by_kind[family["provider_manifest_kind"]]
+                    if "provider_manifest_kind" in family
+                    else graph_by_key[family["provider_graph_key"]]
+                )
+            )
+        )
+        missing = sorted(expected - observed)
+        if missing:
+            fail(f"{kind} edge coverage is incomplete: missing={missing}")
+
+    native_policy_paths = set(graph.get("birnam_sources", []))
+    observed_native_policy = {
+        edge["provider"]
+        for edge in edges
+        if edge["edge_kind"] == "native-policy"
+    }
+    observed_native_policy.update(
+        provider
+        for family in derived_families
+        if family["edge_kind"] == "native-policy"
+        for provider in (
+            paths_by_kind[family["provider_manifest_kind"]]
+            if "provider_manifest_kind" in family
+            else graph_by_key[family["provider_graph_key"]]
+        )
+    )
+    missing_native_policy = sorted(native_policy_paths - observed_native_policy)
+    if missing_native_policy:
+        fail(f"native policy edge coverage is incomplete: missing={missing_native_policy}")
+
     print(
         "remaining-zig-inventory: ok "
         f"zig_files={len(paths)} birnam_sources={len(graph['birnam_sources'])} "
         f"rust_crates={len(graph['rust_crates'])} test_scripts={len(graph['test_scripts'])} "
-        f"build_targets={len(graph['build_targets'])} dynamic_dependencies={len(names)}"
+        f"build_targets={len(graph['build_targets'])} dynamic_dependencies={len(names)} "
+        f"edge_rows={len(edges) + derived_count} derived_edge_rows={derived_count}"
     )
 
 
