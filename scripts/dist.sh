@@ -35,17 +35,16 @@ stage="$work/${name}"
 archive="$work/${name}.tar.gz"
 published="zig-out/dist/${name}.tar.gz"
 
-log "building ${name} (ReleaseSafe)"
-zig build install -Doptimize=ReleaseSafe --prefix "$prefix"
+log "building ${name} (ReleaseSafe, production distribution)"
+zig build install -Doptimize=ReleaseSafe -Ddistribution=production --prefix "$prefix"
 
 log "staging"
 mkdir -p "$stage/bin" "$stage/lib"
 cp "$prefix/bin/birnam" "$stage/bin/birnam"
-# Canonical Rust installs carry the Zig host as an explicit rollback/oracle
-# executable. Keep it in the portable bundle when present; Zig-selected
-# rollback builds may legitimately have no second executable.
-if [ -x "$prefix/bin/birnam-zig-oracle" ]; then
-  cp "$prefix/bin/birnam-zig-oracle" "$stage/bin/birnam-zig-oracle"
+test ! -e "$prefix/bin/birnam-zig-oracle"
+if compgen -G "$prefix/lib/*_zig.dylib" >/dev/null; then
+  echo "error: production release prefix contains Zig fixtures" >&2
+  exit 1
 fi
 # All supported artifacts are Mach-O dylibs.
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
@@ -65,7 +64,7 @@ for artifact in "$stage"/lib/*.dylib "$stage"/bin/*; do
 done
 
 log "smoke testing relocated bundle"
-BIRNAM_PREFIX="$stage" scripts/install-smoke.sh >&2
+BIRNAM_PREFIX="$stage" BIRNAM_DISTRIBUTION=production scripts/install-smoke.sh >&2
 
 log "tarball"
 tar -C "$work" -czf "$archive" "$name"

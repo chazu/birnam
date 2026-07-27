@@ -4,6 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 prefix=${BIRNAM_PREFIX:-zig-out}
+distribution=${BIRNAM_DISTRIBUTION:-test}
+case "$distribution" in
+  production|rollback|test) ;;
+  *) echo "install-smoke: BIRNAM_DISTRIBUTION must be production, rollback, or test" >&2; exit 2 ;;
+esac
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
@@ -53,7 +58,26 @@ find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$t
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
 diff -u "$tmp/expected-guide" "$tmp/installed-guide"
 
-required_dylibs=(
+if [[ "$distribution" == production ]]; then
+  required_dylibs=(
+    libbirnam_id.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
+    libbirnam_id_peg.dylib libbirnam_id_lang.dylib libbirnam_id_tcc.dylib
+    libbirnam_id_codegen.dylib libbirnam_id_prelude.dylib
+    libbirnam_id_collection.dylib libbirnam_id_error.dylib
+    libbirnam_id_isolate.dylib libbirnam_id_relational.dylib
+    libbirnam_id_alien.dylib libbirnam_id_image.dylib
+    libbirnam_modules.dylib libbirnam_stdlib.dylib libbirnam_compiledUnit.dylib
+    libbirnam_toml.dylib libbirnam_config.dylib libbirnam_appConfig.dylib
+    libbirnam_projectPolicy.dylib libbirnam_isolate.dylib libbirnam_html.dylib
+    libbirnam_file.dylib libbirnam_json.dylib libbirnam_socket.dylib
+    libbirnam_time.dylib libbirnam_doc.dylib libbirnam_zigdoc.dylib
+    libbirnam_lsp.dylib libbirnam_repl.dylib libbirnam_cli.dylib
+    libbirnam_http.dylib libbirnam_log.dylib libbirnam_markdown.dylib
+    libbirnam_os.dylib libbirnam_process.dylib libbirnam_random.dylib
+    libbirnam_test.dylib libbirnam_compiledUnitDocs.dylib
+  )
+else
+  required_dylibs=(
   libbirnam_id.dylib libbirnam_id_zig.dylib libbirnam_id_artifact.dylib
   libbirnam_id_artifact_zig.dylib
   libbirnam_store.dylib libbirnam_id_peg.dylib libbirnam_id_peg_zig.dylib
@@ -76,10 +100,18 @@ required_dylibs=(
   libbirnam_log.dylib libbirnam_markdown.dylib libbirnam_os.dylib
   libbirnam_process.dylib libbirnam_random.dylib
   libbirnam_test.dylib libbirnam_compiledUnitDocs.dylib
-)
+  )
+fi
 for dylib in "${required_dylibs[@]}"; do
   test -f "$tmp/birnam/lib/$dylib"
 done
+if [[ "$distribution" == production ]]; then
+  test ! -e "$tmp/birnam/bin/birnam-zig-oracle"
+  if find "$tmp/birnam/lib" -type f -name '*_zig.dylib' | grep -q .; then
+    echo "install-smoke: production bundle contains Zig fixtures" >&2
+    exit 1
+  fi
+fi
 
 mv "$tmp/birnam" "$tmp/relocated"
 
@@ -105,10 +137,12 @@ grep -q '>Rust floor<' reference.html
 grep -q 'Append-only C ABI table returned by' reference.html
 "$bin" --lsp </dev/null >/dev/null
 printf ':quit\n' | env BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 "$bin" >/dev/null
-printf ':quit\n' | env \
-  BIRNAM_ID_DYLIB="$tmp/relocated/lib/libbirnam_id_zig.dylib" \
-  BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
-  "$bin" >/dev/null
+if [[ "$distribution" != production ]]; then
+  printf ':quit\n' | env \
+    BIRNAM_ID_DYLIB="$tmp/relocated/lib/libbirnam_id_zig.dylib" \
+    BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
+    "$bin" >/dev/null
+fi
 
 # A compiled unit is itself a runnable root. Its identity and requirements are
 # recovered from inert artifact bytes; no source manifest or build receipt is

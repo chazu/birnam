@@ -146,6 +146,38 @@ old_image_fixture() {
   echo "z3-archive: $label pre-rewrite image/native-client fixtures=ok"
 }
 
+release_bundle() {
+  local label=$1
+  local prefix=$2
+  local bundle="$scratch/$label-bundle"
+  local cwd="$scratch/$label-bundle-cwd"
+  local trace="$scratch/$label-bundle.trace"
+  mkdir -p "$bundle" "$cwd"
+  cp -R "$prefix/bin" "$prefix/lib" "$prefix/share" "$bundle/"
+  if [[ "$label" == production ]]; then
+    test ! -e "$bundle/bin/birnam-zig-oracle"
+    if find "$bundle/lib" -type f -name '*_zig.dylib' | grep -q .; then
+      echo "z3-archive: production release bundle contains Zig fixtures" >&2
+      exit 1
+    fi
+  else
+    test -x "$bundle/bin/birnam-zig-oracle"
+  fi
+  (
+    cd "$cwd"
+    unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH BIRNAM_FORCE_SOURCE
+    printf ':quit\n' | DYLD_PRINT_LIBRARIES=1 "$bundle/bin/birnam" --repl \
+      >"$scratch/$label-bundle.out" 2>"$trace"
+  )
+  grep -F "$bundle/lib/libbirnam_id.dylib" "$trace" >/dev/null
+  if [[ "$label" == production ]]; then
+    ! grep -E '_zig\.dylib|birnam-zig-oracle' "$trace" >/dev/null
+  else
+    ! grep -E '_rust\.dylib' "$trace" >/dev/null
+  fi
+  echo "z3-archive: $label release bundle/no-ambient-fallback=ok"
+}
+
 production_a=$(build_production production-a)
 production_b=$(build_production production-b)
 trace_prefix production-a "$production_a"
@@ -171,5 +203,7 @@ exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
 old_image_fixture production-a "$production_a" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1 "$rollback_prefix" "$rollback_prefix"
 old_image_fixture production-b "$production_b" "$rollback_prefix/bin/birnam-zig-oracle" rust-id-v1 "$rollback_prefix" "$rollback_prefix"
 old_image_fixture rollback "$rollback_prefix" "$rollback_prefix/bin/birnam" zig-id-v1 "$rollback_prefix" "$rollback_prefix"
+release_bundle production "$production_a"
+release_bundle rollback "$rollback_prefix"
 
 echo "z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok"
