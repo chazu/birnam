@@ -345,11 +345,12 @@ C2.1 Image authority checkpoint (2026-07-26):
   retaining validated artifact module sources. The focused runtime/image tests
   therefore cover source recovery without widening R6 over the unresolved
   Rust-host docgen path.
-- The latest broad Rust-host run still exposes unresolved C2 integration work
-  in `test-source-fallback`, `test-repl`,
-  `test-isolate-process`, `test-project-check`, and `test-install`. Those
-  failures remain visible continuation work; this checkpoint accepts only the
-  replacement-floor R6 evidence and does not claim C2 host completion.
+- A fresh broad Rust-host run now passes `test-source-fallback` (`92/92` steps)
+  after the artifact-emitter fix above. The remaining unresolved C2 integration
+  work is `test-repl`, `test-isolate-process`, `test-project-check`, and
+  `test-install`. Those failures remain visible continuation work; this
+  checkpoint accepts only the replacement-floor R6 evidence and does not claim
+  C2 host completion.
 - The Rust Codegen artifact emitter now applies the shared selector-arity rule
   to binary operators as well as keyword selectors. The previous colon-only
   count emitted `=` method trampolines that dropped their operand and called
