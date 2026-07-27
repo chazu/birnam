@@ -1624,6 +1624,7 @@ struct ImageFeatures {
     has_facts: bool,
     has_heap: bool,
     has_code: bool,
+    authority_digest: Option<[u8; AUTHORITY_DIGEST_LEN]>,
 }
 
 fn inspect_image_path(path_bytes: &[u8]) -> Option<ImageFeatures> {
@@ -1638,6 +1639,7 @@ fn inspect_image_path(path_bytes: &[u8]) -> Option<ImageFeatures> {
     }
     let image = Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).ok()?;
     let mut features = ImageFeatures::default();
+    features.authority_digest = Some(*image.authority.digest);
     let mut records = image.records();
     while let Some(record) = records.next_record().ok()? {
         match record.kind {
@@ -1741,6 +1743,19 @@ unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
     if unsafe { send_image_unary(api, codegen, RUST_CODEGEN_PREFLIGHT_IMAGE, path) }
         != api.trueObj
     {
+        // A structurally valid image can carry a generation from an older
+        // authority (for example, a pre-rewrite Zig image). Rust Codegen
+        // correctly rejects that authority for native mapping, but the image
+        // loader must hand the valid bytes to the source-recovery path rather
+        // than reporting malformed input. Other preflight failures remain
+        // fail-closed as LoadRejected.
+        if let Some(current) = unsafe { current_generation_digest(api) } {
+            if let Some(image_authority) = features.authority_digest {
+                if current != image_authority {
+                    return api.falseObj;
+                }
+            }
+        }
         return api.nilObj;
     }
     if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) } != api.trueObj {
