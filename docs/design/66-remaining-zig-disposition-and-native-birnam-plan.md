@@ -864,21 +864,20 @@ rust-runtime-churn: 32 isolate start/request/stop cycles passed
 ```
 
 This is not yet a retirement acceptance. The supplementary
-`cross-floor-image-smoke.sh` currently tries to publish a new image from a
-Zig floor while Rust Image/Codegen are the canonical authorities; the correct
-result is a rejected publication (`#rejected`, followed by `LoadRejected`),
-so it cannot be used as a fresh-image cross-floor corpus. The supplementary
+Commit `ef01122` replaces the stale `cross-floor-image-smoke.sh` fresh-image
+cross-floor assumption with the authority-correct production/rollback archive
+matrix. That matrix exercises Rust-authored production images and the
+complete-Zig rollback image/native-client corpus and passes with both clean
+production prefixes plus the full-Zig rollback prefix. The supplementary
 `cross-floor-error-smoke.sh` was repaired by `cd3102b` to run each
 error-valued expression independently and accept the host's documented
 `EvaluationRejected` status only when both floors emit the exact kind/message
-pair; the full hostile-input and syntax matrix now passes. The image probe
-still needs authority-correct redesign before a floor release cycle can be
-claimed.
+pair; the full hostile-input and syntax matrix now passes.
 
 **Decision: retain** `libbirnam_id_zig.dylib` and `src/id/id.zig` as the
 explicit rollback/oracle vector. No fixture deletion, manifest retirement, or
-canonical owner change is authorized by Z4.1. The next Z4 slice must repair or
-replace the remaining image probe, then repeat the old-image/client,
+canonical owner change is authorized by Z4.1. The next Z4 slice must observe a
+named Rust release and explicit Zig rollback cycle, then repeat the old-image/client,
 forced-GC, MOP, image/wire/ABI, and hostile-input matrix in a named release
 and rollback prefix.
 
