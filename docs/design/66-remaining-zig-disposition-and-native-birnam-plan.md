@@ -47,7 +47,7 @@ silently removed during this plan.
 
 ### 1.2 Artifact ownership split
 
-The artifact surface has three non-overlapping owners:
+The artifact surface has four non-overlapping roles:
 
 1. `birnam-artifact` is a pure, stateless descriptor codec/parser. It owns no
    IdApi, globals, closure decisions, activation, or `module_init`.
@@ -59,8 +59,12 @@ The artifact surface has three non-overlapping owners:
    and activation authority. The host never invokes an artifact initializer
    directly. It may call the pure codec and load the dynamic projection, but
    it exports neither `Artifact` nor a competing `module_init`.
+4. Native-Birnam `Module loadArtifact:` is the runtime dependency-ordering,
+   initializer-delegation, Store/MOP-publication, and activation owner. It
+   consumes the host's permission result and is the only path allowed to run a
+   validated artifact initializer.
 
-Parity tests use identical inert bytes at all three boundaries and assert that
+Parity tests use identical inert bytes at all four boundaries and assert that
 no layer publishes a second schema, closure, or activation authority; the host
 preflight and `Module loadArtifact:` activation boundaries are tested
 independently.
@@ -151,8 +155,9 @@ Zig helper.
    installed as a competing policy implementation.
 5. Pair each load trace with identity/digest receipts: every canonical
    production dylib must byte-match its `_rust` fixture and must differ from
-   its `_zig` fixture (or record an explicit identical-fixture decision).
-   Name `test-floor-rust` as the existing Debug/ReleaseSafe floor matrix.
+   its `_zig` fixture. Equality with `_zig` is a hard packaging failure, never
+   an accepted identical-fixture decision. Name `test-floor-rust` as the
+   existing Debug/ReleaseSafe floor matrix.
 6. Run `zig build test-install test-project-check test-lsp-project
    test-rust-codegen-distribution -Doptimize=ReleaseSafe`, the Debug/Release
    Rust floor matrix, and the scoped R6 gate. Record exact counts and the
@@ -197,7 +202,7 @@ the Zig oracle build intact.
    activation checks. Mark host permission checks separately from
    `Module loadArtifact:` dependency ordering, initializer delegation, and
    Store/MOP publication.
-2. Enforce the three-owner split from §1.2: `birnam-artifact` remains pure,
+2. Enforce the four-role split from §1.2: `birnam-artifact` remains pure,
    `libbirnam_id_artifact.dylib` remains the sole `Artifact`/`ArtifactVt`
    projection, and Rust host remains the sole filesystem closure/preflight
    permission authority. `Module loadArtifact:` remains the sole runtime
@@ -287,14 +292,24 @@ Z3 makes the distribution boundary honest without deleting rollback evidence.
    can omit `_zig` libraries and `birnam-zig-oracle` while test/rollback bundles
    retain them. The Zig toolchain may still orchestrate this build; the
    production process must not load a Zig Birnam implementation or runtime
-   artifact. Build two independent prefixes from a git archive: production
-   Rust and explicit Zig rollback.
+   artifact. Build two independent **production** prefixes from a git archive
+   with Rust selected; build the rollback prefix separately.
 2. Verify every production `dlopen` with `DYLD_PRINT_LIBRARIES` (or the
    platform equivalent) and compare against the declared dynamic-only graph.
    Any `_zig` load is a hard failure.
 3. Keep `_zig` libraries and `birnam-zig-oracle` only in the separate
    test/rollback prefix with identity/digest receipts. Production bundles
    never contain a rollback-labeled `_zig` library or oracle executable.
+   `abi/rollback-prefix-v1.json` must map the complete rollback vector:
+   `bin/birnam` from `birnam-zig-oracle`, and each canonical dynamic name
+   (`libbirnam_id`, `libbirnam_store`, `libbirnam_id_artifact`,
+   `libbirnam_id_peg`, `libbirnam_id_lang`, `libbirnam_id_tcc`,
+   `libbirnam_id_codegen`, `libbirnam_id_prelude`,
+   `libbirnam_id_collection`, `libbirnam_id_error`,
+   `libbirnam_id_isolate`, `libbirnam_id_relational`,
+   `libbirnam_id_alien`, and `libbirnam_id_image`) to its checked-in `_zig`
+   fixture and digest. The rollback checker rejects any unspecified mixed
+   vector; it is full Zig, not an informal “loads Zig” claim.
 4. Run old image, generated-C, BISO, and native-client fixtures through the
    explicit oracle and current Rust production paths. A fixture mismatch is a
    release stop, not a contract change.
@@ -337,7 +352,7 @@ recovery require it.
 | host closure | Rust host starts and runs with no Zig helper/runtime load |
 | artifact | Rust schema + host preflight parity, negative/atomic corpus |
 | policy | `.birnam` remains the only policy authority; MOP law after mutations |
-| bootstrap | two archive builds with no Zig Birnam implementation/runtime required; toolchain use recorded |
+| bootstrap | two independent production archive builds with no Zig Birnam implementation/runtime required; rollback archive tested separately with declared Zig dependencies |
 | relocation | second cwd/prefix, decoy paths ignored, exact dynamic load trace |
 | compatibility | old image, generated-C, BISO, ABI, and native-client fixtures |
 | rollback | explicit Zig prefix/receipt works and cannot be ambiently selected |
