@@ -741,6 +741,27 @@ explicit Zig Image oracle, and complete full-Zig rollback vector remain
 installed; no provider deletion, mixed-vector recovery, fixture mutation, or
 benchmark allowance change is authorized by this receipt.
 
+### P2 completion acceptance receipt (2026-07-27)
+
+At post-Image receipt state `d950725`, the release and strict acceptance gates
+passed without changing the provider vector:
+
+```text
+install-smoke: relocated compiled closure, tools, projects, images, isolates, and diagnostics passed
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+r6-acceptance: PASS
+  accepted only for this snapshot: query.aggregate +5.8%, compile.stage1-stdlib +11.9%
+```
+
+The strict gate retained the expanded R6 focused matrix (`183/183` steps,
+`99/99` tests), the full verification totals (`305/305` steps,
+`516/522` tests, six skips), and the existing comparator policy: exactly two
+accepted regressions, with `missing=0` and `unusable=0`. The ReleaseSafe
+distribution was produced as `zig-out/dist/birnam-0.11.0-aarch64-macos.tar.gz`;
+its relocated smoke passed and its production prefix contained no `_zig`
+libraries. This closes P2 evidence collection; it does not authorize
+per-rung deletion or a mixed-vector rollback.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
