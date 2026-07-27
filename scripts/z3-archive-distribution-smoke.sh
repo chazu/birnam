@@ -43,8 +43,8 @@ archive_source() {
 
 build_production() {
   local label=$1
-  local source
-  source=$(archive_source "$label")
+  local source="$scratch/$label/source"
+  archive_source "$label" >/dev/null
   local prefix="$scratch/$label/prefix"
   local cache="$scratch/$label/cache"
   local global_cache="$scratch/$label/global-cache"
@@ -101,7 +101,8 @@ production_b=$(build_production production-b)
 trace_prefix production-a "$production_a"
 trace_prefix production-b "$production_b"
 
-rollback_source=$(archive_source rollback)
+rollback_source="$scratch/rollback/source"
+archive_source rollback >/dev/null
 rollback_prefix="$scratch/rollback/prefix"
 mkdir -p "$scratch/rollback"
 (
