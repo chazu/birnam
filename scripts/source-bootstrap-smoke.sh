@@ -105,4 +105,4 @@ BIRNAM_LIB_DIR="$scratch/zig-oracle-prefix/lib" \
   BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
   "$scratch/zig-oracle-prefix/bin/birnam" "$scratch/bench/nil.birnam"
 
-echo "source-bootstrap: fixture-free Rust production and Zig rollback builds passed"
+echo "source-bootstrap: Rust-selected test bundle and explicit Zig-floor oracle builds passed"
