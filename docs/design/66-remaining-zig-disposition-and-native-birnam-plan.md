@@ -941,6 +941,26 @@ explicit rollback, and no human-approved release history authorizes deleting
 it. Any future retirement must repeat the named release/rollback matrix and
 prove the MOP consistency law after image and recovery mutations.
 
+### Z4.4 PEG fixture decision — retain explicit Zig rollback (2026-07-27)
+
+The next rung is PEG. Its canonical provider is Rust
+`libbirnam_id_peg.dylib`; its explicit rollback fixture is
+`libbirnam_id_peg_zig.dylib`, owned by `peg-rollback`. The current installed
+snapshot records Rust canonical digest
+`sha256:eef7a26c4875e9355dbaf3baa4c68d9f0cf8b49570b66ca76d81d8ba57e02195`
+and Zig fixture digest
+`sha256:84a663bdfc4bd42b0ae1d01a4823372f8e5c26cbcf7d7fa0e7ee2b60d027fb9b`.
+
+The lower-rung matrix covers PEG under the isolated Zig and Rust floors, and
+the strict R6/archive gate covers Rust production and explicit Zig rollback
+load selection. PEG's Zig fixture remains required for CST parity and parser
+rollback characterization.
+
+**Decision: retain** `libbirnam_id_peg_zig.dylib` and `src/id/peg.zig` as the
+named rollback/oracle fixture. No canonical owner or manifest change is made;
+retirement requires a separate PEG parity/recovery observation and human
+approval after the release/rollback history is complete.
+
 ## 8. Acceptance matrix
 
 | Cell | Required evidence |
