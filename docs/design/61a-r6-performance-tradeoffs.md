@@ -502,10 +502,9 @@ native-rung harness into the scoped gate. The current default
 `bash scripts/r6-acceptance.sh` passes at `173/173` focused build steps and
 `99/99` tests; the sequential Rust Alien slice remains `66/66` steps and
 `9/9` tests. The comparator remains `2` regressions, `0` missing, `0` unusable,
-with only the two frozen crossings above. Strict mode is still an explicit
-compatibility audit: its remaining failure is the pre-rewrite image fixture
-(`LoadRejected` on the canonical Rust host), not the relocated docgen or
-native-rung install path.
+with only the two frozen crossings above. The strict compatibility audit also
+passes after the pre-rewrite image fix in `4bcaa5d` and the summary-pin update
+in `13819ab`.
 
 The pre-rewrite compatibility audit was closed on 2026-07-27 in `4bcaa5d`.
 The Zig Image reader now skips stale compiled-unit records and recovers from
