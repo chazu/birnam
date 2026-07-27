@@ -486,6 +486,44 @@ canonical provider, while the canonical Zig Collection implementation and its
 complete rollback vector remain unchanged. This checkpoint records the exact
 hash before the persistent-vector protocol and collector/layout gates.
 
+### P2.5 Collection readiness receipt (2026-07-27)
+
+Candidate checkpoint: `14ce52d`. The focused Collection matrix passed:
+
+```text
+Build Summary: 72/72 steps succeeded; 5/5 tests passed
+test-rust-collection success: 1 test passed
+test-collection-gc success: 2 tests passed
+test-gc-layout-mark success: 2 tests passed
+```
+
+The canonical Collection module suite also passes with Rust selected:
+
+```text
+Build Summary: 66/66 steps succeeded; 20/20 tests passed
+test-collection success: 20 tests passed
+```
+
+Together these checks cover the Rust persistent Vector/Range/Map/StringBuilder
+protocol, structural sharing and indexed persistence, collector churn, precise
+layout tracing, and conservative unknown-layout behavior. The canonical Rust
+Collection dylib exports exactly one `module_init`; the explicit Zig Collection
+rollback dylib remains a separate complete-vector authority.
+
+The exact-hash archive receipts pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Collection **retain-ready** for evidence purposes. The
+canonical Rust Collection provider, explicit Zig Collection oracle, and complete
+full-Zig rollback vector remain installed; no provider deletion, mixed-vector
+recovery, or benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
