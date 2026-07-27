@@ -6552,7 +6552,15 @@ impl HostRuntime {
             return Err(WorkerStartupError::ReceiverNotFound);
         }
         let selector = unsafe { (api.intern)(selector_name.as_ptr()) };
-        if !unsafe { receiver_has_selector(api, receiver, selector) } {
+        if !unsafe { receiver_has_selector(api, receiver, selector) }
+            && unsafe { replay_worker_methods(api) }
+        {
+            receiver = unsafe { (api.send)(globals, at_selector, [receiver_symbol].as_ptr(), 1) };
+            if receiver == api.nilObj {
+                receiver = unsafe { (api.import)(receiver_name.as_ptr()) };
+            }
+        }
+        if receiver == api.nilObj || !unsafe { receiver_has_selector(api, receiver, selector) } {
             return Err(WorkerStartupError::SelectorNotFound);
         }
         unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)
@@ -7217,11 +7225,11 @@ unsafe fn receiver_has_selector(
     selector: birnam_abi::Oop,
 ) -> bool {
     let mut vtable = unsafe { (api.vtableOf)(receiver) };
-    while vtable != api.nilObj {
+    while !vtable.is_null() {
         let mut index = 0usize;
         loop {
             let candidate = unsafe { (api.vtableSelectorAt)(vtable, index) };
-            if candidate == api.nilObj {
+            if candidate.is_null() {
                 break;
             }
             if candidate == selector {
@@ -7232,6 +7240,35 @@ unsafe fn receiver_has_selector(
         vtable = unsafe { (api.vtableParent)(vtable) };
     }
     false
+}
+
+/// Recover a missing worker entry point from the image's durable method source
+/// journal. Mapped code remains authoritative when it exposes the requested
+/// selector; this fallback is only for a worker image whose code unit was
+/// admitted but did not bind the target's selector in the live vtable. The
+/// recovery transaction mirrors the ordinary image source path and is closed
+/// before the worker driver is entered.
+unsafe fn replay_worker_methods(api: &IdApi) -> bool {
+    let Some(codegen) = (unsafe { global_named(api, "Codegen") }) else {
+        return false;
+    };
+    let begin = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
+    if unsafe { (api.send)(codegen, begin, std::ptr::null(), 0) } == api.nilObj {
+        return false;
+    }
+    let replay = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
+    let replayed = unsafe { (api.send)(codegen, replay, std::ptr::null(), 0) };
+    let replayed_any = unsafe { (api.isSmallInt)(replayed) } != 0
+        && unsafe { (api.smallIntValue)(replayed) } > 0;
+    let targets = unsafe { (api.intern)(c"deriveImageMethodTargets".as_ptr()) };
+    unsafe { (api.send)(codegen, targets, std::ptr::null(), 0) };
+    let aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
+    unsafe { (api.send)(codegen, aliens, std::ptr::null(), 0) };
+    let derive = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
+    unsafe { (api.send)(codegen, derive, std::ptr::null(), 0) };
+    let end = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
+    let ended = unsafe { (api.send)(codegen, end, std::ptr::null(), 0) };
+    replayed_any && ended != api.nilObj
 }
 
 unsafe fn mark_module_loaded(api: &IdApi, module_manager: birnam_abi::Oop, name: &str) {

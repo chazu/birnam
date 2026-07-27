@@ -139,6 +139,7 @@ const DISPATCH_GENERATION_NAME: &[u8] = b"DispatchGeneration\0";
 const FROM_PROJECTION_SELECTOR: &[u8] = b"fromProjection:predecessor:delta:\0";
 const GLOBALS_ENTITY_NAME: &[u8] = b"__globals__\0";
 const GLOBAL_SOURCES_ENTITY_NAME: &[u8] = b"__globalsrc__\0";
+const METHOD_OPS_ENTITY_NAME: &[u8] = b"__methodops__\0";
 const MAX_CST_DEPTH: usize = 4096;
 const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
@@ -183,6 +184,8 @@ static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
 static REFLECT_METHOD_COUNTER: AtomicUsize = AtomicUsize::new(REFLECT_METHOD_COUNTER_START);
+static METHOD_OP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+static METHOD_OP_PRESENT: AtomicBool = AtomicBool::new(false);
 
 fn canonical_exports_requested() -> bool {
     // The canonical dynamic name is the production Rust Codegen path after
@@ -567,6 +570,40 @@ pub unsafe extern "C" fn birnam_record_module_source(
     length: c_long,
 ) {
     unsafe { birnam_rust_codegen_record_module_source(name, source, length) }
+}
+
+/// Persist one source-carrying method mutation in the image recovery journal.
+/// The vtable mirror deliberately cannot be serialized because its method
+/// carriers are process-local code pointers; the source operation is the
+/// durable projection used to rebuild that dispatch after image load.
+unsafe fn record_method_operation(api: &IdApi, source: Oop) {
+    if source.is_null()
+        || source == api.nilObj
+        || unsafe { (api.vtableOf)(source) } != api.string_vt
+        || IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
+        || CANDIDATE_PREPARING.load(Ordering::Acquire)
+    {
+        return;
+    }
+    let store = runtime().store as Oop;
+    if store.is_null() || store == api.nilObj {
+        return;
+    }
+    let basis = unsafe { send0(api, store, b"basis\0") };
+    let basis = if unsafe { (api.isSmallInt)(basis) } != 0 {
+        unsafe { (api.smallIntValue)(basis) }
+    } else {
+        return;
+    };
+    let tie = METHOD_OP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let key = format!("__mop_{basis}_{tie}");
+    let key = unsafe { intern_bytes(api, key.as_bytes()) };
+    let entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
+    let result = unsafe { send(api, store, STORE_ASSERT_SELECTOR, &[entity, key, source]) };
+    if result != api.nilObj {
+        METHOD_OP_PRESENT.store(true, Ordering::Release);
+    }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_is_error")]
@@ -2234,6 +2271,44 @@ unsafe fn durable_current_generation(api: &IdApi) -> Oop {
     unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[dispatch, attribute]) }
 }
 
+/// Recover module source pairs from the durable generation projection after an
+/// image load. The process-local registry remains useful during boot, but it
+/// cannot contain modules that were persisted by another process.
+unsafe fn durable_generation_sources(api: &IdApi) -> Option<Vec<(usize, usize)>> {
+    let generation = unsafe { durable_current_generation(api) };
+    if generation.is_null() || generation == api.nilObj {
+        return None;
+    }
+    let store = runtime().store as Oop;
+    let source_map = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"sourceMap\0")],
+        )
+    };
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let count = unsafe { vector_length(api, source_map, vector_vt) }?;
+    let mut modules = Vec::with_capacity(count);
+    for index in 0..count {
+        let entry = unsafe { vector_item(api, source_map, index) };
+        if unsafe { vector_length(api, entry, vector_vt) } != Some(3) {
+            return None;
+        }
+        let name = unsafe { vector_item(api, entry, 0) };
+        let revision = unsafe { vector_item(api, entry, 1) };
+        let source = unsafe { vector_item(api, revision, 3) };
+        if unsafe { symbol_bytes(api, name) }.is_none()
+            || unsafe { string_bytes(api, source) }.is_none()
+        {
+            return None;
+        }
+        modules.push((name as usize, source as usize));
+    }
+    Some(modules)
+}
+
 unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool {
     if generation.is_null() || generation == api.nilObj {
         return false;
@@ -2614,12 +2689,94 @@ unsafe fn visit_generation_source(
     true
 }
 
+struct MethodOperationSource {
+    sequence: i64,
+    tie: i64,
+    source: Oop,
+}
+
+unsafe fn ordered_method_operation_sources(api: &IdApi) -> Vec<MethodOperationSource> {
+    if !METHOD_OP_PRESENT.load(Ordering::Acquire) {
+        return Vec::new();
+    }
+    let store = runtime().store as Oop;
+    if store.is_null() || store == api.nilObj {
+        return Vec::new();
+    }
+    let entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
+    let count = unsafe { send(api, store, b"attrCount:\0", &[entity]) };
+    if unsafe { (api.isSmallInt)(count) } == 0 {
+        return Vec::new();
+    }
+    let count = unsafe { (api.smallIntValue)(count) }.max(0) as usize;
+    let mut sources = Vec::new();
+    for index in 0..count {
+        let attribute = unsafe {
+            send(
+                api,
+                store,
+                b"attrAt:index:\0",
+                &[entity, (api.mkSmallInt)(index as i64)],
+            )
+        };
+        let Some(name) = (unsafe { symbol_bytes(api, attribute) }) else {
+            continue;
+        };
+        let Some(rest) = name.strip_prefix(b"__mop_") else {
+            continue;
+        };
+        let Some(split) = rest.iter().position(|byte| *byte == b'_') else {
+            continue;
+        };
+        let Ok(sequence) = std::str::from_utf8(&rest[..split])
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .ok_or(())
+        else {
+            continue;
+        };
+        let Ok(tie) = std::str::from_utf8(&rest[split + 1..])
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .ok_or(())
+        else {
+            continue;
+        };
+        let source = unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[entity, attribute]) };
+        if source.is_null()
+            || source == api.nilObj
+            || unsafe { (api.vtableOf)(source) } != api.string_vt
+        {
+            continue;
+        }
+        sources.push(MethodOperationSource {
+            sequence,
+            tie,
+            source,
+        });
+    }
+    sources.sort_by_key(|entry| (entry.sequence, entry.tie));
+    sources
+}
+
 unsafe fn ordered_generation_sources(api: &IdApi) -> Option<Vec<Oop>> {
     let Ok(module_guard) = MODULE_SOURCES.lock() else {
         return None;
     };
     let mut modules = module_guard.clone();
     drop(module_guard);
+    if let Some(durable_modules) = unsafe { durable_generation_sources(api) } {
+        for (name, source) in durable_modules {
+            if let Some((_, existing_source)) = modules.iter_mut().find(|(existing, _)| {
+                (unsafe { symbol_bytes(api, *existing as Oop) })
+                    == (unsafe { symbol_bytes(api, name as Oop) })
+            }) {
+                *existing_source = source;
+            } else {
+                modules.push((name, source));
+            }
+        }
+    }
     modules.sort_by(|left, right| {
         let left_name = unsafe { symbol_bytes(api, left.0 as Oop) }.unwrap_or_default();
         let right_name = unsafe { symbol_bytes(api, right.0 as Oop) }.unwrap_or_default();
@@ -2799,6 +2956,14 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         } else {
             program.push(b'\n');
         }
+    }
+    for operation in unsafe { ordered_method_operation_sources(api) } {
+        let Some(bytes) = (unsafe { string_bytes(api, operation.source) }) else {
+            note_error(b"RustCodegen image method source is not a String");
+            return api.nilObj;
+        };
+        program.extend_from_slice(&bytes);
+        program.extend_from_slice(b";\n");
     }
     let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
     let arguments = [source_object, values[0]];
@@ -3249,6 +3414,13 @@ unsafe extern "C" fn rust_codegen_replay_image_facts(
         note_error(b"RustCodegen image facts Store load could not finish");
         return api.nilObj;
     }
+    let methodops_entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
+    if pending
+        .iter()
+        .any(|(entity, _, _, _, _)| *entity == methodops_entity)
+    {
+        METHOD_OP_PRESENT.store(true, Ordering::Release);
+    }
     let _ = unsafe { send0(api, store, b"backfillMirror\0") };
     // Relational rules are canonical Store facts, but the query engine keeps a
     // derived in-memory cache. Rebuild it after image facts replace the store,
@@ -3290,13 +3462,16 @@ unsafe extern "C" fn rust_codegen_replay_methods(
             note_error(b"RustCodegen image method source is not indexable");
             return api.nilObj;
         };
-        replay_sources.extend(
-            metadata
-                .operations
-                .into_iter()
-                .map(|operation| operation.source),
-        );
+        replay_sources.extend(metadata.operations.into_iter().map(|operation| operation.source));
     }
+    let method_operations = unsafe { ordered_method_operation_sources(api) };
+    replay_sources.extend(
+        method_operations
+            .into_iter()
+            .filter_map(|operation| {
+                unsafe { string_bytes(api, operation.source) }.map(|source| source.to_vec())
+            }),
+    );
     // Compile every operation through the pure emitter before evaluating the
     // first one. This closes the gap between metadata parsing and execution:
     // a later generated-C failure cannot leave an earlier method mutation
@@ -6783,7 +6958,12 @@ unsafe extern "C" fn rust_reflect_define_method_sourced(
     if values.len() != 4 {
         abort("RustReflect defineMethod:on:as:source: expects four arguments");
     }
-    unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) }
+    let result = unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) };
+    if result != unsafe { api(runtime()) }.nilObj {
+        let api = unsafe { api(runtime()) };
+        unsafe { record_method_operation(api, values[3]) };
+    }
+    result
 }
 
 unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
@@ -6796,7 +6976,12 @@ unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
     if values.len() != 5 {
         abort("RustReflect defineMethod:on:as:doc:source: expects five arguments");
     }
-    unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) }
+    let result = unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) };
+    if result != unsafe { api(runtime()) }.nilObj {
+        let api = unsafe { api(runtime()) };
+        unsafe { record_method_operation(api, values[4]) };
+    }
+    result
 }
 
 unsafe extern "C" fn rust_reflect_remove_method_sourced(
@@ -6809,7 +6994,12 @@ unsafe extern "C" fn rust_reflect_remove_method_sourced(
     if values.len() != 3 {
         abort("RustReflect removeMethod:on:source: expects three arguments");
     }
-    unsafe { rust_reflect_remove_method(self_object, values.as_ptr(), 2) }
+    let result = unsafe { rust_reflect_remove_method(self_object, values.as_ptr(), 2) };
+    if result != unsafe { api(runtime()) }.nilObj {
+        let api = unsafe { api(runtime()) };
+        unsafe { record_method_operation(api, values[2]) };
+    }
+    result
 }
 
 unsafe extern "C" fn rust_reflect_all_methods(
