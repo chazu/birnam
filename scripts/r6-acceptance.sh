@@ -91,8 +91,8 @@ readonly expected_rust_image_rejection_tests=1
 # step to the focused replacement graph and to the optional strict verify.
 readonly expected_focused_steps=173
 readonly expected_verify_steps=304
-readonly expected_verify_tests=514
-readonly expected_verify_total_tests=520
+readonly expected_verify_tests=516
+readonly expected_verify_total_tests=522
 readonly expected_verify_skipped=6
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
