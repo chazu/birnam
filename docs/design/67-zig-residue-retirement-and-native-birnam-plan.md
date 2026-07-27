@@ -440,6 +440,14 @@ Rust Codegen provider, explicit Zig Codegen oracle, and complete full-Zig
 rollback vector remain installed; no provider deletion, mixed-vector recovery,
 or benchmark allowance change is authorized by this receipt.
 
+### P2.4 Prelude candidate checkpoint
+
+The Prelude candidate is evidence-only: Rust Prelude is already the canonical
+provider, while the canonical Zig Prelude implementation and its complete
+rollback vector remain unchanged. This checkpoint records the exact hash before
+the primitive-protocol, standalone-Rust-Error, subprocess-I/O, and selector
+gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
