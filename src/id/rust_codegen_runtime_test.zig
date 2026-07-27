@@ -1074,6 +1074,24 @@ test "Rust Codegen invokes an emitted block before its owner is collected" {
     try std.testing.expectEqual(@as(i64, 4), api.smallIntValue(result));
 }
 
+test "Rust Codegen persists eval blocks across collection" {
+    const api = try setup();
+    const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;
+    const source_text = "[:x | x]";
+    const source = api.mkString(source_text.ptr, source_text.len);
+    const block = api.send(codegen, api.intern("evalPersisting:"), &.{source}, 1);
+    try std.testing.expect(block != api.nilObj);
+
+    var anchor: usize = 0;
+    api.gcSetStackBottom(@intFromPtr(&anchor));
+    for (0..256) |_| _ = api.mkString("temporary", 9);
+    _ = api.gcCollect();
+
+    const result = api.send(block, api.intern("value:"), &.{api.mkSmallInt(41)}, 1);
+    try std.testing.expect(api.isSmallInt(result) != 0);
+    try std.testing.expectEqual(@as(i64, 41), api.smallIntValue(result));
+}
+
 test "Rust Reflect forwards method arguments through value selectors" {
     const api = try setupRustOnly();
     const codegen = api.import("RustCodegen") orelse return error.MissingRustCodegen;

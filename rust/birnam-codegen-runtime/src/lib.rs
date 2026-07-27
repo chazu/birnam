@@ -3946,7 +3946,16 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     // unit remains relocated but uninstalled for this direct invocation.
     let entry: Method = unsafe { core::mem::transmute(address) };
     let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
-    unsafe { dispose_unit(api, unit) };
+    // A persisting source can install blocks as methods or store them in
+    // globals. Those closures point into this TCC unit, so keep the unit live
+    // exactly as the Zig evaluator does for any program containing `__blk`.
+    // One-shot programs with no blocks have no native code reachable after the
+    // entry returns and may be reclaimed immediately.
+    if source.bytes.windows(5).any(|window| window == b"__blk") {
+        retain_unit(unit);
+    } else {
+        unsafe { dispose_unit(api, unit) };
+    }
     let _ = self_object;
     result
 }
