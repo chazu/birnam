@@ -414,14 +414,24 @@ repo-local `zig build verify` does not substitute for this archive boundary.
 
 ### Z1 archive acceptance record (2026-07-27)
 
-At archive commit `d6f91dd`, the command above passed from a clean temporary
+At archive commit `a5d5c5a`, the command above passed from a clean temporary
 archive. Cargo checked and tested the workspace with the pinned Rust 1.95.0
 toolchain, the Rust-selected archive built and ran from its relocated prefix,
-and the explicit Zig oracle prefix also built and ran. The archive ran the
-shared preflight fixture in Debug and ReleaseSafe: 8 Zig rows and 11 Rust
-rows passed in each mode, including the real aborting sentinel dylib. No
-prebuilt Birnam artifact was present and no source/checkout fallback was used.
-The remaining Zig edges are the explicit oracle/rollback prefix and the
+and the explicit Zig oracle prefix also built and ran. The archive exercised
+the same eight checked-in fixture rows, including the nested wrong-kind
+dependency and the real aborting sentinel dylib, in all four required modes:
+
+| runner/profile | accepted count |
+| --- | ---: |
+| Zig / Debug | 8 shared rows |
+| Zig / ReleaseSafe | 8 shared rows |
+| Rust / debug | 11 filtered tests (8 shared rows) |
+| Rust / release | 11 filtered tests (8 shared rows) |
+
+The relocated Rust project smoke covered check, JSON check, build, run,
+install, and test from an unrelated cwd; the relocated LSP smoke also passed.
+No prebuilt Birnam artifact was present and no source/checkout fallback was
+used. The remaining Zig edges are the explicit oracle/rollback prefix and the
 noncanonical Zig fixture libraries; no production provider changed.
 
 ## 5. Phase Z2 — native-Birnam policy closure
@@ -446,6 +456,11 @@ the diagnostic inventory from any later policy movement.
    without an inventory row. Z2.0 makes no runtime removals or additions;
    duplicate policy discovery becomes a named reviewed seam and a stop
    condition.
+
+Z2.0 cannot exit on discovery alone. Its inventory, fail-closed checker, and
+strict R6/archive pass must be reviewed together; the review must select one
+named policy seam for Z2.1 before any Z2.1 edit. Until that review checkpoint,
+the inventory authorizes no removal, addition, or provider change.
 
 ### Z2.1 separately reviewed policy seams
 
