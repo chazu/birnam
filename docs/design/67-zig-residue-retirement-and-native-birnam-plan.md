@@ -571,6 +571,38 @@ provider, while the canonical Zig Isolate implementation and its complete
 rollback vector remain unchanged. This checkpoint records the exact hash before
 the wire-v1, worker-control-plane, malformed-payload, and process smoke gates.
 
+### P2.7 Isolate readiness receipt (2026-07-27)
+
+Candidate checkpoint: `178f07a`. The focused Isolate matrix passed:
+
+```text
+Build Summary: 98/98 steps succeeded; 9/9 tests passed
+test-rust-isolate success: 4 tests passed
+test-isolate success: 5 tests passed with Rust selected
+test-isolate-process success: worker process round-trip passed
+```
+
+The contract covers wire-v1 network-order headers, scalar/vector/map codec
+round trips, duplicate-key/trailing-byte refusal, structured worker failures,
+host registry start/stop, copied-value dispatch, malformed request rejection,
+and the separate worker-image process smoke. The canonical Rust Isolate dylib
+exports exactly one `module_init`; the explicit Zig Isolate rollback dylib
+remains a separate complete-vector authority.
+
+The exact-hash archive receipts pass:
+
+```text
+rust-cold-compiler: cycle-a archive passed
+rust-cold-compiler: cycle-b archive passed
+rust-cold-compiler: two independent fixture-free Rust archives produced identical generated-C, descriptor, source-corpus, and dylib install-name receipts
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+These checks make Isolate **retain-ready** for evidence purposes. The canonical
+Rust Isolate provider, explicit Zig Isolate oracle, and complete full-Zig
+rollback vector remain installed; no provider deletion, mixed-vector recovery,
+or benchmark allowance change is authorized by this receipt.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
