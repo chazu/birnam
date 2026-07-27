@@ -543,7 +543,15 @@ fn block_has_let(block: &Block<'_>, name: &[u8]) -> bool {
 }
 
 fn selector_arity(selector: &[u8]) -> usize {
-    selector.iter().filter(|byte| **byte == b':').count()
+    let colons = selector.iter().filter(|byte| **byte == b':').count();
+    if colons != 0 {
+        return colons;
+    }
+    match selector.first() {
+        None => 0,
+        Some(byte) if byte.is_ascii_alphabetic() || *byte == b'_' => 0,
+        Some(_) => 1,
+    }
 }
 
 const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
@@ -1268,7 +1276,7 @@ mod tests {
 
     use super::{
         Block, CstNode, EmitError, Emitter, Expr, LowerError, OwnedCst, Program, Statement,
-        TranslationUnit, lower_expr, lower_literal, lower_program,
+        TranslationUnit, lower_expr, lower_literal, lower_program, selector_arity,
     };
 
     struct TestNode {
@@ -1395,6 +1403,39 @@ mod tests {
         assert!(output.contains("birnam_candidate_root_get(7ULL,0L)"));
         assert!(output.contains("birnam_install_method"));
         assert!(output.contains("birnam_intern(\"answer\")"));
+    }
+
+    #[test]
+    fn binary_operator_method_trampolines_forward_the_operand() {
+        assert_eq!(selector_arity(b"="), 1);
+        assert_eq!(selector_arity(b"value"), 0);
+        assert_eq!(selector_arity(b"at:"), 1);
+
+        let expression = Expr::Send {
+            receiver: Box::new(Expr::Global(b"Reflect")),
+            selector: Cow::Borrowed(b"defineMethod:on:as:"),
+            args: vec![
+                Expr::Symbol(b"="),
+                Expr::Global(b"Object"),
+                Expr::Block(Box::new(Block {
+                    params: vec![b"self", b"other"],
+                    body: vec![Statement::Expr(Expr::Send {
+                        receiver: Box::new(Expr::Global(b"self")),
+                        selector: Cow::Borrowed(b"=="),
+                        args: vec![Expr::Global(b"other")],
+                        source: b"",
+                    })],
+                })),
+            ],
+            source: b"[Reflect defineMethod: #= on: Object as: [:self :other | [self == other]]]",
+        };
+        let mut emitter = Emitter::new_candidate_artifact(7);
+        emitter.emit_expr(&expression).unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains(
+            "return birnam_send(birnam_candidate_root_get(7ULL,0L), birnam_intern(\"value:value:\"), a, 2);"
+        ));
+        assert!(output.contains("for(i=0;i<1;i++) a[i+1]=args[i];"));
     }
 
     #[test]
