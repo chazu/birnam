@@ -48,6 +48,42 @@ done
   exit 1
 }
 
+trace_prefix() {
+  local label=$1
+  local prefix=$2
+  local workdir="$work/${label}-cwd"
+  local trace="$work/${label}-load.trace"
+  mkdir -p "$workdir/src/id"
+  printf 'not a library; loader decoy\n' >"$workdir/libbirnam_id.dylib"
+  printf 'not a source provider; loader decoy\n' >"$workdir/src/id/main.zig"
+  (
+    cd "$workdir"
+    unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH BIRNAM_FORCE_SOURCE
+    printf ':quit\n' | DYLD_PRINT_LIBRARIES=1 "$prefix/bin/birnam" --repl \
+      >"$work/${label}-repl.out" 2>"$trace"
+  )
+  for name in "${canonical[@]}"; do
+    grep -F "$prefix/lib/$name" "$trace" >/dev/null || {
+      echo "distribution-selection: $label did not load $name" >&2
+      cat "$trace" >&2
+      exit 1
+    }
+  done
+  if [[ "$label" == production ]]; then
+    if grep -E '_zig\.dylib|birnam-zig-oracle|/libbirnam_id_zig\.dylib' "$trace" >/dev/null; then
+      echo "distribution-selection: production loaded a Zig provider" >&2
+      cat "$trace" >&2
+      exit 1
+    fi
+  elif grep -E '_rust\.dylib' "$trace" >/dev/null; then
+    echo "distribution-selection: rollback loaded a Rust fixture" >&2
+    cat "$trace" >&2
+    exit 1
+  fi
+}
+
+trace_prefix production "$production"
+
 rollback="$work/rollback"
 zig build install -Doptimize=ReleaseSafe -Ddistribution=rollback --prefix "$rollback" >/dev/null
 python3 scripts/check-rollback-prefix.py "$rollback" >"$work/rollback-receipt.jsonl"
@@ -76,5 +112,7 @@ for name in "${canonical[@]}"; do
     exit 1
   }
 done
+
+trace_prefix rollback "$rollback"
 
 echo "distribution-selection: production omits Zig; rollback is a complete Zig vector"
