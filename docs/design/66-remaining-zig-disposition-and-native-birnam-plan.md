@@ -488,24 +488,30 @@ freezes all 120 direct Rust-host `IdApi.send` callsite lines and all 31 named
 named-global owner classes (native Birnam, Rust dynamic, or Id runtime). It
 does not alter provider selection or runtime behavior.
 
-Commit `9a04538` adds the first semantic expansion: the 120 callsites are
-covered by 56 checker-backed function groups with actual-owner, effect-class,
-test, and disposition fields, while the 31 named globals retain their explicit
-owner classes. Commit `599cee0` additionally freezes a normalized
-receiver/selector/arity surface digest for all 120 calls. Commit `4fa4a10`
-records retained pre/post-send validation expectations for each function group,
-and the checker requires those fields. It rejects an uncovered or stale
-function group, line, message surface, or validation record. No runtime
-behavior changed.
+The first semantic expansion in `9a04538` was intentionally rejected by
+review: five coarse function groups did not prove the per-callsite owner and
+branch semantics. The inventory is now checker-backed per callsite in the
+working tree: every row records the resolved selector literal and arity,
+concrete receiver expression/acquisition, exact owner and definition
+path/selector, effect, pre/post branches, retained validation, test, and
+read-only disposition. The checker resolves selector bindings (including direct
+intern literals), hashes the resolved selector surface, verifies every
+definition path contains the selector, and rejects any stale/missing row.
+`DispatchGeneration` is explicitly owned by `src/id/compiled-unit.birnam`, not
+`isolate.birnam`. No runtime behavior changed.
 
-Z2.0's read-only inventory seam is now complete enough for review. The next
-bounded step is the required joint inventory/checker/strict-gate review, which
-must select one named policy seam for Z2.1 before any provider or policy edit.
+The Z2.0 review also records an explicit seam conclusion: after all 120
+callsites were inspected, no Z2.1 removal seam is proven. The sends are
+receiver acquisition, protocol dispatch, boundary validation, or lifecycle
+ordering; none may be removed without a new authority decision. The inventory
+therefore keeps runtime unchanged and names the next evidence needed before a
+candidate can be nominated.
 
 Z2.0 cannot exit on discovery alone. Its inventory, fail-closed checker, and
-strict R6/archive pass must be reviewed together; the review must select one
-named policy seam for Z2.1 before any Z2.1 edit. Until that review checkpoint,
-the inventory authorizes no removal, addition, or provider change.
+strict R6/archive pass must be reviewed together; the review may either select
+one exact policy seam for Z2.1 or explicitly conclude that no removal seam is
+proven. Until that review checkpoint, the inventory authorizes no removal,
+addition, or provider change.
 
 ### Z2.1 separately reviewed policy seams
 
@@ -667,3 +673,11 @@ authority, artifact-owner, MOP/Store, rollback, archive, parity, or strict-gate
 gap was found. Z2.0's read-only message/owner inventory is the next seam; its
 existing review gate remains unchanged, and no implementation Z1–Z3 authority
 change may bypass strict R6.
+
+The next 2026-07-27 adversarial pass is **NO-GO to exit Z2.0** until the
+inventory is per-callsite and checker-backed, selector bindings resolve to
+literals (or explicit dynamic markers), native definitions are verified, the
+`DispatchGeneration` owner is corrected to `compiled-unit.birnam`, and the
+review records either one exact Z2.1 seam or an explicit no-seam conclusion.
+Those bounded read-only fixes are in progress; no runtime or MOP invariant has
+been changed.

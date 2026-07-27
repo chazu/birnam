@@ -1,11 +1,132 @@
 {
   "schema_version": 1,
   "scope": "Design 66 Z2.0 Rust-host IdApi.send and named-global coverage; inventory/checker evidence only",
-  "captured_commit": "00ec00a",
+  "captured_commit": "7f9e525",
   "source": "rust/birnam-host/src/lib.rs",
   "coverage_rule": "Every direct Rust-host IdApi.send call and every named global_named lookup must be represented by its source line. The checker rejects additions, removals, stale lines, and changed global names.",
-  "send_callsite_surface_sha256": "5339a0ba9b8861c1cf734904b94d4dea847cfe2fe44d1f359ff5d01fa537b909",
-  "send_lines": [575, 585, 590, 630, 632, 678, 718, 734, 753, 758, 760, 762, 764, 773, 799, 804, 835, 841, 843, 845, 854, 2592, 2598, 2638, 2647, 2697, 2751, 2761, 2837, 2846, 2883, 2892, 2920, 2931, 3000, 3120, 3127, 3257, 3264, 3585, 3596, 3634, 3710, 3717, 3763, 3772, 4497, 4525, 4538, 4554, 4657, 4687, 4750, 4755, 4760, 4765, 4823, 4870, 5125, 5134, 5195, 5205, 5473, 5542, 5741, 5977, 6016, 6057, 6107, 6114, 6121, 6170, 6196, 6241, 6317, 6326, 6335, 6361, 6366, 6379, 6397, 6448, 6452, 6455, 6483, 6542, 6549, 6570, 6581, 6745, 6753, 6762, 6777, 6786, 6820, 6830, 6844, 6860, 7158, 7163, 7195, 7229, 7279, 7283, 7287, 7289, 7291, 7293, 7302, 7315, 7320, 7330, 7336, 7347, 7353, 7368, 7374, 7382, 7448, 7708],
+  "send_callsite_surface_sha256": "f5bad47459eb8e01557cdca9be8f874518ede1600c6a0d2c26bfb119b01d0028",
+  "send_lines": [
+    575,
+    585,
+    590,
+    630,
+    632,
+    678,
+    718,
+    734,
+    753,
+    758,
+    760,
+    762,
+    764,
+    773,
+    799,
+    804,
+    835,
+    841,
+    843,
+    845,
+    854,
+    2592,
+    2598,
+    2638,
+    2647,
+    2697,
+    2751,
+    2761,
+    2837,
+    2846,
+    2883,
+    2892,
+    2920,
+    2931,
+    3000,
+    3120,
+    3127,
+    3257,
+    3264,
+    3585,
+    3596,
+    3634,
+    3710,
+    3717,
+    3763,
+    3772,
+    4497,
+    4525,
+    4538,
+    4554,
+    4657,
+    4687,
+    4750,
+    4755,
+    4760,
+    4765,
+    4823,
+    4870,
+    5125,
+    5134,
+    5195,
+    5205,
+    5473,
+    5542,
+    5741,
+    5977,
+    6016,
+    6057,
+    6107,
+    6114,
+    6121,
+    6170,
+    6196,
+    6241,
+    6317,
+    6326,
+    6335,
+    6361,
+    6366,
+    6379,
+    6397,
+    6448,
+    6452,
+    6455,
+    6483,
+    6542,
+    6549,
+    6570,
+    6581,
+    6745,
+    6753,
+    6762,
+    6777,
+    6786,
+    6820,
+    6830,
+    6844,
+    6860,
+    7158,
+    7163,
+    7195,
+    7229,
+    7279,
+    7283,
+    7287,
+    7289,
+    7291,
+    7293,
+    7302,
+    7315,
+    7320,
+    7330,
+    7336,
+    7347,
+    7353,
+    7368,
+    7374,
+    7382,
+    7448,
+    7708
+  ],
   "global_lookups": {
     "566": "Module",
     "816": "Config",
@@ -52,66 +173,2312 @@
     "Object": "id-runtime:birnam-id",
     "Cli": "native-birnam:modules/cli.birnam",
     "Repl": "native-birnam:modules/repl.birnam",
-    "DispatchGeneration": "native-birnam:src/id/isolate.birnam",
+    "DispatchGeneration": "native-birnam:src/id/compiled-unit.birnam",
     "EvolutionIntent": "native-birnam:src/id/compiled-unit.birnam"
   },
-  "send_function_groups": [
-    {
-      "id": "source-observation",
-      "functions": ["add", "at", "decode_project_artifact_plan", "decode_project_artifact_record", "decode_project_build_record", "decode_project_resolution", "decode_project_source_metadata", "dependencies", "dependency_vector", "error_diagnostic", "global_named", "modules", "native_os_string_vector", "new_map", "new_vector", "order_from_manager", "put", "requested_names", "send_is_error", "strings", "wrapped"],
-      "actual_owner": "runtime-object-or-native-birnam",
-      "effect_class": "observation-or-validation",
-      "test": "project/check and host conformance suites",
-      "retained_validation": "nil/error/shape checks remain at the host boundary",
-      "disposition": "retain; no policy move"
-    },
-    {
-      "id": "project-policy",
-      "functions": ["check_project", "parse_project_manifest", "plan_project_artifacts", "record_project_artifacts", "resolve_project_snapshot", "validate_project_build"],
-      "actual_owner": "native-birnam-policy",
-      "effect_class": "policy-orchestration",
-      "test": "project-check and project-build suites",
-      "retained_validation": "typed host errors and policy-result validation remain before return",
-      "disposition": "retain native policy; review sends only"
-    },
-    {
-      "id": "codegen-observation",
-      "functions": ["compile_module", "compile_project_artifact", "compose_project_sources", "eval_script", "index_project_source", "observe_composed_project_source", "observe_project_source", "record_and_eval_source"],
-      "actual_owner": "rust-dynamic:birnam-codegen",
-      "effect_class": "observation-and-publication",
-      "test": "Codegen, project, and image suites",
-      "retained_validation": "nil/error results and generation-state checks remain around sends",
-      "disposition": "retain Rust provider; no policy duplication"
-    },
-    {
-      "id": "runtime-orchestration",
-      "functions": ["activate_artifact", "activate_project_build", "bootstrap_self_hosted", "load_host_runtime_module", "load_image", "load_runtime_module", "load_self_hosted", "mark_module_loaded", "refresh_module_manager", "replay_worker_methods", "run_worker_image", "start"],
-      "actual_owner": "host-orchestration",
-      "effect_class": "activation-and-lifecycle",
-      "test": "install, image, worker, and host integration suites",
-      "retained_validation": "activation ordering, lifecycle receipts, and nil/error guards remain",
-      "disposition": "retain orchestration; no provider change"
-    },
-    {
-      "id": "operator-orchestration",
-      "functions": ["finish_repl", "install_project_bridge", "repl_step", "run_cli", "run_project_test_source", "run_project_with_tool_version", "run_repl", "serve_socket", "start_repl_mode"],
-      "actual_owner": "native-birnam-orchestration",
-      "effect_class": "operator-and-io",
-      "test": "CLI, REPL, project, and LSP suites",
-      "retained_validation": "operator result/error checks and close/cleanup paths remain",
-      "disposition": "retain; policy remains in native modules"
-    }
-  ],
   "review_fields": [
-    "rust_callsite",
+    "line",
+    "function",
+    "receiver_expression",
     "receiver_acquisition",
-    "selector_and_arity",
+    "selector_binding",
+    "selector_literal",
+    "arity",
     "actual_owner",
+    "native_definition",
     "effect_class",
     "pre_post_send_branches",
     "retained_validation",
     "test",
     "disposition"
   ],
-  "disposition": "read-only coverage; no runtime removal, addition, or provider change"
+  "disposition": "read-only coverage; no runtime removal, addition, or provider change",
+  "send_callsite_rows": [
+    {
+      "line": 575,
+      "function": "activate_artifact",
+      "receiver_expression": "module_manager",
+      "selector_binding": "lib_dir_selector",
+      "selector_literal": "libDir:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated activate_artifact runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "libDir:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 585,
+      "function": "activate_artifact",
+      "receiver_expression": "alien",
+      "selector_binding": "selector",
+      "selector_literal": "libraryDir:",
+      "arity": 1,
+      "receiver_acquisition": "alien acquired by the validated activate_artifact runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/alien.zig",
+      "native_definition": {
+        "path": "src/id/alien.zig",
+        "selector": "libraryDir:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 590,
+      "function": "activate_artifact",
+      "receiver_expression": "module_manager",
+      "selector_binding": "selector",
+      "selector_literal": "loadArtifact:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated activate_artifact runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "loadArtifact:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 630,
+      "function": "eval_script",
+      "receiver_expression": "codegen",
+      "selector_binding": "selector",
+      "selector_literal": "evalPersisting:from:",
+      "arity": 2,
+      "receiver_acquisition": "codegen acquired by the validated eval_script runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "evalPersisting:from:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 632,
+      "function": "eval_script",
+      "receiver_expression": "codegen",
+      "selector_binding": "last_error_selector",
+      "selector_literal": "lastError",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated eval_script runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "lastError"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 678,
+      "function": "compile_module",
+      "receiver_expression": "codegen",
+      "selector_binding": "selector",
+      "selector_literal": "compile:output:from:",
+      "arity": 3,
+      "receiver_acquisition": "codegen acquired by the validated compile_module runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "compile:output:from:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 718,
+      "function": "load_image",
+      "receiver_expression": "system",
+      "selector_binding": "selector",
+      "selector_literal": "loadImage:rebuild:",
+      "arity": 2,
+      "receiver_acquisition": "system acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/image.zig",
+      "native_definition": {
+        "path": "src/id/image.zig",
+        "selector": "loadImage:rebuild:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 734,
+      "function": "load_image",
+      "receiver_expression": "system",
+      "selector_binding": "selector",
+      "selector_literal": "loadImage:rebuild:",
+      "arity": 2,
+      "receiver_acquisition": "system acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/image.zig",
+      "native_definition": {
+        "path": "src/id/image.zig",
+        "selector": "loadImage:rebuild:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 753,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "begin_recovery",
+      "selector_literal": "beginImageDispatchRecovery",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "beginImageDispatchRecovery"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 758,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "replay_aliens",
+      "selector_literal": "replayAliens",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "replayAliens"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 760,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "derive_globals",
+      "selector_literal": "deriveImageGlobals",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "deriveImageGlobals"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 762,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "end_recovery",
+      "selector_literal": "endImageDispatchRecovery",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "endImageDispatchRecovery"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 764,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "(api.intern)(c\"currentGenerationDigest\".as_ptr())",
+      "selector_literal": "currentGenerationDigest",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "currentGenerationDigest"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 773,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "(api.intern)(c\"sealInitialGeneration\".as_ptr())",
+      "selector_literal": "sealInitialGeneration",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "sealInitialGeneration"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 799,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "begin_recovery",
+      "selector_literal": "beginImageDispatchRecovery",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "beginImageDispatchRecovery"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 804,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "replay_methods",
+      "selector_literal": "replayMethods",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "replayMethods"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 835,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "replay_aliens",
+      "selector_literal": "replayAliens",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "replayAliens"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 841,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "derive_globals",
+      "selector_literal": "deriveImageGlobals",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "deriveImageGlobals"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 843,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "end_recovery",
+      "selector_literal": "endImageDispatchRecovery",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "endImageDispatchRecovery"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 845,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "(api.intern)(c\"currentGenerationDigest\".as_ptr())",
+      "selector_literal": "currentGenerationDigest",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "currentGenerationDigest"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 854,
+      "function": "load_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "(api.intern)(c\"sealInitialGeneration\".as_ptr())",
+      "selector_literal": "sealInitialGeneration",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated load_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "sealInitialGeneration"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2592,
+      "function": "decode_project_source_metadata",
+      "receiver_expression": "metadata",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "metadata acquired by the validated decode_project_source_metadata runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2598,
+      "function": "decode_project_source_metadata",
+      "receiver_expression": "metadata",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "metadata acquired by the validated decode_project_source_metadata runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2638,
+      "function": "decode_project_source_metadata",
+      "receiver_expression": "requires_value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "requires_value acquired by the validated decode_project_source_metadata runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2647,
+      "function": "decode_project_source_metadata",
+      "receiver_expression": "requires_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "requires_value acquired by the validated decode_project_source_metadata runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2697,
+      "function": "at",
+      "receiver_expression": "map",
+      "selector_binding": "selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "map acquired by the validated at runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2751,
+      "function": "strings",
+      "receiver_expression": "value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated strings runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2761,
+      "function": "strings",
+      "receiver_expression": "value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "value acquired by the validated strings runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2837,
+      "function": "modules",
+      "receiver_expression": "value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated modules runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2846,
+      "function": "modules",
+      "receiver_expression": "value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "value acquired by the validated modules runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2883,
+      "function": "wrapped",
+      "receiver_expression": "value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated wrapped runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2892,
+      "function": "wrapped",
+      "receiver_expression": "value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "value acquired by the validated wrapped runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2920,
+      "function": "wrapped",
+      "receiver_expression": "build_value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "build_value acquired by the validated wrapped runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 2931,
+      "function": "wrapped",
+      "receiver_expression": "build_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "build_value acquired by the validated wrapped runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3000,
+      "function": "dependencies",
+      "receiver_expression": "value",
+      "selector_binding": "keys_selector",
+      "selector_literal": "keys",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated dependencies runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "keys"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3120,
+      "function": "decode_project_resolution",
+      "receiver_expression": "modules_value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "modules_value acquired by the validated decode_project_resolution runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3127,
+      "function": "decode_project_resolution",
+      "receiver_expression": "modules_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "modules_value acquired by the validated decode_project_resolution runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3257,
+      "function": "decode_project_artifact_plan",
+      "receiver_expression": "artifacts_value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_plan runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3264,
+      "function": "decode_project_artifact_plan",
+      "receiver_expression": "artifacts_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_plan runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3585,
+      "function": "decode_project_build_record",
+      "receiver_expression": "value",
+      "selector_binding": "selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated decode_project_build_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3596,
+      "function": "decode_project_build_record",
+      "receiver_expression": "artifacts_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "artifacts_value acquired by the validated decode_project_build_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3634,
+      "function": "decode_project_build_record",
+      "receiver_expression": "native_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "native_value acquired by the validated decode_project_build_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3710,
+      "function": "decode_project_artifact_record",
+      "receiver_expression": "artifacts_value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3717,
+      "function": "decode_project_artifact_record",
+      "receiver_expression": "artifacts_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "artifacts_value acquired by the validated decode_project_artifact_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3763,
+      "function": "decode_project_artifact_record",
+      "receiver_expression": "native_value",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "native_value acquired by the validated decode_project_artifact_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 3772,
+      "function": "decode_project_artifact_record",
+      "receiver_expression": "native_value",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "native_value acquired by the validated decode_project_artifact_record runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4497,
+      "function": "load_runtime_module",
+      "receiver_expression": "module_manager",
+      "selector_binding": "selector",
+      "selector_literal": "load:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated load_runtime_module runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "load:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4525,
+      "function": "load_host_runtime_module",
+      "receiver_expression": "self.codegen",
+      "selector_binding": "selector",
+      "selector_literal": "loadHostCapability:",
+      "arity": 1,
+      "receiver_acquisition": "self.codegen acquired by the validated load_host_runtime_module runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "loadHostCapability:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4538,
+      "function": "load_host_runtime_module",
+      "receiver_expression": "module_manager",
+      "selector_binding": "mark",
+      "selector_literal": "markLoaded:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated load_host_runtime_module runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "markLoaded:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4554,
+      "function": "activate_project_build",
+      "receiver_expression": "alien",
+      "selector_binding": "selector",
+      "selector_literal": "libraryDir:",
+      "arity": 1,
+      "receiver_acquisition": "alien acquired by the validated activate_project_build runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/alien.zig",
+      "native_definition": {
+        "path": "src/id/alien.zig",
+        "selector": "libraryDir:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4657,
+      "function": "run_project_with_tool_version",
+      "receiver_expression": "alien",
+      "selector_binding": "selector",
+      "selector_literal": "libraryDir:",
+      "arity": 1,
+      "receiver_acquisition": "alien acquired by the validated run_project_with_tool_version runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/alien.zig",
+      "native_definition": {
+        "path": "src/id/alien.zig",
+        "selector": "libraryDir:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4687,
+      "function": "run_project_with_tool_version",
+      "receiver_expression": "globals",
+      "selector_binding": "put",
+      "selector_literal": "at:put:",
+      "arity": 2,
+      "receiver_acquisition": "globals acquired by the validated run_project_with_tool_version runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/store.zig",
+      "native_definition": {
+        "path": "src/id/store.zig",
+        "selector": "at:put:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4750,
+      "function": "run_project_test_source",
+      "receiver_expression": "test",
+      "selector_binding": "suites_selector",
+      "selector_literal": "suites",
+      "arity": 0,
+      "receiver_acquisition": "test acquired by the validated run_project_test_source runtime boundary",
+      "actual_owner": "native-birnam:modules/test.birnam",
+      "native_definition": {
+        "path": "modules/test.birnam",
+        "selector": "suites"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4755,
+      "function": "run_project_test_source",
+      "receiver_expression": "suites",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "suites acquired by the validated run_project_test_source runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4760,
+      "function": "run_project_test_source",
+      "receiver_expression": "test",
+      "selector_binding": "run_selector",
+      "selector_literal": "runAllSuitesWithRunner:",
+      "arity": 1,
+      "receiver_acquisition": "test acquired by the validated run_project_test_source runtime boundary",
+      "actual_owner": "native-birnam:modules/test.birnam",
+      "native_definition": {
+        "path": "modules/test.birnam",
+        "selector": "runAllSuitesWithRunner:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4765,
+      "function": "run_project_test_source",
+      "receiver_expression": "result",
+      "selector_binding": "passed_selector",
+      "selector_literal": "allPassed",
+      "arity": 0,
+      "receiver_acquisition": "result acquired by the validated run_project_test_source runtime boundary",
+      "actual_owner": "native-birnam:modules/test.birnam",
+      "native_definition": {
+        "path": "modules/test.birnam",
+        "selector": "allPassed"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4823,
+      "function": "resolve_project_snapshot",
+      "receiver_expression": "policy",
+      "selector_binding": "selector",
+      "selector_literal": "resolveSnapshot:",
+      "arity": 1,
+      "receiver_acquisition": "policy acquired by the validated resolve_project_snapshot runtime boundary",
+      "actual_owner": "native-birnam:src/id/project-policy.birnam",
+      "native_definition": {
+        "path": "src/id/project-policy.birnam",
+        "selector": "resolveSnapshot:"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 4870,
+      "function": "parse_project_manifest",
+      "receiver_expression": "toml",
+      "selector_binding": "selector",
+      "selector_literal": "parse:",
+      "arity": 1,
+      "receiver_acquisition": "toml acquired by the validated parse_project_manifest runtime boundary",
+      "actual_owner": "native-birnam:src/id/toml.birnam",
+      "native_definition": {
+        "path": "src/id/toml.birnam",
+        "selector": "parse:"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5125,
+      "function": "check_project",
+      "receiver_expression": "self.codegen",
+      "selector_binding": "compile_selector",
+      "selector_literal": "compile:output:root:",
+      "arity": 3,
+      "receiver_acquisition": "self.codegen acquired by the validated check_project runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "compile:output:root:"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5134,
+      "function": "check_project",
+      "receiver_expression": "self.codegen",
+      "selector_binding": "last_error_selector",
+      "selector_literal": "lastError",
+      "arity": 0,
+      "receiver_acquisition": "self.codegen acquired by the validated check_project runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "lastError"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5195,
+      "function": "compile_project_artifact",
+      "receiver_expression": "self.codegen",
+      "selector_binding": "selector",
+      "selector_literal": "compile:output:root:",
+      "arity": 3,
+      "receiver_acquisition": "self.codegen acquired by the validated compile_project_artifact runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "compile:output:root:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5205,
+      "function": "compile_project_artifact",
+      "receiver_expression": "self.codegen",
+      "selector_binding": "last_error_selector",
+      "selector_literal": "lastError",
+      "arity": 0,
+      "receiver_acquisition": "self.codegen acquired by the validated compile_project_artifact runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "lastError"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5473,
+      "function": "plan_project_artifacts",
+      "receiver_expression": "policy",
+      "selector_binding": "selector",
+      "selector_literal": "artifactPlan:",
+      "arity": 1,
+      "receiver_acquisition": "policy acquired by the validated plan_project_artifacts runtime boundary",
+      "actual_owner": "native-birnam:src/id/project-policy.birnam",
+      "native_definition": {
+        "path": "src/id/project-policy.birnam",
+        "selector": "artifactPlan:"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5542,
+      "function": "record_project_artifacts",
+      "receiver_expression": "policy",
+      "selector_binding": "selector",
+      "selector_literal": "artifactRecord:artifacts:native:",
+      "arity": 3,
+      "receiver_acquisition": "policy acquired by the validated record_project_artifacts runtime boundary",
+      "actual_owner": "native-birnam:src/id/project-policy.birnam",
+      "native_definition": {
+        "path": "src/id/project-policy.birnam",
+        "selector": "artifactRecord:artifacts:native:"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5741,
+      "function": "validate_project_build",
+      "receiver_expression": "policy",
+      "selector_binding": "selector",
+      "selector_literal": "validateArtifacts:",
+      "arity": 1,
+      "receiver_acquisition": "policy acquired by the validated validate_project_build runtime boundary",
+      "actual_owner": "native-birnam:src/id/project-policy.birnam",
+      "native_definition": {
+        "path": "src/id/project-policy.birnam",
+        "selector": "validateArtifacts:"
+      },
+      "effect_class": "policy-orchestration",
+      "pre_post_send_branches": "pre: construct validated snapshot/source input; post: reject Error/nil and validate policy result before publication",
+      "retained_validation": "retains typed host errors, policy-result shape checks, and publication guards",
+      "test": "project-check and project-build suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 5977,
+      "function": "index_project_source",
+      "receiver_expression": "codegen",
+      "selector_binding": "selector",
+      "selector_literal": "moduleMetadataOf:",
+      "arity": 1,
+      "receiver_acquisition": "codegen acquired by the validated index_project_source runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "moduleMetadataOf:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6016,
+      "function": "observe_project_source",
+      "receiver_expression": "codegen",
+      "selector_binding": "selector",
+      "selector_literal": "moduleMetadataOf:",
+      "arity": 1,
+      "receiver_acquisition": "codegen acquired by the validated observe_project_source runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "moduleMetadataOf:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6057,
+      "function": "observe_composed_project_source",
+      "receiver_expression": "codegen",
+      "selector_binding": "selector",
+      "selector_literal": "moduleMetadataOf:",
+      "arity": 1,
+      "receiver_acquisition": "codegen acquired by the validated observe_composed_project_source runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "moduleMetadataOf:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6107,
+      "function": "compose_project_sources",
+      "receiver_expression": "vector_class",
+      "selector_binding": "new_selector",
+      "selector_literal": "new",
+      "arity": 0,
+      "receiver_acquisition": "vector_class acquired by the validated compose_project_sources runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "new"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6114,
+      "function": "compose_project_sources",
+      "receiver_expression": "source_paths",
+      "selector_binding": "add_selector",
+      "selector_literal": "add:",
+      "arity": 1,
+      "receiver_acquisition": "source_paths acquired by the validated compose_project_sources runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "add:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6121,
+      "function": "compose_project_sources",
+      "receiver_expression": "module",
+      "selector_binding": "selector",
+      "selector_literal": "composeSources:",
+      "arity": 1,
+      "receiver_acquisition": "module acquired by the validated compose_project_sources runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "composeSources:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6170,
+      "function": "install_project_bridge",
+      "receiver_expression": "object",
+      "selector_binding": "selector",
+      "selector_literal": "clone",
+      "arity": 0,
+      "receiver_acquisition": "object acquired by the validated install_project_bridge runtime boundary",
+      "actual_owner": "id-runtime:src/id/id.zig",
+      "native_definition": {
+        "path": "src/id/id.zig",
+        "selector": "clone"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6196,
+      "function": "install_project_bridge",
+      "receiver_expression": "globals",
+      "selector_binding": "put_selector",
+      "selector_literal": "at:put:",
+      "arity": 2,
+      "receiver_acquisition": "globals acquired by the validated install_project_bridge runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/store.zig",
+      "native_definition": {
+        "path": "src/id/store.zig",
+        "selector": "at:put:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6241,
+      "function": "run_cli",
+      "receiver_expression": "cli",
+      "selector_binding": "selector",
+      "selector_literal": "run:source:rustWorkspace:guides:",
+      "arity": 4,
+      "receiver_acquisition": "cli acquired by the validated run_cli runtime boundary",
+      "actual_owner": "native-birnam:modules/cli.birnam",
+      "native_definition": {
+        "path": "modules/cli.birnam",
+        "selector": "run:source:rustWorkspace:guides:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6317,
+      "function": "start_repl_mode",
+      "receiver_expression": "repl",
+      "selector_binding": "init_selector",
+      "selector_literal": "consoleHostInit",
+      "arity": 0,
+      "receiver_acquisition": "repl acquired by the validated start_repl_mode runtime boundary",
+      "actual_owner": "native-birnam:modules/repl.birnam",
+      "native_definition": {
+        "path": "modules/repl.birnam",
+        "selector": "consoleHostInit"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6326,
+      "function": "start_repl_mode",
+      "receiver_expression": "generations",
+      "selector_binding": "initialize_selector",
+      "selector_literal": "initializeCurrent",
+      "arity": 0,
+      "receiver_acquisition": "generations acquired by the validated start_repl_mode runtime boundary",
+      "actual_owner": "native-birnam:src/id/compiled-unit.birnam",
+      "native_definition": {
+        "path": "src/id/compiled-unit.birnam",
+        "selector": "initializeCurrent"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6335,
+      "function": "start_repl_mode",
+      "receiver_expression": "repl",
+      "selector_binding": "ready_selector",
+      "selector_literal": "consoleHostReady",
+      "arity": 0,
+      "receiver_acquisition": "repl acquired by the validated start_repl_mode runtime boundary",
+      "actual_owner": "native-birnam:modules/repl.birnam",
+      "native_definition": {
+        "path": "modules/repl.birnam",
+        "selector": "consoleHostReady"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6361,
+      "function": "repl_step",
+      "receiver_expression": "session.repl",
+      "selector_binding": "step_selector",
+      "selector_literal": "hostStep",
+      "arity": 0,
+      "receiver_acquisition": "session.repl acquired by the validated repl_step runtime boundary",
+      "actual_owner": "native-birnam:modules/repl.birnam",
+      "native_definition": {
+        "path": "modules/repl.birnam",
+        "selector": "hostStep"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6366,
+      "function": "repl_step",
+      "receiver_expression": "step",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "step acquired by the validated repl_step runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6379,
+      "function": "repl_step",
+      "receiver_expression": "step",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "step acquired by the validated repl_step runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6397,
+      "function": "finish_repl",
+      "receiver_expression": "session.repl",
+      "selector_binding": "selector",
+      "selector_literal": "consoleDone",
+      "arity": 0,
+      "receiver_acquisition": "session.repl acquired by the validated finish_repl runtime boundary",
+      "actual_owner": "native-birnam:modules/repl.birnam",
+      "native_definition": {
+        "path": "modules/repl.birnam",
+        "selector": "consoleDone"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6448,
+      "function": "run_repl",
+      "receiver_expression": "intents",
+      "selector_binding": "intent_selector",
+      "selector_literal": "isIntent:",
+      "arity": 1,
+      "receiver_acquisition": "intents acquired by the validated run_repl runtime boundary",
+      "actual_owner": "native-birnam:src/id/compiled-unit.birnam",
+      "native_definition": {
+        "path": "src/id/compiled-unit.birnam",
+        "selector": "isIntent:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6452,
+      "function": "run_repl",
+      "receiver_expression": "value",
+      "selector_binding": "fulfill_selector",
+      "selector_literal": "fulfill",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated run_repl runtime boundary",
+      "actual_owner": "native-birnam:src/id/compiled-unit.birnam",
+      "native_definition": {
+        "path": "src/id/compiled-unit.birnam",
+        "selector": "fulfill"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6455,
+      "function": "run_repl",
+      "receiver_expression": "session.repl",
+      "selector_binding": "print_selector",
+      "selector_literal": "printHostResult:",
+      "arity": 1,
+      "receiver_acquisition": "session.repl acquired by the validated run_repl runtime boundary",
+      "actual_owner": "native-birnam:modules/repl.birnam",
+      "native_definition": {
+        "path": "modules/repl.birnam",
+        "selector": "printHostResult:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6483,
+      "function": "serve_socket",
+      "receiver_expression": "repl",
+      "selector_binding": "selector",
+      "selector_literal": "serveOn:bind:",
+      "arity": 2,
+      "receiver_acquisition": "repl acquired by the validated serve_socket runtime boundary",
+      "actual_owner": "native-birnam:modules/repl.birnam",
+      "native_definition": {
+        "path": "modules/repl.birnam",
+        "selector": "serveOn:bind:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6542,
+      "function": "run_worker_image",
+      "receiver_expression": "generations",
+      "selector_binding": "current_selector",
+      "selector_literal": "current",
+      "arity": 0,
+      "receiver_acquisition": "generations acquired by the validated run_worker_image runtime boundary",
+      "actual_owner": "native-birnam:src/id/compiled-unit.birnam",
+      "native_definition": {
+        "path": "src/id/compiled-unit.birnam",
+        "selector": "current"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6549,
+      "function": "run_worker_image",
+      "receiver_expression": "codegen",
+      "selector_binding": "digest_selector",
+      "selector_literal": "currentGenerationDigest",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated run_worker_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "currentGenerationDigest"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6570,
+      "function": "run_worker_image",
+      "receiver_expression": "globals",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "globals acquired by the validated run_worker_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/store.zig",
+      "native_definition": {
+        "path": "src/id/store.zig",
+        "selector": "at:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6581,
+      "function": "run_worker_image",
+      "receiver_expression": "globals",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "globals acquired by the validated run_worker_image runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/store.zig",
+      "native_definition": {
+        "path": "src/id/store.zig",
+        "selector": "at:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6745,
+      "function": "send_is_error",
+      "receiver_expression": "value",
+      "selector_binding": "is_error",
+      "selector_literal": "isError",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated send_is_error runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/error.zig",
+      "native_definition": {
+        "path": "src/id/error.zig",
+        "selector": "isError"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6753,
+      "function": "error_diagnostic",
+      "receiver_expression": "value",
+      "selector_binding": "kind_selector",
+      "selector_literal": "kind",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated error_diagnostic runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/error.zig",
+      "native_definition": {
+        "path": "src/id/error.zig",
+        "selector": "kind"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6762,
+      "function": "error_diagnostic",
+      "receiver_expression": "value",
+      "selector_binding": "message_selector",
+      "selector_literal": "message",
+      "arity": 0,
+      "receiver_acquisition": "value acquired by the validated error_diagnostic runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/error.zig",
+      "native_definition": {
+        "path": "src/id/error.zig",
+        "selector": "message"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6777,
+      "function": "native_os_string_vector",
+      "receiver_expression": "vector_class",
+      "selector_binding": "new_selector",
+      "selector_literal": "new",
+      "arity": 0,
+      "receiver_acquisition": "vector_class acquired by the validated native_os_string_vector runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "new"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6786,
+      "function": "native_os_string_vector",
+      "receiver_expression": "vector",
+      "selector_binding": "add_selector",
+      "selector_literal": "add:",
+      "arity": 1,
+      "receiver_acquisition": "vector acquired by the validated native_os_string_vector runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "add:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6820,
+      "function": "new_vector",
+      "receiver_expression": "self.vector_class",
+      "selector_binding": "selector",
+      "selector_literal": "new",
+      "arity": 0,
+      "receiver_acquisition": "self.vector_class acquired by the validated new_vector runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "new"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6830,
+      "function": "new_map",
+      "receiver_expression": "self.map_class",
+      "selector_binding": "selector",
+      "selector_literal": "new",
+      "arity": 0,
+      "receiver_acquisition": "self.map_class acquired by the validated new_map runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "new"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6844,
+      "function": "add",
+      "receiver_expression": "vector",
+      "selector_binding": "selector",
+      "selector_literal": "add:",
+      "arity": 1,
+      "receiver_acquisition": "vector acquired by the validated add runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "add:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 6860,
+      "function": "put",
+      "receiver_expression": "map",
+      "selector_binding": "selector",
+      "selector_literal": "at:put:",
+      "arity": 2,
+      "receiver_acquisition": "map acquired by the validated put runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:put:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7158,
+      "function": "record_and_eval_source",
+      "receiver_expression": "codegen",
+      "selector_binding": "record_selector",
+      "selector_literal": "recordModuleSource:named:",
+      "arity": 2,
+      "receiver_acquisition": "codegen acquired by the validated record_and_eval_source runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "recordModuleSource:named:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7163,
+      "function": "record_and_eval_source",
+      "receiver_expression": "codegen",
+      "selector_binding": "eval_selector",
+      "selector_literal": "eval:",
+      "arity": 1,
+      "receiver_acquisition": "codegen acquired by the validated record_and_eval_source runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "eval:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7195,
+      "function": "load_self_hosted",
+      "receiver_expression": "codegen",
+      "selector_binding": "load_selector",
+      "selector_literal": "load:",
+      "arity": 1,
+      "receiver_acquisition": "codegen acquired by the validated load_self_hosted runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "load:"
+      },
+      "effect_class": "codegen-boundary",
+      "pre_post_send_branches": "pre: require Codegen and bounded source/path inputs; post: reject nil/Error and preserve generation/recovery state",
+      "retained_validation": "retains source-size, nil/Error, metadata, and generation-state validation",
+      "test": "Codegen, project-source, bootstrap, and image recovery suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7229,
+      "function": "global_named",
+      "receiver_expression": "globals",
+      "selector_binding": "selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "globals acquired by the validated global_named runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/store.zig",
+      "native_definition": {
+        "path": "src/id/store.zig",
+        "selector": "at:"
+      },
+      "effect_class": "operator-orchestration",
+      "pre_post_send_branches": "pre: parse/validate operator inputs and acquire receiver; post: reject Error and preserve close/cleanup/result handling",
+      "retained_validation": "retains operator result/error checks and cleanup/close paths",
+      "test": "CLI, REPL, project-run, socket, and operator integration suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7279,
+      "function": "replay_worker_methods",
+      "receiver_expression": "codegen",
+      "selector_binding": "begin",
+      "selector_literal": "beginImageDispatchRecovery",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "beginImageDispatchRecovery"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7283,
+      "function": "replay_worker_methods",
+      "receiver_expression": "codegen",
+      "selector_binding": "replay",
+      "selector_literal": "replayMethods",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "replayMethods"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7287,
+      "function": "replay_worker_methods",
+      "receiver_expression": "codegen",
+      "selector_binding": "targets",
+      "selector_literal": "deriveImageMethodTargets",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "deriveImageMethodTargets"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7289,
+      "function": "replay_worker_methods",
+      "receiver_expression": "codegen",
+      "selector_binding": "aliens",
+      "selector_literal": "replayAliens",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "replayAliens"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7291,
+      "function": "replay_worker_methods",
+      "receiver_expression": "codegen",
+      "selector_binding": "derive",
+      "selector_literal": "deriveImageGlobals",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "deriveImageGlobals"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7293,
+      "function": "replay_worker_methods",
+      "receiver_expression": "codegen",
+      "selector_binding": "end",
+      "selector_literal": "endImageDispatchRecovery",
+      "arity": 0,
+      "receiver_acquisition": "codegen acquired by the validated replay_worker_methods runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/codegen.zig",
+      "native_definition": {
+        "path": "src/id/codegen.zig",
+        "selector": "endImageDispatchRecovery"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7302,
+      "function": "mark_module_loaded",
+      "receiver_expression": "module_manager",
+      "selector_binding": "selector",
+      "selector_literal": "markLoaded:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated mark_module_loaded runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "markLoaded:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7315,
+      "function": "refresh_module_manager",
+      "receiver_expression": "module_manager",
+      "selector_binding": "selector",
+      "selector_literal": "kernel:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated refresh_module_manager runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "kernel:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7320,
+      "function": "refresh_module_manager",
+      "receiver_expression": "module_manager",
+      "selector_binding": "selector",
+      "selector_literal": "libDir:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated refresh_module_manager runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "libDir:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7330,
+      "function": "dependency_vector",
+      "receiver_expression": "vector",
+      "selector_binding": "new_selector",
+      "selector_literal": "new",
+      "arity": 0,
+      "receiver_acquisition": "vector acquired by the validated dependency_vector runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "new"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7336,
+      "function": "dependency_vector",
+      "receiver_expression": "result",
+      "selector_binding": "add_selector",
+      "selector_literal": "add:",
+      "arity": 1,
+      "receiver_acquisition": "result acquired by the validated dependency_vector runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "add:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7347,
+      "function": "requested_names",
+      "receiver_expression": "vector",
+      "selector_binding": "new_selector",
+      "selector_literal": "new",
+      "arity": 0,
+      "receiver_acquisition": "vector acquired by the validated requested_names runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "new"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7353,
+      "function": "requested_names",
+      "receiver_expression": "names",
+      "selector_binding": "add_selector",
+      "selector_literal": "add:",
+      "arity": 1,
+      "receiver_acquisition": "names acquired by the validated requested_names runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "add:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7368,
+      "function": "order_from_manager",
+      "receiver_expression": "module_manager",
+      "selector_binding": "order_selector",
+      "selector_literal": "loadOrder:",
+      "arity": 1,
+      "receiver_acquisition": "module_manager acquired by the validated order_from_manager runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "loadOrder:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7374,
+      "function": "order_from_manager",
+      "receiver_expression": "order",
+      "selector_binding": "size_selector",
+      "selector_literal": "size",
+      "arity": 0,
+      "receiver_acquisition": "order acquired by the validated order_from_manager runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "size"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7382,
+      "function": "order_from_manager",
+      "receiver_expression": "order",
+      "selector_binding": "at_selector",
+      "selector_literal": "at:",
+      "arity": 1,
+      "receiver_acquisition": "order acquired by the validated order_from_manager runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/collection.zig",
+      "native_definition": {
+        "path": "src/id/collection.zig",
+        "selector": "at:"
+      },
+      "effect_class": "shape-validation",
+      "pre_post_send_branches": "pre: validate receiver vtable/shape before send; post: reject nil or invalid size/element result before decode",
+      "retained_validation": "retains vtable, nil, small-int, and element-shape validation at the host boundary",
+      "test": "project metadata/manifest/build decoder and collection conformance suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7448,
+      "function": "bootstrap_self_hosted",
+      "receiver_expression": "module_manager",
+      "selector_binding": "named_selector",
+      "selector_literal": "named:requires:",
+      "arity": 2,
+      "receiver_acquisition": "module_manager acquired by the validated bootstrap_self_hosted runtime boundary",
+      "actual_owner": "native-birnam:src/id/modules.birnam",
+      "native_definition": {
+        "path": "src/id/modules.birnam",
+        "selector": "named:requires:"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    },
+    {
+      "line": 7708,
+      "function": "start",
+      "receiver_expression": "store",
+      "selector_binding": "selector",
+      "selector_literal": "backfillMirror",
+      "arity": 0,
+      "receiver_acquisition": "store acquired by the validated start runtime boundary",
+      "actual_owner": "rust-dynamic:src/id/store.zig",
+      "native_definition": {
+        "path": "src/id/store.zig",
+        "selector": "backfillMirror"
+      },
+      "effect_class": "lifecycle-orchestration",
+      "pre_post_send_branches": "pre: establish owner-thread/phase and acquire receiver; post: branch on status/nil/Error while preserving activation ordering",
+      "retained_validation": "retains phase, ordering, lifecycle receipt, and nil/Error guards",
+      "test": "install, image, worker, bootstrap, and runtime-resource suites",
+      "disposition": "retain; read-only Z2.0 coverage"
+    }
+  ],
+  "z2_1_seam": {
+    "status": "none",
+    "reviewed_scope": "all 120 Rust-host IdApi.send callsites",
+    "rationale": "No reviewed send duplicates an independent policy decision strongly enough to authorize a Z2.1 removal. Sends retain receiver acquisition, protocol dispatch, validation, or lifecycle ordering; removing one would require a new runtime authority decision.",
+    "next_action": "Keep runtime unchanged and collect branch-level evidence; nominate a candidate only when an equivalent native policy path and its invariant-preserving tests are proven."
+  }
 }

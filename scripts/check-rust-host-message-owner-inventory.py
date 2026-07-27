@@ -21,62 +21,113 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-def send_surface(lines: list[str], callsites: list[int]) -> str:
+def function_region(lines: list[str], line: int) -> tuple[str, int, int]:
+    function = "?"
+    start = 0
+    for index in range(line - 1, -1, -1):
+        match = re.search(r"\bfn\s+([A-Za-z0-9_]+)", lines[index])
+        if match:
+            function = match.group(1)
+            start = index
+            break
+    end = len(lines)
+    for index in range(line, len(lines)):
+        if re.search(r"\bfn\s+[A-Za-z0-9_]+", lines[index]):
+            end = index
+            break
+    return function, start, end
+
+
+def send_parts(lines: list[str], line: int) -> list[str]:
     source = "\n".join(lines) + "\n"
     offsets: list[int] = []
     offset = 0
-    for line in lines:
+    for source_line in lines:
         offsets.append(offset)
-        offset += len(line) + 1
+        offset += len(source_line) + 1
 
-    details: list[str] = []
-    for line in callsites:
-        position = source.find("send", offsets[line - 1])
-        opening = source.find("(", position)
-        if position < 0 or opening < 0:
-            fail(f"cannot parse send callsite at line {line}")
-        depth = 0
-        closing = None
-        for index in range(opening, len(source)):
-            if source[index] in "([{":
-                depth += 1
-            elif source[index] in ")]}":
-                depth -= 1
-                if depth == 0:
-                    closing = index
-                    break
-        if closing is None:
-            fail(f"unterminated send callsite at line {line}")
-
-        parts: list[str] = []
-        current = ""
-        nested = 0
-        for character in source[opening + 1 : closing]:
-            if character in "([{":
-                nested += 1
-            elif character in ")]}":
-                nested -= 1
-            if character == "," and nested == 0:
-                if current.strip():
-                    parts.append(current.strip())
-                current = ""
-            else:
-                current += character
-        if current.strip():
-            parts.append(current.strip())
-        if len(parts) < 3:
-            fail(f"send callsite at line {line} has fewer than three arguments")
-
-        function = "?"
-        for source_line in range(line - 1, -1, -1):
-            match = re.search(r"\bfn\s+([A-Za-z0-9_]+)", lines[source_line])
-            if match:
-                function = match.group(1)
+    position = source.find("send", offsets[line - 1])
+    opening = source.find("(", position)
+    if position < 0 or opening < 0:
+        fail(f"cannot parse send callsite at line {line}")
+    depth = 0
+    closing = None
+    for index in range(opening, len(source)):
+        if source[index] in "([{":
+            depth += 1
+        elif source[index] in ")]}":
+            depth -= 1
+            if depth == 0:
+                closing = index
                 break
-        normalize = lambda value: re.sub(r"\s+", " ", value)
-        arity = parts[-1] if re.fullmatch(r"\d+L?", parts[-1]) else "unknown"
+    if closing is None:
+        fail(f"unterminated send callsite at line {line}")
+
+    parts: list[str] = []
+    current = ""
+    nested = 0
+    for character in source[opening + 1 : closing]:
+        if character in "([{":
+            nested += 1
+        elif character in ")]}":
+            nested -= 1
+        if character == "," and nested == 0:
+            if current.strip():
+                parts.append(current.strip())
+            current = ""
+        else:
+            current += character
+    if current.strip():
+        parts.append(current.strip())
+    if len(parts) < 3:
+        fail(f"send callsite at line {line} has fewer than three arguments")
+    return parts
+
+
+def resolved_selector(lines: list[str], line: int, expression: str) -> str:
+    direct = re.search(
+        r'\((?:self\.stack\.api\(\)|self\.api|api)\.intern\)\(c"([^"]*)"\.as_ptr\(\)',
+        expression,
+    )
+    if direct:
+        return direct.group(1)
+    _, start, _ = function_region(lines, line)
+    for index in range(line - 2, start - 1, -1):
+        match = re.search(
+            r"\b(?:let|const)\s+([A-Za-z0-9_]+).*?"
+            r"\((?:self\.stack\.api\(\)|self\.api|api)\.intern\)"
+            r'\(c"([^"]*)"\.as_ptr\(\)',
+            lines[index],
+        )
+        if match and match.group(1) == expression:
+            return match.group(2)
+    return f"dynamic:{expression}"
+
+
+def send_callsite(lines: list[str], line: int) -> dict[str, object]:
+    parts = send_parts(lines, line)
+    function, _, _ = function_region(lines, line)
+    normalize = lambda value: re.sub(r"\s+", " ", value)
+    selector_binding = normalize(parts[1])
+    selector_literal = resolved_selector(lines, line, selector_binding)
+    arity = int(parts[-1].rstrip("L")) if re.fullmatch(r"\d+L?", parts[-1]) else "dynamic"
+    return {
+        "line": line,
+        "function": function,
+        "receiver_expression": normalize(parts[0]),
+        "selector_binding": selector_binding,
+        "selector_literal": selector_literal,
+        "arity": arity,
+    }
+
+
+def send_surface(lines: list[str], callsites: list[int]) -> str:
+    details = []
+    for line in callsites:
+        call = send_callsite(lines, line)
         details.append(
-            f"{line}|{function}|{normalize(parts[0])}|{normalize(parts[1])}|{arity}"
+            f"{line}|{call['function']}|{call['receiver_expression']}|"
+            f"{call['selector_literal']}|{call['arity']}"
         )
     payload = ("\n".join(details) + "\n").encode()
     return hashlib.sha256(payload).hexdigest()
@@ -153,48 +204,102 @@ def main() -> None:
     if missing_owners:
         fail(f"named globals have no owner class: {missing_owners}")
 
-    groups = manifest.get("send_function_groups")
-    if not isinstance(groups, list) or not groups:
-        fail("send_function_groups must be a non-empty array")
-    group_functions: dict[str, str] = {}
-    for group in groups:
-        if not isinstance(group, dict) or not isinstance(group.get("id"), str):
-            fail("every send function group needs an id")
-        functions = group.get("functions")
-        if not isinstance(functions, list) or not functions:
-            fail(f"send function group {group.get('id')!r} has no functions")
+    rows = manifest.get("send_callsite_rows")
+    if not isinstance(rows, list) or not rows:
+        fail("send_callsite_rows must be a non-empty per-callsite array")
+    actual_calls = {call["line"]: call for call in (send_callsite(lines, line) for line in actual_send)}
+    row_lines: set[int] = set()
+    required_fields = (
+        "line",
+        "function",
+        "receiver_expression",
+        "receiver_acquisition",
+        "selector_binding",
+        "selector_literal",
+        "arity",
+        "actual_owner",
+        "native_definition",
+        "effect_class",
+        "pre_post_send_branches",
+        "retained_validation",
+        "test",
+        "disposition",
+    )
+    for row in rows:
+        if not isinstance(row, dict):
+            fail("every send_callsite_rows entry must be an object")
+        for field in required_fields:
+            if field not in row:
+                fail(f"send callsite row is missing {field}")
+        line = row["line"]
+        if not isinstance(line, int) or line not in actual_calls:
+            fail(f"send callsite row has stale/invalid line {line!r}")
+        if line in row_lines:
+            fail(f"send callsite row appears more than once at line {line}")
+        row_lines.add(line)
+        actual = actual_calls[line]
         for field in (
+            "function",
+            "receiver_expression",
+            "selector_binding",
+            "selector_literal",
+            "arity",
+        ):
+            if row[field] != actual[field]:
+                fail(
+                    f"send callsite row {line} disagrees for {field}: "
+                    f"expected={actual[field]!r}, recorded={row[field]!r}"
+                )
+        for field in (
+            "receiver_acquisition",
             "actual_owner",
             "effect_class",
-            "test",
+            "pre_post_send_branches",
             "retained_validation",
+            "test",
             "disposition",
         ):
-            if not isinstance(group.get(field), str) or not group[field].strip():
-                fail(f"send function group {group.get('id')!r} has no {field}")
-        for function in functions:
-            if not isinstance(function, str) or not function:
-                fail(f"send function group {group['id']!r} has an invalid function")
-            if function in group_functions:
-                fail(
-                    f"send function {function} appears in both "
-                    f"{group_functions[function]} and {group['id']}"
-                )
-            group_functions[function] = group["id"]
-
-    actual_functions: set[str] = set()
-    for line in actual_send:
-        for source_line in range(line - 1, -1, -1):
-            match = re.search(r"\bfn\s+([A-Za-z0-9_]+)", lines[source_line])
-            if match:
-                actual_functions.add(match.group(1))
-                break
-    if set(group_functions) != actual_functions:
+            if not isinstance(row[field], str) or not row[field].strip():
+                fail(f"send callsite row {line} has no {field}")
+        definition = row["native_definition"]
+        if not isinstance(definition, dict):
+            fail(f"send callsite row {line} has no native_definition object")
+        path = definition.get("path")
+        selector = definition.get("selector")
+        if not isinstance(path, str) or not path.strip():
+            fail(f"send callsite row {line} has no native definition path")
+        if not isinstance(selector, str) or selector != row["selector_literal"]:
+            fail(f"send callsite row {line} native selector is not resolved")
+        definition_path = REPO / path
+        if not definition_path.is_file():
+            fail(f"send callsite row {line} native definition path does not exist: {path}")
+        if not selector.startswith("dynamic:") and selector not in definition_path.read_text(
+            encoding="utf-8", errors="ignore"
+        ):
+            fail(f"send callsite row {line} native definition does not contain {selector!r}")
+    if row_lines != set(actual_calls):
         fail(
-            "send function review coverage drifted; "
-            f"missing={sorted(actual_functions - set(group_functions))}, "
-            f"stale={sorted(set(group_functions) - actual_functions)}"
+            "send callsite review coverage drifted; "
+            f"missing={sorted(set(actual_calls) - row_lines)}, "
+            f"stale={sorted(row_lines - set(actual_calls))}"
         )
+
+    seam = manifest.get("z2_1_seam")
+    if not isinstance(seam, dict) or seam.get("status") not in {"candidate", "none"}:
+        fail("z2_1_seam must explicitly nominate a candidate or conclude none exists")
+    for field in ("status", "reviewed_scope", "rationale", "next_action"):
+        if not isinstance(seam.get(field), str) or not seam[field].strip():
+            fail(f"z2_1_seam has no {field}")
+    if seam["status"] == "candidate":
+        if not isinstance(seam.get("line"), int) or seam["line"] not in actual_calls:
+            fail("z2_1_seam candidate must name an exact send callsite line")
+        if not isinstance(seam.get("selector"), str) or not seam["selector"].strip():
+            fail("z2_1_seam candidate must name a selector")
+    else:
+        if "line" in seam or "selector" in seam:
+            fail("z2_1_seam status=none cannot carry a candidate line/selector")
+
+    actual_functions = {call["function"] for call in actual_calls.values()}
 
     print(
         "rust-host-message-owner-inventory: ok "
