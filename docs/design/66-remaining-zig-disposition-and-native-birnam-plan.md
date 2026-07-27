@@ -652,6 +652,25 @@ This closes the independent-prefix/load-receipt sub-step. The Z3 exit gate
 still requires the source/bootstrap, project, relocation, image, wire,
 generated-C, old-client, and release-bundle fixture legs on these prefixes.
 
+### Z3.5 execution record — archive fixture matrix (2026-07-27)
+
+Commit `d2045de` extends the archive smoke across all three prefixes. Each
+clean production/rollback archive runs source evaluation, Rust-host or
+Zig-host project check/build/run/install/test, LSP, image save, Isolate wire
+fixtures, and a separate-process Rust-TCC generated-C artifact activation.
+The accepted receipt is:
+
+```text
+z3-archive: production-b source/project/lsp/image/wire/generated-C fixtures=ok
+z3-archive: rollback source/project/lsp/image/wire/generated-C fixtures=ok
+z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+```
+
+The remaining Z3 fixture work is specifically the checked-in old image/native
+client/generated-C compatibility corpus and the release-bundle/no-ambient-
+fallback assertion; the ordinary generated-C and runtime wire legs are now
+covered on all three prefixes.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
