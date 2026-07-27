@@ -685,6 +685,28 @@ The final Z3 release-bundle leg is still open: package a production bundle
 without the oracle, package the operator-selected rollback bundle, and prove
 both from unrelated cwd/loader environments with no ambient path fallback.
 
+### Z3.7 execution record — release bundles and relocated production smoke (2026-07-27)
+
+Commits `6493b2d` and `0328707` close the release-bundle leg. `scripts/dist.sh`
+now selects `-Ddistribution=production`, rejects oracle and `_zig` artifacts
+in the staged output, ad-hoc signs the production-only bundle, and runs the
+relocated `BIRNAM_DISTRIBUTION=production` install smoke from an unrelated
+working directory. The production image loader no longer assumes that the
+optional Zig Image compatibility dylib exists; when it is absent, Rust Image
+continues through its source-recovery path. Explicit Zig retry remains
+available when a rollback fixture is actually installed.
+
+The real release command passed:
+
+```text
+install-smoke: relocated compiled closure, tools, projects, images, isolates, and diagnostics passed
+==> done: zig-out/dist/birnam-0.11.0-aarch64-macos.tar.gz
+```
+
+The archive smoke also passes the production and rollback release-bundle
+checks, including `DYLD_PRINT_LIBRARIES` traces and no ambient-path fallback.
+The Z3 exit gate is now reduced to the post-change strict R6 acceptance run.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
