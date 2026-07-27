@@ -324,6 +324,14 @@ Codegen, Prelude, Collection, Error, Isolate, Relational, Alien, and Image.
 Each named provider is its own slice; adjacent names are not a combined commit
 or rollback decision.
 
+### P2.1 Lang candidate checkpoint
+
+The Lang candidate is evidence-only: Rust Lang is already the canonical
+provider, so this checkpoint changes no provider selection, ABI, fixture, or
+rollback artifact. The exact commit hash is captured here before running the
+archive and focused gates; the following receipt commit records whether Lang
+is retain-ready or blocked.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
