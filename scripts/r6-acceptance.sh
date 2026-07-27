@@ -61,6 +61,11 @@ latest_tests=(
   test-rust-prelude-io
   test-rust-collection
   test-rust-error
+  test-remaining-zig-inventory
+  test-remaining-zig-boundary
+  test-rust-host-message-owner-inventory
+  test-rust-artifact-authority
+  test-rust-artifact-preflight
 )
 # Accepted on 2026-07-26 after the Rust Image-to-Rust Codegen mapped-unit proof,
 # Rust-owned durable-generation bootstrap, explicit Rust Image writer-authority
@@ -75,7 +80,7 @@ latest_tests=(
 # the mixed dynamic Rust Image shell remains 2 passing tests, and each isolated
 # Image proof runs as one test process. The publication change is
 # explicit-authority-only; no benchmark or fixture exception is widened here.
-# Keep these pins centralized so adding or removing a test cannot silently widen R6.
+# Keep these pins centralized so adding or removing a target cannot silently widen R6.
 readonly expected_focused_tests=99
 readonly expected_rust_image_shell_tests=2
 readonly expected_rust_image_bootstrap_tests=1
@@ -88,7 +93,7 @@ readonly expected_rust_image_rejection_tests=1
 # Rust is now the canonical host. Its explicit installed Zig oracle is a
 # required rollback/compatibility artifact, adding one deterministic install
 # step to the focused replacement graph and to the optional strict verify.
-readonly expected_focused_steps=173
+readonly expected_focused_steps=183
 readonly expected_verify_steps=305
 readonly expected_verify_tests=516
 readonly expected_verify_total_tests=522
@@ -399,6 +404,30 @@ END { print count + 0 }
 ' "$functional")
 [ "$rust_error_test_count" -eq 2 ] || {
   echo "r6-acceptance: Rust Error preload-order matrix no longer has 2 passing tests" >&2
+  exit 1
+}
+
+# P0/P1 residue and authority checks are part of the current replacement gate.
+# They intentionally contribute build steps, not runtime test counts: each
+# receipt is asserted explicitly so a target cannot pass merely by exiting 0.
+grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14' "$functional" || {
+  echo "r6-acceptance: remaining-Zig inventory receipt was not emitted" >&2
+  exit 1
+}
+grep -Fqx 'remaining-zig-boundary: rust_receipts=14 zig_oracle_receipts=14 canonical_load_trace=ok oracle_load_trace=ok policy_authority=ok' "$functional" || {
+  echo "r6-acceptance: remaining-Zig authority-boundary receipt was not emitted" >&2
+  exit 1
+}
+grep -Fqx 'rust-host-message-owner-inventory: ok send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56 disposition=read-only' "$functional" || {
+  echo "r6-acceptance: Rust host-message owner inventory receipt was not emitted" >&2
+  exit 1
+}
+grep -Fqx 'rust-artifact-authority: codec=pointer-free projection=single-module-init host=preflight-before-activation policy=native-loadArtifact' "$functional" || {
+  echo "r6-acceptance: Rust artifact-authority receipt was not emitted" >&2
+  exit 1
+}
+grep -Fqx 'rust-artifact-preflight: shared eight-case dependency, identity, format, path, native, and real-sentinel corpus passed (debug)' "$functional" || {
+  echo "r6-acceptance: Rust artifact-preflight receipt was not emitted" >&2
   exit 1
 }
 
