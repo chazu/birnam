@@ -277,6 +277,16 @@ pub fn build(b: *std.Build) void {
     );
     test_distribution_selection_step.dependOn(&distribution_selection_smoke.step);
 
+    const z3_archive_distribution_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/z3-archive-distribution-smoke.sh",
+    });
+    const test_z3_archive_distribution_step = b.step(
+        "test-z3-archive-distribution",
+        "Build two clean production archives and one full-Zig rollback archive",
+    );
+    test_z3_archive_distribution_step.dependOn(&z3_archive_distribution_smoke.step);
+
     const rust_host_zig_helper_boundary = b.addSystemCommand(&.{
         "python3",
         "scripts/check-rust-host-zig-helper-boundary.py",
