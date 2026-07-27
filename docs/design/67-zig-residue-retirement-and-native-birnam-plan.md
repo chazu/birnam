@@ -564,6 +564,13 @@ Rust Error provider, explicit Zig Error oracle, and complete full-Zig rollback
 vector remain installed; no provider deletion, mixed-vector recovery, or
 benchmark allowance change is authorized by this receipt.
 
+### P2.7 Isolate candidate checkpoint
+
+The Isolate candidate is evidence-only: Rust Isolate is already the canonical
+provider, while the canonical Zig Isolate implementation and its complete
+rollback vector remain unchanged. This checkpoint records the exact hash before
+the wire-v1, worker-control-plane, malformed-payload, and process smoke gates.
+
 For each provider, use this six-step transaction. It is a protocol, not a
 promise of six commits; commit only material changes, and never combine two
 providers:
