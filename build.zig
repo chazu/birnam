@@ -235,6 +235,20 @@ pub fn build(b: *std.Build) void {
     test_rust_host_zig_helper_boundary_step.dependOn(&rust_host_zig_helper_boundary.step);
     test_step.dependOn(&rust_host_zig_helper_boundary.step);
 
+    // Design 66 Z1.1: keep the Rust and Zig executable-relative resource
+    // observations covered by one explicit parity target. The target only
+    // runs pure unit tests; provider selection remains outside this seam.
+    const rust_resource_resolution_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-resource-resolution-smoke.sh",
+    });
+    const test_rust_resource_resolution_step = b.step(
+        "test-rust-resource-resolution",
+        "Compare Rust and Zig runtime resource-resolution observations",
+    );
+    test_rust_resource_resolution_step.dependOn(&rust_resource_resolution_smoke.step);
+    test_step.dependOn(&rust_resource_resolution_smoke.step);
+
     const remaining_rung_clean_prefix = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-rung-clean-prefix.sh",
