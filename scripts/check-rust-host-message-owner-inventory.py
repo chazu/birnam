@@ -84,10 +84,48 @@ def main() -> None:
     if missing_owners:
         fail(f"named globals have no owner class: {missing_owners}")
 
+    groups = manifest.get("send_function_groups")
+    if not isinstance(groups, list) or not groups:
+        fail("send_function_groups must be a non-empty array")
+    group_functions: dict[str, str] = {}
+    for group in groups:
+        if not isinstance(group, dict) or not isinstance(group.get("id"), str):
+            fail("every send function group needs an id")
+        functions = group.get("functions")
+        if not isinstance(functions, list) or not functions:
+            fail(f"send function group {group.get('id')!r} has no functions")
+        for field in ("actual_owner", "effect_class", "test", "disposition"):
+            if not isinstance(group.get(field), str) or not group[field].strip():
+                fail(f"send function group {group.get('id')!r} has no {field}")
+        for function in functions:
+            if not isinstance(function, str) or not function:
+                fail(f"send function group {group['id']!r} has an invalid function")
+            if function in group_functions:
+                fail(
+                    f"send function {function} appears in both "
+                    f"{group_functions[function]} and {group['id']}"
+                )
+            group_functions[function] = group["id"]
+
+    actual_functions: set[str] = set()
+    for line in actual_send:
+        for source_line in range(line - 1, -1, -1):
+            match = re.search(r"\bfn\s+([A-Za-z0-9_]+)", lines[source_line])
+            if match:
+                actual_functions.add(match.group(1))
+                break
+    if set(group_functions) != actual_functions:
+        fail(
+            "send function review coverage drifted; "
+            f"missing={sorted(actual_functions - set(group_functions))}, "
+            f"stale={sorted(set(group_functions) - actual_functions)}"
+        )
+
     print(
         "rust-host-message-owner-inventory: ok "
         f"send_calls={len(actual_send)} named_global_lookups={len(actual_globals)} "
-        f"owner_classes={len(owners)} disposition=read-only"
+        f"owner_classes={len(owners)} reviewed_functions={len(actual_functions)} "
+        "disposition=read-only"
     )
 
 

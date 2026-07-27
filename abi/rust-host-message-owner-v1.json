@@ -54,6 +54,48 @@
     "DispatchGeneration": "native-birnam:src/id/isolate.birnam",
     "EvolutionIntent": "native-birnam:src/id/compiled-unit.birnam"
   },
+  "send_function_groups": [
+    {
+      "id": "source-observation",
+      "functions": ["add", "at", "decode_project_artifact_plan", "decode_project_artifact_record", "decode_project_build_record", "decode_project_resolution", "decode_project_source_metadata", "dependencies", "dependency_vector", "error_diagnostic", "global_named", "modules", "native_os_string_vector", "new_map", "new_vector", "order_from_manager", "put", "requested_names", "send_is_error", "strings", "wrapped"],
+      "actual_owner": "runtime-object-or-native-birnam",
+      "effect_class": "observation-or-validation",
+      "test": "project/check and host conformance suites",
+      "disposition": "retain; no policy move"
+    },
+    {
+      "id": "project-policy",
+      "functions": ["check_project", "parse_project_manifest", "plan_project_artifacts", "record_project_artifacts", "resolve_project_snapshot", "validate_project_build"],
+      "actual_owner": "native-birnam-policy",
+      "effect_class": "policy-orchestration",
+      "test": "project-check and project-build suites",
+      "disposition": "retain native policy; review sends only"
+    },
+    {
+      "id": "codegen-observation",
+      "functions": ["compile_module", "compile_project_artifact", "compose_project_sources", "eval_script", "index_project_source", "observe_composed_project_source", "observe_project_source", "record_and_eval_source"],
+      "actual_owner": "rust-dynamic:birnam-codegen",
+      "effect_class": "observation-and-publication",
+      "test": "Codegen, project, and image suites",
+      "disposition": "retain Rust provider; no policy duplication"
+    },
+    {
+      "id": "runtime-orchestration",
+      "functions": ["activate_artifact", "activate_project_build", "bootstrap_self_hosted", "load_host_runtime_module", "load_image", "load_runtime_module", "load_self_hosted", "mark_module_loaded", "refresh_module_manager", "replay_worker_methods", "run_worker_image", "start"],
+      "actual_owner": "host-orchestration",
+      "effect_class": "activation-and-lifecycle",
+      "test": "install, image, worker, and host integration suites",
+      "disposition": "retain orchestration; no provider change"
+    },
+    {
+      "id": "operator-orchestration",
+      "functions": ["finish_repl", "install_project_bridge", "repl_step", "run_cli", "run_project_test_source", "run_project_with_tool_version", "run_repl", "serve_socket", "start_repl_mode"],
+      "actual_owner": "native-birnam-orchestration",
+      "effect_class": "operator-and-io",
+      "test": "CLI, REPL, project, and LSP suites",
+      "disposition": "retain; policy remains in native modules"
+    }
+  ],
   "review_fields": [
     "rust_callsite",
     "receiver_acquisition",
