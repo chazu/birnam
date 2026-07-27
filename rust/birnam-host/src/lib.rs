@@ -8440,6 +8440,14 @@ mod tests {
                 field: "path"
             })
         ));
+        plan.artifacts[0].path = "/outside/libbirnam_app.dylib".to_owned();
+        assert!(matches!(
+            validate_project_artifact_plan(&plan, &request),
+            Err(ProjectArtifactPlanValidationError::ArtifactMismatch {
+                index: 0,
+                field: "path"
+            })
+        ));
     }
 
     #[test]
@@ -8464,6 +8472,53 @@ mod tests {
             validate_project_compiled_artifact(&wrong_revision, &bytes),
             Err(ProjectCompiledArtifactValidationError::RevisionDigestMismatch)
         ));
+
+        let mut wrong_source = module.clone();
+        wrong_source.source_digest = "changed".to_owned();
+        assert!(matches!(
+            validate_project_compiled_artifact(&wrong_source, &bytes),
+            Err(ProjectCompiledArtifactValidationError::SourceDigestMismatch)
+        ));
+    }
+
+    #[test]
+    fn build_record_observation_replaces_stale_receipt_checksum() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-build-record-stale-receipt-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(root.join("lib")).expect("receipt fixture creates");
+        std::fs::write(root.join("lib/app.dylib"), b"current-bytes")
+            .expect("current artifact writes");
+        let record = ProjectBuildRecord {
+            project_root: "/tmp/project".to_owned(),
+            target: "host".to_owned(),
+            profile: "debug".to_owned(),
+            tool_version: "dev".to_owned(),
+            artifact_abi: "birnam-artifact-v1".to_owned(),
+            resolution_digest: "resolution".to_owned(),
+            built_at: "now".to_owned(),
+            artifacts: vec![ProjectPreviousArtifact {
+                name: "app".to_owned(),
+                path: "lib/app.dylib".to_owned(),
+                source: "app.birnam".to_owned(),
+                sources: vec!["app.birnam".to_owned()],
+                source_digest: "source".to_owned(),
+                revision_digest: "revision".to_owned(),
+                requires: Vec::new(),
+                checksum: "stale-receipt".to_owned(),
+                observed_checksum: None,
+            }],
+            native: Vec::new(),
+        };
+        let observed = observe_project_build_record(&root, record).expect("receipt observes");
+        let actual = observed.artifacts[0]
+            .observed_checksum
+            .as_deref()
+            .expect("observed checksum recorded");
+        assert_ne!(actual, "stale-receipt");
+        assert_eq!(actual, String::from_utf8_lossy(&sha256_hex(b"current-bytes")));
+        std::fs::remove_dir_all(root).expect("receipt fixture removes");
     }
 
     #[test]
