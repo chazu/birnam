@@ -2,9 +2,14 @@
 set -euo pipefail
 
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"
+bin="$(cd "$(dirname "$bin")" && pwd -P)/$(basename "$bin")"
 tmp="$(mktemp -d /tmp/birnam-lsp-project.XXXXXX)"
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
+
+# LSP must resolve its installed resources from the executable, not from the
+# caller's checkout cwd or inherited test overrides.
+unset BIRNAM_LIB_DIR BIRNAM_ID_DYLIB BIRNAM_RUST_WORKSPACE_DIR
 
 mkdir -p "$tmp/app/src" "$tmp/other/src" "$tmp/dep/src"
 cat >"$tmp/app/birnam.toml" <<'EOF'
@@ -49,6 +54,8 @@ export DEP_URI="file://$tmp/dep/src/dep.birnam"
 export BIRNAM_LSP_BIN="$bin"
 export BIRNAM_LSP_OUT="$tmp/out"
 export BIRNAM_LSP_ERR="$tmp/err"
+(
+cd /tmp
 perl -e '
 use bytes;
 use IPC::Open3;
@@ -150,6 +157,7 @@ print {$err_out} $stderr if defined $stderr;
 close $err_out;
 exit(($? >> 8) == 0 ? 0 : 1);
 '
+)
 
 grep -q '"id":1' "$tmp/out"
 grep -q '"code":"moduleNotFound"' "$tmp/out"
