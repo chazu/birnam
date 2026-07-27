@@ -707,6 +707,28 @@ The archive smoke also passes the production and rollback release-bundle
 checks, including `DYLD_PRINT_LIBRARIES` traces and no ambient-path fallback.
 The Z3 exit gate is now reduced to the post-change strict R6 acceptance run.
 
+### Z3.8 execution record — post-change strict R6 acceptance (2026-07-27)
+
+Commit `a3cb4c8` makes the relocated install smoke pipe-safe: command output is
+captured before matching, so Rust cannot receive a false `SIGABRT` from a
+consumer that exits after the first matching line. Commit `bc70701` refreshes
+the Z0.1 and Z2.0 drift receipts after the production image-loader change and
+keys the two exceptional owner-inventory cases by function/selector rather
+than source line.
+
+The final strict command passed:
+
+```text
+mise exec -- env BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
+Build Summary: 305/305 steps succeeded; 516/522 tests passed; 6 skipped
+r6-acceptance: PASS
+  accepted only for this snapshot: query.aggregate +5.8%, compile.stage1-stdlib +11.9%
+```
+
+This closes the Z3 exit gate. Production and rollback bundles remain separate,
+all three clean archive prefixes have full fixture receipts, and the strict
+R6 comparator still admits only the two pre-recorded tradeoffs.
+
 ## 7. Phase Z4 — rung fixture retirement decisions
 
 This is a sequence of separately reviewed decisions, not an automatic delete.
