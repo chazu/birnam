@@ -350,6 +350,11 @@ C2.1 Image authority checkpoint (2026-07-26):
   `test-isolate-process`, `test-project-check`, and `test-install`. Those
   failures remain visible continuation work; this checkpoint accepts only the
   replacement-floor R6 evidence and does not claim C2 host completion.
+- The Rust isolate diagnostic seam now preserves `WorkerStartupError` as the
+  frozen `birnam.boot-error.v1` record and decodes the remote kind/message into
+  the host `IsolateFailure`. The process-isolate smoke remains blocked at the
+  separate fresh-image receiver/vtable recovery invariant; no selector guard
+  was weakened to make that smoke appear green.
 
 ## 7. Phase C2 — image and host integration
 
