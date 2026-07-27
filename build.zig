@@ -262,6 +262,17 @@ pub fn build(b: *std.Build) void {
     test_rust_artifact_authority_step.dependOn(&rust_artifact_authority_check.step);
     test_step.dependOn(&rust_artifact_authority_check.step);
 
+    const rust_artifact_preflight_smoke = b.addSystemCommand(&.{
+        "bash",
+        "scripts/rust-artifact-preflight-smoke.sh",
+    });
+    const test_rust_artifact_preflight_step = b.step(
+        "test-rust-artifact-preflight",
+        "Run the Rust host artifact-preflight negative corpus",
+    );
+    test_rust_artifact_preflight_step.dependOn(&rust_artifact_preflight_smoke.step);
+    test_step.dependOn(&rust_artifact_preflight_smoke.step);
+
     const remaining_rung_clean_prefix = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-rung-clean-prefix.sh",

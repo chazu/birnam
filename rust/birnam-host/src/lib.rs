@@ -8025,9 +8025,13 @@ mod tests {
         }
     }
 
-    fn artifact_fixture(identity: &[u8], requires: &[&[u8]]) -> Vec<u8> {
+    fn artifact_fixture_with_kind(
+        kind: &[u8],
+        identity: &[u8],
+        requires: &[&[u8]],
+    ) -> Vec<u8> {
         let mut payload = Vec::new();
-        artifact_field(b"module", &mut payload);
+        artifact_field(kind, &mut payload);
         artifact_field(identity, &mut payload);
         artifact_field(birnam_artifact::ABI, &mut payload);
         artifact_field(birnam_artifact::TARGET, &mut payload);
@@ -8041,6 +8045,10 @@ mod tests {
         output.extend_from_slice(&(payload.len() as u32).to_le_bytes());
         output.extend_from_slice(&payload);
         output
+    }
+
+    fn artifact_fixture(identity: &[u8], requires: &[&[u8]]) -> Vec<u8> {
+        artifact_fixture_with_kind(b"module", identity, requires)
     }
 
     #[test]
@@ -9206,6 +9214,26 @@ mod tests {
         assert!(matches!(
             preflight_artifact(&root_path, Some(b"root")),
             Err(ArtifactPreflightError::Read { .. })
+        ));
+        std::fs::remove_dir_all(&root).expect("fixture directory removes");
+    }
+
+    #[test]
+    fn artifact_preflight_rejects_wrong_kind_before_dependency_walk() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-preflight-kind-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture directory creates");
+        let root_path = root.join("libbirnam_root.dylib");
+        std::fs::write(
+            &root_path,
+            artifact_fixture_with_kind(b"image", b"root", &[b"missing"]),
+        )
+        .expect("root fixture writes");
+        assert!(matches!(
+            preflight_artifact(&root_path, Some(b"root")),
+            Err(ArtifactPreflightError::KindMismatch { .. })
         ));
         std::fs::remove_dir_all(&root).expect("fixture directory removes");
     }
