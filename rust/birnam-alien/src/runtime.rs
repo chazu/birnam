@@ -103,6 +103,204 @@ unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
     Some(unsafe { core::slice::from_raw_parts(pointer, length) }.to_vec())
 }
 
+unsafe fn symbol_name(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
+    if value.is_null() {
+        return None;
+    }
+    let pointer = unsafe { (api.symbolName)(value) };
+    if pointer.is_null() {
+        return None;
+    }
+    Some(
+        unsafe { std::ffi::CStr::from_ptr(pointer) }
+            .to_bytes()
+            .to_vec(),
+    )
+}
+
+unsafe fn store_entity(api: &IdApi, name: &[u8]) -> Option<(Oop, Oop)> {
+    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    if store.is_null() || store == api.nilObj {
+        return None;
+    }
+    Some((store, unsafe { intern(api, name) }))
+}
+
+unsafe fn find_alien_source(api: &IdApi, store: Oop, entity: Oop, source: &[u8]) -> bool {
+    let count = unsafe {
+        (api.send)(
+            store,
+            intern(api, b"attrCount:\0"),
+            [entity].as_ptr(),
+            1,
+        )
+    };
+    if unsafe { (api.isSmallInt)(count) } == 0 {
+        return false;
+    }
+    let count = unsafe { (api.smallIntValue)(count) };
+    for index in 0..count {
+        let attr = unsafe {
+            (api.send)(
+                store,
+                intern(api, b"attrAt:index:\0"),
+                [entity, (api.mkSmallInt)(index)].as_ptr(),
+                2,
+            )
+        };
+        let value = unsafe {
+            (api.send)(
+                store,
+                intern(api, b"currentValue:attr:\0"),
+                [entity, attr].as_ptr(),
+                2,
+            )
+        };
+        if unsafe { string_bytes(api, value) }.as_deref() == Some(source) {
+            return true;
+        }
+    }
+    false
+}
+
+unsafe fn record_alien_source(api: &IdApi, source: &[u8]) {
+    let Some((store, entity)) = (unsafe { store_entity(api, b"__aliens__\0") }) else {
+        return;
+    };
+    if unsafe { find_alien_source(api, store, entity, source) } {
+        return;
+    }
+    let count = unsafe {
+        (api.send)(
+            store,
+            intern(api, b"attrCount:\0"),
+            [entity].as_ptr(),
+            1,
+        )
+    };
+    if unsafe { (api.isSmallInt)(count) } == 0 {
+        return;
+    }
+    let count = unsafe { (api.smallIntValue)(count) };
+    let mut next = 0i64;
+    for index in 0..count {
+        let attr = unsafe {
+            (api.send)(
+                store,
+                intern(api, b"attrAt:index:\0"),
+                [entity, (api.mkSmallInt)(index)].as_ptr(),
+                2,
+            )
+        };
+        let Some(name) = (unsafe { symbol_name(api, attr) }) else {
+            continue;
+        };
+        let Some(suffix) = name.strip_prefix(b"__alien_") else {
+            continue;
+        };
+        if let Some(index) = core::str::from_utf8(suffix)
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+        {
+            next = next.max(index + 1);
+        }
+    }
+    let key = format!("__alien_{next}");
+    let key = unsafe { intern(api, [key.as_bytes(), b"\0"].concat().as_slice()) };
+    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    unsafe {
+        (api.send)(
+            store,
+            intern(api, b"assert:attr:value:\0"),
+            [entity, key, source_object].as_ptr(),
+            3,
+        );
+    }
+}
+
+unsafe fn global_name(api: &IdApi, target: Oop) -> Option<Vec<u8>> {
+    let exported = unsafe { (api.exportedNameOf)(target) };
+    if !exported.is_null() {
+        return Some(
+            unsafe { std::ffi::CStr::from_ptr(exported) }
+                .to_bytes()
+                .to_vec(),
+        );
+    }
+    let (store, globals) = unsafe { store_entity(api, b"__globals__\0") }?;
+    let count = unsafe {
+        (api.send)(
+            store,
+            intern(api, b"attrCount:\0"),
+            [globals].as_ptr(),
+            1,
+        )
+    };
+    if unsafe { (api.isSmallInt)(count) } == 0 {
+        return None;
+    }
+    let count = unsafe { (api.smallIntValue)(count) };
+    for index in 0..count {
+        let attr = unsafe {
+            (api.send)(
+                store,
+                intern(api, b"attrAt:index:\0"),
+                [globals, (api.mkSmallInt)(index)].as_ptr(),
+                2,
+            )
+        };
+        let value = unsafe {
+            (api.send)(
+                store,
+                intern(api, b"currentValue:attr:\0"),
+                [globals, attr].as_ptr(),
+                2,
+            )
+        };
+        if value == target {
+            return unsafe { symbol_name(api, attr) };
+        }
+    }
+    None
+}
+
+unsafe fn record_alien_wrap(api: &IdApi, arguments: &[Oop]) {
+    if arguments.len() != 4 {
+        return;
+    }
+    let Some(target) = (unsafe { global_name(api, arguments[3]) }) else {
+        return;
+    };
+    let Some(function) = (unsafe { string_bytes(api, arguments[0]) }) else {
+        return;
+    };
+    let Some(signature) = (unsafe { string_bytes(api, arguments[1]) }) else {
+        return;
+    };
+    let Some(selector) = (unsafe { symbol_name(api, arguments[2]) }) else {
+        return;
+    };
+    if function.contains(&b'"') || signature.contains(&b'"') {
+        return;
+    }
+    let mut source = Vec::with_capacity(function.len() + signature.len() + target.len() + selector.len() + 48);
+    source.extend_from_slice(b"[Alien wrap: \"");
+    source.extend_from_slice(&function);
+    source.extend_from_slice(b"\" signature: \"");
+    source.extend_from_slice(&signature);
+    source.extend_from_slice(b"\" as: #");
+    source.extend_from_slice(&selector);
+    source.extend_from_slice(b" on: ");
+    source.extend_from_slice(&target);
+    source.push(b']');
+    unsafe { record_alien_source(api, &source) };
+}
+
+unsafe fn is_error_object(api: &IdApi, value: Oop) -> bool {
+    let error_vt = unsafe { (api.import)(c"ErrorVt".as_ptr()) };
+    !error_vt.is_null() && unsafe { (api.vtableOf)(value) } == error_vt
+}
+
 unsafe fn make_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     let factory = unsafe { (api.import)(c"Error".as_ptr()) };
     if factory.is_null() {
@@ -497,6 +695,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
         }
         (arguments[0], arguments[1], arguments[2], arguments[3])
     };
+    let record_arguments = [function_object, signature_object, selector, target];
     let Some(function_name) = (unsafe { string_bytes(api, function_object) }) else {
         return api.nilObj;
     };
@@ -629,6 +828,9 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
     }
     if installed != api.nilObj {
         LIVE_WRAPPERS.fetch_add(1, Ordering::Relaxed);
+        if !unsafe { is_error_object(api, installed) } {
+            unsafe { record_alien_wrap(api, &record_arguments) };
+        }
     }
     installed
 }
