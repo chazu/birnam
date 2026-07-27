@@ -1,7 +1,8 @@
 # Remaining Zig disposition and native-Birnam migration plan
 
-Status: **reviewed GO; Z0 is R6-accepted, Z1 diagnostics are complete, and
-the strict compatibility audit is green** (2026-07-27). Z1–Z3
+Status: **reviewed GO for the residue map and authority boundaries; Z0 is
+R6-accepted, while Z1 evidence closure is still in progress** (2026-07-27).
+The strict compatibility audit is green, but Z1–Z3
 authority/distribution changes remain gated on the explicit strict gate as
 specified below.
 
@@ -290,16 +291,22 @@ The parity closure then found and fixed one typed-diagnostic drift. A missing
 Rust sibling previously surfaced as `artifactUnavailable`, while the Zig
 oracle's preflight contract is `artifactDependencyInvalid`; `26290af` pinned
 the red case and `7796f2e` normalized only that recursive dependency error.
-`c4ee447` expands the shared-byte Rust corpus to ten focused cases: the seven
-Zig behaviors (path-only root, supplied identity mismatch, wrong kind before
-walk, sibling identity mismatch, missing sibling, ordered valid closure, and
-inert abort-sentinel bytes) plus malformed bytes, duplicate descriptors, path
-escape, and missing native requirements. The corpus passes in Debug and
-ReleaseSafe/release; the valid path returns an ordered permission plan and no
-activation call. `752e948` adds a frozen-image regression that changes the
-image/code generation authority together and proves stale code is not mapped
-(`mappedCode == false`) until recorded source replay is requested. No provider,
-schema, activation, Store, or MOP authority changed in this closure.
+This is a separately diagnosed diagnostic-normalization fix, not an authority
+change. `96e555c` adds one checked-in inert descriptor-byte corpus consumed by
+both Rust and Zig. Its seven common rows cover path-only root, supplied
+identity mismatch, wrong kind before walk, sibling identity mismatch, missing
+sibling, ordered valid closure, and the real aborting sentinel dylib; both
+processes report normalized typed outcomes, and the nested wrong-kind case
+preserves `artifactKindMismatch`. The corpus also keeps the existing malformed,
+duplicate, path-escape, and native-requirement Rust cases. `5991f8f` records
+source/revision digest rejection, absolute install-root rejection, stale
+receipt replacement, and the failed-preflight existing-target assertion. The
+valid path returns an ordered permission plan and no activation call; the
+failed path leaves its target and Store/Module boundary unchanged. `752e948`
+adds a frozen-image regression that changes the image/code generation authority
+together and proves stale code is not mapped (`mappedCode == false`) until
+recorded source replay is requested. No provider, schema, activation, Store,
+or MOP authority changed in this closure.
 
 ## 4. Phase Z1 — Rust host and artifact closure
 
@@ -340,10 +347,14 @@ the Zig oracle build intact.
    directly. No crate may silently add a second `module_init` authority.
 3. Port negative cases first: wrong kind, identity/digest mismatch, missing
    dependency, incomplete closure, malformed bytes, wrong install root,
-   duplicate providers, and aborting initializer unreachable during preflight.
-4. Require the same typed failure kind/detail and atomic no-publication result
-   from Rust and Zig oracle processes. Keep `artifact_preflight_sentinel.zig`
-   as the explicit abort/unreachable fixture.
+   duplicate providers, stale build receipts, and aborting initializer
+   unreachable during preflight.
+4. Require the same typed failure kind/detail and failure ordering from Rust
+   and Zig oracle processes using the checked-in fixture bytes. Run the real
+   `artifact_preflight_sentinel.zig` dylib through both inert preflight paths,
+   and pair a failed preflight over an existing target with a zero-activation
+   assertion and unchanged target/Store/MOP boundary. Keep the sentinel as the
+   explicit abort/unreachable fixture.
 5. Add Debug/ReleaseSafe tests for decoy cwd, relocated prefixes, stale
    receipts, and a failed preflight over an existing target path.
 
@@ -376,40 +387,71 @@ future behavior or ownership change:
 BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
 ```
 
-to pass. The current Z1.3 parity closure remains diagnostic/test-only; no
-authority mutation is implied until its exit matrix is complete and a separate
-review identifies a concrete gap.
+to pass. The current Z1.3 parity closure has no authority mutation; one
+separately diagnosed diagnostic-normalization fix is recorded above. No owner
+change is implied until its exit matrix is complete and a separate review
+identifies a concrete gap.
 
 From a clean archive and unrelated cwd, Rust host project/check/build/run/
 install/test/LSP and artifact preflight pass with no Zig helper loaded. Rust
 and Zig oracle negative corpora must agree on the typed matrix; the MOP/policy
 fixture remains single-owned; source-free relocation and strict path checks
-pass. The Zig oracle still builds explicitly. Z1 remains open until this
-cross-floor matrix is exercised from a clean archive/relocated prefix and the
-strict gate is rerun after the closure commits.
+pass. The Zig oracle still builds explicitly. Z1 remains open until the named
+archive acceptance below is exercised from a clean archive/relocated prefix
+and the strict gate is rerun after the closure commits.
+
+The required archive acceptance is:
+
+```text
+(cd "$scratch" && BIRNAM_HOST_IMPL=rust BIRNAM_CODEGEN_IMPL=rust \
+  bash scripts/source-bootstrap-smoke.sh)
+```
+
+The result record must name the archive commit, Rust selections,
+source/bootstrap and relocated-prefix results, the shared preflight matrix in
+Debug and ReleaseSafe, and the remaining explicit Zig-oracle edges. A green
+repo-local `zig build verify` does not substitute for this archive boundary.
 
 ## 5. Phase Z2 — native-Birnam policy closure
 
-Z2 proves that policy remains in `.birnam` while Rust owns observation.
+Z2 proves that policy remains in `.birnam` while Rust owns observation. Split
+the diagnostic inventory from any later policy movement.
 
-1. Inventory every message sent by Rust host to `Module`, `Config`, `Toml`,
-   `Project`, `CompiledUnit`, `ProjectPolicy`, and `stdlib`. For each message,
-   name its native-Birnam definition and its Rust observation adapter.
-2. Remove only Rust branches that independently choose providers, ordering,
+### Z2.0 read-only message/owner inventory
+
+1. Inventory every Rust-host `IdApi.send` call and every named global lookup,
+   not only `Module`, `Config`, `Toml`, `Project`, `CompiledUnit`,
+   `ProjectPolicy`, and `stdlib`. Include Codegen, System, Alien, Globals,
+   Test, Cli, Repl, DispatchGeneration, EvolutionIntent, collection/result
+   objects, and any receiver acquired indirectly.
+2. For each row record the Rust callsite, receiver acquisition, selector/arity,
+   actual owner (native `.birnam`, dynamic rung, or data object), native
+   definition file/selector where applicable, effect class (observation,
+   validation, IO/FFI, orchestration, policy, or activation/publication),
+   pre/post-send Rust branches, retained validation, test, and proposed
+   disposition.
+3. Add a fail-closed checker so a new Rust send/global lookup cannot land
+   without an inventory row. Z2.0 makes no runtime removals or additions;
+   duplicate policy discovery becomes a named reviewed seam and a stop
+   condition.
+
+### Z2.1 separately reviewed policy seams
+
+1. Remove only Rust branches that independently choose providers, ordering,
    compile/reuse, or publication outcomes already owned by `.birnam`. Retain
    boundary validation of policy results: shape/vocabulary, path containment,
    target/ABI, source and revision digests, checksums, and atomic-publication
    preconditions. If a missing policy operation is discovered, add it to the
    appropriate `.birnam` module and test it through ordinary Codegen/dispatch.
-3. Exercise method replacement/removal, Store backfill, inherited lookup,
+2. Exercise method replacement/removal, Store backfill, inherited lookup,
    failed candidate activation, and rollback while project policy is loaded.
    Assert the exact MOP consistency law after every transition.
-4. With the Z1 strict prerequisite now green, run project
+3. With the Z1 strict prerequisite now green, run project
    check/build/run/test, docgen, LSP, source fallback, image save/rebuild, and
    isolate smoke from a relocated prefix. Any recurrence of the relocated
    docgen or pre-rewrite image failure is a stop; retain the assertion rather
    than deleting it.
-5. Make one narrow commit per policy seam, followed by a documentation
+4. Make one narrow commit per policy seam, followed by a documentation
    checkpoint. No dynamic Zig fixture is retired in Z2.
 
 ### Z2 exit gate
@@ -543,8 +585,10 @@ an incomplete repo-wide residue map, an underspecified rollback vector, and an
 acceptance count that did not name both independent production prefixes. The
 plan was revised through commits `1c6db24`, `f2782cf`, `d9b4c5f`, and `5305e80`.
 
-The final follow-up returned **GO**: the four artifact roles, strict R6
-preconditions, production/rollback separation, full Zig rollback manifest,
-native-Birnam activation ownership, digest checks, bootstrap meaning, and
-dual-production reproducibility evidence are explicit and landable. No
-implementation Z1–Z3 authority change may bypass the strict gate.
+The first follow-up returned **GO** on the authority boundaries, but the
+latest follow-up remains **NO-GO to close Z1** despite strict R6 passing. It
+requires the clean-archive acceptance record, the shared-byte/common-result
+matrix, real sentinel coverage, failed-preflight atomic evidence, nested-kind
+parity, digest/install-root/stale-receipt cases, and this Z2.0/Z2.1 split.
+Those are evidence and planning corrections only; no implementation Z1–Z3
+authority change may bypass the strict gate.
