@@ -186,6 +186,13 @@ pub struct ValidatedManifest {
     pub manifest: DriverManifest,
     pub action_order: Vec<String>,
     pub root: PathBuf,
+    pub proof_strength: ProofStrength,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProofStrength {
+    FileBound,
+    GitVerified,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -432,16 +439,16 @@ fn verify_git_receipt(
     graph_path: &Path,
     graph_sha256: &str,
     build_sha256: &str,
-) -> Result<(), ManifestError> {
+) -> Result<ProofStrength, ManifestError> {
     let probe = Command::new("git")
         .current_dir(root)
         .args(["rev-parse", "--git-dir"])
         .output();
     let Ok(probe) = probe else {
-        return Ok(());
+        return Ok(ProofStrength::FileBound);
     };
     if !probe.status.success() {
-        return Ok(());
+        return Ok(ProofStrength::FileBound);
     }
     let run_git = |args: &[String], label: &str| -> Result<Vec<u8>, ManifestError> {
         let output = Command::new("git")
@@ -496,7 +503,7 @@ fn verify_git_receipt(
     if hex::encode(Sha256::digest(graph_bytes)) != graph_sha256 {
         return Err(error("current HEAD graph bytes disagree with the proof"));
     }
-    Ok(())
+    Ok(ProofStrength::GitVerified)
 }
 
 fn contained_existing_path(
@@ -1007,7 +1014,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             "receipt proof disagrees with the bound source receipt",
         ));
     }
-    verify_git_receipt(
+    let proof_strength = verify_git_receipt(
         &root,
         manifest.graph.receipt_commit.as_str(),
         manifest.graph.receipt_tree.as_str(),
@@ -1496,6 +1503,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         manifest,
         action_order,
         root,
+        proof_strength,
     })
 }
 
@@ -1860,6 +1868,7 @@ mod tests {
         let fixture = Fixture::new();
         let parsed = parse_and_validate(&fixture.bytes, &fixture.root).expect("valid manifest");
         assert_eq!(parsed.action_order, ["prepare", "compile"]);
+        assert_eq!(parsed.proof_strength, ProofStrength::FileBound);
     }
 
     #[test]
@@ -2233,14 +2242,17 @@ mod tests {
             proof["receipt_tree"],
             "25fa3ebb2512266452fe279319215ec56a907524"
         );
-        verify_git_receipt(
+        assert_eq!(
+            verify_git_receipt(
             &repo_root,
             "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
             "25fa3ebb2512266452fe279319215ec56a907524",
             Path::new("abi/birnam-build-actions-v1.json"),
             &graph_sha256,
             &build_sha256,
-        )
-        .expect("checker Git receipt proof");
+            )
+            .expect("checker Git receipt proof"),
+            ProofStrength::GitVerified
+        );
     }
 }

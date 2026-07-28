@@ -350,6 +350,8 @@ when the supplied root is a Git worktree, verifies receipt commit/tree
 existence, ancestry, and the checked bytes. Non-Git shadow fixtures retain
 only the file-level proof; the parser does not encode that weaker proof tier as
 production authorization, and production/rollback execution remains refused.
+`ValidatedManifest` now records the resulting `FileBound` or `GitVerified`
+strength explicitly; no production capability constructor exists yet.
 
 The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
