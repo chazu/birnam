@@ -801,6 +801,7 @@
       "test-remaining-rung-cross-floor",
       "test-remaining-rung-manifest",
       "test-remaining-zig-boundary",
+      "test-remaining-zig-conversion",
       "test-remaining-zig-inventory",
       "test-repl",
       "test-rust-alien-live",
