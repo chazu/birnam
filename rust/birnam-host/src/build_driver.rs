@@ -821,6 +821,18 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     }
     let action_order = validate_dependencies(&manifest.actions)?;
     for action in &manifest.actions {
+        if manifest.selection.distribution == "production" && action.context != "production" {
+            return Err(error(format!(
+                "production selection contains non-production action {}",
+                action.name
+            )));
+        }
+        if manifest.selection.distribution == "rollback" && action.context != "rollback" {
+            return Err(error(format!(
+                "rollback selection contains non-rollback action {}",
+                action.name
+            )));
+        }
         if !manifest.tools.contains_key(&action.tool) {
             return Err(error(format!(
                 "action {} references undeclared tool {}",
@@ -842,16 +854,30 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 action.name
             )));
         }
-        if action.context == "production"
-            && action
-                .command
-                .iter()
-                .any(|part| part.contains("_zig") || part.contains("birnam-zig-oracle"))
-        {
-            return Err(error(format!(
-                "production action {} reaches a Zig-only argv",
-                action.name
-            )));
+        if action.context == "production" {
+            let forbidden =
+                |value: &str| value.contains("_zig") || value.contains("birnam-zig-oracle");
+            if forbidden(&action.tool)
+                || forbidden(&action.cwd.to_string_lossy())
+                || action.command.iter().any(|part| forbidden(part))
+                || action
+                    .inputs
+                    .iter()
+                    .any(|input| forbidden(&input.path.to_string_lossy()))
+                || action
+                    .outputs
+                    .iter()
+                    .any(|output| forbidden(&output.path.to_string_lossy()))
+                || action.environment.iter().any(|(name, value)| {
+                    forbidden(name)
+                        || matches!(value, EnvironmentValue::Set(value) if forbidden(value))
+                })
+            {
+                return Err(error(format!(
+                    "production action {} reaches a Zig-only path",
+                    action.name
+                )));
+            }
         }
         for (index, input) in action.inputs.iter().enumerate() {
             validate_path_ref(
