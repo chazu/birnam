@@ -254,6 +254,20 @@ pub fn build(b: *std.Build) void {
     test_remaining_zig_inventory_step.dependOn(&remaining_zig_inventory.step);
     test_step.dependOn(&remaining_zig_inventory.step);
 
+    // Design 68 C0.1: every current Zig residue path, dynamic provider, and
+    // native-Birnam policy source must have a fail-closed conversion-ledger
+    // row with explicit rollback and ownership metadata.
+    const remaining_zig_conversion = b.addSystemCommand(&.{
+        "python3",
+        "scripts/check-remaining-zig-conversion.py",
+    });
+    const test_remaining_zig_conversion_step = b.step(
+        "test-remaining-zig-conversion",
+        "Verify the Design 68 remaining-Zig conversion ledger",
+    );
+    test_remaining_zig_conversion_step.dependOn(&remaining_zig_conversion.step);
+    test_step.dependOn(&remaining_zig_conversion.step);
+
     const remaining_zig_boundary_smoke = b.addSystemCommand(&.{
         "bash",
         "scripts/remaining-zig-boundary-smoke.sh",
