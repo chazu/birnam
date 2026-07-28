@@ -1,7 +1,7 @@
 # 69 — Remaining Zig Modules: Rust Host and Native-Birnam Plan
 
 > **Status:** Rust-only production install/release paths and the source-built
-> cold-prefix gate are now landed in the working tree. GO for the Rust-native
+> cold-prefix gate landed in `2002793`. GO for the Rust-native
 > production prefix and NO-GO for the remaining atomic build-driver ledger
 > cutover/M5 transaction until the instantiated-graph parity, fsync-backed
 > publication, and Zig oracle quarantine are independently receipted. Baseline: Design 68

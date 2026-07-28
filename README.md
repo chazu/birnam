@@ -329,9 +329,10 @@ methodology and the measured constants.
 
 ## Architecture
 
-The runtime starts as a small Zig siphon that loads a set of reloadable dynamic
-libraries through a C ABI. The production `libid` floor is Rust; a separately
-named Zig oracle remains available for conformance and developer rollback.
+The runtime starts as a Rust host that loads a set of reloadable dynamic
+libraries through a C ABI. The production `libid` floor and all native rungs
+are Rust; a separately named Zig host/oracle remains available only for
+conformance and developer rollback.
 Artifact selection first adds only the ID-floor inspector; activation then
 brings up the required language rungs:
 
@@ -346,8 +347,9 @@ Higher rungs add the relational substrate, parser, compiler, native-code
 backend, collections, FFI, and image format. The standard library and most
 application-facing modules are Birnam source. Birnam retains a cold source
 bootstrap through declared non-Birnam toolchains, with no prebuilt Birnam
-artifact required; Design 61 has moved `libid` to Rust while Zig remains the
-host for the siphon, higher native rungs, and cold compiler.
+artifact required. The Rust host owns the production closure; the Zig host,
+higher-rung implementations, and Zig build graph remain isolated
+oracle/rollback evidence until their vector-level retirement decision.
 
 ## Repository Guide
 
