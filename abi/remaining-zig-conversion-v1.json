@@ -317,7 +317,7 @@
       ],
       "next_phase": "C1",
       "removal_authority": "vector-review",
-      "last_receipt": "r6-strict: rust host boundary, relocated project/LSP/source traces; Zig host retained as rollback oracle"
+      "last_receipt": "r6-strict: artifact codec/projection/preflight and Zig oracle parity"
     },
     {
       "key": "zig:path:src/id/artifact_inspector_benchmark_test.zig",
@@ -362,7 +362,7 @@
       "required_fixtures": null,
       "next_phase": "C1",
       "removal_authority": "none",
-      "last_receipt": "r6-strict: relocated project check/build/run/install/test"
+      "last_receipt": "r6-strict: Rust artifact preflight parity; native activation remains policy-owned"
     },
     {
       "key": "zig:path:src/id/artifact_preflight_sentinel.zig",
