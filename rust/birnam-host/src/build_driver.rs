@@ -1181,6 +1181,15 @@ pub fn execute_shadow_graph(
             "shadow executor refuses production and rollback distributions",
         ));
     }
+    if validated.manifest.actions.iter().any(|action| {
+        action.context != "shadow"
+            || action.authority != "shadow"
+            || action.delegation != "explicit-shadow"
+    }) {
+        return Err(error(
+            "shadow executor requires every action to use shadow context, authority, and explicit-shadow delegation",
+        ));
+    }
     let mut executions = Vec::with_capacity(validated.action_order.len());
     for action_name in &validated.action_order {
         let action = validated
@@ -1198,6 +1207,19 @@ pub fn execute_shadow_graph(
                 .expect("validated action tool exists"),
             "tool path",
         )?;
+        if sha256_file(&tool_path)? != action.tool_sha256 {
+            return Err(error(format!(
+                "action {} tool identity changed before shadow execution",
+                action.name
+            )));
+        }
+        for (index, input) in action.inputs.iter().enumerate() {
+            validate_path_ref(
+                input,
+                &validated.root,
+                &format!("action {} input {index}", action.name),
+            )?;
+        }
         let mut command = Command::new(tool_path);
         command.args(action.command.iter().skip(1));
         command.current_dir(validated.root.join(&action.cwd));
@@ -1230,6 +1252,27 @@ pub fn execute_shadow_graph(
                 status,
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
+        }
+        for (index, declared) in action.outputs.iter().enumerate() {
+            let output_path = contained_existing_path(
+                &validated.root,
+                &declared.path,
+                &format!("action {} output {index}", action.name),
+            )?;
+            if !output_path.is_file() {
+                return Err(error(format!(
+                    "action {} did not produce declared output {}",
+                    action.name,
+                    declared.path.display()
+                )));
+            }
+            if sha256_file(&output_path)? != declared.sha256 {
+                return Err(error(format!(
+                    "action {} output digest mismatch for {}",
+                    action.name,
+                    declared.path.display()
+                )));
+            }
         }
         executions.push(ActionExecution {
             action: action.name.clone(),
@@ -1559,19 +1602,32 @@ mod tests {
 
         let fixture = Fixture::new();
         let runner = fixture.root.join("runner");
-        fs::write(&runner, b"#!/bin/sh\nprintf '%s' \"$BIRNAM_VALUE\"\n").expect("runner");
+        let provider_writes = CANONICAL_DYNAMIC_LIBRARIES
+            .iter()
+            .map(|library| format!("printf '%s' shadow-output > ../out/{library}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let runner_source = format!(
+            "#!/bin/sh\nset -eu\nmkdir -p ../out\ncase \"$1\" in\nprepare) printf '%s' shadow-output > ../out/prepare ;;\ncompile) printf '%s' shadow-output > ../out/module.dylib\n{provider_writes} ;;\nesac\nprintf '%s' \"$BIRNAM_VALUE\"\n"
+        );
+        fs::write(&runner, runner_source).expect("runner");
         fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).expect("executable");
         let runner_digest = hex::encode(Sha256::digest(fs::read(&runner).expect("runner bytes")));
+        let output_digest = hex::encode(Sha256::digest(b"shadow-output"));
         let bytes = mutate(&fixture, |value| {
             value["selection"]["distribution"] = json!("shadow");
             value["tools"]["runner"] = json!("runner");
             for action in value["actions"].as_array_mut().expect("actions") {
+                let action_name = action["name"].as_str().expect("action name").to_string();
                 action["context"] = json!("shadow");
                 action["authority"] = json!("shadow");
                 action["delegation"] = json!("explicit-shadow");
                 action["tool"] = json!("runner");
                 action["tool_sha256"] = json!(runner_digest.clone());
-                action["command"] = json!(["runner"]);
+                action["command"] = json!(["runner", action_name]);
+                for output in action["outputs"].as_array_mut().expect("outputs") {
+                    output["sha256"] = json!(output_digest.clone());
+                }
                 action["environment"] = json!({
                     "BIRNAM_VALUE": {"mode": "set", "value": "shadow-ok"},
                     "BIRNAM_CLEAR": {"mode": "clear"}
@@ -1592,6 +1648,16 @@ mod tests {
                 .iter()
                 .all(|result| result.status == 0 && result.stdout == b"shadow-ok")
         );
+        let mut wrong_context = validated.clone();
+        wrong_context.manifest.actions[0].context = "production".to_string();
+        let context_error = execute_shadow_graph(&wrong_context)
+            .expect_err("shadow execution must reject canonical action context");
+        assert!(context_error.0.contains("requires every action"));
+        let mut stale_output = validated;
+        stale_output.manifest.actions[0].outputs[0].sha256 = "0".repeat(64);
+        let output_error = execute_shadow_graph(&stale_output)
+            .expect_err("shadow execution must verify declared output digests");
+        assert!(output_error.0.contains("output digest mismatch"));
     }
 
     #[test]
