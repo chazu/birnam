@@ -62,7 +62,7 @@ The conversion is complete only when:
 The current checker reports:
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=79 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=80 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
 ```
 
 The 14 production dynamic names are already Rust-canonical: floor, Artifact,
