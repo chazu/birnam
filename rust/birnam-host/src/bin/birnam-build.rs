@@ -3,11 +3,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use birnam_host::build_driver::{capture_zig_dependencies, parse_and_validate};
+use birnam_host::build_driver::{
+    capture_zig_dependencies, execute_shadow_graph, parse_and_validate,
+};
 
 fn usage() {
     eprintln!(
         "usage: birnam-build dry-run --manifest FILE --root DIR\n\
+         \x20      birnam-build execute-shadow --manifest FILE --root DIR\n\
          \x20      birnam-build inspect-zig --build-file FILE"
     );
 }
@@ -23,7 +26,7 @@ fn main() -> ExitCode {
     let Some(command) = args.next() else {
         return fail("missing command");
     };
-    if command != "dry-run" && command != "inspect-zig" {
+    if command != "dry-run" && command != "execute-shadow" && command != "inspect-zig" {
         return fail(format!("unknown command: {}", command.to_string_lossy()));
     }
     if command == "inspect-zig" {
@@ -80,6 +83,20 @@ fn main() -> ExitCode {
         Ok(validated) => validated,
         Err(error) => return fail(error),
     };
+    if command == "execute-shadow" {
+        let executions = match execute_shadow_graph(&validated) {
+            Ok(executions) => executions,
+            Err(error) => return fail(error),
+        };
+        println!("execute-shadow: actions={}", executions.len());
+        for (index, execution) in executions.iter().enumerate() {
+            println!(
+                "action[{index}]: name={} status={} stdout={:?} stderr={:?}",
+                execution.action, execution.status, execution.stdout, execution.stderr
+            );
+        }
+        return ExitCode::SUCCESS;
+    }
     println!(
         "dry-run: target={} profile={} distribution={} actions={}",
         validated.manifest.target,
