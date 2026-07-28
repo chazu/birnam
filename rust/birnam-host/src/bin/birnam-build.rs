@@ -3,10 +3,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use birnam_host::build_driver::parse_and_validate;
+use birnam_host::build_driver::{capture_zig_dependencies, parse_and_validate};
 
 fn usage() {
-    eprintln!("usage: birnam-build dry-run --manifest FILE --root DIR");
+    eprintln!(
+        "usage: birnam-build dry-run --manifest FILE --root DIR\n\
+         \x20      birnam-build inspect-zig --build-file FILE"
+    );
 }
 
 fn fail(message: impl std::fmt::Display) -> ExitCode {
@@ -20,8 +23,39 @@ fn main() -> ExitCode {
     let Some(command) = args.next() else {
         return fail("missing command");
     };
-    if command != "dry-run" {
+    if command != "dry-run" && command != "inspect-zig" {
         return fail(format!("unknown command: {}", command.to_string_lossy()));
+    }
+    if command == "inspect-zig" {
+        let Some(option) = args.next() else {
+            return fail("--build-file is required");
+        };
+        if option != "--build-file" {
+            return fail(format!("unknown option: {}", option.to_string_lossy()));
+        }
+        let Some(path) = args.next() else {
+            return fail("--build-file is required");
+        };
+        if args.next().is_some() {
+            return fail("inspect-zig accepts only --build-file");
+        }
+        let path = PathBuf::from(path);
+        let source = match fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(error) => return fail(format!("cannot read {}: {error}", path.display())),
+        };
+        let capture = match capture_zig_dependencies(&source) {
+            Ok(capture) => capture,
+            Err(error) => return fail(error),
+        };
+        println!("dependOn-occurrences: {}", capture.occurrence_count);
+        for edge in capture.edges {
+            println!(
+                "line {}: {} -> {}",
+                edge.source_line, edge.source, edge.dependency
+            );
+        }
+        return ExitCode::SUCCESS;
     }
     let mut manifest = None;
     let mut root = None;
