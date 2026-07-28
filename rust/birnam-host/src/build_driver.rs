@@ -101,12 +101,30 @@ pub struct ModuleSpec {
 #[serde(deny_unknown_fields)]
 pub struct ActionSpec {
     pub name: String,
+    pub context: String,
+    pub authority: String,
+    pub delegation: String,
     pub tool: String,
+    pub tool_sha256: String,
+    pub cwd: PathBuf,
     pub command: Vec<String>,
     pub depends_on: Vec<String>,
     pub inputs: Vec<PathRef>,
     pub outputs: Vec<PathRef>,
-    pub environment: BTreeMap<String, String>,
+    pub environment: BTreeMap<String, EnvironmentValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "mode", content = "value", deny_unknown_fields)]
+pub enum EnvironmentValue {
+    #[serde(rename = "inherit")]
+    Inherit,
+    #[serde(rename = "set")]
+    Set(String),
+    #[serde(rename = "unset")]
+    Unset,
+    #[serde(rename = "clear")]
+    Clear,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -461,6 +479,11 @@ fn validate_selection(selection: &Selection) -> Result<(), ManifestError> {
             "provider selection does not cover the canonical 14-provider closure",
         ));
     }
+    if selection.providers.get("libbirnam_id.dylib") != Some(&selection.floor) {
+        return Err(error(
+            "floor selection disagrees with the canonical id provider",
+        ));
+    }
     if selection.distribution == "production" && implementations.contains(&"zig".to_string()) {
         return Err(error("production manifest contains a Zig implementation"));
     }
@@ -476,6 +499,45 @@ fn validate_dependencies(actions: &[ActionSpec]) -> Result<Vec<String>, Manifest
         safe_name(&action.name, "action name")?;
         if !names.insert(action.name.clone()) {
             return Err(error(format!("duplicate action name: {}", action.name)));
+        }
+        if !matches!(
+            action.context.as_str(),
+            "production" | "rollback" | "oracle" | "test_bundle" | "shadow"
+        ) {
+            return Err(error(format!("unknown action context: {}", action.context)));
+        }
+        if !matches!(action.authority.as_str(), "canonical" | "shadow" | "oracle") {
+            return Err(error(format!(
+                "unknown action authority: {}",
+                action.authority
+            )));
+        }
+        if !matches!(action.delegation.as_str(), "none" | "explicit-shadow") {
+            return Err(error(format!(
+                "unknown action delegation: {}",
+                action.delegation
+            )));
+        }
+        if action.context == "production"
+            && (action.authority != "canonical" || action.delegation != "none")
+        {
+            return Err(error(format!(
+                "production action {} is delegated or non-canonical",
+                action.name
+            )));
+        }
+        safe_relative_path(&action.cwd, "action cwd")?;
+        if !valid_digest(&action.tool_sha256) {
+            return Err(error(format!(
+                "action {} has an invalid tool digest",
+                action.name
+            )));
+        }
+        if action.command.first() != Some(&action.tool) {
+            return Err(error(format!(
+                "action {} argv[0] is not its declared tool",
+                action.name
+            )));
         }
         if action.command.is_empty() || action.command.iter().any(|part| part.is_empty()) {
             return Err(error(format!(
@@ -608,7 +670,6 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         validate_path_ref(&module.source, &root, "module source")?;
     }
 
-    let action_order = validate_dependencies(&manifest.actions)?;
     let action_names = manifest
         .actions
         .iter()
@@ -649,7 +710,11 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             return Err(error("source graph has duplicate expression bindings"));
         }
     }
-    let mut referenced_actions = BTreeSet::new();
+    let mut resolved_dependencies = action_names
+        .iter()
+        .map(|name| ((*name).to_string(), BTreeSet::new()))
+        .collect::<BTreeMap<String, BTreeSet<String>>>();
+    let mut resolved_edge_keys = BTreeSet::new();
     for edge in &captured.edges {
         let source_action = bindings.get(&edge.source).ok_or_else(|| {
             error(format!(
@@ -663,8 +728,13 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 edge.source_line, edge.dependency
             ))
         })?;
-        referenced_actions.insert(source_action.clone());
-        referenced_actions.insert(dependency_action.clone());
+        if !resolved_edge_keys.insert((source_action.clone(), dependency_action.clone())) {
+            return Err(error("source graph contains a duplicate explicit edge"));
+        }
+        resolved_dependencies
+            .get_mut(source_action)
+            .expect("source action checked above")
+            .insert(dependency_action.clone());
     }
     for edge in &manifest.source_graph.implicit_edges {
         if !matches!(
@@ -684,17 +754,97 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 "implicit dependency is outside the closed action set",
             ));
         }
-        referenced_actions.insert(edge.source.clone());
-        referenced_actions.insert(edge.dependency.clone());
+        if !resolved_edge_keys.insert((edge.source.clone(), edge.dependency.clone())) {
+            return Err(error("source graph contains a duplicate implicit edge"));
+        }
+        resolved_dependencies
+            .get_mut(&edge.source)
+            .expect("source action checked above")
+            .insert(edge.dependency.clone());
     }
-    if referenced_actions.len() != action_names.len() {
-        return Err(error("source graph leaves executable actions disconnected"));
+    for action in &manifest.actions {
+        let declared = action.depends_on.iter().cloned().collect::<BTreeSet<_>>();
+        let resolved = resolved_dependencies
+            .get(&action.name)
+            .expect("action names checked above");
+        if &declared != resolved {
+            return Err(error(format!(
+                "action {} dependencies disagree with the resolved source graph",
+                action.name
+            )));
+        }
     }
+    let mut reachable = BTreeSet::new();
+    let mut pending = manifest
+        .source_graph
+        .roots
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    if pending.len()
+        != manifest
+            .source_graph
+            .roots
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
+    {
+        return Err(error("source graph roots contain duplicates"));
+    }
+    while let Some(action) = pending.pop() {
+        if !reachable.insert(action.clone()) {
+            continue;
+        }
+        pending.extend(
+            resolved_dependencies
+                .get(&action)
+                .expect("root action checked above")
+                .iter()
+                .cloned(),
+        );
+    }
+    if reachable
+        != action_names
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect()
+    {
+        return Err(error(
+            "source graph roots do not reach the closed action set",
+        ));
+    }
+    let action_order = validate_dependencies(&manifest.actions)?;
     for action in &manifest.actions {
         if !manifest.tools.contains_key(&action.tool) {
             return Err(error(format!(
                 "action {} references undeclared tool {}",
                 action.name, action.tool
+            )));
+        }
+        contained_output_path(&root, &action.cwd, "action cwd")?;
+        let tool_path = contained_existing_path(
+            &root,
+            manifest
+                .tools
+                .get(&action.tool)
+                .expect("tool checked above"),
+            "tool path",
+        )?;
+        if sha256_file(&tool_path)? != action.tool_sha256 {
+            return Err(error(format!(
+                "action {} tool identity digest is stale",
+                action.name
+            )));
+        }
+        if action.context == "production"
+            && action
+                .command
+                .iter()
+                .any(|part| part.contains("_zig") || part.contains("birnam-zig-oracle"))
+        {
+            return Err(error(format!(
+                "production action {} reaches a Zig-only argv",
+                action.name
             )));
         }
         for (index, input) in action.inputs.iter().enumerate() {
@@ -705,10 +855,13 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             )?;
         }
         for (index, output) in action.outputs.iter().enumerate() {
-            safe_relative_path(
-                &output.path,
-                &format!("action {} output {index}", action.name),
-            )?;
+            let output_label = format!("action {} output {index}", action.name);
+            contained_output_path(&root, &output.path, &output_label)?;
+            if !output.path.starts_with(&manifest.prefix) {
+                return Err(error(format!(
+                    "{output_label} is outside the output prefix"
+                )));
+            }
             if !valid_digest(&output.sha256) {
                 return Err(error(format!(
                     "action {} output {index} has an invalid digest",
@@ -725,6 +878,20 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 "action {} has an undeclared dependency",
                 action.name
             )));
+        }
+    }
+
+    let mut output_owners = BTreeMap::new();
+    for action in &manifest.actions {
+        for output in &action.outputs {
+            if let Some(previous) = output_owners.insert(output.path.clone(), &action.name) {
+                return Err(error(format!(
+                    "output {} is owned by both {} and {}",
+                    output.path.display(),
+                    previous,
+                    action.name
+                )));
+            }
         }
     }
 
@@ -791,6 +958,7 @@ mod tests {
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
             fs::write(root.join("graph.json"), b"graph").expect("graph");
+            fs::create_dir_all(root.join("work")).expect("work directory");
             fs::write(root.join("build.zig"), b"compile.dependOn(prepare);").expect("build source");
             let digest = hex::encode(Sha256::digest(b"module"));
             let graph_digest = hex::encode(Sha256::digest(b"graph"));
@@ -815,20 +983,30 @@ mod tests {
                 "modules": [{"name": "module", "source": {"path": "module.birnam", "sha256": digest}}],
                 "actions": [{
                     "name": "prepare",
+                    "context": "production",
+                    "authority": "canonical",
+                    "delegation": "none",
                     "tool": "zig",
+                    "tool_sha256": hex::encode(Sha256::digest(b"tool")),
+                    "cwd": "work",
                     "command": ["zig", "prepare"],
                     "depends_on": [],
                     "inputs": [{"path": "module.birnam", "sha256": digest}],
                     "outputs": [{"path": "out/prepare", "sha256": "b".repeat(64)}],
-                    "environment": {"BIRNAM_PREFIX": "prefix"}
+                    "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }, {
                     "name": "compile",
+                    "context": "production",
+                    "authority": "canonical",
+                    "delegation": "none",
                     "tool": "zig",
+                    "tool_sha256": hex::encode(Sha256::digest(b"tool")),
+                    "cwd": "work",
                     "command": ["zig", "build-module"],
                     "depends_on": ["prepare"],
                     "inputs": [{"path": "module.birnam", "sha256": digest}],
                     "outputs": [{"path": "out/module.dylib", "sha256": "c".repeat(64)}],
-                    "environment": {"BIRNAM_PREFIX": "prefix"}
+                    "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }],
                 "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
                 "prefix": "out",
@@ -929,6 +1107,43 @@ mod tests {
         let bytes = mutate(&fixture, |value| {
             let action = &mut value["actions"][0];
             action["depends_on"] = json!(["compile"]);
+        });
+        assert!(parse_and_validate(&bytes, &fixture.root).is_err());
+    }
+
+    #[test]
+    fn rejects_source_edge_action_order_mismatch() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][1]["depends_on"] = json!([]);
+        });
+        assert!(parse_and_validate(&bytes, &fixture.root).is_err());
+    }
+
+    #[test]
+    fn rejects_disconnected_action_and_floor_provider_mismatch() {
+        let fixture = Fixture::new();
+        let disconnected = mutate(&fixture, |value| {
+            let mut orphan = value["actions"][0].clone();
+            orphan["name"] = json!("orphan");
+            value["actions"]
+                .as_array_mut()
+                .expect("actions")
+                .push(orphan);
+        });
+        assert!(parse_and_validate(&disconnected, &fixture.root).is_err());
+        let mismatch = mutate(&fixture, |value| {
+            value["selection"]["providers"][CANONICAL_DYNAMIC_LIBRARIES[0]] = json!("zig");
+        });
+        assert!(parse_and_validate(&mismatch, &fixture.root).is_err());
+    }
+
+    #[test]
+    fn rejects_output_collision() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            let output = value["actions"][0]["outputs"][0].clone();
+            value["actions"][1]["outputs"][0] = output;
         });
         assert!(parse_and_validate(&bytes, &fixture.root).is_err());
     }
