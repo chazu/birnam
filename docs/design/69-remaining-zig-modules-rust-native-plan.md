@@ -320,14 +320,20 @@ joining. It does not execute a tool; the complete
 remain the next M4.2 slice. M4.3 now has a shadow-only topological process
 runner and `execute-shadow` CLI; `Clear` deterministically clears inherited
 environment variables before declared `Set`/`Unset` operations, while
-production and rollback execution remain refused.
+production and rollback execution remain refused. Shadow execution now also
+requires every action to declare shadow context/authority with explicit-shadow
+delegation, rechecks tool and input digests immediately before spawn, and
+requires every declared output to exist with its declared digest before the
+action receipt is returned. This is still staged execution: atomic temporary
+prefix publication and undeclared-write detection remain M4.3 work.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
 are balanced and retained, including the inline `test-install` step and its
 `b.getInstallStep()` dependency. The captured expressions are still not
-executable action identities; resolution to concrete tools, install outputs,
-and inherited/cleared environments remains fail-closed work in M4.2.
+executable action identities; one repeated semantic pair is retained as two
+occurrences but one resolved edge. Resolution to concrete tools, install
+outputs, and inherited/cleared environments remains fail-closed work in M4.2.
 
 The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
