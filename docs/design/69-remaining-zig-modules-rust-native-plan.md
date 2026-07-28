@@ -290,8 +290,9 @@ fully resolved semantic graph before any Rust build action is authoritative.
 1. Add a Rust `birnam-build` binary in `rust/birnam-host` (or a small new
    workspace crate) with a versioned manifest schema containing the action-DAG
    identity, target triple, profile, selected floor/provider identities,
-   source modules, dependency order, dynamic install names, output prefix,
-   tool paths, normalized environment, and input/output digests. Runtime
+   source modules and their producer actions, provider producer actions,
+   dependency order, dynamic install names, output prefix, tool paths,
+   normalized environment, and input/output digests. Runtime
    dependencies list only dylib names.
 2. Resolve the M4.1 projection into a complete semantic graph by parsing every
    `dependOn` form in `build.zig`, including inline `b.step(...)` chains and
@@ -331,7 +332,9 @@ the root; output prefixes reject existing symlink components; full-semantic
 manifests require source-graph roots, expression bindings for every captured
 edge, exact reconciliation between resolved explicit/implicit edges and each
 action’s declared dependency set, a rooted acyclic closure, explicit implicit-
-edge kinds, a connected action set, and the exact 14-provider/dylib closure.
+edge kinds, a connected action set, the exact 14-provider/dylib closure, and
+producer mappings whose declared outputs cover every selected provider and
+stage-1 module.
 Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
