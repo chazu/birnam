@@ -6739,7 +6739,7 @@
   },
   "transaction": {
     "candidate_commit": "931f9e8e792c668137bf8b03bbabef91e6a396dc",
-    "receipt_commit": null,
-    "post_receipt_gate": "inventory, conversion, action-DAG checker, focused gates, and strict R6"
+    "receipt_commit": "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
+    "post_receipt_gate": "remaining-Zig inventory/conversion, typed build-action DAG and surface checker, focused M4.1 gates, and strict R6 (218/218 steps, 99/99 focused tests, 307/307 verify steps, 516/522 verify tests, 6 skipped; only query.aggregate +5.8% and compile.stage1-stdlib +11.9% accepted)"
   }
 }
