@@ -6738,7 +6738,7 @@
     "Cargo.lock": "0bd550ebd087c42dc9cd652c6b6646590be47ca3ce3e8a033bb455ef6c84544e"
   },
   "transaction": {
-    "candidate_commit": null,
+    "candidate_commit": "931f9e8e67c59e0af99b6cb10e7904f334e39c13",
     "receipt_commit": null,
     "post_receipt_gate": "inventory, conversion, action-DAG checker, focused gates, and strict R6"
   }
