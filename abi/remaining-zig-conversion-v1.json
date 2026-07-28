@@ -580,7 +580,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts: floor readiness=blocked rollback_status=pinned; rust-id-v1 Debug/Release and Zig lower-rung matrix 256/256"
     },
     {
       "key": "zig:path:src/id/idapi.zig",

@@ -417,6 +417,39 @@ Each slice is one commit after focused tests, followed by strict R6 before the
 next slice. A vector-retirement commit may not include another rung or a
 policy change and must remove the complete Zig vector atomically.
 
+**C2.1 receipt contract (2026-07-27):**
+`abi/c2-rung-receipts-v1.json` and `scripts/check-c2-rung-receipts.py` record
+the three bounded slices independently from the conversion ledger. The
+checker requires Debug/Release Rust digests, the complete-vector Zig fixture
+mapping, exact install names and export sets, direct dynamic dependencies and
+runtime prerequisites, isolated Rust/Zig selection commands, two same-floor
+and two cross-floor process cells, and the strict-R6 receipt. Every row is
+currently `readiness=blocked` and `rollback_status=pinned`; the checker rejects
+any per-rung promotion or fixture retirement.
+
+**C2.1a floor receipt (2026-07-27, receipt commit `57615b9`):** the isolated
+lower-rung matrix passed 256/256 tests for the Zig floor and Rust Debug and
+Release floors. Floor shell, GC metadata/layout, dispatch-reentry, old-client,
+image, and MOP evidence remain explicit fixtures. The ledger row for
+`src/id/id.zig` records the Rust `rust-id-v1` profiles and retains
+`libbirnam_id_zig.dylib`; no source or rollback-vector member was removed.
+
+**C2.1b Store evidence (2026-07-27):** the Store consistency-law suite passed
+with the Zig Store/Zig floor oracle and Rust Store against the Rust floor in
+Debug and Release. The image backfill, tracked/raw mutation, authorizer,
+observer, inherited-revelation, image-boot, REPL, project, and LSP cases passed
+through the existing `rust-store-mop` and `rust-store-stack` receipts. The
+Store row remains blocked/pinned pending its focused ledger commit and strict
+R6 checkpoint.
+
+**C2.1c PEG evidence (2026-07-27):** the explicit Rust PEG passed the pattern,
+language, full-language, CST, diagnostics, source-corpus, generated-C,
+metadata, stress, installed-relocation, and codegen suites. The frozen CST,
+source-corpus, generated-C, and stress receipts are recorded in the C2 artifact;
+the Zig PEG parser fixture remains pinned for rollback and old-image/parser
+diagnostic recovery. The PEG row remains blocked/pinned pending its focused
+ledger commit and strict R6 checkpoint.
+
 ## 8. Phase C3 — native-Birnam policy closure
 
 1. Re-run the checked 120-callsite owner inventory after each C2 rung and
