@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "Design 66 Z2.0 Rust-host IdApi.send and named-global coverage; inventory/checker evidence only",
-  "captured_commit": "d671ba6",
+  "captured_commit": "5b083bd38b34b06909de5a6fbbce7c90dc87c80c",
   "source": "rust/birnam-host/src/lib.rs",
   "coverage_rule": "Every direct Rust-host IdApi.send call and every named global_named lookup must be represented by its source line. The checker rejects additions, removals, stale lines, and changed global names.",
   "send_callsite_surface_sha256": "095baf0a06f1ea08f40627166316ed8c6f3b030f554884d3c797ffacd8119d84",
