@@ -387,6 +387,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
 mod tests {
     use super::*;
     use serde_json::{Value, json};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct Fixture {
@@ -396,11 +397,14 @@ mod tests {
 
     impl Fixture {
         fn new() -> Self {
+            static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
             let nonce = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("clock")
                 .as_nanos();
-            let root = std::env::temp_dir().join(format!("birnam-build-driver-{nonce}"));
+            let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+            let root =
+                std::env::temp_dir().join(format!("birnam-build-driver-{}-{sequence}", nonce));
             fs::create_dir_all(&root).expect("fixture root");
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
