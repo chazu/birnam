@@ -891,6 +891,7 @@
       "scripts/bench-compare.sh",
       "scripts/bench-host-check.sh",
       "scripts/bench.sh",
+      "scripts/check-c2-rung-receipts.py",
       "scripts/check-native-rung-baseline.py",
       "scripts/check-native-rung-inventory.py",
       "scripts/check-production-prefix.py",
