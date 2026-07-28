@@ -63,6 +63,7 @@ latest_tests=(
   test-rust-collection
   test-rust-error
   test-remaining-zig-inventory
+  test-remaining-zig-conversion
   test-remaining-zig-boundary
   test-rust-host-message-owner-inventory
   test-rust-artifact-authority
@@ -94,8 +95,8 @@ readonly expected_rust_image_rejection_tests=1
 # Rust is now the canonical host. Its explicit installed Zig oracle is a
 # required rollback/compatibility artifact, adding one deterministic install
 # step to the focused replacement graph and to the optional strict verify.
-readonly expected_focused_steps=216
-readonly expected_verify_steps=306
+readonly expected_focused_steps=218
+readonly expected_verify_steps=308
 readonly expected_verify_tests=516
 readonly expected_verify_total_tests=522
 readonly expected_verify_skipped=6
@@ -129,6 +130,12 @@ focused_test_summary_count=$(grep -Fc "Build Summary: ${expected_focused_steps}/
 rust_codegen_success_count=$(grep -Fc 'test-rust-codegen-runtime success' "$functional" || true)
 [ "$rust_codegen_success_count" -eq 1 ] || {
   echo "r6-acceptance: Rust Codegen runtime target was not executed" >&2
+  exit 1
+}
+
+remaining_zig_conversion_success_count=$(grep -Fc 'test-remaining-zig-conversion success' "$functional" || true)
+[ "$remaining_zig_conversion_success_count" -eq 1 ] || {
+  echo "r6-acceptance: remaining Zig conversion ledger target was not executed" >&2
   exit 1
 }
 
@@ -424,7 +431,7 @@ END { print count + 0 }
 # P0/P1 residue and authority checks are part of the current replacement gate.
 # They intentionally contribute build steps, not runtime test counts: each
 # receipt is asserted explicitly so a target cannot pass merely by exiting 0.
-grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=78 build_targets=124 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290' "$functional" || {
+grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=79 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290' "$functional" || {
   echo "r6-acceptance: remaining-Zig inventory receipt was not emitted" >&2
   exit 1
 }
