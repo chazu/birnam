@@ -325,10 +325,14 @@ The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
 the root; output prefixes reject existing symlink components; full-semantic
 manifests require source-graph roots, expression bindings for every captured
-edge, explicit implicit-edge kinds, a connected action set, and the exact
-14-provider/dylib closure. The driver still cannot execute until command
-authority, exact argv/environment modes, and instantiated implicit Zig Build
-edges are represented.
+edge, exact reconciliation between resolved explicit/implicit edges and each
+action’s declared dependency set, a rooted acyclic closure, explicit implicit-
+edge kinds, a connected action set, and the exact 14-provider/dylib closure.
+Action records also carry authority/delegation, cwd, tool identity, exact
+argv[0] binding, environment modes, symlink-safe output-prefix containment,
+and collision checks. The driver still cannot execute until instantiated
+implicit Zig Build edges and a receipt-bound build-file trust anchor are
+represented.
 
 ### M4.3 Compiler invocation and stage-1 module compilation
 
