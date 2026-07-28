@@ -94,7 +94,7 @@ readonly expected_rust_image_rejection_tests=1
 # Rust is now the canonical host. Its explicit installed Zig oracle is a
 # required rollback/compatibility artifact, adding one deterministic install
 # step to the focused replacement graph and to the optional strict verify.
-readonly expected_focused_steps=183
+readonly expected_focused_steps=216
 readonly expected_verify_steps=305
 readonly expected_verify_tests=516
 readonly expected_verify_total_tests=522
