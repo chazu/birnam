@@ -28,7 +28,7 @@ python3 scripts/check-native-rung-baseline.py
 # pairs) plus checker receipt-proof Git verification.
 readonly expected_rust_build_driver_tests=25
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
-readonly expected_instantiated_graph_tests=5
+readonly expected_instantiated_graph_tests=6
 rust_instantiated_graph=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-instantiated-graph.XXXXXX")
 readonly expected_bootstrap_receipt_tests=5
 rust_bootstrap_receipt=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-bootstrap-receipt.XXXXXX")

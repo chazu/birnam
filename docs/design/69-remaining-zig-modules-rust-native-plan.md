@@ -101,7 +101,7 @@ Baseline receipts at `577e50d` (the current reviewed checkpoint):
 remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=80 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
 remaining-zig-conversion: ok zig_paths=88 dynamic_names=14 policy_sources=39
 Rust build-driver schema/runner suite: 25/25 tests
-instantiated-graph receipt schema suite: 5/5 tests
+instantiated-graph receipt schema suite: 6/6 tests
 bootstrap-receipt schema suite: 5/5 tests
 publication-receipt schema suite: 5/5 tests
 focused: 218/218 steps; 99/99 tests
@@ -356,7 +356,7 @@ digests to files under the supplied root, while produced inputs/tools are
 deferred to their upstream producer and checked for ownership/reachability. It
 rejects path escape, duplicates, cycles, mixed production vectors, and Zig
 dynamic names. The Rust suites are 25 build-driver parser/runner tests plus
-five instantiated-receipt schema tests, five bootstrap-receipt schema tests,
+six instantiated-receipt schema tests, five bootstrap-receipt schema tests,
 and five publication-receipt schema tests. R6 runs all four semantic-driver
 suites fail-closed before the existing 218-step/99-test Rust replacement
 matrix. The `dry-run` subcommand prints the exact argv, cwd, tool digest,

@@ -5,7 +5,7 @@
 //! after options, target, profile, floor, and providers are instantiated. It
 //! intentionally has no process-execution capability.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -13,8 +13,8 @@ use std::path::{Component, Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const INSTANTIATED_GRAPH_SCHEMA: u32 = 1;
-pub const INSTANTIATED_GRAPH_SCOPE: &str = "instantiated-dry-run-v1";
+pub const INSTANTIATED_GRAPH_SCHEMA: u32 = 2;
+pub const INSTANTIATED_GRAPH_SCOPE: &str = "instantiated-dry-run-v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,8 +53,39 @@ pub struct InstantiatedAction {
     pub name: String,
     pub depends_on: Vec<String>,
     pub tool: String,
+    pub tool_path: PathBuf,
     pub tool_sha256: String,
+    pub argv: Vec<String>,
     pub argv_sha256: String,
+    pub cwd: PathBuf,
+    pub inputs: Vec<InstantiatedArtifact>,
+    pub outputs: Vec<InstantiatedArtifact>,
+    pub install_paths: Vec<PathBuf>,
+    pub environment_base: EnvironmentBase,
+    pub environment: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InstantiatedArtifact {
+    pub kind: String,
+    pub path: PathBuf,
+    pub sha256: String,
+    #[serde(default)]
+    pub producer: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentBase {
+    Clear,
+    Inherit,
+}
+
+impl EnvironmentBase {
+    fn is_clear(&self) -> bool {
+        matches!(self, Self::Clear)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,9 +102,7 @@ pub struct RawDependencyOccurrence {
     pub occurrence: usize,
     pub source_expression: String,
     pub dependency_expression: String,
-    pub source: String,
-    pub dependency: String,
-    pub edge: usize,
+    pub edges: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,32 +149,38 @@ fn safe_relative_path(path: &Path, label: &str) -> Result<(), InstantiatedGraphE
     Ok(())
 }
 
-fn contained_build_file(root: &Path, path: &Path) -> Result<PathBuf, InstantiatedGraphError> {
-    safe_relative_path(path, "build_file")?;
+fn contained_file(
+    root: &Path,
+    path: &Path,
+    label: &str,
+) -> Result<PathBuf, InstantiatedGraphError> {
+    safe_relative_path(path, label)?;
     let mut cursor = root.to_path_buf();
     for component in path.components() {
         let Component::Normal(part) = component else {
-            return Err(error("build_file contains a non-normal path component"));
+            return Err(error(format!(
+                "{label} contains a non-normal path component"
+            )));
         };
         cursor.push(part);
         let metadata = fs::symlink_metadata(&cursor).map_err(|source| {
             error(format!(
-                "build_file is unavailable at {}: {source}",
+                "{label} is unavailable at {}: {source}",
                 cursor.display()
             ))
         })?;
         if metadata.file_type().is_symlink() {
             return Err(error(format!(
-                "build_file contains a symlink: {}",
+                "{label} contains a symlink: {}",
                 cursor.display()
             )));
         }
     }
     let canonical = cursor
         .canonicalize()
-        .map_err(|source| error(format!("build_file cannot be canonicalized: {source}")))?;
+        .map_err(|source| error(format!("{label} cannot be canonicalized: {source}")))?;
     if !canonical.starts_with(root) {
-        return Err(error("build_file escapes the receipt root"));
+        return Err(error(format!("{label} escapes the receipt root")));
     }
     Ok(canonical)
 }
@@ -154,6 +189,52 @@ fn sha256_file(path: &Path) -> Result<String, InstantiatedGraphError> {
     let bytes = fs::read(path)
         .map_err(|source| error(format!("cannot read {}: {source}", path.display())))?;
     Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+fn argv_sha256(argv: &[String]) -> Result<String, InstantiatedGraphError> {
+    let bytes = serde_json::to_vec(argv)
+        .map_err(|source| error(format!("cannot encode action argv: {source}")))?;
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+fn safe_environment_name(value: &str) -> bool {
+    !value.is_empty()
+        && !value.contains('=')
+        && !value
+            .bytes()
+            .any(|byte| byte == 0 || byte.is_ascii_whitespace())
+}
+
+fn validate_artifact_shape(
+    artifact: &InstantiatedArtifact,
+    label: &str,
+) -> Result<(), InstantiatedGraphError> {
+    if !matches!(
+        artifact.kind.as_str(),
+        "external" | "produced" | "generated" | "install"
+    ) {
+        return Err(error(format!(
+            "{label} has an unknown artifact kind: {}",
+            artifact.kind
+        )));
+    }
+    safe_relative_path(&artifact.path, label)?;
+    if !valid_digest(&artifact.sha256) {
+        return Err(error(format!("{label} has an invalid sha256 digest")));
+    }
+    match artifact.kind.as_str() {
+        "external" if artifact.producer.is_some() => {
+            return Err(error(format!("{label} external artifact has a producer")))
+        }
+        "produced" | "generated" | "install" if artifact.producer.is_none() => {
+            return Err(error(format!("{label} produced artifact has no producer")))
+        }
+        _ => {}
+    }
+    if let Some(producer) = &artifact.producer {
+        safe_name(producer, &format!("{label} producer"))?;
+    }
+    Ok(())
 }
 
 fn validate_identity(
@@ -226,7 +307,7 @@ pub fn parse_and_validate(
     if !valid_digest(&receipt.build_file.sha256) {
         return Err(error("build_file has an invalid sha256 digest"));
     }
-    let build_file = contained_build_file(&root, &receipt.build_file.path)?;
+    let build_file = contained_file(&root, &receipt.build_file.path, "build_file")?;
     if !build_file.is_file() || sha256_file(&build_file)? != receipt.build_file.sha256 {
         return Err(error("build_file digest does not match the receipt"));
     }
@@ -246,6 +327,85 @@ pub fn parse_and_validate(
                 "instantiated action {} has a malformed tool or argv digest",
                 action.name
             )));
+        }
+        let tool_path = contained_file(&root, &action.tool_path, "action tool path")?;
+        if !tool_path.is_file() || sha256_file(&tool_path)? != action.tool_sha256 {
+            return Err(error(format!(
+                "instantiated action {} tool digest does not match",
+                action.name
+            )));
+        }
+        if action.argv.is_empty() || action.argv.iter().any(|part| part.is_empty()) {
+            return Err(error(format!(
+                "instantiated action {} has an empty argv component",
+                action.name
+            )));
+        }
+        if action.argv.first() != Some(&action.tool)
+            || action.argv.iter().any(|part| part.contains('\0'))
+        {
+            return Err(error(format!(
+                "instantiated action {} argv[0] or NUL closure is invalid",
+                action.name
+            )));
+        }
+        if argv_sha256(&action.argv)? != action.argv_sha256 {
+            return Err(error(format!(
+                "instantiated action {} argv digest does not match",
+                action.name
+            )));
+        }
+        let cwd = contained_file(&root, &action.cwd, "action cwd")?;
+        if !cwd.is_dir() {
+            return Err(error(format!(
+                "instantiated action {} cwd is not a directory",
+                action.name
+            )));
+        }
+        if receipt.identity.distribution == "production" && !action.environment_base.is_clear() {
+            return Err(error(format!(
+                "production action {} does not clear its environment",
+                action.name
+            )));
+        }
+        for (name, value) in &action.environment {
+            if !safe_environment_name(name) || value.contains('\0') {
+                return Err(error(format!(
+                    "instantiated action {} has an invalid environment entry",
+                    action.name
+                )));
+            }
+        }
+        for (index, input) in action.inputs.iter().enumerate() {
+            let label = format!("action {} input {index}", action.name);
+            validate_artifact_shape(input, &label)?;
+            if input.kind == "external" {
+                let path = contained_file(&root, &input.path, &label)?;
+                if !path.is_file() || sha256_file(&path)? != input.sha256 {
+                    return Err(error(format!("{label} digest does not match")));
+                }
+            }
+        }
+        let mut output_paths = BTreeSet::new();
+        for (index, output) in action.outputs.iter().enumerate() {
+            let label = format!("action {} output {index}", action.name);
+            validate_artifact_shape(output, &label)?;
+            if output.producer.as_deref() != Some(action.name.as_str()) {
+                return Err(error(format!("{label} producer must be the owning action")));
+            }
+            if !output_paths.insert(output.path.clone()) {
+                return Err(error(format!("{label} path is duplicated")));
+            }
+        }
+        let mut install_paths = BTreeSet::new();
+        for path in &action.install_paths {
+            safe_relative_path(path, "install path")?;
+            if !install_paths.insert(path) || !output_paths.contains(path) {
+                return Err(error(format!(
+                    "action {} install path is not a unique declared output",
+                    action.name
+                )));
+            }
         }
         let mut dependencies = BTreeSet::new();
         for dependency in &action.depends_on {
@@ -267,6 +427,41 @@ pub fn parse_and_validate(
                     action.name
                 )));
             }
+        }
+    }
+
+    let mut output_owners = BTreeMap::new();
+    for action in &receipt.actions {
+        for input in &action.inputs {
+            if let Some(producer) = &input.producer {
+                if !action_names.contains(producer) {
+                    return Err(error(format!(
+                        "action {} input names an unknown producer {}",
+                        action.name, producer
+                    )));
+                }
+            }
+        }
+        for output in &action.outputs {
+            if let Some(previous) = output_owners.insert(output.path.clone(), &action.name) {
+                return Err(error(format!(
+                    "instantiated output {} is owned by both {} and {}",
+                    output.path.display(),
+                    previous,
+                    action.name
+                )));
+            }
+        }
+    }
+    let mut output_paths = output_owners.keys().cloned().collect::<Vec<_>>();
+    output_paths.sort();
+    for pair in output_paths.windows(2) {
+        if pair[1].starts_with(&pair[0]) {
+            return Err(error(format!(
+                "instantiated output paths overlap: {} and {}",
+                pair[0].display(),
+                pair[1].display()
+            )));
         }
     }
 
@@ -292,6 +487,41 @@ pub fn parse_and_validate(
         if !edge_keys.insert((edge.source.clone(), edge.dependency.clone())) {
             return Err(error("instantiated graph contains a duplicate edge"));
         }
+    }
+
+    let action_by_name = receipt
+        .actions
+        .iter()
+        .map(|action| (action.name.as_str(), action))
+        .collect::<BTreeMap<_, _>>();
+    fn visit<'a>(
+        name: &'a str,
+        actions: &BTreeMap<&'a str, &'a InstantiatedAction>,
+        state: &mut BTreeMap<&'a str, u8>,
+    ) -> Result<(), InstantiatedGraphError> {
+        match state.get(name).copied() {
+            Some(1) => {
+                return Err(error(format!(
+                    "instantiated graph contains a cycle at {name}"
+                )))
+            }
+            Some(2) => return Ok(()),
+            _ => {}
+        }
+        state.insert(name, 1);
+        for dependency in &actions
+            .get(name)
+            .expect("action names were collected")
+            .depends_on
+        {
+            visit(dependency, actions, state)?;
+        }
+        state.insert(name, 2);
+        Ok(())
+    }
+    let mut state = BTreeMap::new();
+    for name in action_by_name.keys().copied() {
+        visit(name, &action_by_name, &mut state)?;
     }
 
     for action in &receipt.actions {
@@ -322,27 +552,31 @@ pub fn parse_and_validate(
         {
             return Err(error("raw dependency occurrence has an empty expression"));
         }
-        let edge = receipt.edges.get(occurrence.edge).ok_or_else(|| {
-            error(format!(
-                "raw dependency occurrence {} references an unknown edge",
-                occurrence.occurrence
-            ))
-        })?;
-        if edge.source != occurrence.source || edge.dependency != occurrence.dependency {
-            return Err(error(format!(
-                "raw dependency occurrence {} does not match its instantiated edge",
-                occurrence.occurrence
-            )));
-        }
-        if edge.kind == "source" {
-            mapped_source_edges.insert((edge.source.clone(), edge.dependency.clone()));
+        let mut occurrence_edges = BTreeSet::new();
+        for edge_index in &occurrence.edges {
+            if !occurrence_edges.insert(*edge_index) {
+                return Err(error(format!(
+                    "raw dependency occurrence {} repeats an edge",
+                    occurrence.occurrence
+                )));
+            }
+            let edge = receipt.edges.get(*edge_index).ok_or_else(|| {
+                error(format!(
+                    "raw dependency occurrence {} references an unknown edge",
+                    occurrence.occurrence
+                ))
+            })?;
+            if edge.kind == "source" {
+                mapped_source_edges.insert(*edge_index);
+            }
         }
     }
     let source_edges = receipt
         .edges
         .iter()
-        .filter(|edge| edge.kind == "source")
-        .map(|edge| (edge.source.clone(), edge.dependency.clone()))
+        .enumerate()
+        .filter(|(_, edge)| edge.kind == "source")
+        .map(|(index, _)| index)
         .collect::<BTreeSet<_>>();
     if mapped_source_edges != source_edges {
         return Err(error(
@@ -409,6 +643,17 @@ mod tests {
             let build = b"compile.dependOn(prepare);";
             fs::write(root.join("build.zig"), build).expect("build source");
             let digest = hex::encode(Sha256::digest(build));
+            fs::write(root.join("zig"), b"zig-tool").expect("tool");
+            fs::create_dir_all(root.join("work")).expect("work directory");
+            let tool_digest = hex::encode(Sha256::digest(b"zig-tool"));
+            let prepare_argv = vec!["zig".to_string(), "prepare".to_string()];
+            let compile_argv = vec!["zig".to_string(), "compile".to_string()];
+            let prepare_argv_digest = hex::encode(Sha256::digest(
+                serde_json::to_vec(&prepare_argv).expect("prepare argv"),
+            ));
+            let compile_argv_digest = hex::encode(Sha256::digest(
+                serde_json::to_vec(&compile_argv).expect("compile argv"),
+            ));
             let expected = InstantiationIdentity {
                 target: "aarch64-macos".into(),
                 profile: "release".into(),
@@ -423,11 +668,27 @@ mod tests {
                 "identity": expected,
                 "build_file": {"path": "build.zig", "sha256": digest},
                 "actions": [
-                    {"name": "prepare", "depends_on": [], "tool": "zig", "tool_sha256": "c".repeat(64), "argv_sha256": "d".repeat(64)},
-                    {"name": "compile", "depends_on": ["prepare"], "tool": "zig", "tool_sha256": "c".repeat(64), "argv_sha256": "e".repeat(64)}
+                    {
+                        "name": "prepare", "depends_on": [], "tool": "zig",
+                        "tool_path": "zig", "tool_sha256": tool_digest,
+                        "argv": prepare_argv, "argv_sha256": prepare_argv_digest,
+                        "cwd": "work", "inputs": [{"kind": "external", "path": "build.zig", "sha256": digest}],
+                        "outputs": [{"kind": "generated", "path": "out/prepare", "sha256": "e".repeat(64), "producer": "prepare"}],
+                        "install_paths": ["out/prepare"], "environment_base": "clear",
+                        "environment": {"BIRNAM_TARGET": "aarch64-macos"}
+                    },
+                    {
+                        "name": "compile", "depends_on": ["prepare"], "tool": "zig",
+                        "tool_path": "zig", "tool_sha256": tool_digest,
+                        "argv": compile_argv, "argv_sha256": compile_argv_digest,
+                        "cwd": "work", "inputs": [{"kind": "produced", "path": "out/prepare", "sha256": "e".repeat(64), "producer": "prepare"}],
+                        "outputs": [{"kind": "install", "path": "out/module.dylib", "sha256": "f".repeat(64), "producer": "compile"}],
+                        "install_paths": ["out/module.dylib"], "environment_base": "clear",
+                        "environment": {"BIRNAM_TARGET": "aarch64-macos"}
+                    }
                 ],
                 "edges": [{"source": "compile", "dependency": "prepare", "kind": "source"}],
-                "raw_occurrences": [{"occurrence": 0, "source_expression": "compile", "dependency_expression": "prepare", "source": "compile", "dependency": "prepare", "edge": 0}],
+                "raw_occurrences": [{"occurrence": 0, "source_expression": "compile", "dependency_expression": "prepare", "edges": [0]}],
                 "roots": ["compile"]
             });
             Self {
@@ -456,7 +717,7 @@ mod tests {
         let receipt = parse_and_validate(&fixture.bytes, &fixture.root, &fixture.expected)
             .expect("valid instantiated receipt");
         assert_eq!(receipt.actions.len(), 2);
-        assert_eq!(receipt.raw_occurrences[0].edge, 0);
+        assert_eq!(receipt.raw_occurrences[0].edges, [0]);
     }
 
     #[test]
@@ -465,18 +726,43 @@ mod tests {
         let bytes = mutate(&fixture, |value| {
             let first = value["raw_occurrences"][0].clone();
             value["raw_occurrences"] = json!([
-                {"occurrence": 0, "source_expression": "compile", "dependency_expression": "prepare", "source": "compile", "dependency": "prepare", "edge": 0},
-                {"occurrence": 1, "source_expression": "compile", "dependency_expression": "prepare", "source": "compile", "dependency": "prepare", "edge": 0}
+                {"occurrence": 0, "source_expression": "compile", "dependency_expression": "prepare", "edges": [0]},
+                {"occurrence": 1, "source_expression": "compile", "dependency_expression": "prepare", "edges": [0]}
             ]);
-            assert_eq!(first["edge"], value["raw_occurrences"][0]["edge"]);
+            assert_eq!(first["edges"], value["raw_occurrences"][0]["edges"]);
         });
         let receipt = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect("duplicate syntactic occurrence is retained");
         assert_eq!(receipt.raw_occurrences.len(), 2);
         assert_eq!(
-            receipt.raw_occurrences[0].edge,
-            receipt.raw_occurrences[1].edge
+            receipt.raw_occurrences[0].edges,
+            receipt.raw_occurrences[1].edges
         );
+    }
+
+    #[test]
+    fn accepts_one_raw_occurrence_expanding_to_many_edges() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            let mut expanded = value["actions"][0].clone();
+            expanded["name"] = json!("expanded");
+            expanded["outputs"][0]["path"] = json!("out/expanded");
+            expanded["outputs"][0]["producer"] = json!("expanded");
+            expanded["install_paths"] = json!(["out/expanded"]);
+            value["actions"]
+                .as_array_mut()
+                .expect("actions")
+                .push(expanded);
+            value["actions"][1]["depends_on"] = json!(["prepare", "expanded"]);
+            value["edges"] = json!([
+                {"source": "compile", "dependency": "prepare", "kind": "source"},
+                {"source": "compile", "dependency": "expanded", "kind": "source"}
+            ]);
+            value["raw_occurrences"][0]["edges"] = json!([0, 1]);
+        });
+        let receipt = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
+            .expect("one raw occurrence may expand to many concrete edges");
+        assert_eq!(receipt.raw_occurrences[0].edges, [0, 1]);
     }
 
     #[test]
@@ -496,18 +782,18 @@ mod tests {
     fn rejects_unmapped_or_mismatched_raw_edge() {
         let fixture = Fixture::new();
         let bytes = mutate(&fixture, |value| {
-            value["raw_occurrences"][0]["edge"] = json!(1)
+            value["raw_occurrences"][0]["edges"] = json!([1])
         });
         let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect_err("raw mapping to a missing edge must be rejected");
         assert!(error.0.contains("unknown edge"));
 
         let bytes = mutate(&fixture, |value| {
-            value["raw_occurrences"][0]["dependency"] = json!("other")
+            value["raw_occurrences"][0]["edges"] = json!([0, 0])
         });
         let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
-            .expect_err("raw mapping with the wrong edge identity must be rejected");
-        assert!(error.0.contains("does not match"));
+            .expect_err("raw mapping with a repeated edge must be rejected");
+        assert!(error.0.contains("repeats an edge"));
     }
 
     #[test]
@@ -524,5 +810,16 @@ mod tests {
         let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect_err("roots must reach every action");
         assert!(error.0.contains("do not reach"));
+
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][0]["depends_on"] = json!(["compile"]);
+            value["edges"] = json!([
+                {"source": "compile", "dependency": "prepare", "kind": "source"},
+                {"source": "prepare", "dependency": "compile", "kind": "generated"}
+            ]);
+        });
+        let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
+            .expect_err("cycles must be rejected even when roots reach every action");
+        assert!(error.0.contains("contains a cycle"));
     }
 }
