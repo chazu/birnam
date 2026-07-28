@@ -126,7 +126,7 @@ atomically committed.
 | --- | --- | --- |
 | M0 | landed | ledger/checker receipt remains the authority ledger |
 | M1 | canonical source identity and parity gate landed | future host changes require a refreshed receipt |
-| M2 | Rust mechanism and negative evidence landed | retirement-seam exit receipt remains |
+| M2 | Rust mechanism, negative corpus, and retirement-seam receipt landed | future authority changes require a refreshed corpus |
 | M3 | owner inventory landed with `z2_1_seam=none` | refresh/no-op exit receipt remains |
 | M4.1 | landed projection/checker | named-target projection is not instantiated semantic truth |
 | M4.2 | partial | real configuration-specific extractor and complete action closure |
@@ -643,7 +643,8 @@ incompatible policy authorities with no evidence-based owner.
    current clean checkpoint before changing code.
 3. M1 canonical host identity and parity/exit receipt are landed; refresh the
    receipt whenever the host source or boundary changes.
-4. Finish M2’s artifact/preflight retirement-seam receipt.
+4. M2’s artifact/preflight retirement-seam receipt is landed; refresh the
+   normalized corpus before any authority change.
 5. Refresh M3’s policy no-seam/transfer inventory and land its no-op/transfer
    exit receipt.
 6. M4.1 projection/checker is landed. Complete M4.2’s real extractor and

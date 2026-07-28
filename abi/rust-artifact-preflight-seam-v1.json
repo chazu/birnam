@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "rust-artifact-preflight-seam",
-  "candidate_commit": "9a32f157bdb54e3e522c9b2d7485f57363a13fcf",
+  "candidate_commit": "75b7df5b512d055cbec912710ba1c6cbd204cc38",
   "production_owners": {
     "codec": "rust/birnam-artifact/src/lib.rs",
     "artifact_projection": "rust/birnam-artifact/src/module.rs",
