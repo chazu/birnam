@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "kind": "rust-host-canonical",
+  "candidate_commit": "492b9e3dc75c113bd8f42c37da0d167ffaf0e74d",
+  "canonical_target": "birnam",
+  "production_install": "bin/birnam",
+  "removed_targets": ["birnam-rust-experimental"],
+  "source_path": "rust/birnam-host/src/bin/birnam-rust-experimental.rs",
+  "user_facing_identity": "birnam",
+  "boundary": "rust-host-zig-helper-boundary: sources=2 static=ok resource-boundary=ok",
+  "checks": [
+    {
+      "command": "cargo check --manifest-path rust/birnam-host/Cargo.toml --locked --offline",
+      "result": "pass"
+    },
+    {
+      "command": "cargo run --manifest-path rust/birnam-host/Cargo.toml --bin birnam -- --help",
+      "result": "pass: birnam — Rust host"
+    },
+    {
+      "command": "zig build test-rust-host-zig-helper-boundary test-rust-host-message-owner-inventory test-rust-resource-resolution test-install -Disolate-impl=rust -Dfloor=rust -Drelational=rust -Doptimize=ReleaseSafe -j1",
+      "result": "pass: 129/129 steps"
+    }
+  ],
+  "invariants": {
+    "rust_host_is_sole_production_host": true,
+    "zig_helper_imports": false,
+    "source_checkout_fallback": false,
+    "dynamic_zig_load": false,
+    "cli_contract_changed": false
+  }
+}
