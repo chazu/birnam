@@ -433,6 +433,9 @@ Release floors. Floor shell, GC metadata/layout, dispatch-reentry, old-client,
 image, and MOP evidence remain explicit fixtures. The ledger row for
 `src/id/id.zig` records the Rust `rust-id-v1` profiles and retains
 `libbirnam_id_zig.dylib`; no source or rollback-vector member was removed.
+The post-receipt strict R6 checkpoint at `422e739` passed with the pinned
+`307/307` verify, `516/522` tests, six skips, live Alien, Z3 archive/trace,
+and benchmark receipts.
 
 **C2.1b Store evidence (2026-07-27):** the Store consistency-law suite passed
 with the Zig Store/Zig floor oracle and Rust Store against the Rust floor in
