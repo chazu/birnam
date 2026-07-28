@@ -833,6 +833,12 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     }
     let action_order = validate_dependencies(&manifest.actions)?;
     for action in &manifest.actions {
+        if action.delegation == "explicit-shadow" && action.authority != "shadow" {
+            return Err(error(format!(
+                "action {} uses explicit-shadow delegation without shadow authority",
+                action.name
+            )));
+        }
         if manifest.selection.distribution == "production" && action.context != "production" {
             return Err(error(format!(
                 "production selection contains non-production action {}",
@@ -1256,6 +1262,19 @@ mod tests {
         let error = parse_and_validate(&bytes, &fixture.root)
             .expect_err("production must reject a Zig oracle tool path");
         assert!(error.0.contains("Zig-only path"));
+    }
+
+    #[test]
+    fn rejects_explicit_shadow_delegation_without_shadow_authority() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["selection"]["distribution"] = json!("shadow");
+            value["actions"][0]["context"] = json!("shadow");
+            value["actions"][0]["delegation"] = json!("explicit-shadow");
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("explicit-shadow must require shadow authority");
+        assert!(error.0.contains("without shadow authority"));
     }
 
     #[test]
