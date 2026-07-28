@@ -787,7 +787,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts: PEG readiness=blocked rollback_status=pinned; CST/diagnostic/source/generated-C/metadata/stress parity passed"
     },
     {
       "key": "zig:path:src/id/peg_test.zig",

@@ -453,8 +453,9 @@ language, full-language, CST, diagnostics, source-corpus, generated-C,
 metadata, stress, installed-relocation, and codegen suites. The frozen CST,
 source-corpus, generated-C, and stress receipts are recorded in the C2 artifact;
 the Zig PEG parser fixture remains pinned for rollback and old-image/parser
-diagnostic recovery. The PEG row remains blocked/pinned pending its focused
-ledger commit and strict R6 checkpoint.
+diagnostic recovery. The PEG row now records the focused blocked/pinned
+receipt; no parser fixture or source was removed. Its strict R6 checkpoint is
+the final C2.1 gate.
 
 ## 8. Phase C3 — native-Birnam policy closure
 
