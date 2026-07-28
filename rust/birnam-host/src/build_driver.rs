@@ -2066,14 +2066,31 @@ mod tests {
             .join("../..")
             .canonicalize()
             .expect("repository root");
+        let graph_sha256 =
+            sha256_file(&repo_root.join("abi/birnam-build-actions-v1.json")).expect("graph digest");
+        let build_sha256 = sha256_file(&repo_root.join("build.zig")).expect("build digest");
+        let proof: Value = serde_json::from_str(
+            &fs::read_to_string(repo_root.join(RECEIPT_PROOF_PATH)).expect("receipt proof"),
+        )
+        .expect("receipt proof JSON");
+        assert_eq!(proof["proof_kind"], "m4.1-checker-git-v1");
+        assert_eq!(proof["graph_sha256"], graph_sha256);
+        assert_eq!(proof["build_sha256"], build_sha256);
+        assert_eq!(
+            proof["receipt_commit"],
+            "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1"
+        );
+        assert_eq!(
+            proof["receipt_tree"],
+            "25fa3ebb2512266452fe279319215ec56a907524"
+        );
         verify_git_receipt(
             &repo_root,
             "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
             "25fa3ebb2512266452fe279319215ec56a907524",
             Path::new("abi/birnam-build-actions-v1.json"),
-            &sha256_file(&repo_root.join("abi/birnam-build-actions-v1.json"))
-                .expect("graph digest"),
-            &sha256_file(&repo_root.join("build.zig")).expect("build digest"),
+            &graph_sha256,
+            &build_sha256,
         )
         .expect("checker Git receipt proof");
     }
