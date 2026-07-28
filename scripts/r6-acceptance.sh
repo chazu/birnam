@@ -25,6 +25,10 @@ python3 scripts/check-native-rung-baseline.py
 readonly expected_rust_build_driver_tests=17
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
 
+# The pinned suite includes the real build.zig capture (464 syntactic
+# occurrences, 463 unique semantic pairs) and the checker receipt-proof Git
+# verification, not only the small synthetic manifest fixture.
+
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
 # canonical/rollback selection checks (including Relational), the optimized
