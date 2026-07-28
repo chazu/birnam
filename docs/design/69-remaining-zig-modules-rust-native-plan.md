@@ -303,8 +303,8 @@ fully resolved semantic graph before any Rust build action is authoritative.
    undeclared dynamic names before spawning a compiler.
 3. Add unit tests for malformed manifests, path escape, duplicate names,
    dependency cycles, stale digests, mixed Rust/Zig selection, inline
-   `dependOn`, implicit install-step dependencies, exact shell argv, and
-   environment capture. Commit this slice independently.
+`dependOn`, implicit install-step dependencies, exact shell argv, and
+environment capture. Commit this slice independently.
 
 The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
 `dry-run` parser. It requires `semantic_scope=full-semantic-v1`, binds graph
@@ -313,6 +313,13 @@ duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
 eight focused parser tests. It does not execute a tool; the complete
 `dependOn`/install semantic resolver and selection-specific command receipts
 remain the next M4.2 slice.
+
+The source-capture checkpoint additionally scans `build.zig` without the
+projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
+are balanced and retained, including the inline `test-install` step and its
+`b.getInstallStep()` dependency. The captured expressions are still not
+executable action identities; resolution to concrete tools, install outputs,
+and inherited/cleared environments remains fail-closed work in M4.2.
 
 ### M4.3 Compiler invocation and stage-1 module compilation
 
