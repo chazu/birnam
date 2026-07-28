@@ -558,8 +558,15 @@ fn validate_dependencies(actions: &[ActionSpec]) -> Result<Vec<String>, Manifest
                 )));
             }
         }
+        if action.depends_on.len() != action.depends_on.iter().collect::<BTreeSet<_>>().len() {
+            return Err(error(format!(
+                "action {} repeats a dependency",
+                action.name
+            )));
+        }
         for variable in action.environment.keys() {
             if variable.is_empty()
+                || variable.contains('=')
                 || variable
                     .bytes()
                     .any(|byte| byte == 0 || byte.is_ascii_whitespace())
@@ -569,6 +576,16 @@ fn validate_dependencies(actions: &[ActionSpec]) -> Result<Vec<String>, Manifest
                     action.name
                 )));
             }
+        }
+        if action
+            .environment
+            .values()
+            .any(|value| matches!(value, EnvironmentValue::Set(value) if value.contains('\0')))
+        {
+            return Err(error(format!(
+                "action {} has a NUL environment value",
+                action.name
+            )));
         }
     }
 
@@ -873,6 +890,16 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                     action.name
                 )));
             }
+            if action
+                .environment
+                .values()
+                .any(|value| matches!(value, EnvironmentValue::Inherit))
+            {
+                return Err(error(format!(
+                    "production action {} inherits an unspecified environment",
+                    action.name
+                )));
+            }
         }
         for (index, input) in action.inputs.iter().enumerate() {
             validate_path_ref(
@@ -909,8 +936,18 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     }
 
     let mut output_owners = BTreeMap::new();
+    let mut input_paths = BTreeSet::new();
+    for action in &manifest.actions {
+        input_paths.extend(action.inputs.iter().map(|input| input.path.clone()));
+    }
     for action in &manifest.actions {
         for output in &action.outputs {
+            if input_paths.contains(&output.path) {
+                return Err(error(format!(
+                    "output {} overwrites a declared input",
+                    output.path.display()
+                )));
+            }
             if let Some(previous) = output_owners.insert(output.path.clone(), &action.name) {
                 return Err(error(format!(
                     "output {} is owned by both {} and {}",
@@ -919,6 +956,17 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                     action.name
                 )));
             }
+        }
+    }
+    let mut owned_paths = output_owners.keys().cloned().collect::<Vec<_>>();
+    owned_paths.sort();
+    for pair in owned_paths.windows(2) {
+        if pair[1].starts_with(&pair[0]) {
+            return Err(error(format!(
+                "output paths overlap hierarchically: {} and {}",
+                pair[0].display(),
+                pair[1].display()
+            )));
         }
     }
 
