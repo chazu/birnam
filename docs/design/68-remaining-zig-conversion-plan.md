@@ -349,6 +349,13 @@ codec crates and Codegen export neither provider's initializer nor identity;
 the exact codec/projection/host/native ownership audit passes, and strict
 R6/Z3 pass.
 
+**C1 receipt (2026-07-27):** the Rust-host helper boundary, relocated project
+check/build/run/install/test, LSP and source-fallback paths, runtime-resource
+parity, Artifact/Image codec ownership audit, and shared Rust/Zig preflight
+corpus all passed in strict R6. The archive gate additionally records
+provider-vs-fixture digests and confined `Module loadArtifact:` traces for two
+independent Rust production prefixes and the complete Zig rollback prefix.
+
 ## 7. Phase C2 — per-rung Rust canonicalization and Zig fixture decisions
 
 The floor and all 13 higher rungs already have Rust canonical providers. C2
@@ -483,7 +490,7 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
       prefix-confined and mutually exclusive; C4 retain mode keeps both, while
       retire mode records `rollback_status=not-applicable` and runs production
       traces only.
-- [ ] Rust host and artifact preflight own observation/closure; native Birnam
+- [x] Rust host and artifact preflight own observation/closure; native Birnam
       owns activation and policy.
 - [ ] Every rung has a Rust identity/digest, Zig fixture policy, and applicable
       ABI/MOP/GC/image/wire evidence.
