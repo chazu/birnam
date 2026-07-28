@@ -23,10 +23,10 @@ python3 scripts/check-native-rung-baseline.py
 # step, so a passing native-rung snapshot cannot mask a regression in the
 # driver that will own the next orchestration rung.
 # The pinned suite includes the projected-scope/environment-base/produced-
-# artifact/tool contracts and
+# artifact/tool/capability contracts and
 # the real build.zig capture (464 syntactic occurrences, 463 unique projected
 # pairs) plus checker receipt-proof Git verification.
-readonly expected_rust_build_driver_tests=22
+readonly expected_rust_build_driver_tests=23
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
 
 # Keep the real build.zig capture and checker receipt-proof verification in the
