@@ -310,7 +310,7 @@ The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
 `dry-run` parser. It requires `semantic_scope=full-semantic-v1`, binds graph
 and input digests to files under the supplied root, rejects path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-14 focused parser tests. The R6 acceptance script runs this semantic-driver
+15 focused parser tests. The R6 acceptance script runs this semantic-driver
 suite fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
@@ -334,7 +334,8 @@ action’s declared dependency set, a rooted acyclic closure, explicit implicit-
 edge kinds, a connected action set, and the exact 14-provider/dylib closure.
 Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
-and collision checks. The driver still cannot execute until instantiated
+and collision checks; `explicit-shadow` delegation is restricted to shadow
+authority. The driver still cannot execute until instantiated
 implicit Zig Build edges and a receipt-bound build-file trust anchor are
 represented; the parser now pins the source graph to `build.zig` and the
 M4.1 `abi/birnam-build-actions-v1.json` path, with commit/tree receipt binding
