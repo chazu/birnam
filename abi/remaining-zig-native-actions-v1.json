@@ -193,7 +193,7 @@
   ],
   "transaction": {
     "candidate_policy": "candidate commit or explicit tree hash must be clean and receiptable",
-    "candidate_commit": null,
+    "candidate_commit": "83a24e5dbf714f9cec29c88b2e396ee890471dda",
     "receipt_commit": null,
     "post_receipt_gate": "inventory, helper-boundary, owner-inventory, artifact-authority, and strict R6"
   }
