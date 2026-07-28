@@ -870,6 +870,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             let forbidden =
                 |value: &str| value.contains("_zig") || value.contains("birnam-zig-oracle");
             if forbidden(&action.tool)
+                || forbidden(&tool_path.to_string_lossy())
                 || forbidden(&action.cwd.to_string_lossy())
                 || action.command.iter().any(|part| forbidden(part))
                 || action
@@ -1242,6 +1243,19 @@ mod tests {
             value["dynamic_libraries"][0] = json!("libbirnam_id_zig.dylib")
         });
         assert!(parse_and_validate(&zig_name, &fixture.root).is_err());
+    }
+
+    #[test]
+    fn rejects_production_tool_path_with_zig_oracle_marker() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.root.join("bin")).expect("tool directory");
+        fs::write(fixture.root.join("bin/birnam-zig-oracle"), b"tool").expect("oracle tool");
+        let bytes = mutate(&fixture, |value| {
+            value["tools"]["zig"] = json!("bin/birnam-zig-oracle");
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("production must reject a Zig oracle tool path");
+        assert!(error.0.contains("Zig-only path"));
     }
 
     #[test]
