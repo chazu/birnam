@@ -127,6 +127,7 @@ pub struct Selection {
     pub floor: String,
     pub providers: BTreeMap<String, String>,
     pub provider_actions: BTreeMap<String, String>,
+    pub provider_sources: BTreeMap<String, PathRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -226,7 +227,10 @@ impl ValidatedManifest {
     }
 
     pub fn action(&self, name: &str) -> Option<&ActionSpec> {
-        self.manifest.actions.iter().find(|action| action.name == name)
+        self.manifest
+            .actions
+            .iter()
+            .find(|action| action.name == name)
     }
 
     pub fn graph_proof_strength(&self) -> GraphProofStrength {
@@ -937,6 +941,79 @@ fn dependency_reaches(
     })
 }
 
+fn action_consumes_source(action: &ActionSpec, source: &PathRef) -> bool {
+    action.inputs.iter().any(|input| {
+        input.kind == "external" && input.path == source.path && input.sha256 == source.sha256
+    })
+}
+
+fn validate_module_source_membership(
+    modules: &[ModuleSpec],
+    actions: &[ActionSpec],
+    root: &Path,
+) -> Result<(), ManifestError> {
+    for module in modules {
+        validate_path_ref(&module.source, root, "module source")?;
+        let producer = actions
+            .iter()
+            .find(|action| action.name == module.producer)
+            .expect("module producer validated above");
+        if !action_consumes_source(producer, &module.source) {
+            return Err(error(format!(
+                "module {} producer {} does not consume its declared source {}",
+                module.name,
+                producer.name,
+                module.source.path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_provider_source_membership(
+    selection: &Selection,
+    actions: &[ActionSpec],
+    root: &Path,
+) -> Result<(), ManifestError> {
+    let expected = CANONICAL_DYNAMIC_LIBRARIES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let actual = selection
+        .provider_sources
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual != expected {
+        return Err(error(
+            "provider source map does not cover the canonical 14-provider closure",
+        ));
+    }
+    for library in CANONICAL_DYNAMIC_LIBRARIES {
+        let source = selection
+            .provider_sources
+            .get(*library)
+            .expect("provider source coverage validated above");
+        validate_path_ref(source, root, "provider source")?;
+        let producer_name = selection
+            .provider_actions
+            .get(*library)
+            .expect("provider action coverage validated above");
+        let producer = actions
+            .iter()
+            .find(|action| action.name == *producer_name)
+            .expect("provider producer validated above");
+        if !action_consumes_source(producer, source) {
+            return Err(error(format!(
+                "provider {library} producer {} does not consume its declared source {}",
+                producer.name,
+                source.path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Parse and validate a driver manifest against a checkout/prefix root.
 pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest, ManifestError> {
     let manifest: DriverManifest = serde_json::from_slice(bytes)
@@ -1161,6 +1238,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             )));
         }
     }
+    validate_module_source_membership(&manifest.modules, &manifest.actions, &root)?;
     let expected_provider_actions = CANONICAL_DYNAMIC_LIBRARIES
         .iter()
         .copied()
@@ -1183,6 +1261,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             )));
         }
     }
+    validate_provider_source_membership(&manifest.selection, &manifest.actions, &root)?;
     if manifest.source_graph.roots.is_empty()
         || manifest
             .source_graph
@@ -1387,7 +1466,10 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             }
             "produced" => {
                 let producer = action.tool_producer.as_deref().ok_or_else(|| {
-                    error(format!("action {} produced tool has no producer", action.name))
+                    error(format!(
+                        "action {} produced tool has no producer",
+                        action.name
+                    ))
                 })?;
                 safe_name(producer, "tool producer")?;
                 if producer == action.name
@@ -1492,9 +1574,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                     }
                 }
                 other => {
-                    return Err(error(format!(
-                        "{label} has unknown artifact kind {other}"
-                    )));
+                    return Err(error(format!("{label} has unknown artifact kind {other}")));
                 }
             }
         }
@@ -1774,12 +1854,7 @@ pub fn execute_shadow_graph(
         for (index, input) in action.inputs.iter().enumerate() {
             let label = format!("action {} input {index}", action.name);
             if input.kind == "external" {
-                validate_external_artifact(
-                    &input.path,
-                    &input.sha256,
-                    &validated.root,
-                    &label,
-                )?;
+                validate_external_artifact(&input.path, &input.sha256, &validated.root, &label)?;
             } else {
                 let resolved = contained_existing_path(&validated.root, &input.path, &label)?;
                 if !resolved.is_file() {
@@ -1800,10 +1875,7 @@ pub fn execute_shadow_graph(
         let mut command = Command::new(&tool_path);
         command.args(action.command.iter().skip(1));
         command.current_dir(validated.root.join(&action.cwd));
-        if matches!(
-            validated.manifest.environment_base,
-            EnvironmentBase::Clear
-        ) {
+        if matches!(validated.manifest.environment_base, EnvironmentBase::Clear) {
             command.env_clear();
         }
         for (name, value) in &action.environment {
@@ -1817,10 +1889,8 @@ pub fn execute_shadow_graph(
                 }
             }
         }
-        let before_output_digests = snapshot_declared_output_digests(
-            &validated.root,
-            &declared_output_paths,
-        )?;
+        let before_output_digests =
+            snapshot_declared_output_digests(&validated.root, &declared_output_paths)?;
         let current_output_paths = action
             .outputs
             .iter()
@@ -1840,15 +1910,16 @@ pub fn execute_shadow_graph(
                 action.name
             )));
         }
-        let observed_output_digests = snapshot_declared_output_digests(
-            &validated.root,
-            &declared_output_paths,
-        )?;
+        let observed_output_digests =
+            snapshot_declared_output_digests(&validated.root, &declared_output_paths)?;
         for path in &declared_output_paths {
             if current_output_paths.contains(path) {
                 continue;
             }
-            match (before_output_digests.get(path), observed_output_digests.get(path)) {
+            match (
+                before_output_digests.get(path),
+                observed_output_digests.get(path),
+            ) {
                 (Some(before), Some(after)) if before == after => {}
                 (None, Some(_)) => {
                     return Err(error(format!(
@@ -1926,7 +1997,7 @@ pub fn execute_shadow_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1991,6 +2062,10 @@ mod tests {
                 .iter()
                 .map(|name| (*name, "compile"))
                 .collect::<BTreeMap<_, _>>();
+            let provider_sources = CANONICAL_DYNAMIC_LIBRARIES
+                .iter()
+                .map(|name| (*name, json!({"path": "module.birnam", "sha256": digest})))
+                .collect::<BTreeMap<_, _>>();
             let provider_outputs = CANONICAL_DYNAMIC_LIBRARIES
                 .iter()
                 .map(|name| {
@@ -2019,6 +2094,16 @@ mod tests {
                     })
                 })
                 .collect::<Vec<_>>();
+            let compile_inputs =
+                std::iter::once(json!({
+                    "kind": "external",
+                    "path": "module.birnam",
+                    "sha256": digest
+                }))
+                .chain(STAGE1_MODULES.iter().map(
+                    |(source, _)| json!({"kind": "external", "path": source, "sha256": digest}),
+                ))
+                .collect::<Vec<_>>();
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "projected-shadow-v1",
@@ -2036,7 +2121,7 @@ mod tests {
                 },
                 "target": "aarch64-macos",
                 "profile": "release",
-                "selection": {"distribution": "production", "floor": "rust", "providers": CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| (*name, "rust")).collect::<BTreeMap<_, _>>(), "provider_actions": provider_actions},
+                "selection": {"distribution": "production", "floor": "rust", "providers": CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| (*name, "rust")).collect::<BTreeMap<_, _>>(), "provider_actions": provider_actions, "provider_sources": provider_sources},
                 "modules": stage1_modules,
                 "actions": [{
                     "name": "prepare",
@@ -2063,7 +2148,7 @@ mod tests {
                     "cwd": "work",
                     "command": ["zig", "build-module"],
                     "depends_on": ["prepare"],
-                    "inputs": [{"kind": "external", "path": "module.birnam", "sha256": digest}],
+                    "inputs": compile_inputs,
                     "outputs": std::iter::once(json!({"path": "out/module.dylib", "sha256": "c".repeat(64)})).chain(stage1_outputs).chain(provider_outputs).collect::<Vec<_>>(),
                     "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }],
@@ -2102,12 +2187,17 @@ mod tests {
     fn accepts_upstream_produced_artifact_without_preexisting_file() {
         let fixture = Fixture::new();
         let bytes = mutate(&fixture, |value| {
-            value["actions"][1]["inputs"][0] = json!({
-                "kind": "produced",
-                "producer": "prepare",
-                "path": "out/prepare",
-                "sha256": "b".repeat(64)
-            });
+            value["actions"][1]
+                .get_mut("inputs")
+                .expect("compile inputs")
+                .as_array_mut()
+                .expect("compile input array")
+                .push(json!({
+                    "kind": "produced",
+                    "producer": "prepare",
+                    "path": "out/prepare",
+                    "sha256": "b".repeat(64)
+                }));
         });
         let parsed = parse_and_validate(&bytes, &fixture.root)
             .expect("upstream produced artifact should be a deferred input");
@@ -2178,7 +2268,9 @@ mod tests {
     #[test]
     fn rejects_ambient_environment_base() {
         let fixture = Fixture::new();
-        let bytes = mutate(&fixture, |value| value["environment_base"] = json!("inherit"));
+        let bytes = mutate(&fixture, |value| {
+            value["environment_base"] = json!("inherit")
+        });
         let error = parse_and_validate(&bytes, &fixture.root)
             .expect_err("ambient environment base must be rejected");
         assert!(error.0.contains("cleared environment base"));
@@ -2333,6 +2425,36 @@ mod tests {
     }
 
     #[test]
+    fn rejects_module_source_not_consumed_by_its_producer() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][1]["inputs"][1]["path"] = json!("module.birnam");
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("module source membership must be enforced");
+        assert!(error.0.contains("does not consume its declared source"));
+    }
+
+    #[test]
+    fn rejects_provider_source_not_consumed_by_its_producer() {
+        let fixture = Fixture::new();
+        let build_digest = hex::encode(Sha256::digest(
+            fs::read(fixture.root.join("build.zig")).expect("build source"),
+        ));
+        let bytes = mutate(&fixture, |value| {
+            value["selection"]["provider_sources"][CANONICAL_DYNAMIC_LIBRARIES[0]] = json!({
+                "path": "build.zig",
+                "sha256": build_digest
+            });
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("provider source membership must be enforced");
+        assert!(error
+            .0
+            .contains("producer compile does not consume its declared source"));
+    }
+
+    #[test]
     fn rejects_mixed_production_vector_and_zig_dynamic_name() {
         let fixture = Fixture::new();
         let mixed = mutate(&fixture, |value| value["selection"]["floor"] = json!("zig"));
@@ -2422,11 +2544,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["prepare", "compile"]
         );
-        assert!(
-            executions
-                .iter()
-                .all(|result| result.status == 0 && result.stdout == b"shadow-ok")
-        );
+        assert!(executions
+            .iter()
+            .all(|result| result.status == 0 && result.stdout == b"shadow-ok"));
         let mut wrong_context = validated.clone();
         wrong_context.manifest.actions[0].context = "production".to_string();
         let context_error = execute_shadow_graph(&wrong_context)
@@ -2533,18 +2653,14 @@ mod tests {
             .map(|edge| (edge.source.as_str(), edge.dependency.as_str()))
             .collect::<BTreeSet<_>>();
         assert_eq!(unique_edges.len(), 463);
-        assert!(
-            capture
-                .edges
-                .iter()
-                .any(|edge| edge.source_line == 3519 && edge.dependency == "b.getInstallStep()")
-        );
-        assert!(
-            capture
-                .edges
-                .iter()
-                .any(|edge| edge.source_line == 3520 && edge.source.contains("b.step("))
-        );
+        assert!(capture
+            .edges
+            .iter()
+            .any(|edge| edge.source_line == 3519 && edge.dependency == "b.getInstallStep()"));
+        assert!(capture
+            .edges
+            .iter()
+            .any(|edge| edge.source_line == 3520 && edge.source.contains("b.step(")));
         let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .canonicalize()
@@ -2569,12 +2685,12 @@ mod tests {
         );
         assert_eq!(
             verify_git_receipt(
-            &repo_root,
-            "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
-            "25fa3ebb2512266452fe279319215ec56a907524",
-            Path::new("abi/birnam-build-actions-v1.json"),
-            &graph_sha256,
-            &build_sha256,
+                &repo_root,
+                "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
+                "25fa3ebb2512266452fe279319215ec56a907524",
+                Path::new("abi/birnam-build-actions-v1.json"),
+                &graph_sha256,
+                &build_sha256,
             )
             .expect("checker Git receipt proof"),
             GraphProofStrength::GitVerified
