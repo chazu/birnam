@@ -1,10 +1,11 @@
 # 69 — Remaining Zig Modules: Rust Host and Native-Birnam Plan
 
-> **Status:** Corrected after adversarial review at `577e50d`; GO only for
-> continued data-only/schema and explicitly fenced shadow work. The review is
-> **NO-GO** for authoritative graph execution or M5/M6 cutover until the
-> instantiated-graph, bootstrap-provenance, publication, and child-confinement
-> gates below are implemented and independently receipted. Baseline: Design 68
+> **Status:** Second correction checkpoint at `48fb113`, pending adversarial
+> re-review. GO only for continued data-only/schema and explicitly fenced
+> shadow work. The review remains **NO-GO** for authoritative graph execution
+> or M5/M6 cutover until the instantiated-graph, bootstrap-provenance,
+> publication, and child-confinement gates below are implemented and
+> independently receipted. Baseline: Design 68
 > C4 retain receipt at `68c5bce`; production already selects the Rust floor, all
 > 13 Rust higher providers, and the Rust host. This plan converts the remaining
 > Zig *authorities* and build/oracle seams; it does not delete recovery evidence.
@@ -124,7 +125,9 @@ atomically committed.
 | Phase | State | Boundary that remains |
 | --- | --- | --- |
 | M0 | landed | ledger/checker receipt remains the authority ledger |
-| M1–M3 | evidence/retirement seams landed incrementally | parity and any authority transfer remain gated |
+| M1 | implementation largely landed | source-path rename and phase parity/exit receipt remain |
+| M2 | Rust mechanism and negative evidence landed | retirement-seam exit receipt remains |
+| M3 | owner inventory landed with `z2_1_seam=none` | refresh/no-op exit receipt remains |
 | M4.1 | landed projection/checker | named-target projection is not instantiated semantic truth |
 | M4.2 | partial | real configuration-specific extractor and complete action closure |
 | M4.3 | partial | cold-run provenance, confined execution, and generation publication |
@@ -393,8 +396,15 @@ source/tool/input/argv closure, reject opaque shell `-c` actions unless they are
 parsed into a separately reviewed typed action, run in a fresh disposable
 cold-archive workspace, clear HOME/cache/tmp variables or bind them to staging,
 and enforce an OS sandbox or equivalent capability boundary for writable paths.
-Post-validate exact source/input and output trees. Until that gate exists,
-`execute-shadow` remains developer-only and non-authoritative.
+The supervisor exposes only the fresh source/dependency closure, staged
+producer outputs, and explicitly pinned stage-0 toolchain roots; it denies
+network access, closes all inherited descriptors except declared stdio or
+capability handles, and denies reads outside declared roots. The source archive
+is scanned to reject Birnam executables, images, dylibs, compiled modules, and
+generated output before the first action. Post-validate exact source/input and
+output trees. An action receipt is valid only for a process launched inside
+this confinement. Until that gate exists, `execute-shadow` remains
+developer-only and non-authoritative.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
@@ -473,6 +483,11 @@ resolved tool paths, argv, paths, and environment values.
 
 No caller-supplied expected identity, digest field, or validator return value
 can promote one tier into another or construct production authority.
+Production selection is a composite capability requiring the canonical
+authority-ledger state plus all prerequisite extractor, bootstrap, confined
+action, parity, and generation/pointer proofs; no single tier authorizes
+production. Rollback selection remains governed by the complete-vector
+authority rule.
 
 ### M4.3 Compiler invocation and stage-1 module compilation
 
@@ -490,9 +505,9 @@ can promote one tier into another or construct production authority.
    action-receipt ID/digest for each role, executable type/mode, sequence and
    parent chain, and staging-generation identity. It is emitted only by that
    supervisor after it observed the outputs; the parser validates consistency
-   but is not provenance proof by itself. A copied prebuilt cannot satisfy the
-   chain because its output digest, action receipt, source-tree identity, and
-   generation must all be observed in the fresh run. Prebuilt Birnam
+   but is not provenance proof by itself. A copied prebuilt is excluded by the
+   supervisor’s read/network/file-descriptor confinement plus the observed
+   producer chain; hashes alone do not prove provenance. Prebuilt Birnam
    driver/host/compiler executables are rejected without this receipt. Every
    command is logged with normalized argv, cwd, inputs, outputs, and digest.
 2. Reproduce floor/provider dylib installation and the existing ordered
@@ -500,18 +515,25 @@ can promote one tier into another or construct production authority.
    `--compile-module` boundary; policy remains in the source modules.
 3. Define an implementable generation publication protocol. Build an immutable
    `<store>/generations/<transaction>.tmp` on the target filesystem containing
-   the complete canonical tree, its exact tree manifest, and the action,
-   bootstrap, parity, and publication receipts. Validate every file, directory,
-   symlink policy, special-file rejection, owner-action link, and absence of
-   extra paths; fsync files and directories; then rename the temporary
-   generation to an immutable generation name. Atomically replace one small
-   `current` pointer/manifest in the same parent, preserving the prior
-   generation for rollback. Define readers and crash recovery at each point:
-   an incomplete generation is never current, and a failed child, panic, or
-   digest mismatch leaves the prior pointer and target untouched. Derive
-   same-device and rename state from filesystem facts; do not trust boolean
-   receipt claims. A portable `renameat` of a non-empty final directory plus a
-   separate receipt is not an atomic publication protocol.
+   the complete canonical tree, its exact tree manifest, and sealed
+   action/bootstrap/parity receipts. The embedded artifact is a
+   **generation/staging receipt**, not a claim that the generation is current.
+   Validate every file, directory, symlink policy, special-file rejection,
+   owner-action link, and absence of extra paths; fsync files and directories;
+   then rename the temporary generation to an immutable generation name and
+   fsync the generations parent. Build and fsync a temporary `current` manifest
+   (or digest-named symlink) containing the transaction ID, generation name and
+   digest, prior-generation identity, and digests of the embedded receipts.
+   Rename `current.tmp` to `current` as the single commit point, then fsync the
+   current pointer’s parent. Readers read `current` once and validate the
+   immutable generation and embedded receipt. Define crash cases before and
+   after each rename and each parent fsync: an incomplete generation is never
+   current, and a failed child, panic, or digest mismatch leaves the prior
+   pointer and generation untouched. Any post-commit observation receipt is
+   evidence only and is not part of the atomic transaction. Derive same-device
+   and rename state from filesystem facts; do not trust boolean receipt claims.
+   A portable `renameat` of a non-empty final directory plus a separate receipt
+   is not an atomic publication protocol.
 
 ### M4.4 Driver parity and cold bootstrap
 
@@ -553,8 +575,9 @@ atomic cutover.
    that simultaneously changes all Rust-driver production actions
    `build_authority=shadow → canonical`, all corresponding `build.zig` actions
    `canonical → oracle`, switches the default entry point, updates
-   source-bootstrap/distribution-selection/Z3 routing, and passes the already
-   landed Rust-driver-native `build.zig`-unavailable production gate. From
+   source-bootstrap/distribution-selection/Z3 routing, and passes the
+   M4.4-reviewed Rust-driver-native `build.zig`-unavailable production gate.
+   From
    that commit onward, only the named rollback or toolchain-oracle path may
    use `build.zig`.
 4. After every family and at the atomic cutover, run focused tests, the
@@ -617,10 +640,11 @@ incompatible policy authorities with no evidence-based owner.
    authoritative execution and M5/M6, but GO for fenced schema/shadow work.
 2. M0 ledger/checker and receipt are already landed; re-run their checks at the
    current clean checkpoint before changing code.
-3. Land M1 canonical host identity (including renaming the source path currently
-   named `birnam-rust-experimental.rs`) and parity receipt.
-4. Land M2 artifact/preflight retirement-seam receipt.
-5. Land M3 policy no-seam/transfer receipt.
+3. Finish M1 canonical host identity (including renaming the source path
+   currently named `birnam-rust-experimental.rs`) and its parity/exit receipt.
+4. Finish M2’s artifact/preflight retirement-seam receipt.
+5. Refresh M3’s policy no-seam/transfer inventory and land its no-op/transfer
+   exit receipt.
 6. M4.1 projection/checker is landed. Complete M4.2’s real extractor and
    complete closure, then M4.3’s cold supervisor, confined invocation, and
    generation/pointer publication, and finally M4.4 parity/native-bootstrap;
