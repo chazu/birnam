@@ -454,8 +454,10 @@ metadata, stress, installed-relocation, and codegen suites. The frozen CST,
 source-corpus, generated-C, and stress receipts are recorded in the C2 artifact;
 the Zig PEG parser fixture remains pinned for rollback and old-image/parser
 diagnostic recovery. The PEG row now records the focused blocked/pinned
-receipt; no parser fixture or source was removed. Its strict R6 checkpoint is
-the final C2.1 gate.
+receipt; no parser fixture or source was removed. Its strict R6 checkpoint at
+`3b73a19` passed with the same `307/307` verify, `516/522` tests, six skips,
+live Alien, Z3 archive/trace, and benchmark receipts. This closes the final
+C2.1 gate while keeping readiness blocked and rollback pinned.
 
 ## 8. Phase C3 — native-Birnam policy closure
 
@@ -534,7 +536,7 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
       owns activation and policy.
 - [ ] Every rung has a Rust identity/digest, Zig fixture policy, and applicable
       ABI/MOP/GC/image/wire evidence.
-- [ ] The first three rung slices (floor, Store, PEG) have focused commits and
+- [x] The first three rung slices (floor, Store, PEG) have focused commits and
       strict R6 receipts.
 - [ ] All later rung decisions are separately reviewed and reversible.
 - [ ] No Rust provider statically exports another rung's `module_init` or

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "Design 68 C2.1 readiness receipts for the floor, Store, and PEG",
-  "evidence_commit": "4c1f66a",
+  "evidence_commit": "3b73a19",
   "source_manifest": "abi/remaining-zig-v1.json",
   "rollback_manifest": "abi/rollback-prefix-v1.json",
   "readiness_policy": "C2.1 receipts are evidence-only; readiness remains blocked until the Design 66 release-cycle predicate and complete-vector recovery proof",
