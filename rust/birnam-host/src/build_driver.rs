@@ -196,16 +196,42 @@ pub struct PathRef {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedManifest {
-    pub manifest: DriverManifest,
-    pub action_order: Vec<String>,
-    pub root: PathBuf,
-    pub proof_strength: ProofStrength,
+    manifest: DriverManifest,
+    action_order: Vec<String>,
+    root: PathBuf,
+    proof_strength: GraphProofStrength,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProofStrength {
+pub enum GraphProofStrength {
     FileBound,
     GitVerified,
+}
+
+impl ValidatedManifest {
+    pub fn target(&self) -> &str {
+        &self.manifest.target
+    }
+
+    pub fn profile(&self) -> &str {
+        &self.manifest.profile
+    }
+
+    pub fn distribution(&self) -> &str {
+        &self.manifest.selection.distribution
+    }
+
+    pub fn action_order(&self) -> &[String] {
+        &self.action_order
+    }
+
+    pub fn action(&self, name: &str) -> Option<&ActionSpec> {
+        self.manifest.actions.iter().find(|action| action.name == name)
+    }
+
+    pub fn graph_proof_strength(&self) -> GraphProofStrength {
+        self.proof_strength
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -452,16 +478,16 @@ fn verify_git_receipt(
     graph_path: &Path,
     graph_sha256: &str,
     build_sha256: &str,
-) -> Result<ProofStrength, ManifestError> {
+) -> Result<GraphProofStrength, ManifestError> {
     let probe = Command::new("git")
         .current_dir(root)
         .args(["rev-parse", "--git-dir"])
         .output();
     let Ok(probe) = probe else {
-        return Ok(ProofStrength::FileBound);
+        return Ok(GraphProofStrength::FileBound);
     };
     if !probe.status.success() {
-        return Ok(ProofStrength::FileBound);
+        return Ok(GraphProofStrength::FileBound);
     }
     let run_git = |args: &[String], label: &str| -> Result<Vec<u8>, ManifestError> {
         let output = Command::new("git")
@@ -516,7 +542,7 @@ fn verify_git_receipt(
     if hex::encode(Sha256::digest(graph_bytes)) != graph_sha256 {
         return Err(error("current HEAD graph bytes disagree with the proof"));
     }
-    Ok(ProofStrength::GitVerified)
+    Ok(GraphProofStrength::GitVerified)
 }
 
 fn contained_existing_path(
@@ -846,6 +872,16 @@ fn validate_dependencies(actions: &[ActionSpec]) -> Result<Vec<String>, Manifest
         {
             return Err(error(format!(
                 "action {} has a NUL environment value",
+                action.name
+            )));
+        }
+        if action
+            .environment
+            .values()
+            .any(|value| matches!(value, EnvironmentValue::Inherit))
+        {
+            return Err(error(format!(
+                "action {} cannot inherit an ambient environment entry",
                 action.name
             )));
         }
@@ -1501,7 +1537,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 )));
             }
         }
-        if manifest.selection.distribution == "production" {
+        if manifest.selection.distribution == "production" && action.tool_kind == "external" {
             if !PRODUCTION_TOOL_NAMES.contains(&action.tool.as_str()) {
                 return Err(error(format!(
                     "production action {} uses an unapproved stage-0 tool {}",
@@ -1512,6 +1548,14 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 return Err(error(format!(
                     "production action {} tool path basename does not match {}",
                     action.name, action.tool
+                )));
+            }
+        } else if manifest.selection.distribution == "production" && action.tool_kind == "produced"
+        {
+            if action.tool_producer.is_none() {
+                return Err(error(format!(
+                    "production action {} produced tool has no bootstrap producer",
+                    action.name
                 )));
             }
         }
@@ -1704,10 +1748,6 @@ pub fn execute_shadow_graph(
             "shadow execution output prefix contains an undeclared pre-existing file",
         ));
     }
-    let mut prior_output_digests = snapshot_declared_output_digests(
-        &validated.root,
-        &declared_output_paths,
-    )?;
     let mut executions = Vec::with_capacity(validated.action_order.len());
     for action_name in &validated.action_order {
         let action = validated
@@ -1777,16 +1817,15 @@ pub fn execute_shadow_graph(
                 }
             }
         }
+        let before_output_digests = snapshot_declared_output_digests(
+            &validated.root,
+            &declared_output_paths,
+        )?;
         let current_output_paths = action
             .outputs
             .iter()
             .map(|output| output.path.clone())
             .collect::<BTreeSet<_>>();
-        let prior_action_outputs = prior_output_digests
-            .iter()
-            .filter(|(path, _)| !current_output_paths.contains(*path))
-            .map(|(path, digest)| (path.clone(), digest.clone()))
-            .collect::<BTreeMap<_, _>>();
         let output = command
             .output()
             .map_err(|source| error(format!("action {} failed to spawn: {source}", action.name)))?;
@@ -1805,23 +1844,34 @@ pub fn execute_shadow_graph(
             &validated.root,
             &declared_output_paths,
         )?;
-        for (path, expected_digest) in &prior_action_outputs {
-            match observed_output_digests.get(path) {
-                Some(observed_digest) if observed_digest == expected_digest => {}
-                Some(_) => {
+        for path in &declared_output_paths {
+            if current_output_paths.contains(path) {
+                continue;
+            }
+            match (before_output_digests.get(path), observed_output_digests.get(path)) {
+                (Some(before), Some(after)) if before == after => {}
+                (None, Some(_)) => {
                     return Err(error(format!(
-                        "action {} modified a prior output {}",
+                        "action {} created an output owned by another action: {}",
                         action.name,
                         path.display()
                     )));
                 }
-                None => {
+                (Some(_), None) => {
                     return Err(error(format!(
                         "action {} deleted a prior output {}",
                         action.name,
                         path.display()
                     )));
                 }
+                (Some(_), Some(_)) => {
+                    return Err(error(format!(
+                        "action {} modified a prior output {}",
+                        action.name,
+                        path.display()
+                    )));
+                }
+                (None, None) => {}
             }
         }
         if !output.status.success() {
@@ -1856,7 +1906,6 @@ pub fn execute_shadow_graph(
             }
             output_digests.insert(declared.path.clone(), observed_digest);
         }
-        prior_output_digests = observed_output_digests;
         executions.push(ActionExecution {
             action: action.name.clone(),
             status,
@@ -2046,7 +2095,7 @@ mod tests {
         let fixture = Fixture::new();
         let parsed = parse_and_validate(&fixture.bytes, &fixture.root).expect("valid manifest");
         assert_eq!(parsed.action_order, ["prepare", "compile"]);
-        assert_eq!(parsed.proof_strength, ProofStrength::FileBound);
+        assert_eq!(parsed.graph_proof_strength(), GraphProofStrength::FileBound);
     }
 
     #[test]
@@ -2133,6 +2182,19 @@ mod tests {
         let error = parse_and_validate(&bytes, &fixture.root)
             .expect_err("ambient environment base must be rejected");
         assert!(error.0.contains("cleared environment base"));
+    }
+
+    #[test]
+    fn rejects_per_action_environment_inherit() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][0]["environment"]["BIRNAM_VALUE"] = json!({
+                "mode": "inherit"
+            });
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("per-action ambient inheritance must be rejected");
+        assert!(error.0.contains("cannot inherit"));
     }
 
     #[test]
@@ -2388,6 +2450,22 @@ mod tests {
         assert!(rogue_error.0.contains("undeclared output"));
         fs::remove_file(fixture.root.join("out/rogue")).expect("remove rogue output");
 
+        fs::remove_file(fixture.root.join("out/module.dylib")).expect("remove future output");
+        let early_output_source = runner_source.replace(
+            "prepare) printf '%s' shadow-output > ../out/prepare",
+            "prepare) printf '%s' shadow-output > ../out/prepare\nprintf '%s' early > ../out/module.dylib",
+        );
+        fs::write(&runner, &early_output_source).expect("early-output runner");
+        let early_output_digest = hex::encode(Sha256::digest(&early_output_source));
+        let mut early_output = validated.clone();
+        for action in &mut early_output.manifest.actions {
+            action.tool_sha256 = early_output_digest.clone();
+        }
+        let early_output_error = execute_shadow_graph(&early_output)
+            .expect_err("action must not create a later action's output");
+        assert!(early_output_error.0.contains("owned by another action"));
+        fs::remove_file(fixture.root.join("out/module.dylib")).expect("remove early output");
+
         let mutation_source = runner_source.replace(
             "compile) printf '%s' shadow-output > ../out/module.dylib",
             "compile) printf '%s' shadow-output > ../out/module.dylib\nprintf '%s' tampered > ../out/prepare",
@@ -2499,7 +2577,7 @@ mod tests {
             &build_sha256,
             )
             .expect("checker Git receipt proof"),
-            ProofStrength::GitVerified
+            GraphProofStrength::GitVerified
         );
     }
 }

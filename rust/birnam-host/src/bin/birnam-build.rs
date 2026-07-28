@@ -109,17 +109,14 @@ fn main() -> ExitCode {
     }
     println!(
         "dry-run: target={} profile={} distribution={} actions={}",
-        validated.manifest.target,
-        validated.manifest.profile,
-        validated.manifest.selection.distribution,
-        validated.action_order.len()
+        validated.target(),
+        validated.profile(),
+        validated.distribution(),
+        validated.action_order().len()
     );
-    for (index, action) in validated.action_order.iter().enumerate() {
+    for (index, action) in validated.action_order().iter().enumerate() {
         let spec = validated
-            .manifest
-            .actions
-            .iter()
-            .find(|candidate| candidate.name == *action)
+            .action(action)
             .expect("validated action order");
         println!(
             "action[{index}]: name={} context={} authority={} delegation={} tool={} tool_sha256={} cwd={} argv={:?} depends_on={:?} inputs={:?} outputs={:?} environment={:?}",

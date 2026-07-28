@@ -333,9 +333,10 @@ requires every declared output to exist with its declared digest before the
 action receipt is returned. The shadow runner snapshots the output prefix and
 rejects pre-existing or newly created undeclared regular files. Each receipt now carries the resolved tool path
 and digest, cwd, exact argv, declared inputs/outputs, and observed output
-digests. Per-action mutation/failure-path scans, final rehashing of prior
-outputs, and special-file rejection now fail closed; atomic temporary-prefix
-publication remains M4.3 work.
+digests. Per-action before/after ownership diffs now reject creation,
+mutation, or deletion of another action's declared output on both success and
+failure paths; final rehashing and special-file rejection fail closed. Atomic
+temporary-prefix publication remains M4.3 work.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
@@ -354,8 +355,10 @@ when the supplied root is a Git worktree, verifies receipt commit/tree
 existence, ancestry, and the checked bytes. Non-Git shadow fixtures retain
 only the file-level proof; the parser does not encode that weaker proof tier as
 production authorization, and production/rollback execution remains refused.
-`ValidatedManifest` now records the resulting `FileBound` or `GitVerified`
-strength explicitly; no production capability constructor exists yet.
+`ValidatedManifest` now records the resulting `GraphProofStrength` (`FileBound`
+or `GitVerified`) explicitly; that proof covers the M4.1 graph/build bytes,
+not the projected driver manifest or its complete tool/source closure. No
+production capability constructor exists yet.
 
 The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
@@ -375,13 +378,15 @@ producer mappings whose declared outputs cover every selected provider and
 the exact ordered 26-module stage-1 source/output closure. Production marker
 matching is name-aware (`_zig.dylib`/`_zig_`), so the legitimate `zigdoc`
 stage-1 module is not confused with a Zig implementation artifact.
-Action records also carry authority/delegation, cwd, tool identity, exact
+Action records also carry authority/delegation, cwd, external-versus-produced
+tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
-authority. Production actions additionally use a name-level stage-0 tool
-allowlist and require the resolved executable basename to match that key; this
-does not establish binary/source provenance or reject every prebuilt Birnam
-tool. The
+authority. Production external tools additionally use a name-level stage-0
+tool allowlist and require the resolved executable basename to match that key;
+produced tools instead require an upstream producer chain (the bootstrap
+receipt is still missing). This does not establish binary/source provenance.
+The
 graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
 authoritative production/rollback actions until instantiated implicit Zig Build
