@@ -90,12 +90,29 @@ verify:  Build Summary: 307/307 steps succeeded; 516/522 tests passed; 6 skipped
 live Alien: 66/66 steps succeeded; 9/9 tests passed
 distribution-selection: production omits Zig; rollback is a complete Zig vector
 z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
+z3 artifact traces: production-a/production-b/rollback Module loadArtifact confined
 benchmark: regressions=2, missing=0, unusable=0
 accepted: query.aggregate +5.8%, compile.stage1-stdlib +11.9%
 ```
 
 This is the baseline for every authority or distribution change. Counts and
 digests are measured receipts, not values to be guessed or widened.
+
+### C0 implementation receipt
+
+C0.1 is landed as a fail-closed conversion ledger and build target. The
+checker covers all 88 Zig paths, 14 dynamic names, and 39 native-Birnam policy
+sources, rejects dirty candidate trees, and validates the complete rollback
+vector against the residue manifest. The focused matrix and standalone strict
+components measured the receipts above; the exact strict verify summary is
+`307/307` steps with `516/522` tests and six skips.
+
+C0.2 is landed in the archive gate. `check-production-prefix.py` now compares
+each canonical provider with the independently built Rust fixture and the
+complete rollback prefix's Zig fixture, requiring Rust equality and Zig
+inequality. The Z3 archive smoke runs separate confined `Module loadArtifact:`
+traces for both production prefixes and the rollback prefix, and rejects Zig
+fixtures, Rust fixtures in rollback, source-tree paths, and ambient paths.
 
 ## 3. Invariants and non-negotiable decisions
 
@@ -460,9 +477,9 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
 
 ## 11. Acceptance checklist
 
-- [ ] Conversion ledger and checker cover every current Zig file and all 14
+- [x] Conversion ledger and checker cover every current Zig file and all 14
       canonical dynamic names.
-- [ ] Before C4, production and complete-vector rollback traces are
+- [x] Before C4, production and complete-vector rollback traces are
       prefix-confined and mutually exclusive; C4 retain mode keeps both, while
       retire mode records `rollback_status=not-applicable` and runs production
       traces only.
