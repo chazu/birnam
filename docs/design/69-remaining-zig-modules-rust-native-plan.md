@@ -296,13 +296,17 @@ fully resolved semantic graph before any Rust build action is authoritative.
    dependency order, dynamic install names, output prefix, tool paths,
    normalized environment, and input/output digests. Runtime
    dependencies list only dylib names.
-2. Resolve the M4.1 projection into a complete semantic graph by parsing every
-   `dependOn` form in `build.zig`, including inline `b.step(...)` chains and
-   `b.getInstallStep()`, and by recording exact command argv, tool, inputs,
-   outputs, install paths, and environment for each action. Unresolved or
-   ambiguous expressions are hard failures. Then implement strict parsing,
-   path containment, identity checks, and a dry-run graph printer. It must
-   reject `_zig` in production, mixed vectors, missing source digests, and
+2. Capture every `dependOn` form in `build.zig`, including inline
+   `b.step(...)` chains and `b.getInstallStep()`, as source-level drift
+   evidence. This capture is not semantic truth: the authoritative graph must
+   come from a configuration-specific instantiated Zig Build graph keyed by
+   target, profile, floor/provider selection, and host/build options. Add a
+   dry-run extractor/receipt for that instantiated graph, retaining a raw
+   occurrence-to-instantiated-edge mapping and exact command argv, tool,
+   inputs, outputs, install paths, and environment for each action. Unresolved,
+   ambiguous, or unmapped expressions are hard failures. Then implement strict
+   parsing, path containment, identity checks, and a dry-run graph printer. It
+   must reject `_zig` in production, mixed vectors, missing source digests, and
    undeclared dynamic names before spawning a compiler.
 3. Add unit tests for malformed manifests, path escape, duplicate names,
    dependency cycles, stale digests, mixed Rust/Zig selection, inline
@@ -317,7 +321,7 @@ digests to files under the supplied root, while produced inputs/tools are
 deferred to their upstream producer and checked for ownership/reachability. It rejects
 path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-22 focused parser/runner tests. The R6 acceptance script runs this semantic-driver
+23 focused parser/runner tests. The R6 acceptance script runs this semantic-driver
 suite fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
@@ -362,7 +366,7 @@ production capability constructor exists yet.
 
 The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
-the root; output prefixes reject existing symlink components; full-semantic
+the root; output prefixes reject existing symlink components; projected-shadow
 manifests require source-graph roots, expression bindings for every captured
 edge, exact binding coverage with no unbound or extra captured expressions,
 and a typed `kind: "source"` edge for every unique projected resolved action
@@ -405,14 +409,19 @@ resolved tool paths, argv, paths, and environment values.
    (the Zig toolchain may remain the temporary C/Zig compiler) without loading
    a Birnam runtime artifact. `birnam-build` and the Rust host/compiler used
    for `--compile-module` must be built from source earlier in the same cold
-   run, selected by absolute staged paths, and verified by identity/digest;
-   prebuilt Birnam driver/host/compiler executables are rejected. Every
+   run, selected by absolute staged paths, and verified by identity/digest.
+   Emit a same-run bootstrap receipt binding source archive/tree, build
+   command, staged executable paths, and executable digests; prebuilt Birnam
+   driver/host/compiler executables are rejected without that receipt. Every
    command is logged with normalized argv, cwd, inputs, outputs, and digest.
 2. Reproduce floor/provider dylib installation and the existing ordered
    `.birnam` stage-1 list. Compile modules through the canonical Rust host
    `--compile-module` boundary; policy remains in the source modules.
-3. Use atomic temporary prefixes and rename only after all receipts pass. A
-   failed child, panic, or digest mismatch leaves no published target.
+3. Define an explicit staging/publication receipt schema. Use atomic temporary
+   prefixes and rename only after all action, bootstrap, and parity receipts
+   pass; publish the final prefix and its receipt as one transaction. A failed
+   child, panic, or digest mismatch leaves no published target and no receipt
+   claiming publication.
 
 ### M4.4 Driver parity and cold bootstrap
 
