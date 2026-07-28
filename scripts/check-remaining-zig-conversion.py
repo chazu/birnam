@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parent.parent
 LEDGER = REPO / "abi/remaining-zig-conversion-v1.json"
 SOURCE = REPO / "abi/remaining-zig-v1.json"
 ROLLBACK = REPO / "abi/rollback-prefix-v1.json"
+ACTIONS = REPO / "abi/remaining-zig-native-actions-v1.json"
 DYNAMIC_NAME = re.compile(r"^libbirnam_[a-z0-9_]+\.dylib$")
 COMMIT = re.compile(r"^[0-9a-f]{7,64}$")
 KINDS = {
@@ -50,6 +51,24 @@ ROLLBACK_STATUSES = {"required", "pinned", "not-applicable"}
 PHASES = {"C0", "C1", "C2", "C3", "C4", "none"}
 REMOVAL_AUTHORITIES = {"none", "vector-review", "toolchain-review", "policy-review"}
 POLICY_ROOTS = ("src/id/", "modules/")
+ACTION_KINDS = {
+    "host-observation",
+    "artifact-preflight",
+    "policy-review",
+    "build-action",
+    "provider-install",
+    "stage1-compile",
+    "test",
+    "package",
+    "rollback",
+    "bootstrap",
+    "oracle",
+}
+SELECTION_CONTEXTS = {"production", "rollback", "oracle", "build", "evidence"}
+DELEGATIONS = {"none", "explicit-shadow"}
+BUILD_ACTION_KINDS = {"build-action", "provider-install", "stage1-compile", "package"}
+BUILD_AUTHORITIES = {"canonical", "shadow", "oracle", "retired"}
+PRODUCTION_FORBIDDEN = ("project.zig", "artifact_preflight.zig", "_zig", "birnam-zig-oracle")
 
 
 def fail(message: str) -> None:
@@ -87,6 +106,16 @@ def safe_repo_path(raw: object, label: str, *, suffix: str | None = None) -> Pat
     return path
 
 
+def safe_ref(raw: object, label: str) -> None:
+    """Validate a repository reference of the form path[#symbol-or-target]."""
+    if not isinstance(raw, str) or not raw.strip():
+        fail(f"missing {label}")
+    path, separator, fragment = raw.partition("#")
+    if separator and not fragment:
+        fail(f"empty fragment in {label}: {raw}")
+    safe_repo_path(path, label)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-commit", help="clean candidate commit to receipt")
@@ -98,10 +127,15 @@ def main() -> None:
     ledger = read_json(LEDGER, "conversion ledger")
     source = read_json(SOURCE, "residue manifest")
     rollback = read_json(ROLLBACK, "rollback manifest")
+    actions_doc = read_json(ACTIONS, "native action manifest")
     if ledger.get("schema_version") != 1:
         fail("unsupported ledger schema version")
     if source.get("schema_version") != 1 or rollback.get("schema_version") != 1:
         fail("source and rollback manifests must use schema version 1")
+    if actions_doc.get("schema_version") != 1:
+        fail("native action manifest must use schema version 1")
+    if actions_doc.get("ledger_ref") != "abi/remaining-zig-conversion-v1.json":
+        fail("native action manifest must foreign-key the canonical conversion ledger")
     if not COMMIT.fullmatch(str(ledger.get("baseline_commit", ""))):
         fail("baseline_commit must be an immutable Git commit")
     if not isinstance(ledger.get("candidate_tree_policy"), str) or not ledger["candidate_tree_policy"].strip():
@@ -122,6 +156,24 @@ def main() -> None:
         if not re.fullmatch(r"[0-9a-f]{40}", tree):
             fail("tree hash does not resolve to a Git tree")
 
+    transaction = actions_doc.get("transaction")
+    if not isinstance(transaction, dict) or set(transaction) != {
+        "candidate_policy", "candidate_commit", "receipt_commit", "post_receipt_gate"
+    }:
+        fail("native action transaction has the wrong schema")
+    for field in ("candidate_policy", "post_receipt_gate"):
+        if not isinstance(transaction[field], str) or not transaction[field].strip():
+            fail(f"native action transaction field is missing: {field}")
+    transaction_candidate = transaction["candidate_commit"]
+    transaction_receipt = transaction["receipt_commit"]
+    for field, value in (("candidate_commit", transaction_candidate), ("receipt_commit", transaction_receipt)):
+        if value is not None:
+            if not isinstance(value, str) or not COMMIT.fullmatch(value):
+                fail(f"native action transaction {field} must be a commit or null")
+            git("rev-parse", f"{value}^{{commit}}")
+    if transaction_receipt is not None and transaction_candidate is None:
+        fail("native action receipt commit cannot omit its candidate commit")
+
     files = source.get("files")
     if not isinstance(files, list):
         fail("residue manifest files are missing")
@@ -140,8 +192,12 @@ def main() -> None:
         fail("residue dynamic_dependencies are missing")
     dynamic_names = []
     for entry in dependencies:
-        if not isinstance(entry, dict) or not DYNAMIC_NAME.fullmatch(str(entry.get("name", ""))):
+        if not isinstance(entry, dict) or set(entry) != {"name", "role", "owner", "canonical"}:
+            fail(f"dynamic dependency must be a dylib-only declaration: {entry!r}")
+        if not DYNAMIC_NAME.fullmatch(str(entry.get("name", ""))):
             fail(f"invalid dynamic dependency: {entry!r}")
+        if entry.get("role") != "canonical-runtime-provider" or entry.get("canonical") is not True:
+            fail(f"dynamic dependency is not a canonical dylib provider: {entry!r}")
         name = entry["name"]
         if name in dynamic_names:
             fail(f"duplicate dynamic dependency: {name}")
@@ -260,6 +316,89 @@ def main() -> None:
         policy_paths.add(path)
     if policy_paths != expected_policy:
         fail(f"policy owner coverage differs: missing={sorted(expected_policy - policy_paths)}, stale={sorted(policy_paths - expected_policy)}")
+
+    owner_registry = actions_doc.get("owner_registry")
+    if not isinstance(owner_registry, list) or not owner_registry:
+        fail("native action owner_registry is missing")
+    mechanism_owners = set()
+    for owner in owner_registry:
+        if not isinstance(owner, dict) or set(owner) != {
+            "owner_key", "kind", "canonical_scope", "receipt_ref"
+        }:
+            fail("native mechanism-owner rows have the wrong schema")
+        owner_key = owner["owner_key"]
+        if (
+            not isinstance(owner_key, str)
+            or not owner_key.startswith("owner:")
+            or owner_key in mechanism_owners
+        ):
+            fail(f"mechanism owner is missing or duplicated: {owner_key!r}")
+        if owner["kind"] != "mechanism-owner":
+            fail(f"unsupported mechanism owner kind: {owner_key}")
+        scope = owner["canonical_scope"]
+        if not isinstance(scope, list) or not scope or any(not isinstance(item, str) for item in scope):
+            fail(f"mechanism owner has no canonical ledger scope: {owner_key}")
+        if any(item not in seen_keys for item in scope):
+            fail(f"mechanism owner scope is not in the canonical ledger: {owner_key}")
+        safe_ref(owner["receipt_ref"], f"mechanism owner receipt: {owner_key}")
+        mechanism_owners.add(owner_key)
+
+    actions = actions_doc.get("actions")
+    if not isinstance(actions, list) or not actions:
+        fail("native actions are missing")
+    action_required = {
+        "action_key", "owner_key", "action_kind", "selection_context", "delegation",
+        "function_ref", "tool_ref", "test_ref", "receipt_ref", "build_authority",
+        "abi_surface", "removal_authority", "last_receipt",
+    }
+    valid_owner_keys = seen_keys | mechanism_owners | {"birnam:path:" + path for path in policy_paths}
+    action_keys = set()
+    for action in actions:
+        if not isinstance(action, dict) or set(action) != action_required:
+            fail("each native action must have the exact frozen schema")
+        action_key = action["action_key"]
+        if (
+            not isinstance(action_key, str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9:_-]+", action_key)
+            or action_key in action_keys
+        ):
+            fail(f"native action key is missing or duplicated: {action_key!r}")
+        action_keys.add(action_key)
+        owner_key = action["owner_key"]
+        if owner_key not in valid_owner_keys:
+            fail(f"native action owner is not a ledger or mechanism owner: {action_key}")
+        kind = action["action_kind"]
+        context = action["selection_context"]
+        delegation = action["delegation"]
+        if kind not in ACTION_KINDS or context not in SELECTION_CONTEXTS or delegation not in DELEGATIONS:
+            fail(f"native action enum is outside the frozen set: {action_key}")
+        if action["build_authority"] not in BUILD_AUTHORITIES:
+            fail(f"native action build authority is outside the frozen set: {action_key}")
+        if action["removal_authority"] not in REMOVAL_AUTHORITIES:
+            fail(f"native action removal authority is outside the frozen set: {action_key}")
+        if kind == "policy-review":
+            if not owner_key.startswith("birnam:path:") or owner_key not in {
+                "birnam:path:" + path for path in policy_paths
+            }:
+                fail(f"policy action lacks a canonical native-policy owner: {action_key}")
+        elif owner_key.startswith("birnam:path:"):
+            fail(f"non-policy action claims native-policy ownership: {action_key}")
+        if kind not in BUILD_ACTION_KINDS and delegation != "none":
+            fail(f"non-build action delegates: {action_key}")
+        if delegation == "explicit-shadow":
+            if kind not in BUILD_ACTION_KINDS or action["build_authority"] != "shadow":
+                fail(f"only shadow build actions may use explicit-shadow: {action_key}")
+            if context == "production":
+                fail(f"shadow delegation cannot be a production action: {action_key}")
+        for field in ("function_ref", "tool_ref", "test_ref", "receipt_ref"):
+            safe_ref(action[field], f"{field} for {action_key}")
+        for field in ("abi_surface", "last_receipt"):
+            if not isinstance(action[field], str) or not action[field].strip():
+                fail(f"native action field is missing: {field} for {action_key}")
+        if context == "production":
+            refs = " ".join(str(action[field]) for field in ("function_ref", "tool_ref", "test_ref", "receipt_ref"))
+            if any(forbidden in refs for forbidden in PRODUCTION_FORBIDDEN):
+                fail(f"production action reaches a Zig-only path: {action_key}")
 
     counts = ledger.get("row_counts")
     expected_counts = {"zig_paths": len(source_by_path), "dynamic_names": len(dynamic_names), "policy_sources": len(expected_policy)}
