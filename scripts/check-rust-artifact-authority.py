@@ -10,6 +10,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CODEC = REPO / "rust/birnam-artifact/src/lib.rs"
 PROJECTION = REPO / "rust/birnam-artifact/src/module.rs"
+ARTIFACT_CODEC = REPO / "rust/birnam-artifact-codec/src/lib.rs"
+IMAGE_CODEC = REPO / "rust/birnam-image-codec/src/lib.rs"
+IMAGE_PROVIDER = REPO / "rust/birnam-image/src/lib.rs"
+ARTIFACT_CODEC_MANIFEST = REPO / "rust/birnam-artifact-codec/Cargo.toml"
+IMAGE_CODEC_MANIFEST = REPO / "rust/birnam-image-codec/Cargo.toml"
 HOST = REPO / "rust/birnam-host/src/lib.rs"
 POLICY = REPO / "src/id/modules.birnam"
 
@@ -33,6 +38,11 @@ def require(text: str, token: str, role: str) -> None:
 def main() -> None:
     codec = read(CODEC)
     projection = read(PROJECTION)
+    artifact_codec = read(ARTIFACT_CODEC)
+    image_codec = read(IMAGE_CODEC)
+    image_provider = read(IMAGE_PROVIDER)
+    artifact_codec_manifest = read(ARTIFACT_CODEC_MANIFEST)
+    image_codec_manifest = read(IMAGE_CODEC_MANIFEST)
     host = read(HOST)
     policy = read(POLICY)
 
@@ -45,6 +55,25 @@ def main() -> None:
         fail("descriptor codec contains an FFI entrypoint")
     if re.search(r"(?m)^\s*(?:use|extern\s+crate)\s+birnam_abi", codec):
         fail("descriptor codec imports the IdApi ABI")
+
+    # The provider-free codec crates are the only format consumers allowed to
+    # be linked into Codegen or Image without pulling a dynamic initializer.
+    # Keep their Cargo feature and crate-type surfaces frozen, and reject any
+    # accidental provider/FFI export in the wrapper source.
+    for name, text, manifest, reexport in (
+        ("artifact codec", artifact_codec, artifact_codec_manifest, "pub use provider_source::*"),
+        ("image codec", image_codec, image_codec_manifest, "pub use provider_source::codec::*"),
+    ):
+        require(text, reexport, name)
+        if re.search(r"(?m)^\s*pub\s+unsafe\s+extern", text) or "module_init" in text:
+            fail(f"{name} contains a provider entrypoint")
+        if "default = []" not in manifest or 'crate-type = ["rlib"]' not in manifest:
+            fail(f"{name} Cargo surface is not provider-free")
+
+    # Image's dynamic provider remains the owner of its initializer and
+    # identity; the codec wrapper above must not become that owner.
+    require(image_provider, "pub unsafe extern \"C\" fn module_init", "Image provider")
+    require(image_provider, "birnam_image_rust_identity", "Image provider")
 
     # Only the dynamic artifact projection may export Artifact/ArtifactVt and
     # the frozen module_init entrypoint.
