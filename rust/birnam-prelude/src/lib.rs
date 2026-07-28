@@ -980,10 +980,19 @@ unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&[u8]> {
 
 fn write_system_output(bytes: &[u8], newline: bool) {
     let mut stdout = io::stdout().lock();
-    let _ = stdout.write_all(bytes);
+    let _ = write_system_output_to(&mut stdout, bytes, newline);
+}
+
+fn write_system_output_to<W: Write>(
+    writer: &mut W,
+    bytes: &[u8],
+    newline: bool,
+) -> io::Result<()> {
+    writer.write_all(bytes)?;
     if newline {
-        let _ = stdout.write_all(b"\n");
+        writer.write_all(b"\n")?;
     }
+    writer.flush()
 }
 
 fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
@@ -1510,13 +1519,46 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 #[cfg(test)]
 mod tests {
-    use super::{RUST_PRELUDE_IDENTITY, birnam_prelude_rust_identity};
+    use super::{
+        birnam_prelude_rust_identity, write_system_output_to, RUST_PRELUDE_IDENTITY,
+    };
     use std::ffi::CStr;
+    use std::io::{self, Write};
+
+    struct FlushProbe {
+        bytes: Vec<u8>,
+        flushed: bool,
+    }
+
+    impl Write for FlushProbe {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushed = true;
+            Ok(())
+        }
+    }
 
     #[test]
     fn identity_is_a_terminated_static_string() {
         // SAFETY: the export points to immutable process-lifetime storage.
         let identity = unsafe { CStr::from_ptr(birnam_prelude_rust_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), RUST_PRELUDE_IDENTITY);
+    }
+
+    #[test]
+    fn system_output_flushes_a_newline_free_prompt() {
+        let mut output = FlushProbe {
+            bytes: Vec::new(),
+            flushed: false,
+        };
+
+        write_system_output_to(&mut output, b"birnam> ", false).expect("prompt write");
+
+        assert_eq!(output.bytes, b"birnam> ");
+        assert!(output.flushed, "a prompt must be visible before stdin blocks");
     }
 }
