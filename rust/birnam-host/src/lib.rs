@@ -9673,3 +9673,4 @@ mod tests {
 
 pub mod instantiated_graph;
 pub mod bootstrap_receipt;
+pub mod publication_receipt;
