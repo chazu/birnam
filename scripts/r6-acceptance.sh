@@ -26,7 +26,7 @@ python3 scripts/check-native-rung-baseline.py
 # artifact/tool/capability contracts and
 # the real build.zig capture (464 syntactic occurrences, 463 unique projected
 # pairs) plus checker receipt-proof Git verification.
-readonly expected_rust_build_driver_tests=23
+readonly expected_rust_build_driver_tests=25
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
 readonly expected_instantiated_graph_tests=5
 rust_instantiated_graph=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-instantiated-graph.XXXXXX")

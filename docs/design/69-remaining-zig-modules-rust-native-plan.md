@@ -321,7 +321,7 @@ digests to files under the supplied root, while produced inputs/tools are
 deferred to their upstream producer and checked for ownership/reachability. It rejects
 path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-23 focused parser/runner tests plus 5 instantiated-graph receipt tests and 5
+25 focused parser/runner tests plus 5 instantiated-graph receipt tests and 5
 same-run bootstrap receipt tests. The R6 acceptance script runs all three
 semantic-driver suites fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
@@ -389,13 +389,16 @@ argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
 authority. Production external tools additionally use a name-level stage-0
 tool allowlist and require the resolved executable basename to match that key;
-produced tools instead require an upstream producer chain (the bootstrap
-receipt is still missing). This does not establish binary/source provenance.
+produced tools instead require an upstream producer chain. The projected
+validator now binds each module/provider producer to its exact declared
+external source path and digest; the same-run bootstrap receipt contract is
+landed separately but is not yet execution-authoritative. This still does not
+establish the complete binary/source closure.
 The
 graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
 authoritative production/rollback actions until instantiated implicit Zig Build
-edges and provider/module producer provenance are represented; only the
+edges and complete binary/source provenance are represented; only the
 explicitly fenced, non-authoritative shadow executor is available. The parser pins the source graph to
 `build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. File-level
 proof is available everywhere; Git worktrees additionally get the stronger
