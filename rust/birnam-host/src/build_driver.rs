@@ -55,6 +55,8 @@ pub struct GraphIdentity {
     pub id: String,
     pub source_path: PathBuf,
     pub source_sha256: String,
+    pub receipt_commit: String,
+    pub receipt_tree: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -318,6 +320,10 @@ pub fn capture_zig_dependencies(source: &str) -> Result<ZigDependencyCapture, Ma
 
 fn valid_digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn valid_git_id(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn safe_name(value: &str, label: &str) -> Result<(), ManifestError> {
@@ -660,6 +666,12 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     if !valid_digest(&manifest.graph.source_sha256) {
         return Err(error("graph source_sha256 is malformed"));
     }
+    if !valid_git_id(&manifest.graph.receipt_commit) {
+        return Err(error("graph receipt_commit is malformed"));
+    }
+    if !valid_git_id(&manifest.graph.receipt_tree) {
+        return Err(error("graph receipt_tree is malformed"));
+    }
     let graph_source = contained_existing_path(&root, &manifest.graph.source_path, "graph source")?;
     if !graph_source.is_file() {
         return Err(error(format!(
@@ -673,6 +685,30 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             "graph source digest mismatch: manifest {}, observed {}",
             manifest.graph.source_sha256, observed_graph_digest
         )));
+    }
+    let graph_document: serde_json::Value = serde_json::from_slice(
+        &fs::read(&graph_source)
+            .map_err(|source| error(format!("cannot read graph source: {source}")))?,
+    )
+    .map_err(|source| error(format!("graph source JSON is invalid: {source}")))?;
+    let transaction = graph_document
+        .get("transaction")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| error("graph source has no transaction receipt"))?;
+    let receipt_commit = transaction
+        .get("receipt_commit")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| error("graph source transaction has no receipt_commit"))?;
+    let receipt_tree = transaction
+        .get("receipt_tree")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| error("graph source transaction has no receipt_tree"))?;
+    if receipt_commit != manifest.graph.receipt_commit
+        || receipt_tree != manifest.graph.receipt_tree
+    {
+        return Err(error(
+            "graph receipt anchor disagrees with the M4.1 source receipt",
+        ));
     }
     validate_selection(&manifest.selection)?;
     contained_output_path(&root, &manifest.prefix, "output prefix")?;
@@ -1040,16 +1076,25 @@ mod tests {
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
             fs::create_dir_all(root.join("abi")).expect("abi directory");
-            fs::write(root.join("abi/birnam-build-actions-v1.json"), b"graph").expect("graph");
+            let receipt_commit = "a".repeat(40);
+            let receipt_tree = "b".repeat(40);
+            let graph_document = json!({
+                "transaction": {
+                    "receipt_commit": receipt_commit.clone(),
+                    "receipt_tree": receipt_tree.clone()
+                }
+            });
+            let graph_bytes = serde_json::to_vec(&graph_document).expect("graph JSON");
+            fs::write(root.join("abi/birnam-build-actions-v1.json"), &graph_bytes).expect("graph");
             fs::create_dir_all(root.join("work")).expect("work directory");
             fs::write(root.join("build.zig"), b"compile.dependOn(prepare);").expect("build source");
             let digest = hex::encode(Sha256::digest(b"module"));
-            let graph_digest = hex::encode(Sha256::digest(b"graph"));
+            let graph_digest = hex::encode(Sha256::digest(&graph_bytes));
             let build_digest = hex::encode(Sha256::digest(b"compile.dependOn(prepare);"));
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
-                "graph": {"id": "build-actions-v1", "source_path": "abi/birnam-build-actions-v1.json", "source_sha256": graph_digest},
+                "graph": {"id": "build-actions-v1", "source_path": "abi/birnam-build-actions-v1.json", "source_sha256": graph_digest, "receipt_commit": receipt_commit, "receipt_tree": receipt_tree},
                 "source_graph": {
                     "build_file": {"path": "build.zig", "sha256": build_digest},
                     "depend_on_occurrences": 1,
@@ -1138,6 +1183,17 @@ mod tests {
         let error =
             parse_and_validate(&bytes, &fixture.root).expect_err("projection must not execute");
         assert!(error.0.contains("not executable"));
+    }
+
+    #[test]
+    fn rejects_graph_receipt_anchor_mismatch() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["graph"]["receipt_commit"] = json!("c".repeat(40));
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("graph receipt anchor must match the source receipt");
+        assert!(error.0.contains("receipt anchor"));
     }
 
     #[test]
