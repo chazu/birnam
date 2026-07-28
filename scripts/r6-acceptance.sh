@@ -22,7 +22,7 @@ python3 scripts/check-native-rung-baseline.py
 # focused semantic-validation suite in R6 even though it is not a Zig build
 # step, so a passing native-rung snapshot cannot mask a regression in the
 # driver that will own the next orchestration rung.
-readonly expected_rust_build_driver_tests=13
+readonly expected_rust_build_driver_tests=14
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
 
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
