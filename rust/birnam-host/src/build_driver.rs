@@ -145,6 +145,9 @@ pub struct ActionSpec {
     pub authority: String,
     pub delegation: String,
     pub tool: String,
+    pub tool_kind: String,
+    #[serde(default)]
+    pub tool_producer: Option<String>,
     pub tool_sha256: String,
     pub cwd: PathBuf,
     pub command: Vec<String>,
@@ -1061,10 +1064,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     contained_output_path(&root, &manifest.prefix, "output prefix")?;
     for (name, path) in &manifest.tools {
         safe_name(name, "tool name")?;
-        let tool = contained_existing_path(&root, path, "tool path")?;
-        if !tool.is_file() {
-            return Err(error(format!("tool is unavailable: {}", tool.display())));
-        }
+        safe_relative_path(path, "tool path")?;
     }
 
     let mut module_names = BTreeSet::new();
@@ -1325,20 +1325,78 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             )));
         }
         contained_output_path(&root, &action.cwd, "action cwd")?;
-        let tool_path = contained_existing_path(
-            &root,
-            manifest
-                .tools
-                .get(&action.tool)
-                .expect("tool checked above"),
-            "tool path",
-        )?;
-        if sha256_file(&tool_path)? != action.tool_sha256 {
-            return Err(error(format!(
-                "action {} tool identity digest is stale",
-                action.name
-            )));
-        }
+        let declared_tool_path = manifest
+            .tools
+            .get(&action.tool)
+            .expect("tool checked above");
+        let tool_path = match action.tool_kind.as_str() {
+            "external" => {
+                if action.tool_producer.is_some() {
+                    return Err(error(format!(
+                        "action {} external tool cannot name a producer",
+                        action.name
+                    )));
+                }
+                let path = contained_existing_path(&root, declared_tool_path, "tool path")?;
+                if !path.is_file() {
+                    return Err(error(format!("tool is unavailable: {}", path.display())));
+                }
+                if sha256_file(&path)? != action.tool_sha256 {
+                    return Err(error(format!(
+                        "action {} tool identity digest is stale",
+                        action.name
+                    )));
+                }
+                path
+            }
+            "produced" => {
+                let producer = action.tool_producer.as_deref().ok_or_else(|| {
+                    error(format!("action {} produced tool has no producer", action.name))
+                })?;
+                safe_name(producer, "tool producer")?;
+                if producer == action.name
+                    || !dependency_reaches(
+                        &manifest.actions,
+                        &action.name,
+                        producer,
+                        &mut BTreeSet::new(),
+                    )
+                {
+                    return Err(error(format!(
+                        "action {} tool producer {} is not an upstream dependency",
+                        action.name, producer
+                    )));
+                }
+                let producer_action = manifest
+                    .actions
+                    .iter()
+                    .find(|candidate| candidate.name == producer)
+                    .expect("tool producer action is declared");
+                if !producer_action.outputs.iter().any(|output| {
+                    output.path == *declared_tool_path && output.sha256 == action.tool_sha256
+                }) {
+                    return Err(error(format!(
+                        "action {} tool does not match a declared output of producer {}",
+                        action.name, producer
+                    )));
+                }
+                if !declared_tool_path.starts_with(&manifest.prefix) {
+                    return Err(error(format!(
+                        "action {} produced tool is outside the output prefix",
+                        action.name
+                    )));
+                }
+                safe_relative_path(declared_tool_path, "produced tool path")?;
+                contained_output_path(&root, declared_tool_path, "produced tool path")?;
+                root.join(declared_tool_path)
+            }
+            other => {
+                return Err(error(format!(
+                    "action {} has unknown tool kind {}",
+                    action.name, other
+                )));
+            }
+        };
         for (index, input) in action.inputs.iter().enumerate() {
             let label = format!("action {} input {index}", action.name);
             if !valid_digest(&input.sha256) {
@@ -1937,6 +1995,7 @@ mod tests {
                     "authority": "canonical",
                     "delegation": "none",
                     "tool": "zig",
+                    "tool_kind": "external",
                     "tool_sha256": hex::encode(Sha256::digest(b"tool")),
                     "cwd": "work",
                     "command": ["zig", "prepare"],
@@ -1950,6 +2009,7 @@ mod tests {
                     "authority": "canonical",
                     "delegation": "none",
                     "tool": "zig",
+                    "tool_kind": "external",
                     "tool_sha256": hex::encode(Sha256::digest(b"tool")),
                     "cwd": "work",
                     "command": ["zig", "build-module"],
@@ -2018,6 +2078,43 @@ mod tests {
         });
         let error = parse_and_validate(&bytes, &fixture.root)
             .expect_err("non-upstream produced input must be rejected");
+        assert!(error.0.contains("not an upstream dependency"));
+    }
+
+    #[test]
+    fn accepts_upstream_produced_tool_without_preexisting_file() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["selection"]["distribution"] = json!("shadow");
+            for action in value["actions"].as_array_mut().expect("actions") {
+                action["context"] = json!("shadow");
+                action["authority"] = json!("shadow");
+                action["delegation"] = json!("explicit-shadow");
+            }
+            value["tools"]["module-tool"] = json!("out/prepare");
+            value["actions"][1]["tool"] = json!("module-tool");
+            value["actions"][1]["tool_kind"] = json!("produced");
+            value["actions"][1]["tool_producer"] = json!("prepare");
+            value["actions"][1]["tool_sha256"] = json!("b".repeat(64));
+            value["actions"][1]["command"][0] = json!("module-tool");
+        });
+        parse_and_validate(&bytes, &fixture.root)
+            .expect("upstream produced tool should be a deferred tool");
+    }
+
+    #[test]
+    fn rejects_produced_tool_without_upstream_owner() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["tools"]["module-tool"] = json!("out/module.dylib");
+            value["actions"][0]["tool"] = json!("module-tool");
+            value["actions"][0]["tool_kind"] = json!("produced");
+            value["actions"][0]["tool_producer"] = json!("compile");
+            value["actions"][0]["tool_sha256"] = json!("c".repeat(64));
+            value["actions"][0]["command"][0] = json!("module-tool");
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("non-upstream produced tool must be rejected");
         assert!(error.0.contains("not an upstream dependency"));
     }
 
