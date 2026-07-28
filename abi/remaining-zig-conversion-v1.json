@@ -13,8 +13,8 @@
   },
   "inventory_receipt": "remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=79 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290",
   "strict_r6_receipt": {
-    "focused": "216/216 steps; 99/99 tests",
-    "verify": "306/306 steps; 516/522 tests; 6 skipped",
+    "focused": "218/218 steps; 99/99 tests",
+    "verify": "307/307 steps; 516/522 tests; 6 skipped",
     "live_alien": "66/66 steps; 9/9 tests",
     "z3": [
       "distribution-selection: production omits Zig; rollback is a complete Zig vector",

@@ -85,8 +85,8 @@ Relational, Alien, and Image. The remaining Zig implementation files are:
 The current strict acceptance is:
 
 ```text
-focused: Build Summary: 216/216 steps succeeded; 99/99 tests passed
-verify:  Build Summary: 306/306 steps succeeded; 516/522 tests passed; 6 skipped
+focused: Build Summary: 218/218 steps succeeded; 99/99 tests passed
+verify:  Build Summary: 307/307 steps succeeded; 516/522 tests passed; 6 skipped
 live Alien: 66/66 steps succeeded; 9/9 tests passed
 distribution-selection: production omits Zig; rollback is a complete Zig vector
 z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
@@ -481,7 +481,7 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
 - [ ] The final strict R6 receipt is remeasured after C0 and every boundary
       change; it retains `516/522`, six skipped, and only the two pinned
       benchmark crossings only when the live run proves those values. The
-      current baseline is `306/306` verify steps.
+current baseline is `307/307` verify steps.
 - [ ] Documentation, inventory, distribution, and rollback instructions match
       the implemented ownership state.
 
