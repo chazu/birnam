@@ -2235,11 +2235,11 @@ accepted.
 ### R8.1 — Post-cutover observation checkpoint, 2026-07-27
 
 The named equivalent observation window runs from the R7 cutover baseline
-(`ed47556`, 2026-07-23) through the current descendant (`d985cd4`, 2026-07-27).
+(`ed47556`, 2026-07-23) through the current descendant (`ea9d783`, 2026-07-27).
 It exercises the required release and rollback workloads:
 
 - the strict Rust-default `BIRNAM_R6_REQUIRE_VERIFY=1 bash
-  scripts/r6-acceptance.sh` graph (`305/305` verify steps, `516/522` tests,
+  scripts/r6-acceptance.sh` graph (`306/306` verify steps, `516/522` tests,
   six skips, the two recorded benchmark crossings only, and strict Z3
   production/rollback receipts);
 - two independent fixture-free Rust cold-compiler archives, the relocated
