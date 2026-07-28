@@ -33,6 +33,35 @@ pub const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id_image.dylib",
 ];
 
+pub const STAGE1_MODULES: &[(&str, &str)] = &[
+    ("src/id/modules.birnam", "modules"),
+    ("src/id/stdlib.birnam", "stdlib"),
+    ("src/id/compiled-unit.birnam", "compiledUnit"),
+    ("src/id/toml.birnam", "toml"),
+    ("src/id/config.birnam", "config"),
+    ("src/id/app-config.birnam", "appConfig"),
+    ("src/id/project-policy.birnam", "projectPolicy"),
+    ("src/id/isolate.birnam", "isolate"),
+    ("modules/html.birnam", "html"),
+    ("modules/file.birnam", "file"),
+    ("modules/json.birnam", "json"),
+    ("modules/socket.birnam", "socket"),
+    ("modules/time.birnam", "time"),
+    ("modules/doc.birnam", "doc"),
+    ("modules/zigdoc.birnam", "zigdoc"),
+    ("modules/lsp.birnam", "lsp"),
+    ("modules/repl.birnam", "repl"),
+    ("modules/cli.birnam", "cli"),
+    ("modules/http.birnam", "http"),
+    ("modules/log.birnam", "log"),
+    ("modules/markdown.birnam", "markdown"),
+    ("modules/os.birnam", "os"),
+    ("modules/process.birnam", "process"),
+    ("modules/random.birnam", "random"),
+    ("modules/test.birnam", "test"),
+    ("modules/compiled-unit-docs.birnam", "compiledUnitDocs"),
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DriverManifest {
@@ -766,6 +795,42 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             )));
         }
     }
+    if manifest.modules.len() != STAGE1_MODULES.len() {
+        return Err(error(format!(
+            "stage-1 module closure requires exactly {} ordered modules",
+            STAGE1_MODULES.len()
+        )));
+    }
+    for ((expected_source, expected_name), module) in STAGE1_MODULES.iter().zip(&manifest.modules) {
+        if module.name != *expected_name || module.source.path != Path::new(expected_source) {
+            return Err(error(format!(
+                "stage-1 module order/source mismatch at {}: expected {} ({expected_source})",
+                module.name, expected_name
+            )));
+        }
+        let producer = manifest
+            .actions
+            .iter()
+            .find(|action| action.name == module.producer)
+            .expect("module producer validated above");
+        let expected_output = format!("libbirnam_{expected_name}.dylib");
+        let output_count = producer
+            .outputs
+            .iter()
+            .filter(|output| {
+                output
+                    .path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy() == expected_output)
+            })
+            .count();
+        if output_count != 1 {
+            return Err(error(format!(
+                "stage-1 module {expected_name} producer {} must declare exactly one {expected_output} output",
+                producer.name
+            )));
+        }
+    }
     let expected_provider_actions = CANONICAL_DYNAMIC_LIBRARIES
         .iter()
         .copied()
@@ -981,8 +1046,11 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             )));
         }
         if action.context == "production" {
-            let forbidden =
-                |value: &str| value.contains("_zig") || value.contains("birnam-zig-oracle");
+            let forbidden = |value: &str| {
+                value.contains("birnam-zig-oracle")
+                    || value.contains("_zig.dylib")
+                    || value.contains("_zig_")
+            };
             if forbidden(&action.tool)
                 || forbidden(&tool_path.to_string_lossy())
                 || forbidden(&action.cwd.to_string_lossy())
@@ -1308,6 +1376,12 @@ mod tests {
                 std::env::temp_dir().join(format!("birnam-build-driver-{}-{sequence}", nonce));
             fs::create_dir_all(&root).expect("fixture root");
             fs::write(root.join("module.birnam"), b"module").expect("module");
+            for (source, _) in STAGE1_MODULES {
+                let path = root.join(source);
+                fs::create_dir_all(path.parent().expect("stage-1 source parent"))
+                    .expect("stage-1 source directory");
+                fs::write(path, b"module").expect("stage-1 source");
+            }
             fs::write(root.join("zig"), b"tool").expect("tool");
             fs::create_dir_all(root.join("abi")).expect("abi directory");
             fs::create_dir_all(root.join("work")).expect("work directory");
@@ -1340,6 +1414,25 @@ mod tests {
                     })
                 })
                 .collect::<Vec<_>>();
+            let stage1_modules = STAGE1_MODULES
+                .iter()
+                .map(|(source, name)| {
+                    json!({
+                        "name": name,
+                        "source": {"path": source, "sha256": digest},
+                        "producer": "compile"
+                    })
+                })
+                .collect::<Vec<_>>();
+            let stage1_outputs = STAGE1_MODULES
+                .iter()
+                .map(|(_, name)| {
+                    json!({
+                        "path": format!("out/libbirnam_{name}.dylib"),
+                        "sha256": "c".repeat(64)
+                    })
+                })
+                .collect::<Vec<_>>();
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
@@ -1357,7 +1450,7 @@ mod tests {
                 "target": "aarch64-macos",
                 "profile": "release",
                 "selection": {"distribution": "production", "floor": "rust", "providers": CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| (*name, "rust")).collect::<BTreeMap<_, _>>(), "provider_actions": provider_actions},
-                "modules": [{"name": "module", "source": {"path": "module.birnam", "sha256": digest}, "producer": "compile"}],
+                "modules": stage1_modules,
                 "actions": [{
                     "name": "prepare",
                     "context": "production",
@@ -1382,7 +1475,7 @@ mod tests {
                     "command": ["zig", "build-module"],
                     "depends_on": ["prepare"],
                     "inputs": [{"path": "module.birnam", "sha256": digest}],
-                    "outputs": std::iter::once(json!({"path": "out/module.dylib", "sha256": "c".repeat(64)})).chain(provider_outputs).collect::<Vec<_>>(),
+                    "outputs": std::iter::once(json!({"path": "out/module.dylib", "sha256": "c".repeat(64)})).chain(stage1_outputs).chain(provider_outputs).collect::<Vec<_>>(),
                     "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }],
                 "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
@@ -1607,8 +1700,13 @@ mod tests {
             .map(|library| format!("printf '%s' shadow-output > ../out/{library}"))
             .collect::<Vec<_>>()
             .join("\n");
+        let stage1_writes = STAGE1_MODULES
+            .iter()
+            .map(|(_, name)| format!("printf '%s' shadow-output > ../out/libbirnam_{name}.dylib"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let runner_source = format!(
-            "#!/bin/sh\nset -eu\nmkdir -p ../out\ncase \"$1\" in\nprepare) printf '%s' shadow-output > ../out/prepare ;;\ncompile) printf '%s' shadow-output > ../out/module.dylib\n{provider_writes} ;;\nesac\nprintf '%s' \"$BIRNAM_VALUE\"\n"
+            "#!/bin/sh\nset -eu\nmkdir -p ../out\ncase \"$1\" in\nprepare) printf '%s' shadow-output > ../out/prepare ;;\ncompile) printf '%s' shadow-output > ../out/module.dylib\n{stage1_writes}\n{provider_writes} ;;\nesac\nprintf '%s' \"$BIRNAM_VALUE\"\n"
         );
         fs::write(&runner, runner_source).expect("runner");
         fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).expect("executable");
