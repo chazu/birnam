@@ -268,7 +268,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Alien readiness=blocked rollback_status=pinned; live callback, buffer, child-abort, TCC, and cross-floor suites passed"
     },
     {
       "key": "zig:path:src/id/alien_test.zig",
@@ -409,7 +409,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Codegen readiness=blocked rollback_status=pinned; canonical boundary, distribution, generated-C, and stack suites passed"
     },
     {
       "key": "zig:path:src/id/codegen_test.zig",
@@ -441,7 +441,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Collection readiness=blocked rollback_status=pinned; vector/map/range, GC-layout, isolate, and cross-floor suites passed"
     },
     {
       "key": "zig:path:src/id/collection_gc_test.zig",
@@ -503,7 +503,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Error readiness=blocked rollback_status=pinned; propagation, DNU swap, FFI abort, and lower-rung parity passed"
     },
     {
       "key": "zig:path:src/id/error_test.zig",
@@ -629,7 +629,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Image readiness=blocked rollback_status=pinned; save, bootstrap, publication, rejection, and cross-floor suites passed"
     },
     {
       "key": "zig:path:src/id/image_test.zig",
@@ -661,7 +661,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Isolate readiness=blocked rollback_status=pinned; wire-v1, worker lifecycle, image rejection, and process-boundary suites passed"
     },
     {
       "key": "zig:path:src/id/isolate_test.zig",
@@ -693,7 +693,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Lang readiness=blocked rollback_status=pinned; grammar, diagnostic, installed-relocation, and lower-rung parity passed"
     },
     {
       "key": "zig:path:src/id/lang_test.zig",
@@ -819,7 +819,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Prelude readiness=blocked rollback_status=pinned; primitive, error, I/O, and lower-rung parity suites passed"
     },
     {
       "key": "zig:path:src/id/prelude_test.zig",
@@ -896,7 +896,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: Relational readiness=blocked rollback_status=pinned; project/join/pull/aggregate and Zig Store cross-floor suites passed"
     },
     {
       "key": "zig:path:src/id/relational_test.zig",
@@ -1365,7 +1365,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts-v2: TCC readiness=blocked rollback_status=pinned; shell, artifact, audit, Alien, image, and lower-rung suites passed"
     },
     {
       "key": "zig:path:src/id/tcc_test.zig",

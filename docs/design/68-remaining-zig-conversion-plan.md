@@ -459,6 +459,21 @@ receipt; no parser fixture or source was removed. Its strict R6 checkpoint at
 live Alien, Z3 archive/trace, and benchmark receipts. This closes the final
 C2.1 gate while keeping readiness blocked and rollback pinned.
 
+**C2.2 remaining dynamic-rung receipts (2026-07-28):** the remaining
+Codegen, Prelude, Collection, Error, Isolate, Relational, Alien, Image, Lang,
+and TCC rungs now have the same receipt shape in
+`abi/c2-rung-receipts-v2.json`. The receipt records Debug/Release Rust
+identities and digests, exact boundary exports, direct system-library
+dependencies, runtime prerequisites, Zig fixture identities/digests, isolated
+selection commands, two same-floor and two cross-floor process cells, and the
+applicable codegen, parser, TCC, collection, error, isolate, relational,
+Alien, image, GC, and hostile-input suites. The grouped ReleaseSafe run passed
+`222/222` steps and `172/175` tests with three explicit skips; the lower-rung
+matrix passed Zig plus Rust Debug/Release at `256/256` each. Every row remains
+`readiness=blocked` and `rollback_status=pinned`; no Zig source or rollback
+fixture was removed. Artifact inspection and host closure remain covered by
+the C1 receipts rather than being duplicated as a lower-rung receipt.
+
 ## 8. Phase C3 — native-Birnam policy closure
 
 1. Re-run the checked 120-callsite owner inventory after each C2 rung and
@@ -545,11 +560,13 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
       owns activation and policy.
 - [x] The checked 120-callsite owner inventory was rerun after C2.1 with all
       owner classes preserved and `z2_1_seam.status=none` still explicit.
-- [ ] Every rung has a Rust identity/digest, Zig fixture policy, and applicable
-      ABI/MOP/GC/image/wire evidence.
+- [x] Every dynamic rung has a Rust identity/digest, Zig fixture policy, and
+      applicable ABI/MOP/GC/image/wire evidence; Artifact/host closure is
+      covered by the C1 receipts.
 - [x] The first three rung slices (floor, Store, PEG) have focused commits and
       strict R6 receipts.
-- [ ] All later rung decisions are separately reviewed and reversible.
+- [x] All later rung decisions are separately reviewed and reversible; the
+      C2.2 rows remain blocked/pinned until the complete-vector decision.
 - [ ] No Rust provider statically exports another rung's `module_init` or
       identity.
 - [ ] Two Rust production archives, plus the explicit complete-vector rollback
