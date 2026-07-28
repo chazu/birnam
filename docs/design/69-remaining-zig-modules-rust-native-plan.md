@@ -306,6 +306,14 @@ fully resolved semantic graph before any Rust build action is authoritative.
    `dependOn`, implicit install-step dependencies, exact shell argv, and
    environment capture. Commit this slice independently.
 
+The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
+`dry-run` parser. It requires `semantic_scope=full-semantic-v1`, binds graph
+and input digests to files under the supplied root, rejects path escape,
+duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
+eight focused parser tests. It does not execute a tool; the complete
+`dependOn`/install semantic resolver and selection-specific command receipts
+remain the next M4.2 slice.
+
 ### M4.3 Compiler invocation and stage-1 module compilation
 
 1. Implement a process runner that invokes declared non-Birnam stage-0 tools
