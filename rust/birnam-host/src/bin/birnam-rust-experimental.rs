@@ -15,7 +15,7 @@ use birnam_host::{
 };
 
 const VERSION: &str = include_str!("../../../../VERSION");
-const USAGE: &str = "birnam-rust-experimental — Rust host\n\n\
+const USAGE: &str = "birnam — Rust host\n\n\
 Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
            --repl, --listen <port>, doc, docgen, init, wrap,\n\
            --worker <image> <receiver> <selector> --channel-fd <fd>,\n\
@@ -31,7 +31,7 @@ const TEST_USAGE: &str = "usage: birnam test [directory] [--build] [--profile de
 const RUN_USAGE: &str = "usage: birnam run [directory] [--build] [--profile debug|release] [--repl|--no-repl] [-- args...]\n";
 
 fn fail(message: impl std::fmt::Display) -> ExitCode {
-    eprintln!("birnam-rust-experimental: {message}");
+    eprintln!("birnam: {message}");
     ExitCode::from(1)
 }
 

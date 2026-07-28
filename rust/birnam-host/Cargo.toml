@@ -9,10 +9,6 @@ publish = false
 crate-type = ["rlib"]
 
 [[bin]]
-name = "birnam-rust-experimental"
-path = "src/bin/birnam-rust-experimental.rs"
-
-[[bin]]
 name = "birnam"
 path = "src/bin/birnam-rust-experimental.rs"
 
