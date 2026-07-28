@@ -823,11 +823,22 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             return Err(error("source graph has duplicate expression bindings"));
         }
     }
+    let captured_expressions = captured
+        .edges
+        .iter()
+        .flat_map(|edge| [&edge.source, &edge.dependency])
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if bindings.keys().cloned().collect::<BTreeSet<_>>() != captured_expressions {
+        return Err(error(
+            "source graph bindings must exactly cover captured .dependOn expressions",
+        ));
+    }
     let mut resolved_dependencies = action_names
         .iter()
         .map(|name| ((*name).to_string(), BTreeSet::new()))
         .collect::<BTreeMap<String, BTreeSet<String>>>();
-    let mut resolved_edge_keys = BTreeSet::new();
+    let mut captured_edge_keys = BTreeSet::new();
     for edge in &captured.edges {
         let source_action = bindings.get(&edge.source).ok_or_else(|| {
             error(format!(
@@ -841,18 +852,19 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 edge.source_line, edge.dependency
             ))
         })?;
-        if !resolved_edge_keys.insert((source_action.clone(), dependency_action.clone())) {
+        if source_action == dependency_action {
+            return Err(error("source graph contains a self-dependency"));
+        }
+        if !captured_edge_keys.insert((source_action.clone(), dependency_action.clone())) {
             return Err(error("source graph contains a duplicate explicit edge"));
         }
-        resolved_dependencies
-            .get_mut(source_action)
-            .expect("source action checked above")
-            .insert(dependency_action.clone());
     }
+    let mut resolved_edge_keys = BTreeSet::new();
+    let mut declared_source_edge_keys = BTreeSet::new();
     for edge in &manifest.source_graph.implicit_edges {
         if !matches!(
             edge.kind.as_str(),
-            "artifact" | "install" | "lazy" | "generated"
+            "artifact" | "install" | "lazy" | "generated" | "source"
         ) {
             return Err(error(format!(
                 "unknown implicit dependency kind: {}",
@@ -870,10 +882,18 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         if !resolved_edge_keys.insert((edge.source.clone(), edge.dependency.clone())) {
             return Err(error("source graph contains a duplicate implicit edge"));
         }
+        if edge.kind == "source" {
+            declared_source_edge_keys.insert((edge.source.clone(), edge.dependency.clone()));
+        }
         resolved_dependencies
             .get_mut(&edge.source)
             .expect("source action checked above")
             .insert(edge.dependency.clone());
+    }
+    if declared_source_edge_keys != captured_edge_keys {
+        return Err(error(
+            "typed source edges must exactly match captured .dependOn edges",
+        ));
     }
     for action in &manifest.actions {
         let declared = action.depends_on.iter().cloned().collect::<BTreeSet<_>>();
@@ -1290,7 +1310,7 @@ mod tests {
                         {"expression": "compile", "action": "compile"},
                         {"expression": "prepare", "action": "prepare"}
                     ],
-                    "implicit_edges": [],
+                    "implicit_edges": [{"source": "compile", "dependency": "prepare", "kind": "source"}],
                     "roots": ["compile"]
                 },
                 "target": "aarch64-macos",
@@ -1448,7 +1468,7 @@ mod tests {
     fn rejects_source_edge_action_order_mismatch() {
         let fixture = Fixture::new();
         let bytes = mutate(&fixture, |value| {
-            value["actions"][1]["depends_on"] = json!([]);
+            value["source_graph"]["implicit_edges"] = json!([]);
         });
         assert!(parse_and_validate(&bytes, &fixture.root).is_err());
     }
