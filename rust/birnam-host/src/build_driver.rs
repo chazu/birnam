@@ -96,6 +96,166 @@ fn error(message: impl Into<String>) -> ManifestError {
     ManifestError(message.into())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZigDependencyEdge {
+    pub source: String,
+    pub dependency: String,
+    pub source_line: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZigDependencyCapture {
+    pub occurrence_count: usize,
+    pub edges: Vec<ZigDependencyEdge>,
+}
+
+fn normalize_expression(expression: &str) -> String {
+    expression.split_whitespace().collect::<String>()
+}
+
+fn source_line(source: &str, offset: usize) -> usize {
+    source[..offset]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count()
+        + 1
+}
+
+fn source_expression(source: &str, depend_on_offset: usize) -> Result<String, ManifestError> {
+    let before = source[..depend_on_offset].trim_end();
+    if before.ends_with(')') {
+        let bytes = before.as_bytes();
+        let mut depth = 0usize;
+        let mut open = None;
+        for index in (0..bytes.len()).rev() {
+            match bytes[index] {
+                b')' => depth += 1,
+                b'(' if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        open = Some(index);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(open) = open {
+            let mut start = open;
+            while start > 0 && !matches!(bytes[start - 1], b';' | b'\n') {
+                start -= 1;
+            }
+            let expression = normalize_expression(&before[start..]);
+            if !expression.is_empty() {
+                return Ok(expression);
+            }
+        }
+    }
+    let start = before
+        .rfind(|character: char| {
+            !(character.is_ascii_alphanumeric() || matches!(character, '_' | '.' | '&'))
+        })
+        .map_or(0, |index| index + 1);
+    let expression = normalize_expression(&before[start..]);
+    if expression.is_empty() {
+        Err(error(format!(
+            "cannot resolve .dependOn source at line {}",
+            source_line(source, depend_on_offset)
+        )))
+    } else {
+        Ok(expression)
+    }
+}
+
+/// Capture every syntactic `.dependOn(...)` call without silently dropping
+/// inline expressions or implicit install-step calls.
+pub fn capture_zig_dependencies(source: &str) -> Result<ZigDependencyCapture, ManifestError> {
+    const NEEDLE: &[u8] = b".dependOn";
+    let bytes = source.as_bytes();
+    let mut index = 0usize;
+    let mut edges = Vec::new();
+    while index < bytes.len() {
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            index += 2;
+            while index < bytes.len() && bytes[index] != b'\n' {
+                index += 1;
+            }
+            continue;
+        }
+        if bytes[index] == b'"' {
+            index += 1;
+            while index < bytes.len() {
+                if bytes[index] == b'\\' {
+                    index = (index + 2).min(bytes.len());
+                } else if bytes[index] == b'"' {
+                    index += 1;
+                    break;
+                } else {
+                    index += 1;
+                }
+            }
+            continue;
+        }
+        if bytes[index..].starts_with(NEEDLE) {
+            let line = source_line(source, index);
+            let source_expr = source_expression(source, index)?;
+            let mut open = index + NEEDLE.len();
+            while bytes.get(open).is_some_and(u8::is_ascii_whitespace) {
+                open += 1;
+            }
+            if bytes.get(open) != Some(&b'(') {
+                return Err(error(format!(
+                    ".dependOn at line {line} has no argument list"
+                )));
+            }
+            let mut cursor = open + 1;
+            let mut depth = 1usize;
+            let mut in_string = false;
+            while cursor < bytes.len() && depth != 0 {
+                match bytes[cursor] {
+                    b'\\' if in_string => cursor = (cursor + 2).min(bytes.len()),
+                    b'"' => {
+                        in_string = !in_string;
+                        cursor += 1;
+                    }
+                    b'(' if !in_string => {
+                        depth += 1;
+                        cursor += 1;
+                    }
+                    b')' if !in_string => {
+                        depth -= 1;
+                        cursor += 1;
+                    }
+                    _ => cursor += 1,
+                }
+            }
+            if depth != 0 {
+                return Err(error(format!(
+                    ".dependOn at line {line} has unbalanced parentheses"
+                )));
+            }
+            let argument = normalize_expression(&source[open + 1..cursor - 1]);
+            if argument.is_empty() {
+                return Err(error(format!(
+                    ".dependOn at line {line} has an empty argument"
+                )));
+            }
+            edges.push(ZigDependencyEdge {
+                source: source_expr,
+                dependency: argument,
+                source_line: line,
+            });
+            index = cursor;
+            continue;
+        }
+        index += 1;
+    }
+    Ok(ZigDependencyCapture {
+        occurrence_count: edges.len(),
+        edges,
+    })
+}
+
 fn valid_digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -543,5 +703,27 @@ mod tests {
             value["dynamic_libraries"][0] = json!("libbirnam_id_zig.dylib")
         });
         assert!(parse_and_validate(&zig_name, &fixture.root).is_err());
+    }
+
+    #[test]
+    fn captures_every_build_zig_depend_on_form() {
+        let source =
+            fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build.zig"))
+                .expect("build.zig");
+        let capture = capture_zig_dependencies(&source).expect("all dependOn calls resolve");
+        assert_eq!(capture.occurrence_count, 464);
+        assert_eq!(capture.edges.len(), capture.occurrence_count);
+        assert!(
+            capture
+                .edges
+                .iter()
+                .any(|edge| edge.source_line == 3519 && edge.dependency == "b.getInstallStep()")
+        );
+        assert!(
+            capture
+                .edges
+                .iter()
+                .any(|edge| edge.source_line == 3520 && edge.source.contains("b.step("))
+        );
     }
 }
