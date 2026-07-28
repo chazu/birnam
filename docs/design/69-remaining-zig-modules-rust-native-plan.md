@@ -317,7 +317,7 @@ matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
 joining. It does not execute a tool; the complete
 `dependOn`/install semantic resolver and selection-specific command receipts
-remain the next M4.2 slice. M4.3 now has a shadow-only topological process
+remain the next M4.2 slice. Separately, M4.3 now has a shadow-only topological process
 runner and `execute-shadow` CLI; `Clear` deterministically clears inherited
 environment variables before declared `Set`/`Unset` operations, while
 production and rollback execution remain refused. Shadow execution now also
@@ -334,6 +334,13 @@ are balanced and retained, including the inline `test-install` step and its
 executable action identities; one repeated semantic pair is retained as two
 occurrences but one resolved edge. Resolution to concrete tools, install
 outputs, and inherited/cleared environments remains fail-closed work in M4.2.
+
+The committed `abi/birnam-build-actions-receipt-proof-v1.json` is a detached
+checker output, not a field copied from the executable manifest. The Rust
+parser binds its graph/build digests and receipt anchors to that proof and,
+when the supplied root is a Git worktree, verifies receipt commit/tree
+existence, ancestry, and the checked bytes. Non-Git shadow fixtures retain
+only the file-level proof; they cannot authorize production execution.
 
 The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
@@ -356,8 +363,9 @@ argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
 authority. The graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
-until instantiated implicit Zig Build edges and provider/module producer
-provenance are represented; the parser pins the source graph to
+authoritative production/rollback actions until instantiated implicit Zig Build
+edges and provider/module producer provenance are represented; only the
+explicitly fenced, non-authoritative shadow executor is available. The parser pins the source graph to
 `build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. This is a
 file-level consistency check; execution still requires a checker-generated
 receipt proof that the commit/tree exists and contains these bytes. Production selection also requires
