@@ -163,8 +163,9 @@ M0 is documentation/checker-only and must land before code changes.
    source/crate/static object placed in `dynamic_dependencies`.
 5. Use the transaction `candidate checkpoint → clean-tree focused gates →
    receipt commit referencing the candidate → post-receipt gate`. The checker
-   must accept an explicit candidate commit/tree hash and refuse a dirty tree;
-   it must never receipt an uncommitted candidate. Run inventory,
+   accepts only the current explicit candidate commit on a clean worktree; it
+   derives and emits that commit's tree hash and has no dirty-worktree tree
+   override. It must never receipt an uncommitted candidate. Run inventory,
    helper-boundary, owner-inventory, Artifact-authority, and strict R6 at the
    recorded checkpoints.
 
@@ -270,6 +271,14 @@ do not rewrite the whole graph at once. Until the final cutover it remains
 
 **M4.1 exit:** the current `build.zig` action DAG is frozen in a supplemental
 manifest, all actions have owners and contexts, and drift fails closed.
+
+The landed M4.1 manifest freezes 125 target rows plus 35 typed command actions,
+including all 14 production provider installs, all 14 rollback fixtures, the
+locked Cargo workspace, vendored libtcc source/flags, exact ordered stage-1
+modules, resource installation, target roots, and a source-pinned dependency
+capture. Its checker requires a clean committed HEAD, validates the candidate
+and receipt transaction, and emits the checked tree hash; strict R6 is the
+post-receipt acceptance gate.
 
 ### M4.2 Manifest parser and dry-run driver
 

@@ -148,6 +148,14 @@ def git(*args: str) -> str:
     return result.stdout.strip()
 
 
+def git_merge_base_is_ancestor(ancestor: str, descendant: str) -> bool:
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=REPO, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
 def safe_repo_path(raw: object, label: str, *, suffix: str | None = None) -> Path:
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or ".." in Path(raw).parts:
         fail(f"unsafe {label}: {raw!r}")
@@ -195,6 +203,50 @@ def validate_build_ref(raw: object, label: str, build_targets: set[str], action_
     elif kind == "target-output":
         if set(raw) != {"kind", "target"} or raw["target"] not in build_targets | action_keys:
             fail(f"{label} references an unknown target/action output")
+
+
+def captured_target_edges() -> list[dict[str, object]]:
+    """Resolve the checked build.zig dependOn expressions to target names."""
+    lines = (REPO / "build.zig").read_text(encoding="utf-8").splitlines()
+    variable_targets = {
+        "test_step": "test", "verify_step": "verify", "stage1": "stage1",
+        "bootstrap_install": "bootstrap-install",
+    }
+    for index, line in enumerate(lines):
+        match = re.match(r"\s*const\s+(\w+)\s*=\s*b\.step\(\s*$", line)
+        if match:
+            for lookahead in lines[index + 1 : index + 8]:
+                target = re.search(r'"([a-z0-9][a-z0-9-]+)"', lookahead)
+                if target:
+                    variable_targets[match.group(1)] = target.group(1)
+                    break
+        match = re.search(r'const\s+(\w+)\s*=\s*b\.step\(\s*"([^"]+)"', line)
+        if match:
+            variable_targets[match.group(1)] = match.group(2)
+    for _ in range(8):
+        for line in lines:
+            match = re.search(r"(\w+)(?:\.step)?\.dependOn\((?:&)?([\w]+)(?:\.step)?\)", line)
+            if not match:
+                continue
+            source, dependency = match.groups()
+            if source in variable_targets and dependency not in variable_targets:
+                variable_targets[dependency] = variable_targets[source]
+            if dependency in variable_targets and source not in variable_targets:
+                variable_targets[source] = variable_targets[dependency]
+    edges: list[dict[str, object]] = []
+    for line_number, line in enumerate(lines, start=1):
+        match = re.search(r"(\w+)(?:\.step)?\.dependOn\((?:&)?([\w]+)(?:\.step)?\)", line)
+        if not match:
+            continue
+        source, dependency = match.groups()
+        if source not in variable_targets or dependency not in variable_targets:
+            continue
+        source_target = variable_targets[source]
+        dependency_target = variable_targets[dependency]
+        edge = {"source": source_target, "depends_on": dependency_target, "source_line": line_number}
+        if source_target != dependency_target and edge not in edges:
+            edges.append(edge)
+    return edges
 
 
 def main() -> None:
@@ -487,7 +539,7 @@ def main() -> None:
     capture = build_actions_doc.get("capture")
     if not isinstance(capture, dict) or set(capture) != {"level", "policy", "toolchain"}:
         fail("build action capture has the wrong schema")
-    if capture["level"] != "target" or any(
+    if capture["level"] != "target-and-command" or any(
         not isinstance(capture[field], str) or not capture[field].strip()
         for field in ("policy", "toolchain")
     ):
@@ -503,6 +555,7 @@ def main() -> None:
     build_required = {
         "action_key", "target", "owner_key", "action_kind", "selection_context", "delegation",
         "tool_ref", "inputs", "outputs", "flags", "environment", "dependencies",
+        "input_refs", "output_refs", "environment_refs",
         "install_destination", "digest_policy", "build_authority", "abi_surface",
         "removal_authority", "last_receipt",
     }
@@ -534,9 +587,31 @@ def main() -> None:
                 fail(f"build action {field} is not a non-empty-string array: {target}")
         for value in row["inputs"]:
             safe_repo_path(value, f"build input for {target}")
-        for value in row["dependencies"]:
+        for field in ("input_refs", "output_refs"):
+            refs = row[field]
+            if not isinstance(refs, list) or not refs:
+                fail(f"build action {field} is missing: {target}")
+            for index, value in enumerate(refs):
+                validate_build_ref(value, f"build {field}[{index}] for {target}", set(build_targets), {"build:" + item for item in build_targets})
+        if row["input_refs"] != [{"kind": "repo-file", "path": value} for value in row["inputs"]]:
+            fail(f"build input typed refs disagree with inputs: {target}")
+        expected_output_refs = []
+        for value in row["outputs"]:
             if value.startswith("target:"):
-                dependency_target = value.removeprefix("target:")
+                expected_output_refs.append({"kind": "target-output", "target": value.removeprefix("target:")})
+            elif value.startswith("prefix/"):
+                expected_output_refs.append({"kind": "install-path", "path": value.removeprefix("prefix/")})
+            else:
+                expected_output_refs.append({"kind": "install-path", "path": value})
+        if row["output_refs"] != expected_output_refs:
+            fail(f"build output typed refs disagree with outputs: {target}")
+        if not isinstance(row["environment_refs"], list) or row["environment_refs"] != [
+            {"name": value, "value": "declared"} for value in row["environment"]
+        ]:
+            fail(f"build environment typed refs disagree with environment: {target}")
+        for value in row["dependencies"]:
+            if value.startswith("build:"):
+                dependency_target = value.removeprefix("build:")
                 if dependency_target not in build_targets or dependency_target == target:
                     fail(f"build action dependency is outside the target graph: {target}")
             elif not value.startswith("external:"):
@@ -711,29 +786,64 @@ def main() -> None:
         validate_build_ref(resource["source"], "resource source", set(build_targets), all_action_keys)
         validate_build_ref(resource["destination"], "resource destination", set(build_targets), all_action_keys)
     dependency_capture = surfaces["target_dependencies"]
-    if not isinstance(dependency_capture, dict) or set(dependency_capture) != {"source_ref", "edge_count", "edge_sha256", "capture"}:
+    if not isinstance(dependency_capture, dict) or set(dependency_capture) != {"source_ref", "edge_count", "edge_sha256", "capture", "edges"}:
         fail("target dependency capture has the wrong schema")
     safe_ref(dependency_capture["source_ref"], "target dependency source")
     dependency_lines = [" ".join(line.strip().split()) for line in (REPO / "build.zig").read_text(encoding="utf-8").splitlines() if ".dependOn" in line]
     dependency_digest = hashlib.sha256(("\n".join(dependency_lines) + "\n").encode()).hexdigest()
-    if dependency_capture["edge_count"] != len(dependency_lines) or dependency_capture["edge_sha256"] != dependency_digest:
+    expected_edges = captured_target_edges()
+    if dependency_capture["edge_count"] != len(expected_edges) or dependency_capture["edges"] != expected_edges:
+        fail("target dependency edges are not fully represented")
+    if dependency_capture["edge_sha256"] != dependency_digest:
         fail("target dependency edges drifted from build.zig")
+    expected_dependencies: dict[str, list[str]] = {}
+    for edge in expected_edges:
+        expected_dependencies.setdefault(str(edge["source"]), []).append("build:" + str(edge["depends_on"]))
+    for row in build_rows:
+        expected = sorted(set(expected_dependencies.get(row["target"], [])))
+        if row["dependencies"] != expected:
+            fail(f"target action dependency rows disagree with build.zig: {row['target']}")
 
     build_transaction = build_actions_doc.get("transaction")
     if not isinstance(build_transaction, dict) or set(build_transaction) != {
-        "candidate_commit", "receipt_commit", "post_receipt_gate"
+        "candidate_commit", "receipt_commit", "candidate_tree", "receipt_tree",
+        "post_receipt_gate", "r6_receipt"
     }:
         fail("build action transaction has the wrong schema")
-    for field in ("candidate_commit", "receipt_commit"):
+    candidate_commit = build_transaction["candidate_commit"]
+    receipt_commit = build_transaction["receipt_commit"]
+    if not isinstance(candidate_commit, str) or not COMMIT.fullmatch(candidate_commit):
+        fail("build action candidate_commit must be an immutable commit")
+    if not isinstance(receipt_commit, str) or not COMMIT.fullmatch(receipt_commit):
+        fail("build action receipt_commit must be an immutable commit")
+    resolved_build_candidate = git("rev-parse", f"{candidate_commit}^{{commit}}")
+    resolved_build_receipt = git("rev-parse", f"{receipt_commit}^{{commit}}")
+    if not git_merge_base_is_ancestor(resolved_build_candidate, resolved_build_receipt):
+        fail("build action receipt commit does not descend from its candidate commit")
+    if not git_merge_base_is_ancestor(resolved_build_receipt, head):
+        fail("checked HEAD does not descend from the recorded receipt commit")
+    for field, commit in (("candidate_tree", resolved_build_candidate), ("receipt_tree", resolved_build_receipt)):
         value = build_transaction[field]
-        if value is not None:
-            if not isinstance(value, str) or not COMMIT.fullmatch(value):
-                fail(f"build action transaction {field} must be a commit or null")
-            git("rev-parse", f"{value}^{{commit}}")
-    if build_transaction["receipt_commit"] is not None and build_transaction["candidate_commit"] is None:
-        fail("build action receipt commit cannot omit its candidate commit")
+        expected = git("rev-parse", f"{commit}^{{tree}}")
+        if not isinstance(value, str) or value != expected:
+            fail(f"build action {field} is not bound to its recorded commit")
+    try:
+        receipt_manifest = json.loads(git("show", f"{resolved_build_receipt}:abi/birnam-build-actions-v1.json"))
+    except json.JSONDecodeError:
+        fail("recorded receipt commit does not contain valid build action JSON")
+    receipt_transaction = receipt_manifest.get("transaction")
+    if not isinstance(receipt_transaction, dict) or receipt_transaction.get("candidate_commit") != resolved_build_candidate:
+        fail("recorded receipt commit does not reference the candidate commit")
     if not isinstance(build_transaction["post_receipt_gate"], str) or not build_transaction["post_receipt_gate"].strip():
         fail("build action transaction post_receipt_gate is missing")
+    r6_receipt = build_transaction["r6_receipt"]
+    if not isinstance(r6_receipt, dict) or set(r6_receipt) != {
+        "status", "focused_steps", "focused_tests", "live_steps", "live_tests", "verify_steps",
+        "verify_tests", "verify_total_tests", "verify_skipped", "accepted_regressions"
+    }:
+        fail("build action R6 receipt has the wrong schema")
+    if r6_receipt["status"] != "pass" or r6_receipt["focused_steps"] != 218 or r6_receipt["focused_tests"] != 99 or r6_receipt["live_steps"] != 66 or r6_receipt["live_tests"] != 9 or r6_receipt["verify_steps"] != 307 or r6_receipt["verify_tests"] != 516 or r6_receipt["verify_total_tests"] != 522 or r6_receipt["verify_skipped"] != 6 or r6_receipt["accepted_regressions"] != {"query.aggregate": 5.8, "compile.stage1-stdlib": 11.9}:
+        fail("build action R6 receipt counts or accepted regressions are stale")
 
     counts = ledger.get("row_counts")
     expected_counts = {"zig_paths": len(source_by_path), "dynamic_names": len(dynamic_names), "policy_sources": len(expected_policy)}

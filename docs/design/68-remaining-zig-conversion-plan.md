@@ -224,10 +224,10 @@ row.
 The checker validates unique keys, enum values, nullable fields, and
 referential integrity against `abi/remaining-zig-v1.json` and every provider
 identity manifest. The ledger records an immutable `baseline_commit`. The
-checker requires either an explicit candidate commit plus a clean worktree or
-an explicit tree hash, validates that checked tree, and emits the candidate in
-the receipt; it is not stored in the ledger, avoiding a self-referential commit
-field.
+checker requires the explicit candidate commit to be the current clean HEAD,
+derives and validates that commit's tree, and emits both in the receipt; there
+is no dirty-worktree tree override. The candidate is not stored in the ledger,
+avoiding a self-referential commit field.
 
 The initial ledger must classify the residue as follows:
 
@@ -272,11 +272,11 @@ machine-readable before changing any fixture or helper.
    the ordinary `zig build test` graph only after its focused receipt is
    stable, then remeasure and repin the focused and strict step counts.
 
-The ledger transaction is ordered: (a) candidate checkpoint commit and checked
-tree hash, (b) focused and strict gates at that exact clean tree, (c) receipt
-commit that records the measured counts and digests, and (d) a post-receipt gate
-run. The candidate checker rejects a dirty `HEAD`; an explicit tree hash may
-be supplied only when it identifies the exact reviewed tree. The receipt
+The ledger transaction is ordered: (a) candidate checkpoint commit and its
+derived tree hash, (b) focused and strict gates at that exact clean tree, (c)
+receipt commit that records the measured counts and digests, and (d) a
+post-receipt gate run. The candidate checker rejects a dirty `HEAD`; it reads
+the current committed worktree and emits the exact tree it checked. The receipt
 commit is therefore not asked to predict its own post-commit hash.
 
 **C0.1 gate:** the checker, its exact scoped-R6 receipt, ordinary test graph,

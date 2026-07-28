@@ -5,8 +5,8 @@
   "build_authority": "canonical",
   "target_count": 125,
   "capture": {
-    "level": "target",
-    "policy": "target rows freeze the current orchestration boundary; M4.2 expands command-level fields before driver cutover",
+    "level": "target-and-command",
+    "policy": "all 125 target rows carry typed input/output/environment references and source-derived dependency edges; supplemental command rows freeze Cargo, providers, libtcc, stage1, resources, and rollback actions",
     "toolchain": "Zig stage-0 orchestration remains canonical until M5"
   },
   "actions": [
@@ -36,7 +36,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "artifact-inspector-benchmark"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:baseline-id-gc",
@@ -64,7 +77,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "baseline-id-gc"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:bench-id-membership",
@@ -92,7 +118,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "bench-id-membership"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:bench-rust-id-membership",
@@ -122,7 +161,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "bench-rust-id-membership"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:bootstrap-install",
@@ -145,13 +205,33 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:test-artifact-selection",
+        "build:test-rust-artifact"
+      ],
       "install_destination": "prefix",
       "digest_policy": "installed-artifacts-sha256",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "install-path",
+          "path": "bin"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:stage1",
@@ -177,14 +257,39 @@
       ],
       "environment": [],
       "dependencies": [
-        "target:bootstrap-install"
+        "build:bootstrap-install"
       ],
       "install_destination": "prefix",
       "digest_policy": "installed-artifacts-sha256",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/main.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/stdlib.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/run-tests.birnam"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "install-path",
+          "path": "lib/*.dylib"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test",
@@ -206,13 +311,70 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install",
+        "build:test-codegen-authority",
+        "build:test-codegen-selection-refusal",
+        "build:test-id-abi",
+        "build:test-lang-selection",
+        "build:test-native-rung-baseline",
+        "build:test-native-rung-harness",
+        "build:test-native-rung-inventory",
+        "build:test-native-rung-selection",
+        "build:test-prelude-selection",
+        "build:test-prototype-conformance",
+        "build:test-relational-selection",
+        "build:test-remaining-rung-clean-prefix",
+        "build:test-remaining-rung-manifest",
+        "build:test-remaining-zig-boundary",
+        "build:test-remaining-zig-conversion",
+        "build:test-remaining-zig-inventory",
+        "build:test-rust-artifact",
+        "build:test-rust-artifact-authority",
+        "build:test-rust-artifact-preflight",
+        "build:test-rust-codegen-boundary",
+        "build:test-rust-codegen-distribution",
+        "build:test-rust-dispatch-reentry",
+        "build:test-rust-dylib-audit",
+        "build:test-rust-env-loader",
+        "build:test-rust-ffi-abort",
+        "build:test-rust-gc-metadata",
+        "build:test-rust-heap-layout",
+        "build:test-rust-host-message-owner-inventory",
+        "build:test-rust-host-zig-helper-boundary",
+        "build:test-rust-id-abi-fixture",
+        "build:test-rust-id-spike",
+        "build:test-rust-image-save",
+        "build:test-rust-lower-rungs",
+        "build:test-rust-peg-installed",
+        "build:test-rust-peg-shell",
+        "build:test-rust-resource-resolution",
+        "build:test-rust-stack-root",
+        "build:test-rust-store-mop",
+        "build:test-rust-store-stack",
+        "build:test-scalar-conformance",
+        "build:test-string-conformance",
+        "build:test-tcc-selection"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-artifact-preflight",
@@ -234,13 +396,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-artifact-preflight"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-artifact-selection",
@@ -268,7 +445,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-artifact-selection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-birnam",
@@ -294,15 +484,39 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "target:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-birnam"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-codegen-authority",
@@ -330,7 +544,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-codegen-authority"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-codegen-contract",
@@ -352,13 +579,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-codegen-contract"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-codegen-selection-refusal",
@@ -380,13 +622,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-codegen-selection-refusal"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-collection-gc",
@@ -408,13 +665,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-collection-gc"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-cross-floor-artifacts",
@@ -436,13 +708,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-cross-floor-artifacts"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-cross-floor-errors",
@@ -470,7 +757,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-cross-floor-errors"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-cross-floor-images",
@@ -498,7 +798,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-cross-floor-images"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-distribution-selection",
@@ -527,7 +840,24 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "install-path",
+          "path": "bin"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-emacs",
@@ -555,7 +885,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-emacs"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-floor-rust",
@@ -583,7 +926,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-floor-rust"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-floor-zig",
@@ -611,7 +967,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-floor-zig"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-gc-layout-mark",
@@ -639,7 +1008,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-gc-layout-mark"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-id-abi",
@@ -661,13 +1043,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:test-rust-artifact"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-id-abi"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-id-abi-fixture",
@@ -695,7 +1092,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-id-abi-fixture"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-id-conformance",
@@ -723,7 +1133,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-id-conformance"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-image-save",
@@ -749,15 +1172,39 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "target:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-image-save"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-install",
@@ -784,15 +1231,43 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "target:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "prefix",
       "digest_policy": "installed-artifacts-sha256",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "install-path",
+          "path": "bin"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-isolate-process",
@@ -820,7 +1295,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-isolate-process"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-lang-selection",
@@ -848,7 +1336,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-lang-selection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-lsp-project",
@@ -874,15 +1375,39 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "target:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-lsp-project"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-main",
@@ -909,14 +1434,40 @@
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
       "dependencies": [
-        "target:stage1"
+        "build:stage1"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-main"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-native-rung-baseline",
@@ -938,13 +1489,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-native-rung-baseline"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-native-rung-harness",
@@ -966,13 +1532,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-native-rung-harness"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-native-rung-inventory",
@@ -994,13 +1575,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-native-rung-inventory"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-native-rung-selection",
@@ -1028,7 +1624,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-native-rung-selection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-native-rung-singleton",
@@ -1056,7 +1665,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-native-rung-singleton"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-prelude-selection",
@@ -1084,7 +1706,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-prelude-selection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-project-check",
@@ -1110,15 +1745,39 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "target:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-project-check"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-prototype-conformance",
@@ -1140,13 +1799,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-prototype-conformance"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-relational-selection",
@@ -1168,13 +1842,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-relational-selection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-remaining-rung-clean-prefix",
@@ -1196,13 +1885,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-remaining-rung-clean-prefix"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-remaining-rung-cross-floor",
@@ -1224,13 +1928,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-remaining-rung-cross-floor"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-remaining-rung-manifest",
@@ -1252,13 +1971,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-remaining-rung-manifest"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-remaining-zig-boundary",
@@ -1280,13 +2014,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-remaining-zig-boundary"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-remaining-zig-conversion",
@@ -1308,13 +2057,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-remaining-zig-conversion"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-remaining-zig-inventory",
@@ -1336,13 +2100,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-remaining-zig-inventory"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-repl",
@@ -1369,14 +2148,40 @@
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
       "dependencies": [
-        "target:stage1"
+        "build:stage1"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-repl"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-rust-alien-live",
@@ -1400,13 +2205,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-alien-live"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-artifact",
@@ -1430,13 +2258,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-artifact"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-artifact-authority",
@@ -1460,13 +2311,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-artifact-authority"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-artifact-preflight",
@@ -1490,13 +2364,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-artifact-preflight"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-codegen-boundary",
@@ -1520,13 +2417,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-codegen-boundary"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-codegen-canonical",
@@ -1550,13 +2470,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-codegen-canonical"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-codegen-distribution",
@@ -1580,13 +2523,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-codegen-distribution"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-codegen-runtime",
@@ -1610,13 +2576,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-codegen-runtime"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-codegen-stack",
@@ -1640,13 +2629,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-codegen-stack"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-codegen-zig-store",
@@ -1670,13 +2682,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-codegen-zig-store"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-collection",
@@ -1700,13 +2735,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-collection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-dispatch-reentry",
@@ -1730,13 +2788,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-dispatch-reentry"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-dylib-audit",
@@ -1760,13 +2841,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-dylib-audit"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-env-loader",
@@ -1790,13 +2894,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-env-loader"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-error",
@@ -1820,13 +2947,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-error"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-ffi-abort",
@@ -1850,13 +3000,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-ffi-abort"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-gc-metadata",
@@ -1880,13 +3053,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-gc-metadata"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-heap-layout",
@@ -1910,13 +3106,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-heap-layout"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-host-message-owner-inventory",
@@ -1940,13 +3159,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-host-message-owner-inventory"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-host-zig-helper-boundary",
@@ -1970,13 +3212,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-host-zig-helper-boundary"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-id-abi-fixture",
@@ -2000,13 +3265,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-id-abi-fixture"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-id-spike",
@@ -2030,13 +3318,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-id-spike"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-bootstrap",
@@ -2060,13 +3371,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-bootstrap"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-codegen",
@@ -2090,13 +3424,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-codegen"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-cross-floor",
@@ -2120,13 +3477,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-cross-floor"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-cross-floor-reverse",
@@ -2150,13 +3530,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-cross-floor-reverse"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-publication",
@@ -2180,13 +3583,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-publication"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-publication-rejection",
@@ -2216,7 +3642,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-publication-rejection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-rejection",
@@ -2246,7 +3693,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-rejection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-save",
@@ -2276,7 +3744,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-save"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-shell",
@@ -2306,7 +3795,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-shell"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-image-zig-store",
@@ -2336,7 +3846,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-image-zig-store"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-isolate",
@@ -2360,13 +3891,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-isolate"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-lang",
@@ -2396,7 +3950,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-lang"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-lang-diagnostics",
@@ -2426,7 +4001,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-lang-diagnostics"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-lang-parity",
@@ -2456,7 +4052,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-lang-parity"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-lower-rungs",
@@ -2486,7 +4103,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-lower-rungs"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-native-memory",
@@ -2516,7 +4154,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-native-memory"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-codegen",
@@ -2546,7 +4205,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-codegen"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-codegen-full",
@@ -2576,7 +4256,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-codegen-full"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-codegen-parity",
@@ -2606,7 +4307,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-codegen-parity"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-cst-parity",
@@ -2636,7 +4358,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-cst-parity"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-diagnostics",
@@ -2666,7 +4409,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-diagnostics"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-installed",
@@ -2696,7 +4460,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-installed"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-lang",
@@ -2726,7 +4511,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-lang"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-lang-full",
@@ -2756,7 +4562,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-lang-full"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-metadata-parity",
@@ -2786,7 +4613,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-metadata-parity"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-pattern",
@@ -2816,7 +4664,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-pattern"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-shell",
@@ -2846,7 +4715,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-shell"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-source-corpus",
@@ -2876,7 +4766,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-source-corpus"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-peg-stress",
@@ -2906,7 +4817,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-peg-stress"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-prelude",
@@ -2936,7 +4868,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-prelude"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-prelude-io",
@@ -2966,7 +4919,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-prelude-io"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-prelude-rust-error",
@@ -2990,13 +4964,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-prelude-rust-error"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-relational",
@@ -3020,13 +5017,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-relational"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-relational-zig-store",
@@ -3050,13 +5070,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-relational-zig-store"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-resource-resolution",
@@ -3086,7 +5129,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-resource-resolution"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-runtime-churn",
@@ -3116,7 +5180,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-runtime-churn"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-stack-root",
@@ -3146,7 +5231,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-stack-root"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-store-core",
@@ -3170,13 +5276,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-store-core"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-store-mop",
@@ -3200,13 +5329,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-store-mop"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-store-stack",
@@ -3230,13 +5382,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-store-stack"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-tcc-alien",
@@ -3260,13 +5435,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-tcc-alien"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-tcc-artifact",
@@ -3290,13 +5488,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-tcc-artifact"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-tcc-audit",
@@ -3320,13 +5541,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-tcc-audit"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-tcc-image",
@@ -3350,13 +5594,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-tcc-image"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-rust-tcc-shell",
@@ -3380,13 +5647,36 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-rust-tcc-shell"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-scalar-conformance",
@@ -3414,7 +5704,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-scalar-conformance"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-source-fallback",
@@ -3440,15 +5743,39 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "target:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-source-fallback"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-store-image-backfill",
@@ -3475,14 +5802,40 @@
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
       "dependencies": [
-        "target:stage1"
+        "build:bootstrap-install"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-store-image-backfill"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-string-conformance",
@@ -3504,13 +5857,28 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-string-conformance"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-tcc-selection",
@@ -3532,13 +5900,33 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1",
+        "build:test",
+        "build:test-emacs",
+        "build:test-lsp-project",
+        "build:test-project-check",
+        "build:test-termbox-load"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-tcc-selection"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:test-termbox-load",
@@ -3565,14 +5953,40 @@
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
       "dependencies": [
-        "target:stage1"
+        "build:stage1"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "test-termbox-load"
+        }
+      ],
+      "environment_refs": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_ID_DYLIB",
+          "value": "declared"
+        },
+        {
+          "name": "BIRNAM_RUST_WORKSPACE_DIR",
+          "value": "declared"
+        }
+      ]
     },
     {
       "action_key": "build:test-z3-archive-distribution",
@@ -3601,7 +6015,24 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "install-path",
+          "path": "bin"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:verify",
@@ -3629,7 +6060,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "verify"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:verify-floor-repeat",
@@ -3659,7 +6103,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "verify-floor-repeat"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:verify-floor-rust",
@@ -3689,7 +6154,28 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "verify-floor-rust"
+        }
+      ],
+      "environment_refs": []
     },
     {
       "action_key": "build:verify-floor-zig",
@@ -3717,7 +6203,20 @@
       "build_authority": "canonical",
       "abi_surface": "build-action-dag-v1",
       "removal_authority": "toolchain-review",
-      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph",
+      "input_refs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        }
+      ],
+      "output_refs": [
+        {
+          "kind": "target-output",
+          "target": "verify-floor-zig"
+        }
+      ],
+      "environment_refs": []
     }
   ],
   "action_count": 160,
@@ -6727,9 +9226,846 @@
     ],
     "target_dependencies": {
       "source_ref": "build.zig",
-      "edge_count": 464,
+      "edge_count": 167,
       "edge_sha256": "cad6bfa8e31af737fa4dd84c9cc4bc5715bf574a7e09a9467da35b0323100910",
-      "capture": "all normalized lines containing .dependOn"
+      "capture": "all normalized lines containing .dependOn",
+      "edges": [
+        {
+          "source": "test",
+          "depends_on": "test-native-rung-baseline",
+          "source_line": 216
+        },
+        {
+          "source": "test",
+          "depends_on": "test-native-rung-inventory",
+          "source_line": 230
+        },
+        {
+          "source": "test",
+          "depends_on": "test-remaining-rung-manifest",
+          "source_line": 241
+        },
+        {
+          "source": "test",
+          "depends_on": "test-remaining-zig-inventory",
+          "source_line": 255
+        },
+        {
+          "source": "test",
+          "depends_on": "test-remaining-zig-conversion",
+          "source_line": 269
+        },
+        {
+          "source": "test",
+          "depends_on": "test-remaining-zig-boundary",
+          "source_line": 280
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-host-zig-helper-boundary",
+          "source_line": 313
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-host-message-owner-inventory",
+          "source_line": 326
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-resource-resolution",
+          "source_line": 340
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-artifact-authority",
+          "source_line": 353
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-artifact-preflight",
+          "source_line": 364
+        },
+        {
+          "source": "test",
+          "depends_on": "test-remaining-rung-clean-prefix",
+          "source_line": 375
+        },
+        {
+          "source": "test",
+          "depends_on": "test-native-rung-selection",
+          "source_line": 386
+        },
+        {
+          "source": "test",
+          "depends_on": "test-codegen-selection-refusal",
+          "source_line": 397
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-codegen-distribution",
+          "source_line": 408
+        },
+        {
+          "source": "test",
+          "depends_on": "test-tcc-selection",
+          "source_line": 419
+        },
+        {
+          "source": "test",
+          "depends_on": "test-lang-selection",
+          "source_line": 430
+        },
+        {
+          "source": "test",
+          "depends_on": "test-prelude-selection",
+          "source_line": 441
+        },
+        {
+          "source": "test",
+          "depends_on": "test-relational-selection",
+          "source_line": 452
+        },
+        {
+          "source": "test",
+          "depends_on": "test-id-abi",
+          "source_line": 473
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-artifact",
+          "source_line": 512
+        },
+        {
+          "source": "test-id-abi",
+          "depends_on": "test-rust-artifact",
+          "source_line": 526
+        },
+        {
+          "source": "test",
+          "depends_on": "test-id-abi",
+          "source_line": 528
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-ffi-abort",
+          "source_line": 539
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-dylib-audit",
+          "source_line": 550
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-heap-layout",
+          "source_line": 571
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-dispatch-reentry",
+          "source_line": 591
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-id-spike",
+          "source_line": 602
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-gc-metadata",
+          "source_line": 613
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-stack-root",
+          "source_line": 634
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-image-save",
+          "source_line": 647
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-store-stack",
+          "source_line": 666
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-peg-shell",
+          "source_line": 677
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-id-abi-fixture",
+          "source_line": 698
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-env-loader",
+          "source_line": 709
+        },
+        {
+          "source": "test",
+          "depends_on": "test-scalar-conformance",
+          "source_line": 720
+        },
+        {
+          "source": "test",
+          "depends_on": "test-string-conformance",
+          "source_line": 731
+        },
+        {
+          "source": "test",
+          "depends_on": "test-prototype-conformance",
+          "source_line": 742
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-store-mop",
+          "source_line": 753
+        },
+        {
+          "source": "test-remaining-rung-cross-floor",
+          "depends_on": "bootstrap-install",
+          "source_line": 880
+        },
+        {
+          "source": "test-remaining-rung-cross-floor",
+          "depends_on": "bootstrap-install",
+          "source_line": 881
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 882
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 883
+        },
+        {
+          "source": "test-scalar-conformance",
+          "depends_on": "bootstrap-install",
+          "source_line": 889
+        },
+        {
+          "source": "test-string-conformance",
+          "depends_on": "bootstrap-install",
+          "source_line": 894
+        },
+        {
+          "source": "test-prototype-conformance",
+          "depends_on": "bootstrap-install",
+          "source_line": 899
+        },
+        {
+          "source": "test-rust-lower-rungs",
+          "depends_on": "bootstrap-install",
+          "source_line": 900
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-lower-rungs",
+          "source_line": 901
+        },
+        {
+          "source": "test-rust-codegen-runtime",
+          "depends_on": "bootstrap-install",
+          "source_line": 980
+        },
+        {
+          "source": "test-codegen-contract",
+          "depends_on": "bootstrap-install",
+          "source_line": 985
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 986
+        },
+        {
+          "source": "test-rust-codegen-canonical",
+          "depends_on": "bootstrap-install",
+          "source_line": 1027
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1028
+        },
+        {
+          "source": "test-rust-codegen-stack",
+          "depends_on": "bootstrap-install",
+          "source_line": 1064
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1065
+        },
+        {
+          "source": "test-rust-codegen-zig-store",
+          "depends_on": "bootstrap-install",
+          "source_line": 1101
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1102
+        },
+        {
+          "source": "test-rust-prelude",
+          "depends_on": "bootstrap-install",
+          "source_line": 1137
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1138
+        },
+        {
+          "source": "test-rust-prelude-rust-error",
+          "depends_on": "bootstrap-install",
+          "source_line": 1168
+        },
+        {
+          "source": "test-rust-isolate",
+          "depends_on": "bootstrap-install",
+          "source_line": 1206
+        },
+        {
+          "source": "test-rust-relational",
+          "depends_on": "bootstrap-install",
+          "source_line": 1242
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1243
+        },
+        {
+          "source": "test-rust-relational-zig-store",
+          "depends_on": "bootstrap-install",
+          "source_line": 1279
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1280
+        },
+        {
+          "source": "test-rust-prelude-io",
+          "depends_on": "bootstrap-install",
+          "source_line": 1313
+        },
+        {
+          "source": "test-rust-collection",
+          "depends_on": "bootstrap-install",
+          "source_line": 1340
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1341
+        },
+        {
+          "source": "test-rust-error",
+          "depends_on": "bootstrap-install",
+          "source_line": 1386
+        },
+        {
+          "source": "test-rust-error",
+          "depends_on": "bootstrap-install",
+          "source_line": 1387
+        },
+        {
+          "source": "bootstrap-install",
+          "depends_on": "test-rust-artifact",
+          "source_line": 1433
+        },
+        {
+          "source": "test-rust-store-core",
+          "depends_on": "bootstrap-install",
+          "source_line": 1439
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1440
+        },
+        {
+          "source": "test-rust-peg-pattern",
+          "depends_on": "bootstrap-install",
+          "source_line": 1462
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1463
+        },
+        {
+          "source": "test-rust-peg-lang",
+          "depends_on": "bootstrap-install",
+          "source_line": 1485
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1486
+        },
+        {
+          "source": "test-rust-peg-lang-full",
+          "depends_on": "bootstrap-install",
+          "source_line": 1508
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1509
+        },
+        {
+          "source": "test-rust-peg-cst-parity",
+          "depends_on": "bootstrap-install",
+          "source_line": 1532
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1533
+        },
+        {
+          "source": "test-rust-lang-parity",
+          "depends_on": "bootstrap-install",
+          "source_line": 1560
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1561
+        },
+        {
+          "source": "test-rust-peg-diagnostics",
+          "depends_on": "bootstrap-install",
+          "source_line": 1583
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1584
+        },
+        {
+          "source": "test-rust-lang-diagnostics",
+          "depends_on": "bootstrap-install",
+          "source_line": 1610
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1611
+        },
+        {
+          "source": "test-rust-peg-codegen-parity",
+          "depends_on": "bootstrap-install",
+          "source_line": 1645
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1646
+        },
+        {
+          "source": "test-rust-peg-metadata-parity",
+          "depends_on": "bootstrap-install",
+          "source_line": 1672
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1673
+        },
+        {
+          "source": "test-rust-peg-source-corpus",
+          "depends_on": "bootstrap-install",
+          "source_line": 1703
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1704
+        },
+        {
+          "source": "test-rust-peg-stress",
+          "depends_on": "bootstrap-install",
+          "source_line": 1726
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1727
+        },
+        {
+          "source": "test-rust-lang",
+          "depends_on": "bootstrap-install",
+          "source_line": 1753
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1754
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-peg-installed",
+          "source_line": 1767
+        },
+        {
+          "source": "test-rust-tcc-shell",
+          "depends_on": "bootstrap-install",
+          "source_line": 1789
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1790
+        },
+        {
+          "source": "test-rust-tcc-artifact",
+          "depends_on": "bootstrap-install",
+          "source_line": 1807
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1808
+        },
+        {
+          "source": "test-rust-tcc-audit",
+          "depends_on": "bootstrap-install",
+          "source_line": 1823
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1824
+        },
+        {
+          "source": "test-rust-peg-codegen",
+          "depends_on": "bootstrap-install",
+          "source_line": 1850
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1851
+        },
+        {
+          "source": "test-rust-peg-codegen-full",
+          "depends_on": "bootstrap-install",
+          "source_line": 1881
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1882
+        },
+        {
+          "source": "test-rust-tcc-alien",
+          "depends_on": "bootstrap-install",
+          "source_line": 1908
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1909
+        },
+        {
+          "source": "test-rust-alien-live",
+          "depends_on": "bootstrap-install",
+          "source_line": 1944
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1945
+        },
+        {
+          "source": "test-rust-image-shell",
+          "depends_on": "bootstrap-install",
+          "source_line": 1993
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 1994
+        },
+        {
+          "source": "test-rust-image-codegen",
+          "depends_on": "bootstrap-install",
+          "source_line": 2036
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2037
+        },
+        {
+          "source": "test-rust-image-bootstrap",
+          "depends_on": "bootstrap-install",
+          "source_line": 2079
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2080
+        },
+        {
+          "source": "test-rust-image-publication",
+          "depends_on": "bootstrap-install",
+          "source_line": 2123
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2124
+        },
+        {
+          "source": "test-rust-image-publication-rejection",
+          "depends_on": "bootstrap-install",
+          "source_line": 2163
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2164
+        },
+        {
+          "source": "test-rust-image-cross-floor",
+          "depends_on": "bootstrap-install",
+          "source_line": 2202
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2203
+        },
+        {
+          "source": "test-rust-image-cross-floor-reverse",
+          "depends_on": "bootstrap-install",
+          "source_line": 2243
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2244
+        },
+        {
+          "source": "test-rust-image-zig-store",
+          "depends_on": "bootstrap-install",
+          "source_line": 2299
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2300
+        },
+        {
+          "source": "test-rust-image-rejection",
+          "depends_on": "bootstrap-install",
+          "source_line": 2338
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2339
+        },
+        {
+          "source": "test-rust-tcc-image",
+          "depends_on": "bootstrap-install",
+          "source_line": 2365
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 2366
+        },
+        {
+          "source": "bootstrap-install",
+          "depends_on": "test-artifact-selection",
+          "source_line": 3039
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3042
+        },
+        {
+          "source": "test",
+          "depends_on": "test-codegen-authority",
+          "source_line": 3063
+        },
+        {
+          "source": "test",
+          "depends_on": "test-rust-codegen-boundary",
+          "source_line": 3079
+        },
+        {
+          "source": "test-native-rung-singleton",
+          "depends_on": "bootstrap-install",
+          "source_line": 3119
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3120
+        },
+        {
+          "source": "test",
+          "depends_on": "test-native-rung-harness",
+          "source_line": 3132
+        },
+        {
+          "source": "test-artifact-preflight",
+          "depends_on": "bootstrap-install",
+          "source_line": 3176
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3177
+        },
+        {
+          "source": "test-rust-image-save",
+          "depends_on": "stage1",
+          "source_line": 3257
+        },
+        {
+          "source": "test-rust-store-stack",
+          "depends_on": "stage1",
+          "source_line": 3258
+        },
+        {
+          "source": "test-rust-id-abi-fixture",
+          "depends_on": "stage1",
+          "source_line": 3259
+        },
+        {
+          "source": "stage1",
+          "depends_on": "bootstrap-install",
+          "source_line": 3304
+        },
+        {
+          "source": "test-id-conformance",
+          "depends_on": "bootstrap-install",
+          "source_line": 3344
+        },
+        {
+          "source": "test-id-conformance",
+          "depends_on": "bootstrap-install",
+          "source_line": 3345
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3346
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3347
+        },
+        {
+          "source": "test-store-image-backfill",
+          "depends_on": "bootstrap-install",
+          "source_line": 3365
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3366
+        },
+        {
+          "source": "test-collection-gc",
+          "depends_on": "bootstrap-install",
+          "source_line": 3384
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3385
+        },
+        {
+          "source": "test-gc-layout-mark",
+          "depends_on": "bootstrap-install",
+          "source_line": 3403
+        },
+        {
+          "source": "test",
+          "depends_on": "bootstrap-install",
+          "source_line": 3404
+        },
+        {
+          "source": "test-project-check",
+          "depends_on": "stage1",
+          "source_line": 3468
+        },
+        {
+          "source": "test-lsp-project",
+          "depends_on": "stage1",
+          "source_line": 3474
+        },
+        {
+          "source": "test-termbox-load",
+          "depends_on": "stage1",
+          "source_line": 3480
+        },
+        {
+          "source": "verify",
+          "depends_on": "test",
+          "source_line": 3528
+        },
+        {
+          "source": "verify",
+          "depends_on": "stage1",
+          "source_line": 3529
+        },
+        {
+          "source": "verify",
+          "depends_on": "stage1",
+          "source_line": 3530
+        },
+        {
+          "source": "verify",
+          "depends_on": "test-project-check",
+          "source_line": 3531
+        },
+        {
+          "source": "verify",
+          "depends_on": "test-lsp-project",
+          "source_line": 3532
+        },
+        {
+          "source": "verify",
+          "depends_on": "test-termbox-load",
+          "source_line": 3533
+        },
+        {
+          "source": "verify",
+          "depends_on": "test-emacs",
+          "source_line": 3534
+        },
+        {
+          "source": "verify",
+          "depends_on": "stage1",
+          "source_line": 3535
+        },
+        {
+          "source": "verify",
+          "depends_on": "stage1",
+          "source_line": 3537
+        }
+      ]
     }
   },
   "source_digests": {
@@ -6740,6 +10076,23 @@
   "transaction": {
     "candidate_commit": "931f9e8e792c668137bf8b03bbabef91e6a396dc",
     "receipt_commit": "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
-    "post_receipt_gate": "remaining-Zig inventory/conversion, typed build-action DAG and surface checker, focused M4.1 gates, and strict R6 (218/218 steps, 99/99 focused tests, 307/307 verify steps, 516/522 verify tests, 6 skipped; only query.aggregate +5.8% and compile.stage1-stdlib +11.9% accepted)"
+    "post_receipt_gate": "remaining-Zig inventory/conversion, typed build-action DAG and surface checker, focused M4.1 gates, and strict R6 (218/218 steps, 99/99 focused tests, 307/307 verify steps, 516/522 verify tests, 6 skipped; only query.aggregate +5.8% and compile.stage1-stdlib +11.9% accepted)",
+    "candidate_tree": "c7f889a7eddb2efb64c35bc1e2ba49ff580585ea",
+    "receipt_tree": "25fa3ebb2512266452fe279319215ec56a907524",
+    "r6_receipt": {
+      "status": "pass",
+      "focused_steps": 218,
+      "focused_tests": 99,
+      "live_steps": 66,
+      "live_tests": 9,
+      "verify_steps": 307,
+      "verify_tests": 516,
+      "verify_total_tests": 522,
+      "verify_skipped": 6,
+      "accepted_regressions": {
+        "query.aggregate": 5.8,
+        "compile.stage1-stdlib": 11.9
+      }
+    }
   }
 }
