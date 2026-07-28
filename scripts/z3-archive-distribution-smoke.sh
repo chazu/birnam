@@ -140,6 +140,60 @@ exercise_prefix() {
   echo "z3-archive: $label source/project/lsp/image/wire/generated-C fixtures=ok"
 }
 
+trace_artifact_prefix() {
+  local label=$1
+  local prefix=$2
+  local tcc="$prefix/lib/libbirnam_id_tcc_rust.dylib"
+  if [[ "$label" == rollback ]]; then
+    tcc="$prefix/lib/libbirnam_id_tcc.dylib"
+  fi
+  local work="$scratch/$label/artifact-work"
+  local source="$work/z3-artifact.birnam"
+  local artifact="$work/libz3-artifact.dylib"
+  local trace="$scratch/$label/artifact.trace"
+  mkdir -p "$work"
+  printf '[Module named: #z3Artifact requires: #[]];\n' >"$source"
+  (
+    cd "$work"
+    BIRNAM_LIB_DIR="$prefix/lib" \
+      BIRNAM_TCC_DYLIB="$tcc" \
+      "$prefix/bin/birnam" --compile-module "$source" "$artifact" >/dev/null
+    unset BIRNAM_ID_DYLIB DYLD_LIBRARY_PATH DYLD_FALLBACK_LIBRARY_PATH \
+      DYLD_INSERT_LIBRARIES DYLD_FRAMEWORK_PATH DYLD_FALLBACK_FRAMEWORK_PATH BIRNAM_FORCE_SOURCE
+    BIRNAM_LIB_DIR="$prefix/lib" \
+      BIRNAM_TCC_DYLIB="$tcc" \
+      DYLD_PRINT_LIBRARIES=1 "$prefix/bin/birnam" "$artifact" \
+      >"$scratch/$label/artifact.out" 2>"$trace"
+  )
+  while IFS= read -r loaded; do
+    case "$loaded" in
+      "$prefix"/*) ;;
+      *)
+        echo "z3-archive: $label artifact load escaped selected prefix: $loaded" >&2
+        cat "$trace" >&2
+        exit 1
+        ;;
+    esac
+  done < <(awk 'match($0, /\/[^ ]*\/libbirnam[^ ]*\.dylib/) { print substr($0, RSTART, RLENGTH) }' "$trace" | sort -u)
+  case "$label" in
+    production|production-a|production-b)
+      if grep -E '_zig\.dylib|birnam-zig-oracle|/src/id/|/modules/' "$trace" >/dev/null; then
+        echo "z3-archive: production artifact load used a Zig/source path" >&2
+        cat "$trace" >&2
+        exit 1
+      fi
+      ;;
+    rollback)
+      if grep -E '_rust\.dylib' "$trace" >/dev/null; then
+        echo "z3-archive: rollback artifact load used a Rust fixture" >&2
+        cat "$trace" >&2
+        exit 1
+      fi
+      ;;
+  esac
+  echo "z3-archive: $label Module loadArtifact trace=confined"
+}
+
 old_image_fixture() {
   local label=$1
   local prefix=$2
@@ -233,6 +287,9 @@ python3 "$scratch/production-b/source/scripts/check-production-prefix.py" "$prod
   >"$scratch/production-b/receipt.jsonl"
 trace_prefix rollback "$rollback_prefix"
 exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
+trace_artifact_prefix production-a "$production_a"
+trace_artifact_prefix production-b "$production_b"
+trace_artifact_prefix rollback "$rollback_prefix"
 old_image_fixture production-a "$production_a" "$production_a/bin/birnam" rust-id-v1 "$production_a" "$production_a"
 old_image_fixture production-b "$production_b" "$production_b/bin/birnam" rust-id-v1 "$production_b" "$production_b"
 old_image_fixture rollback "$rollback_prefix" "$rollback_prefix/bin/birnam" zig-id-v1 "$rollback_prefix" "$rollback_prefix"
