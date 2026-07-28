@@ -321,8 +321,9 @@ digests to files under the supplied root, while produced inputs/tools are
 deferred to their upstream producer and checked for ownership/reachability. It rejects
 path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-23 focused parser/runner tests. The R6 acceptance script runs this semantic-driver
-suite fail-closed before the existing 218-step/99-test Rust replacement
+23 focused parser/runner tests plus 5 instantiated-graph receipt tests. The R6
+acceptance script runs both semantic-driver suites fail-closed before the existing
+218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
 joining. It does not execute a tool; the complete

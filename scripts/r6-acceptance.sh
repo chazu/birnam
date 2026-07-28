@@ -28,6 +28,8 @@ python3 scripts/check-native-rung-baseline.py
 # pairs) plus checker receipt-proof Git verification.
 readonly expected_rust_build_driver_tests=23
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
+readonly expected_instantiated_graph_tests=5
+rust_instantiated_graph=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-instantiated-graph.XXXXXX")
 
 # Keep the real build.zig capture and checker receipt-proof verification in the
 # pinned count; this is not only the small synthetic manifest fixture.
@@ -121,7 +123,7 @@ floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 live=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-alien-live.XXXXXX")
-trap 'rm -f "$functional" "$live" "$rust_build_driver"' EXIT
+trap 'rm -f "$functional" "$live" "$rust_build_driver" "$rust_instantiated_graph"' EXIT
 
 set +e
 cargo test -p birnam-host --locked --offline build_driver >"$rust_build_driver" 2>&1
@@ -138,6 +140,22 @@ rust_build_driver_test_count=$(grep -Ec "^test result: ok\\. ${expected_rust_bui
   exit 1
 }
 echo "r6-acceptance: Rust build-driver semantic suite ${expected_rust_build_driver_tests}/${expected_rust_build_driver_tests} tests passed"
+
+set +e
+cargo test -p birnam-host --locked --offline instantiated_graph >"$rust_instantiated_graph" 2>&1
+rust_instantiated_graph_status=$?
+set -e
+cat "$rust_instantiated_graph"
+if [ "$rust_instantiated_graph_status" -ne 0 ]; then
+  echo "r6-acceptance: Rust instantiated-graph receipt tests failed" >&2
+  exit 1
+fi
+rust_instantiated_graph_test_count=$(grep -Ec "^test result: ok\\. ${expected_instantiated_graph_tests} passed; 0 failed;" "$rust_instantiated_graph" || true)
+[ "$rust_instantiated_graph_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust instantiated-graph suite no longer reports exactly ${expected_instantiated_graph_tests} passing tests" >&2
+  exit 1
+}
+echo "r6-acceptance: Rust instantiated-graph receipt suite ${expected_instantiated_graph_tests}/${expected_instantiated_graph_tests} tests passed"
 
 set +e
 zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$functional" 2>&1
