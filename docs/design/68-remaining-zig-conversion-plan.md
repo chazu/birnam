@@ -139,7 +139,7 @@ rollback_status, identity_source, digest_source, required_fixtures,
 next_phase, removal_authority, last_receipt
 ```
 
-Allowed `target_owner` values are `rust-dylib`, `rust-host`,
+Allowed `target_owner` values are `rust-dylib`, `rust-host`, `build-only`,
 `native-birnam-policy`, `shared-contract`, and `evidence-fixture`. Allowed
 `production_status` values are `canonical`, `never-production`, and `retired`;
 allowed `rollback_status` values are `required`, `pinned`, and
@@ -151,14 +151,17 @@ creates dynamic-provider rows.
 
 The checker validates unique keys, enum values, nullable fields, and
 referential integrity against `abi/remaining-zig-v1.json` and every provider
-identity manifest. The ledger records an immutable baseline commit and a
-candidate commit; neither is a self-referential "current commit" field.
+identity manifest. The ledger records an immutable `baseline_commit`. The
+checker receives the candidate commit explicitly (or derives `HEAD`), validates
+it, and emits it in the receipt; it is not stored in the ledger, avoiding a
+self-referential commit field.
 
 The initial ledger must classify the residue as follows:
 
 | Residue | Target owner | Production disposition | Recovery disposition |
 | --- | --- | --- | --- |
 | `main.zig` and host helpers | `rust-host` | never-production | retain explicit Zig host oracle until release decision |
+| `build.zig` | `build-only` | never-production | retain until a separately reviewed toolchain-retirement plan |
 | `artifact_inspector.zig` | `rust-dylib` | never-production | retain the Zig Artifact-provider oracle until vector retirement |
 | `artifact_preflight.zig` | `rust-host` | never-production | retain parity and sentinel fixtures |
 | `artifact.zig` | `shared-contract` | never-production | keep for Zig oracle/ABI evidence |
@@ -179,9 +182,10 @@ machine-readable before changing any fixture or helper.
 
 1. Add `abi/remaining-zig-conversion-v1.json` with the rows and dispositions
    above, referencing (but not duplicating) the 14 dynamic names in
-   `abi/remaining-zig-v1.json`. Include the immutable baseline commit and a
-   candidate commit, selected defaults, inventory receipt, Rust identity/digest
-   sources, and exact strict-R6 receipt.
+   `abi/remaining-zig-v1.json`. Include the immutable baseline commit,
+   selected defaults, inventory receipt, Rust identity/digest sources, and
+   exact strict-R6 receipt. The candidate commit is supplied to the checker
+   and emitted in its receipt rather than written into this ledger.
 2. Add `scripts/check-remaining-zig-conversion.py`. It fails on an unclassified
    Zig file, a `rust-dylib` row without a canonical dynamic owner, a production
    path containing `_zig` or `birnam-zig-oracle`, a missing rollback reason, an
@@ -303,18 +307,22 @@ readiness receipts only; none may delete one provider from the rollback vector.
 **C2.1a — floor:** update the floor ledger row with current Rust/Zig digests,
 rerun the 256-test lower-rung matrix, old native-client/image corpus, forced-GC
 and MOP checks, and record the decision. The invariant-based default is
-`retain-pinned-fixture` until a complete Rust release and full-Zig rollback
-history exists; no source deletion is implied.
+`blocked` with `retain-pinned-fixture` until the Design 66 release-cycle
+predicate, a complete Rust release, and full-Zig rollback history exist; no
+source deletion or vector-retirement readiness is implied.
 
 **C2.1b — Store:** rerun the Store consistency-law suite under Zig and Rust
 Debug/ReleaseSafe, including tracked/raw mutation, backfill, authorizer,
 observer, image boot, and inherited revelation. Retain the Zig fixture unless
-the receipt proves recovery without it; never remove the Store mirror contract.
+the Design 66 release-cycle predicate is satisfied and the receipt proves
+recovery without it; record `blocked`/`retain-pinned-fixture` until then and
+never remove the Store mirror contract.
 
 **C2.1c — PEG:** rerun CST/metadata/diagnostic/source corpus and generated-C
 parity under Rust and the explicit Zig parser fixture. Preserve the parser
-fixture while any old image, parser diagnostic, or generated-C recovery path
-depends on it.
+fixture and record `blocked`/`retain-pinned-fixture` while any old image, parser
+diagnostic, generated-C recovery path, or the Design 66 release-cycle
+predicate depends on it.
 
 Each slice is one commit after focused tests, followed by strict R6 before the
 next slice. A vector-retirement commit may not include another rung or a
@@ -324,15 +332,18 @@ policy change and must remove the complete Zig vector atomically.
 
 1. Re-run the checked 120-callsite owner inventory after each C2 rung and
    preserve its owner class for every callsite.
-2. For each message sent by Rust host/helper code, name its checked owner class
+2. Preserve the reviewed `z2_1_seam.status=none` disposition from Design 67;
+   do not reopen policy movement or change an owner class without a new
+   inventory row, invariant review, and receipt.
+3. For each message sent by Rust host/helper code, name its checked owner class
    and Store/MOP observation receipt. Only a callsite classified as
    `policy-class` must name a native-Birnam policy definition; a missing owner
    is an implementation gap, not permission to add a Rust method.
-3. If a genuine duplicated policy seam is found, port the policy to the
+4. If a genuine duplicated policy seam is found, port the policy to the
    existing `.birnam` owner first, add a cross-floor test, and only then remove
    the duplicated Rust/Zig observation path. If no seam is found, record
    `status=none` and make no runtime change.
-4. Re-run source bootstrap, project/LSP, image, isolate, and relational tests
+5. Re-run source bootstrap, project/LSP, image, isolate, and relational tests
    after every policy-boundary change.
 
 **C3 gate:** the owner ledger is complete for all existing classes, every
@@ -353,8 +364,8 @@ decision:
    commit;
 4. rerun production/rollback traces, archive/bootstrap, old image/native
    client, cross-floor, hostile-input, GC, and strict R6 checks; and
-5. tag the prior fixture state before proceeding to the next rung. A Git tag
-   supplements but does not replace the recovery archive.
+5. tag the prior complete-vector fixture state before finalizing retirement.
+   A Git tag supplements but does not replace the recovery archive.
 
 The final C4 gate has no Zig production provider, no oracle binary in a
 production bundle, no ambient fallback, and no dynamic dependency on a Zig
