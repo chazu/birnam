@@ -1,9 +1,13 @@
 # 69 — Remaining Zig Modules: Rust Host and Native-Birnam Plan
 
-> **Status:** Draft awaiting adversarial review. Baseline: Design 68 C4 retain
-> receipt at `68c5bce`; production already selects the Rust floor, all 13 Rust
-> higher providers, and the Rust host. This plan converts the remaining Zig
-> *authorities* and build/oracle seams; it does not delete recovery evidence.
+> **Status:** Corrected after adversarial review at `577e50d`; GO only for
+> continued data-only/schema and explicitly fenced shadow work. The review is
+> **NO-GO** for authoritative graph execution or M5/M6 cutover until the
+> instantiated-graph, bootstrap-provenance, publication, and child-confinement
+> gates below are implemented and independently receipted. Baseline: Design 68
+> C4 retain receipt at `68c5bce`; production already selects the Rust floor, all
+> 13 Rust higher providers, and the Rust host. This plan converts the remaining
+> Zig *authorities* and build/oracle seams; it does not delete recovery evidence.
 
 ## 1. Objective and boundary
 
@@ -90,17 +94,42 @@ production throughout this plan.
 
 ## 3. Current evidence and completion definition
 
-Baseline receipts at `68c5bce`:
+Baseline receipts at `577e50d` (the current reviewed checkpoint):
 
 ```text
 remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=80 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
 remaining-zig-conversion: ok zig_paths=88 dynamic_names=14 policy_sources=39
+Rust build-driver schema/runner suite: 25/25 tests
+instantiated-graph receipt schema suite: 5/5 tests
+bootstrap-receipt schema suite: 5/5 tests
+publication-receipt schema suite: 5/5 tests
 focused: 218/218 steps; 99/99 tests
 verify: 307/307 steps; 516/522 tests; 6 skipped
 live Alien: 66/66 steps; 9/9 tests
 distribution-selection: production omits Zig; rollback is a complete Zig vector
 z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok
 ```
+
+The normal R6 gate is the reviewed acceptance command; strict cross-layer
+verification remains an explicit opt-in (`BIRNAM_R6_REQUIRE_VERIFY=1`). The
+Zig verify/live/Z3 rows above are the inherited accepted snapshot; the current
+normal R6 revalidates the focused matrix and the four Rust suites. The four
+Rust receipt suites are schema/validator evidence only. They do not prove
+that a Zig extractor emitted the receipt, that a cold bootstrap produced the
+executables, that a child was filesystem-confined, or that a publication was
+atomically committed.
+
+### Reviewed phase status at `577e50d`
+
+| Phase | State | Boundary that remains |
+| --- | --- | --- |
+| M0 | landed | ledger/checker receipt remains the authority ledger |
+| M1–M3 | evidence/retirement seams landed incrementally | parity and any authority transfer remain gated |
+| M4.1 | landed projection/checker | named-target projection is not instantiated semantic truth |
+| M4.2 | partial | real configuration-specific extractor and complete action closure |
+| M4.3 | partial | cold-run provenance, confined execution, and generation publication |
+| M4.4 | not started | parity/native bootstrap from two clean archives |
+| M5–M6 | not started | no cutover or Zig-vector retirement is authorized |
 
 The plan is complete only when:
 
@@ -274,7 +303,9 @@ do not rewrite the whole graph at once. Until the final cutover it remains
 supplemental manifest, all actions have owners and contexts, and source drift
 fails closed. This is deliberately not yet an executable command graph: inline
 step expressions, implicit install-step edges, exact shell argv, and per-action
-environment are resolved by M4.2 before the Rust driver may execute anything.
+environment are resolved by M4.2 before the Rust driver may execute any real
+graph action or emit a semantic/authoritative receipt. The existing
+`execute-shadow` fixture remains explicitly non-authoritative.
 
 The landed M4.1 manifest freezes 125 target rows plus 35 typed command actions,
 including all 14 production provider installs, all 14 rollback fixtures, the
@@ -318,42 +349,62 @@ The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
 explicit `environment_base=clear`; the former names the projected shadow
 receipt, not instantiated semantic truth. It binds graph and external input
 digests to files under the supplied root, while produced inputs/tools are
-deferred to their upstream producer and checked for ownership/reachability. It rejects
-path escape,
-duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-25 focused parser/runner tests plus 5 instantiated-graph receipt tests, 5
-same-run bootstrap receipt tests, and 5 staging/publication receipt tests. The
-R6 acceptance script runs all four
-semantic-driver suites fail-closed before the existing 218-step/99-test Rust replacement
-matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
+deferred to their upstream producer and checked for ownership/reachability. It
+rejects path escape, duplicates, cycles, mixed production vectors, and Zig
+dynamic names. The Rust suites are 25 build-driver parser/runner tests plus
+five instantiated-receipt schema tests, five bootstrap-receipt schema tests,
+and five publication-receipt schema tests. R6 runs all four semantic-driver
+suites fail-closed before the existing 218-step/99-test Rust replacement
+matrix. The `dry-run` subcommand prints the exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
-joining. It does not execute a tool; the complete
-`dependOn`/install semantic resolver and selection-specific command generation
-remain the next M4.2 slice. Separately, M4.3 now has a shadow-only topological process
-runner and `execute-shadow` CLI; `Clear` deterministically clears inherited
-environment variables before declared `Set`/`Unset` operations, while
-production and rollback execution remain refused. Shadow execution now also
-requires every action to declare shadow context/authority with explicit-shadow
-delegation, rechecks tool and input digests immediately before spawn, and
-requires every declared output to exist with its declared digest before the
-action receipt is returned. The shadow runner snapshots the output prefix and
-rejects pre-existing or newly created undeclared regular files. Each receipt now carries the resolved tool path
-and digest, cwd, exact argv, declared inputs/outputs, and observed output
-digests. Per-action before/after ownership diffs now reject creation,
-mutation, or deletion of another action's declared output on both success and
-failure paths; final rehashing and special-file rejection fail closed. Atomic
-The staging/publication receipt validator is now landed and R6-pinned; actual
-temporary-prefix creation and atomic rename remain M4.3 work.
+joining; it does not execute a tool. Separately, M4.3 has a deliberately
+non-authoritative topological `execute-shadow` CLI. It clears inherited
+environment variables before declared `Set`/`Unset` operations, requires
+shadow context/authority with explicit-shadow delegation, rechecks tool/input
+digests immediately before spawn, verifies declared outputs, and fences output
+ownership. Production and rollback execution remain refused.
+
+The landed `instantiated_graph` module is a data-only validator for
+synthetic/external receipt fixtures. It does not extract a Zig Build graph,
+authenticate the emitter, or yet carry the full action contract, and therefore
+is not instantiated semantic truth. The landed bootstrap and publication
+modules are likewise schema validators, not provenance or atomicity proofs.
+No receipt validator result is a production capability constructor.
+
+The next M4.2 slice must instrument/query the actually instantiated Zig Build
+graph for each exact target/profile/floor/provider/host-options tuple. A
+source-built extractor must bind its implementation/version, source commit/tree,
+invocation argv, and configuration identity into the receipt. Every action must
+carry exact argv, resolved tool path and digest, cwd, cleared/set/unset
+environment, typed input/output and install-path records, and producer/source
+provenance. Raw source occurrences must map to zero, one, or many concrete
+instantiated edges; generated and implicit edges need their own provenance.
+Ambiguous mappings, missing closure, cycles, non-topological order, and stale
+digests are hard failures. `inspect-instantiated` must not turn caller-supplied
+bytes plus a caller-supplied expected identity into proof; a cold-run supervisor
+owns receipt acquisition and binding. M4.2 does not exit until representative
+configuration receipts round-trip through this extractor and mutation tests
+fail closed for every graph dimension.
+
+The shadow runner is not yet safe for arbitrary real commands: a child can still
+mutate source or any path outside the declared output prefix, and opaque shell
+payloads are not closed. Before any real build action, require complete
+source/tool/input/argv closure, reject opaque shell `-c` actions unless they are
+parsed into a separately reviewed typed action, run in a fresh disposable
+cold-archive workspace, clear HOME/cache/tmp variables or bind them to staging,
+and enforce an OS sandbox or equivalent capability boundary for writable paths.
+Post-validate exact source/input and output trees. Until that gate exists,
+`execute-shadow` remains developer-only and non-authoritative.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
 are balanced and retained, including the inline `test-install` step and its
 `b.getInstallStep()` dependency. The captured expressions are still not
-executable action identities; one repeated semantic pair is retained as two
-occurrences but one projected resolved action pair. This projection is not
+executable action identities; one repeated raw expression pair is retained as
+two occurrences but one projected resolved action pair. This projection is not
 instantiated semantic truth: distinct scoped/expanded steps can still collapse.
-Resolution to concrete tools, install
-outputs, and inherited/cleared environments remains fail-closed work in M4.2.
+Resolution to concrete tools, install outputs, and inherited/cleared
+environments remains fail-closed work in M4.2.
 
 The committed `abi/birnam-build-actions-receipt-proof-v1.json` is a detached
 bound receipt artifact, not a field copied from the executable manifest. The Rust
@@ -393,9 +444,9 @@ authority. Production external tools additionally use a name-level stage-0
 tool allowlist and require the resolved executable basename to match that key;
 produced tools instead require an upstream producer chain. The projected
 validator now binds each module/provider producer to its exact declared
-external source path and digest; the same-run bootstrap receipt contract is
-landed separately but is not yet execution-authoritative. This still does not
-establish the complete binary/source closure.
+external source path and digest; the bootstrap-receipt schema validator is
+landed separately but is not yet same-run provenance proof or execution
+authority. This still does not establish the complete binary/source closure.
 The
 graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
@@ -409,6 +460,20 @@ which also requires
 production-context actions and rejects Zig/oracle markers across logical and
 resolved tool paths, argv, paths, and environment values.
 
+### Receipt trust tiers
+
+| Receipt/proof | Producer and root of trust | May authorize |
+| --- | --- | --- |
+| M4.1 projection proof | checked source capture plus detached Git/file proof | parser/schema validation only |
+| instantiated-graph proof | source-built configuration-specific extractor, supervisor-bound invocation and source tree | graph round-trip and shadow planning only |
+| bootstrap provenance proof | cold-run supervisor observing action outputs and toolchain commands | selection of that run’s staged tools only |
+| action execution proof | confined runner plus pre/post tree and input/output rehash | shadow receipt composition only until parity passes |
+| parity proof | independent Rust/Zig runs over the same clean archive with normalized allowlist | M4.4 readiness review |
+| publication proof | generation tree, exact closure, fsync, and atomic current-pointer replacement | current-generation selection and rollback |
+
+No caller-supplied expected identity, digest field, or validator return value
+can promote one tier into another or construct production authority.
+
 ### M4.3 Compiler invocation and stage-1 module compilation
 
 1. Implement a process runner that invokes declared non-Birnam stage-0 tools
@@ -416,18 +481,37 @@ resolved tool paths, argv, paths, and environment values.
    a Birnam runtime artifact. `birnam-build` and the Rust host/compiler used
    for `--compile-module` must be built from source earlier in the same cold
    run, selected by absolute staged paths, and verified by identity/digest.
-   Emit a same-run bootstrap receipt binding source archive/tree, build
-   command, staged executable paths, and executable digests; prebuilt Birnam
-   driver/host/compiler executables are rejected without that receipt. Every
+   A minimal non-Birnam cold-run supervisor owns a fresh staging directory,
+   computes the source archive/tree closure itself, invokes Cargo/rustc (and
+   then staged Birnam executables) by exact absolute path, records normalized
+   commands and exit status, and binds every produced executable to the exact
+   upstream action receipt/output. The bootstrap receipt includes the source
+   manifest closure digest, exact build command and toolchain identity,
+   action-receipt ID/digest for each role, executable type/mode, sequence and
+   parent chain, and staging-generation identity. It is emitted only by that
+   supervisor after it observed the outputs; the parser validates consistency
+   but is not provenance proof by itself. A copied prebuilt cannot satisfy the
+   chain because its output digest, action receipt, source-tree identity, and
+   generation must all be observed in the fresh run. Prebuilt Birnam
+   driver/host/compiler executables are rejected without this receipt. Every
    command is logged with normalized argv, cwd, inputs, outputs, and digest.
 2. Reproduce floor/provider dylib installation and the existing ordered
    `.birnam` stage-1 list. Compile modules through the canonical Rust host
    `--compile-module` boundary; policy remains in the source modules.
-3. Define an explicit staging/publication receipt schema. Use atomic temporary
-   prefixes and rename only after all action, bootstrap, and parity receipts
-   pass; publish the final prefix and its receipt as one transaction. A failed
-   child, panic, or digest mismatch leaves no published target and no receipt
-   claiming publication.
+3. Define an implementable generation publication protocol. Build an immutable
+   `<store>/generations/<transaction>.tmp` on the target filesystem containing
+   the complete canonical tree, its exact tree manifest, and the action,
+   bootstrap, parity, and publication receipts. Validate every file, directory,
+   symlink policy, special-file rejection, owner-action link, and absence of
+   extra paths; fsync files and directories; then rename the temporary
+   generation to an immutable generation name. Atomically replace one small
+   `current` pointer/manifest in the same parent, preserving the prior
+   generation for rollback. Define readers and crash recovery at each point:
+   an incomplete generation is never current, and a failed child, panic, or
+   digest mismatch leaves the prior pointer and target untouched. Derive
+   same-device and rename state from filesystem facts; do not trust boolean
+   receipt claims. A portable `renameat` of a non-empty final directory plus a
+   separate receipt is not an atomic publication protocol.
 
 ### M4.4 Driver parity and cold bootstrap
 
@@ -445,16 +529,22 @@ resolved tool paths, argv, paths, and environment values.
    and review-pin any changed inventory, focused-step, verify-step, or
    benchmark counts rather than requiring the old R6 numbers unchanged.
 
-**M4 exit:** Rust driver can reproduce the production closure and stage-1
-modules from source; `build.zig` remains canonical and the Rust driver remains
-shadow until M5's atomic cutover.
+**M4 exit:** a source-built Rust driver can reproduce the complete,
+configuration-specific production closure and stage-1 modules from source,
+with confined action execution, an observed cold-bootstrap chain, and the
+generation/pointer publication protocol proven from two independent archives.
+`build.zig` remains canonical and the Rust driver remains shadow until M5's
+atomic cutover.
 
 ## 9. Phase M5 — staged build-driver cutover and Zig quarantine
 
-1. While `build.zig` remains canonical, cut over one build family at a time in
-   **shadow** mode: resource resolution, floor/provider install, stage-1
+1. While `build.zig` remains canonical, add Rust shadow coverage one build
+   family at a time: resource resolution, floor/provider install, stage-1
    modules, project build/install, tests, packaging, then archive/rollback.
-   Each family is one commit and one focused normalized-receipt comparison.
+   Each family is one commit and one focused normalized-receipt comparison;
+   no family changes canonical authority. The complete Zig rollback vector
+   remains the named rollback authority throughout M5 and cannot be migrated
+   or deleted piecemeal.
 2. Do not quarantine `build.zig` during partial cutover. The shadow driver may
    delegate an unported family to it only when the action row says
    `delegation=explicit-shadow`, and that delegation is never claimed as a
@@ -477,9 +567,10 @@ shadow until M5's atomic cutover.
    receipts, and retained toolchain/oracle paths in one disposition commit.
    M6 does not perform a second authority switch: the M5 commit already changed
    Rust `shadow → canonical` and `build.zig` `canonical → oracle`.
-2. If the Rust driver cannot yet replace `build.zig` orchestration while
-   preserving the cold-chain contract, leave its action rows
-   `build_authority=canonical` and record the exact blocker; this is an
+2. If Rust cannot replace `build.zig` orchestration while preserving the
+   cold-chain contract, leave the corresponding `build.zig` rows
+   `build_authority=canonical` and the Rust-driver rows `build_authority=shadow`;
+   record the exact blocker and do not perform M5. This is an
    invariant-preserving partial completion, not permission to weaken the
    production gate. The Rust driver may continue invoking Zig as a declared
    non-Birnam stage-0 compiler tool.
@@ -499,6 +590,15 @@ python3 scripts/check-c2-rung-receipts.py
 BIRNAM_R6_REQUIRE_VERIFY=1 bash scripts/r6-acceptance.sh
 ```
 
+At M4.4 and every M5 family, also require unchanged ABI/Oop/vtable/layout,
+generated-C, image-v4, isolate-wire-v1, diagnostic, exact 14-dynamic-name,
+and Store/MOP owner receipts; the 120-callsite owner inventory must retain the
+current `z2_1_seam.status=none` result. Artifact preflight remains
+permission-only, native `Module loadArtifact:` remains the sole initializer,
+Store/MOP publication, and activation owner, and no Rust initializer or policy
+vtable may be introduced. A drift requires an owner-transfer or ABI decision
+before continuation; a changed benchmark receipt alone is not sufficient.
+
 Before the M5 atomic cutover, a Rust-driver-native production/bootstrap gate
 must already build and archive with `build.zig` unavailable. The
 Zig-orchestrated R6 remains compatibility/oracle evidence. Any new crate,
@@ -512,13 +612,19 @@ incompatible policy authorities with no evidence-based owner.
 
 ## 12. Initial work order
 
-1. Review this document adversarially; correct it until GO.
-2. Land M0 manifest/checker and receipt.
-3. Land M1 canonical host identity and parity receipt.
+1. Correct this document through adversarial review until the trust-boundary
+   verdict is GO for the next bounded slice. The current review is NO-GO for
+   authoritative execution and M5/M6, but GO for fenced schema/shadow work.
+2. M0 ledger/checker and receipt are already landed; re-run their checks at the
+   current clean checkpoint before changing code.
+3. Land M1 canonical host identity (including renaming the source path currently
+   named `birnam-rust-experimental.rs`) and parity receipt.
 4. Land M2 artifact/preflight retirement-seam receipt.
 5. Land M3 policy no-seam/transfer receipt.
-6. Freeze the M4.1 action DAG/checker, then implement M4.2 dry-run, M4.3
-   compiler invocation, and M4.4 parity/native-bootstrap in separate commits
-   before any default cutover.
+6. M4.1 projection/checker is landed. Complete M4.2’s real extractor and
+   complete closure, then M4.3’s cold supervisor, confined invocation, and
+   generation/pointer publication, and finally M4.4 parity/native-bootstrap;
+   each is a separate commit before any default cutover.
 7. Execute M5/M6 only after the Rust driver has two independent cold-archive
-   proofs and the complete-vector rollback remains recoverable.
+   proofs, the complete-vector rollback remains recoverable, and the explicit
+   ABI/MOP/owner gates pass.
