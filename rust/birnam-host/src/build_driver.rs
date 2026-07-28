@@ -585,6 +585,11 @@ fn snapshot_files(root: &Path, relative: &Path) -> Result<BTreeSet<PathBuf>, Man
                         .expect("output entry is under root")
                         .to_path_buf(),
                 );
+            } else {
+                return Err(error(format!(
+                    "output prefix contains a special file: {}",
+                    entry_path.display()
+                )));
             }
         }
         Ok(())
@@ -595,6 +600,47 @@ fn snapshot_files(root: &Path, relative: &Path) -> Result<BTreeSet<PathBuf>, Man
         files.insert(relative.to_path_buf());
     }
     Ok(files)
+}
+
+fn snapshot_declared_output_digests(
+    root: &Path,
+    paths: &BTreeSet<PathBuf>,
+) -> Result<BTreeMap<PathBuf, String>, ManifestError> {
+    let mut digests = BTreeMap::new();
+    for path in paths {
+        contained_output_path(root, path, "declared output")?;
+        let resolved = root.join(path);
+        let metadata = match fs::symlink_metadata(&resolved) {
+            Ok(metadata) => metadata,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(error(format!(
+                    "cannot inspect declared output {}: {source}",
+                    path.display()
+                )));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(error(format!(
+                "declared output contains a symlink: {}",
+                path.display()
+            )));
+        }
+        if metadata.is_dir() {
+            return Err(error(format!(
+                "declared output is a directory: {}",
+                path.display()
+            )));
+        }
+        if !metadata.is_file() {
+            return Err(error(format!(
+                "declared output is a special file: {}",
+                path.display()
+            )));
+        }
+        digests.insert(path.clone(), sha256_file(&resolved)?);
+    }
+    Ok(digests)
 }
 
 fn validate_path_ref(path_ref: &PathRef, root: &Path, label: &str) -> Result<(), ManifestError> {
@@ -1480,6 +1526,10 @@ pub fn execute_shadow_graph(
             "shadow execution output prefix contains an undeclared pre-existing file",
         ));
     }
+    let mut prior_output_digests = snapshot_declared_output_digests(
+        &validated.root,
+        &declared_output_paths,
+    )?;
     let mut executions = Vec::with_capacity(validated.action_order.len());
     for action_name in &validated.action_order {
         let action = validated
@@ -1531,18 +1581,20 @@ pub fn execute_shadow_graph(
                 }
             }
         }
+        let current_output_paths = action
+            .outputs
+            .iter()
+            .map(|output| output.path.clone())
+            .collect::<BTreeSet<_>>();
+        let prior_action_outputs = prior_output_digests
+            .iter()
+            .filter(|(path, _)| !current_output_paths.contains(*path))
+            .map(|(path, digest)| (path.clone(), digest.clone()))
+            .collect::<BTreeMap<_, _>>();
         let output = command
             .output()
             .map_err(|source| error(format!("action {} failed to spawn: {source}", action.name)))?;
         let status = output.status.code().unwrap_or(-1);
-        if !output.status.success() {
-            return Err(error(format!(
-                "action {} failed with status {}: {}",
-                action.name,
-                status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
         let output_files = snapshot_files(&validated.root, &validated.manifest.prefix)?;
         if output_files
             .iter()
@@ -1551,6 +1603,37 @@ pub fn execute_shadow_graph(
             return Err(error(format!(
                 "action {} created an undeclared output",
                 action.name
+            )));
+        }
+        let observed_output_digests = snapshot_declared_output_digests(
+            &validated.root,
+            &declared_output_paths,
+        )?;
+        for (path, expected_digest) in &prior_action_outputs {
+            match observed_output_digests.get(path) {
+                Some(observed_digest) if observed_digest == expected_digest => {}
+                Some(_) => {
+                    return Err(error(format!(
+                        "action {} modified a prior output {}",
+                        action.name,
+                        path.display()
+                    )));
+                }
+                None => {
+                    return Err(error(format!(
+                        "action {} deleted a prior output {}",
+                        action.name,
+                        path.display()
+                    )));
+                }
+            }
+        }
+        if !output.status.success() {
+            return Err(error(format!(
+                "action {} failed with status {}: {}",
+                action.name,
+                status,
+                String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
         let mut output_digests = BTreeMap::new();
@@ -1577,6 +1660,7 @@ pub fn execute_shadow_graph(
             }
             output_digests.insert(declared.path.clone(), observed_digest);
         }
+        prior_output_digests = observed_output_digests;
         executions.push(ActionExecution {
             action: action.name.clone(),
             status,
@@ -1965,7 +2049,7 @@ mod tests {
         let runner_source = format!(
             "#!/bin/sh\nset -eu\nmkdir -p ../out\ncase \"$1\" in\nprepare) printf '%s' shadow-output > ../out/prepare ;;\ncompile) printf '%s' shadow-output > ../out/module.dylib\n{stage1_writes}\n{provider_writes} ;;\nesac\nprintf '%s' \"$BIRNAM_VALUE\"\n"
         );
-        fs::write(&runner, runner_source).expect("runner");
+        fs::write(&runner, &runner_source).expect("runner");
         fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).expect("executable");
         let runner_digest = hex::encode(Sha256::digest(fs::read(&runner).expect("runner bytes")));
         let output_digest = hex::encode(Sha256::digest(b"shadow-output"));
@@ -2017,13 +2101,56 @@ mod tests {
         rogue_source.extend_from_slice(b"\nprintf '%s' rogue > ../out/rogue\n");
         fs::write(&runner, &rogue_source).expect("rogue runner");
         let rogue_digest = hex::encode(Sha256::digest(&rogue_source));
-        let mut rogue = validated;
+        let mut rogue = validated.clone();
         for action in &mut rogue.manifest.actions {
             action.tool_sha256 = rogue_digest.clone();
         }
         let rogue_error = execute_shadow_graph(&rogue)
             .expect_err("shadow execution must reject undeclared output writes");
         assert!(rogue_error.0.contains("undeclared output"));
+        fs::remove_file(fixture.root.join("out/rogue")).expect("remove rogue output");
+
+        let mutation_source = runner_source.replace(
+            "compile) printf '%s' shadow-output > ../out/module.dylib",
+            "compile) printf '%s' shadow-output > ../out/module.dylib\nprintf '%s' tampered > ../out/prepare",
+        );
+        fs::write(&runner, &mutation_source).expect("mutation runner");
+        let mutation_digest = hex::encode(Sha256::digest(&mutation_source));
+        let mut mutation = validated.clone();
+        for action in &mut mutation.manifest.actions {
+            action.tool_sha256 = mutation_digest.clone();
+        }
+        let mutation_error = execute_shadow_graph(&mutation)
+            .expect_err("shadow execution must reject prior-output mutation");
+        assert!(mutation_error.0.contains("modified a prior output"));
+
+        let failure_source = runner_source.replace(
+            "compile) printf '%s' shadow-output > ../out/module.dylib",
+            "compile) printf '%s' shadow-output > ../out/module.dylib\nprintf '%s' tampered > ../out/prepare\nexit 7",
+        );
+        fs::write(&runner, &failure_source).expect("failure runner");
+        let failure_digest = hex::encode(Sha256::digest(&failure_source));
+        let mut failure = validated.clone();
+        for action in &mut failure.manifest.actions {
+            action.tool_sha256 = failure_digest.clone();
+        }
+        let failure_error = execute_shadow_graph(&failure)
+            .expect_err("shadow execution must inspect failed-child mutations");
+        assert!(failure_error.0.contains("modified a prior output"));
+
+        let special_source = runner_source.replace(
+            "compile) printf '%s' shadow-output > ../out/module.dylib",
+            "compile) printf '%s' shadow-output > ../out/module.dylib\nmkfifo ../out/special",
+        );
+        fs::write(&runner, &special_source).expect("special-file runner");
+        let special_digest = hex::encode(Sha256::digest(&special_source));
+        let mut special = validated;
+        for action in &mut special.manifest.actions {
+            action.tool_sha256 = special_digest.clone();
+        }
+        let special_error = execute_shadow_graph(&special)
+            .expect_err("shadow execution must reject special output files");
+        assert!(special_error.0.contains("special file"));
     }
 
     #[test]

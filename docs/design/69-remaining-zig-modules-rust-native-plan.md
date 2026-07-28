@@ -328,8 +328,8 @@ action receipt is returned. The shadow runner snapshots the output prefix and
 rejects pre-existing or newly created undeclared regular files. Each receipt now carries the resolved tool path
 and digest, cwd, exact argv, declared inputs/outputs, and observed output
 digests. Per-action mutation/failure-path scans, final rehashing of prior
-outputs, special-file rejection, and atomic temporary-prefix publication
-remain M4.3 work.
+outputs, and special-file rejection now fail closed; atomic temporary-prefix
+publication remains M4.3 work.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
