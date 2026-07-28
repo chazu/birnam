@@ -616,7 +616,8 @@ def main() -> None:
             refs = json.dumps(action["inputs"]) + json.dumps(action["outputs"]) + json.dumps(action["tool_ref"])
             if any(forbidden in refs for forbidden in PRODUCTION_FORBIDDEN):
                 fail(f"production command action reaches a Zig-only path: {key}")
-    all_action_keys = build_seen | command_keys
+    target_action_keys = {"build:" + target for target in build_seen}
+    all_action_keys = target_action_keys | command_keys
     for action in command_rows:
         for dependency in action["dependencies"]:
             if dependency.startswith("action:") and dependency not in all_action_keys:
