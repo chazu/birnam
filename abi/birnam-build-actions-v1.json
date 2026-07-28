@@ -622,9 +622,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -708,9 +706,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1002,7 +998,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1127,7 +1125,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1375,7 +1375,9 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1433,9 +1435,7 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "build:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1489,9 +1489,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1532,9 +1530,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1575,9 +1571,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1659,7 +1653,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1745,7 +1741,9 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1842,9 +1840,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1885,9 +1881,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -1971,9 +1965,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2014,9 +2006,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2057,9 +2047,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2100,9 +2088,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2147,9 +2133,7 @@
         "BIRNAM_ID_DYLIB",
         "BIRNAM_RUST_WORKSPACE_DIR"
       ],
-      "dependencies": [
-        "build:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2258,9 +2242,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2311,9 +2293,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2364,9 +2344,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2417,9 +2395,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2471,7 +2447,7 @@
       ],
       "environment": [],
       "dependencies": [
-        "build:stage1"
+        "build:bootstrap-install"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
@@ -2523,9 +2499,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2788,9 +2762,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2841,9 +2813,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -2894,9 +2864,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3000,9 +2968,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3053,9 +3019,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3106,9 +3070,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3159,9 +3121,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3212,9 +3172,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3266,7 +3224,7 @@
       ],
       "environment": [],
       "dependencies": [
-        "build:bootstrap-install"
+        "build:stage1"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
@@ -3318,9 +3276,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:bootstrap-install"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3636,7 +3592,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3687,7 +3645,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3738,7 +3698,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3789,7 +3751,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3840,7 +3804,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3944,7 +3910,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -3995,7 +3963,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4046,7 +4016,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4097,7 +4069,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4199,7 +4173,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4250,7 +4226,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4301,7 +4279,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4352,7 +4332,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4403,7 +4385,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4505,7 +4489,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4556,7 +4542,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4607,7 +4595,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4658,7 +4648,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4760,7 +4752,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4811,7 +4805,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4862,7 +4858,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -4913,7 +4911,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -5329,9 +5329,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:stage1"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -5383,7 +5381,7 @@
       ],
       "environment": [],
       "dependencies": [
-        "build:bootstrap-install"
+        "build:stage1"
       ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
@@ -5698,7 +5696,9 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:bootstrap-install"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -5900,14 +5900,7 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [
-        "build:stage1",
-        "build:test",
-        "build:test-emacs",
-        "build:test-lsp-project",
-        "build:test-project-check",
-        "build:test-termbox-load"
-      ],
+      "dependencies": [],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
@@ -6054,7 +6047,14 @@
         "-Dhost-impl"
       ],
       "environment": [],
-      "dependencies": [],
+      "dependencies": [
+        "build:stage1",
+        "build:test",
+        "build:test-emacs",
+        "build:test-lsp-project",
+        "build:test-project-check",
+        "build:test-termbox-load"
+      ],
       "install_destination": "none",
       "digest_policy": "normalized-receipt-v1",
       "build_authority": "canonical",
