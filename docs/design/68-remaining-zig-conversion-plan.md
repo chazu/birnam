@@ -444,7 +444,9 @@ observer, inherited-revelation, image-boot, REPL, project, and LSP cases passed
 through the existing `rust-store-mop` and `rust-store-stack` receipts. The
 Store row now records that evidence as a focused blocked/pinned receipt; no
 Store mirror contract or Zig rollback fixture was removed. Its strict R6
-checkpoint follows this ledger commit before PEG advances.
+checkpoint at `4c1f66a` passed with the same `307/307` verify,
+`516/522` tests, six skips, live Alien, Z3 archive/trace, and benchmark
+receipts before PEG advanced.
 
 **C2.1c PEG evidence (2026-07-27):** the explicit Rust PEG passed the pattern,
 language, full-language, CST, diagnostics, source-corpus, generated-C,
