@@ -339,7 +339,9 @@ authority. The graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
 until instantiated implicit Zig Build edges and one-to-one provider/module
 producer closure are represented; the parser pins the source graph to
-`build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. Production selection also requires
+`build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. This is a
+file-level consistency check; execution still requires a checker-generated
+receipt proof that the commit/tree exists and contains these bytes. Production selection also requires
 production-context actions and rejects Zig/oracle markers across logical and
 resolved tool paths, argv, paths, and environment values.
 
