@@ -17,6 +17,10 @@ use sha2::{Digest, Sha256};
 pub const MANIFEST_SCHEMA: u32 = 1;
 pub const EXECUTABLE_SEMANTIC_SCOPE: &str = "full-semantic-v1";
 pub const RECEIPT_PROOF_PATH: &str = "abi/birnam-build-actions-receipt-proof-v1.json";
+pub const PRODUCTION_TOOL_NAMES: &[&str] = &[
+    "ar", "bash", "cargo", "cc", "clang", "git", "ld", "make", "ninja", "perl", "python3",
+    "ranlib", "rustc", "sh", "zig",
+];
 pub const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
     "libbirnam_id_artifact.dylib",
@@ -1270,6 +1274,20 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 return Err(error(format!(
                     "production action {} inherits an unspecified environment",
                     action.name
+                )));
+            }
+        }
+        if manifest.selection.distribution == "production" {
+            if !PRODUCTION_TOOL_NAMES.contains(&action.tool.as_str()) {
+                return Err(error(format!(
+                    "production action {} uses an unapproved stage-0 tool {}",
+                    action.name, action.tool
+                )));
+            }
+            if tool_path.file_name().and_then(|name| name.to_str()) != Some(action.tool.as_str()) {
+                return Err(error(format!(
+                    "production action {} tool path basename does not match {}",
+                    action.name, action.tool
                 )));
             }
         }
