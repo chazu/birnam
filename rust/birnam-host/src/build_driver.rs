@@ -710,6 +710,19 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             "graph receipt anchor disagrees with the M4.1 source receipt",
         ));
     }
+    let receipt_source_digests = transaction
+        .get("source_digests")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| error("graph source transaction has no source_digests"))?;
+    let receipt_build_digest = receipt_source_digests
+        .get("build.zig")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| error("graph source receipt has no build.zig digest"))?;
+    if receipt_build_digest != manifest.source_graph.build_file.sha256 {
+        return Err(error(
+            "build.zig digest disagrees with the M4.1 source receipt",
+        ));
+    }
     validate_selection(&manifest.selection)?;
     contained_output_path(&root, &manifest.prefix, "output prefix")?;
     for (name, path) in &manifest.tools {
@@ -1076,21 +1089,23 @@ mod tests {
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
             fs::create_dir_all(root.join("abi")).expect("abi directory");
+            fs::create_dir_all(root.join("work")).expect("work directory");
+            let build_source = b"compile.dependOn(prepare);";
+            fs::write(root.join("build.zig"), build_source).expect("build source");
             let receipt_commit = "a".repeat(40);
             let receipt_tree = "b".repeat(40);
+            let build_digest = hex::encode(Sha256::digest(build_source));
             let graph_document = json!({
                 "transaction": {
                     "receipt_commit": receipt_commit.clone(),
-                    "receipt_tree": receipt_tree.clone()
+                    "receipt_tree": receipt_tree.clone(),
+                    "source_digests": {"build.zig": build_digest.clone()}
                 }
             });
             let graph_bytes = serde_json::to_vec(&graph_document).expect("graph JSON");
             fs::write(root.join("abi/birnam-build-actions-v1.json"), &graph_bytes).expect("graph");
-            fs::create_dir_all(root.join("work")).expect("work directory");
-            fs::write(root.join("build.zig"), b"compile.dependOn(prepare);").expect("build source");
             let digest = hex::encode(Sha256::digest(b"module"));
             let graph_digest = hex::encode(Sha256::digest(&graph_bytes));
-            let build_digest = hex::encode(Sha256::digest(b"compile.dependOn(prepare);"));
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
@@ -1194,6 +1209,12 @@ mod tests {
         let error = parse_and_validate(&bytes, &fixture.root)
             .expect_err("graph receipt anchor must match the source receipt");
         assert!(error.0.contains("receipt anchor"));
+        let bytes = mutate(&fixture, |value| {
+            value["source_graph"]["build_file"]["sha256"] = json!("d".repeat(64));
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("build digest must match the source receipt");
+        assert!(error.0.contains("build.zig digest"));
     }
 
     #[test]
