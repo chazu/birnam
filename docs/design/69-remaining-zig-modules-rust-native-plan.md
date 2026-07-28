@@ -311,13 +311,16 @@ The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
 `dry-run` parser. It requires `semantic_scope=full-semantic-v1`, binds graph
 and input digests to files under the supplied root, rejects path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-16 focused parser tests. The R6 acceptance script runs this semantic-driver
+17 focused parser/runner tests. The R6 acceptance script runs this semantic-driver
 suite fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
 joining. It does not execute a tool; the complete
 `dependOn`/install semantic resolver and selection-specific command receipts
-remain the next M4.2 slice.
+remain the next M4.2 slice. M4.3 now has a shadow-only topological process
+runner and `execute-shadow` CLI; `Clear` deterministically clears inherited
+environment variables before declared `Set`/`Unset` operations, while
+production and rollback execution remain refused.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
