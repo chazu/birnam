@@ -855,9 +855,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         if source_action == dependency_action {
             return Err(error("source graph contains a self-dependency"));
         }
-        if !captured_edge_keys.insert((source_action.clone(), dependency_action.clone())) {
-            return Err(error("source graph contains a duplicate explicit edge"));
-        }
+        captured_edge_keys.insert((source_action.clone(), dependency_action.clone()));
     }
     let mut resolved_edge_keys = BTreeSet::new();
     let mut declared_source_edge_keys = BTreeSet::new();
@@ -1614,6 +1612,12 @@ mod tests {
         let capture = capture_zig_dependencies(&source).expect("all dependOn calls resolve");
         assert_eq!(capture.occurrence_count, 464);
         assert_eq!(capture.edges.len(), capture.occurrence_count);
+        let unique_edges = capture
+            .edges
+            .iter()
+            .map(|edge| (edge.source.as_str(), edge.dependency.as_str()))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(unique_edges.len(), 463);
         assert!(
             capture
                 .edges
