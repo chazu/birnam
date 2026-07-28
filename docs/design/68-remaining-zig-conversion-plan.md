@@ -1,11 +1,26 @@
 # 68 — Remaining Zig Conversion and Native-Birnam Completion Plan
 
-> **Status:** draft pending adversarial review. This plan starts from the
+> **Status:** Reviewed GO at `66b66b1` (2026-07-27). This plan starts from the
 > accepted Rust floor/native-rung state at `rust-libid-floor` and is the
 > execution plan for the Zig residue that remains after the Rust conversion.
 > It supersedes neither Design 66's residue map nor Design 67's acceptance
 > records; it turns their current evidence into a bounded conversion and
 > retirement sequence.
+
+### Review record
+
+- `023576a`: initial adversarial review — **NO-GO** for floor/provider-init
+  conflation, Artifact ownership, per-rung rollback deletion, C3 policy scope,
+  ledger precision, R6 remeasurement, and incomplete MOP/unsafe/bootstrap
+  laws.
+- `c96b47a`, `3513b1e`, `4fa83e0`: corrected those issues and tightened the
+  release-cycle block, complete-vector definition, ledger transaction, exact
+  ABI signatures, mutation ordering, callback rooting, codec/provider audits,
+  and retain-versus-retire contract.
+- `66b66b1`: final adversarial review — **GO**; no remaining invariant, schema,
+  rollback, ownership, MOP, unsafe-boundary, bootstrap, receipt, or phase-order
+  blocker. C0 may begin; later authority or retirement changes still require
+  their specified focused reviews.
 
 ## 1. Objective and completion definition
 
