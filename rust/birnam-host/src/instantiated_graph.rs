@@ -114,9 +114,7 @@ fn safe_relative_path(path: &Path, label: &str) -> Result<(), InstantiatedGraphE
     }
     for component in path.components() {
         if !matches!(component, Component::Normal(_)) {
-            return Err(error(format!(
-                "{label} escapes the receipt root: {path:?}"
-            )));
+            return Err(error(format!("{label} escapes the receipt root: {path:?}")));
         }
     }
     Ok(())
@@ -171,7 +169,10 @@ fn validate_identity(
         safe_name(value, label)?;
     }
     if identity.floor != "rust" && identity.floor != "zig" {
-        return Err(error(format!("unknown floor selection: {}", identity.floor)));
+        return Err(error(format!(
+            "unknown floor selection: {}",
+            identity.floor
+        )));
     }
     if identity.distribution != "production"
         && identity.distribution != "rollback"
@@ -234,7 +235,10 @@ pub fn parse_and_validate(
     for action in &receipt.actions {
         safe_name(&action.name, "action name")?;
         if !action_names.insert(action.name.clone()) {
-            return Err(error(format!("duplicate instantiated action: {}", action.name)));
+            return Err(error(format!(
+                "duplicate instantiated action: {}",
+                action.name
+            )));
         }
         safe_name(&action.tool, "tool name")?;
         if !valid_digest(&action.tool_sha256) || !valid_digest(&action.argv_sha256) {
@@ -247,7 +251,10 @@ pub fn parse_and_validate(
         for dependency in &action.depends_on {
             safe_name(dependency, "dependency name")?;
             if !action_names.contains(dependency)
-                && !receipt.actions.iter().any(|candidate| candidate.name == *dependency)
+                && !receipt
+                    .actions
+                    .iter()
+                    .any(|candidate| candidate.name == *dependency)
             {
                 return Err(error(format!(
                     "instantiated action {} depends on undeclared action {}",
@@ -277,7 +284,10 @@ pub fn parse_and_validate(
             edge.kind.as_str(),
             "artifact" | "install" | "lazy" | "generated" | "source"
         ) {
-            return Err(error(format!("unknown instantiated edge kind: {}", edge.kind)));
+            return Err(error(format!(
+                "unknown instantiated edge kind: {}",
+                edge.kind
+            )));
         }
         if !edge_keys.insert((edge.source.clone(), edge.dependency.clone())) {
             return Err(error("instantiated graph contains a duplicate edge"));
@@ -303,7 +313,9 @@ pub fn parse_and_validate(
     let mut mapped_source_edges = BTreeSet::new();
     for (expected_occurrence, occurrence) in receipt.raw_occurrences.iter().enumerate() {
         if occurrence.occurrence != expected_occurrence {
-            return Err(error("raw dependency occurrences must be contiguous and ordered"));
+            return Err(error(
+                "raw dependency occurrences must be contiguous and ordered",
+            ));
         }
         if occurrence.source_expression.trim().is_empty()
             || occurrence.dependency_expression.trim().is_empty()
@@ -391,9 +403,8 @@ mod tests {
                 .expect("clock")
                 .as_nanos();
             let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-            let root = std::env::temp_dir().join(format!(
-                "birnam-instantiated-graph-{nonce}-{sequence}"
-            ));
+            let root =
+                std::env::temp_dir().join(format!("birnam-instantiated-graph-{nonce}-{sequence}"));
             fs::create_dir_all(&root).expect("fixture root");
             let build = b"compile.dependOn(prepare);";
             fs::write(root.join("build.zig"), build).expect("build source");
@@ -462,22 +473,31 @@ mod tests {
         let receipt = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect("duplicate syntactic occurrence is retained");
         assert_eq!(receipt.raw_occurrences.len(), 2);
-        assert_eq!(receipt.raw_occurrences[0].edge, receipt.raw_occurrences[1].edge);
+        assert_eq!(
+            receipt.raw_occurrences[0].edge,
+            receipt.raw_occurrences[1].edge
+        );
     }
 
     #[test]
     fn rejects_configuration_mismatch() {
         let fixture = Fixture::new();
-        let bytes = mutate(&fixture, |value| value["identity"]["profile"] = json!("debug"));
+        let bytes = mutate(&fixture, |value| {
+            value["identity"]["profile"] = json!("debug")
+        });
         let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect_err("receipt from another profile must be rejected");
-        assert!(error.0.contains("does not match the requested configuration"));
+        assert!(error
+            .0
+            .contains("does not match the requested configuration"));
     }
 
     #[test]
     fn rejects_unmapped_or_mismatched_raw_edge() {
         let fixture = Fixture::new();
-        let bytes = mutate(&fixture, |value| value["raw_occurrences"][0]["edge"] = json!(1));
+        let bytes = mutate(&fixture, |value| {
+            value["raw_occurrences"][0]["edge"] = json!(1)
+        });
         let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect_err("raw mapping to a missing edge must be rejected");
         assert!(error.0.contains("unknown edge"));
@@ -493,7 +513,9 @@ mod tests {
     #[test]
     fn rejects_action_edge_disagreement_and_disconnected_root() {
         let fixture = Fixture::new();
-        let bytes = mutate(&fixture, |value| value["actions"][1]["depends_on"] = json!([]));
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][1]["depends_on"] = json!([])
+        });
         let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
             .expect_err("action dependency set must agree with instantiated edges");
         assert!(error.0.contains("disagree with edges"));

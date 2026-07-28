@@ -6,12 +6,20 @@ use std::process::ExitCode;
 use birnam_host::build_driver::{
     capture_zig_dependencies, execute_shadow_graph, parse_and_validate,
 };
+use birnam_host::instantiated_graph::{
+    parse_and_validate as parse_instantiated_graph, InstantiationIdentity,
+};
 
 fn usage() {
     eprintln!(
         "usage: birnam-build dry-run --manifest FILE --root DIR\n\
          \x20      birnam-build execute-shadow --manifest FILE --root DIR\n\
-         \x20      birnam-build inspect-zig --build-file FILE"
+         \x20      birnam-build inspect-zig --build-file FILE\n\
+         \x20      birnam-build inspect-instantiated --receipt FILE --root DIR \\
+         \x20          --target TARGET --profile PROFILE --floor FLOOR \\
+         \x20          --distribution DISTRIBUTION \\
+         \x20          --provider-selection-sha256 DIGEST \\
+         \x20          --host-options-sha256 DIGEST"
     );
 }
 
@@ -26,7 +34,11 @@ fn main() -> ExitCode {
     let Some(command) = args.next() else {
         return fail("missing command");
     };
-    if command != "dry-run" && command != "execute-shadow" && command != "inspect-zig" {
+    if command != "dry-run"
+        && command != "execute-shadow"
+        && command != "inspect-zig"
+        && command != "inspect-instantiated"
+    {
         return fail(format!("unknown command: {}", command.to_string_lossy()));
     }
     if command == "inspect-zig" {
@@ -58,6 +70,107 @@ fn main() -> ExitCode {
                 edge.source_line, edge.source, edge.dependency
             );
         }
+        return ExitCode::SUCCESS;
+    }
+    if command == "inspect-instantiated" {
+        let mut receipt = None;
+        let mut root = None;
+        let mut target = None;
+        let mut profile = None;
+        let mut floor = None;
+        let mut distribution = None;
+        let mut provider_selection_sha256 = None;
+        let mut host_options_sha256 = None;
+        while let Some(option) = args.next() {
+            let mut value = || args.next().map(PathBuf::from);
+            match option.to_string_lossy().as_ref() {
+                "--receipt" => receipt = value(),
+                "--root" => root = value(),
+                "--target" => {
+                    target = args
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
+                }
+                "--profile" => {
+                    profile = args
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
+                }
+                "--floor" => {
+                    floor = args
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
+                }
+                "--distribution" => {
+                    distribution = args
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
+                }
+                "--provider-selection-sha256" => {
+                    provider_selection_sha256 = args
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
+                }
+                "--host-options-sha256" => {
+                    host_options_sha256 = args
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
+                }
+                other => return fail(format!("unknown option: {other}")),
+            }
+        }
+        let Some(receipt_path) = receipt else {
+            return fail("--receipt is required");
+        };
+        let Some(root) = root else {
+            return fail("--root is required");
+        };
+        let Some(target) = target else {
+            return fail("--target is required");
+        };
+        let Some(profile) = profile else {
+            return fail("--profile is required");
+        };
+        let Some(floor) = floor else {
+            return fail("--floor is required");
+        };
+        let Some(distribution) = distribution else {
+            return fail("--distribution is required");
+        };
+        let Some(provider_selection_sha256) = provider_selection_sha256 else {
+            return fail("--provider-selection-sha256 is required");
+        };
+        let Some(host_options_sha256) = host_options_sha256 else {
+            return fail("--host-options-sha256 is required");
+        };
+        let bytes = match fs::read(&receipt_path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return fail(format!("cannot read {}: {error}", receipt_path.display()));
+            }
+        };
+        let expected = InstantiationIdentity {
+            target,
+            profile,
+            floor,
+            distribution,
+            provider_selection_sha256,
+            host_options_sha256,
+        };
+        let validated = match parse_instantiated_graph(&bytes, &root, &expected) {
+            Ok(receipt) => receipt,
+            Err(error) => return fail(error),
+        };
+        println!(
+            "inspect-instantiated: target={} profile={} floor={} distribution={} actions={} edges={} raw_occurrences={}",
+            validated.identity.target,
+            validated.identity.profile,
+            validated.identity.floor,
+            validated.identity.distribution,
+            validated.actions.len(),
+            validated.edges.len(),
+            validated.raw_occurrences.len(),
+        );
         return ExitCode::SUCCESS;
     }
     let mut manifest = None;
@@ -115,9 +228,7 @@ fn main() -> ExitCode {
         validated.action_order().len()
     );
     for (index, action) in validated.action_order().iter().enumerate() {
-        let spec = validated
-            .action(action)
-            .expect("validated action order");
+        let spec = validated.action(action).expect("validated action order");
         println!(
             "action[{index}]: name={} context={} authority={} delegation={} tool={} tool_sha256={} cwd={} argv={:?} depends_on={:?} inputs={:?} outputs={:?} environment={:?}",
             spec.name,
