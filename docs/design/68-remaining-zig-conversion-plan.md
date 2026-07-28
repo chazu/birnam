@@ -1,6 +1,7 @@
 # 68 — Remaining Zig Conversion and Native-Birnam Completion Plan
 
-> **Status:** Reviewed GO at `66b66b1` (2026-07-27). This plan starts from the
+> **Status:** Complete in retain mode at `b7763ad` (2026-07-28), following the
+> strict R6 and C4 receipt in `abi/c4-retain-receipt-v1.json`. This plan starts from the
 > accepted Rust floor/native-rung state at `rust-libid-floor` and is the
 > execution plan for the Zig residue that remains after the Rust conversion.
 > It supersedes neither Design 66's residue map nor Design 67's acceptance
@@ -21,6 +22,10 @@
   rollback, ownership, MOP, unsafe-boundary, bootstrap, receipt, or phase-order
   blocker. C0 may begin; later authority or retirement changes still require
   their specified focused reviews.
+- `b7763ad`: C4 retain decision — **accepted** by the recovery invariant. The
+  complete Zig vector remains pinned in the isolated rollback archive; no
+  source or fixture is deleted, and the strict R6/static-floor receipts are
+  recorded in `abi/c4-retain-receipt-v1.json`.
 
 ## 1. Objective and completion definition
 
@@ -530,6 +535,18 @@ implementation. Retain mode additionally requires the complete rollback
 archive and trace; retire mode requires two independent Rust production
 archives and the complete source/bootstrap proof with fixtures unavailable.
 
+**C4 retain receipt (2026-07-28, `b7763ad`):** retain mode is selected. The
+complete 14-member vector and Zig host oracle remain pinned by
+`abi/rollback-prefix-v1.json`; the fixed recovery source checkpoint is
+`e5504bb`, and the receipt records the archive command and mutually exclusive
+production/rollback contract. The current strict run passed `218/218` focused
+steps and `99/99` tests, `307/307` verify steps with `516/522` tests and six
+skips, `66/66` live-Alien steps with `9/9` tests, both Z3 archive traces, and
+the two already accepted benchmark crossings. `test-rust-dylib-audit` also
+passed with the exact four-symbol Rust floor boundary, system-library-only
+dependencies, clean install name, and no repository path. All ledger rows now
+have `next_phase=none`; rollback rows remain `pinned` by design.
+
 ## 10. Commit and review discipline
 
 - Every numbered implementation item is a small commit after its focused
@@ -567,16 +584,16 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
       strict R6 receipts.
 - [x] All later rung decisions are separately reviewed and reversible; the
       C2.2 rows remain blocked/pinned until the complete-vector decision.
-- [ ] No Rust provider statically exports another rung's `module_init` or
+- [x] No Rust provider statically exports another rung's `module_init` or
       identity.
-- [ ] Two Rust production archives, plus the explicit complete-vector rollback
+- [x] Two Rust production archives, plus the explicit complete-vector rollback
       archive in retain mode (or the no-fixture source bootstrap in retire
       mode), relocation, and hostile-input gates pass.
-- [ ] The final strict R6 receipt is remeasured after C0 and every boundary
+- [x] The final strict R6 receipt is remeasured after C0 and every boundary
       change; it retains `516/522`, six skipped, and only the two pinned
       benchmark crossings only when the live run proves those values. The
-current baseline is `307/307` verify steps.
-- [ ] Documentation, inventory, distribution, and rollback instructions match
+      current baseline is `307/307` verify steps.
+- [x] Documentation, inventory, distribution, and rollback instructions match
       the implemented ownership state.
 
 ## 12. Stop conditions

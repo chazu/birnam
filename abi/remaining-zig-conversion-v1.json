@@ -39,7 +39,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -54,7 +54,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "toolchain-review",
       "last_receipt": null
     },
@@ -69,7 +69,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -84,7 +84,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -99,7 +99,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -114,7 +114,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -129,7 +129,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -144,7 +144,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -159,7 +159,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -174,7 +174,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -189,7 +189,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -204,7 +204,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -219,7 +219,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -234,7 +234,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -249,7 +249,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -266,7 +266,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Alien readiness=blocked rollback_status=pinned; live callback, buffer, child-abort, TCC, and cross-floor suites passed"
     },
@@ -281,7 +281,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -298,7 +298,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -315,7 +315,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#dynamic:name:libbirnam_id_artifact.dylib"
       ],
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "r6-strict: artifact codec/projection/preflight and Zig oracle parity"
     },
@@ -330,7 +330,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -345,7 +345,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -360,7 +360,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": "r6-strict: Rust artifact preflight parity; native activation remains policy-owned"
     },
@@ -375,7 +375,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -390,7 +390,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -407,7 +407,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Codegen readiness=blocked rollback_status=pinned; canonical boundary, distribution, generated-C, and stack suites passed"
     },
@@ -422,7 +422,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -439,7 +439,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Collection readiness=blocked rollback_status=pinned; vector/map/range, GC-layout, isolate, and cross-floor suites passed"
     },
@@ -454,7 +454,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -469,7 +469,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -484,7 +484,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -501,7 +501,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Error readiness=blocked rollback_status=pinned; propagation, DNU swap, FFI abort, and lower-rung parity passed"
     },
@@ -516,7 +516,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -531,7 +531,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -546,7 +546,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -561,7 +561,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -578,7 +578,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts: floor readiness=blocked rollback_status=pinned; rust-id-v1 Debug/Release and Zig lower-rung matrix 256/256"
     },
@@ -595,7 +595,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -610,7 +610,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -627,7 +627,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Image readiness=blocked rollback_status=pinned; save, bootstrap, publication, rejection, and cross-floor suites passed"
     },
@@ -642,7 +642,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -659,7 +659,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Isolate readiness=blocked rollback_status=pinned; wire-v1, worker lifecycle, image rejection, and process-boundary suites passed"
     },
@@ -674,7 +674,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -691,7 +691,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Lang readiness=blocked rollback_status=pinned; grammar, diagnostic, installed-relocation, and lower-rung parity passed"
     },
@@ -706,7 +706,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -723,7 +723,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#canonical_host"
       ],
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "r6-strict: rust host boundary, relocated project/LSP/source traces; Zig host retained as rollback oracle"
     },
@@ -738,7 +738,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -753,7 +753,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -768,7 +768,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -785,7 +785,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts: PEG readiness=blocked rollback_status=pinned; CST/diagnostic/source/generated-C/metadata/stress parity passed"
     },
@@ -800,7 +800,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -817,7 +817,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Prelude readiness=blocked rollback_status=pinned; primitive, error, I/O, and lower-rung parity suites passed"
     },
@@ -832,7 +832,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -847,7 +847,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": "r6-strict: relocated project check/build/run/install/test"
     },
@@ -862,7 +862,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": "r6-strict: relocated project build/run/install/test"
     },
@@ -877,7 +877,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": "r6-strict: relocated project check and source-owned policy"
     },
@@ -894,7 +894,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: Relational readiness=blocked rollback_status=pinned; project/join/pull/aggregate and Zig Store cross-floor suites passed"
     },
@@ -909,7 +909,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -924,7 +924,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -939,7 +939,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -954,7 +954,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C1",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": "r6-strict: Rust/Zig runtime resource-resolution parity"
     },
@@ -969,7 +969,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -984,7 +984,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -999,7 +999,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1014,7 +1014,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1029,7 +1029,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1044,7 +1044,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1059,7 +1059,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1074,7 +1074,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1089,7 +1089,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1104,7 +1104,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1119,7 +1119,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1134,7 +1134,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1149,7 +1149,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1164,7 +1164,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1179,7 +1179,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1194,7 +1194,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1209,7 +1209,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1224,7 +1224,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1239,7 +1239,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1254,7 +1254,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1269,7 +1269,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1284,7 +1284,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1299,7 +1299,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1316,7 +1316,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts: Store readiness=blocked rollback_status=pinned; MOP and image/REPL consistency suites passed Zig plus Rust Debug/Release"
     },
@@ -1331,7 +1331,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1346,7 +1346,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1363,7 +1363,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": "c2-rung-receipts-v2: TCC readiness=blocked rollback_status=pinned; shell, artifact, audit, Alien, image, and lower-rung suites passed"
     },
@@ -1378,7 +1378,7 @@
       "identity_source": null,
       "digest_source": null,
       "required_fixtures": null,
-      "next_phase": "C0",
+      "next_phase": "none",
       "removal_authority": "none",
       "last_receipt": null
     },
@@ -1395,7 +1395,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1412,7 +1412,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_artifact.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1429,7 +1429,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_store.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1446,7 +1446,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_peg.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1463,7 +1463,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_lang.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1480,7 +1480,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_tcc.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1497,7 +1497,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_codegen.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1514,7 +1514,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_prelude.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1531,7 +1531,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_collection.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1548,7 +1548,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_error.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1565,7 +1565,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_isolate.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1582,7 +1582,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_relational.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1599,7 +1599,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_alien.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     },
@@ -1616,7 +1616,7 @@
       "required_fixtures": [
         "abi/rollback-prefix-v1.json#vector:libbirnam_id_image.dylib"
       ],
-      "next_phase": "C2",
+      "next_phase": "none",
       "removal_authority": "vector-review",
       "last_receipt": null
     }
