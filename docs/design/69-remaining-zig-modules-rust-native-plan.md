@@ -335,11 +335,11 @@ edge kinds, a connected action set, and the exact 14-provider/dylib closure.
 Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
-authority. The driver still cannot execute until instantiated
-implicit Zig Build edges and a receipt-bound build-file trust anchor are
-represented; the parser now pins the source graph to `build.zig` and the
-M4.1 `abi/birnam-build-actions-v1.json` path, with commit/tree receipt binding
-still required before execution. Production selection also requires
+authority. The graph receipt commit/tree and its recorded `build.zig` digest
+are now bound before validation succeeds. The driver still cannot execute
+until instantiated implicit Zig Build edges and one-to-one provider/module
+producer closure are represented; the parser pins the source graph to
+`build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. Production selection also requires
 production-context actions and rejects Zig/oracle markers across logical and
 resolved tool paths, argv, paths, and environment values.
 
