@@ -150,14 +150,14 @@ canonical dynamic name. Every row has a unique `key`: path keys are
 `dynamic:name:<canonical dylib name>`. Each row contains:
 
 ```text
-path/name, kind, current_owner, target_owner, production_status,
+key, kind, current_owner, target_owner, production_status,
 rollback_status, identity_source, digest_source, required_fixtures,
 next_phase, removal_authority, last_receipt
 ```
 
 Allowed `kind` values are `zig-source`, `dynamic-provider`, `build-oracle`,
 `shared-contract`, `policy-source`, and `evidence-fixture`. Allowed
-`current_owner` values are `zig-floor`, `zig-rung`, `zig-host-oracle`,
+`current_owner` values are `rust-dylib`, `zig-floor`, `zig-rung`, `zig-host-oracle`,
 `zig-artifact-oracle`, `zig-preflight-oracle`, `zig-build`, `shared-contract`,
 `native-birnam-policy`, and `evidence`. Allowed `target_owner` values are
 `rust-dylib`, `rust-host`, `build-only`, `native-birnam-policy`,
@@ -173,9 +173,10 @@ rows; `required_fixtures` is required for rows with `rollback_status=required`
 or `pinned`; `last_receipt` is required after a gate and otherwise explicitly
 `null`. `next_phase`, `removal_authority`, and those source/fixture/receipt
 fields may be `null` only when their condition is not applicable; omitted
-fields are invalid. Dynamic-provider rows must reference a name and identity
-manifest in `abi/remaining-zig-v1.json`; fixture references must resolve to a
-declared vector entry or checked evidence receipt.
+fields are invalid. Canonical `dynamic-provider` rows must use
+`current_owner=rust-dylib` and reference a name and identity manifest in
+`abi/remaining-zig-v1.json`; fixture references must resolve to a declared
+vector entry or checked evidence receipt.
 
 The separate `policy_owners` section has keys
 `birnam:path:<repo-relative .birnam path>` and covers every `.birnam` source
