@@ -334,9 +334,11 @@ source/input/tool paths reject symlink components and are canonicalized under
 the root; output prefixes reject existing symlink components; full-semantic
 manifests require source-graph roots, expression bindings for every captured
 edge, exact binding coverage with no unbound or extra captured expressions,
-and a one-to-one typed `kind: "source"` edge for every captured `.dependOn`
-pair. Resolved source/implicit edges must still reconcile exactly with each
-action’s declared dependency set, preserving one canonical topological order;
+and a typed `kind: "source"` edge for every unique captured `.dependOn` pair.
+The occurrence receipt remains separate: the parser retains all syntactic
+occurrences (including repeated calls) while resolving duplicate calls to one
+semantic edge. Resolved source/implicit edges must still reconcile exactly
+with each action’s declared dependency set, preserving one canonical order;
 the graph also requires a rooted acyclic closure, explicit implicit-edge
 kinds, a connected action set, the exact 14-provider/dylib closure, and
 producer mappings whose declared outputs cover every selected provider and
