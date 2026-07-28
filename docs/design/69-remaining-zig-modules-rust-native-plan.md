@@ -332,7 +332,9 @@ Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks. The driver still cannot execute until instantiated
 implicit Zig Build edges and a receipt-bound build-file trust anchor are
-represented.
+represented; the parser now pins the source graph to `build.zig` and the
+M4.1 `abi/birnam-build-actions-v1.json` path, with commit/tree receipt binding
+still required before execution.
 
 ### M4.3 Compiler invocation and stage-1 module compilation
 
