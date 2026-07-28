@@ -546,6 +546,53 @@ fn contained_output_path(root: &Path, relative: &Path, label: &str) -> Result<()
     Ok(())
 }
 
+fn snapshot_files(root: &Path, relative: &Path) -> Result<BTreeSet<PathBuf>, ManifestError> {
+    let prefix = root.join(relative);
+    let metadata = match fs::symlink_metadata(&prefix) {
+        Ok(metadata) => metadata,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(source) => return Err(error(format!("cannot inspect output prefix: {source}"))),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(error("output prefix contains a symlink"));
+    }
+    let mut files = BTreeSet::new();
+    fn visit(root: &Path, path: &Path, files: &mut BTreeSet<PathBuf>) -> Result<(), ManifestError> {
+        for entry in fs::read_dir(path)
+            .map_err(|source| error(format!("cannot read output prefix: {source}")))?
+        {
+            let entry =
+                entry.map_err(|source| error(format!("cannot read output entry: {source}")))?;
+            let entry_path = entry.path();
+            let metadata = fs::symlink_metadata(&entry_path)
+                .map_err(|source| error(format!("cannot inspect output entry: {source}")))?;
+            if metadata.file_type().is_symlink() {
+                return Err(error(format!(
+                    "output prefix contains a symlink: {}",
+                    entry_path.display()
+                )));
+            }
+            if metadata.is_dir() {
+                visit(root, &entry_path, files)?;
+            } else if metadata.is_file() {
+                files.insert(
+                    entry_path
+                        .strip_prefix(root)
+                        .expect("output entry is under root")
+                        .to_path_buf(),
+                );
+            }
+        }
+        Ok(())
+    }
+    if metadata.is_dir() {
+        visit(root, &prefix, &mut files)?;
+    } else if metadata.is_file() {
+        files.insert(relative.to_path_buf());
+    }
+    Ok(files)
+}
+
 fn validate_path_ref(path_ref: &PathRef, root: &Path, label: &str) -> Result<(), ManifestError> {
     if !valid_digest(&path_ref.sha256) {
         return Err(error(format!("{label} has an invalid sha256 digest")));
@@ -1400,6 +1447,21 @@ pub fn execute_shadow_graph(
             "shadow executor requires every action to use shadow context, authority, and explicit-shadow delegation",
         ));
     }
+    let declared_output_paths = validated
+        .manifest
+        .actions
+        .iter()
+        .flat_map(|action| action.outputs.iter().map(|output| output.path.clone()))
+        .collect::<BTreeSet<_>>();
+    let initial_output_files = snapshot_files(&validated.root, &validated.manifest.prefix)?;
+    if initial_output_files
+        .iter()
+        .any(|path| !declared_output_paths.contains(path))
+    {
+        return Err(error(
+            "shadow execution output prefix contains an undeclared pre-existing file",
+        ));
+    }
     let mut executions = Vec::with_capacity(validated.action_order.len());
     for action_name in &validated.action_order {
         let action = validated
@@ -1461,6 +1523,16 @@ pub fn execute_shadow_graph(
                 action.name,
                 status,
                 String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let output_files = snapshot_files(&validated.root, &validated.manifest.prefix)?;
+        if output_files
+            .iter()
+            .any(|path| !declared_output_paths.contains(path))
+        {
+            return Err(error(format!(
+                "action {} created an undeclared output",
+                action.name
             )));
         }
         let mut output_digests = BTreeMap::new();
@@ -1918,11 +1990,22 @@ mod tests {
         let context_error = execute_shadow_graph(&wrong_context)
             .expect_err("shadow execution must reject canonical action context");
         assert!(context_error.0.contains("requires every action"));
-        let mut stale_output = validated;
+        let mut stale_output = validated.clone();
         stale_output.manifest.actions[0].outputs[0].sha256 = "0".repeat(64);
         let output_error = execute_shadow_graph(&stale_output)
             .expect_err("shadow execution must verify declared output digests");
         assert!(output_error.0.contains("output digest mismatch"));
+        let mut rogue_source = fs::read(&runner).expect("runner bytes");
+        rogue_source.extend_from_slice(b"\nprintf '%s' rogue > ../out/rogue\n");
+        fs::write(&runner, &rogue_source).expect("rogue runner");
+        let rogue_digest = hex::encode(Sha256::digest(&rogue_source));
+        let mut rogue = validated;
+        for action in &mut rogue.manifest.actions {
+            action.tool_sha256 = rogue_digest.clone();
+        }
+        let rogue_error = execute_shadow_graph(&rogue)
+            .expect_err("shadow execution must reject undeclared output writes");
+        assert!(rogue_error.0.contains("undeclared output"));
     }
 
     #[test]
