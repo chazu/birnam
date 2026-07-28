@@ -149,9 +149,19 @@ pub struct ActionSpec {
     pub cwd: PathBuf,
     pub command: Vec<String>,
     pub depends_on: Vec<String>,
-    pub inputs: Vec<PathRef>,
+    pub inputs: Vec<ArtifactRef>,
     pub outputs: Vec<PathRef>,
     pub environment: BTreeMap<String, EnvironmentValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactRef {
+    pub kind: String,
+    pub path: PathBuf,
+    pub sha256: String,
+    #[serde(default)]
+    pub producer: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -216,7 +226,7 @@ pub struct ActionExecution {
     pub tool_sha256: String,
     pub cwd: PathBuf,
     pub argv: Vec<String>,
-    pub inputs: Vec<PathRef>,
+    pub inputs: Vec<ArtifactRef>,
     pub outputs: Vec<PathRef>,
     pub output_digests: BTreeMap<PathBuf, String>,
 }
@@ -659,10 +669,19 @@ fn snapshot_declared_output_digests(
 }
 
 fn validate_path_ref(path_ref: &PathRef, root: &Path, label: &str) -> Result<(), ManifestError> {
-    if !valid_digest(&path_ref.sha256) {
+    validate_external_artifact(&path_ref.path, &path_ref.sha256, root, label)
+}
+
+fn validate_external_artifact(
+    path: &Path,
+    sha256: &str,
+    root: &Path,
+    label: &str,
+) -> Result<(), ManifestError> {
+    if !valid_digest(sha256) {
         return Err(error(format!("{label} has an invalid sha256 digest")));
     }
-    let resolved = contained_existing_path(root, &path_ref.path, label)?;
+    let resolved = contained_existing_path(root, path, label)?;
     if !resolved.is_file() {
         return Err(error(format!(
             "{label} does not name an input file: {}",
@@ -670,11 +689,11 @@ fn validate_path_ref(path_ref: &PathRef, root: &Path, label: &str) -> Result<(),
         )));
     }
     let observed = sha256_file(&resolved)?;
-    if observed != path_ref.sha256 {
+    if observed != sha256 {
         return Err(error(format!(
             "{label} digest mismatch for {}: manifest {}, observed {}",
-            path_ref.path.display(),
-            path_ref.sha256,
+            path.display(),
+            sha256,
             observed
         )));
     }
@@ -861,6 +880,22 @@ fn validate_dependencies(actions: &[ActionSpec]) -> Result<Vec<String>, Manifest
         visit(action.name.as_str(), &by_name, &mut state, &mut order)?;
     }
     Ok(order)
+}
+
+fn dependency_reaches(
+    actions: &[ActionSpec],
+    from: &str,
+    target: &str,
+    seen: &mut BTreeSet<String>,
+) -> bool {
+    let Some(action) = actions.iter().find(|action| action.name == from) else {
+        return false;
+    };
+    action.depends_on.iter().any(|dependency| {
+        dependency == target
+            || (seen.insert(dependency.clone())
+                && dependency_reaches(actions, dependency, target, seen))
+    })
 }
 
 /// Parse and validate a driver manifest against a checkout/prefix root.
@@ -1304,6 +1339,71 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 action.name
             )));
         }
+        for (index, input) in action.inputs.iter().enumerate() {
+            let label = format!("action {} input {index}", action.name);
+            if !valid_digest(&input.sha256) {
+                return Err(error(format!("{label} has an invalid sha256 digest")));
+            }
+            match input.kind.as_str() {
+                "external" => {
+                    if input.producer.is_some() {
+                        return Err(error(format!(
+                            "{label} external artifact cannot name a producer"
+                        )));
+                    }
+                    validate_external_artifact(&input.path, &input.sha256, &root, &label)?;
+                }
+                "produced" => {
+                    let producer = input.producer.as_deref().ok_or_else(|| {
+                        error(format!("{label} produced artifact has no producer"))
+                    })?;
+                    safe_name(producer, "artifact producer")?;
+                    if !action_names.contains(producer) {
+                        return Err(error(format!(
+                            "{label} names an unknown producer action {producer}"
+                        )));
+                    }
+                    if producer == action.name
+                        || !dependency_reaches(
+                            &manifest.actions,
+                            &action.name,
+                            producer,
+                            &mut BTreeSet::new(),
+                        )
+                    {
+                        return Err(error(format!(
+                            "{label} producer {producer} is not an upstream dependency"
+                        )));
+                    }
+                    safe_relative_path(&input.path, &label)?;
+                    contained_output_path(&root, &input.path, &label)?;
+                    if !input.path.starts_with(&manifest.prefix) {
+                        return Err(error(format!(
+                            "{label} produced artifact is outside the output prefix"
+                        )));
+                    }
+                    let producer_action = manifest
+                        .actions
+                        .iter()
+                        .find(|candidate| candidate.name == producer)
+                        .expect("producer action checked above");
+                    if !producer_action
+                        .outputs
+                        .iter()
+                        .any(|output| output.path == input.path && output.sha256 == input.sha256)
+                    {
+                        return Err(error(format!(
+                            "{label} does not match a declared output of producer {producer}"
+                        )));
+                    }
+                }
+                other => {
+                    return Err(error(format!(
+                        "{label} has unknown artifact kind {other}"
+                    )));
+                }
+            }
+        }
         if action.context == "production" {
             let forbidden = |value: &str| {
                 value.contains("birnam-zig-oracle")
@@ -1357,13 +1457,6 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
                 )));
             }
         }
-        for (index, input) in action.inputs.iter().enumerate() {
-            validate_path_ref(
-                input,
-                &root,
-                &format!("action {} input {index}", action.name),
-            )?;
-        }
         for (index, output) in action.outputs.iter().enumerate() {
             let output_label = format!("action {} output {index}", action.name);
             contained_output_path(&root, &output.path, &output_label)?;
@@ -1394,7 +1487,13 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     let mut output_owners = BTreeMap::new();
     let mut input_paths = BTreeSet::new();
     for action in &manifest.actions {
-        input_paths.extend(action.inputs.iter().map(|input| input.path.clone()));
+        input_paths.extend(
+            action
+                .inputs
+                .iter()
+                .filter(|input| input.kind == "external")
+                .map(|input| input.path.clone()),
+        );
     }
     for action in &manifest.actions {
         for output in &action.outputs {
@@ -1575,11 +1674,30 @@ pub fn execute_shadow_graph(
             )));
         }
         for (index, input) in action.inputs.iter().enumerate() {
-            validate_path_ref(
-                input,
-                &validated.root,
-                &format!("action {} input {index}", action.name),
-            )?;
+            let label = format!("action {} input {index}", action.name);
+            if input.kind == "external" {
+                validate_external_artifact(
+                    &input.path,
+                    &input.sha256,
+                    &validated.root,
+                    &label,
+                )?;
+            } else {
+                let resolved = contained_existing_path(&validated.root, &input.path, &label)?;
+                if !resolved.is_file() {
+                    return Err(error(format!(
+                        "{label} produced artifact is unavailable: {}",
+                        input.path.display()
+                    )));
+                }
+                let observed = sha256_file(&resolved)?;
+                if observed != input.sha256 {
+                    return Err(error(format!(
+                        "{label} produced artifact digest mismatch for {}",
+                        input.path.display()
+                    )));
+                }
+            }
         }
         let mut command = Command::new(&tool_path);
         command.args(action.command.iter().skip(1));
@@ -1823,7 +1941,7 @@ mod tests {
                     "cwd": "work",
                     "command": ["zig", "prepare"],
                     "depends_on": [],
-                    "inputs": [{"path": "module.birnam", "sha256": digest}],
+                    "inputs": [{"kind": "external", "path": "module.birnam", "sha256": digest}],
                     "outputs": [{"path": "out/prepare", "sha256": "b".repeat(64)}],
                     "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }, {
@@ -1836,7 +1954,7 @@ mod tests {
                     "cwd": "work",
                     "command": ["zig", "build-module"],
                     "depends_on": ["prepare"],
-                    "inputs": [{"path": "module.birnam", "sha256": digest}],
+                    "inputs": [{"kind": "external", "path": "module.birnam", "sha256": digest}],
                     "outputs": std::iter::once(json!({"path": "out/module.dylib", "sha256": "c".repeat(64)})).chain(stage1_outputs).chain(provider_outputs).collect::<Vec<_>>(),
                     "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }],
@@ -1869,6 +1987,38 @@ mod tests {
         let parsed = parse_and_validate(&fixture.bytes, &fixture.root).expect("valid manifest");
         assert_eq!(parsed.action_order, ["prepare", "compile"]);
         assert_eq!(parsed.proof_strength, ProofStrength::FileBound);
+    }
+
+    #[test]
+    fn accepts_upstream_produced_artifact_without_preexisting_file() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][1]["inputs"][0] = json!({
+                "kind": "produced",
+                "producer": "prepare",
+                "path": "out/prepare",
+                "sha256": "b".repeat(64)
+            });
+        });
+        let parsed = parse_and_validate(&bytes, &fixture.root)
+            .expect("upstream produced artifact should be a deferred input");
+        assert_eq!(parsed.action_order, ["prepare", "compile"]);
+    }
+
+    #[test]
+    fn rejects_produced_artifact_without_upstream_owner() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| {
+            value["actions"][0]["inputs"][0] = json!({
+                "kind": "produced",
+                "producer": "compile",
+                "path": "out/module.dylib",
+                "sha256": "c".repeat(64)
+            });
+        });
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("non-upstream produced input must be rejected");
+        assert!(error.0.contains("not an upstream dependency"));
     }
 
     #[test]

@@ -291,6 +291,8 @@ fully resolved semantic graph before any Rust build action is authoritative.
    workspace crate) with a versioned manifest schema containing the action-DAG
    identity, target triple, profile, selected floor/provider identities,
    source modules and their producer actions, provider producer actions,
+   typed external versus produced tool/input references with producer
+   reachability and digest ownership,
    dependency order, dynamic install names, output prefix, tool paths,
    normalized environment, and input/output digests. Runtime
    dependencies list only dylib names.
@@ -310,10 +312,12 @@ environment capture. Commit this slice independently.
 The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
 `dry-run` parser. It requires `semantic_scope=projected-shadow-v1` and an
 explicit `environment_base=clear`; the former names the projected shadow
-receipt, not instantiated semantic truth. It binds graph and input digests to
-files under the supplied root, rejects path escape,
+receipt, not instantiated semantic truth. It binds graph and external input
+digests to files under the supplied root, while produced inputs are deferred to
+their upstream producer and checked for ownership/reachability. It rejects
+path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-17 focused parser/runner tests. The R6 acceptance script runs this semantic-driver
+20 focused parser/runner tests. The R6 acceptance script runs this semantic-driver
 suite fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
