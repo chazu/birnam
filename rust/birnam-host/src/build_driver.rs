@@ -710,10 +710,10 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             "graph receipt anchor disagrees with the M4.1 source receipt",
         ));
     }
-    let receipt_source_digests = transaction
+    let receipt_source_digests = graph_document
         .get("source_digests")
         .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| error("graph source transaction has no source_digests"))?;
+        .ok_or_else(|| error("graph source has no source_digests"))?;
     let receipt_build_digest = receipt_source_digests
         .get("build.zig")
         .and_then(serde_json::Value::as_str)
@@ -1098,9 +1098,9 @@ mod tests {
             let graph_document = json!({
                 "transaction": {
                     "receipt_commit": receipt_commit.clone(),
-                    "receipt_tree": receipt_tree.clone(),
-                    "source_digests": {"build.zig": build_digest.clone()}
-                }
+                    "receipt_tree": receipt_tree.clone()
+                },
+                "source_digests": {"build.zig": build_digest.clone()}
             });
             let graph_bytes = serde_json::to_vec(&graph_document).expect("graph JSON");
             fs::write(root.join("abi/birnam-build-actions-v1.json"), &graph_bytes).expect("graph");
@@ -1359,6 +1359,16 @@ mod tests {
         let source =
             fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build.zig"))
                 .expect("build.zig");
+        let graph: Value = serde_json::from_str(
+            &fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../abi/birnam-build-actions-v1.json"),
+            )
+            .expect("M4.1 graph receipt"),
+        )
+        .expect("M4.1 graph JSON");
+        assert!(graph.get("source_digests").is_some());
+        assert!(graph["transaction"].get("source_digests").is_none());
         let capture = capture_zig_dependencies(&source).expect("all dependOn calls resolve");
         assert_eq!(capture.occurrence_count, 464);
         assert_eq!(capture.edges.len(), capture.occurrence_count);
