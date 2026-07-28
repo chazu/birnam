@@ -91,8 +91,18 @@ fn main() -> ExitCode {
         println!("execute-shadow: actions={}", executions.len());
         for (index, execution) in executions.iter().enumerate() {
             println!(
-                "action[{index}]: name={} status={} stdout={:?} stderr={:?}",
-                execution.action, execution.status, execution.stdout, execution.stderr
+                "action[{index}]: name={} status={} tool={} tool_sha256={} cwd={} argv={:?} inputs={:?} outputs={:?} output_digests={:?} stdout={:?} stderr={:?}",
+                execution.action,
+                execution.status,
+                execution.tool.display(),
+                execution.tool_sha256,
+                execution.cwd.display(),
+                execution.argv,
+                execution.inputs,
+                execution.outputs,
+                execution.output_digests,
+                execution.stdout,
+                execution.stderr
             );
         }
         return ExitCode::SUCCESS;

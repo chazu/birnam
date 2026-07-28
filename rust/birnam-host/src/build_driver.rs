@@ -193,6 +193,13 @@ pub struct ActionExecution {
     pub status: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+    pub tool: PathBuf,
+    pub tool_sha256: String,
+    pub cwd: PathBuf,
+    pub argv: Vec<String>,
+    pub inputs: Vec<PathRef>,
+    pub outputs: Vec<PathRef>,
+    pub output_digests: BTreeMap<PathBuf, String>,
 }
 
 fn error(message: impl Into<String>) -> ManifestError {
@@ -1423,7 +1430,7 @@ pub fn execute_shadow_graph(
                 &format!("action {} input {index}", action.name),
             )?;
         }
-        let mut command = Command::new(tool_path);
+        let mut command = Command::new(&tool_path);
         command.args(action.command.iter().skip(1));
         command.current_dir(validated.root.join(&action.cwd));
         let clear_environment = action
@@ -1456,6 +1463,7 @@ pub fn execute_shadow_graph(
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
+        let mut output_digests = BTreeMap::new();
         for (index, declared) in action.outputs.iter().enumerate() {
             let output_path = contained_existing_path(
                 &validated.root,
@@ -1469,19 +1477,28 @@ pub fn execute_shadow_graph(
                     declared.path.display()
                 )));
             }
-            if sha256_file(&output_path)? != declared.sha256 {
+            let observed_digest = sha256_file(&output_path)?;
+            if observed_digest != declared.sha256 {
                 return Err(error(format!(
                     "action {} output digest mismatch for {}",
                     action.name,
                     declared.path.display()
                 )));
             }
+            output_digests.insert(declared.path.clone(), observed_digest);
         }
         executions.push(ActionExecution {
             action: action.name.clone(),
             status,
             stdout: output.stdout,
             stderr: output.stderr,
+            tool: tool_path,
+            tool_sha256: action.tool_sha256.clone(),
+            cwd: validated.root.join(&action.cwd),
+            argv: action.command.clone(),
+            inputs: action.inputs.clone(),
+            outputs: action.outputs.clone(),
+            output_digests,
         });
     }
     Ok(executions)
