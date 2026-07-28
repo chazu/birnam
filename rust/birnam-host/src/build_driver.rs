@@ -36,6 +36,7 @@ pub struct DriverManifest {
 #[serde(deny_unknown_fields)]
 pub struct GraphIdentity {
     pub id: String,
+    pub source_path: PathBuf,
     pub source_sha256: String,
 }
 
@@ -293,8 +294,23 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         return Err(error(format!("unsupported profile: {}", manifest.profile)));
     }
     safe_name(&manifest.graph.id, "graph id")?;
+    safe_relative_path(&manifest.graph.source_path, "graph source")?;
     if !valid_digest(&manifest.graph.source_sha256) {
         return Err(error("graph source_sha256 is malformed"));
+    }
+    let graph_source = root.join(&manifest.graph.source_path);
+    if !graph_source.is_file() {
+        return Err(error(format!(
+            "graph source is unavailable: {}",
+            manifest.graph.source_path.display()
+        )));
+    }
+    let observed_graph_digest = sha256_file(&graph_source)?;
+    if observed_graph_digest != manifest.graph.source_sha256 {
+        return Err(error(format!(
+            "graph source digest mismatch: manifest {}, observed {}",
+            manifest.graph.source_sha256, observed_graph_digest
+        )));
     }
     validate_selection(&manifest.selection)?;
     safe_relative_path(&manifest.prefix, "output prefix")?;
@@ -408,12 +424,13 @@ mod tests {
             fs::create_dir_all(&root).expect("fixture root");
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
+            fs::write(root.join("graph.json"), b"graph").expect("graph");
             let digest = hex::encode(Sha256::digest(b"module"));
-            let graph_digest = "a".repeat(64);
+            let graph_digest = hex::encode(Sha256::digest(b"graph"));
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
-                "graph": {"id": "build-actions-v1", "source_sha256": graph_digest},
+                "graph": {"id": "build-actions-v1", "source_path": "graph.json", "source_sha256": graph_digest},
                 "target": "aarch64-macos",
                 "profile": "release",
                 "selection": {"distribution": "production", "floor": "rust", "providers": {"store": "rust"}},
