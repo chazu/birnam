@@ -6,7 +6,6 @@
 //! rung remains a later host boundary.
 
 pub mod build_driver;
-pub mod instantiated_graph;
 
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -9671,3 +9670,5 @@ mod tests {
         }
     }
 }
+
+pub mod instantiated_graph;
