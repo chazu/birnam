@@ -369,10 +369,12 @@ digests immediately before spawn, verifies declared outputs, and fences output
 ownership. Production and rollback execution remain refused.
 
 The landed `instantiated_graph` module is a data-only validator for
-synthetic/external receipt fixtures. It does not extract a Zig Build graph,
-authenticate the emitter, or yet carry the full action contract, and therefore
-is not instantiated semantic truth. The landed bootstrap and publication
-modules are likewise schema validators, not provenance or atomicity proofs.
+synthetic/external receipt fixtures. Schema v3 now carries the source-manifest
+and extractor implementation/version/path/digest/invocation binding, plus the
+full action closure, but the module still does not launch or authenticate a Zig
+Build emitter and therefore is not instantiated semantic truth. The landed
+bootstrap and publication modules are likewise schema validators, not
+provenance or atomicity proofs.
 No receipt validator result is a production capability constructor.
 
 The next M4.2 slice must instrument/query the actually instantiated Zig Build

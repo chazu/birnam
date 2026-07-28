@@ -13,8 +13,8 @@ use std::path::{Component, Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const INSTANTIATED_GRAPH_SCHEMA: u32 = 2;
-pub const INSTANTIATED_GRAPH_SCOPE: &str = "instantiated-dry-run-v2";
+pub const INSTANTIATED_GRAPH_SCHEMA: u32 = 3;
+pub const INSTANTIATED_GRAPH_SCOPE: &str = "instantiated-dry-run-v3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,11 +33,25 @@ pub struct InstantiatedGraphReceipt {
     pub schema: u32,
     pub semantic_scope: String,
     pub identity: InstantiationIdentity,
+    pub source_manifest: PathRef,
+    pub extractor: ExtractorBinding,
     pub build_file: PathRef,
     pub actions: Vec<InstantiatedAction>,
     pub edges: Vec<InstantiatedEdge>,
     pub raw_occurrences: Vec<RawDependencyOccurrence>,
     pub roots: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtractorBinding {
+    pub implementation: String,
+    pub version: String,
+    pub path: PathBuf,
+    pub sha256: String,
+    pub invocation: Vec<String>,
+    pub invocation_sha256: String,
+    pub source_tree_sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -304,6 +318,59 @@ pub fn parse_and_validate(
         )));
     }
     validate_identity(&receipt.identity, expected)?;
+    safe_name(
+        &receipt.extractor.implementation,
+        "extractor implementation",
+    )?;
+    safe_name(&receipt.extractor.version, "extractor version")?;
+    if !valid_digest(&receipt.extractor.sha256)
+        || !valid_digest(&receipt.extractor.invocation_sha256)
+        || !valid_digest(&receipt.extractor.source_tree_sha256)
+        || !valid_digest(&receipt.source_manifest.sha256)
+    {
+        return Err(error(
+            "instantiated extractor or source digest is malformed",
+        ));
+    }
+    let source_manifest = contained_file(&root, &receipt.source_manifest.path, "source manifest")?;
+    if !source_manifest.is_file()
+        || sha256_file(&source_manifest)? != receipt.source_manifest.sha256
+    {
+        return Err(error("source manifest digest does not match the receipt"));
+    }
+    if receipt.extractor.source_tree_sha256 != sha256_file(&source_manifest)? {
+        return Err(error(
+            "extractor source tree digest does not match the manifest",
+        ));
+    }
+    let extractor_path = contained_file(&root, &receipt.extractor.path, "extractor path")?;
+    if !extractor_path.is_file() || sha256_file(&extractor_path)? != receipt.extractor.sha256 {
+        return Err(error("extractor implementation digest does not match"));
+    }
+    if receipt.extractor.invocation.is_empty()
+        || receipt
+            .extractor
+            .invocation
+            .iter()
+            .any(|part| part.is_empty())
+        || receipt
+            .extractor
+            .invocation
+            .iter()
+            .any(|part| part.contains('\0'))
+    {
+        return Err(error("extractor invocation has an empty or NUL component"));
+    }
+    let extractor_name = extractor_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| error("extractor path has no UTF-8 file name"))?;
+    if receipt.extractor.invocation.first().map(String::as_str) != Some(extractor_name) {
+        return Err(error("extractor invocation does not bind its executable"));
+    }
+    if argv_sha256(&receipt.extractor.invocation)? != receipt.extractor.invocation_sha256 {
+        return Err(error("extractor invocation digest does not match"));
+    }
     if !valid_digest(&receipt.build_file.sha256) {
         return Err(error("build_file has an invalid sha256 digest"));
     }
@@ -644,10 +711,17 @@ mod tests {
             fs::write(root.join("build.zig"), build).expect("build source");
             let digest = hex::encode(Sha256::digest(build));
             fs::write(root.join("zig"), b"zig-tool").expect("tool");
+            let source_manifest = b"source-tree-manifest";
+            fs::write(root.join("source-manifest.json"), source_manifest).expect("source manifest");
             fs::create_dir_all(root.join("work")).expect("work directory");
             let tool_digest = hex::encode(Sha256::digest(b"zig-tool"));
             let prepare_argv = vec!["zig".to_string(), "prepare".to_string()];
             let compile_argv = vec!["zig".to_string(), "compile".to_string()];
+            let extractor_argv = vec![
+                "zig".to_string(),
+                "build".to_string(),
+                "inspect-instantiated".to_string(),
+            ];
             let prepare_argv_digest = hex::encode(Sha256::digest(
                 serde_json::to_vec(&prepare_argv).expect("prepare argv"),
             ));
@@ -666,6 +740,25 @@ mod tests {
                 "schema": INSTANTIATED_GRAPH_SCHEMA,
                 "semantic_scope": INSTANTIATED_GRAPH_SCOPE,
                 "identity": expected,
+                "source_manifest": {
+                    "path": "source-manifest.json",
+                    "sha256": hex::encode(Sha256::digest(source_manifest))
+                },
+                "extractor": {
+                    "implementation": "zig-build-extractor",
+                    "version": "2026-07-28",
+                    "path": "zig",
+                    "sha256": tool_digest,
+                    "invocation": extractor_argv,
+                    "invocation_sha256": hex::encode(Sha256::digest(
+                        serde_json::to_vec(&vec![
+                            "zig".to_string(),
+                            "build".to_string(),
+                            "inspect-instantiated".to_string()
+                        ]).expect("extractor argv")
+                    )),
+                    "source_tree_sha256": hex::encode(Sha256::digest(source_manifest))
+                },
                 "build_file": {"path": "build.zig", "sha256": digest},
                 "actions": [
                     {
@@ -776,6 +869,13 @@ mod tests {
         assert!(error
             .0
             .contains("does not match the requested configuration"));
+
+        let bytes = mutate(&fixture, |value| {
+            value["extractor"]["invocation"][0] = json!("other-zig");
+        });
+        let error = parse_and_validate(&bytes, &fixture.root, &fixture.expected)
+            .expect_err("extractor executable binding must be authenticated");
+        assert!(error.0.contains("does not bind its executable"));
     }
 
     #[test]
