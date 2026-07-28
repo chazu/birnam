@@ -191,7 +191,7 @@ the expanded coverage inventory rather than a representative-only sample. The
 hardened receipt is green:
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=288
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=78 build_targets=124 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
 test-remaining-zig-inventory success
 ```
 
@@ -211,7 +211,7 @@ rust-artifact-authority: codec=pointer-free projection=single-module-init host=p
 ```
 
 The strict rerun `BIRNAM_R6_REQUIRE_VERIFY=1 bash
-scripts/r6-acceptance.sh` passes `305/305` verify steps, `516/522` tests, and
+scripts/r6-acceptance.sh` passes `306/306` verify steps, `516/522` tests, and
 six skips. Z3 emits `distribution-selection: production omits Zig; rollback is
 a complete Zig vector` and `z3-archive: production_a=clean production_b=clean
 rollback=full-zig traces=ok`. The benchmark comparator remains unchanged with
@@ -311,23 +311,29 @@ and the Zig helper/oracle and complete rollback vector remain recoverable.
 ### R6 gate refresh receipt (2026-07-27)
 
 The latest P0/P1 inventory, boundary, owner, and artifact checks are now part
-of the scoped R6 matrix. Commit `bb387d8` pins the expanded matrix at
-`183/183` build steps and `99/99` tests; the five added targets contribute
+of the scoped R6 matrix. Commit `9ad93c0` pins the expanded matrix at
+`216/216` build steps and `99/99` tests; the added boundary and codec targets contribute
 steps, not runtime test cases, and their receipts are asserted explicitly:
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=18 test_scripts=77 build_targets=123 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=288
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=78 build_targets=124 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
 remaining-zig-boundary: rust_receipts=14 zig_oracle_receipts=14 canonical_load_trace=ok oracle_load_trace=ok policy_authority=ok
 rust-host-message-owner-inventory: ok send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56 disposition=read-only
 rust-artifact-authority: codec=pointer-free projection=single-module-init host=preflight-before-activation policy=native-loadArtifact
 rust-artifact-preflight: shared eight-case dependency, identity, format, path, native, and real-sentinel corpus passed (debug)
+rust-codegen-dylib-audit: exact canonical Rust Codegen boundary passed
 ```
 
-The strict rerun at that commit also passes `305/305` verify steps, `516/522`
+The strict rerun at that commit also passes `306/306` verify steps, `516/522`
 tests, six skips, both Z3 receipts, and exactly the existing two benchmark
 crossings (`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`), with
 zero missing or unusable cases. No provider selection, benchmark allowance, or
 rollback policy changed.
+
+The canonical Rust Codegen dylib is linked against the provider-free Image and
+Artifact codec crates. Image and Artifact provider modules remain separately
+gated authorities; the exact boundary audit rejects cross-rung exports and
+non-system dependencies.
 
 ## 6. Phase P2 — per-rung retirement-readiness, no vector mutation
 
@@ -767,8 +773,8 @@ r6-acceptance: PASS
   accepted only for this snapshot: query.aggregate +5.8%, compile.stage1-stdlib +11.9%
 ```
 
-The strict gate retained the expanded R6 focused matrix (`183/183` steps,
-`99/99` tests), the full verification totals (`305/305` steps,
+The strict gate retained the expanded R6 focused matrix (`216/216` steps,
+`99/99` tests), the full verification totals (`306/306` steps,
 `516/522` tests, six skips), and the existing comparator policy: exactly two
 accepted regressions, with `missing=0` and `unusable=0`. The ReleaseSafe
 distribution was produced as `zig-out/dist/birnam-0.11.0-aarch64-macos.tar.gz`;
