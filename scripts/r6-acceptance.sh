@@ -95,7 +95,7 @@ readonly expected_rust_image_rejection_tests=1
 # required rollback/compatibility artifact, adding one deterministic install
 # step to the focused replacement graph and to the optional strict verify.
 readonly expected_focused_steps=216
-readonly expected_verify_steps=338
+readonly expected_verify_steps=306
 readonly expected_verify_tests=516
 readonly expected_verify_total_tests=522
 readonly expected_verify_skipped=6
