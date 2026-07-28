@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "scope": "Design 68 C2.1 readiness receipts for the floor, Store, and PEG",
+  "evidence_commit": "1bc294a",
+  "source_manifest": "abi/remaining-zig-v1.json",
+  "rollback_manifest": "abi/rollback-prefix-v1.json",
+  "readiness_policy": "C2.1 receipts are evidence-only; readiness remains blocked until the Design 66 release-cycle predicate and complete-vector recovery proof",
+  "strict_r6_receipt": {
+    "focused": "218/218 steps; 99/99 tests",
+    "verify": "307/307 steps; 516/522 tests; 6 skipped",
+    "live_alien": "66/66 steps; 9/9 tests",
+    "z3": [
+      "distribution-selection: production omits Zig; rollback is a complete Zig vector",
+      "z3-archive: production_a=clean production_b=clean rollback=full-zig traces=ok"
+    ],
+    "benchmark": [
+      "query.aggregate +5.8%",
+      "compile.stage1-stdlib +11.9%"
+    ]
+  },
+  "rungs": [
+    {
+      "id": "floor",
+      "source": "src/id/id.zig",
+      "readiness": "blocked",
+      "rollback_status": "pinned",
+      "canonical_rust": {
+        "identity": "rust-id-v1",
+        "install_name": "libbirnam_id.dylib",
+        "profiles": {
+          "debug": {
+            "path": ".cargo-target/debug/libbirnam_id.dylib",
+            "sha256": "64956455f3d2fb31b8bedd1a078b28b0f95ec0e33f650784929e190b236ba1fc"
+          },
+          "release": {
+            "path": ".cargo-target/release/libbirnam_id.dylib",
+            "sha256": "56d09344738f5f6f12dd0c441105cce328b92e181d493594da3d835bdee11250"
+          }
+        },
+        "exports": ["id_init", "birnam_id_floor_identity", "birnam_id_rust_crate_identity"],
+        "dynamic_dependencies": ["libSystem.B.dylib"],
+        "runtime_prerequisites": []
+      },
+      "zig_fixture": {
+        "owner": "zig-floor",
+        "identity": "zig-id-v1",
+        "install_name": "libbirnam_id_zig.dylib",
+        "profile": "debug",
+        "path": "zig-out/lib/libbirnam_id_zig.dylib",
+        "sha256": "c498c144bb1af40f77b7460608ff00b55450c0e0aface44e3d9a5f8d49357fe6"
+      },
+      "selection": {
+        "rust": "zig build -Dfloor=rust -Doptimize=ReleaseSafe",
+        "zig_fixture": "zig build -Ddistribution=rollback -Doptimize=ReleaseSafe",
+        "rollback_vector": "zig build -Ddistribution=rollback -Doptimize=ReleaseSafe",
+        "same_floor_processes": ["rust-floor-process-a", "rust-floor-process-b"],
+        "cross_floor_processes": ["rust-floor-to-zig-rung-process", "zig-floor-to-rust-rung-process"]
+      },
+      "evidence": [
+        "bash scripts/rust-lower-rung-matrix.sh both",
+        "lower-rung-matrix: zig-id-v1 passed 256 tests",
+        "lower-rung-matrix: rust-id-v1 debug passed 256 tests",
+        "lower-rung-matrix: rust-id-v1 release passed 256 tests",
+        "scripts/rust-floor-shell-smoke.sh",
+        "scripts/rust-gc-metadata-probe.zig",
+        "scripts/rust-heap-layout-probe.zig",
+        "scripts/rust-dispatch-reentry-probe.zig"
+      ]
+    },
+    {
+      "id": "store",
+      "source": "src/id/store.zig",
+      "readiness": "blocked",
+      "rollback_status": "pinned",
+      "canonical_rust": {
+        "identity": "rust-store-n2.2-core",
+        "install_name": "libbirnam_store.dylib",
+        "profiles": {
+          "debug": {
+            "path": ".cargo-target/debug/libbirnam_store.dylib",
+            "sha256": "7a3769bb70914a4701a7a5d84bad3e3471cdb461c89cad5a9c70be7ea2d01130"
+          },
+          "release": {
+            "path": ".cargo-target/release/libbirnam_store.dylib",
+            "sha256": "7408af2cca26479e7e4cc4c8c55822cec80990113bfe84acba40d713480b62ef"
+          }
+        },
+        "exports": ["module_init", "birnam_store_rust_identity"],
+        "dynamic_dependencies": ["libSystem.B.dylib"],
+        "runtime_prerequisites": ["libbirnam_id.dylib"]
+      },
+      "zig_fixture": {
+        "owner": "zig-rung",
+        "identity": "zig-store-oracle-v1",
+        "install_name": "libbirnam_store_zig.dylib",
+        "profile": "debug",
+        "path": "zig-out/lib/libbirnam_store_zig.dylib",
+        "sha256": "4b5e2451a6aa491fba05a9350bc3ca1a5a868662d4db2c83443df7ede69c8a84"
+      },
+      "selection": {
+        "rust": "zig build -Dfloor=rust -Dstore-impl=rust -Doptimize=ReleaseSafe",
+        "zig_fixture": "zig build -Ddistribution=rollback -Doptimize=ReleaseSafe",
+        "rollback_vector": "zig build -Ddistribution=rollback -Doptimize=ReleaseSafe",
+        "same_floor_processes": ["rust-store-process-a", "rust-store-process-b"],
+        "cross_floor_processes": ["rust-store-with-zig-floor-process", "zig-store-with-rust-floor-process"]
+      },
+      "evidence": [
+        "bash scripts/rust-store-mop-smoke.sh",
+        "rust-store-mop: Zig Store + Zig-floor oracle passed the characterization suite",
+        "rust-store-mop: debug passed the Store consistency-law suite",
+        "rust-store-mop: release passed the Store consistency-law suite",
+        "bash scripts/rust-store-stack-smoke.sh",
+        "rust-store-stack: debug passed image-save and REPL integration",
+        "rust-store-stack: release passed image-save and REPL integration",
+        "zig build test-rust-relational-zig-store test-rust-image-zig-store"
+      ]
+    },
+    {
+      "id": "peg",
+      "source": "src/id/peg.zig",
+      "readiness": "blocked",
+      "rollback_status": "pinned",
+      "canonical_rust": {
+        "identity": "rust-peg-n3.3-matcher",
+        "install_name": "libbirnam_id_peg.dylib",
+        "profiles": {
+          "debug": {
+            "path": ".cargo-target/debug/libbirnam_peg.dylib",
+            "sha256": "97411a93832ff7c18226deb7bba36dc0f0f887a2ffcc329c58993bbf1bb49577"
+          },
+          "release": {
+            "path": ".cargo-target/release/libbirnam_peg.dylib",
+            "sha256": "e160150237ad5814f84af9dfc06c155147e02b70e4a8394eec8ac6bfc8892608"
+          }
+        },
+        "exports": ["module_init", "birnam_peg_rust_identity"],
+        "dynamic_dependencies": ["libSystem.B.dylib"],
+        "runtime_prerequisites": ["libbirnam_id.dylib"]
+      },
+      "zig_fixture": {
+        "owner": "zig-rung",
+        "identity": "zig-peg-oracle-v1",
+        "install_name": "libbirnam_id_peg_zig.dylib",
+        "profile": "debug",
+        "path": "zig-out/lib/libbirnam_id_peg_zig.dylib",
+        "sha256": "16a0cb932f6743b89fc1af5384158a4215b9972347b0451d757c041de4ce2af3"
+      },
+      "selection": {
+        "rust": "zig build -Dfloor=rust -Dpeg=rust -Doptimize=ReleaseSafe",
+        "zig_fixture": "zig build -Ddistribution=rollback -Doptimize=ReleaseSafe",
+        "rollback_vector": "zig build -Ddistribution=rollback -Doptimize=ReleaseSafe",
+        "same_floor_processes": ["rust-peg-process-a", "rust-peg-process-b"],
+        "cross_floor_processes": ["rust-peg-with-zig-floor-process", "zig-peg-with-rust-floor-process"]
+      },
+      "evidence": [
+        "zig build test-rust-peg-shell test-rust-peg-pattern test-rust-peg-lang test-rust-peg-lang-full",
+        "zig build test-rust-peg-cst-parity test-rust-peg-diagnostics test-rust-peg-source-corpus",
+        "zig build test-rust-peg-codegen test-rust-peg-codegen-full test-rust-peg-codegen-parity",
+        "zig build test-rust-peg-metadata-parity test-rust-peg-stress test-rust-peg-installed",
+        "rust-peg-cst-parity digest=0df93b8aea32fe0d",
+        "rust-peg-source-corpus digest=8cd4303f04fcff97 files=76",
+        "rust-peg-codegen-parity digest=94960557ad83060565f82ef2db310c111f565ec003b5306b5a89852d1932876c",
+        "rust-peg-stress depth=4096 long_bytes=100000"
+      ]
+    }
+  ]
+}
