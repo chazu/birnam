@@ -22,6 +22,7 @@ pub struct DriverManifest {
     pub schema: u32,
     pub semantic_scope: String,
     pub graph: GraphIdentity,
+    pub source_graph: SourceGraph,
     pub target: String,
     pub profile: String,
     pub selection: Selection,
@@ -38,6 +39,30 @@ pub struct GraphIdentity {
     pub id: String,
     pub source_path: PathBuf,
     pub source_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceGraph {
+    pub build_file: PathRef,
+    pub depend_on_occurrences: usize,
+    pub bindings: Vec<ExpressionBinding>,
+    pub implicit_edges: Vec<ResolvedEdge>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExpressionBinding {
+    pub expression: String,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedEdge {
+    pub source: String,
+    pub dependency: String,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -299,12 +324,70 @@ fn sha256_file(path: &Path) -> Result<String, ManifestError> {
     Ok(hex::encode(Sha256::digest(bytes)))
 }
 
+fn contained_existing_path(
+    root: &Path,
+    relative: &Path,
+    label: &str,
+) -> Result<PathBuf, ManifestError> {
+    safe_relative_path(relative, label)?;
+    let mut cursor = root.to_path_buf();
+    for component in relative.components() {
+        let Component::Normal(part) = component else {
+            return Err(error(format!("{label} is not a normal relative path")));
+        };
+        cursor.push(part);
+        let metadata = fs::symlink_metadata(&cursor).map_err(|source| {
+            error(format!(
+                "{label} is unavailable at {}: {source}",
+                cursor.display()
+            ))
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(error(format!(
+                "{label} contains a symlink: {}",
+                cursor.display()
+            )));
+        }
+    }
+    let canonical = cursor
+        .canonicalize()
+        .map_err(|source| error(format!("{label} cannot be canonicalized: {source}")))?;
+    if !canonical.starts_with(root) {
+        return Err(error(format!("{label} escapes the manifest root")));
+    }
+    Ok(canonical)
+}
+
+fn contained_output_path(root: &Path, relative: &Path, label: &str) -> Result<(), ManifestError> {
+    safe_relative_path(relative, label)?;
+    let mut cursor = root.to_path_buf();
+    for component in relative.components() {
+        let Component::Normal(part) = component else {
+            return Err(error(format!("{label} is not a normal relative path")));
+        };
+        cursor.push(part);
+        match fs::symlink_metadata(&cursor) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(error(format!(
+                    "{label} contains a symlink: {}",
+                    cursor.display()
+                )));
+            }
+            Ok(_) => {}
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => break,
+            Err(source) => {
+                return Err(error(format!("{label} cannot be inspected: {source}")));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_path_ref(path_ref: &PathRef, root: &Path, label: &str) -> Result<(), ManifestError> {
-    safe_relative_path(&path_ref.path, label)?;
     if !valid_digest(&path_ref.sha256) {
         return Err(error(format!("{label} has an invalid sha256 digest")));
     }
-    let resolved = root.join(&path_ref.path);
+    let resolved = contained_existing_path(root, &path_ref.path, label)?;
     if !resolved.is_file() {
         return Err(error(format!(
             "{label} does not name an input file: {}",
@@ -458,11 +541,11 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     if !valid_digest(&manifest.graph.source_sha256) {
         return Err(error("graph source_sha256 is malformed"));
     }
-    let graph_source = root.join(&manifest.graph.source_path);
+    let graph_source = contained_existing_path(&root, &manifest.graph.source_path, "graph source")?;
     if !graph_source.is_file() {
         return Err(error(format!(
-            "graph source is unavailable: {}",
-            manifest.graph.source_path.display()
+            "graph source is not a file: {}",
+            graph_source.display()
         )));
     }
     let observed_graph_digest = sha256_file(&graph_source)?;
@@ -473,12 +556,12 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         )));
     }
     validate_selection(&manifest.selection)?;
-    safe_relative_path(&manifest.prefix, "output prefix")?;
+    contained_output_path(&root, &manifest.prefix, "output prefix")?;
     for (name, path) in &manifest.tools {
         safe_name(name, "tool name")?;
-        safe_relative_path(path, "tool path")?;
-        if !root.join(path).is_file() {
-            return Err(error(format!("tool is unavailable: {}", path.display())));
+        let tool = contained_existing_path(&root, path, "tool path")?;
+        if !tool.is_file() {
+            return Err(error(format!("tool is unavailable: {}", tool.display())));
         }
     }
 
@@ -497,6 +580,71 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         .iter()
         .map(|action| action.name.as_str())
         .collect::<BTreeSet<_>>();
+    validate_path_ref(&manifest.source_graph.build_file, &root, "build source")?;
+    let build_source_path = root.join(&manifest.source_graph.build_file.path);
+    let build_source = fs::read_to_string(&build_source_path)
+        .map_err(|source| error(format!("cannot read build source: {source}")))?;
+    let captured = capture_zig_dependencies(&build_source)?;
+    if captured.occurrence_count != manifest.source_graph.depend_on_occurrences {
+        return Err(error(format!(
+            "build source dependOn count mismatch: manifest {}, observed {}",
+            manifest.source_graph.depend_on_occurrences, captured.occurrence_count
+        )));
+    }
+    let mut bindings = BTreeMap::new();
+    for binding in &manifest.source_graph.bindings {
+        let expression = normalize_expression(&binding.expression);
+        if expression.is_empty() || !action_names.contains(binding.action.as_str()) {
+            return Err(error("source graph binding names an undeclared action"));
+        }
+        if bindings
+            .insert(expression, binding.action.clone())
+            .is_some()
+        {
+            return Err(error("source graph has duplicate expression bindings"));
+        }
+    }
+    let mut referenced_actions = BTreeSet::new();
+    for edge in &captured.edges {
+        let source_action = bindings.get(&edge.source).ok_or_else(|| {
+            error(format!(
+                "unresolved .dependOn source expression at line {}: {}",
+                edge.source_line, edge.source
+            ))
+        })?;
+        let dependency_action = bindings.get(&edge.dependency).ok_or_else(|| {
+            error(format!(
+                "unresolved .dependOn dependency expression at line {}: {}",
+                edge.source_line, edge.dependency
+            ))
+        })?;
+        referenced_actions.insert(source_action.clone());
+        referenced_actions.insert(dependency_action.clone());
+    }
+    for edge in &manifest.source_graph.implicit_edges {
+        if !matches!(
+            edge.kind.as_str(),
+            "artifact" | "install" | "lazy" | "generated"
+        ) {
+            return Err(error(format!(
+                "unknown implicit dependency kind: {}",
+                edge.kind
+            )));
+        }
+        if !action_names.contains(edge.source.as_str())
+            || !action_names.contains(edge.dependency.as_str())
+            || edge.source == edge.dependency
+        {
+            return Err(error(
+                "implicit dependency is outside the closed action set",
+            ));
+        }
+        referenced_actions.insert(edge.source.clone());
+        referenced_actions.insert(edge.dependency.clone());
+    }
+    if referenced_actions.len() != action_names.len() {
+        return Err(error("source graph leaves executable actions disconnected"));
+    }
     for action in &manifest.actions {
         if !manifest.tools.contains_key(&action.tool) {
             return Err(error(format!(
@@ -585,23 +733,42 @@ mod tests {
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
             fs::write(root.join("graph.json"), b"graph").expect("graph");
+            fs::write(root.join("build.zig"), b"compile.dependOn(prepare);").expect("build source");
             let digest = hex::encode(Sha256::digest(b"module"));
             let graph_digest = hex::encode(Sha256::digest(b"graph"));
+            let build_digest = hex::encode(Sha256::digest(b"compile.dependOn(prepare);"));
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
                 "graph": {"id": "build-actions-v1", "source_path": "graph.json", "source_sha256": graph_digest},
+                "source_graph": {
+                    "build_file": {"path": "build.zig", "sha256": build_digest},
+                    "depend_on_occurrences": 1,
+                    "bindings": [
+                        {"expression": "compile", "action": "compile"},
+                        {"expression": "prepare", "action": "prepare"}
+                    ],
+                    "implicit_edges": []
+                },
                 "target": "aarch64-macos",
                 "profile": "release",
                 "selection": {"distribution": "production", "floor": "rust", "providers": {"store": "rust"}},
                 "modules": [{"name": "module", "source": {"path": "module.birnam", "sha256": digest}}],
                 "actions": [{
+                    "name": "prepare",
+                    "tool": "zig",
+                    "command": ["zig", "prepare"],
+                    "depends_on": [],
+                    "inputs": [{"path": "module.birnam", "sha256": digest}],
+                    "outputs": [{"path": "out/prepare", "sha256": "b".repeat(64)}],
+                    "environment": {"BIRNAM_PREFIX": "prefix"}
+                }, {
                     "name": "compile",
                     "tool": "zig",
                     "command": ["zig", "build-module"],
-                    "depends_on": [],
+                    "depends_on": ["prepare"],
                     "inputs": [{"path": "module.birnam", "sha256": digest}],
-                    "outputs": [{"path": "out/module.dylib", "sha256": "b".repeat(64)}],
+                    "outputs": [{"path": "out/module.dylib", "sha256": "c".repeat(64)}],
                     "environment": {"BIRNAM_PREFIX": "prefix"}
                 }],
                 "dynamic_libraries": ["libbirnam_id.dylib"],
@@ -631,7 +798,7 @@ mod tests {
     fn accepts_valid_manifest_and_topological_order() {
         let fixture = Fixture::new();
         let parsed = parse_and_validate(&fixture.bytes, &fixture.root).expect("valid manifest");
-        assert_eq!(parsed.action_order, ["compile"]);
+        assert_eq!(parsed.action_order, ["prepare", "compile"]);
     }
 
     #[test]
@@ -660,6 +827,28 @@ mod tests {
             value["modules"][0]["source"]["path"] = json!("../escape")
         });
         assert!(parse_and_validate(&bytes, &fixture.root).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_escape() {
+        let fixture = Fixture::new();
+        let outside = fixture
+            .root
+            .parent()
+            .expect("temporary parent")
+            .join(format!(
+                "birnam-build-driver-outside-{}",
+                std::process::id()
+            ));
+        fs::write(&outside, b"outside").expect("outside");
+        std::os::unix::fs::symlink(&outside, fixture.root.join("link")).expect("symlink");
+        let digest = hex::encode(Sha256::digest(b"outside"));
+        let bytes = mutate(&fixture, |value| {
+            value["modules"][0]["source"] = json!({"path": "link", "sha256": digest});
+        });
+        assert!(parse_and_validate(&bytes, &fixture.root).is_err());
+        let _ = fs::remove_file(&outside);
     }
 
     #[test]
