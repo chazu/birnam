@@ -55,6 +55,12 @@ and the host to Rust while retaining existing Birnam policy seams. It preserves
 one floor, dynamic rung boundaries, Object Canonical and the MOP law, compiled
 unit authority, image v4, and the current synchronous stack model.
 
+[Design 68](../design/68-remaining-zig-conversion-plan.md) is the next execution
+plan: convert the remaining Zig residue into Rust-owned production, native
+Birnam policy, or explicitly isolated evidence/rollback fixtures. It preserves
+the dynamic-only dependency manifest, one owner per runtime authority, the
+Store/MOP consistency law, cold bootstrap, and reversible recovery boundaries.
+
 ## Implemented Developer-Experience Sequence
 
 This developer-experience sequence is deliberately orthogonal to those runtime
