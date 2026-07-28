@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "plan": "68",
+  "phase": "C4",
+  "mode": "retain",
+  "decision": {
+    "basis": [
+      "the complete Zig vector is the only reproducible rollback implementation",
+      "production already excludes every Zig provider and oracle",
+      "retention preserves recovery without changing the ABI, MOP, or policy owners"
+    ],
+    "partial_vector": false,
+    "source_deletion": "forbidden",
+    "production_discovery": "explicit rollback selection only"
+  },
+  "evidence_commit": "e5504bb",
+  "rollback_archive": {
+    "manifest": "abi/rollback-prefix-v1.json",
+    "source_commit": "e5504bb",
+    "archive_command": "git archive --format=tar --prefix=birnam-rollback-e5504bb/ e5504bb",
+    "vector_count": 14,
+    "canonical_host": "bin/birnam-zig-oracle",
+    "dynamic_load_order": "abi/rollback-prefix-v1.json#dynamic_load_order"
+  },
+  "production_archive": {
+    "canonical_host": "rust-host",
+    "dynamic_provider_count": 14,
+    "zig_provider_discovery": false,
+    "oracle_binary_present": false,
+    "ambient_loader_fallback": false,
+    "static_floor_audit": "test-rust-dylib-audit: dependencies, install names, paths, and exports passed"
+  },
+  "strict_r6": {
+    "focused": "218/218 steps; 99/99 tests",
+    "verify": "307/307 steps; 516/522 tests; 6 skipped",
+    "live_alien": "66/66 steps; 9/9 tests",
+    "distribution_selection": "production omits Zig; rollback is a complete Zig vector",
+    "z3_archive": "production_a=clean production_b=clean rollback=full-zig traces=ok",
+    "benchmark": [
+      "query.aggregate +5.8%",
+      "compile.stage1-stdlib +11.9%"
+    ],
+    "result": "PASS"
+  },
+  "recovery_contract": {
+    "rollback_status": "pinned",
+    "mixed_vector": "rejected",
+    "production_and_rollback_prefixes": "mutually exclusive and prefix-confined",
+    "native_birnam_policy": "unchanged and canonical"
+  }
+}
