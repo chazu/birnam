@@ -49,12 +49,35 @@ def confined(path: Path, root: Path) -> str:
     return str(resolved)
 
 
+def rust_fixture_name(canonical: str) -> str:
+    stem = canonical.removesuffix(".dylib")
+    if stem == "libbirnam_id":
+        return "libbirnam_id.dylib"
+    if stem == "libbirnam_id_codegen":
+        return "libbirnam_codegen_runtime.dylib"
+    if stem.startswith("libbirnam_id_"):
+        return "libbirnam_" + stem.removeprefix("libbirnam_id_") + ".dylib"
+    return stem + ".dylib"
+
+
+def fixture_root(raw: str, label: str) -> Path:
+    root = Path(raw).resolve()
+    if not root.is_dir():
+        fail(f"missing {label} fixture root: {root}")
+    return root
+
+
 def main() -> None:
-    if len(sys.argv) != 2:
-        fail("usage: check-production-prefix.py <prefix>")
+    if len(sys.argv) != 4:
+        fail(
+            "usage: check-production-prefix.py <prefix> "
+            "<rust-fixture-root> <zig-fixture-root>"
+        )
     prefix = Path(sys.argv[1]).resolve()
     if not prefix.is_dir():
         fail(f"missing prefix: {prefix}")
+    rust_root = fixture_root(sys.argv[2], "Rust")
+    zig_root = fixture_root(sys.argv[3], "Zig")
     if (prefix / "bin/birnam-zig-oracle").exists():
         fail("production prefix contains birnam-zig-oracle")
     zig_fixtures = sorted((prefix / "lib").glob("*_zig.dylib"))
@@ -83,7 +106,21 @@ def main() -> None:
         path = prefix / "lib" / canonical
         if not path.is_file():
             fail(f"missing canonical provider: {canonical}")
+        rust_name = rust_fixture_name(canonical)
+        rust_path = rust_root / rust_name
+        zig_name = canonical.removesuffix(".dylib") + "_zig.dylib"
+        zig_path = zig_root / zig_name
+        if not rust_path.is_file():
+            fail(f"missing Rust fixture for {canonical}: {rust_name}")
+        if not zig_path.is_file():
+            fail(f"missing Zig fixture for {canonical}: {zig_name}")
         value = digest(path)
+        rust_value = digest(rust_path)
+        zig_value = digest(zig_path)
+        if value != rust_value:
+            fail(f"canonical provider differs from Rust fixture: {canonical}")
+        if value == zig_value:
+            fail(f"canonical provider equals Zig fixture: {canonical}")
         print(
             json.dumps(
                 {
@@ -91,6 +128,12 @@ def main() -> None:
                     "path": f"lib/{canonical}",
                     "resolved_path": confined(path, prefix),
                     "provider": "rust-canonical",
+                    "rust_fixture": rust_name,
+                    "rust_fixture_resolved_path": confined(rust_path, rust_root),
+                    "rust_fixture_sha256": rust_value,
+                    "zig_fixture": zig_name,
+                    "zig_fixture_resolved_path": confined(zig_path, zig_root),
+                    "zig_fixture_sha256": zig_value,
                     "observed_identity": f"sha256:{value}",
                     "sha256": value,
                 },

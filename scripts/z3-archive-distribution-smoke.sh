@@ -226,8 +226,10 @@ mkdir -p "$scratch/rollback"
     >"$scratch/rollback/receipt.jsonl"
 )
 python3 "$scratch/production-a/source/scripts/check-production-prefix.py" "$production_a" \
+  "$scratch/production-a/source/.cargo-target/release" "$rollback_prefix/lib" \
   >"$scratch/production-a/receipt.jsonl"
 python3 "$scratch/production-b/source/scripts/check-production-prefix.py" "$production_b" \
+  "$scratch/production-b/source/.cargo-target/release" "$rollback_prefix/lib" \
   >"$scratch/production-b/receipt.jsonl"
 trace_prefix rollback "$rollback_prefix"
 exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
