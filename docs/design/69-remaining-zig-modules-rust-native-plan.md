@@ -334,7 +334,9 @@ and collision checks. The driver still cannot execute until instantiated
 implicit Zig Build edges and a receipt-bound build-file trust anchor are
 represented; the parser now pins the source graph to `build.zig` and the
 M4.1 `abi/birnam-build-actions-v1.json` path, with commit/tree receipt binding
-still required before execution.
+still required before execution. Production selection also requires
+production-context actions and rejects Zig/oracle markers across argv, paths,
+and environment values.
 
 ### M4.3 Compiler invocation and stage-1 module compilation
 
