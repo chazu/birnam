@@ -316,7 +316,7 @@ suite fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
 joining. It does not execute a tool; the complete
-`dependOn`/install semantic resolver and selection-specific command receipts
+`dependOn`/install semantic resolver and selection-specific command generation
 remain the next M4.2 slice. Separately, M4.3 now has a shadow-only topological process
 runner and `execute-shadow` CLI; `Clear` deterministically clears inherited
 environment variables before declared `Set`/`Unset` operations, while
@@ -325,35 +325,41 @@ requires every action to declare shadow context/authority with explicit-shadow
 delegation, rechecks tool and input digests immediately before spawn, and
 requires every declared output to exist with its declared digest before the
 action receipt is returned. The shadow runner snapshots the output prefix and
-rejects pre-existing or newly created undeclared files. Each receipt now carries the resolved tool path
+rejects pre-existing or newly created undeclared regular files. Each receipt now carries the resolved tool path
 and digest, cwd, exact argv, declared inputs/outputs, and observed output
-digests. This is still staged execution: atomic temporary
-prefix publication and undeclared-write detection remain M4.3 work.
+digests. Per-action mutation/failure-path scans, final rehashing of prior
+outputs, special-file rejection, and atomic temporary-prefix publication
+remain M4.3 work.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences
 are balanced and retained, including the inline `test-install` step and its
 `b.getInstallStep()` dependency. The captured expressions are still not
 executable action identities; one repeated semantic pair is retained as two
-occurrences but one resolved edge. Resolution to concrete tools, install
+occurrences but one projected resolved action pair. This projection is not
+instantiated semantic truth: distinct scoped/expanded steps can still collapse.
+Resolution to concrete tools, install
 outputs, and inherited/cleared environments remains fail-closed work in M4.2.
 
 The committed `abi/birnam-build-actions-receipt-proof-v1.json` is a detached
-checker output, not a field copied from the executable manifest. The Rust
+bound receipt artifact, not a field copied from the executable manifest. The Rust
 parser binds its graph/build digests and receipt anchors to that proof and,
 when the supplied root is a Git worktree, verifies receipt commit/tree
 existence, ancestry, and the checked bytes. Non-Git shadow fixtures retain
-only the file-level proof; they cannot authorize production execution.
+only the file-level proof; the parser does not encode that weaker proof tier as
+production authorization, and production/rollback execution remains refused.
 
 The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
 the root; output prefixes reject existing symlink components; full-semantic
 manifests require source-graph roots, expression bindings for every captured
 edge, exact binding coverage with no unbound or extra captured expressions,
-and a typed `kind: "source"` edge for every unique captured `.dependOn` pair.
+and a typed `kind: "source"` edge for every unique projected resolved action
+pair. Raw source-pair and instantiated-edge receipts are still required.
 The occurrence receipt remains separate: the parser retains all syntactic
-occurrences (including repeated calls) while resolving duplicate calls to one
-semantic edge. Resolved source/implicit edges must still reconcile exactly
+occurrences (including repeated calls) while deduping after projection; this is
+not an assertion that duplicate calls are one semantic step. Resolved
+source/implicit edges must still reconcile exactly
 with each action’s declared dependency set, preserving one canonical order;
 the graph also requires a rooted acyclic closure, explicit implicit-edge
 kinds, a connected action set, the exact 14-provider/dylib closure, and
@@ -364,16 +370,19 @@ stage-1 module is not confused with a Zig implementation artifact.
 Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
-authority. Production actions additionally use an approved stage-0 tool-name
-allowlist and require the resolved executable basename to match that key. The
+authority. Production actions additionally use a name-level stage-0 tool
+allowlist and require the resolved executable basename to match that key; this
+does not establish binary/source provenance or reject every prebuilt Birnam
+tool. The
 graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
 authoritative production/rollback actions until instantiated implicit Zig Build
 edges and provider/module producer provenance are represented; only the
 explicitly fenced, non-authoritative shadow executor is available. The parser pins the source graph to
-`build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. This is a
-file-level consistency check; execution still requires a checker-generated
-receipt proof that the commit/tree exists and contains these bytes. Production selection also requires
+`build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. File-level
+proof is available everywhere; Git worktrees additionally get the stronger
+commit/tree/ancestry/byte check. Neither tier authorizes production selection,
+which also requires
 production-context actions and rejects Zig/oracle markers across logical and
 resolved tool paths, argv, paths, and environment values.
 
