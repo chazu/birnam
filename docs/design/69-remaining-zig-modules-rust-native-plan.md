@@ -321,8 +321,9 @@ digests to files under the supplied root, while produced inputs/tools are
 deferred to their upstream producer and checked for ownership/reachability. It rejects
 path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-25 focused parser/runner tests plus 5 instantiated-graph receipt tests and 5
-same-run bootstrap receipt tests. The R6 acceptance script runs all three
+25 focused parser/runner tests plus 5 instantiated-graph receipt tests, 5
+same-run bootstrap receipt tests, and 5 staging/publication receipt tests. The
+R6 acceptance script runs all four
 semantic-driver suites fail-closed before the existing 218-step/99-test Rust replacement
 matrix. Its dry-run action receipts now print exact argv, cwd, tool digest,
 dependencies, inputs, outputs, and normalized environment without shell-word
@@ -341,7 +342,8 @@ and digest, cwd, exact argv, declared inputs/outputs, and observed output
 digests. Per-action before/after ownership diffs now reject creation,
 mutation, or deletion of another action's declared output on both success and
 failure paths; final rehashing and special-file rejection fail closed. Atomic
-temporary-prefix publication remains M4.3 work.
+The staging/publication receipt validator is now landed and R6-pinned; actual
+temporary-prefix creation and atomic rename remain M4.3 work.
 
 The source-capture checkpoint additionally scans `build.zig` without the
 projection checker’s lossy target-name regex: all 464 `.dependOn` occurrences

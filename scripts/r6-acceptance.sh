@@ -32,6 +32,8 @@ readonly expected_instantiated_graph_tests=5
 rust_instantiated_graph=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-instantiated-graph.XXXXXX")
 readonly expected_bootstrap_receipt_tests=5
 rust_bootstrap_receipt=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-bootstrap-receipt.XXXXXX")
+readonly expected_publication_receipt_tests=5
+rust_publication_receipt=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-publication-receipt.XXXXXX")
 
 # Keep the real build.zig capture and checker receipt-proof verification in the
 # pinned count; this is not only the small synthetic manifest fixture.
@@ -125,7 +127,7 @@ floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 live=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-alien-live.XXXXXX")
-trap 'rm -f "$functional" "$live" "$rust_build_driver" "$rust_instantiated_graph" "$rust_bootstrap_receipt"' EXIT
+trap 'rm -f "$functional" "$live" "$rust_build_driver" "$rust_instantiated_graph" "$rust_bootstrap_receipt" "$rust_publication_receipt"' EXIT
 
 set +e
 cargo test -p birnam-host --locked --offline build_driver >"$rust_build_driver" 2>&1
@@ -174,6 +176,22 @@ rust_bootstrap_receipt_test_count=$(grep -Ec "^test result: ok\\. ${expected_boo
   exit 1
 }
 echo "r6-acceptance: Rust bootstrap receipt suite ${expected_bootstrap_receipt_tests}/${expected_bootstrap_receipt_tests} tests passed"
+
+set +e
+cargo test -p birnam-host --locked --offline publication_receipt >"$rust_publication_receipt" 2>&1
+rust_publication_receipt_status=$?
+set -e
+cat "$rust_publication_receipt"
+if [ "$rust_publication_receipt_status" -ne 0 ]; then
+  echo "r6-acceptance: Rust publication receipt tests failed" >&2
+  exit 1
+fi
+rust_publication_receipt_test_count=$(grep -Ec "^test result: ok\\. ${expected_publication_receipt_tests} passed; 0 failed;" "$rust_publication_receipt" || true)
+[ "$rust_publication_receipt_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust publication receipt suite no longer reports exactly ${expected_publication_receipt_tests} passing tests" >&2
+  exit 1
+}
+echo "r6-acceptance: Rust publication receipt suite ${expected_publication_receipt_tests}/${expected_publication_receipt_tests} tests passed"
 
 set +e
 zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$functional" 2>&1
