@@ -364,7 +364,9 @@ stage-1 module is not confused with a Zig implementation artifact.
 Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
-authority. The graph receipt commit/tree and its recorded `build.zig` digest
+authority. Production actions additionally use an approved stage-0 tool-name
+allowlist and require the resolved executable basename to match that key. The
+graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
 authoritative production/rollback actions until instantiated implicit Zig Build
 edges and provider/module producer provenance are represented; only the
