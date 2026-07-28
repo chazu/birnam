@@ -321,6 +321,15 @@ are balanced and retained, including the inline `test-install` step and its
 executable action identities; resolution to concrete tools, install outputs,
 and inherited/cleared environments remains fail-closed work in M4.2.
 
+The following hardening checkpoint closes the parser trust boundary further:
+source/input/tool paths reject symlink components and are canonicalized under
+the root; output prefixes reject existing symlink components; full-semantic
+manifests require source-graph roots, expression bindings for every captured
+edge, explicit implicit-edge kinds, a connected action set, and the exact
+14-provider/dylib closure. The driver still cannot execute until command
+authority, exact argv/environment modes, and instantiated implicit Zig Build
+edges are represented.
+
 ### M4.3 Compiler invocation and stage-1 module compilation
 
 1. Implement a process runner that invokes declared non-Birnam stage-0 tools
