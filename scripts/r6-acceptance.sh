@@ -520,6 +520,12 @@ if [[ ${BIRNAM_R6_REQUIRE_VERIFY:-0} == 1 ]]; then
     echo "r6-acceptance: strict Z3 archive receipt was not emitted" >&2
     exit 1
   }
+  for artifact_label in production-a production-b rollback; do
+    grep -Fqx "z3-archive: ${artifact_label} Module loadArtifact trace=confined" "$z3" || {
+      echo "r6-acceptance: strict Z3 ${artifact_label} artifact trace receipt was not emitted" >&2
+      exit 1
+    }
+  done
 else
   echo "r6-acceptance: full cross-layer verify not requested (set BIRNAM_R6_REQUIRE_VERIFY=1 to require it)"
 fi
