@@ -18,6 +18,13 @@ cd "$(dirname "$0")/.."
 # artifact-inspector baseline before the raw comparator is run below.
 python3 scripts/check-native-rung-baseline.py
 
+# The Rust build-driver parser is the executable M4.2 checkpoint. Keep its
+# focused semantic-validation suite in R6 even though it is not a Zig build
+# step, so a passing native-rung snapshot cannot mask a regression in the
+# driver that will own the next orchestration rung.
+readonly expected_rust_build_driver_tests=13
+rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
+
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
 # canonical/rollback selection checks (including Relational), the optimized
@@ -107,7 +114,23 @@ floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
 functional=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-functional.XXXXXX")
 live=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-alien-live.XXXXXX")
-trap 'rm -f "$functional" "$live"' EXIT
+trap 'rm -f "$functional" "$live" "$rust_build_driver"' EXIT
+
+set +e
+cargo test -p birnam-host --locked --offline build_driver >"$rust_build_driver" 2>&1
+rust_build_driver_status=$?
+set -e
+cat "$rust_build_driver"
+if [ "$rust_build_driver_status" -ne 0 ]; then
+  echo "r6-acceptance: Rust build-driver semantic tests failed" >&2
+  exit 1
+fi
+rust_build_driver_test_count=$(grep -Ec "^test result: ok\\. ${expected_rust_build_driver_tests} passed; 0 failed;" "$rust_build_driver" || true)
+[ "$rust_build_driver_test_count" -eq 1 ] || {
+  echo "r6-acceptance: Rust build-driver suite no longer reports exactly ${expected_rust_build_driver_tests} passing tests" >&2
+  exit 1
+}
+echo "r6-acceptance: Rust build-driver semantic suite ${expected_rust_build_driver_tests}/${expected_rust_build_driver_tests} tests passed"
 
 set +e
 zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$functional" 2>&1
