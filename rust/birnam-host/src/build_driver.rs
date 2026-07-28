@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 
 pub const MANIFEST_SCHEMA: u32 = 1;
 pub const EXECUTABLE_SEMANTIC_SCOPE: &str = "full-semantic-v1";
+pub const RECEIPT_PROOF_PATH: &str = "abi/birnam-build-actions-receipt-proof-v1.json";
 pub const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
     "libbirnam_id_artifact.dylib",
@@ -405,6 +406,80 @@ fn sha256_file(path: &Path) -> Result<String, ManifestError> {
     Ok(hex::encode(Sha256::digest(bytes)))
 }
 
+fn verify_git_receipt(
+    root: &Path,
+    receipt_commit: &str,
+    receipt_tree: &str,
+    graph_path: &Path,
+    graph_sha256: &str,
+    build_sha256: &str,
+) -> Result<(), ManifestError> {
+    let probe = Command::new("git")
+        .current_dir(root)
+        .args(["rev-parse", "--git-dir"])
+        .output();
+    let Ok(probe) = probe else {
+        return Ok(());
+    };
+    if !probe.status.success() {
+        return Ok(());
+    }
+    let run_git = |args: &[String], label: &str| -> Result<Vec<u8>, ManifestError> {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(args)
+            .output()
+            .map_err(|source| error(format!("{label} failed to start: {source}")))?;
+        if !output.status.success() {
+            return Err(error(format!(
+                "{label} failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(output.stdout)
+    };
+    let expected_tree = String::from_utf8(run_git(
+        &["rev-parse".into(), format!("{receipt_commit}^{{tree}}")],
+        "receipt tree verification",
+    )?)
+    .map_err(|source| error(format!("receipt tree verification was not UTF-8: {source}")))?;
+    if expected_tree.trim() != receipt_tree {
+        return Err(error("receipt proof tree does not match its Git commit"));
+    }
+    let head = String::from_utf8(run_git(
+        &["rev-parse".into(), "HEAD".into()],
+        "current HEAD verification",
+    )?)
+    .map_err(|source| error(format!("current HEAD verification was not UTF-8: {source}")))?;
+    let ancestry = Command::new("git")
+        .current_dir(root)
+        .args(["merge-base", "--is-ancestor", receipt_commit, head.trim()])
+        .status()
+        .map_err(|source| error(format!("receipt ancestry verification failed: {source}")))?;
+    if !ancestry.success() {
+        return Err(error(
+            "current HEAD does not descend from the receipt commit",
+        ));
+    }
+    let build_bytes = run_git(
+        &["show".into(), format!("{receipt_commit}:build.zig")],
+        "receipt build source verification",
+    )?;
+    if hex::encode(Sha256::digest(build_bytes)) != build_sha256 {
+        return Err(error(
+            "receipt commit build.zig bytes disagree with the proof",
+        ));
+    }
+    let graph_bytes = run_git(
+        &["show".into(), format!("HEAD:{}", graph_path.display())],
+        "current graph source verification",
+    )?;
+    if hex::encode(Sha256::digest(graph_bytes)) != graph_sha256 {
+        return Err(error("current HEAD graph bytes disagree with the proof"));
+    }
+    Ok(())
+}
+
 fn contained_existing_path(
     root: &Path,
     relative: &Path,
@@ -763,6 +838,66 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             "build.zig digest disagrees with the M4.1 source receipt",
         ));
     }
+    let proof_path =
+        contained_existing_path(&root, Path::new(RECEIPT_PROOF_PATH), "receipt proof")?;
+    let proof_document: serde_json::Value = serde_json::from_slice(
+        &fs::read(&proof_path)
+            .map_err(|source| error(format!("cannot read receipt proof: {source}")))?,
+    )
+    .map_err(|source| error(format!("receipt proof JSON is invalid: {source}")))?;
+    let proof = proof_document
+        .as_object()
+        .ok_or_else(|| error("receipt proof must be an object"))?;
+    let expected_proof_fields = [
+        "schema",
+        "proof_kind",
+        "graph_path",
+        "graph_sha256",
+        "build_path",
+        "build_sha256",
+        "receipt_commit",
+        "receipt_tree",
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    if proof.keys().map(String::as_str).collect::<BTreeSet<_>>() != expected_proof_fields {
+        return Err(error("receipt proof has the wrong schema"));
+    }
+    if proof.get("schema") != Some(&serde_json::Value::from(1))
+        || proof.get("proof_kind").and_then(serde_json::Value::as_str)
+            != Some("m4.1-checker-git-v1")
+        || proof.get("graph_path").and_then(serde_json::Value::as_str)
+            != Some(manifest.graph.source_path.to_string_lossy().as_ref())
+        || proof.get("build_path").and_then(serde_json::Value::as_str) != Some("build.zig")
+        || proof
+            .get("graph_sha256")
+            .and_then(serde_json::Value::as_str)
+            != Some(manifest.graph.source_sha256.as_str())
+        || proof
+            .get("build_sha256")
+            .and_then(serde_json::Value::as_str)
+            != Some(manifest.source_graph.build_file.sha256.as_str())
+        || proof
+            .get("receipt_commit")
+            .and_then(serde_json::Value::as_str)
+            != Some(manifest.graph.receipt_commit.as_str())
+        || proof
+            .get("receipt_tree")
+            .and_then(serde_json::Value::as_str)
+            != Some(manifest.graph.receipt_tree.as_str())
+    {
+        return Err(error(
+            "receipt proof disagrees with the bound source receipt",
+        ));
+    }
+    verify_git_receipt(
+        &root,
+        manifest.graph.receipt_commit.as_str(),
+        manifest.graph.receipt_tree.as_str(),
+        &manifest.graph.source_path,
+        manifest.graph.source_sha256.as_str(),
+        manifest.source_graph.build_file.sha256.as_str(),
+    )?;
     validate_selection(&manifest.selection)?;
     contained_output_path(&root, &manifest.prefix, "output prefix")?;
     for (name, path) in &manifest.tools {
@@ -1401,6 +1536,21 @@ mod tests {
             fs::write(root.join("abi/birnam-build-actions-v1.json"), &graph_bytes).expect("graph");
             let digest = hex::encode(Sha256::digest(b"module"));
             let graph_digest = hex::encode(Sha256::digest(&graph_bytes));
+            let proof_document = json!({
+                "schema": 1,
+                "proof_kind": "m4.1-checker-git-v1",
+                "graph_path": "abi/birnam-build-actions-v1.json",
+                "graph_sha256": graph_digest.clone(),
+                "build_path": "build.zig",
+                "build_sha256": build_digest.clone(),
+                "receipt_commit": receipt_commit.clone(),
+                "receipt_tree": receipt_tree.clone()
+            });
+            fs::write(
+                root.join(RECEIPT_PROOF_PATH),
+                serde_json::to_vec(&proof_document).expect("proof JSON"),
+            )
+            .expect("proof");
             let provider_actions = CANONICAL_DYNAMIC_LIBRARIES
                 .iter()
                 .map(|name| (*name, "compile"))
@@ -1794,5 +1944,19 @@ mod tests {
                 .iter()
                 .any(|edge| edge.source_line == 3520 && edge.source.contains("b.step("))
         );
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repository root");
+        verify_git_receipt(
+            &repo_root,
+            "6e99d46e564f5c307bf6e5ae58629b9458f4c3a1",
+            "25fa3ebb2512266452fe279319215ec56a907524",
+            Path::new("abi/birnam-build-actions-v1.json"),
+            &sha256_file(&repo_root.join("abi/birnam-build-actions-v1.json"))
+                .expect("graph digest"),
+            &sha256_file(&repo_root.join("build.zig")).expect("build digest"),
+        )
+        .expect("checker Git receipt proof");
     }
 }
