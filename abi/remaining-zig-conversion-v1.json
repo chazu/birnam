@@ -1318,7 +1318,7 @@
       ],
       "next_phase": "C2",
       "removal_authority": "vector-review",
-      "last_receipt": null
+      "last_receipt": "c2-rung-receipts: Store readiness=blocked rollback_status=pinned; MOP and image/REPL consistency suites passed Zig plus Rust Debug/Release"
     },
     {
       "key": "zig:path:src/id/store_image_backfill_test.zig",

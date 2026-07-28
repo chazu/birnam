@@ -442,8 +442,9 @@ with the Zig Store/Zig floor oracle and Rust Store against the Rust floor in
 Debug and Release. The image backfill, tracked/raw mutation, authorizer,
 observer, inherited-revelation, image-boot, REPL, project, and LSP cases passed
 through the existing `rust-store-mop` and `rust-store-stack` receipts. The
-Store row remains blocked/pinned pending its focused ledger commit and strict
-R6 checkpoint.
+Store row now records that evidence as a focused blocked/pinned receipt; no
+Store mirror contract or Zig rollback fixture was removed. Its strict R6
+checkpoint follows this ledger commit before PEG advances.
 
 **C2.1c PEG evidence (2026-07-27):** the explicit Rust PEG passed the pattern,
 language, full-language, CST, diagnostics, source-corpus, generated-C,
