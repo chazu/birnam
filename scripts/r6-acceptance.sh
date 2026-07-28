@@ -22,12 +22,14 @@ python3 scripts/check-native-rung-baseline.py
 # focused semantic-validation suite in R6 even though it is not a Zig build
 # step, so a passing native-rung snapshot cannot mask a regression in the
 # driver that will own the next orchestration rung.
-readonly expected_rust_build_driver_tests=17
+# The pinned suite includes the projected-scope/environment-base contract and
+# the real build.zig capture (464 syntactic occurrences, 463 unique projected
+# pairs) plus checker receipt-proof Git verification.
+readonly expected_rust_build_driver_tests=18
 rust_build_driver=$(mktemp "${TMPDIR:-/tmp}/birnam-r6-build-driver.XXXXXX")
 
-# The pinned suite includes the real build.zig capture (464 syntactic
-# occurrences, 463 unique semantic pairs) and the checker receipt-proof Git
-# verification, not only the small synthetic manifest fixture.
+# Keep the real build.zig capture and checker receipt-proof verification in the
+# pinned count; this is not only the small synthetic manifest fixture.
 
 # Keep the R6 acceptance boundary aligned with the latest replacement test set.
 # These are the unchanged grammar suite, frozen CST parity, syntax diagnostics,
