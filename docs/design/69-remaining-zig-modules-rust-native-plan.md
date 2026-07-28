@@ -251,11 +251,12 @@ do not rewrite the whole graph at once. Until the final cutover it remains
 `build_authority=canonical` for production builds; the Rust driver is
 `shadow` and delegates only in explicitly recorded experiments.
 
-### M4.1 Freeze the build-action DAG (first code slice)
+### M4.1 Freeze the named-target build projection (first code slice)
 
-1. First inventory the checked build-action DAG from the current 125 build
-   targets: tool, inputs, outputs, feature/flags, environment, dependency
-   edges, install destination, and digest policy. Include Cargo workspace
+1. First inventory the checked named-target projection from the current 125
+   build targets: tool, inputs, outputs, feature/flags, environment, the
+   source-pinned projection of dependency edges, install destination, and
+   digest policy. Include Cargo workspace
    builds, 14 providers, host, vendored libtcc C sources/flags, generated
    options, source/resource installation, the 26 ordered stage-1 modules,
    tests, packaging, and rollback fixtures. Mark each action as production,
@@ -269,16 +270,20 @@ do not rewrite the whole graph at once. Until the final cutover it remains
    canonical Rust-driver production receipt, and emit an exact clean-tree
    receipt. Commit this manifest/checker before implementing the driver.
 
-**M4.1 exit:** the current `build.zig` action DAG is frozen in a supplemental
-manifest, all actions have owners and contexts, and drift fails closed.
+**M4.1 exit:** the current `build.zig` named-target projection is frozen in a
+supplemental manifest, all actions have owners and contexts, and source drift
+fails closed. This is deliberately not yet an executable command graph: inline
+step expressions, implicit install-step edges, exact shell argv, and per-action
+environment are resolved by M4.2 before the Rust driver may execute anything.
 
 The landed M4.1 manifest freezes 125 target rows plus 35 typed command actions,
 including all 14 production provider installs, all 14 rollback fixtures, the
 locked Cargo workspace, vendored libtcc source/flags, exact ordered stage-1
-modules, resource installation, target roots, and a source-pinned dependency
-capture. Its checker requires a clean committed HEAD, validates the candidate
-and receipt transaction, and emits the checked tree hash; strict R6 is the
-post-receipt acceptance gate.
+modules, resource installation, target roots, and a source-pinned named-target
+projection. Its checker requires a clean committed HEAD, validates the
+candidate and receipt transaction, and emits the checked tree hash; strict R6
+is the post-receipt acceptance gate. M4.2 must replace the projection with a
+fully resolved semantic graph before any Rust build action is authoritative.
 
 ### M4.2 Manifest parser and dry-run driver
 
@@ -288,12 +293,18 @@ post-receipt acceptance gate.
    source modules, dependency order, dynamic install names, output prefix,
    tool paths, normalized environment, and input/output digests. Runtime
    dependencies list only dylib names.
-2. Implement strict parsing, path containment, identity checks, and a dry-run
-   graph printer. It must reject `_zig` in production, mixed vectors, missing
-   source digests, and undeclared dynamic names before spawning a compiler.
+2. Resolve the M4.1 projection into a complete semantic graph by parsing every
+   `dependOn` form in `build.zig`, including inline `b.step(...)` chains and
+   `b.getInstallStep()`, and by recording exact command argv, tool, inputs,
+   outputs, install paths, and environment for each action. Unresolved or
+   ambiguous expressions are hard failures. Then implement strict parsing,
+   path containment, identity checks, and a dry-run graph printer. It must
+   reject `_zig` in production, mixed vectors, missing source digests, and
+   undeclared dynamic names before spawning a compiler.
 3. Add unit tests for malformed manifests, path escape, duplicate names,
-   dependency cycles, stale digests, and mixed Rust/Zig selection. Commit this
-   slice independently.
+   dependency cycles, stale digests, mixed Rust/Zig selection, inline
+   `dependOn`, implicit install-step dependencies, exact shell argv, and
+   environment capture. Commit this slice independently.
 
 ### M4.3 Compiler invocation and stage-1 module compilation
 

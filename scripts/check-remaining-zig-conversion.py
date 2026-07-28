@@ -537,11 +537,11 @@ def main() -> None:
                 fail(f"production action reaches a Zig-only path: {action_key}")
 
     capture = build_actions_doc.get("capture")
-    if not isinstance(capture, dict) or set(capture) != {"level", "policy", "toolchain"}:
+    if not isinstance(capture, dict) or set(capture) != {"level", "policy", "semantic_scope", "toolchain"}:
         fail("build action capture has the wrong schema")
-    if capture["level"] != "target-and-command" or any(
+    if capture["level"] != "target-and-command" or capture["semantic_scope"] != "named-target-projection" or any(
         not isinstance(capture[field], str) or not capture[field].strip()
-        for field in ("policy", "toolchain")
+        for field in ("policy", "semantic_scope", "toolchain")
     ):
         fail("build action capture is incomplete")
     build_targets = source.get("graph", {}).get("build_targets")
@@ -786,8 +786,12 @@ def main() -> None:
         validate_build_ref(resource["source"], "resource source", set(build_targets), all_action_keys)
         validate_build_ref(resource["destination"], "resource destination", set(build_targets), all_action_keys)
     dependency_capture = surfaces["target_dependencies"]
-    if not isinstance(dependency_capture, dict) or set(dependency_capture) != {"source_ref", "edge_count", "edge_sha256", "capture", "edges"}:
+    if not isinstance(dependency_capture, dict) or set(dependency_capture) != {
+        "source_ref", "edge_count", "edge_sha256", "capture", "semantic_scope", "edges"
+    }:
         fail("target dependency capture has the wrong schema")
+    if dependency_capture["semantic_scope"] != "named-target-projection":
+        fail("target dependency capture must declare its named-target projection scope")
     safe_ref(dependency_capture["source_ref"], "target dependency source")
     dependency_lines = [" ".join(line.strip().split()) for line in (REPO / "build.zig").read_text(encoding="utf-8").splitlines() if ".dependOn" in line]
     dependency_digest = hashlib.sha256(("\n".join(dependency_lines) + "\n").encode()).hexdigest()

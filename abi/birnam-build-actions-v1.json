@@ -6,7 +6,8 @@
   "target_count": 125,
   "capture": {
     "level": "target-and-command",
-    "policy": "all 125 target rows carry typed input/output/environment references and source-derived dependency edges; supplemental command rows freeze Cargo, providers, libtcc, stage1, resources, and rollback actions",
+    "policy": "all 125 target rows carry typed input/output/environment references and a source-pinned named-target dependency projection; supplemental command rows freeze Cargo, providers, libtcc, stage1, resources, and rollback actions",
+    "semantic_scope": "named-target-projection",
     "toolchain": "Zig stage-0 orchestration remains canonical until M5"
   },
   "actions": [
@@ -9229,6 +9230,7 @@
       "edge_count": 167,
       "edge_sha256": "cad6bfa8e31af737fa4dd84c9cc4bc5715bf574a7e09a9467da35b0323100910",
       "capture": "all normalized lines containing .dependOn",
+      "semantic_scope": "named-target-projection",
       "edges": [
         {
           "source": "test",
