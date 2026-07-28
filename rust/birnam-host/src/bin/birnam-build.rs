@@ -95,10 +95,19 @@ fn main() -> ExitCode {
             .find(|candidate| candidate.name == *action)
             .expect("validated action order");
         println!(
-            "action[{index}]: {} tool={} argv={}",
+            "action[{index}]: name={} context={} authority={} delegation={} tool={} tool_sha256={} cwd={} argv={:?} depends_on={:?} inputs={:?} outputs={:?} environment={:?}",
             spec.name,
+            spec.context,
+            spec.authority,
+            spec.delegation,
             spec.tool,
-            spec.command.join(" ")
+            spec.tool_sha256,
+            spec.cwd.display(),
+            spec.command,
+            spec.depends_on,
+            spec.inputs,
+            spec.outputs,
+            spec.environment,
         );
     }
     ExitCode::SUCCESS
