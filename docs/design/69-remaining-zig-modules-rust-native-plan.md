@@ -324,7 +324,8 @@ production and rollback execution remain refused. Shadow execution now also
 requires every action to declare shadow context/authority with explicit-shadow
 delegation, rechecks tool and input digests immediately before spawn, and
 requires every declared output to exist with its declared digest before the
-action receipt is returned. Each receipt now carries the resolved tool path
+action receipt is returned. The shadow runner snapshots the output prefix and
+rejects pre-existing or newly created undeclared files. Each receipt now carries the resolved tool path
 and digest, cwd, exact argv, declared inputs/outputs, and observed output
 digests. This is still staged execution: atomic temporary
 prefix publication and undeclared-write detection remain M4.3 work.
