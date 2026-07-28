@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [[bin]]
 name = "birnam"
-path = "src/bin/birnam-rust-experimental.rs"
+path = "src/bin/birnam.rs"
 
 [[bin]]
 name = "birnam-build"

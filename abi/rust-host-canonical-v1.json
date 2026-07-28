@@ -5,7 +5,7 @@
   "canonical_target": "birnam",
   "production_install": "bin/birnam",
   "removed_targets": ["birnam-rust-experimental"],
-  "source_path": "rust/birnam-host/src/bin/birnam-rust-experimental.rs",
+  "source_path": "rust/birnam-host/src/bin/birnam.rs",
   "user_facing_identity": "birnam",
   "boundary": "rust-host-zig-helper-boundary: sources=2 static=ok resource-boundary=ok",
   "checks": [

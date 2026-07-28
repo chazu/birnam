@@ -214,10 +214,11 @@ IdApi or provider graph.
 ### M1.1 Canonical binary identity
 
 1. Keep the Cargo target named `birnam` as the canonical host and keep
-   `bin/birnam` as the only production install path. Remove the secondary
-   `birnam-rust-experimental` target and its user-facing wording; any temporary
-   probe binary must be a test-only target with a distinct name and must not be
-   installed into a production prefix.
+   `bin/birnam` as the only production install path. No secondary Cargo target
+   is permitted; rename the implementation source path from
+   `birnam-rust-experimental.rs` to `birnam.rs`, and keep any temporary probe
+   binary test-only with a distinct name that is never installed into a
+   production prefix.
 2. Preserve the existing `birnam` CLI contract while changing only the error
    prefix/help text needed to remove the experimental name.
 3. Add a receipt asserting the Rust host has no Zig helper imports, no source
