@@ -894,6 +894,7 @@
       "scripts/check-native-rung-inventory.py",
       "scripts/check-production-prefix.py",
       "scripts/check-remaining-rung-manifest.py",
+      "scripts/check-remaining-zig-conversion.py",
       "scripts/check-remaining-zig-inventory.py",
       "scripts/check-rollback-prefix.py",
       "scripts/check-rust-artifact-authority.py",
