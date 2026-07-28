@@ -1,0 +1,6745 @@
+{
+  "schema_version": 1,
+  "source_graph_ref": "abi/remaining-zig-v1.json#graph.build_targets",
+  "canonical_entrypoint": "build.zig",
+  "build_authority": "canonical",
+  "target_count": 125,
+  "capture": {
+    "level": "target",
+    "policy": "target rows freeze the current orchestration boundary; M4.2 expands command-level fields before driver cutover",
+    "toolchain": "Zig stage-0 orchestration remains canonical until M5"
+  },
+  "actions": [
+    {
+      "action_key": "build:artifact-inspector-benchmark",
+      "target": "artifact-inspector-benchmark",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#artifact-inspector-benchmark",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:artifact-inspector-benchmark"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:baseline-id-gc",
+      "target": "baseline-id-gc",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#baseline-id-gc",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:baseline-id-gc"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:bench-id-membership",
+      "target": "bench-id-membership",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#bench-id-membership",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:bench-id-membership"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:bench-rust-id-membership",
+      "target": "bench-rust-id-membership",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#bench-rust-id-membership",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:bench-rust-id-membership"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:bootstrap-install",
+      "target": "bootstrap-install",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "bootstrap",
+      "selection_context": "build",
+      "delegation": "none",
+      "tool_ref": "build.zig#bootstrap-install",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "prefix/bin",
+        "prefix/lib"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:stage1",
+      "target": "stage1",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "stage1-compile",
+      "selection_context": "build",
+      "delegation": "none",
+      "tool_ref": "build.zig#stage1",
+      "inputs": [
+        "build.zig",
+        "src/id/main.zig",
+        "src/id/stdlib.birnam",
+        "modules/run-tests.birnam"
+      ],
+      "outputs": [
+        "prefix/lib/*.dylib"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "target:bootstrap-install"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test",
+      "target": "test",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-artifact-preflight",
+      "target": "test-artifact-preflight",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-artifact-preflight",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-artifact-preflight"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-artifact-selection",
+      "target": "test-artifact-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-artifact-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-artifact-selection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-birnam",
+      "target": "test-birnam",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-birnam",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-birnam"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-codegen-authority",
+      "target": "test-codegen-authority",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-codegen-authority",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-codegen-authority"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-codegen-contract",
+      "target": "test-codegen-contract",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-codegen-contract",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-codegen-contract"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-codegen-selection-refusal",
+      "target": "test-codegen-selection-refusal",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-codegen-selection-refusal",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-codegen-selection-refusal"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-collection-gc",
+      "target": "test-collection-gc",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-collection-gc",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-collection-gc"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-cross-floor-artifacts",
+      "target": "test-cross-floor-artifacts",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-cross-floor-artifacts",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-cross-floor-artifacts"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-cross-floor-errors",
+      "target": "test-cross-floor-errors",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-cross-floor-errors",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-cross-floor-errors"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-cross-floor-images",
+      "target": "test-cross-floor-images",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-cross-floor-images",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-cross-floor-images"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-distribution-selection",
+      "target": "test-distribution-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "package",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-distribution-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "prefix/bin",
+        "prefix/lib"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-emacs",
+      "target": "test-emacs",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-emacs",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-emacs"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-floor-rust",
+      "target": "test-floor-rust",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-floor-rust",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-floor-rust"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-floor-zig",
+      "target": "test-floor-zig",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-floor-zig",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-floor-zig"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-gc-layout-mark",
+      "target": "test-gc-layout-mark",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-gc-layout-mark",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-gc-layout-mark"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-id-abi",
+      "target": "test-id-abi",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-id-abi",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-id-abi"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-id-abi-fixture",
+      "target": "test-id-abi-fixture",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-id-abi-fixture",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-id-abi-fixture"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-id-conformance",
+      "target": "test-id-conformance",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-id-conformance",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-id-conformance"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-image-save",
+      "target": "test-image-save",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-image-save",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-image-save"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-install",
+      "target": "test-install",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "package",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-install",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "prefix/bin",
+        "prefix/lib"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-isolate-process",
+      "target": "test-isolate-process",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-isolate-process",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-isolate-process"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-lang-selection",
+      "target": "test-lang-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-lang-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-lang-selection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-lsp-project",
+      "target": "test-lsp-project",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-lsp-project",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-lsp-project"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-main",
+      "target": "test-main",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-main",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-main"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-native-rung-baseline",
+      "target": "test-native-rung-baseline",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-native-rung-baseline",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-native-rung-baseline"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-native-rung-harness",
+      "target": "test-native-rung-harness",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-native-rung-harness",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-native-rung-harness"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-native-rung-inventory",
+      "target": "test-native-rung-inventory",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-native-rung-inventory",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-native-rung-inventory"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-native-rung-selection",
+      "target": "test-native-rung-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-native-rung-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-native-rung-selection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-native-rung-singleton",
+      "target": "test-native-rung-singleton",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-native-rung-singleton",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-native-rung-singleton"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-prelude-selection",
+      "target": "test-prelude-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-prelude-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-prelude-selection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-project-check",
+      "target": "test-project-check",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-project-check",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-project-check"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-prototype-conformance",
+      "target": "test-prototype-conformance",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-prototype-conformance",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-prototype-conformance"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-relational-selection",
+      "target": "test-relational-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-relational-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-relational-selection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-remaining-rung-clean-prefix",
+      "target": "test-remaining-rung-clean-prefix",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-remaining-rung-clean-prefix",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-remaining-rung-clean-prefix"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-remaining-rung-cross-floor",
+      "target": "test-remaining-rung-cross-floor",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-remaining-rung-cross-floor",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-remaining-rung-cross-floor"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-remaining-rung-manifest",
+      "target": "test-remaining-rung-manifest",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-remaining-rung-manifest",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-remaining-rung-manifest"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-remaining-zig-boundary",
+      "target": "test-remaining-zig-boundary",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-remaining-zig-boundary",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-remaining-zig-boundary"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-remaining-zig-conversion",
+      "target": "test-remaining-zig-conversion",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-remaining-zig-conversion",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-remaining-zig-conversion"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-remaining-zig-inventory",
+      "target": "test-remaining-zig-inventory",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-remaining-zig-inventory",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-remaining-zig-inventory"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-repl",
+      "target": "test-repl",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-repl",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-repl"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-alien-live",
+      "target": "test-rust-alien-live",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-alien-live",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-alien-live"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-artifact",
+      "target": "test-rust-artifact",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-artifact",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-artifact"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-artifact-authority",
+      "target": "test-rust-artifact-authority",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-artifact-authority",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-artifact-authority"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-artifact-preflight",
+      "target": "test-rust-artifact-preflight",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-artifact-preflight",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-artifact-preflight"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-codegen-boundary",
+      "target": "test-rust-codegen-boundary",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-codegen-boundary",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-codegen-boundary"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-codegen-canonical",
+      "target": "test-rust-codegen-canonical",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-codegen-canonical",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-codegen-canonical"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-codegen-distribution",
+      "target": "test-rust-codegen-distribution",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-codegen-distribution",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-codegen-distribution"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-codegen-runtime",
+      "target": "test-rust-codegen-runtime",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-codegen-runtime",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-codegen-runtime"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-codegen-stack",
+      "target": "test-rust-codegen-stack",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-codegen-stack",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-codegen-stack"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-codegen-zig-store",
+      "target": "test-rust-codegen-zig-store",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-codegen-zig-store",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-codegen-zig-store"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-collection",
+      "target": "test-rust-collection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-collection",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-collection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-dispatch-reentry",
+      "target": "test-rust-dispatch-reentry",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-dispatch-reentry",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-dispatch-reentry"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-dylib-audit",
+      "target": "test-rust-dylib-audit",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-dylib-audit",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-dylib-audit"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-env-loader",
+      "target": "test-rust-env-loader",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-env-loader",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-env-loader"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-error",
+      "target": "test-rust-error",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-error",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-error"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-ffi-abort",
+      "target": "test-rust-ffi-abort",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-ffi-abort",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-ffi-abort"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-gc-metadata",
+      "target": "test-rust-gc-metadata",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-gc-metadata",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-gc-metadata"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-heap-layout",
+      "target": "test-rust-heap-layout",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-heap-layout",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-heap-layout"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-host-message-owner-inventory",
+      "target": "test-rust-host-message-owner-inventory",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-host-message-owner-inventory",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-host-message-owner-inventory"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-host-zig-helper-boundary",
+      "target": "test-rust-host-zig-helper-boundary",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-host-zig-helper-boundary",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-host-zig-helper-boundary"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-id-abi-fixture",
+      "target": "test-rust-id-abi-fixture",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-id-abi-fixture",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-id-abi-fixture"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-id-spike",
+      "target": "test-rust-id-spike",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-id-spike",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-id-spike"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-bootstrap",
+      "target": "test-rust-image-bootstrap",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-bootstrap",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-bootstrap"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-codegen",
+      "target": "test-rust-image-codegen",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-codegen",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-codegen"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-cross-floor",
+      "target": "test-rust-image-cross-floor",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-cross-floor",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-cross-floor"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-cross-floor-reverse",
+      "target": "test-rust-image-cross-floor-reverse",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-cross-floor-reverse",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-cross-floor-reverse"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-publication",
+      "target": "test-rust-image-publication",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-publication",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-publication"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-publication-rejection",
+      "target": "test-rust-image-publication-rejection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-publication-rejection",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-publication-rejection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-rejection",
+      "target": "test-rust-image-rejection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-rejection",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-rejection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-save",
+      "target": "test-rust-image-save",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-save",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-save"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-shell",
+      "target": "test-rust-image-shell",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-shell",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-shell"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-image-zig-store",
+      "target": "test-rust-image-zig-store",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-image-zig-store",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-image-zig-store"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-isolate",
+      "target": "test-rust-isolate",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-isolate",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-isolate"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-lang",
+      "target": "test-rust-lang",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-lang",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-lang"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-lang-diagnostics",
+      "target": "test-rust-lang-diagnostics",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-lang-diagnostics",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-lang-diagnostics"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-lang-parity",
+      "target": "test-rust-lang-parity",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-lang-parity",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-lang-parity"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-lower-rungs",
+      "target": "test-rust-lower-rungs",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-lower-rungs",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-lower-rungs"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-native-memory",
+      "target": "test-rust-native-memory",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-native-memory",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-native-memory"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-codegen",
+      "target": "test-rust-peg-codegen",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-codegen",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-codegen"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-codegen-full",
+      "target": "test-rust-peg-codegen-full",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-codegen-full",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-codegen-full"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-codegen-parity",
+      "target": "test-rust-peg-codegen-parity",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-codegen-parity",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-codegen-parity"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-cst-parity",
+      "target": "test-rust-peg-cst-parity",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-cst-parity",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-cst-parity"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-diagnostics",
+      "target": "test-rust-peg-diagnostics",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-diagnostics",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-diagnostics"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-installed",
+      "target": "test-rust-peg-installed",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-installed",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-installed"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-lang",
+      "target": "test-rust-peg-lang",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-lang",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-lang"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-lang-full",
+      "target": "test-rust-peg-lang-full",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-lang-full",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-lang-full"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-metadata-parity",
+      "target": "test-rust-peg-metadata-parity",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-metadata-parity",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-metadata-parity"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-pattern",
+      "target": "test-rust-peg-pattern",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-pattern",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-pattern"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-shell",
+      "target": "test-rust-peg-shell",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-shell",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-shell"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-source-corpus",
+      "target": "test-rust-peg-source-corpus",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-source-corpus",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-source-corpus"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-peg-stress",
+      "target": "test-rust-peg-stress",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-peg-stress",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-peg-stress"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-prelude",
+      "target": "test-rust-prelude",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-prelude",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-prelude"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-prelude-io",
+      "target": "test-rust-prelude-io",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-prelude-io",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-prelude-io"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-prelude-rust-error",
+      "target": "test-rust-prelude-rust-error",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-prelude-rust-error",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-prelude-rust-error"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-relational",
+      "target": "test-rust-relational",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-relational",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-relational"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-relational-zig-store",
+      "target": "test-rust-relational-zig-store",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-relational-zig-store",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-relational-zig-store"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-resource-resolution",
+      "target": "test-rust-resource-resolution",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-resource-resolution",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-resource-resolution"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-runtime-churn",
+      "target": "test-rust-runtime-churn",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-runtime-churn",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-runtime-churn"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-stack-root",
+      "target": "test-rust-stack-root",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-stack-root",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-stack-root"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-store-core",
+      "target": "test-rust-store-core",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-store-core",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-store-core"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-store-mop",
+      "target": "test-rust-store-mop",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-store-mop",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-store-mop"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-store-stack",
+      "target": "test-rust-store-stack",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-store-stack",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-store-stack"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-tcc-alien",
+      "target": "test-rust-tcc-alien",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-tcc-alien",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-tcc-alien"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-tcc-artifact",
+      "target": "test-rust-tcc-artifact",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-tcc-artifact",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-tcc-artifact"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-tcc-audit",
+      "target": "test-rust-tcc-audit",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-tcc-audit",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-tcc-audit"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-tcc-image",
+      "target": "test-rust-tcc-image",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-tcc-image",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-tcc-image"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-rust-tcc-shell",
+      "target": "test-rust-tcc-shell",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-rust-tcc-shell",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:test-rust-tcc-shell"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-scalar-conformance",
+      "target": "test-scalar-conformance",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-scalar-conformance",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-scalar-conformance"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-source-fallback",
+      "target": "test-source-fallback",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-source-fallback",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-source-fallback"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-store-image-backfill",
+      "target": "test-store-image-backfill",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-store-image-backfill",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-store-image-backfill"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-string-conformance",
+      "target": "test-string-conformance",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-string-conformance",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-string-conformance"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-tcc-selection",
+      "target": "test-tcc-selection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-tcc-selection",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-tcc-selection"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-termbox-load",
+      "target": "test-termbox-load",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-termbox-load",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:test-termbox-load"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [
+        "BIRNAM_LIB_DIR",
+        "BIRNAM_ID_DYLIB",
+        "BIRNAM_RUST_WORKSPACE_DIR"
+      ],
+      "dependencies": [
+        "target:stage1"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:test-z3-archive-distribution",
+      "target": "test-z3-archive-distribution",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "package",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#test-z3-archive-distribution",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "prefix/bin",
+        "prefix/lib"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:verify",
+      "target": "verify",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#verify",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:verify"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:verify-floor-repeat",
+      "target": "verify-floor-repeat",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#verify-floor-repeat",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:verify-floor-repeat"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:verify-floor-rust",
+      "target": "verify-floor-rust",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": "build.zig#verify-floor-rust",
+      "inputs": [
+        "build.zig",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "outputs": [
+        "target:verify-floor-rust"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    },
+    {
+      "action_key": "build:verify-floor-zig",
+      "target": "verify-floor-zig",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": "build.zig#verify-floor-zig",
+      "inputs": [
+        "build.zig"
+      ],
+      "outputs": [
+        "target:verify-floor-zig"
+      ],
+      "flags": [
+        "-Doptimize",
+        "-Dfloor",
+        "-Dhost-impl"
+      ],
+      "environment": [],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: target present in the checked 125-target build graph"
+    }
+  ],
+  "action_count": 160,
+  "target_action_roots": [
+    {
+      "target": "artifact-inspector-benchmark",
+      "action_keys": [
+        "build:artifact-inspector-benchmark"
+      ]
+    },
+    {
+      "target": "baseline-id-gc",
+      "action_keys": [
+        "build:baseline-id-gc"
+      ]
+    },
+    {
+      "target": "bench-id-membership",
+      "action_keys": [
+        "build:bench-id-membership"
+      ]
+    },
+    {
+      "target": "bench-rust-id-membership",
+      "action_keys": [
+        "build:bench-rust-id-membership"
+      ]
+    },
+    {
+      "target": "bootstrap-install",
+      "action_keys": [
+        "build:bootstrap-install",
+        "action:rust-workspace-build",
+        "action:libtcc-static",
+        "action:rust-host-build"
+      ]
+    },
+    {
+      "target": "stage1",
+      "action_keys": [
+        "build:stage1",
+        "action:stage1-modules"
+      ]
+    },
+    {
+      "target": "test",
+      "action_keys": [
+        "build:test"
+      ]
+    },
+    {
+      "target": "test-artifact-preflight",
+      "action_keys": [
+        "build:test-artifact-preflight"
+      ]
+    },
+    {
+      "target": "test-artifact-selection",
+      "action_keys": [
+        "build:test-artifact-selection"
+      ]
+    },
+    {
+      "target": "test-birnam",
+      "action_keys": [
+        "build:test-birnam"
+      ]
+    },
+    {
+      "target": "test-codegen-authority",
+      "action_keys": [
+        "build:test-codegen-authority"
+      ]
+    },
+    {
+      "target": "test-codegen-contract",
+      "action_keys": [
+        "build:test-codegen-contract"
+      ]
+    },
+    {
+      "target": "test-codegen-selection-refusal",
+      "action_keys": [
+        "build:test-codegen-selection-refusal"
+      ]
+    },
+    {
+      "target": "test-collection-gc",
+      "action_keys": [
+        "build:test-collection-gc"
+      ]
+    },
+    {
+      "target": "test-cross-floor-artifacts",
+      "action_keys": [
+        "build:test-cross-floor-artifacts"
+      ]
+    },
+    {
+      "target": "test-cross-floor-errors",
+      "action_keys": [
+        "build:test-cross-floor-errors"
+      ]
+    },
+    {
+      "target": "test-cross-floor-images",
+      "action_keys": [
+        "build:test-cross-floor-images"
+      ]
+    },
+    {
+      "target": "test-distribution-selection",
+      "action_keys": [
+        "build:test-distribution-selection"
+      ]
+    },
+    {
+      "target": "test-emacs",
+      "action_keys": [
+        "build:test-emacs"
+      ]
+    },
+    {
+      "target": "test-floor-rust",
+      "action_keys": [
+        "build:test-floor-rust"
+      ]
+    },
+    {
+      "target": "test-floor-zig",
+      "action_keys": [
+        "build:test-floor-zig"
+      ]
+    },
+    {
+      "target": "test-gc-layout-mark",
+      "action_keys": [
+        "build:test-gc-layout-mark"
+      ]
+    },
+    {
+      "target": "test-id-abi",
+      "action_keys": [
+        "build:test-id-abi"
+      ]
+    },
+    {
+      "target": "test-id-abi-fixture",
+      "action_keys": [
+        "build:test-id-abi-fixture"
+      ]
+    },
+    {
+      "target": "test-id-conformance",
+      "action_keys": [
+        "build:test-id-conformance"
+      ]
+    },
+    {
+      "target": "test-image-save",
+      "action_keys": [
+        "build:test-image-save"
+      ]
+    },
+    {
+      "target": "test-install",
+      "action_keys": [
+        "build:test-install",
+        "action:resource-install"
+      ]
+    },
+    {
+      "target": "test-isolate-process",
+      "action_keys": [
+        "build:test-isolate-process"
+      ]
+    },
+    {
+      "target": "test-lang-selection",
+      "action_keys": [
+        "build:test-lang-selection"
+      ]
+    },
+    {
+      "target": "test-lsp-project",
+      "action_keys": [
+        "build:test-lsp-project"
+      ]
+    },
+    {
+      "target": "test-main",
+      "action_keys": [
+        "build:test-main"
+      ]
+    },
+    {
+      "target": "test-native-rung-baseline",
+      "action_keys": [
+        "build:test-native-rung-baseline"
+      ]
+    },
+    {
+      "target": "test-native-rung-harness",
+      "action_keys": [
+        "build:test-native-rung-harness"
+      ]
+    },
+    {
+      "target": "test-native-rung-inventory",
+      "action_keys": [
+        "build:test-native-rung-inventory"
+      ]
+    },
+    {
+      "target": "test-native-rung-selection",
+      "action_keys": [
+        "build:test-native-rung-selection"
+      ]
+    },
+    {
+      "target": "test-native-rung-singleton",
+      "action_keys": [
+        "build:test-native-rung-singleton"
+      ]
+    },
+    {
+      "target": "test-prelude-selection",
+      "action_keys": [
+        "build:test-prelude-selection"
+      ]
+    },
+    {
+      "target": "test-project-check",
+      "action_keys": [
+        "build:test-project-check"
+      ]
+    },
+    {
+      "target": "test-prototype-conformance",
+      "action_keys": [
+        "build:test-prototype-conformance"
+      ]
+    },
+    {
+      "target": "test-relational-selection",
+      "action_keys": [
+        "build:test-relational-selection"
+      ]
+    },
+    {
+      "target": "test-remaining-rung-clean-prefix",
+      "action_keys": [
+        "build:test-remaining-rung-clean-prefix"
+      ]
+    },
+    {
+      "target": "test-remaining-rung-cross-floor",
+      "action_keys": [
+        "build:test-remaining-rung-cross-floor"
+      ]
+    },
+    {
+      "target": "test-remaining-rung-manifest",
+      "action_keys": [
+        "build:test-remaining-rung-manifest"
+      ]
+    },
+    {
+      "target": "test-remaining-zig-boundary",
+      "action_keys": [
+        "build:test-remaining-zig-boundary"
+      ]
+    },
+    {
+      "target": "test-remaining-zig-conversion",
+      "action_keys": [
+        "build:test-remaining-zig-conversion"
+      ]
+    },
+    {
+      "target": "test-remaining-zig-inventory",
+      "action_keys": [
+        "build:test-remaining-zig-inventory"
+      ]
+    },
+    {
+      "target": "test-repl",
+      "action_keys": [
+        "build:test-repl"
+      ]
+    },
+    {
+      "target": "test-rust-alien-live",
+      "action_keys": [
+        "build:test-rust-alien-live"
+      ]
+    },
+    {
+      "target": "test-rust-artifact",
+      "action_keys": [
+        "build:test-rust-artifact"
+      ]
+    },
+    {
+      "target": "test-rust-artifact-authority",
+      "action_keys": [
+        "build:test-rust-artifact-authority"
+      ]
+    },
+    {
+      "target": "test-rust-artifact-preflight",
+      "action_keys": [
+        "build:test-rust-artifact-preflight"
+      ]
+    },
+    {
+      "target": "test-rust-codegen-boundary",
+      "action_keys": [
+        "build:test-rust-codegen-boundary"
+      ]
+    },
+    {
+      "target": "test-rust-codegen-canonical",
+      "action_keys": [
+        "build:test-rust-codegen-canonical"
+      ]
+    },
+    {
+      "target": "test-rust-codegen-distribution",
+      "action_keys": [
+        "build:test-rust-codegen-distribution"
+      ]
+    },
+    {
+      "target": "test-rust-codegen-runtime",
+      "action_keys": [
+        "build:test-rust-codegen-runtime"
+      ]
+    },
+    {
+      "target": "test-rust-codegen-stack",
+      "action_keys": [
+        "build:test-rust-codegen-stack"
+      ]
+    },
+    {
+      "target": "test-rust-codegen-zig-store",
+      "action_keys": [
+        "build:test-rust-codegen-zig-store"
+      ]
+    },
+    {
+      "target": "test-rust-collection",
+      "action_keys": [
+        "build:test-rust-collection"
+      ]
+    },
+    {
+      "target": "test-rust-dispatch-reentry",
+      "action_keys": [
+        "build:test-rust-dispatch-reentry"
+      ]
+    },
+    {
+      "target": "test-rust-dylib-audit",
+      "action_keys": [
+        "build:test-rust-dylib-audit"
+      ]
+    },
+    {
+      "target": "test-rust-env-loader",
+      "action_keys": [
+        "build:test-rust-env-loader"
+      ]
+    },
+    {
+      "target": "test-rust-error",
+      "action_keys": [
+        "build:test-rust-error"
+      ]
+    },
+    {
+      "target": "test-rust-ffi-abort",
+      "action_keys": [
+        "build:test-rust-ffi-abort"
+      ]
+    },
+    {
+      "target": "test-rust-gc-metadata",
+      "action_keys": [
+        "build:test-rust-gc-metadata"
+      ]
+    },
+    {
+      "target": "test-rust-heap-layout",
+      "action_keys": [
+        "build:test-rust-heap-layout"
+      ]
+    },
+    {
+      "target": "test-rust-host-message-owner-inventory",
+      "action_keys": [
+        "build:test-rust-host-message-owner-inventory"
+      ]
+    },
+    {
+      "target": "test-rust-host-zig-helper-boundary",
+      "action_keys": [
+        "build:test-rust-host-zig-helper-boundary"
+      ]
+    },
+    {
+      "target": "test-rust-id-abi-fixture",
+      "action_keys": [
+        "build:test-rust-id-abi-fixture"
+      ]
+    },
+    {
+      "target": "test-rust-id-spike",
+      "action_keys": [
+        "build:test-rust-id-spike"
+      ]
+    },
+    {
+      "target": "test-rust-image-bootstrap",
+      "action_keys": [
+        "build:test-rust-image-bootstrap"
+      ]
+    },
+    {
+      "target": "test-rust-image-codegen",
+      "action_keys": [
+        "build:test-rust-image-codegen"
+      ]
+    },
+    {
+      "target": "test-rust-image-cross-floor",
+      "action_keys": [
+        "build:test-rust-image-cross-floor"
+      ]
+    },
+    {
+      "target": "test-rust-image-cross-floor-reverse",
+      "action_keys": [
+        "build:test-rust-image-cross-floor-reverse"
+      ]
+    },
+    {
+      "target": "test-rust-image-publication",
+      "action_keys": [
+        "build:test-rust-image-publication"
+      ]
+    },
+    {
+      "target": "test-rust-image-publication-rejection",
+      "action_keys": [
+        "build:test-rust-image-publication-rejection"
+      ]
+    },
+    {
+      "target": "test-rust-image-rejection",
+      "action_keys": [
+        "build:test-rust-image-rejection"
+      ]
+    },
+    {
+      "target": "test-rust-image-save",
+      "action_keys": [
+        "build:test-rust-image-save"
+      ]
+    },
+    {
+      "target": "test-rust-image-shell",
+      "action_keys": [
+        "build:test-rust-image-shell"
+      ]
+    },
+    {
+      "target": "test-rust-image-zig-store",
+      "action_keys": [
+        "build:test-rust-image-zig-store"
+      ]
+    },
+    {
+      "target": "test-rust-isolate",
+      "action_keys": [
+        "build:test-rust-isolate"
+      ]
+    },
+    {
+      "target": "test-rust-lang",
+      "action_keys": [
+        "build:test-rust-lang"
+      ]
+    },
+    {
+      "target": "test-rust-lang-diagnostics",
+      "action_keys": [
+        "build:test-rust-lang-diagnostics"
+      ]
+    },
+    {
+      "target": "test-rust-lang-parity",
+      "action_keys": [
+        "build:test-rust-lang-parity"
+      ]
+    },
+    {
+      "target": "test-rust-lower-rungs",
+      "action_keys": [
+        "build:test-rust-lower-rungs"
+      ]
+    },
+    {
+      "target": "test-rust-native-memory",
+      "action_keys": [
+        "build:test-rust-native-memory"
+      ]
+    },
+    {
+      "target": "test-rust-peg-codegen",
+      "action_keys": [
+        "build:test-rust-peg-codegen"
+      ]
+    },
+    {
+      "target": "test-rust-peg-codegen-full",
+      "action_keys": [
+        "build:test-rust-peg-codegen-full"
+      ]
+    },
+    {
+      "target": "test-rust-peg-codegen-parity",
+      "action_keys": [
+        "build:test-rust-peg-codegen-parity"
+      ]
+    },
+    {
+      "target": "test-rust-peg-cst-parity",
+      "action_keys": [
+        "build:test-rust-peg-cst-parity"
+      ]
+    },
+    {
+      "target": "test-rust-peg-diagnostics",
+      "action_keys": [
+        "build:test-rust-peg-diagnostics"
+      ]
+    },
+    {
+      "target": "test-rust-peg-installed",
+      "action_keys": [
+        "build:test-rust-peg-installed"
+      ]
+    },
+    {
+      "target": "test-rust-peg-lang",
+      "action_keys": [
+        "build:test-rust-peg-lang"
+      ]
+    },
+    {
+      "target": "test-rust-peg-lang-full",
+      "action_keys": [
+        "build:test-rust-peg-lang-full"
+      ]
+    },
+    {
+      "target": "test-rust-peg-metadata-parity",
+      "action_keys": [
+        "build:test-rust-peg-metadata-parity"
+      ]
+    },
+    {
+      "target": "test-rust-peg-pattern",
+      "action_keys": [
+        "build:test-rust-peg-pattern"
+      ]
+    },
+    {
+      "target": "test-rust-peg-shell",
+      "action_keys": [
+        "build:test-rust-peg-shell"
+      ]
+    },
+    {
+      "target": "test-rust-peg-source-corpus",
+      "action_keys": [
+        "build:test-rust-peg-source-corpus"
+      ]
+    },
+    {
+      "target": "test-rust-peg-stress",
+      "action_keys": [
+        "build:test-rust-peg-stress"
+      ]
+    },
+    {
+      "target": "test-rust-prelude",
+      "action_keys": [
+        "build:test-rust-prelude"
+      ]
+    },
+    {
+      "target": "test-rust-prelude-io",
+      "action_keys": [
+        "build:test-rust-prelude-io"
+      ]
+    },
+    {
+      "target": "test-rust-prelude-rust-error",
+      "action_keys": [
+        "build:test-rust-prelude-rust-error"
+      ]
+    },
+    {
+      "target": "test-rust-relational",
+      "action_keys": [
+        "build:test-rust-relational"
+      ]
+    },
+    {
+      "target": "test-rust-relational-zig-store",
+      "action_keys": [
+        "build:test-rust-relational-zig-store"
+      ]
+    },
+    {
+      "target": "test-rust-resource-resolution",
+      "action_keys": [
+        "build:test-rust-resource-resolution"
+      ]
+    },
+    {
+      "target": "test-rust-runtime-churn",
+      "action_keys": [
+        "build:test-rust-runtime-churn"
+      ]
+    },
+    {
+      "target": "test-rust-stack-root",
+      "action_keys": [
+        "build:test-rust-stack-root"
+      ]
+    },
+    {
+      "target": "test-rust-store-core",
+      "action_keys": [
+        "build:test-rust-store-core"
+      ]
+    },
+    {
+      "target": "test-rust-store-mop",
+      "action_keys": [
+        "build:test-rust-store-mop"
+      ]
+    },
+    {
+      "target": "test-rust-store-stack",
+      "action_keys": [
+        "build:test-rust-store-stack"
+      ]
+    },
+    {
+      "target": "test-rust-tcc-alien",
+      "action_keys": [
+        "build:test-rust-tcc-alien"
+      ]
+    },
+    {
+      "target": "test-rust-tcc-artifact",
+      "action_keys": [
+        "build:test-rust-tcc-artifact"
+      ]
+    },
+    {
+      "target": "test-rust-tcc-audit",
+      "action_keys": [
+        "build:test-rust-tcc-audit"
+      ]
+    },
+    {
+      "target": "test-rust-tcc-image",
+      "action_keys": [
+        "build:test-rust-tcc-image"
+      ]
+    },
+    {
+      "target": "test-rust-tcc-shell",
+      "action_keys": [
+        "build:test-rust-tcc-shell"
+      ]
+    },
+    {
+      "target": "test-scalar-conformance",
+      "action_keys": [
+        "build:test-scalar-conformance"
+      ]
+    },
+    {
+      "target": "test-source-fallback",
+      "action_keys": [
+        "build:test-source-fallback"
+      ]
+    },
+    {
+      "target": "test-store-image-backfill",
+      "action_keys": [
+        "build:test-store-image-backfill"
+      ]
+    },
+    {
+      "target": "test-string-conformance",
+      "action_keys": [
+        "build:test-string-conformance"
+      ]
+    },
+    {
+      "target": "test-tcc-selection",
+      "action_keys": [
+        "build:test-tcc-selection"
+      ]
+    },
+    {
+      "target": "test-termbox-load",
+      "action_keys": [
+        "build:test-termbox-load"
+      ]
+    },
+    {
+      "target": "test-z3-archive-distribution",
+      "action_keys": [
+        "build:test-z3-archive-distribution"
+      ]
+    },
+    {
+      "target": "verify",
+      "action_keys": [
+        "build:verify",
+        "action:verify-closure"
+      ]
+    },
+    {
+      "target": "verify-floor-repeat",
+      "action_keys": [
+        "build:verify-floor-repeat"
+      ]
+    },
+    {
+      "target": "verify-floor-rust",
+      "action_keys": [
+        "build:verify-floor-rust"
+      ]
+    },
+    {
+      "target": "verify-floor-zig",
+      "action_keys": [
+        "build:verify-floor-zig"
+      ]
+    }
+  ],
+  "command_actions": [
+    {
+      "action_key": "action:rust-workspace-build",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "build-action",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        },
+        {
+          "kind": "repo-tree",
+          "path": "rust"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "target-output",
+          "target": "action:rust-workspace-build"
+        }
+      ],
+      "flags": [
+        "build",
+        "--workspace",
+        "--locked",
+        "--offline"
+      ],
+      "environment": [
+        {
+          "name": "CARGO_TARGET_DIR",
+          "value": ".cargo-target"
+        }
+      ],
+      "dependencies": [],
+      "install_destination": "none",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:libtcc-static",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "build-action",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-tree",
+          "path": "vendor/libtcc-src"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "target-output",
+          "target": "action:libtcc-static"
+        }
+      ],
+      "flags": [
+        "libtcc.c",
+        "-std=gnu11",
+        "-w",
+        "-Ivendor/libtcc-src"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/id.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-id/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dfloor"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/id.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dfloor"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_artifact",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/artifact_inspector.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-artifact/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_artifact.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_artifact_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dartifact-inspector-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_artifact",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/artifact_inspector.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_artifact_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dartifact-inspector-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_store",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/store.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-store/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_store.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_store_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dstore-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_store",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/store.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_store_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dstore-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_peg",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/peg.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-peg/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_peg.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_peg_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dpeg"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_peg",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/peg.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_peg_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dpeg"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_lang",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/lang.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-lang/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_lang.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_lang_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dlang"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_lang",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/lang.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_lang_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dlang"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_tcc",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/tcc.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-tcc/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_tcc.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_tcc_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dtcc"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_tcc",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/tcc.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_tcc_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dtcc"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_codegen",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/codegen.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-codegen/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_codegen.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_codegen_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dcodegen-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_codegen",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/codegen.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_codegen_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dcodegen-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_prelude",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/prelude.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-prelude/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_prelude.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_prelude_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dprelude-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_prelude",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/prelude.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_prelude_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dprelude-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_collection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/collection.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-collection/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_collection.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_collection_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dcollection-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_collection",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/collection.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_collection_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dcollection-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_error",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/error.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-error/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_error.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_error_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Derror-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_error",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/error.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_error_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Derror-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_isolate",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/isolate.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-isolate/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_isolate.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_isolate_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Disolate-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_isolate",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/isolate.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_isolate_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Disolate-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_relational",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/relational.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-relational/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_relational.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_relational_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Drelational"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_relational",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/relational.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_relational_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Drelational"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_alien",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/alien.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-alien/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_alien.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_alien_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dalien-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_alien",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/alien.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_alien_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dalien-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-install:libbirnam_id_image",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/image.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-image/Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_image.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_image_rust.dylib"
+        }
+      ],
+      "flags": [
+        "--workspace",
+        "-Dimage-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:provider-oracle:libbirnam_id_image",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "provider-install",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/image.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_id_image_zig.dylib"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback",
+        "-Dimage-impl"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:rust-host-build",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "build-action",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "cargo"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        },
+        {
+          "kind": "repo-file",
+          "path": "rust/birnam-host/Cargo.toml"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "target-output",
+          "target": "action:rust-host-build"
+        }
+      ],
+      "flags": [
+        "build",
+        "-p",
+        "birnam-host",
+        "--locked",
+        "--offline"
+      ],
+      "environment": [
+        {
+          "name": "CARGO_TARGET_DIR",
+          "value": ".cargo-target"
+        }
+      ],
+      "dependencies": [
+        "action:rust-workspace-build"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:zig-host-oracle",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "bootstrap",
+      "selection_context": "rollback",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/main.zig"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "bin/birnam-zig-oracle"
+        }
+      ],
+      "flags": [
+        "-Ddistribution=rollback"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:libtcc-static"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:stage1-modules",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "stage1-compile",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "target-output",
+        "target": "action:rust-host-build"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/modules.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/stdlib.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/compiled-unit.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/toml.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/config.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/app-config.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/project-policy.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "src/id/isolate.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/html.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/file.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/json.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/socket.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/time.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/doc.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/zigdoc.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/lsp.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/repl.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/cli.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/http.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/log.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/markdown.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/os.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/process.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/random.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/test.birnam"
+        },
+        {
+          "kind": "repo-file",
+          "path": "modules/compiled-unit-docs.birnam"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_modules.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_stdlib.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_compiledUnit.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_toml.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_config.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_appConfig.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_projectPolicy.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_isolate.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_html.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_file.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_json.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_socket.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_time.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_doc.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_zigdoc.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_lsp.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_repl.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_cli.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_http.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_log.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_markdown.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_os.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_process.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_random.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_test.dylib"
+        },
+        {
+          "kind": "install-path",
+          "path": "lib/libbirnam_compiledUnitDocs.dylib"
+        }
+      ],
+      "flags": [
+        "--compile-module",
+        "BIRNAM_LIB_DIR"
+      ],
+      "environment": [
+        {
+          "name": "BIRNAM_LIB_DIR",
+          "value": "prefix/lib"
+        }
+      ],
+      "dependencies": [
+        "action:rust-host-build"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:resource-install",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "package",
+      "selection_context": "production",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-tree",
+          "path": "src/id"
+        },
+        {
+          "kind": "repo-tree",
+          "path": "rust"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        },
+        {
+          "kind": "repo-tree",
+          "path": "docs/guide"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "install-path",
+          "path": "share/birnam/src/id"
+        },
+        {
+          "kind": "install-path",
+          "path": "share/birnam/src/rust"
+        },
+        {
+          "kind": "install-path",
+          "path": "share/birnam/docs/guide"
+        }
+      ],
+      "flags": [
+        "installDirectory",
+        "installFileWithDir"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:stage1-modules"
+      ],
+      "install_destination": "prefix",
+      "digest_policy": "installed-artifacts-sha256",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    },
+    {
+      "action_key": "action:verify-closure",
+      "owner_key": "zig:path:build.zig",
+      "action_kind": "test",
+      "selection_context": "evidence",
+      "delegation": "none",
+      "tool_ref": {
+        "kind": "external-tool",
+        "name": "zig-stage0"
+      },
+      "inputs": [
+        {
+          "kind": "repo-file",
+          "path": "build.zig"
+        },
+        {
+          "kind": "target-output",
+          "target": "action:resource-install"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "target-output",
+          "target": "action:verify-closure"
+        }
+      ],
+      "flags": [
+        "verify"
+      ],
+      "environment": [],
+      "dependencies": [
+        "action:resource-install"
+      ],
+      "install_destination": "none",
+      "digest_policy": "normalized-receipt-v1",
+      "build_authority": "canonical",
+      "abi_surface": "build-action-dag-v1",
+      "removal_authority": "toolchain-review",
+      "last_receipt": "r6-strict: source-derived build action freeze"
+    }
+  ],
+  "surfaces": {
+    "build_options": {
+      "source_ref": "build.zig#options",
+      "names": [
+        "target",
+        "optimize",
+        "distribution",
+        "floor",
+        "store-impl",
+        "peg",
+        "codegen-impl",
+        "tcc",
+        "lang",
+        "host-impl",
+        "artifact-inspector-impl",
+        "prelude-impl",
+        "collection-impl",
+        "error-impl",
+        "isolate-impl",
+        "relational",
+        "image-impl",
+        "alien-impl",
+        "id-conformance-floor",
+        "id-conformance-identity",
+        "id-conformance-sha256"
+      ]
+    },
+    "rust_workspace": {
+      "manifest": "Cargo.toml",
+      "lockfile": "Cargo.lock",
+      "members": [
+        "Cargo.toml",
+        "rust/birnam-abi/Cargo.toml",
+        "rust/birnam-alien/Cargo.toml",
+        "rust/birnam-artifact-codec/Cargo.toml",
+        "rust/birnam-artifact/Cargo.toml",
+        "rust/birnam-codegen-runtime/Cargo.toml",
+        "rust/birnam-codegen/Cargo.toml",
+        "rust/birnam-collection/Cargo.toml",
+        "rust/birnam-error/Cargo.toml",
+        "rust/birnam-host/Cargo.toml",
+        "rust/birnam-id/Cargo.toml",
+        "rust/birnam-image-codec/Cargo.toml",
+        "rust/birnam-image/Cargo.toml",
+        "rust/birnam-isolate/Cargo.toml",
+        "rust/birnam-lang/Cargo.toml",
+        "rust/birnam-peg/Cargo.toml",
+        "rust/birnam-prelude/Cargo.toml",
+        "rust/birnam-relational/Cargo.toml",
+        "rust/birnam-store/Cargo.toml",
+        "rust/birnam-tcc/Cargo.toml"
+      ],
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--locked",
+        "--offline"
+      ],
+      "target_dir": ".cargo-target"
+    },
+    "libtcc": {
+      "source_tree": "vendor/libtcc-src",
+      "source_file": "vendor/libtcc-src/libtcc.c",
+      "include_path": "vendor/libtcc-src",
+      "flags": [
+        "-std=gnu11",
+        "-w"
+      ],
+      "linkage": "static"
+    },
+    "providers": [
+      {
+        "canonical": "libbirnam_id.dylib",
+        "zig_source": "src/id/id.zig",
+        "rust_crate": "rust/birnam-id/Cargo.toml",
+        "selection_flag": "-Dfloor",
+        "rust_fixture": "lib/libbirnam_id_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_artifact.dylib",
+        "zig_source": "src/id/artifact_inspector.zig",
+        "rust_crate": "rust/birnam-artifact/Cargo.toml",
+        "selection_flag": "-Dartifact-inspector-impl",
+        "rust_fixture": "lib/libbirnam_id_artifact_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_artifact_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_store.dylib",
+        "zig_source": "src/id/store.zig",
+        "rust_crate": "rust/birnam-store/Cargo.toml",
+        "selection_flag": "-Dstore-impl",
+        "rust_fixture": "lib/libbirnam_store_rust.dylib",
+        "zig_fixture": "lib/libbirnam_store_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_peg.dylib",
+        "zig_source": "src/id/peg.zig",
+        "rust_crate": "rust/birnam-peg/Cargo.toml",
+        "selection_flag": "-Dpeg",
+        "rust_fixture": "lib/libbirnam_id_peg_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_peg_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_lang.dylib",
+        "zig_source": "src/id/lang.zig",
+        "rust_crate": "rust/birnam-lang/Cargo.toml",
+        "selection_flag": "-Dlang",
+        "rust_fixture": "lib/libbirnam_id_lang_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_lang_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_tcc.dylib",
+        "zig_source": "src/id/tcc.zig",
+        "rust_crate": "rust/birnam-tcc/Cargo.toml",
+        "selection_flag": "-Dtcc",
+        "rust_fixture": "lib/libbirnam_id_tcc_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_tcc_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_codegen.dylib",
+        "zig_source": "src/id/codegen.zig",
+        "rust_crate": "rust/birnam-codegen/Cargo.toml",
+        "selection_flag": "-Dcodegen-impl",
+        "rust_fixture": "lib/libbirnam_id_codegen_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_codegen_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_prelude.dylib",
+        "zig_source": "src/id/prelude.zig",
+        "rust_crate": "rust/birnam-prelude/Cargo.toml",
+        "selection_flag": "-Dprelude-impl",
+        "rust_fixture": "lib/libbirnam_id_prelude_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_prelude_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_collection.dylib",
+        "zig_source": "src/id/collection.zig",
+        "rust_crate": "rust/birnam-collection/Cargo.toml",
+        "selection_flag": "-Dcollection-impl",
+        "rust_fixture": "lib/libbirnam_id_collection_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_collection_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_error.dylib",
+        "zig_source": "src/id/error.zig",
+        "rust_crate": "rust/birnam-error/Cargo.toml",
+        "selection_flag": "-Derror-impl",
+        "rust_fixture": "lib/libbirnam_id_error_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_error_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_isolate.dylib",
+        "zig_source": "src/id/isolate.zig",
+        "rust_crate": "rust/birnam-isolate/Cargo.toml",
+        "selection_flag": "-Disolate-impl",
+        "rust_fixture": "lib/libbirnam_id_isolate_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_isolate_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_relational.dylib",
+        "zig_source": "src/id/relational.zig",
+        "rust_crate": "rust/birnam-relational/Cargo.toml",
+        "selection_flag": "-Drelational",
+        "rust_fixture": "lib/libbirnam_id_relational_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_relational_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_alien.dylib",
+        "zig_source": "src/id/alien.zig",
+        "rust_crate": "rust/birnam-alien/Cargo.toml",
+        "selection_flag": "-Dalien-impl",
+        "rust_fixture": "lib/libbirnam_id_alien_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_alien_zig.dylib"
+      },
+      {
+        "canonical": "libbirnam_id_image.dylib",
+        "zig_source": "src/id/image.zig",
+        "rust_crate": "rust/birnam-image/Cargo.toml",
+        "selection_flag": "-Dimage-impl",
+        "rust_fixture": "lib/libbirnam_id_image_rust.dylib",
+        "zig_fixture": "lib/libbirnam_id_image_zig.dylib"
+      }
+    ],
+    "stage1_modules": [
+      {
+        "order": 0,
+        "source": "src/id/modules.birnam",
+        "name": "modules",
+        "output": "lib/libbirnam_modules.dylib"
+      },
+      {
+        "order": 1,
+        "source": "src/id/stdlib.birnam",
+        "name": "stdlib",
+        "output": "lib/libbirnam_stdlib.dylib"
+      },
+      {
+        "order": 2,
+        "source": "src/id/compiled-unit.birnam",
+        "name": "compiledUnit",
+        "output": "lib/libbirnam_compiledUnit.dylib"
+      },
+      {
+        "order": 3,
+        "source": "src/id/toml.birnam",
+        "name": "toml",
+        "output": "lib/libbirnam_toml.dylib"
+      },
+      {
+        "order": 4,
+        "source": "src/id/config.birnam",
+        "name": "config",
+        "output": "lib/libbirnam_config.dylib"
+      },
+      {
+        "order": 5,
+        "source": "src/id/app-config.birnam",
+        "name": "appConfig",
+        "output": "lib/libbirnam_appConfig.dylib"
+      },
+      {
+        "order": 6,
+        "source": "src/id/project-policy.birnam",
+        "name": "projectPolicy",
+        "output": "lib/libbirnam_projectPolicy.dylib"
+      },
+      {
+        "order": 7,
+        "source": "src/id/isolate.birnam",
+        "name": "isolate",
+        "output": "lib/libbirnam_isolate.dylib"
+      },
+      {
+        "order": 8,
+        "source": "modules/html.birnam",
+        "name": "html",
+        "output": "lib/libbirnam_html.dylib"
+      },
+      {
+        "order": 9,
+        "source": "modules/file.birnam",
+        "name": "file",
+        "output": "lib/libbirnam_file.dylib"
+      },
+      {
+        "order": 10,
+        "source": "modules/json.birnam",
+        "name": "json",
+        "output": "lib/libbirnam_json.dylib"
+      },
+      {
+        "order": 11,
+        "source": "modules/socket.birnam",
+        "name": "socket",
+        "output": "lib/libbirnam_socket.dylib"
+      },
+      {
+        "order": 12,
+        "source": "modules/time.birnam",
+        "name": "time",
+        "output": "lib/libbirnam_time.dylib"
+      },
+      {
+        "order": 13,
+        "source": "modules/doc.birnam",
+        "name": "doc",
+        "output": "lib/libbirnam_doc.dylib"
+      },
+      {
+        "order": 14,
+        "source": "modules/zigdoc.birnam",
+        "name": "zigdoc",
+        "output": "lib/libbirnam_zigdoc.dylib"
+      },
+      {
+        "order": 15,
+        "source": "modules/lsp.birnam",
+        "name": "lsp",
+        "output": "lib/libbirnam_lsp.dylib"
+      },
+      {
+        "order": 16,
+        "source": "modules/repl.birnam",
+        "name": "repl",
+        "output": "lib/libbirnam_repl.dylib"
+      },
+      {
+        "order": 17,
+        "source": "modules/cli.birnam",
+        "name": "cli",
+        "output": "lib/libbirnam_cli.dylib"
+      },
+      {
+        "order": 18,
+        "source": "modules/http.birnam",
+        "name": "http",
+        "output": "lib/libbirnam_http.dylib"
+      },
+      {
+        "order": 19,
+        "source": "modules/log.birnam",
+        "name": "log",
+        "output": "lib/libbirnam_log.dylib"
+      },
+      {
+        "order": 20,
+        "source": "modules/markdown.birnam",
+        "name": "markdown",
+        "output": "lib/libbirnam_markdown.dylib"
+      },
+      {
+        "order": 21,
+        "source": "modules/os.birnam",
+        "name": "os",
+        "output": "lib/libbirnam_os.dylib"
+      },
+      {
+        "order": 22,
+        "source": "modules/process.birnam",
+        "name": "process",
+        "output": "lib/libbirnam_process.dylib"
+      },
+      {
+        "order": 23,
+        "source": "modules/random.birnam",
+        "name": "random",
+        "output": "lib/libbirnam_random.dylib"
+      },
+      {
+        "order": 24,
+        "source": "modules/test.birnam",
+        "name": "test",
+        "output": "lib/libbirnam_test.dylib"
+      },
+      {
+        "order": 25,
+        "source": "modules/compiled-unit-docs.birnam",
+        "name": "compiledUnitDocs",
+        "output": "lib/libbirnam_compiledUnitDocs.dylib"
+      }
+    ],
+    "resources": [
+      {
+        "source": {
+          "kind": "repo-tree",
+          "path": "src/id"
+        },
+        "destination": {
+          "kind": "install-path",
+          "path": "share/birnam/src/id"
+        }
+      },
+      {
+        "source": {
+          "kind": "repo-tree",
+          "path": "rust"
+        },
+        "destination": {
+          "kind": "install-path",
+          "path": "share/birnam/src/rust"
+        }
+      },
+      {
+        "source": {
+          "kind": "repo-file",
+          "path": "Cargo.toml"
+        },
+        "destination": {
+          "kind": "install-path",
+          "path": "share/birnam/src/Cargo.toml"
+        }
+      },
+      {
+        "source": {
+          "kind": "repo-file",
+          "path": "Cargo.lock"
+        },
+        "destination": {
+          "kind": "install-path",
+          "path": "share/birnam/src/Cargo.lock"
+        }
+      },
+      {
+        "source": {
+          "kind": "repo-tree",
+          "path": "docs/guide"
+        },
+        "destination": {
+          "kind": "install-path",
+          "path": "share/birnam/docs/guide"
+        }
+      }
+    ],
+    "target_dependencies": {
+      "source_ref": "build.zig",
+      "edge_count": 464,
+      "edge_sha256": "cad6bfa8e31af737fa4dd84c9cc4bc5715bf574a7e09a9467da35b0323100910",
+      "capture": "all normalized lines containing .dependOn"
+    }
+  },
+  "source_digests": {
+    "build.zig": "47db09bcdf9ccb8f77c454c73363f25f5ca2ac4ddc50e04437bc444d2059dd7a",
+    "Cargo.toml": "eacbd627d86db4d37802b01077bfc10839cae252502eaa7651c64262a3272a73",
+    "Cargo.lock": "0bd550ebd087c42dc9cd652c6b6646590be47ca3ce3e8a033bb455ef6c84544e"
+  },
+  "transaction": {
+    "candidate_commit": null,
+    "receipt_commit": null,
+    "post_receipt_gate": "inventory, conversion, action-DAG checker, focused gates, and strict R6"
+  }
+}
