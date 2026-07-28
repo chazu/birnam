@@ -26,9 +26,10 @@ The conversion is complete only when:
 
 - the canonical production closure loads no Zig implementation, oracle binary,
   `_zig` dylib, checkout source, or ambient loader path;
-- the canonical floor has exactly one Rust `id_init` owner and each of the 13
-  higher dynamic provider names has exactly one Rust `module_init` authority,
-  one identity/digest, and an explicit rollback fixture policy;
+- the canonical floor has exactly one Rust `id_init() -> IdApi*` owner and
+  each of the 13 higher dynamic provider names has exactly one Rust
+  `module_init(IdApi*, void*) -> void*` authority, one identity/digest, and an
+  explicit rollback fixture policy;
 - host observation and artifact preflight are Rust-owned, while
   `Module loadArtifact:` and all `.birnam` policy remain native-Birnam-owned;
 - every retained Zig provider is reachable only through an explicit isolated
@@ -38,7 +39,8 @@ The conversion is complete only when:
 - the conversion ledger, inventory checker, archive/bootstrap, relocation,
   cross-floor, hostile-input, GC, image, and strict R6 receipts pass at the
   same commit; and
-- each fixture-retirement decision is separately reviewable and reversible.
+- each per-rung readiness/retention decision is separately reviewable, while
+  any retirement is one atomic, reversible complete-vector decision.
 
 ## 2. Current evidence and residue boundary
 
@@ -86,9 +88,9 @@ digests are measured receipts, not values to be guessed or widened.
    generation registry, and canonical family graph. No conversion step may
    load a Rust provider and its Zig counterpart in one production process.
 2. **Dynamic boundaries remain explicit.** The production floor is a dynamic
-   library with exactly one `id_init(IdApi*, void*)`; each higher rung has
-   exactly one `module_init(IdApi*, void*)`. Rust workspace membership must not
-   statically fold another provider's initializer, identity, or projection
+   library with exactly one `id_init() -> IdApi*`; each higher rung has exactly
+   one `module_init(IdApi*, void*) -> void*`. Rust workspace membership must
+   not statically fold another provider's initializer, identity, or projection
    into the selected dylib.
 3. **Dynamic dependency manifests name libraries only.** Rust crate paths,
    Zig source paths, static TCC objects, test executables, and policy files are
@@ -96,13 +98,15 @@ digests are measured receipts, not values to be guessed or widened.
 4. **Object dictionary authority and MOP law.** The live vtable dictionary
    remains the dispatch authority. Store is the derived MOP mirror and the
    supported post-bootstrap mutation chokepoint. Every change runs
-   authorizer-before-change, performs the tracked add/replace/remove update,
-   commits the live dictionary and mirror together, then invokes exactly one
-   post-commit observer. For each direct binding the mirror is exactly the
-   live Method, `#primitive` for an unreified backfill, or absent; it never
-   copies inherited methods or names a stale method. Raw bootstrap/private
-   mutation may create the initial state with an honest absence; backfill is
-   direct-only and never reveals inherited methods.
+   authorizer-before-change, then follows the frozen ordering: add is
+   `mutate → assert`; replace is `retract → mutate → reassert`; remove is
+   `retract → remove`. The tracked dictionary and Store mirror commit
+   together, followed by exactly one post-commit observer. For each direct
+   binding the mirror is exactly the live Method, `#primitive` for an
+   unreified backfill, or absent; it never copies inherited methods or names a
+   stale method. Raw bootstrap/private mutation may create the initial state
+   with an honest absence; backfill is direct-only and never reveals inherited
+   methods.
 5. **Native policy is not reimplemented.** `stdlib.birnam`,
    `project-policy.birnam`, and native module sources remain the protocol and
    language-policy authority. Rust may observe, validate, load, and publish;
@@ -110,15 +114,19 @@ digests are measured receipts, not values to be guessed or widened.
 6. **Bootstrap independence.** Production can be cold-bootstrapped from a
    source checkout using a declared cold stage-0 chain and the native-Birnam
    compiler/driver built by that chain. Bootstrap rejects prebuilt/generated
-   Birnam dylibs, images, modules, and generated output as inputs and does not
-   discover a hidden Zig runtime artifact. This plan does not require deleting
-   the Zig compiler toolchain; toolchain retirement is a separate decision.
+   Birnam executables, compilers, hosts, dylibs, images, compiled modules, and
+   generated output as inputs and does not discover a hidden Zig runtime
+   artifact. This plan does not require deleting the Zig compiler toolchain;
+   toolchain retirement is a separate decision.
 7. **Re-entry and ownership.** No Rust borrow, lock, temporary pointer, or
    mutable state borrow spans `send`, `dlopen`, TCC, finalizers, root/trace
    callbacks, or module initialization. Unsafe boundaries must cover resolved
    Method/DNU calls, mutation hooks, Alien callbacks, dynamic-extent collector
-   marks, rooted callback state, and process-lifetime handles. C callbacks never
-   unwind a Rust panic; every callback path has an explicit owner and lifetime.
+   marks, rooted callback state, and process-lifetime handles. Collector-mark
+   callbacks are synchronous and dynamic-extent; their marks cannot escape.
+   Callback-visible native objects and state remain rooted for the entire
+   callback lifetime. C callbacks never unwind a Rust panic; every callback
+   path has an explicit owner and lifetime.
 8. **Fail closed and atomically.** Invalid ABI, identity, path, descriptor,
    image, wire, generation, or dependency input rejects before activation and
    leaves the previous dictionary, Store, and filesystem target unchanged.
@@ -127,11 +135,19 @@ digests are measured receipts, not values to be guessed or widened.
    source deletion is allowed until the recovery evidence is stronger than the
    source being deleted.
 
+**Complete Zig vector** has one exact meaning in this plan: the canonical Zig
+host fixture `bin/birnam-zig-oracle` plus all 14 dynamic fixtures listed in the
+`vector` and `dynamic_load_order` fields of `abi/rollback-prefix-v1.json`.
+Those 14 are the floor and 13 higher providers; a subset is not a rollback
+vector. Any mixed-vector design would require a separately versioned and
+reviewed contract.
+
 ## 4. Conversion ledger and dispositions
 
 The ledger is machine-checked and has one row per Zig path and one row per
-canonical dynamic name. Path keys are `zig:path:<repo-relative path>` and
-provider keys are `dynamic:name:<canonical dylib name>`. Each row contains:
+canonical dynamic name. Every row has a unique `key`: path keys are
+`zig:path:<repo-relative path>` and provider keys are
+`dynamic:name:<canonical dylib name>`. Each row contains:
 
 ```text
 path/name, kind, current_owner, target_owner, production_status,
@@ -139,22 +155,41 @@ rollback_status, identity_source, digest_source, required_fixtures,
 next_phase, removal_authority, last_receipt
 ```
 
-Allowed `target_owner` values are `rust-dylib`, `rust-host`, `build-only`,
-`native-birnam-policy`, `shared-contract`, and `evidence-fixture`. Allowed
-`production_status` values are `canonical`, `never-production`, and `retired`;
-allowed `rollback_status` values are `required`, `pinned`, and
-`not-applicable`. `identity_source`, `digest_source`, `required_fixtures`,
-`next_phase`, `removal_authority`, and `last_receipt` are either populated
-strings/arrays or explicit `null` when not applicable; omitted fields are
-invalid. A separate checked owner section covers `.birnam` policy and never
-creates dynamic-provider rows.
+Allowed `kind` values are `zig-source`, `dynamic-provider`, `build-oracle`,
+`shared-contract`, `policy-source`, and `evidence-fixture`. Allowed
+`current_owner` values are `zig-floor`, `zig-rung`, `zig-host-oracle`,
+`zig-artifact-oracle`, `zig-preflight-oracle`, `zig-build`, `shared-contract`,
+`native-birnam-policy`, and `evidence`. Allowed `target_owner` values are
+`rust-dylib`, `rust-host`, `build-only`, `native-birnam-policy`,
+`shared-contract`, and `evidence-fixture`. Allowed `production_status` values
+are `canonical`, `never-production`, and `retired`; allowed
+`rollback_status` values are `required`, `pinned`, and `not-applicable`.
+Allowed `next_phase` values are `C0`, `C1`, `C2`, `C3`, `C4`, and `none`;
+allowed `removal_authority` values are `none`, `vector-review`,
+`toolchain-review`, and `policy-review`.
+
+`identity_source` and `digest_source` are required for `dynamic-provider`
+rows; `required_fixtures` is required for rows with `rollback_status=required`
+or `pinned`; `last_receipt` is required after a gate and otherwise explicitly
+`null`. `next_phase`, `removal_authority`, and those source/fixture/receipt
+fields may be `null` only when their condition is not applicable; omitted
+fields are invalid. Dynamic-provider rows must reference a name and identity
+manifest in `abi/remaining-zig-v1.json`; fixture references must resolve to a
+declared vector entry or checked evidence receipt.
+
+The separate `policy_owners` section has keys
+`birnam:path:<repo-relative .birnam path>` and covers every `.birnam` source
+under `src/id/` or `modules/`; each key names exactly one
+`native-birnam-policy` owner and is never represented as a dynamic-provider
+row.
 
 The checker validates unique keys, enum values, nullable fields, and
 referential integrity against `abi/remaining-zig-v1.json` and every provider
 identity manifest. The ledger records an immutable `baseline_commit`. The
-checker receives the candidate commit explicitly (or derives `HEAD`), validates
-it, and emits it in the receipt; it is not stored in the ledger, avoiding a
-self-referential commit field.
+checker requires either an explicit candidate commit plus a clean worktree or
+an explicit tree hash, validates that checked tree, and emits the candidate in
+the receipt; it is not stored in the ledger, avoiding a self-referential commit
+field.
 
 The initial ledger must classify the residue as follows:
 
@@ -198,6 +233,13 @@ machine-readable before changing any fixture or helper.
    The checker must be read-only and deterministic from any cwd. Wire it into
    the ordinary `zig build test` graph only after its focused receipt is
    stable, then remeasure and repin the focused and strict step counts.
+
+The ledger transaction is ordered: (a) candidate checkpoint commit and checked
+tree hash, (b) focused and strict gates at that exact clean tree, (c) receipt
+commit that records the measured counts and digests, and (d) a post-receipt gate
+run. The candidate checker rejects a dirty `HEAD`; an explicit tree hash may
+be supplied only when it identifies the exact reviewed tree. The receipt
+commit is therefore not asked to predict its own post-commit hash.
 
 **C0.1 gate:** the checker, its exact scoped-R6 receipt, ordinary test graph,
 `git diff --check`, and the scoped plus strict R6 commands pass. No provider
@@ -251,11 +293,12 @@ dynamic provider owner changes.
 ### C1.2 Artifact codec/preflight split
 
 1. Keep `birnam-artifact-codec` pointer-free and provider-free: it must not
-   export `module_init`, IdApi globals, activation, or closure policy.
+   export a provider identity, `module_init`, IdApi globals, activation, or
+   closure policy. The codec identity field is absent, not merely distinct.
    `birnam-artifact` is the dynamic Artifact provider and exports exactly one
    `module_init`; its provider identity is distinct from the codec crate.
    Apply the same distinction to provider `birnam-image` and provider-free
-   `birnam-image-codec`.
+   `birnam-image-codec`, whose codec identity field is also absent.
 2. Keep `libbirnam_id_artifact.dylib` as the sole dynamic Artifact projection;
    the Rust host alone performs filesystem sibling closure and preflight.
 3. Keep native-Birnam `Module loadArtifact:` as the only runtime ordering,
@@ -267,8 +310,11 @@ dynamic provider owner changes.
    `artifact_preflight.zig` until the rollback archive contains their fixed
    receipts and the ledger marks them evidence-only.
 
-**C1.2 gate:** the exact codec/projection/host/native ownership audit passes,
-no cross-rung initializer or identity is exported, and strict R6/Z3 pass.
+**C1.2 gate:** compiled export/dependency audits prove that the Artifact and
+Image providers export only their own initializer and identity, while both
+codec crates and Codegen export neither provider's initializer nor identity;
+the exact codec/projection/host/native ownership audit passes, and strict
+R6/Z3 pass.
 
 ## 7. Phase C2 — per-rung Rust canonicalization and Zig fixture decisions
 
@@ -293,10 +339,13 @@ For each rung, create a receipt containing:
 4. two same-floor and two cross-floor processes, never one process containing
    both implementations;
 5. one Rust production archive and one complete-vector Zig rollback archive;
-6. a statement choosing `retain-pinned-fixture`, `vector-retirement-ready`,
-   or `blocked`. Per-rung deletion is not an allowed outcome: the complete
-   Zig vector must remain intact until an explicitly reviewed atomic vector
-   retirement; and
+6. separate `readiness` and `rollback_status` fields. `readiness` is one of
+   `blocked`, `retain-ready`, or `vector-retirement-ready`; `rollback_status`
+   is one of `pinned`, `required`, or `not-applicable`. The transition to
+   `vector-retirement-ready` is permitted only for the complete vector and
+   after the Design 66 release-cycle predicate. Per-rung deletion is not an
+   allowed outcome: the complete Zig vector must remain intact until an
+   explicitly reviewed atomic vector retirement; and
 7. a fresh strict R6 receipt after the choice.
 
 ### C2.1 First three bounded rung slices
@@ -307,22 +356,22 @@ readiness receipts only; none may delete one provider from the rollback vector.
 **C2.1a — floor:** update the floor ledger row with current Rust/Zig digests,
 rerun the 256-test lower-rung matrix, old native-client/image corpus, forced-GC
 and MOP checks, and record the decision. The invariant-based default is
-`blocked` with `retain-pinned-fixture` until the Design 66 release-cycle
-predicate, a complete Rust release, and full-Zig rollback history exist; no
-source deletion or vector-retirement readiness is implied.
+`readiness=blocked` and `rollback_status=pinned` until the Design 66
+release-cycle predicate, a complete Rust release, and full-Zig rollback history
+exist; no source deletion or vector-retirement readiness is implied.
 
 **C2.1b — Store:** rerun the Store consistency-law suite under Zig and Rust
 Debug/ReleaseSafe, including tracked/raw mutation, backfill, authorizer,
 observer, image boot, and inherited revelation. Retain the Zig fixture unless
 the Design 66 release-cycle predicate is satisfied and the receipt proves
-recovery without it; record `blocked`/`retain-pinned-fixture` until then and
-never remove the Store mirror contract.
+recovery without it; record `readiness=blocked` and
+`rollback_status=pinned` until then and never remove the Store mirror contract.
 
 **C2.1c — PEG:** rerun CST/metadata/diagnostic/source corpus and generated-C
 parity under Rust and the explicit Zig parser fixture. Preserve the parser
-fixture and record `blocked`/`retain-pinned-fixture` while any old image, parser
-diagnostic, generated-C recovery path, or the Design 66 release-cycle
-predicate depends on it.
+fixture and record `readiness=blocked` and `rollback_status=pinned` while any
+old image, parser diagnostic, generated-C recovery path, or the Design 66
+release-cycle predicate depends on it.
 
 Each slice is one commit after focused tests, followed by strict R6 before the
 next slice. A vector-retirement commit may not include another rung or a
@@ -352,26 +401,28 @@ Rust native vtable shadows a `.birnam` policy method, and strict R6 passes.
 
 ## 9. Phase C4 — final fixture retirement and clean bootstrap
 
-Only after the named release/rollback observation for every member of the
-complete Zig vector, and after a separately reviewed atomic retirement
-decision:
+After the named release/rollback observation for every member of the complete
+Zig vector, C4 chooses exactly one separately reviewed mode:
 
-1. remove the complete Zig vector from ordinary build/test and distribution
-   paths in one atomic change; no individual provider may be deleted;
-2. retain a fixed test-only archive or explicit recovery bundle if the
-   recovery policy requires it;
-3. update the conversion ledger and inventory disposition in the same focused
-   commit;
-4. rerun production/rollback traces, archive/bootstrap, old image/native
-   client, cross-floor, hostile-input, GC, and strict R6 checks; and
-5. tag the prior complete-vector fixture state before finalizing retirement.
-   A Git tag supplements but does not replace the recovery archive.
+1. **Retain mode:** make no deletion, keep every vector member
+   `rollback_status=pinned`, retain a fixed recovery archive, and rerun both
+   prefix-confined production and complete-vector rollback traces.
+2. **Retire mode:** remove the complete Zig host plus all 14 dynamic fixtures
+   from ordinary build/test and distribution paths in one atomic change; set
+   every row's `rollback_status=not-applicable`; do not run a rollback trace
+   after removal, and require production-only archive/bootstrap, relocation,
+   old image/native-client, cross-floor, hostile-input, GC, and strict R6
+   checks with fixtures unavailable.
+3. Update the conversion ledger and inventory disposition in the same focused
+   commit. A partial retained vector is forbidden unless a separately
+   versioned mixed-vector design is reviewed. Tag the prior complete-vector
+   state; a Git tag supplements but does not replace the recovery archive.
 
 The final C4 gate has no Zig production provider, no oracle binary in a
 production bundle, no ambient fallback, and no dynamic dependency on a Zig
-implementation. It must pass two independent Rust production archive builds,
-the complete source/bootstrap proof with fixtures unavailable, and the explicit
-rollback archive if any fixture remains.
+implementation. Retain mode additionally requires the complete rollback
+archive and trace; retire mode requires two independent Rust production
+archives and the complete source/bootstrap proof with fixtures unavailable.
 
 ## 10. Commit and review discipline
 
@@ -395,8 +446,10 @@ rollback archive if any fixture remains.
 
 - [ ] Conversion ledger and checker cover every current Zig file and all 14
       canonical dynamic names.
-- [ ] Production and rollback traces are prefix-confined and mutually
-      exclusive.
+- [ ] Before C4, production and complete-vector rollback traces are
+      prefix-confined and mutually exclusive; C4 retain mode keeps both, while
+      retire mode records `rollback_status=not-applicable` and runs production
+      traces only.
 - [ ] Rust host and artifact preflight own observation/closure; native Birnam
       owns activation and policy.
 - [ ] Every rung has a Rust identity/digest, Zig fixture policy, and applicable
@@ -406,8 +459,9 @@ rollback archive if any fixture remains.
 - [ ] All later rung decisions are separately reviewed and reversible.
 - [ ] No Rust provider statically exports another rung's `module_init` or
       identity.
-- [ ] Two Rust production archives, one explicit rollback archive, relocation,
-      source bootstrap, and hostile-input gates pass.
+- [ ] Two Rust production archives, plus the explicit complete-vector rollback
+      archive in retain mode (or the no-fixture source bootstrap in retire
+      mode), relocation, and hostile-input gates pass.
 - [ ] The final strict R6 receipt is remeasured after C0 and every boundary
       change; it retains `516/522`, six skipped, and only the two pinned
       benchmark crossings only when the live run proves those values. The
