@@ -781,12 +781,7 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         }
     }
     let mut reachable = BTreeSet::new();
-    let mut pending = manifest
-        .source_graph
-        .roots
-        .iter()
-        .cloned()
-        .collect::<Vec<_>>();
+    let mut pending = manifest.source_graph.roots.to_vec();
     if pending.len()
         != manifest
             .source_graph
