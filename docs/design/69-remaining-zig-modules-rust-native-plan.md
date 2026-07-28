@@ -310,7 +310,9 @@ The first M4.2 slice is landed in `birnam-host` as the `birnam-build`
 `dry-run` parser. It requires `semantic_scope=full-semantic-v1`, binds graph
 and input digests to files under the supplied root, rejects path escape,
 duplicates, cycles, mixed production vectors, and Zig dynamic names, and has
-eight focused parser tests. It does not execute a tool; the complete
+13 focused parser tests. The R6 acceptance script runs this semantic-driver
+suite fail-closed before the existing 218-step/99-test Rust replacement
+matrix. It does not execute a tool; the complete
 `dependOn`/install semantic resolver and selection-specific command receipts
 remain the next M4.2 slice.
 
