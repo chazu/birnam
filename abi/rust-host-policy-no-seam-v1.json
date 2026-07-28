@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "kind": "rust-host-policy-no-seam",
+  "candidate_commit": "b63cdc5523f43822ffc1941a8c5ed49299c53b5f",
+  "owner_inventory": {
+    "send_calls": 120,
+    "named_global_lookups": 31,
+    "owner_classes": 14,
+    "reviewed_functions": 56,
+    "disposition": "read-only"
+  },
+  "z2_1_seam": {
+    "status": "none",
+    "reviewed_scope": "all 120 Rust-host IdApi.send callsites",
+    "rationale": "No send duplicates an independent policy decision strongly enough to authorize a removal; sends retain receiver acquisition, protocol dispatch, validation, or lifecycle ordering.",
+    "next_action": "Keep runtime unchanged and nominate a candidate only after an equivalent native policy path and invariant-preserving tests are proven."
+  },
+  "policy_owner": "src/id/project-policy.birnam",
+  "runtime_changes": [],
+  "checks": [
+    {
+      "command": "zig build test-rust-host-message-owner-inventory -Disolate-impl=rust -Dfloor=rust -Drelational=rust -Doptimize=ReleaseSafe -j1",
+      "result": "pass: rust-host-message-owner-inventory: ok send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56 disposition=read-only"
+    },
+    {
+      "command": "python3 scripts/check-rust-host-message-owner-inventory.py",
+      "result": "pass: z2_1_seam status=none"
+    }
+  ],
+  "invariants": {
+    "native_policy_remains_sole_policy_owner": true,
+    "rust_policy_vtable_shadow": false,
+    "mop_and_store_authority_changed": false,
+    "abi_changed": false
+  }
+}
