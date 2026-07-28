@@ -15,7 +15,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 pub const MANIFEST_SCHEMA: u32 = 1;
-pub const EXECUTABLE_SEMANTIC_SCOPE: &str = "full-semantic-v1";
+pub const EXECUTABLE_SEMANTIC_SCOPE: &str = "projected-shadow-v1";
 pub const RECEIPT_PROOF_PATH: &str = "abi/birnam-build-actions-receipt-proof-v1.json";
 pub const PRODUCTION_TOOL_NAMES: &[&str] = &[
     "ar", "bash", "cargo", "cc", "clang", "git", "ld", "make", "ninja", "perl", "python3",
@@ -72,6 +72,7 @@ pub const STAGE1_MODULES: &[(&str, &str)] = &[
 pub struct DriverManifest {
     pub schema: u32,
     pub semantic_scope: String,
+    pub environment_base: EnvironmentBase,
     pub graph: GraphIdentity,
     pub source_graph: SourceGraph,
     pub target: String,
@@ -151,6 +152,13 @@ pub struct ActionSpec {
     pub inputs: Vec<PathRef>,
     pub outputs: Vec<PathRef>,
     pub environment: BTreeMap<String, EnvironmentValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentBase {
+    Clear,
+    Inherit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -867,6 +875,11 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             manifest.semantic_scope
         )));
     }
+    if !matches!(manifest.environment_base, EnvironmentBase::Clear) {
+        return Err(error(
+            "manifest requires an explicit cleared environment base",
+        ));
+    }
     if manifest.graph.source_path != Path::new("abi/birnam-build-actions-v1.json") {
         return Err(error("graph source must be the M4.1 action manifest"));
     }
@@ -1563,11 +1576,10 @@ pub fn execute_shadow_graph(
         let mut command = Command::new(&tool_path);
         command.args(action.command.iter().skip(1));
         command.current_dir(validated.root.join(&action.cwd));
-        let clear_environment = action
-            .environment
-            .values()
-            .any(|value| matches!(value, EnvironmentValue::Clear));
-        if clear_environment {
+        if matches!(
+            validated.manifest.environment_base,
+            EnvironmentBase::Clear
+        ) {
             command.env_clear();
         }
         for (name, value) in &action.environment {
@@ -1776,7 +1788,8 @@ mod tests {
                 .collect::<Vec<_>>();
             let manifest = json!({
                 "schema": 1,
-                "semantic_scope": "full-semantic-v1",
+                "semantic_scope": "projected-shadow-v1",
+                "environment_base": "clear",
                 "graph": {"id": "build-actions-v1", "source_path": "abi/birnam-build-actions-v1.json", "source_sha256": graph_digest, "receipt_commit": receipt_commit, "receipt_tree": receipt_tree},
                 "source_graph": {
                     "build_file": {"path": "build.zig", "sha256": build_digest},
@@ -1855,6 +1868,15 @@ mod tests {
         assert!(parse_and_validate(b"{}", &fixture.root).is_err());
         let bytes = mutate(&fixture, |value| value["unexpected"] = json!(true));
         assert!(parse_and_validate(&bytes, &fixture.root).is_err());
+    }
+
+    #[test]
+    fn rejects_ambient_environment_base() {
+        let fixture = Fixture::new();
+        let bytes = mutate(&fixture, |value| value["environment_base"] = json!("inherit"));
+        let error = parse_and_validate(&bytes, &fixture.root)
+            .expect_err("ambient environment base must be rejected");
+        assert!(error.0.contains("cleared environment base"));
     }
 
     #[test]
