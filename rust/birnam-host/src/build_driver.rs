@@ -625,6 +625,12 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             manifest.semantic_scope
         )));
     }
+    if manifest.graph.source_path != Path::new("abi/birnam-build-actions-v1.json") {
+        return Err(error("graph source must be the M4.1 action manifest"));
+    }
+    if manifest.source_graph.build_file.path != Path::new("build.zig") {
+        return Err(error("source graph build_file must be build.zig"));
+    }
     safe_name(&manifest.target, "target")?;
     if !matches!(
         manifest.profile.as_str(),
@@ -957,7 +963,8 @@ mod tests {
             fs::create_dir_all(&root).expect("fixture root");
             fs::write(root.join("module.birnam"), b"module").expect("module");
             fs::write(root.join("zig"), b"tool").expect("tool");
-            fs::write(root.join("graph.json"), b"graph").expect("graph");
+            fs::create_dir_all(root.join("abi")).expect("abi directory");
+            fs::write(root.join("abi/birnam-build-actions-v1.json"), b"graph").expect("graph");
             fs::create_dir_all(root.join("work")).expect("work directory");
             fs::write(root.join("build.zig"), b"compile.dependOn(prepare);").expect("build source");
             let digest = hex::encode(Sha256::digest(b"module"));
@@ -966,7 +973,7 @@ mod tests {
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
-                "graph": {"id": "build-actions-v1", "source_path": "graph.json", "source_sha256": graph_digest},
+                "graph": {"id": "build-actions-v1", "source_path": "abi/birnam-build-actions-v1.json", "source_sha256": graph_digest},
                 "source_graph": {
                     "build_file": {"path": "build.zig", "sha256": build_digest},
                     "depend_on_occurrences": 1,
