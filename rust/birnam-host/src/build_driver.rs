@@ -90,6 +90,7 @@ pub struct Selection {
     pub distribution: String,
     pub floor: String,
     pub providers: BTreeMap<String, String>,
+    pub provider_actions: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -97,6 +98,7 @@ pub struct Selection {
 pub struct ModuleSpec {
     pub name: String,
     pub source: PathRef,
+    pub producer: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -747,6 +749,36 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         .iter()
         .map(|action| action.name.as_str())
         .collect::<BTreeSet<_>>();
+    for module in &manifest.modules {
+        if !action_names.contains(module.producer.as_str()) {
+            return Err(error(format!(
+                "module {} names an unknown producer action {}",
+                module.name, module.producer
+            )));
+        }
+    }
+    let expected_provider_actions = CANONICAL_DYNAMIC_LIBRARIES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let actual_provider_actions = manifest
+        .selection
+        .provider_actions
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual_provider_actions != expected_provider_actions {
+        return Err(error(
+            "provider action map does not cover the canonical 14-provider closure",
+        ));
+    }
+    for (library, producer) in &manifest.selection.provider_actions {
+        if !action_names.contains(producer.as_str()) {
+            return Err(error(format!(
+                "provider {library} names an unknown producer action {producer}"
+            )));
+        }
+    }
     if manifest.source_graph.roots.is_empty()
         || manifest
             .source_graph
@@ -1055,6 +1087,49 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             "dynamic library set does not match the canonical 14-provider closure",
         ));
     }
+    for library in CANONICAL_DYNAMIC_LIBRARIES {
+        let implementation = manifest
+            .selection
+            .providers
+            .get(*library)
+            .expect("canonical provider validated above");
+        let producer_name = manifest
+            .selection
+            .provider_actions
+            .get(*library)
+            .expect("provider action map validated above");
+        let expected_output = if implementation == "zig" {
+            format!(
+                "{}_zig.dylib",
+                library
+                    .strip_suffix(".dylib")
+                    .expect("canonical provider has dylib suffix")
+            )
+        } else {
+            (*library).to_string()
+        };
+        let producer = manifest
+            .actions
+            .iter()
+            .find(|action| action.name == *producer_name)
+            .expect("provider producer action validated above");
+        let output_count = producer
+            .outputs
+            .iter()
+            .filter(|output| {
+                output
+                    .path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy() == expected_output)
+            })
+            .count();
+        if output_count != 1 {
+            return Err(error(format!(
+                "provider {library} producer {} must declare exactly one {expected_output} output",
+                producer.name
+            )));
+        }
+    }
 
     Ok(ValidatedManifest {
         manifest,
@@ -1106,6 +1181,19 @@ mod tests {
             fs::write(root.join("abi/birnam-build-actions-v1.json"), &graph_bytes).expect("graph");
             let digest = hex::encode(Sha256::digest(b"module"));
             let graph_digest = hex::encode(Sha256::digest(&graph_bytes));
+            let provider_actions = CANONICAL_DYNAMIC_LIBRARIES
+                .iter()
+                .map(|name| (*name, "compile"))
+                .collect::<BTreeMap<_, _>>();
+            let provider_outputs = CANONICAL_DYNAMIC_LIBRARIES
+                .iter()
+                .map(|name| {
+                    json!({
+                        "path": format!("out/{name}"),
+                        "sha256": "c".repeat(64)
+                    })
+                })
+                .collect::<Vec<_>>();
             let manifest = json!({
                 "schema": 1,
                 "semantic_scope": "full-semantic-v1",
@@ -1122,8 +1210,8 @@ mod tests {
                 },
                 "target": "aarch64-macos",
                 "profile": "release",
-                "selection": {"distribution": "production", "floor": "rust", "providers": CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| (*name, "rust")).collect::<BTreeMap<_, _>>()},
-                "modules": [{"name": "module", "source": {"path": "module.birnam", "sha256": digest}}],
+                "selection": {"distribution": "production", "floor": "rust", "providers": CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| (*name, "rust")).collect::<BTreeMap<_, _>>(), "provider_actions": provider_actions},
+                "modules": [{"name": "module", "source": {"path": "module.birnam", "sha256": digest}, "producer": "compile"}],
                 "actions": [{
                     "name": "prepare",
                     "context": "production",
@@ -1148,7 +1236,7 @@ mod tests {
                     "command": ["zig", "build-module"],
                     "depends_on": ["prepare"],
                     "inputs": [{"path": "module.birnam", "sha256": digest}],
-                    "outputs": [{"path": "out/module.dylib", "sha256": "c".repeat(64)}],
+                    "outputs": std::iter::once(json!({"path": "out/module.dylib", "sha256": "c".repeat(64)})).chain(provider_outputs).collect::<Vec<_>>(),
                     "environment": {"BIRNAM_PREFIX": {"mode": "set", "value": "prefix"}}
                 }],
                 "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
@@ -1296,6 +1384,13 @@ mod tests {
             value["selection"]["providers"][CANONICAL_DYNAMIC_LIBRARIES[0]] = json!("zig");
         });
         assert!(parse_and_validate(&mismatch, &fixture.root).is_err());
+        let missing_provider_output = mutate(&fixture, |value| {
+            value["selection"]["provider_actions"][CANONICAL_DYNAMIC_LIBRARIES[0]] =
+                json!("prepare");
+        });
+        let error = parse_and_validate(&missing_provider_output, &fixture.root)
+            .expect_err("provider producer output must be declared");
+        assert!(error.0.contains("producer"));
     }
 
     #[test]
