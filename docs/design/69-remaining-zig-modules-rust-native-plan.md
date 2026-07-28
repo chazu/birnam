@@ -333,9 +333,12 @@ The following hardening checkpoint closes the parser trust boundary further:
 source/input/tool paths reject symlink components and are canonicalized under
 the root; output prefixes reject existing symlink components; full-semantic
 manifests require source-graph roots, expression bindings for every captured
-edge, exact reconciliation between resolved explicit/implicit edges and each
-action’s declared dependency set, a rooted acyclic closure, explicit implicit-
-edge kinds, a connected action set, the exact 14-provider/dylib closure, and
+edge, exact binding coverage with no unbound or extra captured expressions,
+and a one-to-one typed `kind: "source"` edge for every captured `.dependOn`
+pair. Resolved source/implicit edges must still reconcile exactly with each
+action’s declared dependency set, preserving one canonical topological order;
+the graph also requires a rooted acyclic closure, explicit implicit-edge
+kinds, a connected action set, the exact 14-provider/dylib closure, and
 producer mappings whose declared outputs cover every selected provider and
 stage-1 module.
 Action records also carry authority/delegation, cwd, tool identity, exact
