@@ -43,6 +43,16 @@ rustc --version | grep -q '^rustc 1\.95\.0 '
 
 (
   cd "$scratch"
+  scripts/rust-install.sh install --root "$scratch" \
+    --prefix "$scratch/rust-prefix" --profile release
+  test -x "$scratch/rust-prefix/bin/birnam"
+  test ! -e "$scratch/rust-prefix/bin/birnam-zig-oracle"
+  test "$(find "$scratch/rust-prefix" -type f -name '*.zig' | wc -l | tr -d ' ')" = 0
+  "$scratch/rust-prefix/bin/birnam" "$scratch/bench/nil.birnam" </dev/null
+)
+
+(
+  cd "$scratch"
   sentinel="$scratch/artifact-preflight-sentinel.dylib"
   zig build-lib -dynamic -lc src/id/artifact_preflight_sentinel.zig -femit-bin="$sentinel"
   CARGO_TARGET_DIR="$scratch/.cargo-target" \

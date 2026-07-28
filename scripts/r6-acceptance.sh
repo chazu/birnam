@@ -193,6 +193,13 @@ rust_publication_receipt_test_count=$(grep -Ec "^test result: ok\\. ${expected_p
 }
 echo "r6-acceptance: Rust publication receipt suite ${expected_publication_receipt_tests}/${expected_publication_receipt_tests} tests passed"
 
+# Exercise the source-built Rust production/bootstrap path before the legacy
+# Zig-orchestrated compatibility matrix. This proof is intentionally separate
+# from the projected manifest receipts: it builds a fresh release target,
+# stages the Rust-only prefix, compiles all stage-1 modules, relocates it, and
+# runs a real script without a Zig payload.
+bash scripts/rust-driver-native-smoke.sh
+
 set +e
 zig build "${latest_tests[@]}" "${isolate_option[@]}" "${floor_option[@]}" "${relational_option[@]}" -Doptimize=ReleaseSafe -j1 --summary all >"$functional" 2>&1
 functional_status=$?
@@ -515,7 +522,7 @@ END { print count + 0 }
 # P0/P1 residue and authority checks are part of the current replacement gate.
 # They intentionally contribute build steps, not runtime test counts: each
 # receipt is asserted explicitly so a target cannot pass merely by exiting 0.
-grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=80 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290' "$functional" || {
+grep -Fqx 'remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=84 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290' "$functional" || {
   echo "r6-acceptance: remaining-Zig inventory receipt was not emitted" >&2
   exit 1
 }

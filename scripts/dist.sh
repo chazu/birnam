@@ -35,8 +35,8 @@ stage="$work/${name}"
 archive="$work/${name}.tar.gz"
 published="zig-out/dist/${name}.tar.gz"
 
-log "building ${name} (ReleaseSafe, production distribution)"
-zig build install -Doptimize=ReleaseSafe -Ddistribution=production --prefix "$prefix"
+log "building ${name} (Rust release, production distribution)"
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release
 
 log "staging"
 mkdir -p "$stage/bin" "$stage/lib"

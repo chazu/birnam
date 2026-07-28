@@ -10,9 +10,11 @@ product; compatibility and language surface can and will still change.
 
 ## Support
 
-Birnam currently supports **arm64 macOS** with **Zig 0.15.1**. This applies to
-development builds, installed binaries, and release bundles. Other targets fail
-early rather than producing an artifact that cannot link or boot.
+Birnam currently supports **arm64 macOS** with the pinned Rust toolchain and
+system libtcc build prerequisites. The production install and release paths are
+Rust-only. Zig 0.15.1 remains an explicit development/oracle tool for the
+cross-layer compatibility and rollback gates; it is not needed to run an
+installed production prefix.
 
 Linux support is planned.
 
@@ -24,19 +26,19 @@ and acceptance criteria.
 From a checkout:
 
 ```sh
-zig build install --prefix ~/.local
+scripts/rust-install.sh install --root . --prefix ~/.local --profile debug
 export PATH="$HOME/.local/bin:$PATH"
 birnam
 ```
 
 The installed executable finds its runtime dylibs in the sibling `lib/`
-directory. For development, `zig build` produces `zig-out/bin/birnam` and the
-runtime modules under `zig-out/lib/`.
+directory. `mise run build` uses the same Rust-only installer for a debug
+prefix; `zig build` remains the explicit oracle/debug graph.
 
-[`mise`](https://mise.jdx.dev) is optional; [mise.toml](mise.toml) pins the same
-Zig version and exposes `mise run clean`, `mise run build`, `mise run verify`,
-and `mise run install`. Use `mise run clean && mise run build` when you need a
-fresh local build, including fresh project artifacts.
+[`mise`](https://mise.jdx.dev) is optional; [mise.toml](mise.toml) pins the Rust
+and Zig oracle toolchains and exposes Rust-system defaults for `mise run build`,
+`mise run install`, `mise run verify`, `mise run dist`, and `mise run release`.
+The explicit Zig compatibility matrix is `mise run zig-oracle-verify`.
 
 ## First Session
 
@@ -234,14 +236,16 @@ For interactive object and fact-store wayfinding, see the
 ## Developer Tools
 
 The compiled CLI, REPL, LSP, and documentation modules are included by
-`zig build install` and in release bundles. Their source is embedded in the
-installed compiled units. In a development checkout, use `zig-out/bin/birnam`.
+the Rust installer and in release bundles. Their source is embedded in the
+installed compiled units. In a development checkout, run `mise run build` and
+use the installed prefix (by default `$HOME/.local/bin/birnam`).
 
 ```sh
-./zig-out/bin/birnam doc time nowMillis
-./zig-out/bin/birnam docgen /tmp/birnam-docs.html
-./zig-out/bin/birnam --lsp
-./zig-out/bin/birnam --listen 5555 examples/fizzbuzz.birnam
+BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
+"$BIRNAM_BIN" doc time nowMillis
+"$BIRNAM_BIN" docgen /tmp/birnam-docs.html
+"$BIRNAM_BIN" --lsp
+"$BIRNAM_BIN" --listen 5555 examples/fizzbuzz.birnam
 ```
 
 - `doc` prints module or selector documentation.
@@ -251,7 +255,7 @@ installed compiled units. In a development checkout, use `zig-out/bin/birnam`.
 
 The generated reference opens with the authored language, idioms, fact-store,
 and image guide, followed by the API reference extracted from current module
-facts and Zig source documentation.
+facts and native-floor documentation.
 
 `wrap` is a binary-only scaffolder and works from an installed executable:
 
@@ -265,16 +269,25 @@ to have `birnam build` produce and stage its native dylib.
 
 ## Verification
 
-Run the complete gate before a release or cross-layer change:
+Run the Rust-only release gate before a production release:
 
 ```sh
-zig build verify
+mise run verify
 ```
 
-It runs the Zig unit/integration suites, rebuilds self-hosted artifacts with
-`stage1`, executes the birnam-level suites, and checks REPL transcripts. The
-narrower commands are `zig build test`, `zig build test-birnam`, and `zig build
-test-repl`. GitHub Actions runs `verify` on the supported arm64 macOS target.
+`mise run rust-cutover-verify` is the equivalent explicitly named release gate.
+Run the complete Zig compatibility/oracle gate only when changing or auditing
+the retained Zig path:
+
+```sh
+mise run zig-oracle-verify
+```
+
+The Zig-oracle command runs the Zig unit/integration suites, rebuilds
+self-hosted artifacts with `stage1`, executes the birnam-level suites, and
+checks REPL transcripts. The narrower commands are `zig build test`, `zig build
+test-birnam`, and `zig build test-repl`. GitHub Actions runs the Zig-oracle gate
+on the supported arm64 macOS target.
 
 ## Benchmarks
 
@@ -284,9 +297,10 @@ migrations, the datalog read/write path, GC, images, boot paths, and
 whole-process workloads — always against a ReleaseSafe build.
 
 ```sh
-BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam   # tight dev loop (~5s)
-mise run bench                                          # isolated Zig-oracle run
-mise run bench-rust                                     # isolated production-floor run
+BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
+BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam        # tight dev loop (~5s)
+mise run bench                                          # isolated Rust-system run
+mise run bench-zig-oracle                               # explicit Zig-oracle run
 mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
@@ -297,18 +311,19 @@ a compare against the last release snapshot before merging bigger work.
 (10% micro, 5% elsewhere), so it can gate scripts.
 
 **As part of the release process:** after `mise run release`, on the tagged
-commit and a quiet machine, run
+commit and a quiet machine, run the Rust-system snapshot:
 
 ```sh
 mise run bench-release
-mise run bench-release-rust
-git add bench/results/v<X.Y.Z>-*.json && git commit
+git add bench/results/v<X.Y.Z>-rust-*.json && git commit
 ```
 
-The committed floor-labelled snapshots are the baselines future runs compare
+The committed Rust-system snapshots are the baselines future runs compare
 against; filenames and JSON stamps include the commit and selected dylib digest.
-(This step is intentionally outside `release.sh` — bench noise must never
-block a release.) `docs/misc/BENCHMARKS.md` is the full operational guide;
+For an optional cross-floor comparison, also run
+`mise run bench-release-zig-oracle`. (This step is intentionally outside
+`release.sh` — bench noise must never block a release.)
+`docs/misc/BENCHMARKS.md` is the full operational guide;
 [docs/design/46-benchmarks.md](docs/design/46-benchmarks.md) records the
 methodology and the measured constants.
 

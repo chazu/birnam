@@ -1,8 +1,10 @@
 # mise (https://mise.jdx.dev) — pins the toolchain and exposes common tasks.
 #   mise run clean          # remove generated outputs and project artifacts
-#   mise install            # fetch the pinned Zig
-#   mise run build          # zig build (Debug)
-#   mise run verify         # full native + self-hosted + REPL test gate
+#   mise install            # fetch the pinned Rust and Zig-oracle toolchains
+#   mise run build          # build the Rust-system development prefix
+#   mise run verify         # Rust-only production verification gate
+#   mise run rust-cutover-verify # same Rust-only release/cold-source gate
+#   mise run zig-oracle-verify # explicit Zig compatibility/oracle gate
 #   mise run rust-check     # offline Cargo check for the isolated Rust workspace
 #   mise run rust-test      # offline Cargo tests for the isolated Rust workspace
 #   mise run rust-miri      # pure-Rust unsafe-code checks (requires nightly Miri)
@@ -20,15 +22,16 @@
 #   mise run prototype-conformance-smoke # compare prototypes on both floors
 #   mise run rust-store-mop-smoke # prove Store MOP consistency on Rust
 #   mise run rust-lower-rung-matrix # isolated first downstream matrix
-#   mise run bootstrap-smoke # build a fixture-free source archive with pinned tools
+#   mise run bootstrap-smoke # Rust-first source archive plus Zig compatibility smoke
 #   mise run zig-oracle-conformance # focused external IdApi gate on the Zig oracle
-#   mise run install        # install to a prefix
-#   mise run dist           # build a release tarball for this platform
-#   mise run release minor  # bump version, tag, build, publish a GitHub release
-#   mise run bench          # isolated Zig-floor ReleaseSafe benchmark
-#   mise run bench-rust     # isolated Rust-floor ReleaseSafe benchmark
-#   mise run bench-release  # tracked Zig snapshot; run bench-release-rust too
-#                           # (run AFTER release, on the tagged commit; commit both files)
+#   mise run install        # install the Rust-system prefix
+#   mise run dist           # build a Rust-system release tarball for this platform
+#   mise run release minor  # bump version, tag, build, publish a Rust-system release
+#   mise run bench          # isolated Rust-system ReleaseSafe benchmark
+#   mise run bench-zig-oracle # explicit isolated Zig-oracle benchmark
+#   mise run bench-release  # tracked Rust-system snapshot
+#   mise run bench-release-zig-oracle # optional tracked Zig-oracle comparison
+#                           # (run AFTER release, on the tagged commit)
 #   mise run bench-compare <old-floor.json> <new-floor.json>
 
 [tools]
@@ -36,11 +39,13 @@ zig = "0.15.1"
 rust = "1.95.0"
 
 [tasks.build]
-description = "Build everything with the Rust floor default (Debug)"
-run = "zig build"
+description = "Build the Rust-only development prefix"
+run = """
+scripts/rust-install.sh install --root "$PWD" --prefix "${BIRNAM_PREFIX:-$HOME/.local}" --profile debug
+"""
 
 [tasks.clean]
-description = "Remove generated build outputs, Zig cache, and project artifacts"
+description = "Remove Rust build outputs, retained Zig-oracle caches, and project artifacts"
 run = "rm -rf .zig-cache zig-out .birnam .cargo-target"
 
 [tasks.rust-check]
@@ -156,11 +161,19 @@ description = "Run the isolated first downstream matrix against Zig and Rust flo
 run = "bash scripts/rust-lower-rung-matrix.sh"
 
 [tasks.bootstrap-smoke]
-description = "Cold-build a fixture-free source archive with pinned Zig and Rust"
+description = "Run the Rust-first source archive smoke and explicit Zig compatibility checks"
 run = "bash scripts/source-bootstrap-smoke.sh"
 
 [tasks.verify]
-description = "Run the Rust-default native, self-hosted, and REPL verification gate"
+description = "Run the Rust-only source-build, publication, cold-archive, and relocation gate"
+run = "bash scripts/rust-cutover-verify.sh"
+
+[tasks.rust-cutover-verify]
+description = "Alias for the Rust-only source-build, publication, cold-archive, and relocation gate"
+run = "bash scripts/rust-cutover-verify.sh"
+
+[tasks.zig-oracle-verify]
+description = "Run the explicit Zig-oracle native, self-hosted, and REPL verification gate"
 run = "zig build verify"
 
 [tasks.zig-oracle-conformance]
@@ -168,24 +181,28 @@ description = "Run focused external IdApi conformance against the Zig oracle"
 run = "zig build test-id-conformance -Dfloor=zig"
 
 [tasks.install]
-description = "Install Rust-default birnam, the Zig oracle, and module dylibs"
+description = "Install the Rust-only production birnam prefix"
 run = """
-zig build install --prefix ${BIRNAM_PREFIX:-$HOME/.local}
+scripts/rust-install.sh install --root "$PWD" --prefix "${BIRNAM_PREFIX:-$HOME/.local}" --profile debug
 # Stage wrapped C libs (built via `birnam wrap`) into the same known module dir
 # so `Module load:` resolves them by bare name. Best-effort.
 cp wrapped/*/lib*.dylib "${BIRNAM_PREFIX:-$HOME/.local}/lib/" 2>/dev/null || true
 """
 
 [tasks.dist]
-description = "Build a portable release tarball for the current platform"
+description = "Build a portable Rust-system release tarball for the current platform"
 run = "./scripts/dist.sh"
 
 [tasks.release]
-description = "Bump version, build, tag, and publish a GitHub release (patch|minor|major)"
+description = "Bump version, build, tag, and publish a Rust-system GitHub release (patch|minor|major)"
 run = "./scripts/release.sh {{arg(name='level')}}"
 
 [tasks.bench]
-description = "Run the full Zig-floor benchmark suite in an isolated ReleaseSafe prefix"
+description = "Run the full Rust-system benchmark suite in an isolated ReleaseSafe prefix"
+run = "./scripts/bench.sh --floor=rust"
+
+[tasks.bench-zig-oracle]
+description = "Run the full Zig-oracle benchmark suite in an isolated ReleaseSafe prefix"
 run = "./scripts/bench.sh --floor=zig"
 
 [tasks.bench-rust]
@@ -197,7 +214,11 @@ description = "Observe the full Rust-floor suite with the explicit Rust TCC rung
 run = "BENCH_TCC=rust ./scripts/bench.sh --floor=rust"
 
 [tasks.bench-release]
-description = "Tracked Zig-floor benchmark snapshot with commit and dylib digest"
+description = "Tracked Rust-system benchmark snapshot with commit and dylib digest"
+run = "./scripts/bench.sh --release --floor=rust"
+
+[tasks.bench-release-zig-oracle]
+description = "Tracked Zig-oracle benchmark snapshot with commit and dylib digest"
 run = "./scripts/bench.sh --release --floor=zig"
 
 [tasks.bench-release-rust]

@@ -33,9 +33,11 @@ if find "$tmp/birnam/share/birnam" -type f -name '*.birnam' -print -quit | grep 
   exit 1
 fi
 
-find src/id -type f -name '*.zig' ! -name '*_test.zig' -print | sed 's#^src/id/##' | sort >"$tmp/expected-source"
-find "$tmp/birnam/share/birnam/src/id" -type f -name '*.zig' -print | sed "s#^$tmp/birnam/share/birnam/src/id/##" | sort >"$tmp/installed-source"
-diff -u "$tmp/expected-source" "$tmp/installed-source"
+if [[ -d "$tmp/birnam/share/birnam/src/id" ]]; then
+  find src/id -type f -name '*.zig' ! -name '*_test.zig' -print | sed 's#^src/id/##' | sort >"$tmp/expected-source"
+  find "$tmp/birnam/share/birnam/src/id" -type f -name '*.zig' -print | sed "s#^$tmp/birnam/share/birnam/src/id/##" | sort >"$tmp/installed-source"
+  diff -u "$tmp/expected-source" "$tmp/installed-source"
+fi
 
 find rust -type f \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'build.rs' \) -print | sort >"$tmp/expected-rust-workspace"
 find "$tmp/birnam/share/birnam/src/rust" -type f \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'build.rs' \) -print |

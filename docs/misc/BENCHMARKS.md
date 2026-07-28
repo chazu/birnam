@@ -7,11 +7,12 @@ this page is what you need day to day.
 ## TL;DR
 
 ```
-BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam   # tight dev loop, ~5s
-mise run bench                                          # isolated Zig-floor instrument
-mise run bench-rust                                     # isolated Rust-floor instrument
-mise run bench-release                                  # tracked Zig-floor snapshot
-mise run bench-release-rust                             # tracked Rust-floor snapshot
+BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
+BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam        # tight dev loop, ~5s
+mise run bench                                          # isolated Rust-floor instrument
+mise run bench-zig-oracle                               # explicit Zig-oracle instrument
+mise run bench-release                                  # tracked Rust-floor snapshot
+mise run bench-release-zig-oracle                       # optional Zig-oracle snapshot
 mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
@@ -24,22 +25,22 @@ sub-5% claims need a deliberate same-boot A/B.
 
 - **Touching perf-relevant code** (dispatch, collections, strings, store,
   codegen): run the affected suite directly before and after —
-  `BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam` — and compare the
+  `BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam` — and compare the
   printed ns/op by eye. Quick mode (R=2, low calibration floor) is for
   iteration; drop `BENCH_QUICK` for numbers you'll quote.
-- **Touching relational/store code**: `./zig-out/bin/birnam
-  bench/relational.birnam` — ~a minute since the 2026-07-12 index arc
+- **Touching relational/store code**: `"$BIRNAM_BIN" bench/relational.birnam`
+  — ~a minute since the 2026-07-12 index arc
   (queries are ms-scale; the join and rule-fixpoint cases still run
   ~¼–⅔s each and dominate the wall time).
-- **Before merging / when you want the full picture**: run `mise run bench`
-  and `mise run bench-rust`, then compare like-for-like floor snapshots with
+- **Before merging / when you want the production-floor picture**: run
+  `mise run bench`, then compare like-for-like Rust-floor snapshots with
   `mise run bench-compare <last-release-floor-snapshot> <your-dev-result>`.
 - **After cutting a release** (part of the release process): on the tagged
-  commit, on a quiet machine, run `mise run bench-release` and `mise run
-  bench-release-rust`, then **commit both
-  `bench/results/v<X.Y.Z>-<floor>-<sha>-<dylib-sha256>.json` files**. They are
-  the floor-specific baselines future runs compare against and are kept
-  forever. This step is deliberately
+  commit, on a quiet machine, run `mise run bench-release`, then **commit the
+  `bench/results/v<X.Y.Z>-rust-<sha>-<dylib-sha256>.json` file**. It is the
+  production-floor baseline future runs compare against and is kept forever.
+  For an optional Zig-oracle comparison, also run
+  `mise run bench-release-zig-oracle`. This step is deliberately
   NOT inside `release.sh`: bench noise must never block a release, and the
   snapshot deserves a deliberate, quiet run.
 

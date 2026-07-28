@@ -25,7 +25,7 @@ canonical=(
 )
 
 production="$work/production"
-zig build install -Doptimize=ReleaseSafe -Ddistribution=production --prefix "$production" >/dev/null
+scripts/rust-install.sh install --root "$PWD" --prefix "$production" --profile release >/dev/null
 
 if [[ -e "$production/bin/birnam-zig-oracle" ]]; then
   echo "distribution-selection: production contains birnam-zig-oracle" >&2

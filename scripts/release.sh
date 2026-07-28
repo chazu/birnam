@@ -27,7 +27,7 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 gh auth status >/dev/null 2>&1 || { echo "error: gh not authenticated (run: gh auth login)" >&2; exit 1; }
 
 echo "==> verify"
-zig build verify
+scripts/rust-cutover-verify.sh
 
 cur="$(cat VERSION)"
 IFS=. read -r ma mi pa <<<"$cur"
@@ -94,7 +94,7 @@ NOTES
 )"
 
 echo "==> released ${tag}"
-echo "==> next: capture both floor snapshots on this tagged commit (quiet machine):"
-echo "      mise run bench-release && mise run bench-release-rust \\"
-echo "        && git add bench/results/v${new}-*.json \\"
+echo "==> next: capture the Rust-floor snapshot on this tagged commit (quiet machine):"
+echo "      mise run bench-release \\"
+echo "        && git add bench/results/v${new}-rust-*.json \\"
 echo "        && git commit -m 'bench: v${new} snapshot' && git push"

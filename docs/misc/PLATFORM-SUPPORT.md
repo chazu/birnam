@@ -1,7 +1,9 @@
 # Platform Support
 
 Birnam currently supports **arm64 macOS** only. This applies to development
-builds, `zig build install`, `zig build stage1`, and release bundles.
+builds, the Rust-only `scripts/rust-install.sh` prefix installer, Rust stage-1
+publication, and release bundles. The explicit Zig build/oracle lane remains
+arm64-only as well.
 
 Unsupported targets fail at build configuration time rather than compiling
 artifacts that cannot link or boot. In particular, Linux and Intel macOS are
@@ -23,7 +25,8 @@ A supported port must land as one tested change set:
 2. Make artifact names and runtime discovery target-aware (`.dylib` on macOS,
    `.so` on Linux), including `stage1`, images, AOT output, wrappers, and
    release bundles.
-3. Test a clean source build, `zig build test`, `zig build stage1`, the
-   birnam-level suite, and a packaged release on that target.
+3. Test a clean Rust source build, Rust stage-1 publication, the birnam-level
+   suite, and a packaged release on that target. The Zig oracle lane must also
+   retain its explicit rollback coverage while it remains supported.
 
 Until all three are complete, the target remains unsupported.

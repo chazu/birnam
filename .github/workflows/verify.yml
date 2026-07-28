@@ -40,6 +40,9 @@ jobs:
           CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
           CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline
 
+      - name: Verify Rust-only production cutover
+        run: bash scripts/rust-cutover-verify.sh
+
       - name: Probe Rust floor and Zig oracle
         run: bash scripts/rust-floor-shell-smoke.sh
 

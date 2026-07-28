@@ -820,6 +820,76 @@ unsafe extern "C" fn rust_pull(_self_object: Oop, args: *const Oop, count: usize
     if result.is_null() { api.nilObj } else { result }
 }
 
+/// Persist one canonical rule definition as a Store fact. Rule queries rebuild
+/// their derived relation from these facts on every call, so this write-through
+/// bridge keeps the Rust Store surface self-contained without retaining a
+/// second Rust-owned rule cache.
+unsafe extern "C" fn rust_define_rule(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    if arguments.len() != 3
+        || self_object.is_null()
+        || arguments.iter().any(|argument| argument.is_null())
+    {
+        return api.nilObj;
+    }
+    let vector_factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    if vector_factory.is_null() {
+        return api.nilObj;
+    }
+    let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
+    let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
+    let empty: [Oop; 0] = [];
+    let mut pair = unsafe { (api.send)(vector_factory, new_selector, empty.as_ptr(), 0) };
+    if pair.is_null() {
+        return api.nilObj;
+    }
+    // The pair is the only newly allocated object here. Root it while the two
+    // `add:` sends can allocate or collect.
+    ACTIVE_PROBE_BLOCK.store(pair as usize, Ordering::Release);
+    pair = unsafe { (api.send)(pair, add_selector, &arguments[1], 1) };
+    if pair.is_null() {
+        ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+        return api.nilObj;
+    }
+    ACTIVE_PROBE_BLOCK.store(pair as usize, Ordering::Release);
+    pair = unsafe { (api.send)(pair, add_selector, &arguments[2], 1) };
+    if pair.is_null() {
+        ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+        return api.nilObj;
+    }
+    ACTIVE_PROBE_BLOCK.store(pair as usize, Ordering::Release);
+    let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
+    let assert_selector = unsafe { (api.intern)(c"assert:attr:value:".as_ptr()) };
+    let assertion = [pair, rule_name, arguments[0]];
+    let result = unsafe { (api.send)(self_object, assert_selector, assertion.as_ptr(), 3) };
+    ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
+    if result.is_null() {
+        return api.nilObj;
+    }
+    self_object
+}
+
+/// Rule definitions are canonical Store facts. Queries reify them directly,
+/// so rebuilding the old Zig-side cache is intentionally a successful no-op.
+unsafe extern "C" fn rust_rebuild_rules(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let Some(api_address) = API.get() else {
+        return ptr::null_mut();
+    };
+    // SAFETY: module_init stores only the process-owned IdApi address.
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    if count != 0 || self_object.is_null() {
+        return api.nilObj;
+    }
+    self_object
+}
+
 unsafe fn install_entity_method(api: &IdApi) {
     let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
@@ -858,7 +928,19 @@ unsafe fn install_entity_method(api: &IdApi) {
     // SAFETY: this bridge is installed only when the live collection and
     // LogicVar contracts are already present; the callback keeps Store as its
     // sole fact authority and returns the shared Vector family.
-    unsafe { (api.method)(store_vt, find_all_selector, rust_find_all) };
+    unsafe {
+        (api.method)(
+            store_vt,
+            (api.intern)(c"defineRule:params:body:".as_ptr()),
+            rust_define_rule,
+        );
+        (api.method)(
+            store_vt,
+            (api.intern)(c"rebuildRules".as_ptr()),
+            rust_rebuild_rules,
+        );
+        (api.method)(store_vt, find_all_selector, rust_find_all);
+    }
     let as_of_selector = unsafe { (api.intern)(c"findAll:where:asOf:".as_ptr()) };
     let since_selector = unsafe { (api.intern)(c"findAll:where:since:".as_ptr()) };
     let between_selector = unsafe { (api.intern)(c"findAll:where:between:and:".as_ptr()) };

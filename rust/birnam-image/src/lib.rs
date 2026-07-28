@@ -799,7 +799,7 @@ pub struct ImageWriter {
     code_written: bool,
 }
 
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+pub(crate) static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Publish complete image bytes through a same-directory temporary file and
 /// rename. The destination is never opened for truncation; failed writes clean
@@ -1629,7 +1629,7 @@ unsafe fn capture_generation_code(
 }
 
 #[cfg(test)]
-fn preflight_image_path(path: &Path) -> bool {
+pub(crate) fn preflight_image_path(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
@@ -2447,6 +2447,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::atomic::Ordering;
 
     fn header(architecture: u32, abi_hash: u64) -> Vec<u8> {
         let mut bytes = Vec::from(MAGIC.as_slice());
@@ -2632,12 +2633,12 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "birnam-rust-image-admission-{}-{}",
             std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+            codec::TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
         fs::write(&path, &bytes).unwrap();
-        assert!(preflight_image_path(&path));
+        assert!(runtime::preflight_image_path(&path));
         fs::write(&path, b"not an image").unwrap();
-        assert!(!preflight_image_path(&path));
+        assert!(!runtime::preflight_image_path(&path));
         fs::remove_file(path).unwrap();
     }
 
@@ -2752,7 +2753,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "birnam-image-publish-{}-{}.image",
             std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+            codec::TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
         let _ = fs::remove_file(&path);
         fs::write(&path, b"old image").unwrap();
@@ -2766,7 +2767,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "birnam-image-publish-directory-{}-{}",
             std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+            codec::TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
         let _ = fs::remove_dir_all(&path);
         fs::create_dir(&path).unwrap();

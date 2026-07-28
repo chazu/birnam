@@ -9586,7 +9586,7 @@ mod tests {
 
     #[test]
     fn artifact_preflight_shared_fixture_matrix_matches_zig_cases() {
-        let cases = [
+        let mut cases = vec![
             "path-only-root",
             "supplied-identity-mismatch",
             "wrong-kind-before-walk",
@@ -9594,8 +9594,14 @@ mod tests {
             "sibling-identity-mismatch",
             "missing-sibling",
             "ordered-valid-closure",
-            "sentinel",
         ];
+        if std::env::var_os("BIRNAM_PREFLIGHT_SENTINEL_DYLIB").is_some() {
+            // The cold-bootstrap and Zig parity harnesses provide a real
+            // aborting initializer. Ordinary Cargo tests remain self-contained
+            // and exercise the inert corpus without requiring a Zig-built
+            // fixture outside the workspace.
+            cases.push("sentinel");
+        }
         for case in cases {
             let root = std::env::temp_dir().join(format!(
                 "birnam-host-shared-preflight-{case}-{}",

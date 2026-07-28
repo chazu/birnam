@@ -1,11 +1,10 @@
 # 69 — Remaining Zig Modules: Rust Host and Native-Birnam Plan
 
-> **Status:** Second correction checkpoint at `48fb113`, pending adversarial
-> re-review. GO only for continued data-only/schema and explicitly fenced
-> shadow work. The review remains **NO-GO** for authoritative graph execution
-> or M5/M6 cutover until the instantiated-graph, bootstrap-provenance,
-> publication, and child-confinement gates below are implemented and
-> independently receipted. Baseline: Design 68
+> **Status:** Rust-only production install/release paths and the source-built
+> cold-prefix gate are now landed in the working tree. GO for the Rust-native
+> production prefix and NO-GO for the remaining atomic build-driver ledger
+> cutover/M5 transaction until the instantiated-graph parity, fsync-backed
+> publication, and Zig oracle quarantine are independently receipted. Baseline: Design 68
 > C4 retain receipt at `68c5bce`; production already selects the Rust floor, all
 > 13 Rust higher providers, and the Rust host. This plan converts the remaining
 > Zig *authorities* and build/oracle seams; it does not delete recovery evidence.
@@ -98,7 +97,7 @@ production throughout this plan.
 Baseline receipts at `577e50d` (the current reviewed checkpoint):
 
 ```text
-remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=80 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
+remaining-zig-inventory: ok zig_files=88 birnam_sources=91 rust_crates=20 test_scripts=84 build_targets=125 dynamic_dependencies=14 explicit_edge_rows=32 derived_coverage_rows=290
 remaining-zig-conversion: ok zig_paths=88 dynamic_names=14 policy_sources=39
 Rust build-driver schema/runner suite: 25/25 tests
 instantiated-graph receipt schema suite: 6/6 tests
@@ -129,10 +128,10 @@ atomically committed.
 | M2 | Rust mechanism, negative corpus, and retirement-seam receipt landed | future authority changes require a refreshed corpus |
 | M3 | owner inventory and `z2_1_seam=none` no-op receipt landed | future policy changes require a refreshed owner review |
 | M4.1 | landed projection/checker | named-target projection is not instantiated semantic truth |
-| M4.2 | partial | real configuration-specific extractor and complete action closure |
-| M4.3 | partial | cold-run provenance, confined execution, and generation publication |
-| M4.4 | not started | parity/native bootstrap from two clean archives |
-| M5–M6 | not started | no cutover or Zig-vector retirement is authorized |
+| M4.2 | partial | real configuration-specific extractor and complete action closure; Rust-native source installer now builds Cargo, installs 14 Rust providers, and compiles all 26 stage-1 modules |
+| M4.3 | partial | source/output hashes, symlink rejection, cleared stage-1 environment, and sibling-rename publication are live; fsync-backed generation/current protocol remains |
+| M4.4 | partial | two independent fixture-free Rust snapshots now pass source/output-closure and relocation checks; same-archive Zig/Rust normalized parity remains |
+| M5–M6 | partial / not started | production install/release/mise paths now select Rust; the action ledger and explicit Zig oracle/rollback routing still need the atomic authority transaction |
 
 The plan is complete only when:
 
@@ -366,7 +365,28 @@ non-authoritative topological `execute-shadow` CLI. It clears inherited
 environment variables before declared `Set`/`Unset` operations, requires
 shadow context/authority with explicit-shadow delegation, rechecks tool/input
 digests immediately before spawn, verifies declared outputs, and fences output
-ownership. Production and rollback execution remain refused.
+ownership. Production and rollback execution remain refused by this manifest runner.
+
+The Rust-native production source-build path is now available as:
+
+```text
+scripts/rust-install.sh install --root . --prefix /path/to/prefix --profile release
+```
+
+It builds the locked Rust workspace in a private sibling target directory,
+assembles only the canonical Rust native library names, installs the Rust
+workspace metadata and guides, compiles the ordered 26 stage-1 modules through
+the Rust host, rejects symlink escapes and Zig payloads, verifies the source
+tree did not change, writes a hash-bearing Rust-authority install receipt, and publishes the
+prefix with a staged sibling-directory rename. `scripts/dist.sh`, `release.sh`,
+`mise run install`, and the production distribution smoke now use this path.
+The native smoke and two independent cold-snapshot smoke pass from relocated
+prefixes with no `.zig` files, `birnam-zig-oracle`, or `_zig` dylibs. This closes
+the Rust-only production prefix path. Publication now fsyncs the staged files,
+directories, and parent after each rename; the remaining publication work is
+the stronger immutable-generation/current-pointer protocol, not ordinary
+runtime availability. The installer does not yet replace the configuration
+action ledger or the full Zig oracle/rollback test graph.
 
 The landed `instantiated_graph` module is a data-only validator for
 synthetic/external receipt fixtures. Schema v3 now carries the source-manifest

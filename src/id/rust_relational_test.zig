@@ -850,7 +850,6 @@ test "Rust Relational rule probe reaches recursive and mutual fixpoints" {
     const api = floor.api();
     try loadEnvModule(api, "BIRNAM_RELATIONAL_STORE_DYLIB");
     try loadEnvModule(api, "BIRNAM_COLLECTION_DYLIB");
-    try loadEnvModule(api, "BIRNAM_ZIG_RELATIONAL_DYLIB");
     const relation_path = std.posix.getenv("BIRNAM_RUST_RELATIONAL_DYLIB") orelse
         return error.MissingRustRelationalDylib;
     try loadModule(api, relation_path);

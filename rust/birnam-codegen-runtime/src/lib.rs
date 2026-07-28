@@ -7843,7 +7843,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 mod tests {
     use super::{
         IDENTITY, RevisionMetadata, RevisionOperation, artifact_source,
-        birnam_codegen_rust_identity, candidate_manifest_matches, sha256_hex,
+        birnam_codegen_rust_identity, candidate_manifest_matches, inspect_manifest, sha256_hex,
     };
     use std::ffi::CStr;
 
@@ -7906,7 +7906,7 @@ mod tests {
         manifest.push(b'|');
         manifest.extend_from_slice(&metadata.revision_digest);
         manifest.extend_from_slice(b"|depA,depB|Target,answer:,I,1");
-        let parsed = birnam_artifact::candidate::inspect_manifest(&manifest).unwrap();
+        let parsed = inspect_manifest(&manifest).unwrap();
         assert!(candidate_manifest_matches(parsed, source, &metadata));
 
         let mut malformed = manifest;
@@ -7915,7 +7915,7 @@ mod tests {
             .position(|window| window == b"Target,answer:,I,1")
             .unwrap();
         malformed[arity + b"Target,answer:,I,".len()] = b'2';
-        let parsed = birnam_artifact::candidate::inspect_manifest(&malformed).unwrap();
+        let parsed = inspect_manifest(&malformed).unwrap();
         assert!(!candidate_manifest_matches(parsed, source, &metadata));
     }
 }

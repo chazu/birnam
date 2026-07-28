@@ -47,12 +47,9 @@ build_production() {
   local source="$scratch/$label/source"
   archive_source "$label" >/dev/null
   local prefix="$scratch/$label/prefix"
-  local cache="$scratch/$label/cache"
-  local global_cache="$scratch/$label/global-cache"
   (
-    cd "$source"
-    zig build install -Doptimize=ReleaseSafe -Ddistribution=production \
-      --prefix "$prefix" --cache-dir "$cache" --global-cache-dir "$global_cache" \
+    "$source/scripts/rust-install.sh" install --root "$source" \
+      --prefix "$prefix" --profile release \
       >"$scratch/$label/build.out" 2>&1
   )
   printf '%s\n' "$prefix"
@@ -280,10 +277,10 @@ mkdir -p "$scratch/rollback"
     >"$scratch/rollback/receipt.jsonl"
 )
 python3 "$scratch/production-a/source/scripts/check-production-prefix.py" "$production_a" \
-  "$scratch/production-a/source/.cargo-target/release" "$rollback_prefix/lib" \
+  "$production_a/lib" "$rollback_prefix/lib" \
   >"$scratch/production-a/receipt.jsonl"
 python3 "$scratch/production-b/source/scripts/check-production-prefix.py" "$production_b" \
-  "$scratch/production-b/source/.cargo-target/release" "$rollback_prefix/lib" \
+  "$production_b/lib" "$rollback_prefix/lib" \
   >"$scratch/production-b/receipt.jsonl"
 trace_prefix rollback "$rollback_prefix"
 exercise_prefix rollback "$rollback_source" "$rollback_prefix" zig
