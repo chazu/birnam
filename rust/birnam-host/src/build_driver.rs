@@ -15,6 +15,22 @@ use sha2::{Digest, Sha256};
 
 pub const MANIFEST_SCHEMA: u32 = 1;
 pub const EXECUTABLE_SEMANTIC_SCOPE: &str = "full-semantic-v1";
+pub const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
+    "libbirnam_id.dylib",
+    "libbirnam_id_artifact.dylib",
+    "libbirnam_store.dylib",
+    "libbirnam_id_peg.dylib",
+    "libbirnam_id_lang.dylib",
+    "libbirnam_id_tcc.dylib",
+    "libbirnam_id_codegen.dylib",
+    "libbirnam_id_prelude.dylib",
+    "libbirnam_id_collection.dylib",
+    "libbirnam_id_error.dylib",
+    "libbirnam_id_isolate.dylib",
+    "libbirnam_id_relational.dylib",
+    "libbirnam_id_alien.dylib",
+    "libbirnam_id_image.dylib",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +64,7 @@ pub struct SourceGraph {
     pub depend_on_occurrences: usize,
     pub bindings: Vec<ExpressionBinding>,
     pub implicit_edges: Vec<ResolvedEdge>,
+    pub roots: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -408,7 +425,7 @@ fn validate_path_ref(path_ref: &PathRef, root: &Path, label: &str) -> Result<(),
 
 fn validate_selection(selection: &Selection) -> Result<(), ManifestError> {
     match selection.distribution.as_str() {
-        "production" | "rollback" | "shadow" => {}
+        "production" | "rollback" | "shadow" | "test_bundle" => {}
         other => return Err(error(format!("unknown distribution: {other}"))),
     }
     if selection.floor != "rust" && selection.floor != "zig" {
@@ -430,6 +447,20 @@ fn validate_selection(selection: &Selection) -> Result<(), ManifestError> {
         .values()
         .chain(std::iter::once(&selection.floor))
         .collect::<BTreeSet<_>>();
+    let expected_providers = CANONICAL_DYNAMIC_LIBRARIES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let actual_providers = selection
+        .providers
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual_providers != expected_providers {
+        return Err(error(
+            "provider selection does not cover the canonical 14-provider closure",
+        ));
+    }
     if selection.distribution == "production" && implementations.contains(&"zig".to_string()) {
         return Err(error("production manifest contains a Zig implementation"));
     }
@@ -533,7 +564,10 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         )));
     }
     safe_name(&manifest.target, "target")?;
-    if manifest.profile != "debug" && manifest.profile != "release" {
+    if !matches!(
+        manifest.profile.as_str(),
+        "debug" | "release" | "release-safe" | "release-fast" | "release-small"
+    ) {
         return Err(error(format!("unsupported profile: {}", manifest.profile)));
     }
     safe_name(&manifest.graph.id, "graph id")?;
@@ -580,6 +614,17 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
         .iter()
         .map(|action| action.name.as_str())
         .collect::<BTreeSet<_>>();
+    if manifest.source_graph.roots.is_empty()
+        || manifest
+            .source_graph
+            .roots
+            .iter()
+            .any(|root| !action_names.contains(root.as_str()))
+    {
+        return Err(error(
+            "source graph roots are missing or outside the action set",
+        ));
+    }
     validate_path_ref(&manifest.source_graph.build_file, &root, "build source")?;
     let build_source_path = root.join(&manifest.source_graph.build_file.path);
     let build_source = fs::read_to_string(&build_source_path)
@@ -699,6 +744,19 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
             return Err(error(format!("duplicate dynamic library: {library}")));
         }
     }
+    let expected_dynamic = CANONICAL_DYNAMIC_LIBRARIES
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let actual_dynamic = dynamic_names
+        .iter()
+        .map(|name| name.as_str())
+        .collect::<BTreeSet<_>>();
+    if actual_dynamic != expected_dynamic {
+        return Err(error(
+            "dynamic library set does not match the canonical 14-provider closure",
+        ));
+    }
 
     Ok(ValidatedManifest {
         manifest,
@@ -748,11 +806,12 @@ mod tests {
                         {"expression": "compile", "action": "compile"},
                         {"expression": "prepare", "action": "prepare"}
                     ],
-                    "implicit_edges": []
+                    "implicit_edges": [],
+                    "roots": ["compile"]
                 },
                 "target": "aarch64-macos",
                 "profile": "release",
-                "selection": {"distribution": "production", "floor": "rust", "providers": {"store": "rust"}},
+                "selection": {"distribution": "production", "floor": "rust", "providers": CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| (*name, "rust")).collect::<BTreeMap<_, _>>()},
                 "modules": [{"name": "module", "source": {"path": "module.birnam", "sha256": digest}}],
                 "actions": [{
                     "name": "prepare",
@@ -771,7 +830,7 @@ mod tests {
                     "outputs": [{"path": "out/module.dylib", "sha256": "c".repeat(64)}],
                     "environment": {"BIRNAM_PREFIX": "prefix"}
                 }],
-                "dynamic_libraries": ["libbirnam_id.dylib"],
+                "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
                 "prefix": "out",
                 "tools": {"zig": "zig"}
             });
