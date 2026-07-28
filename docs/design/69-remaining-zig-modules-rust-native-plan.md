@@ -348,14 +348,16 @@ with each action’s declared dependency set, preserving one canonical order;
 the graph also requires a rooted acyclic closure, explicit implicit-edge
 kinds, a connected action set, the exact 14-provider/dylib closure, and
 producer mappings whose declared outputs cover every selected provider and
-stage-1 module.
+the exact ordered 26-module stage-1 source/output closure. Production marker
+matching is name-aware (`_zig.dylib`/`_zig_`), so the legitimate `zigdoc`
+stage-1 module is not confused with a Zig implementation artifact.
 Action records also carry authority/delegation, cwd, tool identity, exact
 argv[0] binding, environment modes, symlink-safe output-prefix containment,
 and collision checks; `explicit-shadow` delegation is restricted to shadow
 authority. The graph receipt commit/tree and its recorded `build.zig` digest
 are now bound before validation succeeds. The driver still cannot execute
-until instantiated implicit Zig Build edges and one-to-one provider/module
-producer closure are represented; the parser pins the source graph to
+until instantiated implicit Zig Build edges and provider/module producer
+provenance are represented; the parser pins the source graph to
 `build.zig` and the M4.1 `abi/birnam-build-actions-v1.json` path. This is a
 file-level consistency check; execution still requires a checker-generated
 receipt proof that the commit/tree exists and contains these bytes. Production selection also requires
