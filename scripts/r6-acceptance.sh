@@ -68,7 +68,7 @@ latest_tests=(
   test-rust-artifact-authority
   test-rust-artifact-preflight
 )
-# Accepted on 2026-07-26 after the Rust Image-to-Rust Codegen mapped-unit proof,
+# Accepted and revalidated on 2026-07-27 after the Rust Image-to-Rust Codegen mapped-unit proof,
 # Rust-owned durable-generation bootstrap, explicit Rust Image writer-authority
 # capture, Zig-compatible deferred-fact classification, explicit atomic Rust
 # Image publication, publication-authority rejection, both Image cross-floor
@@ -99,6 +99,8 @@ readonly expected_verify_steps=306
 readonly expected_verify_tests=516
 readonly expected_verify_total_tests=522
 readonly expected_verify_skipped=6
+readonly expected_live_steps=66
+readonly expected_live_tests=9
 isolate_option=(-Disolate-impl="${BIRNAM_R6_ISOLATE_IMPL:-rust}")
 floor_option=(-Dfloor=rust)
 relational_option=(-Drelational=rust)
@@ -460,8 +462,8 @@ grep -Fqx 'test-rust-alien-live success' "$live" || {
   echo "r6-acceptance: Rust Alien live target was not executed" >&2
   exit 1
 }
-grep -Eq '^\+- run test 9 passed ' "$live" || {
-  echo "r6-acceptance: Rust Alien live target no longer reports 9 passing tests" >&2
+grep -Fqx "Build Summary: ${expected_live_steps}/${expected_live_steps} steps succeeded; ${expected_live_tests}/${expected_live_tests} tests passed" "$live" || {
+  echo "r6-acceptance: Rust Alien live target no longer reports the accepted ${expected_live_steps}/${expected_live_steps}, ${expected_live_tests}/${expected_live_tests} snapshot" >&2
   exit 1
 }
 

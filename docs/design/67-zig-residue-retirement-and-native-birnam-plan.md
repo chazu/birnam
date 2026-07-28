@@ -327,8 +327,9 @@ rust-codegen-dylib-audit: exact canonical Rust Codegen boundary passed
 The strict rerun at that commit also passes `306/306` verify steps, `516/522`
 tests, six skips, both Z3 receipts, and exactly the existing two benchmark
 crossings (`query.aggregate +5.8%` and `compile.stage1-stdlib +11.9%`), with
-zero missing or unusable cases. No provider selection, benchmark allowance, or
-rollback policy changed.
+zero missing or unusable cases. The live Rust Alien callback target is pinned at
+`66/66` build steps and `9/9` tests as well. No provider selection, benchmark
+allowance, or rollback policy changed.
 
 The canonical Rust Codegen dylib is linked against the provider-free Image and
 Artifact codec crates. Image and Artifact provider modules remain separately
