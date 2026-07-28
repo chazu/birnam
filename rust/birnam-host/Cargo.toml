@@ -12,9 +12,17 @@ crate-type = ["rlib"]
 name = "birnam"
 path = "src/bin/birnam-rust-experimental.rs"
 
+[[bin]]
+name = "birnam-build"
+path = "src/bin/birnam-build.rs"
+
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { path = "../birnam-artifact" }
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

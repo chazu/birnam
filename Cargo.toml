@@ -33,6 +33,10 @@ unused_must_use = "deny"
 
 [workspace.dependencies]
 cc = "1.2.56"
+hex = "0.4.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
 
 # Every profile that produces a runnable floor dylib aborts rather than
 # unwinding across the C ABI. Rust test harnesses retain their default unwind

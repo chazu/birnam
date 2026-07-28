@@ -5,6 +5,8 @@
 //! overrides accepted by the existing Zig host. Loading a floor or any higher
 //! rung remains a later host boundary.
 
+pub mod build_driver;
+
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};

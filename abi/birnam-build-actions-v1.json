@@ -10072,8 +10072,8 @@
   },
   "source_digests": {
     "build.zig": "47db09bcdf9ccb8f77c454c73363f25f5ca2ac4ddc50e04437bc444d2059dd7a",
-    "Cargo.toml": "eacbd627d86db4d37802b01077bfc10839cae252502eaa7651c64262a3272a73",
-    "Cargo.lock": "0bd550ebd087c42dc9cd652c6b6646590be47ca3ce3e8a033bb455ef6c84544e"
+    "Cargo.toml": "7885e98f46e47a345714bf545113d6e217252d723847e004a7dbb8bad52b8563",
+    "Cargo.lock": "7be33fc71682265edade090a42d96b9e84b9d04d363bb69db3d61e99a69253f2"
   },
   "transaction": {
     "candidate_commit": "931f9e8e792c668137bf8b03bbabef91e6a396dc",
