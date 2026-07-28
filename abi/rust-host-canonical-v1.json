@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "rust-host-canonical",
-  "candidate_commit": "492b9e3dc75c113bd8f42c37da0d167ffaf0e74d",
+  "candidate_commit": "81f9a2a00c387b1219ffe6ba8d1edb2982843b93",
   "canonical_target": "birnam",
   "production_install": "bin/birnam",
   "removed_targets": ["birnam-rust-experimental"],

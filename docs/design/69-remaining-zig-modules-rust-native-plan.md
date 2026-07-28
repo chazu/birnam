@@ -125,7 +125,7 @@ atomically committed.
 | Phase | State | Boundary that remains |
 | --- | --- | --- |
 | M0 | landed | ledger/checker receipt remains the authority ledger |
-| M1 | implementation largely landed | source-path rename and phase parity/exit receipt remain |
+| M1 | canonical source identity and parity gate landed | future host changes require a refreshed receipt |
 | M2 | Rust mechanism and negative evidence landed | retirement-seam exit receipt remains |
 | M3 | owner inventory landed with `z2_1_seam=none` | refresh/no-op exit receipt remains |
 | M4.1 | landed projection/checker | named-target projection is not instantiated semantic truth |
@@ -641,8 +641,8 @@ incompatible policy authorities with no evidence-based owner.
    authoritative execution and M5/M6, but GO for fenced schema/shadow work.
 2. M0 ledger/checker and receipt are already landed; re-run their checks at the
    current clean checkpoint before changing code.
-3. Finish M1 canonical host identity (including renaming the source path
-   currently named `birnam-rust-experimental.rs`) and its parity/exit receipt.
+3. M1 canonical host identity and parity/exit receipt are landed; refresh the
+   receipt whenever the host source or boundary changes.
 4. Finish M2’s artifact/preflight retirement-seam receipt.
 5. Refresh M3’s policy no-seam/transfer inventory and land its no-op/transfer
    exit receipt.
