@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -155,6 +156,14 @@ impl fmt::Display for ManifestError {
 }
 
 impl std::error::Error for ManifestError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionExecution {
+    pub action: String,
+    pub status: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
 
 fn error(message: impl Into<String>) -> ManifestError {
     ManifestError(message.into())
@@ -1138,6 +1147,82 @@ pub fn parse_and_validate(bytes: &[u8], root: &Path) -> Result<ValidatedManifest
     })
 }
 
+/// Execute a validated shadow/test graph in topological order.
+///
+/// This is deliberately unavailable to production and rollback selections.
+/// M4.3 may exercise declared non-Birnam tools in shadow mode, but production
+/// authority waits for the complete semantic graph and provenance receipt.
+pub fn execute_shadow_graph(
+    validated: &ValidatedManifest,
+) -> Result<Vec<ActionExecution>, ManifestError> {
+    if !matches!(
+        validated.manifest.selection.distribution.as_str(),
+        "shadow" | "test_bundle"
+    ) {
+        return Err(error(
+            "shadow executor refuses production and rollback distributions",
+        ));
+    }
+    let mut executions = Vec::with_capacity(validated.action_order.len());
+    for action_name in &validated.action_order {
+        let action = validated
+            .manifest
+            .actions
+            .iter()
+            .find(|candidate| candidate.name == *action_name)
+            .expect("validated action order names an action");
+        let tool_path = contained_existing_path(
+            &validated.root,
+            validated
+                .manifest
+                .tools
+                .get(&action.tool)
+                .expect("validated action tool exists"),
+            "tool path",
+        )?;
+        let mut command = Command::new(tool_path);
+        command.args(action.command.iter().skip(1));
+        command.current_dir(validated.root.join(&action.cwd));
+        let clear_environment = action
+            .environment
+            .values()
+            .any(|value| matches!(value, EnvironmentValue::Clear));
+        if clear_environment {
+            command.env_clear();
+        }
+        for (name, value) in &action.environment {
+            match value {
+                EnvironmentValue::Inherit | EnvironmentValue::Clear => {}
+                EnvironmentValue::Set(value) => {
+                    command.env(name, value);
+                }
+                EnvironmentValue::Unset => {
+                    command.env_remove(name);
+                }
+            }
+        }
+        let output = command
+            .output()
+            .map_err(|source| error(format!("action {} failed to spawn: {source}", action.name)))?;
+        let status = output.status.code().unwrap_or(-1);
+        if !output.status.success() {
+            return Err(error(format!(
+                "action {} failed with status {}: {}",
+                action.name,
+                status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        executions.push(ActionExecution {
+            action: action.name.clone(),
+            status,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        });
+    }
+    Ok(executions)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1447,6 +1532,48 @@ mod tests {
         let error = parse_and_validate(&bytes, &fixture.root)
             .expect_err("explicit-shadow must require shadow authority");
         assert!(error.0.contains("without shadow authority"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn executes_shadow_graph_with_deterministic_environment() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = Fixture::new();
+        let runner = fixture.root.join("runner");
+        fs::write(&runner, b"#!/bin/sh\nprintf '%s' \"$BIRNAM_VALUE\"\n").expect("runner");
+        fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).expect("executable");
+        let runner_digest = hex::encode(Sha256::digest(fs::read(&runner).expect("runner bytes")));
+        let bytes = mutate(&fixture, |value| {
+            value["selection"]["distribution"] = json!("shadow");
+            value["tools"]["runner"] = json!("runner");
+            for action in value["actions"].as_array_mut().expect("actions") {
+                action["context"] = json!("shadow");
+                action["authority"] = json!("shadow");
+                action["delegation"] = json!("explicit-shadow");
+                action["tool"] = json!("runner");
+                action["tool_sha256"] = json!(runner_digest.clone());
+                action["command"] = json!(["runner"]);
+                action["environment"] = json!({
+                    "BIRNAM_VALUE": {"mode": "set", "value": "shadow-ok"},
+                    "BIRNAM_CLEAR": {"mode": "clear"}
+                });
+            }
+        });
+        let validated = parse_and_validate(&bytes, &fixture.root).expect("shadow manifest");
+        let executions = execute_shadow_graph(&validated).expect("shadow execution");
+        assert_eq!(
+            executions
+                .iter()
+                .map(|result| result.action.as_str())
+                .collect::<Vec<_>>(),
+            ["prepare", "compile"]
+        );
+        assert!(
+            executions
+                .iter()
+                .all(|result| result.status == 0 && result.stdout == b"shadow-ok")
+        );
     }
 
     #[test]
