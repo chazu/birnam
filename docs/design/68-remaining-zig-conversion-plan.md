@@ -481,6 +481,15 @@ C2.1 gate while keeping readiness blocked and rollback pinned.
 `policy-class` send names a native-Birnam owner, the MOP law remains green, no
 Rust native vtable shadows a `.birnam` policy method, and strict R6 passes.
 
+**C3.1 owner inventory receipt (2026-07-27, receipt commit `135f7a0`):** after
+the floor, Store, and PEG C2.1 slices, the checked inventory was rerun with
+both `python3 scripts/check-rust-host-message-owner-inventory.py` and
+`zig build test-rust-host-message-owner-inventory`. Both emitted
+`send_calls=120 named_global_lookups=31 owner_classes=14 reviewed_functions=56
+disposition=read-only`. Every owner class and named global remains unchanged;
+`z2_1_seam.status=none` is still explicit, so this evidence-only slice makes
+no runtime or policy-authority change.
+
 ## 9. Phase C4 — final fixture retirement and clean bootstrap
 
 After the named release/rollback observation for every member of the complete
@@ -534,6 +543,8 @@ archives and the complete source/bootstrap proof with fixtures unavailable.
       traces only.
 - [x] Rust host and artifact preflight own observation/closure; native Birnam
       owns activation and policy.
+- [x] The checked 120-callsite owner inventory was rerun after C2.1 with all
+      owner classes preserved and `z2_1_seam.status=none` still explicit.
 - [ ] Every rung has a Rust identity/digest, Zig fixture policy, and applicable
       ABI/MOP/GC/image/wire evidence.
 - [x] The first three rung slices (floor, Store, PEG) have focused commits and
