@@ -59,12 +59,12 @@ let pair := [:a :b | [[#[] add: a] add: b]];
 // `#play` round-trips through "#play". Used for tile kinds, modes, classes.
 let symEq := [:a :b | [[a printString] = [b printString]]];
 
-// `whileDo` — birnam has no built-in `whileTrue:`, so the loop is a self-
-// recursive block: run `body` while `cond` (a zero-arg block) answers true.
+// `whileDo` — keep the game loops on Birnam's native stack-flat `whileTrue:`
+// primitive. Termbox can deliver non-key events (notably resize events), so a
+// recursive source-level loop would eventually overflow while waiting for a
+// player input.
 let whileDo := [:cond :body |
-  [[cond value]
-    ifTrue:  [| [body value]; [whileDo value: cond value: body]]
-    ifFalse: [| nil]]];
+  [cond whileTrue: body]];
 
 // ===========================================================================
 // Glyph codepoints (renderer draws these as cells) + termbox colour codes

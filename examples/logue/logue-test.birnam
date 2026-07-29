@@ -26,6 +26,13 @@ let check := [:label :got :want |
 
 [System println: "== logue-core headless tests =="];
 
+// The interactive input loops must stay stack-flat while Termbox delivers
+// resize/empty events. This is the same failure mode as an idle game session.
+let loopCounter := [newCell value: 0];
+[whileDo value: [| [[loopCounter value] < 10000]] value: [|
+  [loopCounter set: [[loopCounter value] + 1]]]];
+[check value: "interactive loop is stack-flat" value: [loopCounter value] value: 10000];
+
 // ---- generation + initial state (Fighter) -------------------------------
 [newGameSeeded value: #fighter value: 12345];
 [check value: "mode is play"        value: [mode value]                value: #play];
@@ -100,5 +107,17 @@ let mp := [mac at: 0];
 [goDepth value: 1 value: #up];
 [ascend value];
 [check value: "escaping with the Star wins" value: [mode value] value: #won];
+
+// Keep a quiet deterministic game alive through the long-running play path.
+// This catches turn-loop termination that would otherwise look like a silent
+// interactive crash.
+[newGameSeeded value: #fighter value: 9090];
+[monsters set: #[]];
+[items set: #[]];
+let stressTurns := [newCell value: 0];
+[whileDo value: [| [[stressTurns value] < 120]] value: [|
+  [endTurn value];
+  [stressTurns set: [[stressTurns value] + 1]]]];
+[check value: "120 turns stay alive" value: [stressTurns value] value: 120];
 
 [System println: ["RESULT: " , [[[checks value] printString] , [" checks, " , [[[fails value] printString] , " failures"]]]]]

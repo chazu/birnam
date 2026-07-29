@@ -209,14 +209,7 @@ let chosen := [newCell value: #none];
       [tb poll];
       let ch := [tb evCh];
       let key := [tb evKey];
-      [act value: ch value: key];
-      // Periodically drop the temporal history of all the per-turn cell writes
-      // (player/monsters/items/turn/dirty/...). `retainCurrent` sets the
-      // retention floor to "now"; it bounds reclaimable history rather than
-      // compacting in place (no birnam-exposed compaction yet). NB: measured,
-      // runtime growth is small (~130 KB/turn) — the dominant memory cost is
-      // loading the program itself (code reified as facts), not play.
-      [[[[turn value] mod: 50] = 0] ifTrue: [| [db retainCurrent]] ifFalse: [| nil]]]];
+      [act value: ch value: key]]];
     // final frame + end screen
     [draw value];
     [endScreen value];

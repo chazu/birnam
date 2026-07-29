@@ -5,10 +5,11 @@
 # (under a pipe / no controlling tty, tb_init fails and there is nothing to play).
 # The full game LOGIC is exercised headlessly by logue-test.birnam (no termbox):
 #
-#   birnam logue-test.birnam        # 26 assertions, green
+#   birnam logue-test.birnam        # 28 assertions, green
 #
-# Uses the birnam on PATH; from this repo, `zig build` puts one in zig-out/bin
-# (run as  BIRNAM=../../zig-out/bin/birnam ./play.sh  from here).
+# Uses the Rust birnam on PATH; from this repo, `mise run build` installs the
+# development prefix under ~/.local by default (run as
+# BIRNAM="$HOME/.local/bin/birnam" ./play.sh from here).
 set -e
 cd "$(dirname "$0")"
 BIRNAM="${BIRNAM:-birnam}"

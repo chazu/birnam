@@ -65,7 +65,8 @@ and launches `logue.birnam`, which files in the wrapper and `logue-core.birnam`
 via `[System load: …]`. From this repo without an installed birnam:
 
 ```sh
-BIRNAM=../../zig-out/bin/birnam ./play.sh
+mise run build
+BIRNAM="$HOME/.local/bin/birnam" ./play.sh
 ```
 
 > **A real terminal is required** — termbox2 opens `/dev/tty`, so the renderer
@@ -95,10 +96,11 @@ wait    .          quit  Q / Esc
 ## Run the headless tests
 
 ```sh
-birnam logue-core.birnam logue-test.birnam
+birnam logue-test.birnam
 ```
 
-Expected tail: `RESULT: 26 checks, 0 failures` — covering generation, hunger,
+Expected tail: `RESULT: 28 checks, 0 failures` — covering the stack-flat input
+loop, 120-turn survival, generation, hunger,
 eating, quaffing, combat, descent, every class, and the macguffin/win path.
 
 ## How termbox2 is wrapped
