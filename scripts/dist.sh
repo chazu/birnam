@@ -36,7 +36,7 @@ archive="$work/${name}.tar.gz"
 published="dist/${name}.tar.gz"
 
 log "building ${name} (Rust release, production distribution)"
-scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release >&2
 
 log "staging"
 mkdir -p "$stage/bin" "$stage/lib"
