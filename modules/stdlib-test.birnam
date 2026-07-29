@@ -114,7 +114,7 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: [v asVector] equals: v describes: "Vector asVector is the identity"]]];
 
 // The perf-retained native scanners keep their exact contract (they are the
-// floor under includesSubstring: and zigdoc's bulk sweeps).
+// floor under includesSubstring: and NativeDoc's bulk sweeps).
 [s test: "native scanners: split: / trimmed / indexOf: contracts hold" do: [:t |
   [t expect: ["a,,b" split: ","]  equals: #["a" "" "b"] describes: "split keeps empty parts"];
   [t expect: [["" split: ","] size] equals: 1 describes: "split of empty is #[\"\"]"];

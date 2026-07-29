@@ -2,7 +2,7 @@
 //!
 //! This crate owns the libtcc state machine and the generated-C callback
 //! boundary.  The object protocol is intentionally the same small surface as
-//! `src/id/tcc.zig`; all calls into the host IdApi happen through short unsafe
+//! `birnam-tcc`; all calls into the host IdApi happen through short unsafe
 //! sections so no Rust borrow survives a foreign callback.
 
 #![allow(clippy::missing_safety_doc)]

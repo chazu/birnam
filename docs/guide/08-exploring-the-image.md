@@ -200,7 +200,7 @@ birnam doc compiledUnit
 ```
 
 The source-backed HTML reference includes Birnam module docs, production Rust
-floor documentation, and retained Zig-oracle documentation:
+floor documentation:
 
 ```sh
 birnam docgen /tmp/birnam-docs.html

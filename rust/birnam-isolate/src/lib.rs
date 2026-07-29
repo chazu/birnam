@@ -2211,7 +2211,7 @@ pub extern "C" fn birnam_isolate_rust_identity() -> *const c_char {
 }
 
 /// Encode a BISO header into caller-owned storage. This probe is deliberately
-/// smaller than the eventual worker ABI: it lets the Zig corpus compare the
+/// smaller than the eventual worker ABI: it lets the reference corpus compare the
 /// exact wire bytes before process orchestration is ported.
 ///
 /// # Safety

@@ -2,7 +2,7 @@
 //
 // A birnam-native OS module, like time.birnam: the only irreducible capability is
 // "call a C function + read raw memory", which `Alien` already provides — no new
-// Zig. Whole-file read/write already exist as floor primitives (`System readFile:`
+// the native floor. Whole-file read/write already exist as floor primitives (`System readFile:`
 // / `writeFile:contents:`), so `File` reuses those and adds everything else — the
 // gaps the floor lacks — as thin libc calls.
 //

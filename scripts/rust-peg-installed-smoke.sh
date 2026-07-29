@@ -3,7 +3,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-prefix=${BIRNAM_PREFIX:-zig-out}
+prefix=${BIRNAM_PREFIX:-$HOME/.local}
 test -x "$prefix/bin/birnam"
 test -f "$prefix/lib/libbirnam_id_peg_rust.dylib"
 

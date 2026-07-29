@@ -2,7 +2,7 @@
 #
 # This is a self-contained birnam sub-project. Run it from this directory:
 #
-#   sh ../../wrapped/termbox2/build.sh           # build libtermbox2.dylib (cc, no zig)
+#   sh ../../wrapped/termbox2/build.sh           # build libtermbox2.dylib (cc)
 #   birnam logue.birnam                          # play (needs a real terminal)
 #   birnam logue-test.birnam                     # headless logic tests (no termbox)
 #

@@ -102,12 +102,6 @@
   [[self modules] includes: mod]] doc:
   "True iff `mod` was registered with module:is: (reads only the queryable modules list, never an unset cell)."];
 
-// Is `mod` a Zig-floor doc set (recorded by Zigdoc's scan) rather than a
-// loadable birnam module?
-[Reflect defineMethod: #isZigFloor: on: Doc as: [:self :mod |
-  [[db findAll: ?m where: #[ #[?m #docKind #zigFloor] ]] includes: mod]] doc:
-  "True iff `mod`'s docs came from a Zigdoc scan (the #docKind #zigFloor fact) rather than a loadable birnam module."];
-
 [Reflect defineMethod: #isRustFloor: on: Doc as: [:self :mod |
   [[db findAll: ?m where: #[ #[?m #docKind #rustFloor] ]] includes: mod]] doc:
   "True iff `mod`'s docs came from a Rust-source scan (the #docKind #rustFloor fact) rather than a loadable birnam module."];
@@ -221,7 +215,7 @@
 
 // The leading `//` comment block of `mod`'s recorded source — the hand-written
 // header prose (usage, examples, gotchas), or "" when the module has none (or
-// no recorded source). Zigdoc's `//!` trick applied to birnam files: the source
+// no recorded source). NativeDoc's `//!` trick applied to birnam files: the source
 // is already a fact, so the header needs no file I/O and no re-registration.
 [Reflect defineMethod: #headerOf: on: Doc as: [:self :mod |
   let src := [self moduleSource: mod];
@@ -446,13 +440,11 @@
   let me := self;
   let name    := [self nameOf: mod];
   let summary := [[db cellFor: mod attr: #docSummary] value];
-  let badge := [[self isZigFloor: mod]
-    ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Zig floor"]]
-    ifFalse: [| [[self isRustFloor: mod]
+  let badge := [[self isRustFloor: mod]
       ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Rust floor"]]
       ifFalse: [| [[self isNativeRust: mod]
         ifTrue:  [| [Html tag: "span" attrs: [Html attr: "class" value: "kind"] body: "Native Rust"]]
-        ifFalse: [| ""]]]]]];
+        ifFalse: [| ""]]]];
   let header := [self headerOf: mod];
   let notes := [[header isEmpty]
     ifTrue:  [| ""]
@@ -484,7 +476,7 @@
   "A sidebar list for `mods`: one <li><a href=\"#name\">name</a></li> each."];
 
 // One HTML page for EVERY documented module: a grouped, name-sorted sidebar
-// (birnam modules apart from the Rust floor and Zig oracle) + a section each, styled by
+// (birnam modules apart from native Rust sources) + a section each, styled by
 // `stylesheet`. (Accumulation rides StringBuilder — `secs` is the WHOLE page
 // body, the single biggest string docgen builds; an inject `,` fold would
 // re-copy it per module.)
@@ -492,10 +484,8 @@
   let me := self;
   let mods := [self sortedModules];
   let birnamMods := [mods inject: #[] into: [:acc :m |
-    [[[[me isZigFloor: m] | [me isRustFloor: m]] | [me isNativeRust: m]]
+    [[[me isRustFloor: m] | [me isNativeRust: m]]
       ifTrue: [| acc] ifFalse: [| [acc add: m]]]]];
-  let zigMods := [mods inject: #[] into: [:acc :m |
-    [[me isZigFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
   let rustMods := [mods inject: #[] into: [:acc :m |
     [[me isRustFloor: m] ifTrue: [| [acc add: m]] ifFalse: [| acc]]]];
   let nativeRustMods := [mods inject: #[] into: [:acc :m |
@@ -515,9 +505,6 @@
     [nav add: [Html tag: "ul" body: [gl asString]]]]];
   [nav add: [Html tag: "h2" text: "modules"]];
   [nav add: [Html tag: "ul" body: [me navListFor: birnamMods]]];
-  [[zigMods isEmpty] ifTrue: [| nil] ifFalse: [|
-    [nav add: [Html tag: "h2" text: "Zig floor"]];
-    [nav add: [Html tag: "ul" body: [me navListFor: zigMods]]]]];
   [[rustMods isEmpty] ifTrue: [| nil] ifFalse: [|
     [nav add: [Html tag: "h2" text: "Rust floor"]];
     [nav add: [Html tag: "ul" body: [me navListFor: rustMods]]]]];
@@ -547,7 +534,7 @@
 // not a directory scan: repository files are build inputs, while installed
 // compiled units are the runtime authority.
 [Reflect defineMethod: #productionModules on: Doc as: [:self |
-  #[#cli #file #html #http #json #log #lsp #markdown #os #process #random #repl #socket #time #zigdoc]] doc:
+  #[#cli #file #html #http #json #log #lsp #markdown #os #process #random #repl #socket #time #nativedoc]] doc:
   "The canonical production-module identities included in the Birnam runtime bundle."];
 
 [Reflect defineMethod: #isProductionModule: on: Doc as: [:self :name |
@@ -579,20 +566,19 @@
   "Load every supported runtime module from its compiled unit so its documentation and source metadata become visible. Answers self."];
 
 // Build the full HTML reference to `out`: load the compiled production closure,
-// extract the separately shipped Cargo workspace and Zig-oracle docs, load authored guides,
+// extract the separately shipped Cargo workspace docs, load authored guides,
 // then write `htmlIndex`. Answers `out`.
-[Reflect defineMethod: #buildSite:zig:rustWorkspace:guides: on: Doc as: [:self :out :zd :rw :gd |
+[Reflect defineMethod: #buildSite:rustWorkspace:guides: on: Doc as: [:self :out :rw :gd |
   let me := self;
   let loaded := [self loadAllModules];
   [[loaded isError]
     ifTrue:  [| loaded]
     ifFalse: [|
       [self loadGuides: gd];
-      [Zigdoc scanDir: zd];
-      [Zigdoc scanRustWorkspace: rw];
+      [NativeDoc scanRustWorkspace: rw];
       [File write: out contents: [me htmlIndex]];
       out]]] doc:
-  "Build the full HTML reference to `out`: load compiled production modules, guides, every installed Rust workspace crate, and Zig-oracle docs, then write htmlIndex. Answers `out`."];
+  "Build the full HTML reference to `out`: load compiled production modules, guides, and every installed Rust workspace crate, then write htmlIndex. Answers `out`."];
 
 // module:is: predates the #doc registration above (it IS the registrar), so its
 // docstring rides the appended path instead of a doc: define:

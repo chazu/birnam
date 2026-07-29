@@ -3,9 +3,9 @@
 //! This slice keeps the public protocol deliberately small. It owns the
 //! historied `(entity, attribute, value)` log and the schema-aware raw/flip,
 //! assert, retract, lookup, cardinality, count, history, basis, as-of, and
-//! live-triple operations. Image policy remains in the Zig Store until its
-//! dedicated migration slice; no Rust reference or lock crosses an IdApi
-//! callback.
+//! live-triple operations. Image framing is delegated to the image modules
+//! through the raw fact bridge below; no Rust reference or lock crosses an
+//! IdApi callback.
 
 use birnam_abi::IdApi;
 use core::ffi::{c_char, c_void};
@@ -197,7 +197,7 @@ unsafe extern "C" fn set_method_authorizer(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     // SAFETY: this selector has exactly one SmallInt argument carrying the
-    // callback address, matching the existing Zig Store ABI.
+    // callback address, matching the frozen Store callback ABI.
     let candidate = unsafe { (api.smallIntValue)(*args) } as usize;
     let current = METHOD_AUTHORIZER.load(Ordering::Acquire);
     if current != 0 && current != candidate {

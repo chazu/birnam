@@ -5,8 +5,8 @@
 // pre-compiled send loop), so micro's module environment stays frozen at
 // bench+os and the PEG-engine case lives here with json loaded.
 //
-//   ./zig-out/bin/birnam bench/parse.birnam
-//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/parse.birnam
+//   "$HOME/.local/bin/birnam" bench/parse.birnam
+//   BENCH_QUICK=1 "$HOME/.local/bin/birnam" bench/parse.birnam
 
 [System load: "modules/bench.birnam"];
 [System load: "modules/os.birnam"];

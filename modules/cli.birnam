@@ -1,18 +1,18 @@
 // cli.birnam — the birnam side of the birnam CLI: doc, docgen, init, wrap, --lsp, --listen.
 //
-// main.zig recognizes a subcommand token, boots the image, loads this compiled
+// Rust host recognizes a subcommand token, boots the image, loads this compiled
 // module by canonical identity, and hands the whole invocation over in ONE send:
 //
-//   [Cli run: #["doc" "time"] source: "<zig-dir>" rust: "<rust-dir>" rustAbi: "<abi-dir>" guides: "<guide-dir>"]
+//   [Cli run: #["doc" "time"] rust: "<rust-dir>" rustAbi: "<abi-dir>" guides: "<guide-dir>"]
 //
 // Cli loads what the subcommand needs and drives the SAME public API any birnam
-// program can call for itself — [Doc cli:], [Doc buildSite:zig:rustWorkspace:guides:],
+// program can call for itself — [Doc cli:], [Doc buildSite:rustWorkspace:guides:],
 // [Lsp serveStdio], [Repl serveOn:]. The CLI is one more CLIENT of the module
 // APIs, not their owner: nothing in doc/lsp/repl requires Cli, and loading any
 // of them from code gives the identical API the subcommands use.
 //
-// Contract with the Zig driver: `run:source:rustWorkspace:guides:` answers a process status —
-// 0 for success (usage displays included, matching the old Zig handlers), 1 for
+// Contract with the Rust host: `run:rustWorkspace:guides:` answers a process status —
+// 0 for success (usage displays included, matching the Rust host), 1 for
 // failure; the driver exits with it. args[0] is the subcommand token as typed
 // (so the --serve alias arrives as "--serve").
 
@@ -49,50 +49,37 @@
 
 // -- doc: `birnam doc <module> [selector]` --------------------------------------
 
-[Reflect defineMethod: #doc:source: on: Cli as: [:self :args :zdir |
+[Reflect defineMethod: #doc: on: Cli as: [:self :args |
   [[[args size] < 2]
     ifTrue:  [| [self say: "usage: birnam doc <module> [selector]"]]
-    ifFalse: [| [self docNamed: [args at: 1] sel: [args at: 2 ifAbsent: [| nil]] source: zdir]]]] doc:
+    ifFalse: [| [self docNamed: [args at: 1] sel: [args at: 2 ifAbsent: [| nil]]]]]] doc:
   "`birnam doc <module> [selector]` — print a module's docs (or one selector's) via [Doc cli:]."];
 
-// Resolve the module from the compiled production closure or, failing that,
-// from a separately shipped Zig-floor source file.
-[Reflect defineMethod: #docNamed:sel:source: on: Cli as: [:self :mod :sel :zdir |
-  let zd := [self ensure: #zigdoc];
-  [[zd isError]
-    ifTrue: [| [self fail: [zd printString]]]
+// Resolve the module from the compiled production closure.
+[Reflect defineMethod: #docNamed:sel: on: Cli as: [:self :mod :sel |
+  let floor := [Module load: #compiledUnitDocs];
+  [[floor isError]
+    ifTrue: [| [self fail: [floor printString]]]
     ifFalse: [|
-      let floor := [Module load: #compiledUnitDocs];
-      [[floor isError]
-        ifTrue: [| [self fail: [floor printString]]]
-        ifFalse: [|
-          let ensured := [Zigdoc ensure: [mod asSymbol] zig: [[[zdir , "/"] , mod] , ".zig"]];
-          [[ensured isError]
-            ifTrue: [| [self fail: [ensured printString]]]
-            ifFalse: [|
-              [[sel isNil]
-                ifTrue:  [| [System print: [Doc cli: [mod asSymbol]]]]
-                ifFalse: [| [System print: [Doc cli: [mod asSymbol] sel: sel]]]];
-              [self status]]]]]]]] doc:
-  "Print docs for module `mod` (all of it, or one selector when `sel` is non-nil) via its compiled unit or Zig-floor source."];
+      [[sel isNil]
+        ifTrue:  [| [System print: [Doc cli: [mod asSymbol]]]]
+        ifFalse: [| [System print: [Doc cli: [mod asSymbol] sel: sel]]]];
+      [self status]]]] doc:
+  "Print docs for module `mod` (all of it, or one selector when `sel` is non-nil) via its compiled unit."];
 
 // -- docgen: `birnam docgen [out.html]` -----------------------------------------
 
-[Reflect defineMethod: #docgen:source:rustWorkspace:guides: on: Cli as: [:self :args :zdir :rwork :gdir |
+[Reflect defineMethod: #docgen:rustWorkspace:guides: on: Cli as: [:self :args :rwork :gdir |
   let outPath := [args at: 1 ifAbsent: [| "birnam-docs.html"]];
-  let zd := [self ensure: #zigdoc];
-  [[zd isError]
-    ifTrue: [| [self fail: [zd printString]]]
+  let built := [Doc buildSite: outPath rustWorkspace: rwork guides: gdir];
+  [[built isError]
+    ifTrue: [| [self fail: [built printString]]]
     ifFalse: [|
-      let built := [Doc buildSite: outPath zig: zdir rustWorkspace: rwork guides: gdir];
-      [[built isError]
-        ifTrue: [| [self fail: [built printString]]]
-        ifFalse: [|
-          let status := [self status];
-          [[status = 0]
-            ifTrue:  [| [self say: ["wrote " , outPath]]]
-            ifFalse: [| 1]]]]]]] doc:
-  "`birnam docgen [out.html]` — build the full HTML reference from compiled modules, the installed Rust workspace, Zig-oracle sources, and guides."];
+      let status := [self status];
+      [[status = 0]
+        ifTrue:  [| [self say: ["wrote " , outPath]]]
+        ifFalse: [| 1]]]]] doc:
+  "`birnam docgen [out.html]` — build the full HTML reference from compiled modules, the installed Rust workspace, and guides."];
 
 // -- lsp: `birnam --lsp` --------------------------------------------------------
 
@@ -279,7 +266,7 @@
   "`birnam wrap <name>` — scaffold wrapped/<name>/<name>.birnam, a barebones Alien-based wrapper to edit."];
 
 // Never clobber an existing wrapper — the author's edits win (a benign no-op,
-// status 0, matching the old Zig scaffolder). BASE is a parameter so tests can
+// status 0, matching the old scaffolder). BASE is a parameter so tests can
 // scaffold outside the repo's real wrapped/ tree.
 [Reflect defineMethod: #wrapLib:into: on: Cli as: [:self :name :base |
   [self ensure: #file];
@@ -299,14 +286,14 @@
 
 // -- the dispatcher --------------------------------------------------------------
 
-[Reflect defineMethod: #run:source:rustWorkspace:guides: on: Cli as: [:self :args :zdir :rwork :gdir |
+[Reflect defineMethod: #run:rustWorkspace:guides: on: Cli as: [:self :args :rwork :gdir |
   let cmd := [args at: 0 ifAbsent: [| ""]];
-  [[cmd = "doc"] ifTrue: [| [self doc: args source: zdir]] ifFalse: [|
-    [[cmd = "docgen"] ifTrue: [| [self docgen: args source: zdir rustWorkspace: rwork guides: gdir]] ifFalse: [|
+  [[cmd = "doc"] ifTrue: [| [self doc: args]] ifFalse: [|
+    [[cmd = "docgen"] ifTrue: [| [self docgen: args rustWorkspace: rwork guides: gdir]] ifFalse: [|
       [[cmd = "init"] ifTrue: [| [self initAt: "birnam.toml"]] ifFalse: [|
         [[cmd = "wrap"] ifTrue: [| [self wrap: args]] ifFalse: [|
           [[cmd = "--lsp"] ifTrue: [| [self lsp: args]] ifFalse: [|
             [[[cmd = "--listen"] | [cmd = "--serve"]]
               ifTrue:  [| [self listen: args]]
               ifFalse: [| [self fail: ["birnam: unknown subcommand: " , cmd]]]]]]]]]]]]]]] doc:
-  "Dispatch one CLI invocation using compiled modules plus the Rust workspace, Zig, and guide resource directories. Answers status 0 or 1."];
+  "Dispatch one CLI invocation using compiled modules plus the Rust workspace and guide resource directories. Answers status 0 or 1."];

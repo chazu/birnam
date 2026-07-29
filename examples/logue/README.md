@@ -128,4 +128,4 @@ The result is that every wrapped call is `int -> int` or `(ints…, cstring) -> 
 — see `termbox2.birnam`. `Termbox` itself is a named singleton (`[Object clone]`
 with its own copy-on-write vtable), so wrapping these methods `on: Termbox` keeps
 them off `Object`. This "thin C adapter over a single-header lib" is the clean
-pattern for wrapping header-only C from birnam without any zig.
+pattern for wrapping header-only C from birnam without another compiler.

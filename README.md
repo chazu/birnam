@@ -11,10 +11,8 @@ product; compatibility and language surface can and will still change.
 ## Support
 
 Birnam currently supports **arm64 macOS** with the pinned Rust toolchain and
-system libtcc build prerequisites. The production install and release paths are
-Rust-only. Zig 0.15.1 remains an explicit development/oracle tool for the
-cross-layer compatibility and rollback gates; it is not needed to run an
-installed production prefix.
+system libtcc build prerequisites. The runtime, build, install, release, and
+verification paths are Rust-only.
 
 Linux support is planned.
 
@@ -32,13 +30,11 @@ birnam
 ```
 
 The installed executable finds its runtime dylibs in the sibling `lib/`
-directory. `mise run build` uses the same Rust-only installer for a debug
-prefix; `zig build` remains the explicit oracle/debug graph.
+directory. `mise run build` uses the same Rust installer for a debug prefix.
 
 [`mise`](https://mise.jdx.dev) is optional; [mise.toml](mise.toml) pins the Rust
-and Zig oracle toolchains and exposes Rust-system defaults for `mise run build`,
-`mise run install`, `mise run verify`, `mise run dist`, and `mise run release`.
-The explicit Zig compatibility matrix is `mise run zig-oracle-verify`.
+toolchain and exposes the Rust tasks for `mise run build`, `mise run install`,
+`mise run verify`, `mise run dist`, and `mise run release`.
 
 ## First Session
 
@@ -276,18 +272,8 @@ mise run verify
 ```
 
 `mise run rust-cutover-verify` is the equivalent explicitly named release gate.
-Run the complete Zig compatibility/oracle gate only when changing or auditing
-the retained Zig path:
-
-```sh
-mise run zig-oracle-verify
-```
-
-The Zig-oracle command runs the Zig unit/integration suites, rebuilds
-self-hosted artifacts with `stage1`, executes the birnam-level suites, and
-checks REPL transcripts. The narrower commands are `zig build test`, `zig build
-test-birnam`, and `zig build test-repl`. GitHub Actions runs the Zig-oracle gate
-on the supported arm64 macOS target.
+It runs the Cargo workspace tests, a clean Rust install, a cold source archive,
+and relocated runtime checks.
 
 ## Benchmarks
 
@@ -300,7 +286,6 @@ whole-process workloads — always against a ReleaseSafe build.
 BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
 BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam        # tight dev loop (~5s)
 mise run bench                                          # isolated Rust-system run
-mise run bench-zig-oracle                               # explicit Zig-oracle run
 mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
@@ -320,9 +305,6 @@ git add bench/results/v<X.Y.Z>-rust-*.json && git commit
 
 The committed Rust-system snapshots are the baselines future runs compare
 against; filenames and JSON stamps include the commit and selected dylib digest.
-For an optional cross-floor comparison, also run
-`mise run bench-release-zig-oracle`. (This step is intentionally outside
-`release.sh` — bench noise must never block a release.)
 `docs/misc/BENCHMARKS.md` is the full operational guide;
 [docs/design/46-benchmarks.md](docs/design/46-benchmarks.md) records the
 methodology and the measured constants.
@@ -330,9 +312,7 @@ methodology and the measured constants.
 ## Architecture
 
 The runtime starts as a Rust host that loads a set of reloadable dynamic
-libraries through a C ABI. The production `libid` floor and all native rungs
-are Rust; a separately named Zig host/oracle remains available only for
-conformance and developer rollback.
+libraries through a C ABI. The `libid` floor and all native rungs are Rust.
 Artifact selection first adds only the ID-floor inspector; activation then
 brings up the required language rungs:
 
@@ -347,15 +327,11 @@ Higher rungs add the relational substrate, parser, compiler, native-code
 backend, collections, FFI, and image format. The standard library and most
 application-facing modules are Birnam source. Birnam retains a cold source
 bootstrap through declared non-Birnam toolchains, with no prebuilt Birnam
-artifact required. The Rust host owns the production closure; the Zig host,
-higher-rung implementations, and Zig build graph remain isolated
-oracle/rollback evidence until their vector-level retirement decision.
+artifact required. The Rust host owns the complete runtime and build closure.
 
 ## Repository Guide
 
 - `rust/birnam-id/` — authoritative Rust `libid` floor behind the frozen `IdApi`.
-- `src/id/` — retained Zig `libid` oracle plus the Zig runtime rungs, siphon,
-  compiler, image, FFI, and test suites above the floor.
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
 - `modules/` — authored library, CLI, LSP, documentation, and test sources;
@@ -408,10 +384,8 @@ oracle/rollback evidence until their vector-level retirement decision.
   trampolining, and delimited continuations. It records a migration path and
   first proof, not an active implementation commitment.
 - [The Rust libid rewrite plan](docs/design/61-rust-libid-rewrite-plan.md)
-  specifies the drop-in floor boundary, unsafe/reentrancy discipline,
-  commit-granular initial phases, dual-floor verification, performance gates,
-  completed default cutover, and delayed Zig-oracle retirement.
+  records the floor boundary, unsafe/reentrancy discipline, and performance
+  gates for the completed Rust implementation.
 - [The Rust native-rung migration plan](docs/design/62-rust-native-rungs-migration-plan.md)
-  extends that work through the higher dynamic rungs, independent cold compiler,
-  host, project workflow, and eventual Zig-toolchain retirement while preserving
-  Birnam's bootstrap, MOP, artifact, image-v4, and execution-model invariants.
+  records the completed migration of the higher dynamic rungs, compiler, host,
+  project workflow, and image execution path to Rust.

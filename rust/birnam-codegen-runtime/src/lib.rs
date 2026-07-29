@@ -1,9 +1,8 @@
-//! Explicit Rust Codegen boundary for the first N6.3 runtime slice.
+//! Canonical Rust Codegen runtime.
 //!
-//! This dylib is intentionally exported under `RustCodegen`; it cannot replace
-//! the frozen `Codegen` authority until the complete N6.3–N6.6 matrix passes.
-//! The current method materializes the Rust PEG CST, lowers it through the pure
-//! Codegen core, and returns deterministic generated C without invoking TCC.
+//! This dylib publishes the `Codegen` and `Reflect` globals used by the host.
+//! It materializes the Rust PEG CST, lowers it through the pure Codegen core,
+//! and returns deterministic generated C without invoking TCC.
 
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use birnam_artifact_codec::candidate::{
@@ -1091,9 +1090,8 @@ fn candidate_generated(
     operations: &[RevisionOperation],
     rust_owned_shims: bool,
 ) -> Vec<u8> {
-    // The mixed stack still owns the candidate callback ABI in Zig Codegen.
-    // Keep these declarations local to the candidate instead of exporting a
-    // second Rust owner for the same dynamic symbols before the final cutover.
+    // Keep candidate declarations local to the artifact instead of exporting
+    // another owner for the same dynamic symbols.
     let generated = if rust_owned_shims {
         rewrite_codegen_shims(generated)
     } else {
@@ -1986,13 +1984,9 @@ unsafe extern "C" fn rust_codegen_seal_initial_generation(
 /// projection.
 ///
 /// The ordinary `DispatchGeneration>>initializeCurrent` method is authored in
-/// Birnam and intentionally asks the canonical `Codegen` global for its
-/// projection. That is correct for the mixed Zig-authority host, but it cannot
-/// bootstrap a Rust-only Codegen authority because `RustCodegen` is exposed
-/// under its explicit opt-in name until the canonical switch. This selector is
-/// the Rust-side equivalent for that isolated authority boundary: it creates G0
-/// only when Store has no active generation, and it refuses to overwrite or
-/// reinterpret an existing durable generation.
+/// Birnam and asks the canonical `Codegen` global for its projection. This
+/// selector creates G0 only when Store has no active generation, and refuses to
+/// overwrite or reinterpret an existing durable generation.
 unsafe extern "C" fn rust_codegen_initialize_current_generation(
     _self_object: Oop,
     pointer: *const Oop,
@@ -3251,7 +3245,7 @@ unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<O
                     // Code slots are intentionally elided from v4 heap
                     // payloads; mapped-unit recovery fills them later. Keep
                     // the freshly allocated object deterministic and match
-                    // the Zig loader's zeroed code-slot contract.
+                    // the loader's zeroed code-slot contract.
                     (pending.object as *mut usize).add(word).write(0);
                 },
             }
@@ -3403,7 +3397,7 @@ unsafe fn rust_codegen_replay_image_facts_impl(
         }
     }
     // Heap-only images are valid framing inputs, but they have no Store
-    // timeline to replace. Match the Zig loader's `facts_began` guard and
+    // timeline to replace. Match the loader's `facts_began` guard and
     // leave the existing Store untouched rather than clearing it through an
     // empty image-load transaction.
     if !has_facts {
@@ -3448,7 +3442,7 @@ unsafe fn rust_codegen_replay_image_facts_impl(
     let _ = unsafe { send0(api, store, b"backfillMirror\0") };
     // Relational rules are canonical Store facts, but the query engine keeps a
     // derived in-memory cache. Rebuild it after image facts replace the store,
-    // matching the authoritative Zig image loader's recovery boundary.
+    // matching the authoritative image loader's recovery boundary.
     if unsafe { (api.isExported)(c"db".as_ptr().cast()) } != 0 {
         let _ = unsafe { send0(api, store, b"rebuildRules\0") };
     }
@@ -4151,7 +4145,7 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
     // A persisting source can install blocks as methods or store them in
     // globals. Those closures point into this TCC unit, so keep the unit live
-    // exactly as the Zig evaluator does for any program containing `__blk`.
+    // exactly as the native evaluator does for any program containing `__blk`.
     // One-shot programs with no blocks have no native code reachable after the
     // entry returns and may be reclaimed immediately.
     if source.bytes.windows(5).any(|window| window == b"__blk") {
@@ -4509,7 +4503,7 @@ fn ensure_candidate_content_path(author_path: &[u8], checksum: &[u8; 64]) -> Opt
 }
 
 /// Apply the frozen candidate Mach-O policy before any `dlopen` or initializer
-/// can run. This mirrors the Zig Codegen check byte-for-byte at the contract
+/// can run. This mirrors the Codegen check byte-for-byte at the contract
 /// level: thin arm64 dylib, no init sections, and only libSystem as a load
 /// dependency.
 fn candidate_macho_safe(bytes: &[u8]) -> bool {
@@ -4863,9 +4857,7 @@ unsafe extern "C" fn rust_codegen_enter_running(
     let api = unsafe { api(runtime) };
     clear_error();
     // A host calls enterRunning only after selecting the complete stack. In a
-    // Rust-only stack this is the first safe point to claim Store callbacks;
-    // when Zig Codegen is present, ensure_store_callbacks leaves its owner
-    // untouched under the single-registration law.
+    // Rust-only stack this is the first safe point to claim Store callbacks.
     let legacy_codegen_present = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) != 0 };
     unsafe { ensure_store_callbacks(api, runtime) };
     if !legacy_codegen_present && !STORE_CALLBACKS_REGISTERED.load(Ordering::Acquire) {
@@ -5044,9 +5036,7 @@ unsafe fn ensure_store_callbacks(api: &IdApi, runtime: &Runtime) {
     {
         return;
     }
-    // A mixed stack keeps Zig Codegen's callback owner. Rust becomes the owner
-    // only when no legacy Codegen export is present, avoiding registration-law
-    // conflicts while the migration is opt-in.
+    // The canonical Codegen provider owns Store callback registration.
     if unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } != 0 {
         return;
     }
@@ -5141,7 +5131,7 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     let mut content_path_z = content_path;
     content_path_z.push(0);
     // RTLD_LAZY | RTLD_GLOBAL: candidates resolve the frozen birnam_* ABI from
-    // the already-loaded native rung set, matching the Zig mapper.
+    // the already-loaded native rung set, matching the mapper.
     let handle = unsafe { (api.dlopen)(content_path_z.as_ptr().cast(), 9) };
     if handle.is_null() {
         note_error(b"RustCodegen candidate mapping failed");
@@ -6381,8 +6371,8 @@ unsafe extern "C" fn rust_codegen_load(
         };
     }
     // SAFETY: the artifact output owns an immutable byte array and matching
-    // process-width length symbol for the lifetime of the retained handle. Old
-    // Zig artifacts only export the descriptor array, so derive its framed
+    // process-width length symbol for the lifetime of the retained handle.
+    // Older artifacts only export the descriptor array, so derive its framed
     // length from the frozen magic/payload header when the optional symbol is
     // absent.
     let descriptor_len = if !descriptor_len_symbol.is_null() {
@@ -6443,7 +6433,7 @@ unsafe extern "C" fn rust_codegen_load(
     // Host-capability loading is the explicit process-local UI escape hatch
     // used by a recovered image. It must not mutate the sealed application
     // generation or require that the UI unit's ordinary application-module
-    // dependencies were part of that image; the Zig path has the same rule.
+    // dependencies were part of that image.
     // Ordinary Module load: remains dependency-checked and fail-closed.
     let host_capability_loading = HOST_CAPABILITY_LOADING.load(Ordering::Acquire);
     if parsed_descriptor.requires.count() != 0 && !host_capability_loading {
@@ -7094,10 +7084,9 @@ unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
         abort("RustReflect defineMethod:on:as:doc:source: expects five arguments");
     }
     let api = unsafe { api(runtime()) };
-    // Preserve the late-bound documentation hook.  The Zig source adapter
-    // sends the four-argument form so the Birnam stdlib can retain the
-    // receiver prototype and docstring; Rust's source adapter must do the
-    // same rather than silently dropping the doc payload.
+    // Preserve the late-bound documentation hook. The source adapter sends
+    // the four-argument form so the Birnam stdlib can retain the receiver
+    // prototype and docstring rather than silently dropping the doc payload.
     let result = unsafe {
         send(
             api,

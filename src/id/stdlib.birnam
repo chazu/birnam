@@ -1,16 +1,15 @@
 // stdlib.birnam — the SELF-HOSTED part of the standard library.
 //
-// The base protocol is provided by the Rust id floor plus native Zig higher rungs
+// The base protocol is provided by the Rust native floor and its higher rungs
 // (prelude, collection) — those are the irreducible primitives.
 // THIS file is birnam defining MORE of its own library, on top of those
 // primitives, via `[Reflect defineMethod: #sel on: T as: aBlock]`. It is loaded by
 // default; `BIRNAM_NO_STDLIB=1` runs on the bare native runtime instead.
 //
 // ⚠️ AFTER EDITING THIS FILE: `loadStdlib` PREFERS the compiled dylib
-// (zig-out/lib/libbirnam_stdlib.dylib) over this embedded source, so a stale dylib
+// (the installed lib/libbirnam_stdlib.dylib) over this embedded source, so a stale dylib
 // will SILENTLY SHADOW your change (the runtime keeps running the OLD code and your
-// tests pass against it). Either `rm zig-out/lib/libbirnam_stdlib.dylib` to force the
-// source path, or `zig build stage1` to regenerate the dylib. (Same for toml/config.)
+// tests pass against it). Remove the installed module to force source compilation.
 
 // This module's dependency declaration (stage 3): the self-hosted stdlib sits
 // directly on the native primitives, so it requires no other self-hosted module.
@@ -128,14 +127,15 @@
    "How many elements satisfy `blk` (whole-collection cardinality is size)."];
 
 // isEmpty over size — no family keeps a native isEmpty; this covers them all
-// (Vector/Map had Zig ones until the tier-A surface lift; Range never did).
+// (Vector/Map had native ones until the tier-A surface lift; Range never did).
 [Reflect defineMethod: #isEmpty on: Collection as: [:self | [[self size] = 0]] doc:
    "True iff the collection has no elements (size = 0)."];
 [Reflect defineMethod: #notEmpty on: Collection as: [:self | [[self isEmpty] not]] doc:
    "True iff the collection has at least one element."];
 
 // first / last / at:ifAbsent: over size + at: — pure surface (no per-element
-// loop), lifted from Zig (collection.zig's vFirst/vLast/vAtIfAbsent/rFirst/
+// loop), lifted from the native collection implementation's
+// vFirst/vLast/vAtIfAbsent/rFirst/
 // rLast). Every indexable family gets them, String included; Map keeps its own
 // native at:ifAbsent: (key-based, not index-based — the map_vt method wins).
 [Reflect defineMethod: #first on: Collection as: [:self |
@@ -241,9 +241,9 @@
   "Drop a numeric cell by one; answers the new value."];
 
 // -- StringBuilder sugar + the byte transforms it unlocks (docs/44 Phase 5) -------
-// The builder itself is native (collection.zig): add:/addByte: are bulk/byte
+// The builder itself is native: add:/addByte: are bulk/byte
 // appends into a mutable buffer, asString materializes once. These are the
-// birnam conveniences over it, plus asUppercase/asLowercase lifted OUT of Zig —
+// birnam conveniences over it, plus asUppercase/asLowercase lifted out of the native floor —
 // cold-path byte transforms a to:do: + addByte: loop expresses fine. (The HOT
 // per-byte string work stays native: split:/trimmed/indexOf: — the scanners —
 // and replace:with:, which json/html escaping runs on every LSP message and
@@ -344,9 +344,9 @@
 [Reflect defineMethod: #|> on: Object as: [:self :block | [block value: self]] doc:
    "Threads the receiver into `block` — [x |> b] is [b value: x], so a nest of sends reads left-to-right."];
 
-// ── error protocol (migrated from error.zig; docs/design/44a) ────────────────
+// ── error protocol (docs/design/44a) ─────────────────────────────────────────
 // The representation (native Err payload), the doesNotUnderstand: SWAP, and the
-// Error factory stay in the Zig core (error.zig) — they are floor. What lives here
+// Error factory stays in the native core — it is floor. What lives here
 // is pure block orchestration over the core primitives [e isError]/[e kind]/
 // [e message] and the [Error …] factory. `ErrorVt` is the exported error-instance
 // vtable; `on: ErrorVt` installs on every error instance.
@@ -421,7 +421,7 @@
 // plus two native families that are DELIBERATE retentions: asLowercase/
 // asUppercase/replace:with: (they BUILD byte content; wait on the Phase-5
 // StringBuilder) and the per-byte SCANNERS split:/trimmed/indexOf: (a send costs
-// ~1.5-2µs, so a derived scan over bulk text — zigdoc sweeping Zig sources for
+// ~1.5-2µs, so a derived scan over bulk text — NativeDoc sweeping Rust sources for
 // doc/docgen — is ~10× slower; "lift the surface, keep the native join").
 // Everything else derives here. Iteration rides Range's native fold ([0 to: n]
 // inject:/do: — an empty range, start > stop, iterates zero times), so String's

@@ -1,11 +1,9 @@
 //! Pure executable-relative runtime-resource resolution for the Rust host.
 //!
 //! This is deliberately not a loader and does not inspect the filesystem. It
-//! only reproduces the installed Birnam layout and the three narrow resource
-//! overrides accepted by the existing Zig host. Loading a floor or any higher
-//! rung remains a later host boundary.
-
-pub mod build_driver;
+//! only reproduces the installed Birnam layout and its narrow resource
+//! overrides. Loading the Rust floor and higher rungs happens at the host
+//! boundary.
 
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -34,7 +32,6 @@ pub struct Overrides<'a> {
 pub struct Resources {
     pub prefix: PathBuf,
     pub lib_dir: PathBuf,
-    pub source_dir: PathBuf,
     pub rust_workspace_dir: PathBuf,
     pub guide_dir: PathBuf,
     pub id_dylib: PathBuf,
@@ -142,8 +139,8 @@ pub struct RunOptions {
     pub arguments: Vec<std::ffi::OsString>,
 }
 
-/// Return the frozen `<arch>-<os>` build target identity used by the Zig
-/// project adapter and artifact policy.
+/// Return the frozen `<arch>-<os>` build target identity used by the project
+/// adapter and artifact policy.
 pub fn host_target_identity() -> String {
     format!("{}-{}", env::consts::ARCH, env::consts::OS)
 }
@@ -508,7 +505,7 @@ impl ArtifactPreflight {
                     | ArtifactPreflightError::DependencyCycle { .. } => return Err(error),
                     // A nested descriptor's kind is a structural contract
                     // failure, not an unavailable dependency. Preserve the
-                    // Zig oracle's typed diagnostic instead of collapsing it
+                    // typed diagnostic instead of collapsing it
                     // into the recursive dependency wrapper.
                     ArtifactPreflightError::KindMismatch { .. } => return Err(error),
                     _ => {
@@ -532,7 +529,7 @@ impl ArtifactPreflight {
 }
 
 /// Validate an artifact and its complete sibling dependency closure before any
-/// activation. This is the Rust-host replacement seam for the Zig preflight
+/// activation. This is the Rust-host validation seam for the preflight
 /// helper: it consumes the same pointer-free descriptor parser and performs no
 /// IdApi allocation, module load, or initializer call.
 pub fn preflight_artifact(
@@ -640,7 +637,7 @@ pub unsafe fn eval_script(
 
 /// Compile one authored self-hosted module into an installable compiled unit.
 ///
-/// This is the Rust-host equivalent of the Zig siphon's private
+/// This is the Rust-host implementation of the private
 /// `--compile-module` route. The caller deliberately starts the runtime with
 /// `skip_stdlib`, so stage-1 can compile the stdlib itself without depending on
 /// a pre-existing self-hosted source or compiled-unit closure.
@@ -716,37 +713,8 @@ pub unsafe fn load_image(
     let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
-    let mut status =
+    let status =
         unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
-    if status == api.falseObj
-        && env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
-    {
-        // Rust Image owns the canonical selector surface, while Zig Image is
-        // retained as the explicit v4 reader rollback until Rust Codegen's
-        // reader is canonical. Load that reader only for this failed mixed
-        // authority attempt, then restore Rust Image's methods immediately.
-        let zig_image = runtime
-            .resources
-            .lib_dir
-            .join("libbirnam_id_image_zig.dylib");
-        // A production prefix deliberately omits the Zig rollback fixture.
-        // In that distribution Rust Image's false answer must continue into
-        // the Rust Codegen source-recovery path; only attempt the compatibility
-        // retry when the explicitly named Zig provider is actually installed.
-        if zig_image.is_file() {
-            runtime
-                .stack
-                .load_module(&zig_image)
-                .map_err(|_| ImageError::LoadRejected)?;
-            status =
-                unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
-            let rust_image = runtime.resources.lib_dir.join("libbirnam_id_image.dylib");
-            runtime
-                .stack
-                .load_module(&rust_image)
-                .map_err(|_| ImageError::LoadRejected)?;
-        }
-    }
     if status == api.nilObj {
         return Err(ImageError::LoadRejected);
     }
@@ -802,8 +770,8 @@ pub unsafe fn load_image(
         // `System loadImage:rebuild:` closes the image module's internal
         // recovery phase before returning. Rust Codegen deliberately requires
         // replay/derivation to run inside that phase, so reopen the host-owned
-        // recovery boundary around the post-load operations just as the Zig
-        // image driver does within its load transaction.
+        // recovery boundary around the post-load operations within the image
+        // load transaction.
         let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
         let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
         if begun == api.nilObj || send_is_error(api, begun) {
@@ -813,9 +781,8 @@ pub unsafe fn load_image(
         let replayed = unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) };
         // A data-only image (and an explicit --rebuild of an image whose
         // journal contains no user methods) still needs the self-hosted
-        // protocol layer. The canonical Zig recovery path reloads the
-        // embedded stdlib in this zero-replay case; do the same through the
-        // Rust host bootstrap so Config/Module/REPL globals cannot remain as
+        // protocol layer. Reload the embedded stdlib in this zero-replay case
+        // through the Rust host bootstrap so Config/Module/REPL globals cannot remain as
         // stale image objects without their method surface.
         let replay_count = if unsafe { (api.isSmallInt)(replayed) } != 0 {
             unsafe { (api.smallIntValue)(replayed) }
@@ -2323,7 +2290,7 @@ pub enum ProjectDependencyResolutionError {
 }
 
 /// Convert a file URI (or a plain path used by tests/tools) into a filesystem
-/// path. This mirrors the Zig host's narrow project bridge boundary: only
+/// path. This mirrors the narrow project bridge boundary: only
 /// `file://` URIs and plain paths are admitted, percent decoding happens here,
 /// and other URI schemes fail closed before project observation.
 pub fn project_path_from_uri(raw: &str) -> Result<PathBuf, ProjectUriError> {
@@ -4511,7 +4478,7 @@ impl HostRuntime {
     }
 
     /// Load a host-tool module outside the sealed application generation. This
-    /// is the same capability boundary used by the Zig host for a process-local
+    /// is the same capability boundary used by the host for a process-local
     /// REPL fallback: the module may publish its tool globals, but it is not a
     /// durable application-generation introduction.
     ///
@@ -4540,7 +4507,7 @@ impl HostRuntime {
         if let Some(module_manager) = unsafe { global_named(self.stack.api(), "Module") } {
             let mark = unsafe { (self.stack.api().intern)(c"markLoaded:".as_ptr()) };
             let symbol = unsafe { (self.stack.api().intern)(name.as_ptr()) };
-            // The canonical Zig host treats this as bookkeeping only: a host
+            // The canonical host treats this as bookkeeping only: a host
             // capability has already been installed by Codegen and does not
             // become an application-generation module. Preserve that boundary
             // by ignoring the manager's return value here as well.
@@ -4743,7 +4710,7 @@ impl HostRuntime {
             unsafe { self.validate_project_build(project_root, target, profile, tool_version) }
                 .map_err(ProjectRunError::Build)?;
         unsafe { self.activate_project_build(&build) }?;
-        // Match the Zig worker boundary: install the test harness before the
+        // Match the worker boundary: install the test harness before the
         // project source registers suites, then run those suites through the
         // canonical ConsoleRunner. Evaluating a source file alone is not a
         // test run; it would silently accept a suite-registration script
@@ -6242,22 +6209,20 @@ impl HostRuntime {
             return Err(CliError::MissingCli);
         };
         let values = unsafe { native_os_string_vector(api, args) }?;
-        let source = path_bytes(&self.resources.source_dir);
         let rust_workspace = path_bytes(&self.resources.rust_workspace_dir);
         let guides = path_bytes(&self.resources.guide_dir);
-        let selector = unsafe { (api.intern)(c"run:source:rustWorkspace:guides:".as_ptr()) };
+        let selector = unsafe { (api.intern)(c"run:rustWorkspace:guides:".as_ptr()) };
         let result = unsafe {
             (api.send)(
                 cli,
                 selector,
                 [
                     values,
-                    (api.mkString)(source.as_ptr(), source.len()),
                     (api.mkString)(rust_workspace.as_ptr(), rust_workspace.len()),
                     (api.mkString)(guides.as_ptr(), guides.len()),
                 ]
                 .as_ptr(),
-                4,
+                3,
             )
         };
         if unsafe { (api.isSmallInt)(result) } == 0 {
@@ -6298,7 +6263,7 @@ impl HostRuntime {
     unsafe fn start_repl_mode(&self, image_booted: bool) -> Result<ReplSession, ReplError> {
         // A normal boot can introduce Repl into G0. An image may already have
         // sealed its application generation, so recover the same process-local
-        // host capability used by the Zig image path when ordinary loading is
+        // host capability used by the image path when ordinary loading is
         // rejected.
         let normal_load_rejected =
             !image_booted && unsafe { self.load_runtime_module("repl") }.is_err();
@@ -6471,7 +6436,7 @@ impl HostRuntime {
     }
 
     /// Serve the socket REPL through the self-hosted `Repl serveOn:bind:`
-    /// protocol. The socket module is loaded before Repl, matching the Zig
+    /// protocol. The socket module is loaded before Repl, matching the
     /// host's runtime-tool dependency order.
     ///
     /// # Safety
@@ -6648,7 +6613,7 @@ impl StartupPolicy {
 }
 
 /// Scan the first `requires: #[...]` declaration using the same deliberately
-/// small source convention as the Zig host. Dependencies outside the
+/// small source convention as the host. Dependencies outside the
 /// self-hosted inventory are native/kernel modules and are already loaded.
 pub fn self_hosted_requires(source: &[u8]) -> Vec<String> {
     let Some(requires_at) = source
@@ -7176,7 +7141,7 @@ pub unsafe fn record_and_eval_source(
     Ok(evaluated)
 }
 
-/// Load one self-hosted module using the same optimization policy as the Zig
+/// Load one self-hosted module using the same optimization policy as the
 /// host. The candidate is exactly `<lib_dir>/libbirnam_<name>.dylib`; the host
 /// never searches other directories or opens this dylib directly. A missing,
 /// rejected, or error-valued Codegen `load:` answer falls back to the embedded
@@ -7548,19 +7513,13 @@ impl LoadedStack {
         self.load_module_handle(path).map(|_| ())
     }
 
-    /// Resolve and load the canonical native stack in the same order as the
-    /// Zig host. Store/TCC retain their exact override paths; every other rung
+    /// Resolve and load the canonical native stack in dependency order. TCC
+    /// retains its exact override path; every other rung, including Store,
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
-        let store_override = env::var_os("BIRNAM_STORE_DYLIB").map(PathBuf::from);
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
         for name in SCRIPT_MODULES {
-            let path = if *name == "libbirnam_store" {
-                store_override
-                    .as_deref()
-                    .map(Path::to_path_buf)
-                    .unwrap_or_else(|| resources.lib_dir.join("libbirnam_store.dylib"))
-            } else if *name == "libbirnam_id_tcc" {
+            let path = if *name == "libbirnam_id_tcc" {
                 tcc_override
                     .as_deref()
                     .map(Path::to_path_buf)
@@ -7574,8 +7533,7 @@ impl LoadedStack {
                     == Some("libbirnam_id_image.dylib")
             {
                 // The canonical Rust Image module must be allowed to publish
-                // through the ordinary host path. Explicit `_rust` fixture
-                // loads used by cross-floor tests do not take this branch.
+                // through the ordinary host path.
                 // SAFETY: `handle` is a live loader handle retained for the
                 // process lifetime, and the symbol has the frozen identity
                 // export signature when present.
@@ -7688,10 +7646,9 @@ fn resolve_phase_hooks(
     })
 }
 
-/// Start the Rust host through the same floor → native stack → MOP mirror →
-/// self-hosted sequence as the Zig oracle. Resource resolution is kept outside
-/// this function so callers can inspect or override it before any dylib is
-/// opened.
+/// Start the Rust host through the floor → native stack → MOP mirror →
+/// self-hosted sequence. Resource resolution is kept outside this function so
+/// callers can inspect or override it before any dylib is opened.
 ///
 /// # Safety
 ///
@@ -7740,8 +7697,8 @@ pub unsafe fn start(
     })
 }
 
-/// Resolve production resources and start the Rust host using the environment
-/// contract already shared with the Zig oracle executable.
+/// Resolve production resources and start the Rust host using its environment
+/// contract.
 ///
 /// # Safety
 ///
@@ -7837,8 +7794,7 @@ pub fn load_floor(
     })
 }
 
-/// Load the selected floor using the same optional environment checks as the
-/// existing Zig host. Missing variables preserve the historical no-check mode.
+/// Load the selected Rust floor using optional identity and digest checks.
 pub fn load_selected_floor(path: &Path) -> Result<LoadedFloor, FloorError> {
     let identity = env::var("BIRNAM_ID_FLOOR_IDENTITY").ok();
     let digest = env::var("BIRNAM_ID_FLOOR_SHA256").ok();
@@ -7962,7 +7918,6 @@ pub fn resolve_from_exe_dir(exe_dir: &Path, overrides: Overrides<'_>) -> io::Res
         .map(Path::to_path_buf)
         .unwrap_or_else(|| exe_dir.clone());
     let lib_dir = override_or(overrides.lib_dir, &prefix.join("lib"))?;
-    let source_dir = normalize_absolute(&prefix.join("share/birnam/src/id"))?;
     let rust_workspace_dir = override_or(
         overrides.rust_workspace_dir,
         &prefix.join("share/birnam/src"),
@@ -7973,15 +7928,14 @@ pub fn resolve_from_exe_dir(exe_dir: &Path, overrides: Overrides<'_>) -> io::Res
     Ok(Resources {
         prefix,
         lib_dir,
-        source_dir,
         rust_workspace_dir,
         guide_dir,
         id_dylib,
     })
 }
 
-/// Resolve the production layout from the current executable and the same
-/// narrow environment overrides accepted by the Zig host.
+/// Resolve the production layout from the current executable and its narrow
+/// environment overrides.
 pub fn resolve() -> io::Result<Resources> {
     let executable = env::current_exe()?;
     let lib_dir = env::var_os("BIRNAM_LIB_DIR").map(PathBuf::from);
@@ -8214,10 +8168,6 @@ mod tests {
         assert_eq!(resources.prefix, Path::new("/opt/birnam"));
         assert_eq!(resources.lib_dir, Path::new("/opt/birnam/lib"));
         assert_eq!(
-            resources.source_dir,
-            Path::new("/opt/birnam/share/birnam/src/id")
-        );
-        assert_eq!(
             resources.rust_workspace_dir,
             Path::new("/opt/birnam/share/birnam/src")
         );
@@ -8250,10 +8200,6 @@ mod tests {
         assert_eq!(
             resources.rust_workspace_dir,
             Path::new("/tmp/native-workspace")
-        );
-        assert_eq!(
-            resources.source_dir,
-            Path::new("/opt/birnam/share/birnam/src/id")
         );
     }
 
@@ -9585,7 +9531,7 @@ mod tests {
     }
 
     #[test]
-    fn artifact_preflight_shared_fixture_matrix_matches_zig_cases() {
+    fn artifact_preflight_shared_fixture_matrix_matches_reference_cases() {
         let mut cases = vec![
             "path-only-root",
             "supplied-identity-mismatch",
@@ -9596,9 +9542,9 @@ mod tests {
             "ordered-valid-closure",
         ];
         if std::env::var_os("BIRNAM_PREFLIGHT_SENTINEL_DYLIB").is_some() {
-            // The cold-bootstrap and Zig parity harnesses provide a real
+            // The cold-bootstrap parity harnesses provide a real
             // aborting initializer. Ordinary Cargo tests remain self-contained
-            // and exercise the inert corpus without requiring a Zig-built
+            // and exercise the inert corpus without requiring an external
             // fixture outside the workspace.
             cases.push("sentinel");
         }
@@ -9677,6 +9623,5 @@ mod tests {
     }
 }
 
-pub mod instantiated_graph;
 pub mod bootstrap_receipt;
 pub mod publication_receipt;

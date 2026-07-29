@@ -2,9 +2,9 @@
 //
 //   birnam examples/stdlib.birnam
 //
-// These methods are not built into the Zig floor — they are defined in BIRNAM (in
+// These methods are not built into the native floor — they are defined in BIRNAM (in
 // src/id/stdlib.birnam, loaded by default) on top of the primitives, via
-// `[Reflect defineMethod: …]`. Run with BIRNAM_NO_STDLIB=1 to use the bare Zig
+// `[Reflect defineMethod: …]`. Run with BIRNAM_NO_STDLIB=1 to use the bare
 // floor instead, and these sends become #doesNotUnderstand errors.
 
 [System println: ["max/min:    " , [[[3 max: 9] printString] , [" / " , [[3 min: 9] printString]]]]];

@@ -700,7 +700,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi) {
     }
     if !(unsafe { (api.isExported)(ARTIFACT_NAME.as_ptr().cast()) != 0 }) {
         // SAFETY: exportObj publishes the three singleton objects exactly as
-        // the Zig inspector does on its first load.
+        // the native inspector does on its first load.
         unsafe {
             let _ = (api.exportObj)(ARTIFACT_VT_NAME.as_ptr().cast(), as_oop(state.artifact_vt));
             let _ = (api.exportObj)(ARTIFACT_NAME.as_ptr().cast(), as_oop(state.artifact_obj));

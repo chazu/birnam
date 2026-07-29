@@ -6,7 +6,7 @@
 // macro case boots (a REPL over the image exits 0 at EOF, so no `main` is
 // needed). BENCH_IMG overrides where the image lands.
 //
-//   ./zig-out/bin/birnam bench/image.birnam
+//   "$HOME/.local/bin/birnam" bench/image.birnam
 
 let benchSource := [System getEnv: "BIRNAM_BENCH_SOURCE"];
 [System load: [[benchSource isNil] ifTrue: [| "modules/bench.birnam"] ifFalse: [| benchSource]]];

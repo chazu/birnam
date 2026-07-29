@@ -9,10 +9,8 @@ this page is what you need day to day.
 ```
 BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
 BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam        # tight dev loop, ~5s
-mise run bench                                          # isolated Rust-floor instrument
-mise run bench-zig-oracle                               # explicit Zig-oracle instrument
-mise run bench-release                                  # tracked Rust-floor snapshot
-mise run bench-release-zig-oracle                       # optional Zig-oracle snapshot
+mise run bench                                          # isolated Rust instrument
+mise run bench-release                                  # tracked Rust snapshot
 mise run bench-compare <old-floor.json> <new-floor.json>
 ```
 
@@ -39,10 +37,8 @@ sub-5% claims need a deliberate same-boot A/B.
   commit, on a quiet machine, run `mise run bench-release`, then **commit the
   `bench/results/v<X.Y.Z>-rust-<sha>-<dylib-sha256>.json` file**. It is the
   production-floor baseline future runs compare against and is kept forever.
-  For an optional Zig-oracle comparison, also run
-  `mise run bench-release-zig-oracle`. This step is deliberately
-  NOT inside `release.sh`: bench noise must never block a release, and the
-  snapshot deserves a deliberate, quiet run.
+  This step is deliberately NOT inside `release.sh`: bench noise must never
+  block a release, and the snapshot deserves a deliberate, quiet run.
 
 ## The layout
 

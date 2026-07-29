@@ -51,7 +51,7 @@ let s := [TestSuite named: "Cli" module: #cli];
 
 // wrapLib:into:dir: — the scaffolder against a scratch base dir (never the
 // repo's real wrapped/ tree). Refusal is a benign no-op (status 0), matching
-// the old Zig scaffolder; the author's edited file is never clobbered.
+// the old scaffolder; the author's edited file is never clobbered.
 [s test: "wrap scaffolds <base>/<name>/<name>.birnam once, never clobbers" do: [:t |
   let base := "/tmp/birnam-wrap-test";
   let path := "/tmp/birnam-wrap-test/foo/foo.birnam";

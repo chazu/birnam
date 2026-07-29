@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-bin="${BIRNAM_BIN:-zig-out/bin/birnam}"
+bin="${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam}"
 image=/tmp/birnam-isolate-smoke.image
 trap 'rm -f "$image"' EXIT
 rm -f "$image"

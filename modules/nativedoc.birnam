@@ -1,36 +1,34 @@
-// zigdoc.birnam — pull docs (and facts) out of native floor sources, in pure birnam.
+// nativedoc.birnam — pull docs (and facts) out of native floor sources, in pure birnam.
 //
 // The birnam Doc system documents birnam code; the native Rust floor and retained
-// Zig oracle are separate and doc generation must NOT require either compiler.
-// This module reads .rs/.zig files as TEXT (via File) and extracts their shared
+// Rust native are separate and doc generation must NOT require either compiler.
+// This module reads .rs files as TEXT (via File) and extracts their shared
 // `//!` (module) and `///` (declaration) doc-comment convention into Doc FACTS.
 // The native docs therefore join the same queryable image and HTML reference.
 //
 // Load it (from the repo root) with:
-//   [Module load: #zigdoc]     (loads File + Doc first)
-//   [Zigdoc scan: "src/id/alien.zig" as: #alien]   "=> records #alien's docs"
+//   [Module load: #nativedoc]     (loads File + Doc first)
 //   [Doc text: #alien]                             "=> the extracted docs"
-//   [Zigdoc scanDir: "src/id"]                     "=> scan every .zig in a dir"
-//   [Zigdoc scanRustDir: "rust/birnam-id/src"]      "=> scan every .rs in a dir"
+//   [NativeDoc scanRustDir: "rust/birnam-id/src"]      "=> scan every .rs in a dir"
 
-[Module named: #zigdoc requires: #[#file #doc]];
+[Module named: #nativedoc requires: #[#file #doc]];
 [[Globals includes: #File] ifTrue: [| nil] ifFalse: [| [Module load: #file]]];
 [[Globals includes: #Doc]  ifTrue: [| nil] ifFalse: [| [Module load: #doc]]];
 
-[Globals at: #Zigdoc put: [Object clone]];
-[Reflect docModule: #zigdoc is: "Native floor doc extraction — scans //! and /// comments out of Rust and Zig sources into Doc facts, without either compiler."];
+[Globals at: #NativeDoc put: [Object clone]];
+[Reflect docModule: #nativedoc is: "Native Rust doc extraction — scans //! and /// comments out of Rust sources into Doc facts."];
 
 // The text after a `//` marker on `line` (trimmed). `[line split: mark] last` is
 // the tail after the last occurrence of the marker.
-[Reflect defineMethod: #after:mark: on: Zigdoc as: [:self :line :mark |
+[Reflect defineMethod: #after:mark: on: NativeDoc as: [:self :line :mark |
   let r := [[[line split: mark] last] trimmed];
   r] doc:
   "The trimmed text after the last `mark` occurrence on `line` (the whole line, trimmed, when absent)."];
 
 // The declared name on a trimmed native-source line, or "" if it isn't a
-// recognized Zig/Rust declaration. Takes the identifier after its declaration
+// recognized Rust declaration. Takes the identifier after its declaration
 // keyword, up to the first `(`, ` ` or `=`.
-[Reflect defineMethod: #identAfter:mark: on: Zigdoc as: [:self :t :mark |
+[Reflect defineMethod: #identAfter:mark: on: NativeDoc as: [:self :t :mark |
   let rest := [[t split: mark] last];
   let a := [[rest split: "("] first];
   let b := [[a split: " "] first];
@@ -39,7 +37,7 @@
   r] doc:
   "The identifier following `mark` in a declaration line — up to the first (, space or =."];
 
-[Reflect defineMethod: #declName: on: Zigdoc as: [:self :t |
+[Reflect defineMethod: #declName: on: NativeDoc as: [:self :t |
   let r := [[t includesSubstring: "fn "]
     ifTrue:  [| [self identAfter: t mark: "fn "]]
     ifFalse: [| [[t includesSubstring: "const "]
@@ -65,7 +63,7 @@
 // any other line either consumes the pending doc (if it's a declaration) or drops
 // it. Native `#[...]` attributes are transparent so Rust docs remain associated
 // with their attributed declaration.
-[Reflect defineMethod: #feedLine:scanner:module: on: Zigdoc as: [:self :line :sc :mod |
+[Reflect defineMethod: #feedLine:scanner:module: on: NativeDoc as: [:self :line :sc :mod |
   let t := [line trimmed];
   [[line startsWith: "//!"]
     ifTrue: [|
@@ -95,7 +93,7 @@
 
 // Scan one native source file into Doc facts under `mod`, assigning its explicit
 // documentation kind and fallback language label. Answers `mod`.
-[Reflect defineMethod: #scan:as:kind:language: on: Zigdoc as: [:self :path :mod :kind :language |
+[Reflect defineMethod: #scan:as:kind:language: on: NativeDoc as: [:self :path :mod :kind :language |
   let text  := [File readText: path];
   let lines := [text split: "\n"];
   let sc := [Object clone];
@@ -110,45 +108,17 @@
   mod] doc:
   "Scan one native source file into Doc facts under `mod`, marking it with `kind`; answers `mod`."];
 
-[Reflect defineMethod: #scan:as: on: Zigdoc as: [:self :path :mod |
-  [self scan: path as: mod kind: #zigFloor language: "Zig"]] doc:
-  "Scan one .zig file at `path` into Doc facts under `mod`, marking it #zigFloor. Answers `mod`."];
-
-[Reflect defineMethod: #scanRust:as: on: Zigdoc as: [:self :path :mod |
+[Reflect defineMethod: #scanRust:as: on: NativeDoc as: [:self :path :mod |
   [self scan: path as: mod kind: #rustFloor language: "Rust"]] doc:
   "Scan one .rs file at `path` into Doc facts under `mod`, marking it #rustFloor. Answers `mod`."];
 
-[Reflect defineMethod: #scanNativeRust:as: on: Zigdoc as: [:self :path :mod |
+[Reflect defineMethod: #scanNativeRust:as: on: NativeDoc as: [:self :path :mod |
   [self scan: path as: mod kind: #nativeRust language: "Rust"]] doc:
   "Scan one .rs file at `path` into Doc facts under `mod`, marking it #nativeRust. Answers `mod`."];
 
-// Make `mod` documented if it isn't already: load its compiled unit, and if
-// that identity is not a shipped Birnam module, scan the Zig file at `zp`.
-[Reflect defineMethod: #ensure:zig: on: Zigdoc as: [:self :mod :zp |
-  [[Doc isProductionModule: mod]
-    ifTrue:  [| [Module load: mod]]
-    ifFalse: [| [[File exists: zp]
-      ifTrue:  [| [self scan: zp as: mod]]
-      ifFalse: [| mod]]]]] doc:
-  "Document `mod` one way or the other: load its compiled unit, else scan the Zig file at `zp`. Answers `mod`."];
-
-// Scan every `*.zig` in `dir` (excluding *_test.zig), each into module #<basename>.
-// Answers a Vector of the module symbols documented.
-[Reflect defineMethod: #scanDir: on: Zigdoc as: [:self :dir |
-  let names := [File listDir: dir];
-  let mods := [names inject: #[] into: [:acc :nm |
-    [[[nm endsWith: ".zig"] & [[nm includesSubstring: "_test."] not]]
-      ifTrue:  [|
-        let base := [[nm split: "."] first];
-        [self scan: [[dir , "/"] , nm] as: [base asSymbol]];
-        [acc add: [base asSymbol]]]
-      ifFalse: [| acc]]]];
-  mods] doc:
-  "Scan every non-test .zig in `dir`, each into module #<basename>; answers the Vector of module symbols documented."];
-
 // Scan every `*.rs` in `dir`, each into module #rust-<basename>. The prefix
-// prevents collisions with Birnam modules and Zig-oracle source identities.
-[Reflect defineMethod: #scanRustDir: on: Zigdoc as: [:self :dir |
+// prevents collisions with Birnam modules and native Rust source identities.
+[Reflect defineMethod: #scanRustDir: on: NativeDoc as: [:self :dir |
   let names := [File listDir: dir];
   let mods := [names inject: #[] into: [:acc :nm |
     [[nm endsWith: ".rs"]
@@ -166,7 +136,7 @@
 // #nativeRust and uses #rust-<crate> for lib.rs or
 // #rust-<crate>-<file> for additional source files, avoiding cross-crate
 // collisions as the workspace grows.
-[Reflect defineMethod: #rustModuleFor:inCrate: on: Zigdoc as: [:self :base :crate |
+[Reflect defineMethod: #rustModuleFor:inCrate: on: NativeDoc as: [:self :base :crate |
   let suffix := [[crate startsWith: "birnam-"]
     ifTrue: [| [crate copyFrom: 7 to: [crate size]]]
     ifFalse: [| crate]];
@@ -178,7 +148,7 @@
         ifFalse: [| [[["rust-" , suffix] , "-"] , base]]]]]] doc:
   "The collision-free documentation module name for Rust source `base` in `crate`."];
 
-[Reflect defineMethod: #scanRustCrate:at:kind: on: Zigdoc as: [:self :crate :root :kind |
+[Reflect defineMethod: #scanRustCrate:at:kind: on: NativeDoc as: [:self :crate :root :kind |
   let dir := [[[[root , "/rust/"] , crate] , "/"] , "src"];
   let listed := [File listDir: dir];
   let names := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] sortBy: [:x | x]];
@@ -194,7 +164,7 @@
   mods] doc:
   "Scan one installed Cargo workspace crate with collision-free module identities and the explicit documentation `kind`."];
 
-[Reflect defineMethod: #scanRustWorkspace: on: Zigdoc as: [:self :root |
+[Reflect defineMethod: #scanRustWorkspace: on: NativeDoc as: [:self :root |
   let rustRoot := [root , "/rust"];
   let listed := [File listDir: rustRoot];
   let crates := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] sortBy: [:x | x]];

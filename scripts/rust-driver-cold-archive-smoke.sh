@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prove two independent source snapshots build the same Rust-only prefix
-# without consuming checkout build products or invoking the Zig toolchain.
+# without consuming checkout build products.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -14,7 +14,7 @@ snapshot() {
     --exclude='*.dylib' \
     --exclude='*.image' \
     -cf - VERSION Cargo.toml Cargo.lock rust src/id modules docs/guide scripts/rust-install.sh examples/fizzbuzz.birnam vendor/libtcc-src | tar -C "$destination" -xf -
-  if find "$destination" -type f \( -name '*.dylib' -o -name '*.image' -o -path '*/target/*' -o -path '*/zig-out/*' -o -path '*/zig-cache/*' \) -print -quit | grep -q .; then
+  if find "$destination" -type f \( -name '*.dylib' -o -name '*.image' -o -path '*/target/*' -o -path '*/.cargo-target/*' \) -print -quit | grep -q .; then
     echo "rust-cold-archive: source snapshot contains a prebuilt artifact" >&2
     exit 1
   fi
@@ -34,9 +34,6 @@ snapshot "$scratch/source-b"
 
 for prefix in "$scratch/prefix-a" "$scratch/prefix-b"; do
   test -x "$prefix/bin/birnam"
-  test ! -e "$prefix/bin/birnam-zig-oracle"
-  test "$(find "$prefix" -type f -name '*.zig' | wc -l | tr -d ' ')" = 0
-  test "$(find "$prefix/lib" -maxdepth 1 -type f -name '*_zig.dylib' | wc -l | tr -d ' ')" = 0
 done
 
 python3 - "$scratch/prefix-a/share/birnam/rust-install.json" \
@@ -52,7 +49,6 @@ with open(sys.argv[2], encoding="utf-8") as handle:
 for receipt in (first, second):
     assert receipt["schema"] == 2
     assert receipt["authority"] == "rust"
-    assert receipt["zig"] == "unreachable"
     assert receipt["source_manifest_files"] > 0
     assert receipt["staged_manifest_files"] > 0
     assert receipt["publication"]["method"] == "atomic-sibling-rename"

@@ -1,7 +1,7 @@
 //! Rust primitive-prelude rung.
 //!
 //! This N7.1 slice owns the primitive protocol through the frozen IdApi
-//! boundary. It is deliberately a separate cdylib: the Zig prelude remains the
+//! boundary. It is deliberately a separate cdylib: the native prelude remains the
 //! oracle until the complete numeric, Boolean, Block, and System parity gates
 //! pass.
 
@@ -940,7 +940,7 @@ unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
     // Error owns its representation and Object protocol in the standalone
     // Error rung. Prelude faults are intentionally lazy: before that rung is
     // loaded, the floor has no catchable Error value and answers nil, matching
-    // the Zig prelude's `Error` import behavior.
+    // the native prelude's `Error` import behavior.
     if unsafe { (api.isExported)(c"Error".as_ptr()) } == 0 {
         return api.nilObj;
     }
@@ -1127,7 +1127,7 @@ unsafe extern "C" fn system_load(
     }
     let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
 
-    // Preserve the module-source staging protocol used by the Zig prelude:
+    // Preserve the module-source staging protocol used by the native prelude:
     // inspect a declaration first, record it by declared identity, then run
     // the source-file-aware persisting evaluator.
     let revision = unsafe {

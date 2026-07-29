@@ -215,7 +215,7 @@ impl Heap {
             .map(|block| block.payload.as_ptr().cast())
     }
 
-    /// Report the padded payload extent, matching Zig `objectPayloadSize`.
+    /// Report the padded payload extent, matching `objectPayloadSize`.
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
         self.blocks
             .get(&object.addr())

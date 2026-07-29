@@ -2,7 +2,7 @@
 //
 // A birnam-native OS module. Uses libc's stdio process pipes (`popen`/`fgets`/
 // `pclose`) for a capturing first cut: run a shell command, collect its stdout,
-// read its exit code. No new Zig. (A later, shell-free version can use
+// read its exit code. No new native code. (A later, shell-free version can use
 // posix_spawn with a real argv array + pipes; that's the fiddly part.)
 //
 // Load it (from the repo root) with:

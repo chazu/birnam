@@ -32,10 +32,10 @@
 ;;   (require 'birnam-mode)
 ;;
 ;; Set the binary if `birnam' is not on PATH:
-;;   (setq birnam-program "/path/to/zig-out/bin/birnam")
+;;   (setq birnam-program "/path/to/birnam/.local/bin/birnam")
 ;;
 ;; lsp-mode is started automatically when it is loaded:
-;;   (setq birnam-lsp-program "/path/to/zig-out/bin/birnam")
+;;   (setq birnam-lsp-program "/path/to/birnam/.local/bin/birnam")
 
 ;;; Code:
 

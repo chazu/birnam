@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-bin="${BIRNAM_BIN:-zig-out/bin/birnam}"
+bin="${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam}"
 root="$(pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

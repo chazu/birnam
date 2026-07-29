@@ -20,8 +20,7 @@ Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
            --repl, --listen <port>, doc, docgen, init, wrap,\n\
            --worker <image> <receiver> <selector> --channel-fd <fd>,\n\
            --bake <image> <exe>, --rebuild <image>\n\
-Rust-hosted check/build/install/run/test/lsp are canonical; the explicit\n\
-birnam-zig-oracle executable remains the rollback oracle.\n";
+Rust-hosted check/build/install/run/test/lsp are canonical.\n";
 
 const CHECK_USAGE: &str = "usage: birnam check [directory] [--format human|json]\n";
 const BUILD_USAGE: &str = "usage: birnam build [directory] [--profile debug|release]\n";
@@ -523,7 +522,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         CommandKind::Repl => {
             if env::var_os("BIRNAM_NO_STDLIB").is_some() {
                 // Keep the bare-floor diagnostic identical to the canonical
-                // Zig host. The REPL is a self-hosted tool and is deliberately
+                // host. The REPL is a self-hosted tool and is deliberately
                 // unavailable when the explicit no-stdlib policy is active.
                 eprintln!("birnam: the REPL requires the stdlib (unset BIRNAM_NO_STDLIB)");
                 std::process::exit(1);

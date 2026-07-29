@@ -4,7 +4,7 @@
 // warmup, calibrate, sample, subtract, JSON, write — and gates an exit code on
 // it, so `birnam bench/smoke.birnam; echo $?` is a one-line health check.
 //
-//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/smoke.birnam   # fast form
+//   BENCH_QUICK=1 "$HOME/.local/bin/birnam" bench/smoke.birnam   # fast form
 
 [System load: "modules/bench.birnam"];
 [System load: "modules/os.birnam"];

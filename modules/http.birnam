@@ -2,7 +2,7 @@
 //
 // Rides the networking floor (modules/socket.birnam) and the filesystem module
 // (modules/file.birnam): parse a request line, route a URL path to a file under a
-// document root, guess a content type, and write the response. No new Zig.
+// document root, guess a content type, and write the response. No new native code.
 //
 // Load the module and its declared dependency closure:
 //   [Module load: #http];

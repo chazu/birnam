@@ -3,7 +3,7 @@
 // The Layer-0 networking floor. Same principle as time/file/process: the only
 // irreducible capability is "call a C function and read/write raw memory," and
 // Alien already provides both (FFI + alloc:/peek*At:/poke*:at:) — so this is pure
-// birnam with NO new Zig. Everything above it (an HTTP server, an out-of-process
+// birnam with NO new native code. Everything above it (an HTTP server, an out-of-process
 // REPL) rides on this floor.
 //
 // Load it (from the repo root) with:

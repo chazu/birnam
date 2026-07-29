@@ -4,7 +4,7 @@
 // the Bench singleton runs them and accumulates result records. The measurement
 // contract (docs/design/46 rev. 2):
 //
-//   - the timed-loop shape is native `to:do:` — its counter lives in the Zig
+//   - the timed-loop shape is native `to:do:` — its counter lives in the runtime
 //     frame, so an "empty" loop really is empty (NO cell traffic inside any
 //     timed window; the harness's own bookkeeping writes cells only BETWEEN
 //     windows)

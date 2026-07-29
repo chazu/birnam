@@ -16,7 +16,7 @@
 //   [Markdown toHtml: "# Hi\n\nsome `code` here"]
 //   [Markdown toHtml: md shiftHeadings: 1]   "# -> <h2> (for embedding in a page)"
 //
-// Line-based state machine, the zigdoc pattern: a scanner object holds the
+// Line-based state machine, the NativeDoc pattern: a scanner object holds the
 // mode + buffers in cells, every line feeds through once, a final flush closes
 // whatever is open. Rendering is offline (docgen), so per-line birnam work is
 // fine — the perf gate concerns hot paths, not site builds.

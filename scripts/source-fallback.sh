@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN=${BIRNAM_BIN:-zig-out/bin/birnam}
+BIN=${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam}
 
 generation_digest() {
   local mode=$1

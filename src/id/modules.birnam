@@ -1,9 +1,8 @@
-// modules.birnam — the module manager, in pure birnam (docs/44 Phase 5b; the
-// self-hosted successor of the retired src/id/modules.zig). A dependency graph
+// modules.birnam — the module manager, in pure birnam (docs/44 Phase 5b). A dependency graph
 // IS relational data: `requires` edges live as facts on the well-known `db`
 // (entity = the module-name symbol itself), and the load order is a walk over
 // those facts. Two tiers of module:
-//   * KERNEL — the Zig primitive dylibs (store, peg, …). REPRESENTED here (so
+//   * KERNEL — the Rust native dylibs (store, peg, …). REPRESENTED here (so
 //     the graph is complete + queryable) via `[Module kernel: #name]`, but NOT
 //     loaded by this manager; they are already up by the time it runs.
 //   * SELF-HOSTED — birnam-source modules (stdlib, toml, … and this one). Each
@@ -50,7 +49,7 @@
   [db assert: name attr: #requires value: reqs];
   self]];
 
-// Represent a kernel (Zig primitive) module: registered, kind #kernel, already
+// Represent a kernel (Rust native) module: registered, kind #kernel, already
 // up (loaded), no dependencies. This completes the graph; nothing is loaded.
 [Reflect defineMethod: #kernel: on: Module as: [:self :name |
   [db assert: name attr: #registered value: true];
@@ -131,7 +130,7 @@
 
 [Reflect defineMethod: #libDir on: Module as: [:self |
   let d := [[db cellFor: self attr: #libDir] value];
-  [[d isNil] ifTrue: [| "zig-out/lib"] ifFalse: [| d]]]];
+  [[d isNil] ifTrue: [| "lib"] ifFalse: [| d]]]];
 
 [Reflect defineMethod: #dylibPathFor: on: Module as: [:self :name |
   [[[[self libDir] , "/libbirnam_"] , [Reflect nameOf: name]] , ".dylib"]]];

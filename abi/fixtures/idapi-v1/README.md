@@ -12,10 +12,10 @@ They are compatibility evidence, never bootstrap inputs:
   layout-bearing values, compiled method code, a private-vtable receiver, and a
   block global whose value is deferred and re-derived from recorded source.
 
-`zig build test-id-abi-fixture` verifies checksums and runs the committed
-artifacts against the currently built Zig floor. It never rebuilds them. The
-ordinary build, install, runtime, and stage1 graph do not depend on this
-directory; temporarily moving the directory away must leave those paths green.
+The Rust workspace's ABI fixture test verifies checksums and runs the committed
+artifacts against the current Rust floor. It never rebuilds them. The ordinary
+build, install, runtime, and stage1 graph do not depend on this directory;
+temporarily moving the directory away must leave those paths green.
 
 `build-fixtures.sh <output-directory>` is a manual reproduction aid. Replacing a
 committed binary or image is an explicit ABI/image compatibility event: inspect

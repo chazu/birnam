@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build libtermbox2.dylib from the int-clean adapter. termbox2 is a single-header
 # library; termbox2.c defines TB_IMPL to instantiate it, plus the `lg_*` adapter
-# the birnam wrapper (termbox2.birnam) binds. Uses the system C compiler — no zig.
+# the birnam wrapper (termbox2.birnam) binds. Uses the system C compiler.
 #
 # How wrapped-lib builds should work in general is still open; for now each lib
 # carries its own build.sh next to its .c.

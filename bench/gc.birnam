@@ -15,7 +15,7 @@
 // collect's answer (the reclaimed count) so the heap shape is verified, not
 // assumed — same principle as the relational suite's cardinality gate.
 //
-//   ./zig-out/bin/birnam bench/gc.birnam
+//   "$HOME/.local/bin/birnam" bench/gc.birnam
 
 [System load: "modules/bench.birnam"];
 [System load: "modules/os.birnam"];

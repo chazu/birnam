@@ -1,7 +1,7 @@
 // A minimal HTTP server over the birnam-native Socket module.
 //
 // Demonstrates the Layer-0 networking floor (modules/socket.birnam): pure birnam
-// over libc via Alien, no new Zig. This is the blocking, one-connection-at-a-time
+// over libc via Alien. This is the blocking, one-connection-at-a-time
 // shape — enough to host a page; a poll() reactor (for many concurrent clients in
 // one image) is a later layer. Run it:
 //

@@ -2,7 +2,7 @@
 
 /// Terminate the process for an invariant failure at an exported boundary.
 ///
-/// This deliberately cannot return or unwind. It matches the retained Zig
+/// This deliberately cannot return or unwind. It matches the native
 /// oracle's fatal treatment of corrupt runtime invariants; recoverable language
 /// errors must instead be represented as Birnam objects before this boundary.
 #[cold]

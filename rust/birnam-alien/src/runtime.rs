@@ -453,7 +453,7 @@ unsafe extern "C" fn alien_peek_int(receiver: Oop, args: *const Oop, count: usiz
         Err(error) => return error,
     };
     // SAFETY: raw buffer operations intentionally follow the caller's C-memory
-    // contract; unaligned reads match the Zig `align(1)` implementation.
+    // contract; unaligned reads match the native `align(1)` implementation.
     let value = unsafe { ptr::read_unaligned(address as *const i64) };
     unsafe { (api.mkSmallInt)(value) }
 }

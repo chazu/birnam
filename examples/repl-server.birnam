@@ -1,5 +1,5 @@
 // An out-of-process REPL: open a TCP port and evaluate forms sent to it against
-// this live image. Pure birnam over the socket floor — no new Zig. Run:
+// this live image. Pure birnam over the socket floor. Run:
 //
 //   birnam examples/repl-server.birnam
 //

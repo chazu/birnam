@@ -9,7 +9,7 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 (require 'birnam-mode)
 
 ;; if `birnam' is not on PATH:
-(setq birnam-program "/path/to/birnam/zig-out/bin/birnam")
+(setq birnam-program "/path/to/birnam/.local/bin/birnam")
 
 ;; optional: lsp-mode uses the same binary with --lsp
 (setq birnam-lsp-program birnam-program)
@@ -60,7 +60,7 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 
 `eval-region`/`eval-buffer` send the text to the REPL verbatim (the REPL
 accumulates multi-line forms until brackets balance); `eval-line` sends the
-current line as one expression. The integration tests run with
-`zig build test-emacs` and use a small lsp-mode API stub, so they do not require
+current line as one expression. The integration tests run with the repository's
+Rust verification task and use a small lsp-mode API stub, so they do not require
 the package to be installed to validate client registration and project-root
 behavior.

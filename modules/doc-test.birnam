@@ -9,14 +9,14 @@
 // loaded so the compiledUnitDocs dependency does not replace that test fixture.
 [Module markLoaded: #doc];
 [Module load: #compiledUnitDocs];
-[Module load: #zigdoc];
+[Module load: #nativedoc];
 
 let s := [TestSuite named: "Doc" module: #doc];
 
 [s test: "native scanner extracts attributed Rust declarations" do: [:t |
   let path := "/tmp/birnam-doc-test-native.rs";
   [File write: path contents: "//! Rust fixture summary.\n/// Documented structure.\n#[repr(C)]\npub(crate) struct NativeThing {\n}\n"];
-  [Zigdoc scanRust: path as: #rustFixture];
+  [NativeDoc scanRust: path as: #rustFixture];
   [t assert: [Doc isRustFloor: #rustFixture] describes: "Rust scan records the distinct doc kind"];
   [t expect: [[db cellFor: #rustFixture attr: #docSummary] value]
      equals: "Rust fixture summary."
@@ -26,7 +26,7 @@ let s := [TestSuite named: "Doc" module: #doc];
   [File delete: path]]];
 
 [s test: "workspace scanner distinguishes the floor from other native Rust crates" do: [:t |
-  let mods := [Zigdoc scanRustWorkspace: "."];
+  let mods := [NativeDoc scanRustWorkspace: "."];
   let floorMod := ["rust-lib" asSymbol];
   let abiMod := ["rust-abi" asSymbol];
   [t assert: [mods includes: floorMod] describes: "birnam-id lib.rs keeps the Rust-floor identity"];
@@ -55,7 +55,7 @@ let s := [TestSuite named: "Doc" module: #doc];
   [t assert: [h includesSubstring: "<dt id=\"demoH-zzDemoHFoo\"><code>zzDemoHFoo</code></dt>"]
      describes: "entry is a <dt> with a per-selector anchor"];
   [t assert: [h includesSubstring: "<dd>a &amp; b</dd>"] describes: "docstring escaped in the <dd>"];
-  [t assert: [[h includesSubstring: "class=\"kind\""] not] describes: "no Zig-floor badge on a birnam module"]]];
+  [t assert: [[h includesSubstring: "class=\"kind\""] not] describes: "no native-floor badge on a birnam module"]]];
 
 // The doc: define path records the receiver prototype; the html render badges
 // it (Globals reverse lookup — prototypes print as anObject) and folds the
@@ -75,11 +75,11 @@ let s := [TestSuite named: "Doc" module: #doc];
   [Doc module: #zzOrderA is: "earlier"];
   [Doc module: #zzOrderR is: "rust"];
   [Doc module: #zzOrderN is: "native rust"];
-  [db assert: #zzOrderB attr: #docKind value: #zigFloor];
+  [db assert: #zzOrderB attr: #docKind value: #nativeRust];
   [db assert: #zzOrderR attr: #docKind value: #rustFloor];
   [db assert: #zzOrderN attr: #docKind value: #nativeRust];
-  [t assert: [Doc isZigFloor: #zzOrderB] describes: "docKind fact makes isZigFloor: true"];
-  [t assert: [[Doc isZigFloor: #zzOrderA] not] describes: "unmarked module is not Zig floor"];
+  [t assert: [Doc isNativeRust: #zzOrderB] describes: "docKind fact makes native Rust true"];
+  [t assert: [[Doc isNativeRust: #zzOrderA] not] describes: "unmarked module is not native Rust"];
   [t assert: [Doc isRustFloor: #zzOrderR] describes: "docKind fact makes isRustFloor: true"];
   [t assert: [[Doc isRustFloor: #zzOrderA] not] describes: "unmarked module is not Rust floor"];
   [t assert: [Doc isNativeRust: #zzOrderN] describes: "docKind fact makes isNativeRust: true"];
@@ -89,7 +89,6 @@ let s := [TestSuite named: "Doc" module: #doc];
      describes: "sortedModules orders by display name"];
   let page := [Doc htmlIndex];
   [t assert: [page includesSubstring: "<style>"] describes: "page carries the inline stylesheet"];
-  [t assert: [page includesSubstring: "Zig floor"] describes: "nav has the Zig-floor group"];
   [t assert: [page includesSubstring: "Rust floor"] describes: "nav has the Rust-floor group"];
   [t assert: [page includesSubstring: "Native Rust"] describes: "nav has the native-Rust group"];
   [t assert: [page includesSubstring: "<section id=\"zzOrderA\">"] describes: "a section per module"];

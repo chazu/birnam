@@ -1,6 +1,6 @@
 // project-policy-test.birnam — executable contract tests for Birnam-owned
 // project resolution. These tests use value-shaped observations, so they do
-// not touch the filesystem or require the Zig project adapter.
+// not touch the filesystem or require a native project adapter.
 
 [[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
 

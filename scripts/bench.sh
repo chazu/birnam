@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # bench.sh — the benchmark driver (docs/design/46).
 #
-#   scripts/bench.sh --floor=zig              # dev run, Zig floor
-#   scripts/bench.sh --floor=rust             # dev run, Rust floor
-#   scripts/bench.sh --release --floor=zig    # tracked Zig-floor run
+#   scripts/bench.sh                        # dev run, Rust runtime
+#   scripts/bench.sh --release              # tracked Rust run
 #   BENCH_QUICK=1 scripts/bench.sh # the fast dev loop (fewer reps everywhere)
-#   BENCH_TCC=rust scripts/bench.sh --floor=rust # observe Rust TCC with Rust floor
+#   BENCH_TCC=rust scripts/bench.sh           # explicit Rust TCC selection
 #
 # Builds ReleaseSafe (the only tracked optimize mode), runs the birnam suites
 # (micro / parse / relational / gc / image) plus the whole-process macro cases
@@ -15,25 +14,24 @@
 # need the larger process median; the compare tool medians across runs).
 #
 # For the every-edit loop, run a single suite directly instead:
-#   BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam
+#   BENCH_QUICK=1 "$HOME/.local/bin/birnam" bench/micro.birnam
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MODE=dev
-FLOOR=zig
+FLOOR=rust
 for arg in "$@"; do
   case "$arg" in
     --release) MODE=release ;;
-    --floor=zig) FLOOR=zig ;;
     --floor=rust) FLOOR=rust ;;
-    *) echo "usage: $0 [--release] [--floor=zig|rust]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--release] [--floor=rust]" >&2; exit 2 ;;
   esac
 done
 QUICK=${BENCH_QUICK:-}
-TCC=${BENCH_TCC:-zig}
+TCC=${BENCH_TCC:-rust}
 case "$TCC" in
-  zig|rust) ;;
-  *) echo "usage: BENCH_TCC=zig|rust $0 [--release] [--floor=zig|rust]" >&2; exit 2 ;;
+  rust) ;;
+  *) echo "usage: BENCH_TCC=rust $0 [--release]" >&2; exit 2 ;;
 esac
 
 # A quick run must never become the kept-forever snapshot.
@@ -60,27 +58,14 @@ trap cleanup EXIT
 FAIL=0
 
 PREFIX="$TMP/prefix"
-ZIG_CACHE="$TMP/zig-cache"
-ZIG_GLOBAL_CACHE="$TMP/zig-global-cache"
-ZIG_TMP="$TMP/zig-tmp"
-CARGO_TARGET="$TMP/cargo-target"
-mkdir -p "$PREFIX" "$ZIG_CACHE" "$ZIG_GLOBAL_CACHE" "$ZIG_TMP"
+mkdir -p "$PREFIX"
 
-echo "==> build (ReleaseSafe, $FLOOR floor, isolated prefix)"
-TMPDIR="$ZIG_TMP" zig build install -Doptimize=ReleaseSafe -Dfloor=zig \
-  --prefix "$PREFIX" \
-  --cache-dir "$ZIG_CACHE" \
-  --global-cache-dir "$ZIG_GLOBAL_CACHE"
+echo "==> build (Rust release, isolated prefix)"
+scripts/rust-install.sh install --root "$PWD" --prefix "$PREFIX" --profile release
 
 BIN="$PREFIX/bin/birnam"
-FLOOR_IDENTITY=zig-id-v1
+FLOOR_IDENTITY=rust-id-v1
 FLOOR_DYLIB="$PREFIX/lib/libbirnam_id.dylib"
-if [ "$FLOOR" = rust ]; then
-  CARGO_TARGET_DIR="$CARGO_TARGET" \
-    cargo build --workspace --locked --offline --release
-  FLOOR_IDENTITY=rust-id-v1
-  FLOOR_DYLIB="$CARGO_TARGET/release/libbirnam_id.dylib"
-fi
 test -x "$BIN"
 test -f "$FLOOR_DYLIB"
 FLOOR_DIGEST=$(shasum -a 256 "$FLOOR_DYLIB" | awk '{print $1}')
@@ -89,9 +74,6 @@ export BIRNAM_LIB_DIR="$PREFIX/lib"
 export BIRNAM_ID_DYLIB="$FLOOR_DYLIB"
 export BIRNAM_ID_FLOOR_IDENTITY="$FLOOR_IDENTITY"
 export BIRNAM_ID_FLOOR_SHA256="$FLOOR_DIGEST"
-if [ "$TCC" = rust ]; then
-  export BIRNAM_TCC_DYLIB="$PREFIX/lib/libbirnam_id_tcc_rust.dylib"
-fi
 echo "==> selected $FLOOR_IDENTITY $FLOOR_DIGEST"
 echo "==> selected TCC $TCC"
 

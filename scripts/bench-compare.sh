@@ -26,7 +26,7 @@ B=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
 
 cd "$(dirname "$0")/.."
 
-BIN="${BENCH_BIN:-./zig-out/bin/birnam}"
-[ -x "$BIN" ] || { echo "error: no birnam binary at $BIN (zig build, or set BENCH_BIN)" >&2; exit 2; }
+BIN="${BENCH_BIN:-$HOME/.local/bin/birnam}"
+[ -x "$BIN" ] || { echo "error: no birnam binary at $BIN (set BENCH_BIN or install the Rust prefix)" >&2; exit 2; }
 
 BENCH_A="$A" BENCH_B="$B" exec "$BIN" bench/compare.birnam </dev/null

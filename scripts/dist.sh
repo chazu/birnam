@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build a portable arm64 macOS release tarball.
 #
-# Stages the `birnam` siphon + its rung dylibs into a versioned directory,
+# Stages the `birnam` host + its Rust rung dylibs into a versioned directory,
 # ad-hoc signs them on macOS (softens Gatekeeper for a downloaded binary), and
 # tars it. The real binary resolves the fixed runtime layout relative to itself;
 # there is no launcher or external layout manifest. The bundle is portable: it
@@ -33,7 +33,7 @@ trap 'rm -rf "$work"' EXIT
 prefix="$work/prefix"
 stage="$work/${name}"
 archive="$work/${name}.tar.gz"
-published="zig-out/dist/${name}.tar.gz"
+published="dist/${name}.tar.gz"
 
 log "building ${name} (Rust release, production distribution)"
 scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release
@@ -41,15 +41,10 @@ scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile relea
 log "staging"
 mkdir -p "$stage/bin" "$stage/lib"
 cp "$prefix/bin/birnam" "$stage/bin/birnam"
-test ! -e "$prefix/bin/birnam-zig-oracle"
-if compgen -G "$prefix/lib/*_zig.dylib" >/dev/null; then
-  echo "error: production release prefix contains Zig fixtures" >&2
-  exit 1
-fi
 # All supported artifacts are Mach-O dylibs.
 cp "$prefix"/lib/libbirnam_*.dylib "$stage/lib/"
-# Native Rust-workspace/Zig-oracle source documentation + guides, in the
-# install-relative layout.
+# Native Rust-workspace source documentation + guides, in the install-relative
+# layout.
 cp -R "$prefix/share" "$stage/share"
 
 # Optional wrappers are not copied opportunistically from developer build dirt.
@@ -68,7 +63,7 @@ BIRNAM_PREFIX="$stage" BIRNAM_DISTRIBUTION=production scripts/install-smoke.sh >
 
 log "tarball"
 tar -C "$work" -czf "$archive" "$name"
-mkdir -p zig-out/dist
+mkdir -p dist
 mv "$archive" "$published"
 
 log "done: $published"

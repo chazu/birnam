@@ -1,4 +1,4 @@
-// block-test.birnam — the test suite for the Block family (src/id/prelude.zig):
+// block-test.birnam — the test suite for the Block family (Rust prelude):
 // whileTrue:/whileFalse:, birnam's native stack-flat iteration construct. The
 // 10k-iteration loop is the load-bearing case — a recursion-styled "loop" at
 // that depth overflows the native stack, so completing it at all proves the

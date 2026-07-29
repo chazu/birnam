@@ -2,7 +2,7 @@
 //!
 //! This first R1 slice deliberately keeps the storage kernel independent from
 //! the foreign `IdApi` callbacks.  `PersistentVector` has the same durable
-//! shape as the Zig vector: a 32-way path-copied trie, a short tail, and an
+//! shape as the native vector: a 32-way path-copied trie, a short tail, and an
 //! immutable append operation.  The dynamic protocol wrapper is added only
 //! after this kernel's sharing and boundary behavior is characterized.
 
@@ -722,7 +722,7 @@ unsafe extern "C" fn vector_sort_by(self_object: Oop, args: *const Oop, count: u
         keys.push(key);
     }
 
-    // Stable insertion sort, matching the Zig oracle's key comparator and
+    // Stable insertion sort, matching the reference key comparator and
     // preserving input order for equal keys.
     let less_selector = unsafe { intern(api, b"<\0") };
     let mut order: Vec<usize> = (0..total).collect();

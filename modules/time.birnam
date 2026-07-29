@@ -2,7 +2,7 @@
 //
 // A birnam-native OS module. The only irreducible capability it needs is "call a
 // C function and read raw memory" — and `Alien` already provides both (FFI +
-// `alloc:`/`peek*At:`), so this module is pure birnam with NO new Zig. libc's
+// `alloc:`/`peek*At:`), so this module is pure birnam with NO new native code. libc's
 // `gettimeofday` fills a `struct timeval` we allocate; we read the seconds and
 // microseconds back out and fold them into epoch milliseconds.
 //

@@ -1,5 +1,5 @@
 // json.birnam — a JSON parser + serializer written entirely in birnam, over the
-// PEG engine. The data layer under an LSP server. No new Zig, no C JSON lib: a C
+// PEG engine. The data layer under an LSP server. No new native code, no C JSON lib: a C
 // lib would hand back a recursive `cJSON*` tree that you'd have to walk through
 // Alien peek/poke to get native values anyway — more code and more fragile than
 // parsing in birnam, which yields native Map/Vector/String/number/bool/nil directly.

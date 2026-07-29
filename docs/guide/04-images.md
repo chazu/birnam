@@ -81,10 +81,9 @@ resolves runtime dylibs from `<exe>/../lib` or `$BIRNAM_LIB_DIR`.
 
 ## AOT modules and source fallback
 
-`zig build stage1` compiles the boot modules ahead of time. These artifacts stage
-their exact canonical documents for G0; embedded source remains the floor. The
-named `zig build test-source-fallback` gate proves both routes publish the same G0
-digest.
+The Rust installer compiles the boot modules ahead of time. These artifacts
+stage their exact canonical documents for G0; embedded source remains the floor.
+The Rust workspace tests prove both routes publish the same G0 digest.
 
 Ordinary AOT `Module load:` is a bootstrap operation. After G0 it answers
 `#moduleIntroductionNotAvailable`; existing modules evolve through checked

@@ -2,7 +2,7 @@
 // EXIT with the process status the result implies (0 all-pass, 1 any-fail). That
 // exit code is what lets a shell or CI depend on the birnam-level suites.
 //
-//   ./zig-out/bin/birnam modules/run-tests.birnam   # from the repo root
+//   ~/.local/bin/birnam modules/run-tests.birnam   # from an installed prefix
 //   echo $?                                          # 0 green, 1 red
 //
 // Register-then-run: each loaded *-test file only defines + registers its suite

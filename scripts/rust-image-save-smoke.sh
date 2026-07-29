@@ -3,8 +3,8 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 target_dir="$repo/.cargo-target"
-bin=${BIRNAM_BIN:-$repo/zig-out/bin/birnam}
-libdir=${BIRNAM_LIB_DIR:-$repo/zig-out/lib}
+bin=${BIRNAM_BIN:-$HOME/.local/bin/birnam}
+libdir=${BIRNAM_LIB_DIR:-$HOME/.local/lib}
 
 probe_profile() {
   local profile=$1

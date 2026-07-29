@@ -2,7 +2,7 @@
 
 Small, well-chosen C libraries that birnam wraps over its FFI surface — vendored
 source plus a declarative `.birnam` wrapper. The point: **authoring a wrapped
-library needs no zig toolchain.** You compile the C with the system `cc` and
+library needs no additional language toolchain.** You compile the C with the system `cc` and
 describe the calls as birnam facts.
 
 ## Layout
@@ -17,7 +17,7 @@ wrapped/
 
 ## Declaring a wrapped lib
 
-Add a `[[wrapped]]` entry to `birnam.toml` (parsed by `src/config.zig`):
+Add a `[[wrapped]]` entry to `birnam.toml` (parsed by the Rust-host project layer):
 
 ```toml
 [[wrapped]]
@@ -38,7 +38,7 @@ birnam wrap linenoise  # build just one
 ```
 
 `birnam wrap` runs `cc <cflags> -dynamiclib|-shared -fPIC <sources…> -o <output>`
-(`-dynamiclib` on macOS, `-shared` on ELF). No zig involved. Then file in the
+(`-dynamiclib` on macOS, `-shared` on ELF). Then file in the
 wrapper to use it:
 
 ```

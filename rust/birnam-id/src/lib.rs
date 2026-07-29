@@ -1,7 +1,7 @@
 //! Dependency-free production Rust libid floor.
 //!
 //! The crate exports the complete frozen `IdApi` implementation installed as
-//! `libbirnam_id.dylib`. The retained Zig oracle is separately named.
+//! `libbirnam_id.dylib`.
 
 #[cfg(not(any(test, panic = "abort")))]
 compile_error!("every runnable birnam_id cdylib profile must use panic=abort");

@@ -8,8 +8,8 @@
 // the op under test (K = opsPerIter:). All setup — probe objects, texts,
 // vectors, maps, buffers — happens HERE, outside every timed window.
 //
-//   ./zig-out/bin/birnam bench/micro.birnam            # tracked run (R=5)
-//   BENCH_QUICK=1 ./zig-out/bin/birnam bench/micro.birnam
+//   "$HOME/.local/bin/birnam" bench/micro.birnam            # tracked run (R=5)
+//   BENCH_QUICK=1 "$HOME/.local/bin/birnam" bench/micro.birnam
 //
 // TWO CONTRACTS BEYOND THE NAMES (docs/design/46):
 //   - The loaded-module set here is FROZEN at bench+os. Send cost is coupled
@@ -100,7 +100,7 @@ let s := [BenchSuite named: "micro"];
 // and the body answers nil: an error ANSWER would abort the to:do: at
 // iteration 1 (error propagation is the loop's contract). Genuine, not a bug:
 // DNU measures CHEAPER than a successful send — a failed lookup runs native
-// objDnu/mkError Zig and never enters TCC-emitted method code.
+// objDnu/mkError native code and never enters TCC-emitted method code.
 [s case: "sends.dnu-mint" opsPerIter: 8 do: [:n |
   [1 to: n do: [:i |
     let e1 := [P benchMissing]; let e2 := [P benchMissing];

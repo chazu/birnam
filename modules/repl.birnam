@@ -6,7 +6,7 @@
 // Alien, values to stdout, located compile errors to stderr.
 // `[Repl serveOn: 5555]` is the same loop over TCP: a client (nc, or Emacs over a
 // network comint) types forms; the image evaluates each against its LIVE state
-// with `[Codegen evalPersisting:]` and writes the value back. No new Zig —
+// with `[Codegen evalPersisting:]` and writes the value back. No new native code —
 // evaluation of received source is a capability the image already has.
 //
 // DEPENDENCIES — load first (Repl does NOT auto-load, to keep loading simple):
@@ -257,7 +257,7 @@
   r] doc:
   "One prompt/read/dispatch step; false when the session is over (EOF or a quit command), true to go again."];
 
-// Host-owned step protocol. Evaluation returns its value to Zig before the host
+// Host-owned step protocol. Evaluation returns its value to Rust before the host
 // prints it, allowing the host to drain any process-isolate cleanup between turns.
 [Reflect defineMethod: #hostStep on: Repl as: [:self |
   [System print: "birnam> "];
@@ -367,7 +367,7 @@
   "Session teardown: prints a final newline and frees the stdin read buffer."];
 
 // The whole session: bring-up, the read-eval-print loop, teardown. The loop is
-// a native whileTrue: (stack-flat), so it lives here and not in a Zig driver
+// a native whileTrue: (stack-flat), so it lives here and not in a separate driver
 // frame; the binary just sends #console. consoleStep answers exactly true or
 // false, so a step that faults (answers an error) stops the loop and the error
 // becomes `r` — teardown still runs, and `console` answers the error for the

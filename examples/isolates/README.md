@@ -6,7 +6,7 @@ isolates.
 From the repository root:
 
 ```sh
-zig build
+scripts/rust-install.sh install --root . --prefix "$HOME/.local" --profile debug
 bash examples/isolates/run.sh
 ```
 

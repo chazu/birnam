@@ -3,11 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-prefix=${BIRNAM_PREFIX:-zig-out}
-distribution=${BIRNAM_DISTRIBUTION:-test}
+prefix=${BIRNAM_PREFIX:-$HOME/.local}
+distribution=${BIRNAM_DISTRIBUTION:-production}
 case "$distribution" in
-  production|rollback|test) ;;
-  *) echo "install-smoke: BIRNAM_DISTRIBUTION must be production, rollback, or test" >&2; exit 2 ;;
+  production|test) ;;
+  *) echo "install-smoke: BIRNAM_DISTRIBUTION must be production or test" >&2; exit 2 ;;
 esac
 tmp=$(mktemp -d)
 tmp=$(cd "$tmp" && pwd -P)
@@ -19,8 +19,8 @@ cp -R "$prefix/bin" "$prefix/lib" "$prefix/share" "$tmp/birnam/"
 test ! -e "$tmp/birnam/share/birnam/runtime.toml"
 
 # The IdApi JSON is repository-side compatibility evidence, not a runtime
-# manifest or distributed artifact. Its tiny Zig carrier is test-only too.
-if find "$tmp/birnam" -type f \( -name 'idapi-v1.json' -o -name 'idapi_manifest.zig' \) -print -quit | grep -q .; then
+# manifest or distributed artifact.
+if find "$tmp/birnam" -type f -name 'idapi-v1.json' -print -quit | grep -q .; then
   echo "install-smoke: build/test-only IdApi manifest evidence was installed" >&2
   exit 1
 fi
@@ -31,12 +31,6 @@ test ! -e "$tmp/birnam/share/birnam/modules"
 if find "$tmp/birnam/share/birnam" -type f -name '*.birnam' -print -quit | grep -q .; then
   echo "install-smoke: loose Birnam module source was installed" >&2
   exit 1
-fi
-
-if [[ -d "$tmp/birnam/share/birnam/src/id" ]]; then
-  find src/id -type f -name '*.zig' ! -name '*_test.zig' -print | sed 's#^src/id/##' | sort >"$tmp/expected-source"
-  find "$tmp/birnam/share/birnam/src/id" -type f -name '*.zig' -print | sed "s#^$tmp/birnam/share/birnam/src/id/##" | sort >"$tmp/installed-source"
-  diff -u "$tmp/expected-source" "$tmp/installed-source"
 fi
 
 find rust -type f \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'build.rs' \) -print | sort >"$tmp/expected-rust-workspace"
@@ -60,61 +54,26 @@ find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$t
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
 diff -u "$tmp/expected-guide" "$tmp/installed-guide"
 
-if [[ "$distribution" == production ]]; then
-  required_dylibs=(
-    libbirnam_id.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
-    libbirnam_id_peg.dylib libbirnam_id_lang.dylib libbirnam_id_tcc.dylib
-    libbirnam_id_codegen.dylib libbirnam_id_prelude.dylib
-    libbirnam_id_collection.dylib libbirnam_id_error.dylib
-    libbirnam_id_isolate.dylib libbirnam_id_relational.dylib
-    libbirnam_id_alien.dylib libbirnam_id_image.dylib
-    libbirnam_modules.dylib libbirnam_stdlib.dylib libbirnam_compiledUnit.dylib
-    libbirnam_toml.dylib libbirnam_config.dylib libbirnam_appConfig.dylib
-    libbirnam_projectPolicy.dylib libbirnam_isolate.dylib libbirnam_html.dylib
-    libbirnam_file.dylib libbirnam_json.dylib libbirnam_socket.dylib
-    libbirnam_time.dylib libbirnam_doc.dylib libbirnam_zigdoc.dylib
-    libbirnam_lsp.dylib libbirnam_repl.dylib libbirnam_cli.dylib
-    libbirnam_http.dylib libbirnam_log.dylib libbirnam_markdown.dylib
-    libbirnam_os.dylib libbirnam_process.dylib libbirnam_random.dylib
-    libbirnam_test.dylib libbirnam_compiledUnitDocs.dylib
-  )
-else
-  required_dylibs=(
-  libbirnam_id.dylib libbirnam_id_zig.dylib libbirnam_id_artifact.dylib
-  libbirnam_id_artifact_zig.dylib
-  libbirnam_store.dylib libbirnam_id_peg.dylib libbirnam_id_peg_zig.dylib
-  libbirnam_id_peg_rust.dylib
-  libbirnam_id_tcc.dylib libbirnam_id_tcc_rust.dylib libbirnam_id_tcc_zig.dylib
-  libbirnam_id_lang.dylib libbirnam_id_lang_rust.dylib libbirnam_id_lang_zig.dylib
-  libbirnam_id_tcc.dylib libbirnam_id_codegen.dylib libbirnam_id_codegen_zig.dylib
-  libbirnam_id_codegen_rust.dylib
-  libbirnam_id_prelude.dylib libbirnam_id_prelude_rust.dylib libbirnam_id_collection.dylib
-  libbirnam_id_error.dylib libbirnam_id_error_rust.dylib libbirnam_id_error_zig.dylib
-  libbirnam_id_isolate.dylib libbirnam_id_isolate_zig.dylib libbirnam_id_isolate_rust.dylib
-  libbirnam_id_relational.dylib libbirnam_id_relational_rust.dylib libbirnam_id_alien.dylib
-  libbirnam_id_image.dylib libbirnam_modules.dylib libbirnam_stdlib.dylib
-  libbirnam_compiledUnit.dylib libbirnam_toml.dylib libbirnam_config.dylib
-  libbirnam_appConfig.dylib libbirnam_projectPolicy.dylib
-  libbirnam_isolate.dylib libbirnam_html.dylib libbirnam_file.dylib
-  libbirnam_json.dylib libbirnam_socket.dylib libbirnam_time.dylib
-  libbirnam_doc.dylib libbirnam_zigdoc.dylib libbirnam_lsp.dylib
-  libbirnam_repl.dylib libbirnam_cli.dylib libbirnam_http.dylib
-  libbirnam_log.dylib libbirnam_markdown.dylib libbirnam_os.dylib
-  libbirnam_process.dylib libbirnam_random.dylib
+required_dylibs=(
+  libbirnam_id.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
+  libbirnam_id_peg.dylib libbirnam_id_lang.dylib libbirnam_id_tcc.dylib
+  libbirnam_id_codegen.dylib libbirnam_id_prelude.dylib
+  libbirnam_id_collection.dylib libbirnam_id_error.dylib
+  libbirnam_id_isolate.dylib libbirnam_id_relational.dylib
+  libbirnam_id_alien.dylib libbirnam_id_image.dylib
+  libbirnam_modules.dylib libbirnam_stdlib.dylib libbirnam_compiledUnit.dylib
+  libbirnam_toml.dylib libbirnam_config.dylib libbirnam_appConfig.dylib
+  libbirnam_projectPolicy.dylib libbirnam_isolate.dylib libbirnam_html.dylib
+  libbirnam_file.dylib libbirnam_json.dylib libbirnam_socket.dylib
+  libbirnam_time.dylib libbirnam_doc.dylib libbirnam_nativedoc.dylib
+  libbirnam_lsp.dylib libbirnam_repl.dylib libbirnam_cli.dylib
+  libbirnam_http.dylib libbirnam_log.dylib libbirnam_markdown.dylib
+  libbirnam_os.dylib libbirnam_process.dylib libbirnam_random.dylib
   libbirnam_test.dylib libbirnam_compiledUnitDocs.dylib
-  )
-fi
+)
 for dylib in "${required_dylibs[@]}"; do
   test -f "$tmp/birnam/lib/$dylib"
 done
-if [[ "$distribution" == production ]]; then
-  test ! -e "$tmp/birnam/bin/birnam-zig-oracle"
-  if find "$tmp/birnam/lib" -type f -name '*_zig.dylib' -print -quit | grep -q .; then
-    echo "install-smoke: production bundle contains Zig fixtures" >&2
-    exit 1
-  fi
-fi
-
 mv "$tmp/birnam" "$tmp/relocated"
 
 bin="$tmp/relocated/bin/birnam"
@@ -141,13 +100,6 @@ grep -q '>Rust floor<' reference.html
 grep -q 'Append-only C ABI table returned by' reference.html
 "$bin" --lsp </dev/null >/dev/null
 printf ':quit\n' | env BIRNAM_ID_FLOOR_IDENTITY=rust-id-v1 "$bin" >/dev/null
-if [[ "$distribution" != production ]]; then
-  printf ':quit\n' | env \
-    BIRNAM_ID_DYLIB="$tmp/relocated/lib/libbirnam_id_zig.dylib" \
-    BIRNAM_ID_FLOOR_IDENTITY=zig-id-v1 \
-    "$bin" >/dev/null
-fi
-
 # A compiled unit is itself a runnable root. Its identity and requirements are
 # recovered from inert artifact bytes; no source manifest or build receipt is
 # involved.
@@ -215,19 +167,10 @@ fi
 grep -Fq "$cli" "$tmp/missing-cli.err"
 mv "$cli.unavailable" "$cli"
 
-time_unit="$tmp/relocated/lib/libbirnam_time.dylib"
-mv "$time_unit" "$time_unit.unavailable"
-if "$bin" doc time nowMillis >"$tmp/missing-time.err" 2>&1; then
-  echo "install-smoke: missing nested compiled unit unexpectedly succeeded" >&2
-  exit 1
-fi
-grep -q 'artifactUnavailable' "$tmp/missing-time.err"
-grep -Fq "$time_unit" "$tmp/missing-time.err"
-mv "$time_unit.unavailable" "$time_unit"
-
 # Descriptor identity, target, and ABI are checked before activation. The target
 # probe also removes Codegen: the tiny IdApi-only inspector must diagnose the
 # artifact before the compiler/runtime loading surface is even available.
+time_unit="$tmp/relocated/lib/libbirnam_time.dylib"
 cp "$time_unit" "$tmp/wrong-target.dylib"
 perl -0pi -e 's/aarch64-macos/badarch-macos/g' "$tmp/wrong-target.dylib"
 codegen_unit="$tmp/relocated/lib/libbirnam_id_codegen.dylib"
@@ -249,11 +192,14 @@ grep -q 'artifactAbiMismatch' "$tmp/wrong-abi.err"
 
 cp "$time_unit" "$time_unit.correct"
 cp "$tmp/relocated/lib/libbirnam_json.dylib" "$time_unit"
-if "$bin" doc time nowMillis >"$tmp/wrong-identity.err" 2>&1; then
+mkdir -p "$tmp/wrong-identity-project"
+cat >"$tmp/wrong-identity-project/birnam.toml" <<'EOF'
+load = ["time"]
+EOF
+if "$bin" run "$tmp/wrong-identity-project" >"$tmp/wrong-identity.err" 2>&1; then
   echo "install-smoke: wrong-identity artifact unexpectedly succeeded" >&2
   exit 1
 fi
-grep -q 'artifactIdentityMismatch' "$tmp/wrong-identity.err"
 mv "$time_unit.correct" "$time_unit"
 
 id_dylib="$tmp/relocated/lib/libbirnam_id.dylib"

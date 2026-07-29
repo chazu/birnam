@@ -12,7 +12,7 @@
 # change, update the golden HERE in the same commit and say why.
 set -u
 cd "$(dirname "$0")/.."
-BIN=${BIRNAM_BIN:-./zig-out/bin/birnam}
+BIN=${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam}
 BIN_ABS="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
 BANNER='birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.'
 
@@ -210,7 +210,7 @@ printf '[Module named: #tth requires: #[]];\n[Reflect defineMethod: #tthProbe on
 "$BIN_ABS" --compile-module "$tdir/tth.birnam" "$libdir/libbirnam_tth.dylib" >/dev/null 2>&1
 printf 'load = ["ttg"]\n' > "$tdir/birnam.toml"
 (cd "$tdir" && printf '[System saveImage: "%s/t.image"]\n:quit\n' "$tdir" | "$BIN_ABS" --repl >/dev/null 2>&1)
-actual=$(printf '[1 ttgProbe]\n[Module isLoaded: #ttg]\n[Module kindOf: #modules]\n[Module load: #tth]\n[2 tthProbe]\n:quit\n' | "$BIN" "$tdir/t.image" 2>&1)
+actual=$(printf '[1 ttgProbe]\n[Module isLoaded: #ttg]\n[Module kindOf: #modules]\n[Module loadArtifact: "%s"]\n[2 tthProbe]\n:quit\n' "$libdir/libbirnam_tth.dylib" | "$BIN" "$tdir/t.image" 2>&1)
 expected="$BANNER
 birnam> 42
 birnam> true
@@ -224,7 +224,7 @@ rm -rf "$tdir"
 
 # ---- store surface: reading an ABSENT fact answers nil, never a VM panic -------
 # `[db currentValue: #absent attr: #x]` used to hand birnam the store's internal
-# Zig-null absence — the next send to it panicked the whole VM. The surface now
+# Null absence — the next send to it panicked the whole VM. The surface now
 # normalises to nil; the distinction rides hasValue:attr: / currentValue:attr:ifAbsent:
 # (§G6, the no-NULL lock). An unset cell's `value` rode the same null.
 actual=$(printf '[db currentValue: #absent attr: #x]\n[db hasValue: #absent attr: #x]\n[db currentValue: #absent attr: #x ifAbsent: [| #missing]]\n[[db cellFor: #fresh attr: #slot] value]\n:quit\n' | "$BIN" --repl 2>&1)

@@ -1,6 +1,6 @@
 // linenoise — line editing for birnam (history, arrow keys, emacs bindings).
 //
-// First-party wrapped C library. Build the dylib first (uses cc, not zig):
+// First-party wrapped C library. Build the dylib first with the system C compiler:
 //
 //   birnam wrap linenoise        # -> wrapped/linenoise/liblinenoise.dylib
 //

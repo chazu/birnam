@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Rust-host project command contract. The Zig-host project smoke deliberately
-# checks its richer human build report; Rust owns a summary/JSON report while
-# the project policy, compilation, run, and test boundaries remain identical.
+# Rust-host project command contract.
 set -euo pipefail
 
 bin="${BIRNAM_BIN:?BIRNAM_BIN must point to the installed birnam binary}"

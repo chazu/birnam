@@ -877,7 +877,7 @@ unsafe extern "C" fn rust_define_rule(self_object: Oop, args: *const Oop, count:
 }
 
 /// Rule definitions are canonical Store facts. Queries reify them directly,
-/// so rebuilding the old Zig-side cache is intentionally a successful no-op.
+/// so rebuilding the old cache is intentionally a successful no-op.
 unsafe extern "C" fn rust_rebuild_rules(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
@@ -904,7 +904,7 @@ unsafe fn install_entity_method(api: &IdApi) {
     let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
     let entity_vt = if entity_vt.is_null() {
         // SAFETY: the new vtable delegates to the process Object vtable and
-        // carries no payload, matching the Zig EntityVt contract.
+        // carries no payload, matching the EntityVt contract.
         let created = unsafe { (api.proto)(api.object_vt) };
         if created.is_null() {
             abort("Rust Relational could not create EntityVt");
@@ -961,7 +961,7 @@ unsafe fn install_entity_method(api: &IdApi) {
         (api.method)(store_vt, (api.intern)(c"pull:spec:".as_ptr()), rust_pull);
         // Publish the shared Store as `db` only after the complete relational
         // and collection contract is available. A partial export would force
-        // Zig rollback Relational down its reload path with missing vtables.
+        // roll Relational down its reload path with missing vtables.
         (api.exportObj)(c"db".as_ptr(), store);
     }
 }
@@ -1824,7 +1824,7 @@ unsafe fn aggregate_live(
     let value = match aggregate_values(&values, operation) {
         Ok(Some(value)) => value,
         Ok(None) => {
-            // `min`, `max`, and `avg` preserve the Zig aggregate surface's
+            // `min`, `max`, and `avg` preserve the aggregate surface's
             // nil on empty input. The caller gets an explicit status rather
             // than an ambiguous pointer-free identity-zero record.
             return -8;
@@ -2106,7 +2106,7 @@ pub unsafe extern "C" fn birnam_relational_rust_project_recursive_live(
 /// Aggregate one projected variable from a single triple pattern. Operations
 /// are `0 count`, `1 sum`, `2 min`, `3 max`, and `4 avg`. Results are copied into
 /// `ClassifiedValue`; count/sum return integer zero for empty input, while
-/// min/max/avg return `-8` for the Zig-compatible empty nil result. This is an
+/// min/max/avg return `-8` for the compatible empty nil result. This is an
 /// explicit migration probe, not canonical Store aggregate installation.
 ///
 /// # Safety
@@ -2338,7 +2338,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 /// A value classified by the IdApi adapter before entering the query kernel.
 /// Identity values compare by pointer identity; scalar values compare by value,
-/// matching the Zig relational `valEq` law.
+/// matching the relational `valEq` law.
 #[derive(Clone, Debug)]
 pub enum Value {
     Identity(u64),
@@ -3076,7 +3076,7 @@ fn clause_is_binder(clause: &RuleClause) -> bool {
 }
 
 /// Pick binders before filters while retaining source order among clauses that
-/// are ready. This is the Rust equivalent of the Zig relational planner: a
+/// are ready. This is the native relational planner: a
 /// predicate or negation written before its operands are bound must not drop
 /// every row merely because it appeared first in the Vector.
 fn plan_rule_body(body: &[RuleClause]) -> Vec<usize> {
@@ -3206,7 +3206,7 @@ fn relation_contains(rows: &[Vec<Value>], candidate: &[Value]) -> bool {
 
 /// A query-scoped derived-relation cache. It is deliberately separate from
 /// Store: callers rebuild it from an authoritative snapshot and definitions,
-/// then discard it when the snapshot changes. This mirrors the Zig rule-cache
+/// then discard it when the snapshot changes. This mirrors the rule-cache
 /// lifecycle without allowing Rust to retain a second fact authority.
 #[derive(Clone, Debug, Default)]
 pub struct RuleCache {
@@ -3591,7 +3591,7 @@ unsafe fn parse_rule_compare_op(api: &IdApi, name: Oop) -> Result<CompareOp, i32
         return Err(-4);
     }
     // SAFETY: operator symbols are interned in the process symbol table and
-    // compared by the same identity law as the Zig relational selector.
+    // compared by the same identity law as the relational selector.
     let intern = |bytes: &'static [u8]| unsafe { (api.intern)(bytes.as_ptr().cast()) };
     let operation = if name == intern(b"lt\0") || name == intern(b"<\0") {
         CompareOp::Less

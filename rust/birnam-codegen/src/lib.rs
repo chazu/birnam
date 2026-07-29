@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 
 /// A bounded-independent byte emitter. Callers retain ownership of the returned
-/// translation-unit bytes and may compare them byte-for-byte with the Zig oracle.
+/// translation-unit bytes and may compare them byte-for-byte with the reference.
 #[derive(Debug, Default)]
 pub struct Emitter {
     bytes: Vec<u8>,
@@ -38,7 +38,7 @@ pub enum Expr<'a> {
     String(&'a [u8]),
     /// A Birnam string literal including its source quotes and escapes. The
     /// known Birnam escapes are decoded before the C string is emitted; an
-    /// unknown escape keeps its backslash, matching the Zig emitter.
+    /// unknown escape keeps its backslash, matching the native emitter.
     StringLiteral(&'a [u8]),
     /// Bytes resolved from a compiler `System embedFile:` intrinsic. These
     /// bytes are owned by the CST projection rather than borrowed from the
@@ -183,7 +183,7 @@ pub enum LowerError {
 /// Lower the literal subset of a CST node into the pure emitter IR.
 ///
 /// `expr`, `primary`, and `message` wrappers are transparent when they have a
-/// single child, matching the Zig emitter's `skip` operation. Sends, blocks,
+/// single child, matching the native emitter's `skip` operation. Sends, blocks,
 /// collections, and logic variables deliberately remain unsupported until the
 /// corresponding CST-shape slices are frozen.
 pub fn lower_literal<'a, N: CstNode>(node: &N, source: &'a [u8]) -> Result<Expr<'a>, LowerError> {
@@ -658,7 +658,7 @@ impl Emitter {
 
     /// Construct an emitter for a candidate artifact. Method definitions are
     /// lowered to precompiled trampolines and rooted block captures; the
-    /// runtime candidate wrapper later rewrites the frozen Zig shim names to
+    /// runtime candidate wrapper later rewrites the frozen shim names to
     /// the selected Rust-owned namespace when required.
     pub fn new_candidate_artifact(salt: u64) -> Self {
         Self {
@@ -1318,7 +1318,7 @@ mod tests {
     }
 
     #[test]
-    fn escapes_like_zig_codegen() {
+    fn escapes_like_reference_codegen() {
         let mut emitter = Emitter::new();
         emitter.emit_string(b"a\n\0\xff\\\"");
         assert_eq!(
@@ -1439,7 +1439,7 @@ mod tests {
     }
 
     #[test]
-    fn emits_float_singletons_and_source_string_escapes_like_zig() {
+    fn emits_float_singletons_and_source_string_escapes_like_reference() {
         let expression = Expr::Send {
             receiver: Box::new(Expr::Float(b"-0.25")),
             selector: Cow::Borrowed(b"ifTrue:ifFalse:"),
@@ -1709,7 +1709,7 @@ mod tests {
     }
 
     #[test]
-    fn lowers_collections_and_logic_variables_to_the_zig_send_shapes() {
+    fn lowers_collections_and_logic_variables_to_the_reference_send_shapes() {
         let vector_source = b"#[1 2]";
         let vector = node(
             b"vectorLit",

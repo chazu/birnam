@@ -10,15 +10,12 @@ loader ports are complete.
 
 ### Changed
 
-- **Rust is the default `libid` floor.** Ordinary builds install the Rust
-  implementation as `libbirnam_id.dylib`; the compatible Zig oracle is
-  separately named `libbirnam_id_zig.dylib`. For a developer rollback in an
-  isolated prefix, run
-  `zig build -Dfloor=zig --prefix /tmp/birnam-zig-oracle`. For a release
-  rollback, fetch the previous complete arm64 macOS bundle with
-  `gh release download v0.11.0 --repo chazu/birnam --pattern 'birnam-0.11.0-aarch64-macos.tar.gz'`,
-  extract it, and run its versioned `bin/birnam`; no image or compiled-unit
-  migration is required.
+- **Rust is now Birnam's only implementation and build authority.** The Zig
+  runtime, compiler integration, build graph, probes, and compatibility
+  selection paths were removed.
+- The installer, release bundle, CI, project tools, wrapped-library docs, and
+  stage1 modules now use the Rust host exclusively.
+- The native source documentation module is now named `nativedoc`.
 
 ## [0.11.0] — 2026-07-15
 

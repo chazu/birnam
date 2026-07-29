@@ -1343,7 +1343,7 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
 }
 
 unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
-    // Keep the argument pointer non-null even for a zero-argument send. Zig
+    // Keep the argument pointer non-null even for a zero-argument send. Native
     // primitive methods use a non-null slice pointer in their native signature;
     // passing an empty Rust slice preserves that contract across the C ABI.
     let arguments: [Oop; 0] = [];
@@ -1534,7 +1534,7 @@ unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
         return None;
     }
     if rust_image_canonical_selected() {
-        // Match the Zig image driver's first-save behavior for script hosts:
+        // Match the native image driver's first-save behavior for script hosts:
         // close the initial dispatch generation before asking Codegen for its
         // digest. Explicit Rust Image fixtures do not set the canonical marker
         // and therefore retain their diagnostic-only no-publication contract.
@@ -1762,18 +1762,15 @@ unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
         return api.nilObj;
     };
     let Some(codegen) = (unsafe { rust_codegen_image_authority(api) }) else {
-        // The Rust Image shell may coexist with the Zig Codegen authority. In
-        // that mixed process this slice only admits the image; the canonical
-        // Zig loader remains responsible for mutation and mapping.
+        // A complete Rust Codegen provider is required for image recovery.
         return api.falseObj;
     };
     if unsafe { send_image_unary(api, codegen, RUST_CODEGEN_PREFLIGHT_IMAGE, path) }
         != api.trueObj
     {
         // A structurally valid image can carry a generation from an older
-        // authority (for example, a pre-rewrite Zig image). Rust Codegen
-        // correctly rejects that authority for native mapping, but the image
-        // loader must hand the valid bytes to the source-recovery path rather
+        // authority. Rust Codegen rejects that authority for native mapping,
+        // but the image loader hands valid bytes to the source-recovery path
         // than reporting malformed input. Other preflight failures remain
         // fail-closed as LoadRejected.
         if let Some(current) = unsafe { current_generation_digest(api) } {
@@ -2859,7 +2856,7 @@ mod tests {
     }
 
     #[test]
-    fn code_checksum_matches_the_zig_wyhash_vectors() {
+    fn code_checksum_matches_the_wyhash_vectors() {
         assert_eq!(wyhash(0, b""), 0x0409_638e_e2bd_e459);
         assert_eq!(wyhash(1, b"a"), 0xa841_2d09_1b5f_e0a9);
         assert_eq!(wyhash(2, b"abc"), 0x32dd_92e4_b291_5153);

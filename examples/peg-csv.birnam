@@ -2,7 +2,7 @@
 //
 //   birnam examples/peg-csv.birnam
 //
-// birnam can build grammars and walk parse trees without dropping to zig.
+// birnam can build grammars and walk parse trees without dropping to native code.
 // `Peg` is the combinator singleton:
 //   newGrammar / grammar        a fresh grammar
 //   literal: / anyByte / eof    terminals

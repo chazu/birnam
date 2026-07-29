@@ -2,7 +2,7 @@
 //
 // A birnam-native module. Wraps libc's `random()` / `srandom()` — a decent,
 // SEEDABLE PRNG (better than rand()) — so sequences are reproducible when you pin
-// a seed, which is what deterministic tests want. No new Zig.
+// a seed, which is what deterministic tests want. No new native code.
 //
 // The stream is process-global (one libc PRNG), so `seed:` affects all draws. On
 // load the module seeds itself from the clock, so an un-seeded program still

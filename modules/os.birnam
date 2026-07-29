@@ -1,7 +1,7 @@
 // os.birnam — process-level OS bits for birnam, over libc via Alien.
 //
 // Same principle as time/file/process: the irreducible capability is "call a C
-// function," and Alien is that gateway — no new Zig. This one exposes the process
+// function," and Alien is that gateway — no new native code. This one exposes the process
 // exit code, which a test runner (or any script) needs to signal pass/fail to a
 // shell or CI.
 //
