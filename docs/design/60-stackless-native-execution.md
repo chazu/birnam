@@ -1,6 +1,6 @@
 # 60 — Stackless Native Execution
 
-> **Status:** Architecture overview and delivery index, updated 2026-07-29.
+> **Status:** Architecture overview and delivery index, updated 2026-08-01.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -8,9 +8,10 @@
 >
 > - [60a — Execution semantics](60a-stackless-execution-semantics.md)
 > - [60b — Machine, frames, and GC](60b-stackless-machine-and-frames.md)
+> - [60c — StepMethod calling ABI options](60c-stepmethod-calling-abi-options.md)
 >
-> Future records will cover the compiler/ABI seam, code-generation lifetime,
-> host integration, and the acceptance matrix.
+> Future records will cover the remaining compiler/registration seam,
+> code-generation lifetime, host integration, and the acceptance matrix.
 
 ## 1. Scope
 
@@ -21,7 +22,9 @@ Birnam sends therefore consume the host thread's native stack.
 Stackless native execution changes the execution representation, not Birnam's
 object model. The first target is:
 
-- an explicit frame stack owned by a Rust Machine;
+- a first-class Birnam Machine Oop backed initially by private Rust state;
+- an explicit private Frame stack owned by that Machine state;
+- metacircularly visible StepAction Oops returned by resumable steps;
 - native-compiled resumable method steps;
 - a trampoline for call, return, tail-call, and later suspension;
 - synchronous Rust methods retained as an adapter path;
@@ -43,7 +46,8 @@ The current implementation is deliberately synchronous:
 - birnam-prelude keeps callback-driving control state in Rust activations,
   including Boolean loops and integer iteration.
 - birnam-id collects through a hybrid native-stack scan plus registered root
-  providers. It has no Machine frame-root provider yet.
+  providers and vtable trace hooks. It has no MachineState trace/finalization
+  integration yet.
 - birnam-host and birnam-codegen-runtime retain process-lifetime runtime and
   generation authorities, but do not yet pin code specifically for suspended
   language frames.
@@ -68,6 +72,11 @@ The implementation must preserve these invariants:
 9. Old compiled units are rejected or executed through an explicit compatibility
    path; they are never silently interpreted as resumable units.
 10. All new ABI surface is append-only and versioned.
+11. Machine and StepAction cross the compiler/runtime boundary as Oops; Frame
+    storage remains private and is exposed only through checked accessors and
+    read-only FrameView Oops.
+12. Birnam owns execution-object identity and protocol. Rust temporarily owns
+    the low-level storage and primitive operations behind that protocol.
 
 ## 4. Explicit non-goals for the first delivery
 
@@ -101,21 +110,27 @@ This record is the semantic gate for S1 and S2.
 
 ### 60B — Machine, frames, and GC
 
-Defines the Rust-owned representation:
+Defines the Birnam-object/private-Rust-storage boundary:
 
-- machine and fiber lifecycle;
+- Machine Oop and native-backed MachineState lifecycle;
 - frame slots, descriptors, and arenas;
-- action representation using slot references rather than raw Oop pointers;
-- root-provider registration and forced collection;
-- frame inspection boundaries;
+- metacircularly visible StepAction Oops using slot references rather than raw
+  Oop pointers;
+- checked registries, trace/finalization hooks, and forced collection;
+- read-only FrameView Oops and stale-view behavior;
 - continuation and frame teardown.
 
 This record is the memory-safety gate for S1 and S3.
 
-### Future 60C — ABI and compiler
+### 60C — StepMethod calling ABI options
 
-Will define the append-only C ABI, resumable registration, sync adaptation, CFG
-lowering, liveness, block captures, source maps, and live/AOT parity.
+Presents four contrasting C calling boundaries, their floor/malleability split,
+their performance and compatibility tradeoffs, and the current non-binding lean.
+It is the human review surface for choosing the StepMethod ABI.
+
+A later compiler/registration record will define resumable registration, sync
+adaptation, CFG lowering, liveness, block captures, source maps, and live/AOT
+parity against the chosen ABI.
 
 ### Future 60D — Lifetime and host integration
 
@@ -131,14 +146,16 @@ performance budgets, and release gates.
 
 ### S0 — Documentation and contract freeze
 
-Accept 60A and 60B. Record the exact ABI decisions that future 60C must
-implement. Establish synchronous benchmarks and current ABI fixtures.
+Accept 60A and 60B. Review the alternatives in 60C, then record the chosen exact
+ABI. Establish synchronous benchmarks and current ABI fixtures.
 
 ### S1 — Parallel machine substrate
 
-Add Rust-owned Machine and frame storage, an action loop, root tracing, and a
-sync adapter. Do not change generated code yet. An internal test StepMethod
-must be able to run to completion and produce the same result as send.
+Add the Machine Oop/native MachineState capability boundary, private Frame
+storage, canonical StepAction Oops, an action loop, root tracing/finalization,
+and a sync adapter. Do not change generated code yet. An internal test
+StepMethod must be able to run to completion and produce the same result as
+send, and Birnam reflection must see the execution-object protocols.
 
 ### S2 — Minimal resumable compiler path
 
@@ -166,11 +183,14 @@ durable continuation state as separately reviewed policy layers.
 
 Implementation may begin after S0 when all of the following are written down:
 
-- the exact StepAction representation and ownership rules;
-- the opaque-handle versus accessor boundary for generated native code;
+- the exact StepAction Oop layouts, reflective protocol, and ownership rules;
+- the exact StepMethod calling ABI selected after 60C review;
+- the Machine Oop capability and private-Frame accessor boundary for generated
+  native code;
+- registry generation, trace, and finalization rules for native-backed state;
 - machine/fiber owner-thread and reentrancy rules;
 - capture legality and native/FFI barrier behavior;
-- frame slot and root-provider invariants;
+- frame slot, trace-hook, and scoped-root invariants;
 - code-generation pinning and restored-generation dispatch;
 - the minimal non-public suspend/resume test contract.
 

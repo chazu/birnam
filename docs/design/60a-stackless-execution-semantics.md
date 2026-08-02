@@ -1,6 +1,6 @@
 # 60A — Stackless Execution Semantics
 
-> **Status:** S0 decision record, proposed for acceptance, 2026-07-29.
+> **Status:** S0 decision record, proposed for acceptance, revised 2026-08-01.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -14,9 +14,12 @@ is currently implemented as:
 - a resumable native StepMethod; or
 - a nested machine entered from a synchronous callback.
 
-This record defines the behavior visible at those boundaries. It does not yet
-define the C layout of Machine, Frame, or StepAction; that representation is
-owned by [60B](60b-stackless-machine-and-frames.md) and the future ABI record.
+This record defines the behavior visible at those boundaries. Machine and
+StepAction cross the compiler/runtime boundary as Birnam Oops. Frame storage
+does not. [60B](60b-stackless-machine-and-frames.md) defines that object/storage
+boundary; the future ABI record will define the exact C signatures and helper
+layout after review of
+[60C](60c-stepmethod-calling-abi-options.md).
 
 ## 2. S0 decisions
 
@@ -24,14 +27,14 @@ These are the proposed first-delivery decisions.
 
 | Area | First-delivery decision |
 |---|---|
-| Execution | A Machine runs on one Rust floor owner thread. A drive either completes, suspends, or fails with a typed host result. |
+| Execution | A Machine is a first-class, process-local Birnam object backed by owner-thread Rust state. A drive either completes, suspends, or fails with a typed host result. |
 | Continuations | Delimited and one-shot. A consumed continuation cannot be restored again. |
 | Public surface | No public continuation syntax is required for S1 or S2. S3 begins with an explicit host/test suspension operation; language syntax is a later policy decision. |
 | Capture | Capture is legal only inside a resumable machine and never crosses a native or foreign barrier. |
 | Native methods | Existing Method implementations remain synchronous and atomic with respect to the machine. They may re-enter Birnam, but the machine must drive nested resumable work to completion before the native call returns. |
 | Errors | Ordinary Birnam errors remain Oop values. Driver, ownership, malformed-action, and barrier failures are out-of-band typed runtime errors. |
 | Code generations | A suspended frame continues in the generation that owns its step function and layout. Sends performed after restoration resolve through the current dispatch generation. |
-| Durability | Machines and continuations are process-local. Image and Store persistence reject them with a kinded error. |
+| Durability | Machine, StepAction, FrameView, and Continuation Oops are process-local. Image and durable Store persistence reject them with a kinded error. |
 | Scheduling | There is no scheduler in S1–S3. Suspension returns control to the host; a later reactor design may schedule resumptions. |
 | Thread migration | A Machine and its continuations may only be driven and restored by their owner thread in the first implementation. |
 
@@ -43,9 +46,12 @@ object.
 
 ### Machine
 
-A Machine owns one logical execution. It contains a frame stack, the current
-action, delimiter state, suspension state, and references that keep active code
-generations alive.
+A Machine is a first-class Birnam Oop representing one logical execution. Its
+Birnam vtable owns the inspect/drive/resume protocol. Its raw object payload is
+a checked capability for private Rust MachineState, which contains the frame
+stack, delimiter state, suspension state, and references that keep active code
+generations alive. The Oop does not embed a Rust pointer or expose the
+MachineState layout.
 
 A Machine has exactly one owner thread. The owner is inherited from the Rust
 Runtime that created it. A Machine is not Send, Sync, or an image value.
@@ -54,21 +60,70 @@ Runtime that created it. A Machine is not Send, Sync, or an image value.
 
 A Frame is one resumable language activation. It records an implementation
 identity, program counter, receiver, arguments, live local slots, and a return
-destination. The frame representation and slot tracing rules are defined in
-60B.
+destination. Frames are private arena records, not separately allocated Oops.
+Inspection may create a process-local FrameView Oop, but generated execution
+does not receive a Frame object. The frame representation, view validity, and
+slot tracing rules are defined in 60B.
 
 ### StepMethod
 
-A StepMethod executes one bounded portion of a Frame and returns one action to
-the Machine driver. It must not retain a raw Machine or Frame pointer after
-returning. Generated code accesses frame state through the private helper
-surface selected by the ABI record.
+A StepMethod executes one bounded portion of the Machine's current Frame and
+returns one StepAction Oop to the Machine driver. The logical input includes the
+Machine Oop; the calling boundary selected after
+[60C](60c-stepmethod-calling-abi-options.md) may also pass a short-lived
+invocation token for efficient frame access, but it must not pass a Frame Oop or
+expose frame storage. Generated code accesses frame state through the private
+helper surface selected by that decision and must not retain a raw invocation
+token after returning.
+
+### StepAction
+
+A StepAction is a first-class but process-local Birnam Oop in the execution
+protocol between a StepMethod and the Machine driver.
+
+> Birnam owns the object identity and protocol; Rust temporarily owns the
+> low-level storage and primitive operations behind it.
+
+StepAction and its canonical CallAction, TailCallAction, ReturnAction,
+ContinueAction, SuspendAction, CaptureAction, RestoreAction, and AbortAction
+specializations are metacircularly visible through normal Birnam identity,
+vtable, method, and reflection facilities. Their constructors and accessors may
+initially be primitive-backed, but their protocol is not a Rust-only enum or an
+opaque sink. A later Birnam implementation may replace those primitives without
+changing the fact that a StepMethod returns an Oop implementing the StepAction
+protocol.
+
+This ownership split is ABI-frozen for the stackless path: a future ABI record
+may version the physical payload, but it must not replace the returned Oop with
+a Rust-only enum, native handle, or action sink. Metacircular visibility does
+not require the irreducible outer driver to dispatch a message to the action.
+
+The action operands are bounded raw slot indices, counts, delimiter identities,
+and other validated process-local handles; live language values remain in
+traced Frame slots.
+
+The Rust driver recognizes these canonical vtables and decodes their declared
+payload directly. It must not send `execute` or another ordinary Birnam message
+to interpret an action: ordinary dispatch is the operation the trampoline is
+in the process of implementing, so doing so would recurse through the same
+boundary.
+
+StepActions are ephemeral control tokens, not durable user values. Each action
+identifies its owning Machine generation and drive epoch. The driver rejects an
+action from another Machine or an earlier epoch before reading its operands.
+This permits an implementation to reuse per-Machine scratch action objects.
+There is no public `submitAction:` operation: validity comes from being returned
+by the currently executing step in the current epoch, not from possession of the
+Oop. Retaining an action does not retain a Frame or grant independent control of
+the Machine.
 
 ### Continuation
 
-A Continuation owns a detached, delimited segment of a Machine frame stack plus
-the delimiter and generation pins needed to restore it. It is an identity
-object, not a value-equivalent copy.
+A Continuation is a first-class, process-local Birnam Oop that owns a detached,
+delimited segment of a Machine frame stack plus the delimiter and generation
+pins needed to restore it. It is an identity object, not a value-equivalent
+copy. Like Machine, its Birnam-visible protocol is initially backed by a checked
+capability to private Rust state.
 
 The first implementation gives every Continuation exactly one successful
 restore. A failed restore does not consume it unless the failure occurs after
@@ -95,13 +150,14 @@ and Restore. Abort is initially limited to malformed actions, barrier
 violations, and explicit driver failures; language conditions and restarts are
 later policy.
 
-Action operands are slot references or other Rust-owned indices, never borrowed
-Oop pointers or pointers into a generated C compound literal. This lets the
-driver keep all live values rooted while it invokes a synchronous leaf.
+Action operands are slot references or other validated process-local indices,
+never borrowed Oop pointers or pointers into a generated C compound literal.
+This lets the driver keep all live values rooted while it invokes a synchronous
+leaf.
 
 ## 5. Call and return behavior
 
-When a resumable frame returns Call:
+When a resumable frame returns a CallAction Oop:
 
 1. The driver validates the referenced receiver, selector, argument range, and
    result slot against the frame descriptor.
@@ -204,6 +260,8 @@ The first driver must distinguish at least:
 - continuationBarrier;
 - continuationWrongMachine;
 - invalidStepAction;
+- staleStepAction;
+- stepActionWrongMachine;
 - invalidFrameSlot;
 - missingImplementation;
 - codeGenerationUnavailable;
@@ -226,6 +284,9 @@ Before S1 implementation is accepted, tests must specify:
 7. generation pins survive a suspended frame and release after consumption;
 8. a continuation cannot be serialized into an image or durable Store fact;
 9. malformed action and slot references fail before dereferencing generated
-   pointers.
+   pointers;
+10. an action from another Machine or an expired drive epoch is rejected;
+11. the driver decodes canonical StepAction objects without recursively sending
+    to them.
 The public control surface and scheduler remain intentionally undecided after
 these tests pass.
