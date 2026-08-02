@@ -17,9 +17,9 @@ is currently implemented as:
 This record defines the behavior visible at those boundaries. Machine and
 StepAction cross the compiler/runtime boundary as Birnam Oops. Frame storage
 does not. [60B](60b-stackless-machine-and-frames.md) defines that object/storage
-boundary; the future ABI record will define the exact C signatures and helper
-layout after review of
-[60C](60c-stepmethod-calling-abi-options.md).
+boundary. [60C](60c-stepmethod-calling-abi-options.md) proposes reusing the
+existing Method calling shape and accessing private Frame state through a
+primitive-backed Machine protocol rather than a second native API.
 
 ## 2. S0 decisions
 
@@ -68,13 +68,13 @@ slot tracing rules are defined in 60B.
 ### StepMethod
 
 A StepMethod executes one bounded portion of the Machine's current Frame and
-returns one StepAction Oop to the Machine driver. The logical input includes the
-Machine Oop; the calling boundary selected after
-[60C](60c-stepmethod-calling-abi-options.md) may also pass a short-lived
-invocation token for efficient frame access, but it must not pass a Frame Oop or
-expose frame storage. Generated code accesses frame state through the private
-helper surface selected by that decision and must not retain a raw invocation
-token after returning.
+returns one StepAction Oop to the Machine driver. The calling contract proposed
+in [60C](60c-stepmethod-calling-abi-options.md) reuses the existing Method shape:
+Machine is the receiver, the initial driver call has zero ordinary arguments,
+and the result is the StepAction. Generated code accesses current Frame state
+through ordinary sends to a narrow synchronous, primitive-backed Machine
+protocol. It receives neither a Frame Oop, Frame pointer, nor raw invocation
+token.
 
 ### StepAction
 
@@ -93,10 +93,11 @@ opaque sink. A later Birnam implementation may replace those primitives without
 changing the fact that a StepMethod returns an Oop implementing the StepAction
 protocol.
 
-This ownership split is ABI-frozen for the stackless path: a future ABI record
-may version the physical payload, but it must not replace the returned Oop with
-a Rust-only enum, native handle, or action sink. Metacircular visibility does
-not require the irreducible outer driver to dispatch a message to the action.
+This ownership split is frozen for the stackless path: a future action-layout
+record may version the physical payload, but it must not replace the returned
+Oop with a Rust-only enum, native handle, or action sink. Metacircular
+visibility does not require the irreducible outer driver to dispatch a message
+to the action.
 
 The action operands are bounded raw slot indices, counts, delimiter identities,
 and other validated process-local handles; live language values remain in

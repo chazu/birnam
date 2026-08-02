@@ -3,8 +3,8 @@
 > **Status:** S0 representation and memory-safety record, proposed for
 > acceptance, revised 2026-08-01.
 > This document defines the Birnam-object/private-Rust-storage boundary required
-> by [60A](60a-stackless-execution-semantics.md). It does not freeze the public C
-> ABI; the decision following
+> by [60A](60a-stackless-execution-semantics.md). It does not freeze the
+> StepMethod calling contract; the decision following
 > [60C](60c-stepmethod-calling-abi-options.md) must preserve the boundary
 > described here.
 
@@ -30,8 +30,9 @@ Concretely:
 - ordinary message dispatch is not used to implement the driver's decoding of
   a StepAction, because that would recurse through the mechanism being driven.
 
-Generated native code receives the Machine Oop and uses a narrow helper surface
-to operate on its current private Frame:
+Generated native code receives the Machine Oop as its existing Method receiver
+and uses ordinary IdApi sends to a narrow, primitive-backed Machine protocol to
+operate on the current private Frame:
 
 - read and write the program counter;
 - read and write an Oop slot;
@@ -41,11 +42,11 @@ to operate on its current private Frame:
   ContinueAction Oop;
 - request the S3 suspension operation.
 
-The calling boundary selected after
-[60C](60c-stepmethod-calling-abi-options.md) may pass a short-lived invocation
-token to make frame access efficient. Generated code must never dereference a
-MachineState or Frame pointer directly, retain an invocation token after
-returning from its StepMethod, or pass an Oop pointer as an action operand.
+The calling contract proposed in
+[60C](60c-stepmethod-calling-abi-options.md) adds no invocation token, helper
+table, or separate native slot API. Generated code must never dereference a
+MachineState or Frame pointer directly or pass an Oop pointer as an action
+operand.
 
 This resolves the important distinction between an object protocol and a
 storage layout: generated code and Birnam code traffic in Oops while Rust
@@ -204,11 +205,11 @@ The remaining fields refer to slots and ranges, not borrowed pointers:
 | RestoreAction | continuation handle and supplied-value slot |
 | AbortAction | delimiter identity and failure/reason slot where applicable |
 
-The future ABI record defines the exact object layouts and their versioning.
-Whatever layout it chooses must use bounded integer operands and must not
-contain a pointer to a temporary argument array, a Frame pointer, or an
-unvalidated Oop. The ABI result remains an Oop, not a Rust enum, tagged C value,
-or opaque action sink.
+The future action-layout record defines the exact object layouts and their
+versioning. Whatever layout it chooses must use bounded integer operands and
+must not contain a pointer to a temporary argument array, a Frame pointer, or
+an unvalidated Oop. The StepMethod result remains an Oop, not a Rust enum,
+tagged C value, or opaque action sink.
 
 The canonical action vtables and field protocol are metacircularly visible.
 Birnam code can inspect an action's kind and operands through ordinary methods
@@ -377,10 +378,9 @@ capability and Frame generation. A view of a popped Frame or destroyed Machine
 answers a kinded staleFrameView failure; it never aliases a reused arena slot.
 
 Inspection does not return native function pointers, Frame addresses, arena
-addresses, invocation tokens, or mutable references to frame storage. It is
-owner-thread-only in the first implementation. FrameView's identity and read
-protocol are metacircularly visible even while its reads terminate in Rust
-primitives.
+addresses, or mutable references to frame storage. It is owner-thread-only in
+the first implementation. FrameView's identity and read protocol are
+metacircularly visible even while its reads terminate in Rust primitives.
 
 ## 11. Persistence boundary
 

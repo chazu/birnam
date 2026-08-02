@@ -8,7 +8,7 @@
 >
 > - [60a — Execution semantics](60a-stackless-execution-semantics.md)
 > - [60b — Machine, frames, and GC](60b-stackless-machine-and-frames.md)
-> - [60c — StepMethod calling ABI options](60c-stepmethod-calling-abi-options.md)
+> - [60c — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
 >
 > Future records will cover the remaining compiler/registration seam,
 > code-generation lifetime, host integration, and the acceptance matrix.
@@ -122,15 +122,17 @@ Defines the Birnam-object/private-Rust-storage boundary:
 
 This record is the memory-safety gate for S1 and S3.
 
-### 60C — StepMethod calling ABI options
+### 60C — StepMethod calling contract
 
-Presents four contrasting C calling boundaries, their floor/malleability split,
-their performance and compatibility tradeoffs, and the current non-binding lean.
-It is the human review surface for choosing the StepMethod ABI.
+Proposes reusing the existing Method ABI with Machine as receiver, zero initial
+arguments, and StepAction as result. It defines the floor/malleability split for
+the primitive-backed Machine protocol and defers stronger native interfaces
+until measurements justify them. It is the human review surface for accepting
+or rejecting that minimal calling contract.
 
 A later compiler/registration record will define resumable registration, sync
 adaptation, CFG lowering, liveness, block captures, source maps, and live/AOT
-parity against the chosen ABI.
+parity against the chosen calling contract.
 
 ### Future 60D — Lifetime and host integration
 
@@ -146,8 +148,9 @@ performance budgets, and release gates.
 
 ### S0 — Documentation and contract freeze
 
-Accept 60A and 60B. Review the alternatives in 60C, then record the chosen exact
-ABI. Establish synchronous benchmarks and current ABI fixtures.
+Accept 60A and 60B. Review the Method-shaped proposal in 60C, then record its
+acceptance or one semantic requirement it cannot express. Establish synchronous
+benchmarks and current ABI fixtures.
 
 ### S1 — Parallel machine substrate
 
@@ -184,7 +187,7 @@ durable continuation state as separately reviewed policy layers.
 Implementation may begin after S0 when all of the following are written down:
 
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
-- the exact StepMethod calling ABI selected after 60C review;
+- the exact StepMethod calling contract selected after 60C review;
 - the Machine Oop capability and private-Frame accessor boundary for generated
   native code;
 - registry generation, trace, and finalization rules for native-backed state;

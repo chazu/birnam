@@ -1,665 +1,531 @@
-# 60C — StepMethod Calling ABI Options
+# 60C — The StepMethod Calling Contract
 
-> **Status:** Request for comment, 2026-08-01. No ABI decision has been made.
-> This record presents four deliberately contrasting designs for external human
-> review. It records a current lean, not an accepted contract.
+> **Status:** Request for comment, revised 2026-08-01. No ABI decision has been
+> accepted. The current lean is to reuse the existing Method ABI without adding
+> a StepMethod-specific native API.
 
-## 1. Question
+## 1. Decision under review
 
-What C calling ABI should connect a native-compiled resumable StepMethod to the
-stackless Machine driver?
-
-The answer is difficult to reverse once independently compiled artifacts ship.
-It must preserve Birnam's small floor without turning the execution machinery
-into opaque Rust policy, and it must leave enough representation freedom for
-the runtime, compiler, and garbage collector to evolve.
-
-This record narrows only the StepMethod invocation and Frame-access boundary.
-Resumable method registration, complete artifact descriptors, compiler lowering,
-and host drive results remain separate decisions even where an option below
-places requirements on them.
-
-At a glance:
-
-- **Option A** optimizes for physical compatibility with the existing Method
-  shape.
-- **Option B** optimizes for the smallest conceptual interface.
-- **Option C** optimizes for generated-code throughput.
-- **Option D** optimizes for explicit authority and versioned evolution. It is
-  the current lean.
-
-## 2. Constitutional constraints
-
-The options are evaluated against the current architectural commitments:
-
-1. Birnam is a fully malleable live object environment. Object identities and
-   language protocols should remain inspectable and replaceable.
-2. The id floor is independently usable mechanism. Policy belongs in loadable
-   Birnam-visible layers where the bootstrap regress permits it.
-3. Source-loaded and binary-loaded methods must have the same semantics and
-   enter through the same registration and execution contracts.
-4. Machine and StepAction are first-class Birnam Oops. StepMethod returns a
-   StepAction Oop, not a Rust enum, C tagged union, or opaque action sink.
-5. Frame is private execution storage, not an Oop. A FrameView Oop may provide
-   read-only inspection, but generated execution never receives a Frame object.
-6. StepAction operands name rooted Frame slots. They never borrow Oop pointers,
-   temporary argument arrays, or Frame addresses.
-7. The outer driver must decode a canonical StepAction without sending a
-   message to perform that decoding. Ordinary dispatch is the operation the
-   driver is implementing; using it at the regress-breaking point would recurse.
-8. A StepMethod may allocate. Every Oop live across an allocation, synchronous
-   native call, or step return must first be stored in a traced Frame slot.
-9. The existing synchronous Method ABI remains supported. A language send from
-   resumable generated code must not assume its target will remain synchronous
-   after live replacement.
-10. New ABI surface is versioned. An old ABI is never silently reinterpreted as
-    a new one.
-
-The governing ownership rule is:
-
-> Birnam owns the object identity and protocol; Rust temporarily owns the
-> low-level storage and primitive operations behind it.
-
-The current Method ABI is:
+A StepMethod should use the already frozen Method function shape:
 
 ```c
 typedef Oop (*Method)(Oop receiver, const Oop *args, size_t count);
 ```
 
-The current `IdApi` is append-only and already broad. None of the options below
-requires adding StepMethod operations to `IdApi`; a separate versioned execution
-ABI can remain a narrower seam.
+The stackless driver gives that existing shape one narrow semantic contract:
+
+- `receiver` is the active Machine Oop;
+- `args` is an ordinary borrowed Oop argument buffer;
+- the initial driver invocation supplies no arguments, so `count` is zero; and
+- the result is one canonical StepAction Oop.
+
+The proposal does **not** add any of the following:
+
+- a `StepMethodV1` function-pointer shape;
+- a `BirnamStepInvocationV1` record;
+- a `BirnamStepApiV1` capability table;
+- an invocation lease disguised as an Oop;
+- a borrowed Frame pointer or execution window; or
+- stackless-specific entries in IdApi.
+
+StepMethod is therefore not a second native calling convention. It is a
+semantic role fulfilled by an ordinary Method entry. Registration metadata
+distinguishes synchronous Methods from resumable StepMethods and tells the
+driver how to interpret the returned Oop.
+
+This record narrows only that calling contract and the regress-breaking Machine
+protocol used by generated code. Complete artifact descriptors, compiler
+lowering, host drive results, and continuation representation remain separate
+decisions.
+
+## 2. Why start from Scheme's machine model
+
+The original Scheme interpreter avoids implementing guest recursion with host
+recursion. It models execution as a small register machine with an expression,
+environment, continuation link, program counter, and value register. Its
+`MLOOP` repeatedly invokes the microinstruction selected by the program counter.
+An instruction changes the registers and returns to that loop. A non-tail call
+explicitly saves a frame; return restores one.
+
+That design does not pass a versioned capability table to every instruction.
+The active machine state is already the instruction's context. The mechanism
+needed to proceed is the register protocol plus one outer dispatch loop.
+
+The corresponding Birnam concepts are:
+
+| Scheme interpreter | Birnam stackless runtime |
+|---|---|
+| register bank | Machine plus its current private Frame |
+| program counter | current Frame program counter and StepMethod |
+| continuation link | Machine frame chain |
+| microinstruction | StepMethod |
+| save and restore | CallAction and ReturnAction |
+| `MLOOP` | Rust Machine driver |
+
+Scheme's proper-tail-recursion requirement gives the semantic reason for this
+shape: a tail call does not create a redundant continuation when the existing
+continuation already has the required meaning. Racket's native primitive
+interface demonstrates a related implementation pattern: a primitive keeps its
+ordinary native calling convention and can return a deferred tail application
+to the outer evaluation loop.
+
+Birnam retains StepAction rather than copying Scheme's register mutation
+literally. That makes the requested transition an inspectable Birnam object and
+provides one uniform result for call, return, suspension, capture, restoration,
+and failure. It does not require a second function ABI.
+
+References:
+
+- [Scheme: An Interpreter for Extended Lambda Calculus](https://research.scheme.org/lambda-papers/lambda-papers-scheme-report.html),
+  especially sections 4.2, 5.1, and 5.2;
+- [R5RS proper tail recursion](https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html);
+  and
+- [Racket BC tail evaluation](https://docs.racket-lang.org/inside/Evaluation.html#%28part._.Tail_.Evaluation%29).
+
+## 3. Architectural constraints
+
+The contract is evaluated against the following commitments:
+
+1. Birnam is a fully malleable live object environment. Language identities and
+   protocols should remain inspectable and replaceable.
+2. The id floor is independently useful mechanism. Stackless execution must not
+   enlarge IdApi merely to make generated code convenient.
+3. Source-loaded and binary-loaded methods have the same semantics and enter
+   through the same registration and execution contracts.
+4. Machine and StepAction are first-class, process-local Birnam Oops.
+5. Frame is private execution storage, not an Oop. A FrameView Oop may support
+   inspection, but generated code receives neither a Frame nor a Frame pointer.
+6. StepAction operands name rooted Frame slots. They do not retain temporary
+   argument arrays, Oop pointers, or Frame addresses.
+7. A StepMethod may allocate. Oops live across allocation or step return remain
+   rooted in traced Frame slots.
+8. A resumable language send returns a CallAction or TailCallAction. Generated
+   code must not recursively enter an arbitrary target through IdApi.send and
+   assume that target will remain synchronous after live replacement.
+9. The outer driver directly validates and decodes canonical StepAction objects.
+   Sending a language message to interpret the action would recurse through the
+   operation the driver is implementing.
+10. No Rust panic, C unwind, or malformed native result crosses an unchecked
+    boundary.
+
+The governing ownership rule remains:
+
+> Birnam owns the object identity and protocol; Rust temporarily owns the
+> low-level storage and primitive operations behind it.
 
 Relevant prior records are:
 
-- [30 — The destination](30-the-destination.md), especially the five invariant
-  goals and frozen-floor/loadable-layer distinction;
-- [42 — Object canonical, relational derived](42-object-canonical-relational-derived.md),
-  especially raw floor mechanism versus the supported malleable MOP;
+- [30 — The destination](30-the-destination.md);
+- [42 — Object canonical, relational derived](42-object-canonical-relational-derived.md);
 - [60A — Execution semantics](60a-stackless-execution-semantics.md);
 - [60B — Machine, Frames, and GC](60b-stackless-machine-and-frames.md); and
 - the current [IdApi ABI evidence](../../abi/README.md).
 
-## 3. Shared requirements
+## 4. The calling contract
 
-Every acceptable design must arrange that:
+### 4.1 Entry
 
-- one invocation identifies exactly one active Machine and current Frame;
-- invocation-scoped native authority cannot be retained and used after return;
-- the driver can reject wrong-owner, stale, malformed, or wrong-Machine use;
-- Oop and raw Frame slots remain distinguishable;
-- writes preserve the collector's current and future barrier requirements;
-- program-counter and slot bounds are validated before Rust indexes storage;
-- exactly one StepAction Oop is returned;
-- no Rust panic or foreign unwind crosses the C boundary;
-- artifact metadata identifies the StepMethod ABI before registration;
-- live and AOT code use the same ABI;
-- synchronous Method and resumable StepMethod entries cannot be confused.
-
-The four options disagree over what the ABI should expose in order to meet those
-requirements.
-
-## 4. Option A — Reuse the Method-shaped ABI
-
-### Shape
-
-Keep the existing physical function shape and give its arguments a StepMethod-
-specific meaning:
+The driver resolves the current Frame's registered implementation entry and
+invokes it through the existing Method carrier:
 
 ```c
-typedef Oop (*StepMethodV1)(
-    Oop machine,
-    const Oop *control,
-    size_t control_count
-);
+Oop action = entry(machine, NULL, 0);
 ```
 
-For V1, `control_count` is one and `control[0]` is an ephemeral lease Oop. The
-lease identifies this invocation but is not a Frame or a public execution
-object. One checked primitive provides slot access:
+The null pointer is legal because the existing Method ABI permits a null
+argument buffer when `count` is zero. The source receiver, source arguments,
+locals, temporaries, and return destination are already in the current Frame;
+they are not repeated in the native argument buffer.
+
+The entry validates that:
+
+- `receiver` is a live Machine of the expected runtime;
+- `count` is zero for the initial contract; and
+- the Machine is actively driving the implementation and Frame described by
+  the registration record.
+
+Violation returns an AbortAction or another canonical failure Oop selected by
+the execution semantics. It must not panic or index Frame storage.
+
+### 4.2 Result
+
+The entry returns exactly one Oop implementing the canonical StepAction
+protocol. The driver validates its vtable, payload schema, owning Machine,
+generation, drive epoch, and slot operands before changing Machine state.
+
+The Method function type does not itself distinguish a synchronous value from a
+StepAction. Registration does. Invoking an address under the wrong semantic tag
+is malformed-artifact or runtime-corruption failure, just as invoking any
+foreign function under the wrong ABI contract would be.
+
+The function shape is not being overloaded with non-Oop control data. Receiver,
+arguments, and result retain their ordinary meanings. The additional rule is
+only that this registered method receives a Machine and returns a StepAction.
+
+### 4.3 Process IdApi
+
+Generated modules already receive and retain the process-owned IdApi during
+module initialization. A StepMethod uses that same IdApi for interning,
+small-integer conversion, allocation, and ordinary sends to the primitive-backed
+Machine protocol. The Machine driver does not pass another native API to each
+invocation.
+
+## 5. Machine as the register protocol
+
+Machine is the explicit semantic context of a StepMethod. Its current private
+Frame is analogous to the current register bank and continuation link in the
+Scheme interpreter.
+
+Generated code accesses that state through ordinary messages to Machine. The
+initial protocol needs operations in these categories:
+
+- inspect the current program counter;
+- load an Oop or raw value from a descriptor-validated Frame slot;
+- store an Oop or raw value into a descriptor-validated Frame slot;
+- publish Call, TailCall, Return, Continue, and Abort actions; and
+- later, publish suspension, capture, and restoration actions.
+
+The exact selector names and decomposition are not frozen by this record. S1
+must demonstrate the smallest useful protocol before those details are accepted.
+For example, S1 may find that action publication belongs on canonical action
+prototypes rather than Machine, or that the current program counter need not be
+exposed as a separate message.
+
+The protocol is metacircularly visible: Machine, selectors, StepAction
+prototypes, methods, and returned actions are all Birnam Oops. The initial
+implementations of the irreducible Frame operations are synchronous native
+methods installed by the stackless runtime layer. They are not new IdApi fields
+or separately negotiated C symbols.
+
+This is the stackless equivalent of Scheme's microcode. It is a deliberately
+small regress breaker beneath the visible protocol, not a second general-purpose
+runtime API.
+
+## 6. Which sends may occur inside a StepMethod
+
+There are two different operations that both appear as sends at source level:
+
+1. **Machine microcode sends** access the active Frame or publish a StepAction.
+   Their initial implementations are synchronous primitive methods. A
+   StepMethod may invoke them through IdApi.send and receive their result before
+   returning to the driver.
+2. **Language sends** invoke arbitrary user-replaceable behavior. A resumable
+   StepMethod does not invoke these recursively through IdApi.send. It stores
+   the receiver, selector, arguments, and live values in Frame slots and returns
+   CallAction or TailCallAction to the driver.
+
+The distinction is semantic and must be visible in compiler lowering. Treating
+every Machine micro-operation as a separate resumable language call would make
+one source step explode into many driver transitions. Treating every language
+send as a synchronous primitive call would preserve the native-stack problem
+the design exists to remove.
+
+The synchronous primitive implementation is temporary ownership of mechanism,
+not permanent ownership of language policy. Moving a Machine operation into
+Birnam later requires preserving a non-recursive regress path; it cannot be
+done merely by replacing a primitive with an arbitrary resumable method while a
+StepMethod is waiting synchronously for its result.
+
+That limitation should be explicit and small. It is the real malleability
+boundary to review, rather than hiding the same boundary inside a native
+capability table.
+
+## 7. Illustrative generated code
+
+This example uses local wrappers around the existing IdApi. Those wrappers are
+generated-C conveniences, not exported ABI:
 
 ```c
-enum BirnamStepSlotOperationV1 {
-    BIRNAM_STEP_SLOT_LOAD,
-    BIRNAM_STEP_SLOT_STORE
-};
+static IdApi *id;
 
-uint32_t birnam_step_slot_v1(
-    Oop machine,
-    Oop lease,
-    uint32_t operation,
-    uint32_t slot,
-    Oop *value_io
-);
-```
+static Oop send0(Oop receiver, Oop selector) {
+    return id->send(receiver, selector, NULL, 0);
+}
 
-One version of this option asks Machine, through ordinary messages, to construct
-the returned StepAction:
+static Oop send1(Oop receiver, Oop selector, Oop argument) {
+    Oop arguments[] = {argument};
+    return id->send(receiver, selector, arguments, 1);
+}
 
-```c
-Oop example_step(Oop machine, const Oop *control, size_t count) {
-    Oop lease = control[0];
-    Oop pc;
-    birnam_step_slot_v1(
-        machine, lease, BIRNAM_STEP_SLOT_LOAD, SLOT_PC, &pc
-    );
+static Oop send2(Oop receiver, Oop selector, Oop first, Oop second) {
+    Oop arguments[] = {first, second};
+    return id->send(receiver, selector, arguments, 2);
+}
 
-    if (birnam_small_integer_value(pc) == 0) {
-        Oop operands[] = {
-            lease,
-            birnam_small_integer(SLOT_RECEIVER),
-            birnam_small_integer(SLOT_SELECTOR),
-            birnam_small_integer(SLOT_RESULT)
-        };
-        return birnam_send(
-            machine, SELECTOR_CALL_USING_SLOTS, operands, 4
-        );
+Oop example_step(Oop machine, const Oop *arguments, size_t count) {
+    if (count != 0) {
+        return send0(machine, selector_abort_invalid_invocation);
     }
 
-    Oop operands[] = {
-        lease,
-        birnam_small_integer(SLOT_RESULT)
-    };
-    return birnam_send(
-        machine, SELECTOR_RETURN_USING_SLOT, operands, 2
-    );
-}
-```
-
-### What it hides
-
-Frame identity and layout remain private. The lease and slot primitive validate
-the dynamically current Frame. The existing Method function-pointer carrier can
-continue to hold either entry shape, provided registration metadata says which
-meaning applies.
-
-### Advantages
-
-- It introduces no second physical three-argument calling convention.
-- Existing C toolchains, loaders, and function-pointer carriers already support
-  the shape.
-- A single checked slot primitive is a very small native mechanism surface.
-- The lease makes invocation lifetime more explicit than a Machine-only design.
-- Source and binary lowering can reuse much existing generated-C scaffolding.
-
-### Liabilities
-
-- The control array is no longer a language argument array even though its type
-  says that it contains Oops.
-- A lease represented as an Oop gives object-shaped representation to a value
-  that intentionally has no language identity or protocol.
-- Method and StepMethod become physically indistinguishable. A missing or stale
-  registration tag can call an address under the wrong semantic contract.
-- Ordinary message sends for action construction create a regress. The selected
-  constructor must remain synchronous and atomic even if Birnam later replaces
-  it with resumable code.
-- Replacing those sends with native action helpers removes much of this option's
-  metacircular advantage and makes it converge toward Option B.
-- The meaning of `control` and `control_count` is difficult to extend without
-  accumulating conventions inside an API originally designed for arguments.
-
-### Principal review question
-
-Is physical reuse of Method valuable enough to justify giving the same C shape
-two unrelated semantic meanings?
-
-## 5. Option B — Machine is the sole capability
-
-### Shape
-
-Pass only the first-class Machine Oop:
-
-```c
-typedef Oop (*StepMethodV1)(Oop machine);
-```
-
-While StepMethod runs, Machine implicitly selects its current Frame. A small
-versioned helper surface provides Frame access and StepAction publication:
-
-```c
-uint32_t birnam_step_pc_v1(Oop machine);
-Oop birnam_step_load_oop_v1(Oop machine, uint32_t slot);
-void birnam_step_store_oop_v1(Oop machine, uint32_t slot, Oop value);
-
-Oop birnam_step_call_v1(
-    Oop machine,
-    uint32_t next_pc,
-    uint32_t receiver_slot,
-    uint32_t selector_slot,
-    uint32_t argument_start,
-    uint32_t argument_count,
-    uint32_t result_slot
-);
-
-Oop birnam_step_return_v1(Oop machine, uint32_t value_slot);
-Oop birnam_step_abort_v1(Oop machine, uint32_t failure);
-```
-
-Generated code is compact:
-
-```c
-Oop example_step(Oop machine) {
-    switch (birnam_step_pc_v1(machine)) {
+    Oop pc = send0(machine, selector_current_pc);
+    if (!id->isSmallInt(pc)) {
+        return send0(machine, selector_abort_invalid_pc);
+    }
+    switch (id->smallIntValue(pc)) {
     case 0:
-        return birnam_step_call_v1(
-            machine, 1,
-            SLOT_RECEIVER, SLOT_SELECTOR,
-            SLOT_ARGUMENTS, 1, SLOT_RESULT
+        return send2(
+            machine,
+            selector_call_using_descriptor,
+            id->mkSmallInt(CALL_SITE_0),
+            id->mkSmallInt(PC_AFTER_CALL_0)
         );
     case 1:
-        return birnam_step_return_v1(machine, SLOT_RESULT);
-    default:
-        return birnam_step_abort_v1(machine, INVALID_PC);
-    }
-}
-```
-
-The action helpers return Machine-selected StepAction Oops. They are primitive
-storage operations behind Birnam-owned identities and protocols, not hidden
-Rust action values.
-
-### What it hides
-
-Machine's native-backed payload resolves to MachineState. MachineState records
-which StepMethod invocation, Frame, descriptor, and epoch are dynamically
-active. Every helper validates that state before touching storage.
-
-### Advantages
-
-- It has the smallest and clearest StepMethod signature.
-- The only semantic argument and result are Birnam Oops.
-- No Frame, context layout, helper table, or lease becomes part of the calling
-  convention.
-- Rust retains complete freedom over Frame representation.
-- Typed action helpers are simple for generated C and return the agreed
-  metacircular objects.
-
-### Liabilities
-
-- Public Machine identity doubles as ambient authority over its dynamically
-  current Frame.
-- Invocation identity is real but implicit in MachineState. Helper correctness
-  depends on hidden dynamic state rather than an explicit borrowed capability.
-- A retained Machine Oop can be presented to a helper outside the StepMethod;
-  validation can reject it, but the signature does not make the misuse obvious.
-- Nested runtimes, instrumentation, tests, and future reentrancy must all agree
-  on what "Machine's current invocation" means.
-- Helper symbols themselves become a versioned ABI. Adding operations requires
-  new symbols or an additional negotiation mechanism.
-- A design that forbids GC inside StepMethod to simplify this state would be too
-  restrictive for Birnam and is not considered acceptable here.
-
-### Principal review question
-
-Is implicit dynamic activation a good example of a deep small-floor interface,
-or is it hidden ambient authority that should be represented explicitly?
-
-## 6. Option C — Borrowed execution window
-
-### Shape
-
-Give generated C a concrete, invocation-scoped view over Frame storage and a
-bank of reusable StepAction objects:
-
-```c
-typedef struct BirnamActionCellV1 {
-    uint64_t issue;
-    uint32_t next_pc;
-    uint32_t operands[6];
-} BirnamActionCellV1;
-
-typedef struct BirnamActionPortV1 {
-    Oop object;
-    BirnamActionCellV1 *cell;
-} BirnamActionPortV1;
-
-typedef struct BirnamActionBankV1 {
-    BirnamActionPortV1 call;
-    BirnamActionPortV1 tail_call;
-    BirnamActionPortV1 return_;
-    BirnamActionPortV1 continue_;
-    BirnamActionPortV1 abort;
-} BirnamActionBankV1;
-
-typedef struct BirnamStepWindowV1 {
-    uint32_t abi_version;
-    uint32_t byte_size;
-
-    Oop machine;
-    Oop *oop_slots;
-    uintptr_t *raw_slots;
-    uint32_t oop_slot_count;
-    uint32_t raw_slot_count;
-    uint32_t pc;
-
-    BirnamActionBankV1 *actions;
-    uint64_t issue;
-} BirnamStepWindowV1;
-
-typedef Oop (*StepMethodV1)(BirnamStepWindowV1 *window);
-```
-
-Header-only publishers fill the native-backed payload of a Machine-owned
-StepAction and return that action's Oop:
-
-```c
-static inline Oop birnam_step_call_v1(
-    BirnamStepWindowV1 *step,
-    uint32_t next_pc,
-    uint32_t receiver_slot,
-    uint32_t selector_slot,
-    uint32_t argument_start,
-    uint32_t argument_count,
-    uint32_t result_slot
-) {
-    BirnamActionPortV1 *port = &step->actions->call;
-    port->cell->next_pc = next_pc;
-    port->cell->operands[0] = receiver_slot;
-    port->cell->operands[1] = selector_slot;
-    port->cell->operands[2] = argument_start;
-    port->cell->operands[3] = argument_count;
-    port->cell->operands[4] = result_slot;
-    port->cell->issue = step->issue;
-    return port->object;
-}
-```
-
-Generated code directly reads slots and publishes actions:
-
-```c
-Oop example_step(BirnamStepWindowV1 *step) {
-    switch (step->pc) {
-    case 0:
-        return birnam_step_call_v1(
-            step, 1,
-            SLOT_RECEIVER, SLOT_SELECTOR,
-            SLOT_ARGUMENTS, 1, SLOT_RESULT
+        return send1(
+            machine,
+            selector_return_using_slot,
+            id->mkSmallInt(SLOT_RESULT)
         );
-    case 1:
-        return birnam_step_return_v1(step, SLOT_RESULT);
     default:
-        return birnam_step_abort_v1(step, INVALID_PC);
+        return send0(machine, selector_abort_invalid_pc);
     }
 }
 ```
 
-### What it hides
+The exact Machine selectors and operands are illustrative. In particular, an
+immutable call-site descriptor may be preferable to passing several slot
+indices on every transition. The point of the example is the boundary:
 
-The complete Rust MachineState and arena remain hidden, but Rust must present
-each invocation as contiguous Oop and raw slot banks with stable pointer
-lifetimes. The banks may alias Frame storage or be copied execution windows.
+- the function has the existing Method shape;
+- every native argument and result is an Oop;
+- only the existing IdApi is used; and
+- control returns to the outer driver as a StepAction Oop.
 
-### Advantages
+## 8. Driver responsibilities
 
-- It provides the shortest hot path: one StepMethod call, direct slot access,
-  inline action publication, and no per-slot helper calls.
-- It allocates no StepAction per transition.
-- Oop and raw slots are physically separated, making precise tracing simple.
-- The concrete view is easy for C compilers to optimize.
-- The issue cookie allows the driver to reject an action published by an older
-  invocation.
+The Rust Machine driver remains a small irreducible loop:
 
-### Liabilities
+1. validate the Machine state and current Frame;
+2. resolve the registered StepMethod entry from the Frame's implementation
+   identity;
+3. invoke that entry through the Method ABI with Machine and zero arguments;
+4. receive one Oop;
+5. directly validate and decode the canonical StepAction payload;
+6. update, push, pop, detach, or restore private Frame records;
+7. either stop with a host-visible drive result or repeat from step 1.
 
-- It freezes contiguous slot banks, pointer widths, action-cell layouts, action
-  bank ordering, and publication rules in V1.
-- Generated code can retain a borrowed pointer, index out of bounds, write the
-  wrong slot kind, or bypass a future GC write barrier. Native artifacts are
-  trusted, but the ABI makes mistakes easier to turn into memory corruption.
-- A moving collector, compressed Oops, segmented frames, or different slot
-  representation may require copying windows or a new ABI.
-- The action objects remain metacircularly visible, but their storage shape is
-  substantially more native-visible than in the other options.
-- The performance benefit is assumed rather than measured against a checked
-  helper design.
+The driver does not send `execute`, `apply`, or another ordinary message to the
+returned action. That direct decoding is the bottom of dispatch and therefore
+the intentional regress breaker.
 
-### Principal review question
+The driver also owns adaptation of existing synchronous Methods. When a
+CallAction resolves to a synchronous Method, it may invoke that Method using the
+ordinary receiver and argument buffer assembled from rooted Frame slots, store
+the returned value, and continue. When it resolves to a StepMethod, it pushes or
+replaces a resumable Frame instead.
 
-Is contiguous borrowed Frame storage a representation Birnam is willing to
-freeze permanently for an unmeasured hot-path advantage?
+## 9. Frame access, lifetime, and trust
 
-## 7. Option D — Explicit invocation plus typed capability table
+No lease is passed to StepMethod. Machine validates that a drive is active and
+selects its current Frame. Every Machine microcode method validates slot kinds,
+bounds, implementation identity, and current drive epoch before touching
+storage.
 
-### Shape
+A lease would improve diagnostics for accidental stale use, but it would not
+create a security boundary. A loaded native artifact already executes trusted
+machine code and can retain Oops, call arbitrary symbols, or corrupt process
+memory. The design should not permanently enlarge the ABI to simulate memory
+safety against code that already has native authority.
 
-Pass Machine as the semantic object and a versioned, invocation-scoped record as
-the private execution capability:
+Machine and action epoch checks still catch ordinary runtime mistakes:
 
-```c
-typedef struct BirnamStepInvocationV1 BirnamStepInvocationV1;
-typedef struct BirnamStepApiV1 BirnamStepApiV1;
+- invoking a StepMethod when its Machine is not driving;
+- returning an action from another Machine;
+- returning an action issued in an earlier epoch;
+- naming a slot of the wrong kind; and
+- naming a call site or program counter outside the registered descriptor.
 
-struct BirnamStepInvocationV1 {
-    uint32_t abi_version;
-    uint32_t byte_size;
-    uint64_t activation;
-    const BirnamStepApiV1 *api;
-};
+If later evidence demonstrates that invocation identity is independently useful
+to Birnam programs, it should become a genuine process-local Birnam object with
+identity and protocol. It should not be introduced preemptively as an opaque
+native token or an object-shaped lease with no language meaning.
 
-typedef Oop (*StepMethodV1)(
-    Oop machine,
-    const BirnamStepInvocationV1 *invocation
-);
-```
+## 10. GC and rooting
 
-`activation` is a raw, checked token. It is not an Oop, Frame pointer, or public
-language capability. The record is borrowed only for the dynamic StepMethod
-call.
+The calling contract does not impose a no-allocation or no-GC region.
 
-The table exposes typed primitive mechanisms:
+- Oops representing receiver, arguments, locals, selectors, temporaries, and
+  results remain in descriptor-traced Frame slots while live.
+- A Machine store primitive must root its incoming Oop before any operation that
+  can collect.
+- Generated code must store a newly produced Oop in a traced slot before another
+  operation that may allocate unless the ordinary Method/send rooting contract
+  already covers that dynamic extent.
+- Temporary C argument arrays are borrowed only for the synchronous IdApi.send
+  that receives them. They never appear in StepAction or Frame state.
+- Returned StepAction Oops are traced through Machine-owned scratch roots or
+  another root established before generated code can allocate them.
 
-```c
-struct BirnamStepApiV1 {
-    uint32_t abi_version;
-    uint32_t byte_size;
+S1 must force collection at each Machine protocol boundary. Passing a normal
+execution test is not evidence that the roots are correct.
 
-    uint32_t (*pc)(const BirnamStepInvocationV1 *);
+## 11. What is and is not frozen
 
-    uint32_t (*load_oop)(
-        const BirnamStepInvocationV1 *, uint32_t slot, Oop *result
-    );
-    uint32_t (*store_oop)(
-        const BirnamStepInvocationV1 *, uint32_t slot, Oop value
-    );
-    uint32_t (*load_raw)(
-        const BirnamStepInvocationV1 *, uint32_t slot, uintptr_t *result
-    );
-    uint32_t (*store_raw)(
-        const BirnamStepInvocationV1 *, uint32_t slot, uintptr_t value
-    );
+If accepted, this record freezes only:
 
-    Oop (*call)(
-        const BirnamStepInvocationV1 *,
-        uint32_t next_pc,
-        uint32_t receiver_slot,
-        uint32_t selector_slot,
-        uint32_t argument_start,
-        uint32_t argument_count,
-        uint32_t result_slot
-    );
-    Oop (*tail_call)(const BirnamStepInvocationV1 *, /* slot operands */);
-    Oop (*return_)(const BirnamStepInvocationV1 *, uint32_t value_slot);
-    Oop (*continue_)(const BirnamStepInvocationV1 *, uint32_t next_pc);
-    Oop (*abort)(const BirnamStepInvocationV1 *, uint32_t failure);
-};
-```
+- StepMethod uses the existing Method function shape;
+- the driver invokes it with Machine as receiver and an ordinary argument
+  buffer;
+- the initial driver contract uses zero arguments;
+- registration distinguishes synchronous Method from StepMethod; and
+- StepMethod returns one canonical StepAction Oop.
 
-These signatures illustrate the typed operation boundary; they do not decide
-the failure channel. In particular, reviewers must still choose whether PC and
-slot failures return status immediately, latch a driver failure on the
-invocation, or use a combination of both.
+It does not freeze:
 
-Later operations can be appended when `byte_size` and declared feature bits say
-they are available. An incompatible interpretation receives a coexisting V2;
-V1 is never changed in place.
+- Frame layout or arena representation;
+- Machine payload layout;
+- Machine selector names;
+- the number or decomposition of Machine microcode methods;
+- StepAction allocation versus per-Machine scratch reuse;
+- call-site descriptor layout;
+- compiler IR or generated-C helper names;
+- a direct-slot optimized tier; or
+- suspension and continuation policy beyond the semantics already accepted in
+  60A and 60B.
 
-Generated code is explicit without seeing Frame storage:
+Reusing Method is conservative because that ABI is already frozen. The new
+one-way commitment is the semantic registration tag and returned-StepAction
+contract, not another native layout.
 
-```c
-Oop example_step(
-    Oop machine,
-    const BirnamStepInvocationV1 *invocation
-) {
-    const BirnamStepApiV1 *api = invocation->api;
+## 12. Benefits and costs
 
-    switch (api->pc(invocation)) {
-    case 0:
-        return api->call(
-            invocation, 1,
-            SLOT_RECEIVER, SLOT_SELECTOR,
-            SLOT_ARGUMENTS, 1, SLOT_RESULT
-        );
-    case 1:
-        return api->return_(invocation, SLOT_RESULT);
-    default:
-        return api->abort(invocation, INVALID_PC);
-    }
-}
-```
+### Benefits
 
-Typed action publishers obtain and populate the Machine's current canonical
-StepAction Oops. The Oops, their vtables, their methods, and their reflective
-protocol remain Birnam-owned. The table operation is only the primitive storage
-and regress-breaking transition beneath that protocol.
+- IdApi and the independently useful id floor do not grow.
+- Existing module initialization, loader machinery, function-pointer storage,
+  and generated-C scaffolding remain applicable.
+- Machine and StepAction are the only semantic objects at the call boundary.
+- Frame representation, GC barriers, and arena strategy remain private.
+- The runtime resembles the well-understood Scheme register-machine and
+  trampoline model.
+- Metacircular visibility is concentrated in ordinary Birnam objects and
+  protocols rather than mirrored in a second C interface.
+- Future performance work can optimize an observed bottleneck without making
+  the optimization the initial semantic contract.
 
-### What it hides
+### Costs
 
-The activation token resolves to the current Frame and descriptor only inside
-Rust. Generated code cannot inspect the token or derive a Frame address. The
-table can be implemented by different runtime tiers while preserving the same
-StepMethod artifact.
+- Machine microcode messages pay normal dispatch overhead unless later compiler
+  evidence justifies a compatible optimization.
+- Some primitive-backed Machine operations must remain synchronous at the
+  regress boundary.
+- Machine's current Frame is dynamic state rather than an explicit invocation
+  capability.
+- Method and StepMethod share a physical function-pointer type, so artifact
+  validation and registration tags must be correct.
+- Native code is trusted; Machine and epoch checks improve correctness but do
+  not sandbox a malicious artifact.
 
-### Advantages
+These costs are visible and testable. None requires a second permanent API
+before S1 demonstrates the execution path.
 
-- Semantic object authority and native storage authority are visibly separate:
-  Machine is an Oop; invocation is a borrowed mechanism capability.
-- No hidden thread-local "current Frame" is required.
-- Frame layout, arena strategy, GC barriers, and validation remain private.
-- Version and size fields support append-only growth and pre-invocation
-  compatibility checks.
-- A runtime, test harness, instrumented driver, or future implementation tier can
-  supply a different operation table without changing generated code.
-- Typed operations are easier to validate and document than a generic opcode and
-  byte-packet portal.
-- It does not add stackless-specific fields to the independently useful IdApi.
+## 13. Deferred and rejected alternatives
 
-### Liabilities
+### 13.1 Method shape plus lease and slot helper
 
-- The signature and two C-layout records become new permanent ABI surface.
-- Slot access and action publication involve indirect native calls unless the
-  compiler/runtime later establishes a compatible fast path.
-- A large table can become a shallow grab bag. Only irreducible Frame and action-
-  publication mechanisms belong here.
-- The table itself is native mechanism, not a Birnam object. Its operation
-  identities and signatures are not live-malleable inside V1.
-- Version negotiation, status behavior, and feature requirements add explicit
-  machinery that Options A and B initially avoid.
+The former Option A reused Method physically but changed `args` into a control
+array containing an ephemeral lease and introduced a separate slot helper.
+That design is not the current proposal. It made ordinary arguments carry
+non-language control meaning and created object-shaped identity for a value
+that intentionally had no Birnam protocol.
 
-### Principal review question
+If an invocation object becomes semantically useful later, it should be a real
+Birnam object passed as an ordinary argument.
 
-Does the explicit activation boundary buy enough correctness and evolution room
-to justify a second small versioned API beside IdApi?
+### 13.2 Dedicated Machine-only function shape
 
-## 8. Comparison
+The former Option B used `Oop (*StepMethod)(Oop machine)`. It is conceptually
+close to the current proposal but physically unnecessary. The existing Method
+shape already expresses a Machine receiver and zero arguments, avoids another
+function-pointer type, and preserves established loader behavior.
 
-Option A minimizes change to the existing loader and function-pointer shape, but
-it does so by overloading the meaning of a language argument ABI. It appears
-especially attractive if physical compatibility is the dominant constraint.
-Its weakest point is action construction: ordinary sends are maximally visible
-but require a synchronous regress breaker, while native constructors make the
-design less distinct from Option B.
+### 13.3 Borrowed execution window
 
-Option B has the simplest interface. It treats Machine as a deep object hiding
-all execution state, which is idiomatic Birnam. Its cost is that the private
-invocation capability has not disappeared; it has become dynamic ambient state.
-The decision turns on whether that implicit authority is elegant encapsulation
-or avoidable hidden coupling.
+The former Option C exposed direct slot banks and reusable action cells. It
+remains a possible optimized execution tier only if measurements show that
+ordinary Machine protocol sends violate an accepted overhead budget. It must
+not be selected speculatively because it freezes Frame contiguity, pointer
+lifetime, write-barrier behavior, and action payload representation.
 
-Option C is the performance leader by construction. It is also the largest
-one-way representation commitment. It should win only if measurements show that
-checked slot operations materially violate the agreed stackless overhead budget
-and if the project is willing to keep a V1 direct-window tier indefinitely.
+Any future fast tier must preserve the Method-shaped semantic entry or be
+registered as an explicitly different optional optimization. Failure to support
+that tier must fall back to the ordinary Machine protocol, not reject otherwise
+valid source or artifacts.
 
-Option D exposes more mechanism than Option B but less representation than
-Option C. Its interface is deeper than a generic operation portal because each
-typed operation hides validation, rooting, barrier, and storage policy. Its main
-risk is designing too much API before the compiler demonstrates which operations
-are actually necessary.
+### 13.4 Invocation record and capability table
 
-All four can preserve source/binary parity and return StepAction Oops. None is
-made metacircular merely by having more sends. Metacircularity comes from keeping
-Machine, StepAction, descriptors, compiler lowering, and control policy in the
-object environment while minimizing the native regress breaker.
+The former Option D introduced a borrowed invocation record and versioned table
+of frame and action operations. It is rejected as the current direction because
+it creates a second permanent native substrate beside IdApi before the need for
+one is demonstrated. The table's functions are less visible and less malleable
+than ordinary Machine protocol methods, while solving lifetime and authority
+problems that trusted native code can already bypass.
 
-## 9. Current lean
+If a future non-native or sandboxed artifact format changes the trust model,
+that format can define its own checked boundary. It should not determine the
+initial trusted-native StepMethod ABI.
 
-The current lean is **Option D: explicit invocation plus a typed capability
-table**, with the following constraints:
+### 13.5 Mutate Machine and return no action
 
-1. The table is separate from IdApi and contains only execution mechanisms.
-2. It uses typed functions, not one generic `transact(opcode, bytes)` portal.
-3. Machine and StepAction remain the only semantic objects crossing the call.
-4. The invocation record is borrowed, opaque in meaning, and invalid after
-   StepMethod returns.
-5. Typed action publishers return Machine-selected, Birnam-visible StepAction
-   Oops; they do not return native action values.
-6. A StepMethod may allocate. The liveness rule is enforced through traced
-   Frame slots rather than a no-GC restriction.
-7. Resumable generated language sends return CallAction rather than recursively
-   calling IdApi.send. This preserves replacement between synchronous and
-   resumable implementations.
-8. V1 starts with only the operations required by an S1 hand-written StepMethod.
-   S3 operations are appended only after S1/S2 evidence.
+The original Scheme microinstructions mutate the program counter and return to
+`MLOOP`. Birnam could copy that literally and use `nil` or Machine as the return
+value. This is not preferred because StepAction already gives control transfer
+Birnam identity, protocol, inspection, and a uniform extension point for
+suspension and continuations. Returning a StepAction is a small semantic cost
+with substantial metacircular value.
 
-This lean prefers a narrow explicit authority boundary over both hidden dynamic
-state and exposed Frame storage. It is not yet a decision because its expected
-helper-call cost has not been measured and its smallest sufficient operation set
-has not been demonstrated.
+## 14. Evidence required before acceptance
 
-Option B is the strongest alternative if reviewers value conceptual minimalism
-over explicit invocation authority. Option C should remain available as a later
-optimized execution tier if measurement justifies its stronger representation
-commitments. Option A is least favored because physical signature reuse does not
-remove the semantic need to distinguish the entry kinds.
+S1 should implement one hand-written StepMethod using only:
 
-## 10. Evidence requested before decision
+- the existing Method ABI;
+- the process-owned IdApi;
+- Machine protocol sends; and
+- canonical StepAction Oops.
 
-Before freezing an ABI, build throwaway, non-shipping probes for Options B, C,
-and D that execute the same hand-written StepMethod and report:
+The probe must demonstrate:
 
-- native stack movement across at least one million tail transitions;
-- nanoseconds per Continue, Call/Return pair, and synchronous-leaf adaptation;
-- number of indirect/helper calls per transition;
-- forced-GC behavior with live Oops in Frame slots;
-- malformed slot/action rejection behavior;
-- generated C size and readability;
-- whether the same fixture can be registered from both live and AOT artifacts.
+1. at least one million tail transitions without native stack growth;
+2. a resumable CallAction and ReturnAction pair;
+3. adaptation to an existing synchronous Method;
+4. forced GC with live Oops in every relevant Frame slot;
+5. rejection of nonzero driver argument count;
+6. rejection of wrong-Machine, stale-epoch, malformed-action, invalid-PC, and
+   wrong-slot-kind cases;
+7. identical registration from live and AOT artifacts; and
+8. generated C that uses no stackless-specific native symbols.
 
-Option A needs a probe only if a reviewer argues that physical Method-shape reuse
-is itself a decisive compatibility advantage.
+Measure:
 
-Benchmarks should compare against the current Rust synchronous Method floor. A
-stackless design is not assumed faster; it must make its control and
-continuation benefits affordable.
+- nanoseconds per Continue transition;
+- nanoseconds per Call/Return pair;
+- Machine protocol sends per source-level step;
+- time spent in ordinary dispatch versus driver validation; and
+- allocation caused by action construction.
 
-## 11. Questions for reviewers
+Only if those measurements fail an agreed budget should S1 prototype a direct
+slot or specialized action-publication optimization. The baseline semantics
+remain the Method-shaped contract.
 
-Reviewers are asked to answer:
+## 15. Questions for reviewers
 
-1. Which option best expresses Birnam's floor-versus-malleable-layer boundary?
-2. Is an invocation capability meaningfully different from a Frame handle, and
-   is that distinction clear enough in Option D?
-3. Should Machine alone be sufficient authority, or should every StepMethod call
-   carry a distinct activation token?
-4. Is direct slot access an acceptable permanent ABI tier?
-5. Should core action publication use typed functions or one generic
-   `publish(action, operands)` primitive?
-6. Which helper failures are compiler/runtime invariants, and which must become
-   recoverable typed driver failures?
-7. What measured overhead would justify choosing Option C over D?
-8. Which aspects of StepMethod execution must be observable or replaceable from
-   Birnam on day one, rather than merely reflected and movable later?
+Review should now focus on the smaller set of real decisions:
 
-The requested review outcome is a preferred option, any unacceptable one-way
-commitments, and the minimum evidence needed to accept or reject the current
-lean.
+1. Is zero arguments the correct permanent driver convention, or should a
+   StepMethod be allowed descriptor-declared ordinary Oop arguments?
+2. What is the minimum Machine microcode protocol needed by the S1 hand-written
+   method?
+3. Should action publication be protocol on Machine, canonical StepAction
+   prototypes, or immutable call-site descriptors?
+4. How should primitive-backed synchronous Machine methods be identified so the
+   compiler cannot mistake an arbitrary resumable send for microcode?
+5. Should the driver invoke the registered Method pointer directly, or should
+   current implementation selection itself be an object-visible dispatch step?
+6. What measured dispatch overhead would justify an optional fast tier?
+7. Which parts of Machine policy must be replaceable on day one, and which
+   primitive storage operations are acceptable under the governing ownership
+   rule?
+
+The requested review outcome is either acceptance of the Method-shaped baseline
+or one concrete semantic requirement that the existing Method ABI cannot
+express. Convenience for native implementation is not, by itself, sufficient
+reason to grow the language floor.
