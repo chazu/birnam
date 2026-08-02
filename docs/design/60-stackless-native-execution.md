@@ -9,6 +9,7 @@
 > - [60a — Execution semantics](60a-stackless-execution-semantics.md)
 > - [60b — Machine, frames, and GC](60b-stackless-machine-and-frames.md)
 > - [60c — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
+> - [60d — Concurrency fit and boundaries](60d-stackless-concurrency-fit.md)
 >
 > Future records will cover the remaining compiler/registration seam,
 > code-generation lifetime, host integration, and the acceptance matrix.
@@ -134,12 +135,23 @@ A later compiler/registration record will define resumable registration, sync
 adaptation, CFG lowering, liveness, block captures, source maps, and live/AOT
 parity against the chosen calling contract.
 
-### Future 60D — Lifetime and host integration
+### 60D — Concurrency fit and boundaries
+
+Defines how owner-thread Machines compose with a cooperative reactor and
+process isolates. It makes StepAction boundaries the scheduling safe points,
+requires short MachineState borrows across generated code and callbacks, and
+records the limits on work stealing and shared-runtime parallelism.
+
+This record is the concurrency-compatibility gate for S1 and later scheduler
+work. It does not select a scheduler or reopen the reactor/isolate decisions in
+Design 48.
+
+### Future 60E — Lifetime and host integration
 
 Will define TCC/AOT code pinning, live replacement, host drive/suspend/resume,
 image rejection, and recovery behavior.
 
-### Future 60E — Acceptance and rollout
+### Future 60F — Acceptance and rollout
 
 Will define the implementation slices, compatibility matrix, stack bounds,
 performance budgets, and release gates.
@@ -192,6 +204,7 @@ Implementation may begin after S0 when all of the following are written down:
   native code;
 - registry generation, trace, and finalization rules for native-backed state;
 - machine/fiber owner-thread and reentrancy rules;
+- short-borrow and exclusive-drive rules from 60D;
 - capture legality and native/FFI barrier behavior;
 - frame slot, trace-hook, and scoped-root invariants;
 - code-generation pinning and restored-generation dispatch;

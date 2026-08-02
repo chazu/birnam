@@ -296,7 +296,8 @@ A resumable step has one rule for Oop liveness: an Oop that may be live across
 an allocation, synchronous Method call, or step return must already be in a
 descriptor-marked frame slot.
 
-The compiler and helper API must not leave an Oop only in a C local across:
+The compiler and Machine protocol must not leave an Oop only in a C local
+across:
 
 - birnam allocation;
 - a call to a synchronous Method;
