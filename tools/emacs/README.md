@@ -34,15 +34,25 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
   `let x := …` binds a name that persists across lines, and multi-line forms
   continue until the brackets balance. Commands: `:help`, `:globals`, `:quit`.
 - **lsp-mode** — when lsp-mode is installed, Birnam buffers start the bundled
-  `birnam --lsp` client automatically. Set `birnam-lsp-automatic-start` to nil
-  to make startup manual with `M-x birnam-lsp-start`. The nearest
-  `birnam.toml` is used as the project root, including when Emacs was launched
-  from another directory. The server provides project navigation, hover,
-  references, completion, and signature help across authored dependencies.
+  `birnam --lsp` client automatically, via `lsp-deferred` so a `.birnam` file
+  opened invisibly (a grep hit, a project search) does not spawn a server
+  until it is shown. Set `birnam-lsp-automatic-start` to nil to make startup
+  manual with `M-x birnam-lsp-start`. The nearest `birnam.toml` is used as the
+  project root, including when Emacs was launched from another directory:
+  `birnam-mode` registers Birnam projects with `project.el` and sets
+  `lsp-auto-guess-root` buffer-locally, so lsp-mode resolves the root instead
+  of prompting. The server provides project navigation, hover, references,
+  completion, and signature help across authored dependencies.
 - **Project commands** — `birnam-check-project`, `birnam-build-project`,
   `birnam-run-project`, and `birnam-test-project` use the nearest project root
   and show standard output in `compilation-mode`. Build, run, and test use
-  `birnam-project-profile` (`debug` by default, or `release`).
+  `birnam-project-profile` (`debug` by default, or `release`). Run and test
+  pass `--build` so they never fail on a stale or absent artifact manifest,
+  and run also passes `--no-repl` — a compilation buffer has no terminal, so
+  a project with `run.repl = "tty"` would otherwise stall there; use
+  `run-birnam` for an interactive REPL. Diagnostics are printed as
+  `path:line:column: compileFailed: message`, which `compilation-mode`'s
+  built-in GNU rule already turns into clickable locations.
 
 ## Keys
 
@@ -60,7 +70,15 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 
 `eval-region`/`eval-buffer` send the text to the REPL verbatim (the REPL
 accumulates multi-line forms until brackets balance); `eval-line` sends the
-current line as one expression. The integration tests run with the repository's
-Rust verification task and use a small lsp-mode API stub, so they do not require
-the package to be installed to validate client registration and project-root
-behavior.
+current line as one expression.
+
+## Tests
+
+```sh
+mise run emacs-test            # or: bash scripts/emacs-test.sh
+BIRNAM_EMACS=/path/to/emacs mise run emacs-test
+```
+
+The ERT suite uses a small lsp-mode API stub, so it does not require the
+package to be installed to validate client registration, project-root
+resolution, and the project command lines.

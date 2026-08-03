@@ -6,6 +6,31 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
+## [Unreleased]
+
+### Fixed
+
+- **Emacs `birnam-mode` project commands** (0.4.0): `birnam-run-project` and
+  `birnam-test-project` now pass `--build`, so they no longer fail on a stale
+  or absent artifact manifest; `birnam-run-project` also passes `--no-repl`,
+  because a compilation buffer has no terminal to host a project whose
+  manifest sets `run.repl = "tty"`.
+- **Emacs lsp-mode startup is deferred.** `birnam-lsp-start` now goes through
+  `lsp-deferred` when lsp-mode provides it, so a `.birnam` file opened
+  invisibly by a grep or project search no longer spawns a language server
+  from the major-mode hook. Project rooting moved from a `let'-bound
+  `default-directory` — which could not survive deferral — to a buffer-local
+  `lsp-auto-guess-root` resolved through the `project.el` integration
+  `birnam-mode` already installs.
+- `birnam-mode.el` byte-compiles without warnings: the lazily loaded lsp-mode
+  functions are declared, and `lsp-language-id-configuration` is declared
+  special without a value so this file never shadows lsp-mode's default.
+
+### Added
+
+- `mise run emacs-test` runs the `birnam-mode` ERT suite
+  (`scripts/emacs-test.sh`), which previously had no task wiring.
+
 ## [0.12.0] — 2026-07-29
 
 ### Changed

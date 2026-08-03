@@ -45,6 +45,10 @@ run = "bash scripts/rust-store-stack-smoke.sh"
 description = "Exercise the Rust-host project workflow"
 run = "bash scripts/rust-project-check-smoke.sh"
 
+[tasks.emacs-test]
+description = "Run the birnam-mode ERT suite (set BIRNAM_EMACS to pick an Emacs)"
+run = "bash scripts/emacs-test.sh"
+
 [tasks.verify]
 description = "Run the Rust source-build, publication, cold-archive, and relocation gate"
 run = "bash scripts/rust-cutover-verify.sh"

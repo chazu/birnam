@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.3.0
+;; Version: 0.4.0
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -305,15 +305,17 @@ DIRECTORY defaults to the current buffer's directory and then
   (file-name-as-directory
    (expand-file-name (or (birnam--project-root) default-directory))))
 
-(defun birnam--compile-project (subcommand &optional use-profile)
+(defun birnam--compile-project (subcommand &optional use-profile extra-args)
   "Run Birnam SUBCOMMAND for the current project in compilation-mode.
-When USE-PROFILE is non-nil, pass `birnam-project-profile'."
+When USE-PROFILE is non-nil, pass `birnam-project-profile'.  EXTRA-ARGS
+is a list of additional arguments appended after the profile."
   (let* ((root (birnam--workspace-directory))
          (default-directory root)
          (command (mapconcat #'shell-quote-argument
                              (append (list birnam-program subcommand root)
                                      (when use-profile
-                                       (list "--profile" birnam-project-profile)))
+                                       (list "--profile" birnam-project-profile))
+                                     extra-args)
                              " ")))
     (compile command)))
 
@@ -331,15 +333,20 @@ When USE-PROFILE is non-nil, pass `birnam-project-profile'."
 
 ;;;###autoload
 (defun birnam-run-project ()
-  "Run the current project with `birnam run' in compilation-mode."
+  "Run the current project with `birnam run' in compilation-mode.
+`--build' is passed so an unbuilt or stale project is built first
+rather than failing on a missing artifact manifest, and `--no-repl'
+because a compilation buffer has no terminal to host the project's
+`run.repl' session.  Use `run-birnam' for an interactive REPL."
   (interactive)
-  (birnam--compile-project "run" t))
+  (birnam--compile-project "run" t '("--build" "--no-repl")))
 
 ;;;###autoload
 (defun birnam-test-project ()
-  "Run isolated project tests with `birnam test' in compilation-mode."
+  "Run isolated project tests with `birnam test' in compilation-mode.
+`--build' is passed so the tests run against current sources."
   (interactive)
-  (birnam--compile-project "test" t))
+  (birnam--compile-project "test" t '("--build")))
 
 ;;;; lsp-mode ------------------------------------------------------------
 
@@ -348,6 +355,16 @@ When USE-PROFILE is non-nil, pass `birnam-project-profile'."
 ;; load so the temporary root binding below is valid in either load order.
 (defvar lsp-auto-guess-root nil
   "Whether lsp-mode should infer a project root when none is configured.")
+
+;; Declared without a value on purpose: lsp-mode owns the default, and giving
+;; one here would leave it nil when this file happens to load first.
+(defvar lsp-language-id-configuration)
+
+(declare-function lsp "lsp-mode" (&optional arg))
+(declare-function lsp-deferred "lsp-mode" ())
+(declare-function lsp-register-client "lsp-mode" (client))
+(declare-function make-lsp-client "lsp-mode" (&rest args))
+(declare-function lsp-stdio-connection "lsp-mode" (command &optional test-command))
 
 (defun birnam--lsp-activate (_filename mode)
   "Activate the Birnam lsp-mode client only for `birnam-mode'."
@@ -376,14 +393,25 @@ When USE-PROFILE is non-nil, pass `birnam-project-profile'."
 
 ;;;###autoload
 (defun birnam-lsp-start ()
-  "Start lsp-mode for the current Birnam buffer."
+  "Start lsp-mode for the current Birnam buffer.
+
+The workspace is the nearest `birnam.toml': `birnam--project-try'
+teaches `project.el' about Birnam projects, and `lsp-auto-guess-root'
+is set buffer-locally so lsp-mode consults that instead of prompting,
+including when Emacs was launched from another directory.
+
+Startup goes through `lsp-deferred' when lsp-mode provides it, so a
+Birnam file opened invisibly — by a grep, a project search, or a
+`dired' preview — does not spawn a server until the buffer is shown."
   (interactive)
   (unless (fboundp 'lsp)
     (user-error "lsp-mode is not installed or loaded"))
   (birnam--register-lsp-client)
-  (let ((default-directory (birnam--workspace-directory))
-        (lsp-auto-guess-root t))
-    (lsp)))
+  (setq-local lsp-auto-guess-root t)
+  (if (fboundp 'lsp-deferred)
+      (lsp-deferred)
+    (let ((default-directory (birnam--workspace-directory)))
+      (lsp))))
 
 (defun birnam--maybe-start-lsp ()
   "Start lsp-mode when configured and available."
