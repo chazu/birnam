@@ -201,3 +201,17 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   let binary := [o ~~ 1];
   [t expect: [binary isError] equals: true describes: "binary send errors"];
   [t expect: [[binary kind] printString] equals: "#doesNotUnderstand" describes: "binary is the same kind"]]];
+
+// Runtime method installation derives the trampoline's arity from the selector.
+// A binary operator carries no colons, so counting colons alone read `#|>` as
+// unary and handed its two-parameter block a `value:` — every binary method
+// defined outside an AOT artifact answered #doesNotUnderstand instead of
+// running. Only the from-source path was affected, which is why stdlib's own
+// `|>` worked while an override of it could not.
+[s test: "a binary operator can be defined at runtime, not only ahead of time" do: [:t |
+  let p := [Object clone];
+  [Reflect defineMethod: #@@ on: p as: [:self :other | [other + 1]]];
+  [t expect: [p @@ 41] equals: 42 describes: "a fresh binary selector dispatches with its argument"];
+  [Reflect defineMethod: #|> on: p as: [:self :block | "overridden"]];
+  [t expect: [p |> [:x | x]] equals: "overridden" describes: "a prototype can override Object's |>"];
+  [t expect: [5 |> [:x | [x + 1]]] equals: 6 describes: "Object's |> is untouched by the override"]]];

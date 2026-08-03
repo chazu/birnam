@@ -20,6 +20,14 @@ loader ports are complete.
 
 ### Fixed
 
+- **A binary operator can be defined at runtime.** The trampoline that backs
+  `Reflect defineMethod:on:as:` outside an AOT artifact derived its arity by
+  counting colons in the selector. A binary operator has none, so `#|>` and
+  friends were compiled as unary and handed their two-parameter block a
+  `value:`, answering `#doesNotUnderstand` instead of running. The module
+  already had the correct rule in `selector_arity`; the trampoline just
+  open-coded its own. Only the from-source path was affected, which is why
+  stdlib's own `|>` worked while an override of it could not.
 - **An unbound selector now errors at every arity.** Dispatch forwards an
   unbound send to `doesNotUnderstand:` as `[selector, arg0, …]`, so the handler
   receives `1 + argc` arguments; the base handler guarded on exactly 1, which is

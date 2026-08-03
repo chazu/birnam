@@ -6945,7 +6945,10 @@ unsafe fn compile_reflect_trampoline(
     if unit.is_null() || unit == api.nilObj {
         return None;
     }
-    let arity = selector.iter().filter(|byte| **byte == b':').count();
+    // Colons alone do not carry the arity: a binary operator has none, so
+    // counting them read `#|>` as unary and handed its two-parameter block a
+    // `value:` it does not understand. selector_arity knows the whole rule.
+    let arity = selector_arity(selector);
     let value_selector = "value:".repeat(arity + 1);
     let source = format!(
         "extern void* birnam_send(void*, void*, void**, long);\nextern void* birnam_intern(const char*);\nextern void* birnam_global(const char*);\nvoid* __tramp(void* self, void** args, long n) {{ (void)n; void* a[{}]; a[0] = self; for (long i = 0; i < {}; ++i) a[i + 1] = args[i]; return birnam_send(birnam_global(\"{}\"), birnam_intern(\"{}\"), a, {}L); }}\n",
@@ -7832,9 +7835,20 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 mod tests {
     use super::{
         IDENTITY, RevisionMetadata, RevisionOperation, artifact_source,
-        birnam_codegen_rust_identity, candidate_manifest_matches, inspect_manifest, sha256_hex,
+        birnam_codegen_rust_identity, candidate_manifest_matches, inspect_manifest, selector_arity,
+        sha256_hex,
     };
     use std::ffi::CStr;
+
+    #[test]
+    fn selector_arity_counts_binary_operators_as_one_argument() {
+        assert_eq!(selector_arity(b"printString"), 0);
+        assert_eq!(selector_arity(b"_private"), 0);
+        assert_eq!(selector_arity(b"at:put:"), 2);
+        assert_eq!(selector_arity(b"|>"), 1);
+        assert_eq!(selector_arity(b"+"), 1);
+        assert_eq!(selector_arity(b"~="), 1);
+    }
 
     #[test]
     fn identity_is_a_terminated_static_string() {
