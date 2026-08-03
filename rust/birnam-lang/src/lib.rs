@@ -564,7 +564,11 @@ unsafe fn build_grammar(api: &IdApi, peg: Oop) -> Oop {
                             peg,
                             &[
                                 whitespace,
-                                literal(api, peg, b";"),
+                                // The separator is optional: every expr form is
+                                // self-delimiting (bracketed group or single
+                                // token) and nothing juxtaposes at statement
+                                // level, so whitespace alone already separates.
+                                optional(api, literal(api, peg, b";")),
                                 whitespace,
                                 rule_ref(api, peg, b"statement\0"),
                             ],

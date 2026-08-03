@@ -1,0 +1,54 @@
+// lang-test.birnam — the test suite for the birnam grammar itself, focused on
+// statement separation. The separator `;` is OPTIONAL: every expr form is
+// self-delimiting (a bracketed group `[..]`/`#[..]`/`{..}`, or a single token)
+// and nothing juxtaposes at statement level, so whitespace alone already tells
+// two statements apart. Both spellings, and any mixture, must parse to the same
+// program — that equivalence is what these cases pin. Loading only registers the
+// suite; run via modules/run-tests.birnam.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+
+let s := [TestSuite named: "Lang" module: #lang];
+
+[s test: "whitespace alone separates two statements" do: [:t |
+  [t expect: [Codegen evalPersisting: "[1 + 2]
+[3 + 4]"] equals: 7 describes: "answers the last statement's value"];
+  [t expect: [[Lang parse: "[1 + 2]
+[3 + 4]"] isNil] equals: false describes: "and it parses"]]];
+
+[s test: "`;` still separates, and still ends a unit" do: [:t |
+  [t expect: [Codegen evalPersisting: "[1 + 2]; [3 + 4]"] equals: 7
+     describes: "separator form"];
+  [t expect: [Codegen evalPersisting: "[1 + 2]; [3 + 4];"] equals: 7
+     describes: "trailing terminator form"]]];
+
+[s test: "the two spellings are one program" do: [:t |
+  let withSemis := [Lang parse: "let langTestA := 1; let langTestB := 2; [langTestA + langTestB]"];
+  let without := [Lang parse: "let langTestA := 1
+let langTestB := 2
+[langTestA + langTestB]"];
+  [t expect: [withSemis childCount] equals: [without childCount]
+     describes: "same program shape"];
+  [t expect: [Codegen evalPersisting: "let langTestC := 1
+let langTestD := 2
+[langTestC + langTestD]"] equals: 3 describes: "and the same value"]]];
+
+[s test: "separators may be mixed within one unit" do: [:t |
+  [t expect: [Codegen evalPersisting: "let langTestE := 10; let langTestF := 20
+[langTestE + langTestF];"] equals: 30 describes: "`;` and newline in the same unit"]]];
+
+[s test: "a block body separates the same way" do: [:t |
+  [t expect: [Codegen evalPersisting: "[[| [1 + 1] [2 + 2]] value]"] equals: 4
+     describes: "two statements, no separator, last one wins"];
+  [t expect: [Codegen evalPersisting: "[[:x | [x + 1]; [x + 2]] value: 10]"] equals: 12
+     describes: "and the `;` spelling still works"]]];
+
+// A syntax failure answers nil or a kinded error, never a CST — the same test
+// `Lsp analysisParsed:` makes before it trusts a parse.
+[s test: "dropping the separator does not make broken source parse" do: [:t |
+  let unclosed := [Lang parse: "let x := [foo bar"];
+  [t expect: [[unclosed isNil] | [unclosed isError]] equals: true
+     describes: "an unclosed bracket is still a syntax failure"];
+  let malformed := [Lang parse: "let := 3"];
+  [t expect: [[malformed isNil] | [malformed isError]] equals: true
+     describes: "a malformed binding is still a syntax failure"]]];

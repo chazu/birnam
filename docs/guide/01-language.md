@@ -30,7 +30,11 @@ Two consequences that surprise newcomers:
 - `[[3 + 4]]` — redundant wrapping of a complete send — is also an error (the
   outer pair has a receiver but no selector).
 
-Statements are separated by `;`. Comments run from `//` to end of line.
+Statements may be separated by `;`, but the separator is **optional** —
+whitespace alone separates them. Every expression is self-delimiting (a
+bracketed group, or a single token), so two statements can never run into each
+other. `[a foo]; [b bar]`, `[a foo] [b bar]`, and the same pair on two lines are
+one program. Comments run from `//` to end of line.
 
 ## Bindings
 

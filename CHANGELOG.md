@@ -8,6 +8,16 @@ loader ports are complete.
 
 ## [Unreleased]
 
+### Changed
+
+- **The statement separator `;` is now optional.** Whitespace alone separates
+  statements. Every expression form is self-delimiting — a bracketed group
+  (`[..]`, `#[..]`, `{..}`) or a single token — and nothing juxtaposes at
+  statement level, so `;` carried no information the grammar did not already
+  have. `[a foo]; [b bar]` and `[a foo] [b bar]` are one program, and the two
+  spellings may be mixed. Existing source is unaffected; the new suite
+  `modules/lang-test.birnam` pins the equivalence.
+
 ### Fixed
 
 - **Emacs `birnam-mode` project commands** (0.4.0): `birnam-run-project` and

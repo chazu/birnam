@@ -20,6 +20,7 @@
 [System load: "modules/cli-test.birnam"];
 [System load: "modules/stdlib-test.birnam"];
 [System load: "modules/block-test.birnam"];
+[System load: "modules/lang-test.birnam"];
 [System load: "modules/modules-test.birnam"];
 [System load: "src/id/project-policy.birnam"];
 [System load: "modules/project-policy-test.birnam"];

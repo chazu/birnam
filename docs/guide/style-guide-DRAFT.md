@@ -217,10 +217,15 @@ send/block.
 
 ### Statement terminators and top-level brackets
 
-Statements are separated by `;` (not `.` — that is the authoring gotcha that
-bites everyone once). The final form in a unit takes no trailing `;`. A
-top-level statement that is a single send still gets its outer `[...]`; keep it,
-consistency beats saving one bracket pair.
+The separator is `;` (not `.` — that is the authoring gotcha that bites everyone
+once), and it is **optional**: whitespace already separates statements, because
+every expression is self-delimiting. `;` is punctuation, not syntax.
+
+The existing corpus is written with `;`, and that stays the house style for
+files that already use it — do not mix spellings within a file. The final form
+in a unit takes no trailing `;`. A top-level statement that is a single send
+still gets its outer `[...]`; keep it, consistency beats saving one bracket
+pair.
 
 ### Cells: read and write the same way every time
 
