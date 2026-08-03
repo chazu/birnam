@@ -28,6 +28,12 @@ loader ports are complete.
   already had the correct rule in `selector_arity`; the trampoline just
   open-coded its own. Only the from-source path was affected, which is why
   stdlib's own `|>` worked while an override of it could not.
+- **Validation compiles through libtcc are serialized.** libtcc carries
+  process-global state across `tcc_new`/`tcc_relocate`, so the two
+  `birnam-alien` tests that compile shims raced when cargo ran them in parallel
+  threads and killed the test process with SIGSEGV — about one run in four,
+  under `cargo test --workspace` and therefore under `mise run verify`. The
+  lock lives in `compile_source_for_validation` so no caller has to remember.
 - **An unbound selector now errors at every arity.** Dispatch forwards an
   unbound send to `doesNotUnderstand:` as `[selector, arg0, …]`, so the handler
   receives `1 + argc` arguments; the base handler guarded on exactly 1, which is

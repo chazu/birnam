@@ -12,7 +12,7 @@ use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
 use core::ptr::{self, NonNull};
 use std::ffi::{CStr, CString};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.2-state\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
@@ -108,12 +108,26 @@ fn add_validation_symbol(state: *mut TccState, name: &[u8], value: *const c_void
     unsafe { tcc_add_symbol(state, name.as_ptr(), value) >= 0 }
 }
 
+/// Serializes validation compiles. libtcc carries process-global state across
+/// `tcc_new`/`tcc_relocate`/`tcc_delete`, so two of them running at once
+/// corrupts it and takes the process down with SIGSEGV — cargo runs a crate's
+/// tests in parallel threads, which made any suite holding two of these
+/// validation tests fail roughly one run in four. The lock lives here rather
+/// than in each caller so no test has to remember the constraint; validation
+/// compiles are rare enough that the contention is free.
+static VALIDATION_LOCK: Mutex<()> = Mutex::new(());
+
 /// Compile and relocate one generated unit for source-validation tests.
 ///
 /// This uses the same embedded libtcc owner as the Rust TCC floor, but is not
 /// part of the object protocol and is never called by production Alien code.
 #[doc(hidden)]
 pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool {
+    // A poisoned lock only means another validation compile panicked; whatever
+    // libtcc state it held died with its TCCState, so resuming is safe.
+    let _guard = VALIDATION_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     let Ok(source) = CString::new(source) else {
         return false;
     };
