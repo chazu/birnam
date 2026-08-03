@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+### Added
+
+- **`mise run test` runs the birnam-level module suites** (`scripts/birnam-test.sh`
+  → `modules/run-tests.birnam`) against a freshly built prefix. `mise run verify`
+  gates the Rust workspace and the build driver but never loads a `.birnam` test
+  file, so the birnam suites had no task of their own and had to be invoked by
+  hand — easy to skip when checking a change that only touches birnam source.
+
 ### Changed
 
 - **The statement separator `;` is now optional.** Whitespace alone separates

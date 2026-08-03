@@ -3,6 +3,7 @@
 #   mise install            # fetch the pinned Rust toolchain
 #   mise run build          # build the Rust development prefix
 #   mise run verify         # Rust-only production verification gate
+#   mise run test           # birnam-level module suites (complements verify)
 #   mise run install        # install the Rust prefix
 #   mise run dist           # build a Rust release tarball
 #   mise run release minor  # bump version, tag, build, publish
@@ -44,6 +45,14 @@ run = "bash scripts/rust-store-stack-smoke.sh"
 [tasks.rust-project-check-smoke]
 description = "Exercise the Rust-host project workflow"
 run = "bash scripts/rust-project-check-smoke.sh"
+
+[tasks.test]
+description = "Run the birnam-level module suites (set BIRNAM_TEST_PREFIX to reuse a prefix)"
+run = "bash scripts/birnam-test.sh"
+
+[tasks.birnam-test]
+description = "Alias for the birnam-level module suites"
+run = "bash scripts/birnam-test.sh"
 
 [tasks.emacs-test]
 description = "Run the birnam-mode ERT suite (set BIRNAM_EMACS to pick an Emacs)"
