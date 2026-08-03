@@ -180,3 +180,24 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   let facts := [Reflect factsOf: person];
   [t expect: [facts size] equals: 1 describes: "factsOf: returns current live facts"];
   [t expect: [[facts at: 0] at: #value] equals: "Ada" describes: "fact map exposes its value"]]];
+
+// The floor's doesNotUnderstand: answers a kinded #doesNotUnderstand error for
+// ANY arity. Dispatch forwards an unbound send as [selector, arg0, …], so the
+// handler sees 1 + argc arguments; a guard that demanded exactly 1 made every
+// keyword and binary send answer nil, and a renamed selector then read as a
+// silent nil at the call site instead of an error naming it.
+[s test: "an unbound selector errors at every arity, not just unary" do: [:t |
+  let o := [Object clone];
+  let unary := [o zzzUnknown];
+  [t expect: [unary isError] equals: true describes: "unary send errors"];
+  [t expect: [[unary kind] printString] equals: "#doesNotUnderstand" describes: "kinded #doesNotUnderstand"];
+  let keyword := [o zzzUnknown: 1];
+  [t expect: [keyword isError] equals: true describes: "one-keyword send errors"];
+  [t expect: [[keyword kind] printString] equals: "#doesNotUnderstand" describes: "same kind"];
+  [t assert: [[keyword message] includesSubstring: "zzzUnknown:"] describes: "the message names the selector, colon and all"];
+  let four := [o zzzA: 1 zzzB: 2 zzzC: 3 zzzD: 4];
+  [t expect: [four isError] equals: true describes: "four-keyword send errors"];
+  [t assert: [[four message] includesSubstring: "zzzA:zzzB:zzzC:zzzD:"] describes: "the whole keyword selector is named"];
+  let binary := [o ~~ 1];
+  [t expect: [binary isError] equals: true describes: "binary send errors"];
+  [t expect: [[binary kind] printString] equals: "#doesNotUnderstand" describes: "binary is the same kind"]]];

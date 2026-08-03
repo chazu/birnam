@@ -20,6 +20,15 @@ loader ports are complete.
 
 ### Fixed
 
+- **An unbound selector now errors at every arity.** Dispatch forwards an
+  unbound send to `doesNotUnderstand:` as `[selector, arg0, …]`, so the handler
+  receives `1 + argc` arguments; the base handler guarded on exactly 1, which is
+  true only of a unary send. Every keyword and binary send to an unbound
+  selector therefore answered `nil` instead of a kinded `#doesNotUnderstand`
+  error, so a renamed or mistyped selector read as a silent `nil` at the call
+  site. `modules/stdlib-test.birnam` now pins the behaviour at unary, one- and
+  four-keyword, and binary arity.
+
 - **Emacs `birnam-mode` project commands** (0.4.0): `birnam-run-project` and
   `birnam-test-project` now pass `--build`, so they no longer fail on a stale
   or absent artifact manifest; `birnam-run-project` also passes `--no-repl`,

@@ -156,7 +156,11 @@ unsafe extern "C" fn object_is_error(_self_object: Oop, _args: *const Oop, _coun
 
 unsafe extern "C" fn object_dnu(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 1 {
+    // Dispatch forwards an unbound send as [selector, arg0, arg1, …], so count
+    // is 1 + the original argument count — 1 only for a unary send. Guarding on
+    // `count != 1` here made every keyword and binary send answer nil instead of
+    // erroring. The selector is args[0] whatever the arity.
+    if count == 0 {
         return api.nilObj;
     }
     let Some(selector) = (unsafe { argument(args, count) }) else {
