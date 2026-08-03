@@ -28,7 +28,10 @@ loader ports are complete.
   error, so a renamed or mistyped selector read as a silent `nil` at the call
   site. `modules/stdlib-test.birnam` now pins the behaviour at unary, one- and
   four-keyword, and binary arity.
-
+- **`modules/cli-test.birnam` calls the current CLI entry point.** It still sent
+  `run:source:rustWorkspace:guides:`; the `source:` keyword named the Zig source
+  directory and went away with the Zig tree. Four cases had been failing since
+  then — masked as `got=nil` by the `doesNotUnderstand:` bug above.
 - **Emacs `birnam-mode` project commands** (0.4.0): `birnam-run-project` and
   `birnam-test-project` now pass `--build`, so they no longer fail on a stale
   or absent artifact manifest; `birnam-run-project` also passes `--no-repl`,

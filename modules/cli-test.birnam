@@ -21,11 +21,11 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t expect: [Cli validPort: 65536] equals: false describes: "65536 out of range"];
   [t expect: [Cli validPort: ["abc" asInteger]] equals: false describes: "a non-number (asInteger → nil) invalid"]]];
 
-// run:source:rustWorkspace:guides: is callable like any other module API (its printed lines are the
+// run:rustWorkspace:guides: is callable like any other module API (its printed lines are the
 // CLI's user-facing output, so these pick the quiet-ish paths).
-[s test: "run:source:rustWorkspace:guides: answers 1 for an unknown subcommand, 0 for usage" do: [:t |
-  [t expect: [Cli run: #["frobnicate"] source: "src/id" rustWorkspace: "." guides: "docs/guide"] equals: 1 describes: "unknown subcommand fails"];
-  [t expect: [Cli run: #["doc"] source: "src/id" rustWorkspace: "." guides: "docs/guide"] equals: 0 describes: "usage display is help, not failure"]]];
+[s test: "run:rustWorkspace:guides: answers 1 for an unknown subcommand, 0 for usage" do: [:t |
+  [t expect: [Cli run: #["frobnicate"] rustWorkspace: "." guides: "docs/guide"] equals: 1 describes: "unknown subcommand fails"];
+  [t expect: [Cli run: #["doc"] rustWorkspace: "." guides: "docs/guide"] equals: 0 describes: "usage display is help, not failure"]]];
 
 [s test: "runFile: answers 1 for an unreadable file" do: [:t |
   [t expect: [Cli runFile: "/nonexistent/nope.birnam"] equals: 1 describes: "missing file is a failure"]]];
@@ -46,8 +46,8 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t expect: [Cli initAt: p] equals: 1 describes: "an existing file is refused"];
   [t expect: [File delete: p] equals: true describes: "scratch file cleanup"]]];
 
-[s test: "run:source:rustWorkspace:guides: routes init without source directories" do: [:t |
-  [t expect: [Cli run: #["init"] source: "src/id" rustWorkspace: "." guides: "docs/guide"] equals: 1 describes: "repo root already has birnam.toml"]]];
+[s test: "run:rustWorkspace:guides: routes init" do: [:t |
+  [t expect: [Cli run: #["init"] rustWorkspace: "." guides: "docs/guide"] equals: 1 describes: "repo root already has birnam.toml"]]];
 
 // wrapLib:into:dir: — the scaffolder against a scratch base dir (never the
 // repo's real wrapped/ tree). Refusal is a benign no-op (status 0), matching
@@ -71,7 +71,7 @@ let s := [TestSuite named: "Cli" module: #cli];
   [File removeDir: base]]];
 
 [s test: "wrap usage: missing name is a usage display (0), not a crash" do: [:t |
-  [t expect: [Cli run: #["wrap"] source: "src/id" rustWorkspace: "." guides: "docs/guide"] equals: 0 describes: "no operand shows usage"]]];
+  [t expect: [Cli run: #["wrap"] rustWorkspace: "." guides: "docs/guide"] equals: 0 describes: "no operand shows usage"]]];
 
 // -- the library-use guarantee for the modules the subcommands drive -----------
 
