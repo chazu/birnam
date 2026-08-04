@@ -5,6 +5,9 @@
 > the layout, decomposition, and anti-pattern rules that keep a bracket-and-block
 > language from turning into a wall of punctuation. Where the two overlap, this
 > doc defers to `02-idioms.md`.
+>
+> `=>`, `tap:`, `when:apply:`, and `unless:apply:` are shipped language and
+> default-stdlib vocabulary from Design 64.
 
 The grammar gives us three unavoidable sources of visual density: every send is
 `[...]`, every block is `[...]`, and zero-arg blocks carry a `[| ... ]`. You
@@ -178,7 +181,7 @@ under the first argument column, not under the receiver:
 Two-space continuation indent. One send per physical line group; do not pack two
 different sends onto one wrapped line.
 
-### Accumulation: three forms, ranked
+### Accumulation: four forms, ranked
 
 The `let a := ... let b := [a , ...] let c := [b , ...]` ladder in
 `render.birnam:summary:` is the least readable way to build a value. Prefer, in
@@ -186,7 +189,8 @@ order:
 
 1. **A single `,` chain** when it fits — `["mode=" , mode , " port=" , port]`.
 2. **A `|>` pipeline** when the stages are transforms and you want them to read
-   top-down instead of inside-out (see `examples/pipeline.birnam`):
+   top-down instead of inside-out. This is shipped today; `|>` applies a block
+   and remains an ordinary overridable method (see `examples/pipeline.birnam`):
 
    ```
    [nums |> [:v | [v select: [:n | [n even]]]]
@@ -194,8 +198,49 @@ order:
          |> [:v | [v inject: 0 into: [:a :n | [a + n]]]]]
    ```
 
-3. **A `let`-ladder** only when each intermediate genuinely needs a name for
+3. **A `=>` receiver thread** when each stage is naturally a message to the
+   preceding result.
+
+   ```
+   [Map
+     => new
+     => at: "name" put: name
+     => at: "kind" put: kind]
+   ```
+
+   Put `=>` before every dispatch, including the first. Do not mix an ordinary
+   first message with later markers. Use `=> |> aBlock` when a block transform
+   is genuinely the next stage; do not spell the same operation `then:`.
+
+4. **A `let`-ladder** only when each intermediate genuinely needs a name for
    clarity — not merely because the expression is long.
+
+### Conditional and error stages in a thread
+
+Use `when:apply:` / `unless:apply:` for conditional value replacement, not
+`when:do:`. `do:` means iteration or action; `apply:` says that the taken
+block's answer becomes the next receiver.
+
+```
+[value
+  => when: valid apply: normalize
+  => unless: complete apply: fillDefaults]
+```
+
+Error stages already exist. Use `ifError:` to recover and `ifNotError:` to apply
+a block only to success; do not introduce `recover:` or `catch:` aliases:
+
+```
+[input
+  => parse
+  => ifError: [:error | fallback]
+  => validate]
+```
+
+Use the existing deferred `on:do:` form when matching a particular error kind,
+and `ensure:` for always-run cleanup. General `Object` combinators such as
+`tap:` and `when:apply:` must preserve an incoming error without running user
+blocks.
 
 ### Never wrap a bare literal in brackets
 
@@ -383,7 +428,7 @@ loop; do not try to prettify that with a map.
 | 3+ `[` before the first token | 2 | Bind inner pieces with `let`, or extract a method |
 | Third `ifFalse:` nesting in one method | 3 | Extract the else-branch as its own method |
 | Recursive block that acts like a loop | 4 | `whileTrue:` / `whileFalse:` |
-| `let a … let b := [a,…] … let c := [b,…]` | P2 | Single `,` chain or `|>` pipeline |
+| `let a … let b := [a,…] … let c := [b,…]` | P2 | Single `,` chain; `|>` block pipeline; `=>` receiver thread |
 | Dangling `ifFalse: [|` at line end | P2 | Break before keywords, align the colons |
 | Comment restating the code (in a module) | P3 | Delete it; keep only why-not-what |
 | Method defined with no `doc:` | P3 | Add the contract docstring |
@@ -404,7 +449,7 @@ loop; do not try to prettify that with a map.
    (a) confirm the `let`-capture survives compile-to-dylib so C can be the
    blanket hot-path recommendation rather than "verify first"; (b) should a
    formatter *flag* inline tables inside loop bodies as hoist-candidates?
-4. **`|>` adoption.** The pipeline operator is barely used in the tree today. Do
-   we want to actively push it as the default for linear transforms, or leave it
-   as an available-but-optional flavor?
-```
+4. ~~**`|>` adoption.**~~ **RESOLVED by Design 64:** keep `|>` as the available
+   block-application method; do not force point-free block pipelines. Prefer
+   `=>` for receiver-oriented message stages and use `=> |> aBlock` only where
+   the next stage is naturally a block transform.

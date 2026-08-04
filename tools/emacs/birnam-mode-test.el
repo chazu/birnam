@@ -165,4 +165,30 @@ The mode file uses lexical binding, but lsp-mode declares this option with
 two files can be loaded in either order without a lexical/dynamic conflict."
   (should (special-variable-p 'lsp-auto-guess-root)))
 
+(ert-deftest birnam-mode-highlights-only-the-exact-thread-marker ()
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (insert "[x => foo]\n#=>\n[x =>+ 1]\n")
+      (birnam-mode)
+      (font-lock-ensure)
+      (goto-char (point-min))
+      (search-forward "=>")
+      (should (eq (get-text-property (- (point) 2) 'face)
+                  'font-lock-builtin-face))
+      (search-forward "#=>")
+      (should (eq (get-text-property (- (point) 2) 'face)
+                  'font-lock-constant-face))
+      (search-forward "=>+")
+      (should-not (eq (get-text-property (- (point) 3) 'face)
+                      'font-lock-builtin-face)))))
+
+(ert-deftest birnam-mode-indents-marker-leading-thread-legs ()
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (insert "[Map\n=> new\n=> at: #a put: 1]\n")
+      (birnam-mode)
+      (indent-region (point-min) (point-max))
+      (should (equal (buffer-string)
+                     "[Map\n  => new\n  => at: #a put: 1]\n")))))
+
 ;;; birnam-mode-test.el ends here

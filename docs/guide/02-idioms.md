@@ -82,6 +82,51 @@ scanner on the native floor.
 Equality is by **value** where it makes sense: numbers, strings, symbols, and
 whole collections compare element-wise with `=`. Identity is `==`.
 
+## Result-threaded construction
+
+Persistent construction is the primary `=>` use: each update's new value feeds
+the next receiver without a numbered-temporary ladder.
+
+```
+[Map
+  => new
+  => at: "bind" put: "127.0.0.1"
+  => at: "port" put: 4400]
+```
+
+Every leg begins with `=>` and contains exactly one dispatch. `|>` remains the
+overridable block-application method; inside a receiver thread it is an
+ordinary binary leg, written `=> |> aBlock`, not aliased as `then:`.
+
+The general combinators live in the default self-hosted stdlib:
+
+```
+[value
+  => tap: observe
+  => when: predicate apply: transform
+  => unless: otherPredicate apply: fallback]
+```
+
+`apply:` is value-producing; `do:` remains the iteration/action convention.
+These `Object` combinators preserve an error without running their predicates or
+blocks, using the existing `ifNotError:` protocol.
+
+Maps provide persistent update and absence helpers: `atPath:put:`,
+`update:with:`, `update:with:ifAbsent:`, `removeKey:`, `merge:`, `pick:`,
+`omit:`, `atAny:ifAbsent:`, and `atPath:ifAbsent:`. The plain
+`update:with:` answers a `#notFound` error for an unbound key; use the explicit
+form when absence is expected. None mutate the receiver.
+
+The structural vocabulary is `juxt:`, `groupBy:`, `sortBy:`, `uniqueBy:`, and
+`zip:with:`. `juxt:` runs several independent blocks over one value;
+`groupBy:` preserves input order within each bucket, `uniqueBy:` preserves the
+first value for each derived key, and `zip:with:` stops at the shorter
+collection.
+
+The complete runnable demonstrations are
+[`examples/pipeline.birnam`](../../examples/pipeline.birnam) and
+[`examples/combinators.birnam`](../../examples/combinators.birnam).
+
 ## Application configuration
 
 The standard `AppConfig` module resolves one application's startup snapshot;
@@ -89,9 +134,10 @@ it does not become a mutable global settings registry. Give it defaults and the
 arguments that belong to the application:
 
 ```
-let defaults0 := [Map new];
-let defaults1 := [defaults0 at: "bind" put: "127.0.0.1"];
-let defaults := [defaults1 at: "port" put: 4400];
+let defaults := [Map
+  => new
+  => at: "bind" put: "127.0.0.1"
+  => at: "port" put: 4400];
 let config := [AppConfig resolve: #example defaults: defaults args: args];
 [config at: "port"];
 [config originAt: "port"]
@@ -123,11 +169,29 @@ The protocol:
 ```
 [[| [10 / 0]] on: #zeroDivide do: [:e | 0]];      // handle a kind
 [[| [self risky]] ensure: [| [self cleanup]]];    // always-run cleanup
-[r ifError: [:e | fallback]];                     // branch on error-ness
+[r ifError: [:e | fallback]];                     // recover an error
+[r ifNotError: [:value | [value printString]]];   // transform only success
 ```
 
 Note the receivers are **zero-arg blocks** — `[10 / 0]` bare would evaluate
 eagerly before `on:do:` ever ran; `[| [10 / 0]]` defers it.
+
+`ifError:` and `ifNotError:` receive values directly rather than deferring a
+computation. On a non-error, `ifError:` passes the receiver through; on an error,
+it answers the handler's result. `ifNotError:` is the exact dual. That already
+supplies pipeline recovery without another `recover:` or `catch:` alias:
+
+```
+[input
+  => parse
+  => ifError: [:error | fallback]
+  => validate]
+```
+
+If the handler recovers to a value, later legs continue with that value. If it
+answers an error, propagation continues. Use `on:do:` when the error kind must be
+selected at the deferred computation boundary, and `ensure:` when cleanup must
+run regardless of the result.
 
 The fileIn contract: at the top level of a loaded file, a *discarded* error
 aborts the load at that form and `[System load:]` answers it (announcing the

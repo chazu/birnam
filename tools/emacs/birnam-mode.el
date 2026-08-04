@@ -25,7 +25,8 @@
 ;;   query vars         ?name   (datalog surface)
 ;;   globals            System  Object  Vector  …  (Capitalized identifiers)
 ;;   reserved/literals  let  nil  true  false  self
-;;   assignment :=  map arrow ->  pipe |>  statement separator ;
+;;   assignment :=  map arrow ->  block pipe |>  result thread =>
+;;   statement separator ;
 ;;
 ;; Install:
 ;;   (add-to-list 'load-path "/path/to/birnam/tools/emacs")
@@ -92,11 +93,36 @@ Defaults to `--repl', which starts the interactive read-eval-print loop."
 `let' opens a binding; `nil'/`true'/`false' are literals lowered by
 codegen; `self' is the bound method receiver.  There is no `super'.")
 
+(defun birnam--match-thread-marker (limit)
+  "Find the next structural `=>' marker before LIMIT.
+Exact reservation matters here: do not color the data symbol `#=>' or a
+longer binary selector such as `=>+'.  Markers require following spacing or
+a `//' comment, matching the language grammar."
+  (catch 'found
+    (while (search-forward "=>" limit t)
+      (let* ((start (- (point) 2))
+             (finish (point))
+             (before (char-before start))
+             (after (char-after))
+             (next (char-after (1+ (point))))
+             (ppss (save-excursion (syntax-ppss start))))
+        (when (and (not (nth 3 ppss))
+                   (not (nth 4 ppss))
+                   (not (eq before ?#))
+                   (or (memq after '(?\s ?\t ?\r ?\n))
+                       (and (eq after ?/) (eq next ?/))))
+          (goto-char finish)
+          (set-match-data (list start finish))
+          (throw 'found t))))
+    nil))
+
 (defconst birnam-font-lock-keywords
   (let ((kw (regexp-opt birnam--keywords 'symbols)))
     `(;; reserved words / literals
       (,kw . font-lock-keyword-face)
-      ;; operators: assignment `:=', map-entry arrow `->', thread pipe `|>'
+      ;; structural result-thread marker, excluding #=> and longer binops
+      (birnam--match-thread-marker . font-lock-builtin-face)
+      ;; operators: assignment `:=', map-entry arrow `->', block pipe `|>'
       ("\\(:=\\|->\\||>\\)" . font-lock-builtin-face)
       ;; symbols: #foo, #at:put:, and operator symbols #+ #>= #,
       ;; (the literal openers #[ #{ #( never reach here — they are not #ident).

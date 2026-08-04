@@ -10,7 +10,7 @@ use core::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-const RUST_LANG_IDENTITY: &[u8] = b"rust-lang-n5.1-grammar\0";
+const RUST_LANG_IDENTITY: &[u8] = b"rust-lang-n5.2-threaded-messages\0";
 const PEG_NAME: &[u8] = b"Peg\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const LANG_VT_NAME: &[u8] = b"LangVt\0";
@@ -164,6 +164,7 @@ unsafe fn build_grammar(api: &IdApi, peg: Oop) -> Oop {
         )
     };
     let whitespace = unsafe { star(api, choice(api, peg, &[space_char, comment])) };
+    let spacing1 = unsafe { plus(api, choice(api, peg, &[space_char, comment])) };
     let alpha = unsafe { charset(api, peg, &[(b'a', b'z'), (b'A', b'Z'), (b'_', b'_')]) };
     let alnum = unsafe {
         charset(
@@ -346,6 +347,28 @@ unsafe fn build_grammar(api: &IdApi, peg: Oop) -> Oop {
                 api,
                 peg,
                 &[
+                    negate(
+                        api,
+                        choice(
+                            api,
+                            peg,
+                            &[
+                                seq(
+                                    api,
+                                    peg,
+                                    &[literal(api, peg, b"=>"), spacing1],
+                                ),
+                                seq(
+                                    api,
+                                    peg,
+                                    &[
+                                        literal(api, peg, b"=>"),
+                                        negate(api, rule_ref(api, peg, b"binop\0")),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ),
                     rule_ref(api, peg, b"binops\0"),
                     whitespace,
                     rule_ref(api, peg, b"expr\0"),
@@ -356,11 +379,48 @@ unsafe fn build_grammar(api: &IdApi, peg: Oop) -> Oop {
         define_rule(
             api,
             grammar,
+            b"threadDispatch\0",
+            choice(
+                api,
+                peg,
+                &[
+                    rule_ref(api, peg, b"keywordMsg\0"),
+                    rule_ref(api, peg, b"binaryMsg\0"),
+                    rule_ref(api, peg, b"unaryMsg\0"),
+                ],
+            ),
+        );
+        let thread_leg = seq(
+            api,
+            peg,
+            &[
+                literal(api, peg, b"=>"),
+                spacing1,
+                rule_ref(api, peg, b"threadDispatch\0"),
+            ],
+        );
+        define_rule(
+            api,
+            grammar,
+            b"threadedMsg\0",
+            seq(
+                api,
+                peg,
+                &[
+                    thread_leg,
+                    star(api, seq(api, peg, &[whitespace, thread_leg])),
+                ],
+            ),
+        );
+        define_rule(
+            api,
+            grammar,
             b"message\0",
             choice(
                 api,
                 peg,
                 &[
+                    rule_ref(api, peg, b"threadedMsg\0"),
                     rule_ref(api, peg, b"keywordMsg\0"),
                     plus(
                         api,

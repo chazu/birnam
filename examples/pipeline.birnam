@@ -1,4 +1,4 @@
-// The pipeline operator |> — thread a value left-to-right through blocks.
+// Two pipelines: `|>` applies blocks; `=>` sends messages to each result.
 //
 // `[x |> aBlock]` is `[aBlock value: x]`: it feeds the left value in as the
 // block's argument. Binary sends fold left, so several pipes chain inside one
@@ -33,4 +33,30 @@ let sumOfDoubledEvens :=
 let same :=
    [[[nums select: [:n | [n even]]] collect: double]
       inject: 0 into: [:acc :n | [acc + n]]];
-[System println: [[sumOfDoubledEvens = same] printString]]   // true
+[System println: [[sumOfDoubledEvens = same] printString]];  // true
+
+// `=>` threads results through messages rather than blocks. Every leg is
+// marked, including the first, and each persistent update's new Map becomes
+// the receiver of the next update.
+let endpoint := [Map
+  => new
+  => at: #host put: "127.0.0.1"
+  => at: #port put: 4400];
+[System println: [endpoint printString]];
+
+// Control combinators are ordinary stdlib messages and fit inside a thread.
+let adjusted := [5
+  => when: [:x | [x odd]] apply: [:x | [x + 1]]
+  => tap: [:x | [System println: ["adjusted=" , [x printString]]]]];
+[System println: [[adjusted = 6] printString]];
+
+// `|>` is still an ordinary binary message inside a receiver thread. Spell it
+// with its own `=>` marker when a block transform is naturally the next stage.
+[System println: [[5 => |> double => + 1] printString]];   // 11
+
+// `=>` adds no hidden error semantics. Existing error messages provide explicit
+// recovery and success-only transformation stages.
+let recovered := [["bad input" error: #example]
+  => ifError: [:error | 20]
+  => ifNotError: [:value | [value + 1]]];
+[System println: [recovered printString]]                 // 21

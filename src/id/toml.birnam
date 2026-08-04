@@ -194,20 +194,6 @@
   [[r = "inlineTable"] ifTrue: [| [self tomlKeyvalsInto: src]] ifFalse: [| vArr]]] doc:
   "The birnam value this typed node denotes from `src` (recursive for arrays and inline tables)."];
 
-// -- persistent nested insert on Map -----------------------------------------
-
-// `[aMap atPath: #[ k1 k2 … ] put: v]` — a new Map with v set at the nested key
-// path, creating intermediate Maps as needed (all persistent).
-[Reflect defineMethod: #atPath:put: on: MapVt as: [:self :path :val |
-  let k := [path at: 0];
-  [[[path size] = 1]
-    ifTrue: [| [self at: k put: val]]
-    ifFalse: [|
-      let rest := [path copyFrom: 1 to: [path size]];
-      let sub  := [self at: k ifAbsent: [| [Map new]]];
-      [self at: k put: [sub atPath: rest put: val]]]]] doc:
-  "A new Map with `val` set at nested key `path` (a Vector), creating intermediate Maps as needed (persistent)."];
-
 // Append a fresh table to an array-of-tables path. TOML's `[[a.b]]` lowering
 // keeps the public representation simple: the path names a Vector of Maps.
 [Reflect defineMethod: #appendTableAtPath: on: MapVt as: [:self :path |

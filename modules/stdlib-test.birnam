@@ -215,3 +215,52 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [Reflect defineMethod: #|> on: p as: [:self :block | "overridden"]];
   [t expect: [p |> [:x | x]] equals: "overridden" describes: "a prototype can override Object's |>"];
   [t expect: [5 |> [:x | [x + 1]]] equals: 6 describes: "Object's |> is untouched by the override"]]];
+
+[s test: "thread control combinators transform, observe, and preserve errors" do: [:t |
+  let seen := [0 asCell];
+  [t expect: [5 tap: [:x | [seen set: x]]] equals: 5 describes: "tap: answers its receiver"];
+  [t expect: [seen value] equals: 5 describes: "tap: evaluates its block with the receiver"];
+  [t expect: [5 when: [:x | [x odd]] apply: [:x | [x + 1]]] equals: 6 describes: "when:apply: transforms when true"];
+  [t expect: [4 when: [:x | [x odd]] apply: [:x | 99]] equals: 4 describes: "when:apply: otherwise preserves self"];
+  [t expect: [4 unless: [:x | [x odd]] apply: [:x | [x + 1]]] equals: 5 describes: "unless:apply: transforms when false"];
+  [t expect: [5 unless: [:x | [x odd]] apply: [:x | 99]] equals: 5 describes: "unless:apply: otherwise preserves self"];
+  let err := ["stop" error: #threadControl];
+  let calls := [0 asCell];
+  [t assert: [[err tap: [:x | [calls inc]]] == err] describes: "tap: preserves error identity"];
+  [t assert: [[err when: [:x | [calls inc]; true] apply: [:x | [calls inc]]] == err]
+     describes: "when:apply: preserves error identity"];
+  [t assert: [[err unless: [:x | [calls inc]; false] apply: [:x | [calls inc]]] == err]
+     describes: "unless:apply: preserves error identity"];
+  [t assert: [[err juxt: #[[:x | [calls inc]]]] == err] describes: "juxt: preserves error identity"];
+  [t expect: [calls value] equals: 0 describes: "no control-combinator user block runs on an error"]]];
+
+[s test: "Map persistent update and absence combinators" do: [:t |
+  let base := {#a -> 1 #b -> 2};
+  [t expect: [base update: #a with: [:x | [x + 9]]] equals: {#a -> 10 #b -> 2}
+     describes: "update:with: transforms a bound value"];
+  [t expect: [[base update: #missing with: [:x | x]] kind] equals: #notFound
+     describes: "update:with: reports a missing key"];
+  [t expect: [base update: #missing with: [:x | x] ifAbsent: [| #fallback]] equals: #fallback
+     describes: "the explicit absence block supplies the operation result"];
+  [t expect: [base removeKey: #a] equals: {#b -> 2} describes: "removeKey: drops one binding"];
+  [t expect: [base merge: {#b -> 20 #c -> 30}] equals: {#a -> 1 #b -> 20 #c -> 30}
+     describes: "merge: is right-biased"];
+  [t expect: [base pick: #[#b #missing]] equals: {#b -> 2} describes: "pick: keeps requested bound keys"];
+  [t expect: [base omit: #[#b #missing]] equals: {#a -> 1} describes: "omit: drops requested keys"];
+  let nested := [[Map new] atPath: #[#a #b #c] put: 7];
+  [t expect: [nested atPath: #[#a #b #c] ifAbsent: [| 99]] equals: 7 describes: "atPath:put: and atPath:ifAbsent: agree"];
+  [t expect: [nested atPath: #[#a #x] ifAbsent: [| 99]] equals: 99 describes: "a missing path runs one fallback"];
+  [t expect: [{#a -> 1 #b -> 2} atAny: #[#x #b #a] ifAbsent: [| 99]] equals: 2
+     describes: "atAny:ifAbsent: chooses the first bound key"];
+  [t expect: [base atAny: #[#x #y] ifAbsent: [| 99]] equals: 99 describes: "atAny:ifAbsent: falls back once"]]];
+
+[s test: "structural combinators derive vectors and groups" do: [:t |
+  [t expect: [3 juxt: #[[:x | [x + 1]] [:x | [x * 2]]]] equals: #[4 6]
+     describes: "juxt: applies every block to one receiver"];
+  [t expect: [#[1 2 3 4 5] groupBy: [:x | [x mod: 2]]]
+     equals: {0 -> #[2 4] 1 -> #[1 3 5]} describes: "groupBy: retains input order within buckets"];
+  [t expect: [[3 to: 1] sortBy: [:x | x]] equals: #[] describes: "general sortBy: returns a Vector"];
+  [t expect: [#[1 2 3 4 5] uniqueBy: [:x | [x mod: 3]]] equals: #[1 2 3]
+     describes: "uniqueBy: retains the first value per derived key"];
+  [t expect: [#[1 2 3] zip: #[10 20] with: [:a :b | [a + b]]] equals: #[11 22]
+     describes: "zip:with: stops at the shorter collection"]]];

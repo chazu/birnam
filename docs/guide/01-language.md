@@ -36,6 +36,41 @@ bracketed group, or a single token), so two statements can never run into each
 other. `[a foo]; [b bar]`, `[a foo] [b bar]`, and the same pair on two lines are
 one program. Comments run from `//` to end of line.
 
+### Result-threaded sends
+
+`=>` introduces one dispatch whose result becomes the next receiver. Every
+leg carries a marker, including the first:
+
+```
+[Map
+  => new
+  => at: "name" put: name
+  => at: "kind" put: kind]
+```
+
+That is exactly the existing nested-send meaning:
+
+```
+[[[Map new] at: "name" put: name] at: "kind" put: kind]
+```
+
+A leg is one unary, binary, or keyword dispatch. Write
+`[x => foo => bar]` and `[x => + 1 => * 2]`; ordinary chains cannot be mixed
+before the first marker. A threaded argument remains bracketed, as in
+`[m at: k put: [n => foo]]`.
+
+The punctuation is cascade-shaped but does not have classic cascade semantics:
+each leg receives the preceding result, not the original receiver. The exact
+binary selector `=>` is reserved, while `#=>` remains a symbol literal and
+longer operators such as `=>+` remain available. Source-sensitive forms such as
+`System embedFile:`, module declarations, `Alien dlopen:`, and live `Reflect`
+operations retain their ordinary spellings and reject threaded spellings.
+
+Run [`examples/pipeline.birnam`](../../examples/pipeline.birnam) for executable
+unary, binary, keyword, block-application, conditional, and error-recovery
+stages. The wider stdlib vocabulary is exercised by
+[`examples/combinators.birnam`](../../examples/combinators.birnam).
+
 ## Bindings
 
 `let` introduces a binding; `:=` is only ever used with `let`.
@@ -122,9 +157,10 @@ value, and `printNl` prints one and answers it.
 
 A failing operation answers a **kinded error value** — it does not raise.
 `[10 / 0]` answers `error(#zeroDivide: …)`; sending to it propagates it.
-Check with `isError` / `kind`, handle with `on:do:`. One consequence at the
-top level of a file: a discarded error **aborts the load** at that form (see
-the idioms chapter for the full error protocol).
+Check with `isError` / `kind`; recover with `ifError:`, transform only a success
+with `ifNotError:`, and handle a selected kind around a deferred computation
+with `on:do:`. One consequence at the top level of a file: a discarded error
+**aborts the load** at that form (see the idioms chapter for the full protocol).
 
 ## Running code
 

@@ -52,3 +52,70 @@ let langTestD := 2
   let malformed := [Lang parse: "let := 3"];
   [t expect: [[malformed isNil] | [malformed isError]] equals: true
      describes: "a malformed binding is still a syntax failure"]]];
+
+[s test: "=> parses one dispatch per marked leg in every category" do: [:t |
+  let forms := #[
+    "[x => foo]"
+    "[x => + 1]"
+    "[x => at: 0]"
+    "[x => foo => bar]"
+    "[x => foo => + 1]"
+    "[x => foo => at: 0 put: 1]"
+    "[x => + 1 => foo]"
+    "[x => + 1 => * 2]"
+    "[x => + 1 => at: 0]"
+    "[x => at: 0 => foo]"
+    "[x => at: 0 => + 1]"
+    "[x => at: 0 => at: 1 put: 2]"];
+  [t assert: [forms allSatisfy: [:source |
+     let parsed := [Lang parse: source];
+     [[[parsed isNil] | [parsed isError]] not]]]
+     describes: "unary, binary, and whole keyword legs may follow each other"]]];
+
+[s test: "=> spacing, nesting, and exact operator reservation" do: [:t |
+  let accepted := #[
+    "[x => foo]"
+    "[x =>\nfoo]"
+    "[x => // marker comment\nfoo]"
+    "[m at: k put: [n => foo]]"
+    "[1 =>+ 2]"
+    "#=>"];
+  [t assert: [accepted allSatisfy: [:source |
+     let parsed := [Lang parse: source];
+     [[[parsed isNil] | [parsed isError]] not]]]
+     describes: "marker whitespace/comments work while #=> and =>+ remain data/messages"];
+  let rejected := #["[x =>]" "[x =>foo]" "[x => => foo]" "[x + 1 => foo]" "[x foo => bar]"];
+  [t assert: [rejected allSatisfy: [:source |
+     let parsed := [Lang parse: source];
+     [[parsed isNil] | [parsed isError]]]]
+     describes: "malformed and mixed threaded forms do not fall back to ordinary sends"]]];
+
+[s test: "=> lowers to ordinary left-to-right result threading" do: [:t |
+  [t expect: [Codegen evalPersisting: "[1 => + 2 => * 3]"] equals: 9
+     describes: "each result is the next receiver"];
+  [t expect: [Codegen evalPersisting: "let threadCount := [0 asCell]
+let threadedValue := [[threadCount inc] => + 1 => * 2]
+#[threadedValue [threadCount value]]"] equals: #[4 1]
+     describes: "the original receiver expression runs once"];
+  [t expect: [Codegen evalPersisting: "[{#a -> 1} at: #b put: [2 => + 3]]"]
+     equals: {#a -> 1 #b -> 5} describes: "a threaded argument remains bracketed"];
+  let threadedError := [Codegen evalPersisting: "[[\"boom\" error: #threadTest] => ifNotError: [:x | 9]]"];
+  [t expect: [threadedError kind] equals: #threadTest
+     describes: "threading adds no error behavior of its own"];
+  [t expect: [Codegen emit: "[1 => + 2 => * 3]"]
+     equals: [Codegen emit: "[[1 + 2] * 3]"]
+     describes: "ordinary emitted C is identical to nested sends"]]];
+
+[s test: "source-sensitive special forms reject a threaded head" do: [:t |
+  let forms := #[
+    "[System => embedFile: \"missing.txt\"]"
+    "[Module => named: #bad requires: #[]]"
+    "[Alien => dlopen: \"missing\"]"
+    "[Reflect => defineMethod: #x on: Object as: [:self | self]]"
+    "[Reflect => defineMethod: #x on: Object as: [:self | self] doc: \"x\"]"
+    "[Reflect => removeMethod: #x on: Object]"];
+  [forms do: [:source |
+     [t expect: [Codegen evalPersisting: source] equals: nil
+        describes: "the threaded special form does not compile"];
+     [t assert: [[Codegen lastError] includesSubstring: "source-sensitive special forms"]
+        describes: "the diagnostic names the source-form restriction"]]]]];

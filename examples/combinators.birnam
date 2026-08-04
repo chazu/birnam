@@ -1,0 +1,40 @@
+// Thread-friendly stdlib combinators over persistent values.
+//
+// This example covers the combinator vocabulary added with result threading:
+// conditional transforms, persistent Map helpers, absence, grouping, uniqueness,
+// sorting, zipping, and several independent projections. Run it with:
+//
+//   birnam examples/combinators.birnam
+
+// Persistent Map updates compose naturally because each operation answers a new
+// Map. The original remains unchanged.
+let base := {#name -> "birnam", #version -> 1};
+let release := [base
+  => update: #version with: [:version | [version + 1]]
+  => merge: {#status -> #ready}
+  => atPath: #[#server #port] put: 4400
+  => omit: #[#status]];
+[System println: [base printString]];
+[System println: [release printString]];
+
+// Expected absence is explicit. `update:with:` instead answers a #notFound error
+// when the key is missing.
+let port := [release atPath: #[#server #port] ifAbsent: [| 80]];
+let address := [release atAny: #[#bind #host #name] ifAbsent: [| "localhost"]];
+[System println: ["address=" , address , " port=" , [port printString]]];
+
+// Conditional transforms replace the receiver only when their predicate says
+// so. `tap:` observes a success while preserving that same value.
+let normalized := [5
+  => when: [:value | [value odd]] apply: [:value | [value + 1]]
+  => unless: [:value | [value > 10]] apply: [:value | [value * 2]]
+  => tap: [:value | [System println: ["normalized=" , [value printString]]]]];
+[System println: [normalized printString]];
+
+// Structural combinators answer persistent Vectors or Maps.
+let values := #[1 2 2 3 4 5];
+[System println: [[values groupBy: [:value | [value mod: 2]]] printString]];
+[System println: [[values uniqueBy: [:value | value]] printString]];
+[System println: [[values sortBy: [:value | [0 - value]]] printString]];
+[System println: [[values zip: #[10 20 30] with: [:left :right | [left + right]]] printString]];
+[System println: [[12 juxt: #[[:value | [value + 1]] [:value | [value * 2]]]] printString]]

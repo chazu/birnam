@@ -401,6 +401,124 @@
 [Reflect defineMethod: #ifNotError: on: ErrorVt as: [:self :h | self] doc:
    "Answers the receiver untouched — an error skips the not-error branch; `h` never runs."];
 
+// Thread-friendly control. Each method enters through ifNotError: so an error
+// produced by an earlier stage is preserved by identity and no user block runs.
+[Reflect defineMethod: #tap: on: Object as: [:self :block |
+   [self ifNotError: [:value | [block value: value]; value]]] doc:
+   "Runs `block` with a non-error receiver and answers that receiver; errors pass through untouched."];
+[Reflect defineMethod: #when:apply: on: Object as: [:self :predicate :block |
+   [self ifNotError: [:value |
+      [[predicate value: value]
+         ifTrue: [| [block value: value]]
+         ifFalse: [| value]]]]] doc:
+   "Applies `block` to a non-error receiver when `predicate` holds; otherwise answers the receiver."];
+[Reflect defineMethod: #unless:apply: on: Object as: [:self :predicate :block |
+   [self when: [:value | [[predicate value: value] not]] apply: block]] doc:
+   "Applies `block` to a non-error receiver unless `predicate` holds; otherwise answers the receiver."];
+[Reflect defineMethod: #juxt: on: Object as: [:self :blocks |
+   [self ifNotError: [:value | [blocks collect: [:block | [block value: value]]]]]] doc:
+   "A Vector containing each block's result for the same non-error receiver; errors pass through untouched."];
+
+// Persistent Map vocabulary. These methods build solely through the native
+// persistent at:put: primitive and never mutate the receiver.
+[Reflect defineMethod: #atPath:put: on: MapVt as: [:self :path :value |
+   let key := [path at: 0];
+   [[[path size] = 1]
+      ifTrue: [| [self at: key put: value]]
+      ifFalse: [|
+         let rest := [path copyFrom: 1 to: [path size]];
+         let child := [self at: key ifAbsent: [| [Map new]]];
+         [self at: key put: [child atPath: rest put: value]]]]] doc:
+   "A new Map with `value` at `path`, creating missing intermediate Maps."];
+[Reflect defineMethod: #atPath:ifAbsent: on: MapVt as: [:self :path :absent |
+   [[path isEmpty]
+      ifTrue: [| [absent value]]
+      ifFalse: [|
+         let key := [path at: 0];
+         [[self includesKey: key]
+            ifTrue: [|
+               let value := [self at: key];
+               [[[path size] = 1]
+                  ifTrue: [| value]
+                  ifFalse: [|
+                     [[[Reflect vtableOf: value] == MapVt]
+                        ifTrue: [| [value atPath: [path copyFrom: 1 to: [path size]] ifAbsent: absent]]
+                        ifFalse: [| [absent value]]]]]]
+            ifFalse: [| [absent value]]]]]] doc:
+   "The binding at nested `path`, or `absent` once if a segment is missing or not a Map."];
+[Reflect defineMethod: #atAny:ifAbsent: on: MapVt as: [:self :keys :absent |
+   let state := [keys inject: {#found -> false #key -> nil} into: [:acc :key |
+      [[acc at: #found]
+         ifTrue: [| acc]
+         ifFalse: [|
+            [[self includesKey: key]
+               ifTrue: [| [[acc at: #found put: true] at: #key put: key]]
+               ifFalse: [| acc]]]]]];
+   [[state at: #found]
+      ifTrue: [| [self at: [state at: #key]]]
+      ifFalse: [| [absent value]]]] doc:
+   "The value of the first bound key in `keys`, or `absent`'s value when none is bound."];
+[Reflect defineMethod: #update:with:ifAbsent: on: MapVt as: [:self :key :block :absent |
+   [[self includesKey: key]
+      ifTrue: [| [self at: key put: [block value: [self at: key]]]]
+      ifFalse: [| [absent value]]]] doc:
+   "A new Map with the bound key transformed by `block`, or `absent`'s value when unbound."];
+[Reflect defineMethod: #update:with: on: MapVt as: [:self :key :block |
+   [self update: key with: block ifAbsent: [|
+      ["Map update:with: key is absent" error: #notFound]]]] doc:
+   "A new Map with the bound key transformed by `block`; an unbound key answers a #notFound error."];
+[Reflect defineMethod: #removeKey: on: MapVt as: [:self :key |
+   [[self keys] inject: [Map new] into: [:result :each |
+      [[each = key]
+         ifTrue: [| result]
+         ifFalse: [| [result at: each put: [self at: each]]]]]]] doc:
+   "A new Map without `key`; answers an equal Map when the key was already absent."];
+[Reflect defineMethod: #merge: on: MapVt as: [:self :other |
+   [[other keys] inject: self into: [:result :key |
+      [result at: key put: [other at: key]]]]] doc:
+   "A new Map containing both maps, with `other`'s bindings winning."];
+[Reflect defineMethod: #pick: on: MapVt as: [:self :keys |
+   [keys inject: [Map new] into: [:result :key |
+      [[self includesKey: key]
+         ifTrue: [| [result at: key put: [self at: key]]]
+         ifFalse: [| result]]]]] doc:
+   "A new Map restricted to the requested keys that are bound."];
+[Reflect defineMethod: #omit: on: MapVt as: [:self :keys |
+   [[self keys] inject: [Map new] into: [:result :key |
+      [[keys includes: key]
+         ifTrue: [| result]
+         ifFalse: [| [result at: key put: [self at: key]]]]]]] doc:
+   "A new Map without any key in `keys`."];
+
+// Structural collection combinators. Vector keeps its native sortBy: method;
+// other Collections reach that implementation through asVector.
+[Reflect defineMethod: #groupBy: on: Collection as: [:self :block |
+   [self inject: [Map new] into: [:groups :value |
+      let key := [block value: value];
+      let bucket := [groups at: key ifAbsent: [| #[]]];
+      [groups at: key put: [bucket add: value]]]]] doc:
+   "A Map from each derived key to the Vector of values producing it."];
+[Reflect defineMethod: #sortBy: on: Collection as: [:self :block |
+   [[self asVector] sortBy: block]] doc:
+   "A Vector ordered by each element's value under `block`."];
+[Reflect defineMethod: #uniqueBy: on: Collection as: [:self :block |
+   let state := [self inject: {#seen -> [Map new] #values -> #[]} into: [:acc :value |
+      let key := [block value: value];
+      let seen := [acc at: #seen];
+      [[seen includesKey: key]
+         ifTrue: [| acc]
+         ifFalse: [|
+            let nextSeen := [seen at: key put: true];
+            let nextValues := [[acc at: #values] add: value];
+            {#seen -> nextSeen #values -> nextValues}]]]];
+   [state at: #values]] doc:
+   "A Vector retaining the first value for each key derived by `block`."];
+[Reflect defineMethod: #zip:with: on: Collection as: [:self :other :block |
+   let limit := [[self size] min: [other size]];
+   [[0 to: [limit - 1]] collect: [:index |
+      [block value: [self at: index] value: [other at: index]]]]] doc:
+   "A Vector of pairwise block results, stopping at the shorter collection."];
+
 // printString — "error(#kind: message)"; kind is always a symbol, message may be nil.
 [Reflect defineMethod: #printString on: ErrorVt as: [:self |
    let k := [[self kind] printString];

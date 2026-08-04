@@ -177,6 +177,7 @@ pub enum LowerError {
     MissingChild,
     InvalidSymbol,
     InvalidShape,
+    ThreadedSpecialForm,
     UnsupportedRule,
 }
 
@@ -217,7 +218,9 @@ fn skip_wrappers<N: CstNode>(node: &N) -> Result<&N, LowerError> {
     let mut current = node;
     for _ in 0..MAX_CST_WRAPPER_DEPTH {
         let rule = current.rule();
-        if matches!(rule, b"expr" | b"primary" | b"message") && current.child_count() == 1 {
+        if matches!(rule, b"expr" | b"primary" | b"message" | b"threadDispatch")
+            && current.child_count() == 1
+        {
             current = current.child(0).ok_or(LowerError::MissingChild)?;
         } else {
             return Ok(current);
@@ -432,6 +435,21 @@ fn lower_send<'a, N: CstNode>(
     )?;
     let send_source = span(node, source)?;
     let message = skip_wrappers(node.child(1).ok_or(LowerError::MissingChild)?)?;
+    if message.rule() == b"threadedMsg" {
+        if threaded_special_form(
+            node.child(0).ok_or(LowerError::MissingChild)?,
+            message,
+            source,
+        )? {
+            return Err(LowerError::ThreadedSpecialForm);
+        }
+        let mut accumulated = receiver;
+        for index in 0..message.child_count() {
+            let dispatch = message.child(index).ok_or(LowerError::MissingChild)?;
+            accumulated = lower_message(accumulated, dispatch, source, depth, send_source)?;
+        }
+        return Ok(accumulated);
+    }
     if message.rule() == b"message" && message.child_count() > 1 {
         let mut accumulated = receiver;
         for index in 0..message.child_count() {
@@ -441,6 +459,39 @@ fn lower_send<'a, N: CstNode>(
         return Ok(accumulated);
     }
     lower_message(receiver, message, source, depth, send_source)
+}
+
+fn threaded_special_form<N: CstNode>(
+    receiver: &N,
+    message: &N,
+    source: &[u8],
+) -> Result<bool, LowerError> {
+    let receiver = skip_wrappers(receiver)?;
+    if receiver.rule() != b"ident" {
+        return Ok(false);
+    }
+    let receiver = span(receiver, source)?;
+    let first = message.child(0).ok_or(LowerError::MissingChild)?;
+    let first = skip_wrappers(first)?;
+    if first.rule() != b"keywordMsg" || first.child_count() == 0 || first.child_count() % 2 != 0 {
+        return Ok(false);
+    }
+    let mut selector = Vec::new();
+    for index in (0..first.child_count()).step_by(2) {
+        selector.extend_from_slice(span(
+            first.child(index).ok_or(LowerError::MissingChild)?,
+            source,
+        )?);
+    }
+    Ok(matches!(
+        (receiver, selector.as_slice()),
+        (b"System", b"embedFile:")
+            | (b"Module", b"named:requires:")
+            | (b"Alien", b"dlopen:")
+            | (b"Reflect", b"defineMethod:on:as:")
+            | (b"Reflect", b"defineMethod:on:as:doc:")
+            | (b"Reflect", b"removeMethod:on:")
+    ))
 }
 
 fn lower_message<'a, N: CstNode>(
@@ -1705,6 +1756,80 @@ mod tests {
         assert_eq!(
             emitter.finish(),
             b"birnam_send(birnam_send(MKV(1L), birnam_intern(\"+\"), (void*[]){MKV(2L)}, 1L), birnam_intern(\"+\"), (void*[]){MKV(3L)}, 1L)"
+        );
+    }
+
+    #[test]
+    fn folds_threaded_dispatches_left_to_right_without_a_new_expr_shape() {
+        let source = b"[x => foo => + 1 => bar: 2]";
+        let primary = |rule: &'static [u8], start, end| {
+            node(
+                b"expr",
+                start,
+                end,
+                vec![node(
+                    b"primary",
+                    start,
+                    end,
+                    vec![node(rule, start, end, vec![])],
+                )],
+            )
+        };
+        let dispatch = |start, end, message| node(b"threadDispatch", start, end, vec![message]);
+        let send = node(
+            b"send",
+            0,
+            source.len(),
+            vec![
+                primary(b"ident", 1, 2),
+                node(
+                    b"message",
+                    3,
+                    26,
+                    vec![node(
+                        b"threadedMsg",
+                        3,
+                        26,
+                        vec![
+                            dispatch(6, 9, node(b"unaryMsg", 6, 9, vec![])),
+                            dispatch(
+                                13,
+                                16,
+                                node(
+                                    b"binaryMsg",
+                                    13,
+                                    16,
+                                    vec![
+                                        node(b"binops", 13, 14, vec![]),
+                                        primary(b"number", 15, 16),
+                                    ],
+                                ),
+                            ),
+                            dispatch(
+                                20,
+                                26,
+                                node(
+                                    b"keywordMsg",
+                                    20,
+                                    26,
+                                    vec![
+                                        node(b"keyword", 20, 24, vec![]),
+                                        primary(b"number", 25, 26),
+                                    ],
+                                ),
+                            ),
+                        ],
+                    )],
+                ),
+            ],
+        );
+        let mut emitter = Emitter::new();
+        emitter
+            .emit_expr(&lower_expr(&send, source).unwrap())
+            .unwrap();
+        assert_eq!(
+            emitter.finish(),
+            b"birnam_send(birnam_send(birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"foo\"), 0, 0L), birnam_intern(\"+\"), (void*[]){MKV(1L)}, 1L), birnam_intern(\"bar:\"), (void*[]){MKV(2L)}, 1L)"
         );
     }
 

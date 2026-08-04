@@ -10,7 +10,9 @@ use birnam_artifact_codec::candidate::{
     Operation as CandidateOperation, inspect as inspect_candidate, inspect_manifest,
 };
 use birnam_artifact_codec::inspect as inspect_artifact;
-use birnam_codegen::{CstNode, Emitter, OwnedCst, TranslationUnit, lower_program};
+use birnam_codegen::{
+    CstNode, Emitter, LowerError, OwnedCst, TranslationUnit, lower_program,
+};
 use birnam_image_codec::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
 use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
@@ -3747,8 +3749,12 @@ unsafe fn emit_source(
     let tree = rewrite_embedded(tree, &source, root.as_deref().unwrap_or(b"."))?;
     let program = match lower_program(&tree, &source) {
         Ok(program) => program,
-        Err(_) => {
-            note_error(b"RustCodegen could not lower the source");
+        Err(error) => {
+            if error == LowerError::ThreadedSpecialForm {
+                note_error(b"RustCodegen source-sensitive special forms cannot use => threading");
+            } else {
+                note_error(b"RustCodegen could not lower the source");
+            }
             return None;
         }
     };

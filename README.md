@@ -59,6 +59,10 @@ Run a source file directly:
 birnam examples/fizzbuzz.birnam
 ```
 
+For the two pipeline forms and their stdlib vocabulary, run
+[`examples/pipeline.birnam`](examples/pipeline.birnam) and
+[`examples/combinators.birnam`](examples/combinators.birnam).
+
 For a project, `birnam` discovers the nearest `birnam.toml` from the current
 directory upward and validates its latest successful project build. Project
 modules are loaded from their exact published artifact paths; the runtime's own

@@ -32,6 +32,14 @@
 [[db cellFor: Lsp attr: #projectIndexes] set: [Map new]];
 [[db cellFor: Lsp attr: #workspaceUri] set: ""];
 
+// These are syntax-sensitive compiler forms, indexed as data so the analysis
+// policy does not grow a receiver/selector conditional ladder.
+let analysisThreadedSpecialSelectors := {
+  "System" -> #["embedFile:"],
+  "Module" -> #["named:requires:"],
+  "Alien" -> #["dlopen:"],
+  "Reflect" -> #["defineMethod:on:as:" "defineMethod:on:as:doc:" "removeMethod:on:"]};
+
 // -- libc I/O (fd 0 = stdin, 1 = stdout, 2 = stderr) --------------------------
 // recv/send are socket-only; stdio is a pipe, so use raw read/write on the fd.
 // ssize_t read(int fd, void *buf, size_t count)      — receiver = fd
@@ -177,14 +185,15 @@
   "Converts an LSP UTF-16 character offset in `line` to a UTF-8 byte offset for lexical features." ];
 
 [Reflect defineMethod: #positionAtByte:in: on: Lsp as: [:self :byteOffset :text |
-  let off := [[byteOffset < 0] ifTrue: [| 0] ifFalse: [| [[byteOffset > [text size]] ifTrue: [| [text size]] ifFalse: [| byteOffset]]]];
+  let off := [[byteOffset max: 0] min: [text size]];
   let prefix := [text copyFrom: 0 to: off];
   let lines := [prefix split: "\n"];
   let line := [[lines size] - 1];
   let lineText := [lines at: line];
-  let p0 := [Map new];
-  let p1 := [p0 at: "line" put: line];
-  [p1 at: "character" put: [self utf16Offset: [lineText size] in: lineText]]
+  [Map
+    => new
+    => at: "line" put: line
+    => at: "character" put: [self utf16Offset: [lineText size] in: lineText]]
   ] doc:
   "Converts an absolute UTF-8 byte offset in `text` to an LSP line/UTF-16 position." ];
 
@@ -200,35 +209,31 @@
   let c0 := [self utf16Offset: byte0 in: lineText];
   let endByte := [[byte0 < [lineText size]] ifTrue: [| [byte0 + 1]] ifFalse: [| byte0]];
   let c1 := [self utf16Offset: endByte in: lineText];
-  let startP := [[[Map new] at: "line" put: l0] at: "character" put: c0];
-  let endP   := [[[Map new] at: "line" put: l0] at: "character" put: [[c1 <= c0] ifTrue: [| [c0 + 1]] ifFalse: [| c1]]];
-  let range  := [[[Map new] at: "start" put: startP] at: "end" put: endP];
-  let d0 := [Map new];
-  let d1 := [d0 at: "range" put: range];
-  let d2 := [d1 at: "severity" put: 1];
-  let d3 := [d2 at: "source" put: "birnam"];
-  let diag := [d3 at: "message" put: firstLine];
-  diag] doc:
+  let startP := [Map => new => at: "line" put: l0 => at: "character" put: c0];
+  let endCharacter := [[c1 <= c0] ifTrue: [| [c0 + 1]] ifFalse: [| c1]];
+  let endP := [Map => new => at: "line" put: l0 => at: "character" put: endCharacter];
+  let range := [Map => new => at: "start" put: startP => at: "end" put: endP];
+  [Map
+    => new
+    => at: "range" put: range
+    => at: "severity" put: 1
+    => at: "source" put: "birnam"
+    => at: "message" put: firstLine]] doc:
   "Answers one LSP Diagnostic (severity 1 = Error) with a UTF-16 range built from `err`'s \"line:col: message\" first line."];
 
 [Reflect defineMethod: #diagFromProject: on: Lsp as: [:self :snapshot |
-  let start0 := [Map new];
-  let start1 := [start0 at: "line" put: 0];
-  let start := [start1 at: "character" put: 0];
-  let end0 := [Map new];
-  let end1 := [end0 at: "line" put: 0];
-  let end := [end1 at: "character" put: 1];
-  let range0 := [Map new];
-  let range1 := [range0 at: "start" put: start];
-  let range := [range1 at: "end" put: end];
+  let start := [Map => new => at: "line" put: 0 => at: "character" put: 0];
+  let finish := [Map => new => at: "line" put: 0 => at: "character" put: 1];
+  let range := [Map => new => at: "start" put: start => at: "end" put: finish];
   let kind := [snapshot at: "kind" ifAbsent: [| "projectResolutionFailed"]];
   let message := [snapshot at: "message" ifAbsent: [| "project resolution failed"]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "range" put: range];
-  let d2 := [d1 at: "severity" put: 1];
-  let d3 := [d2 at: "source" put: "birnam"];
-  let d4 := [d3 at: "code" put: kind];
-  [d4 at: "message" put: message]
+  [Map
+    => new
+    => at: "range" put: range
+    => at: "severity" put: 1
+    => at: "source" put: "birnam"
+    => at: "code" put: kind
+    => at: "message" put: message]
   ] doc:
   "Answers one LSP Diagnostic for a shared project-resolver failure, preserving its kind and message." ];
 
@@ -247,13 +252,13 @@
 
 [Reflect defineMethod: #analysisSkip: on: Lsp as: [:self :node |
   let rule := [node rule];
-  let count := [node childCount];
-  let wrapper := [[count = 1] & [[[rule = #expr] | [rule = #primary]] | [rule = #message]]];
+  let wrapperRule := [#[#expr #primary #message #threadDispatch] includes: rule];
+  let wrapper := [[[node childCount] = 1] & wrapperRule];
   [wrapper
     ifTrue: [| [self analysisSkip: [node childAt: 0]]]
     ifFalse: [| node]]
   ] doc:
-  "Descends through single-child expression, primary, and message wrappers." ];
+  "Descends through single-child expression, primary, message, and threaded-dispatch wrappers." ];
 
 [Reflect defineMethod: #analysisAppend:to: on: Lsp as: [:self :entry :out |
   [out set: [[out value] add: entry]];
@@ -262,42 +267,46 @@
   "Appends one analysis entry through a persistent-vector cell." ];
 
 [Reflect defineMethod: #analysisDiagnostic:message:start:end: on: Lsp as: [:self :kind :message :start :finish |
-  let d0 := [Map new];
-  let d1 := [d0 at: "kind" put: kind];
-  let d2 := [d1 at: "message" put: message];
-  let d3 := [d2 at: "start" put: start];
-  [d3 at: "end" put: finish]
+  [Map
+    => new
+    => at: "kind" put: kind
+    => at: "message" put: message
+    => at: "start" put: start
+    => at: "end" put: finish]
   ] doc:
   "Builds one byte-span static-analysis diagnostic." ];
 
 [Reflect defineMethod: #analysisSymbolEntry:kind:name:detail:start:end:selectionStart: on: Lsp as: [:self :kind :name :detail :start :finish :selectionStart :selectionEnd |
-  let d0 := [Map new];
-  let d1 := [d0 at: "name" put: name];
-  let d2 := [d1 at: "kind" put: kind];
-  let d3 := [d2 at: "detail" put: detail];
-  let d4 := [d3 at: "start" put: start];
-  let d5 := [d4 at: "end" put: finish];
-  let d6 := [d5 at: "selectionStart" put: selectionStart];
-  [d6 at: "selectionEnd" put: selectionEnd]
+  [Map
+    => new
+    => at: "name" put: name
+    => at: "kind" put: kind
+    => at: "detail" put: detail
+    => at: "start" put: start
+    => at: "end" put: finish
+    => at: "selectionStart" put: selectionStart
+    => at: "selectionEnd" put: selectionEnd]
   ] doc:
   "Builds one source-symbol entry with byte spans." ];
 
 [Reflect defineMethod: #analysisOccurrenceEntry:name:start: on: Lsp as: [:self :name :start :finish |
-  let d0 := [Map new];
-  let d1 := [d0 at: "name" put: name];
-  let d2 := [d1 at: "start" put: start];
-  [d2 at: "end" put: finish]
+  [Map
+    => new
+    => at: "name" put: name
+    => at: "start" put: start
+    => at: "end" put: finish]
   ] doc:
   "Builds one lexical occurrence entry with a byte span." ];
 
 [Reflect defineMethod: #analysisBindingEntry:kind:name:start:end:scopeStart: on: Lsp as: [:self :kind :name :start :finish :scopeStart :scopeEnd |
-  let d0 := [Map new];
-  let d1 := [d0 at: "kind" put: kind];
-  let d2 := [d1 at: "name" put: name];
-  let d3 := [d2 at: "start" put: start];
-  let d4 := [d3 at: "end" put: finish];
-  let d5 := [d4 at: "scopeStart" put: scopeStart];
-  [d5 at: "scopeEnd" put: scopeEnd]
+  [Map
+    => new
+    => at: "kind" put: kind
+    => at: "name" put: name
+    => at: "start" put: start
+    => at: "end" put: finish
+    => at: "scopeStart" put: scopeStart
+    => at: "scopeEnd" put: scopeEnd]
   ] doc:
   "Builds one lexical binding entry with its CST-derived scope." ];
 
@@ -512,6 +521,43 @@
   ] doc:
   "Checks every statement in one CST statements node." ];
 
+[Reflect defineMethod: #analysisThreadedSpecialHead:receiver:source: on: Lsp as: [:self :dispatch0 :recv :source |
+  let dispatch := [self analysisSkip: dispatch0];
+  [[[dispatch rule] = #keywordMsg]
+    ifTrue: [|
+      let recvName := [self analysisIdentName: recv source: source];
+      let selectors := [analysisThreadedSpecialSelectors at: recvName ifAbsent: [| #[]]];
+      let parts := [self analysisKeywordParts: dispatch source: source];
+      [selectors includes: [parts at: 0]]]
+    ifFalse: [| false]]
+  ] doc:
+  "Answers whether a receiver and first threaded dispatch spell a source-sensitive compiler form." ];
+
+[Reflect defineMethod: #analysisStaticDispatchArguments:source:out: on: Lsp as: [:self :dispatch0 :source :out |
+  let dispatch := [self analysisSkip: dispatch0];
+  [0 to: [[dispatch childCount] - 1] do: [:i |
+    let child := [dispatch childAt: i];
+    [[[child rule] = #expr] ifTrue: [|
+      [self analysisStaticNode: child source: source out: out]]]]];
+  out
+  ] doc:
+  "Checks the expression arguments directly owned by one unary, binary, or keyword dispatch." ];
+
+[Reflect defineMethod: #analysisStaticThreaded:receiver:source:out: on: Lsp as: [:self :msg :recv :source :out |
+  let first := [msg childAt: 0];
+  [[self analysisThreadedSpecialHead: first receiver: recv source: source]
+    ifTrue: [|
+      let dispatch := [self analysisSkip: first];
+      [self analysisAppend:
+        [self analysisDiagnostic: "threadedSpecialForm"
+          message: "source-sensitive special forms cannot use => threading"
+          start: [msg start] end: [dispatch end]] to: out]]];
+  [0 to: [[msg childCount] - 1] do: [:i |
+    [self analysisStaticDispatchArguments: [msg childAt: i] source: source out: out]]];
+  out
+  ] doc:
+  "Checks a threaded message's restricted head and recursively visits every leg argument." ];
+
 [Reflect defineMethod: #analysisStaticNode:source:out: on: Lsp as: [:self :node0 :source :out |
   let node := [self analysisSkip: node0];
   let rule := [node rule];
@@ -520,6 +566,9 @@
     let recv := [node childAt: 0];
     let msg := [self analysisSkip: [node childAt: 1]];
     let msgRule := [msg rule];
+    let isThreaded := [msgRule = #threadedMsg];
+    [isThreaded ifTrue: [|
+      [self analysisStaticThreaded: msg receiver: recv source: source out: out]]];
     let isKeyword := [msgRule = #keywordMsg];
     [isKeyword ifTrue: [|
       let parts := [self analysisKeywordParts: msg source: source];
@@ -629,27 +678,30 @@
     [self analysisCollectSymbols: root source: text out: symbols];
     [self analysisCollectOccurrences: root source: text out: occurrences];
     [self analysisCollectBindings: root source: text scopeStart: 0 scopeEnd: [text size] out: bindings]]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "symbols" put: [symbols value]];
-  let d2 := [d1 at: "occurrences" put: [occurrences value]];
-  [d2 at: "bindings" put: [bindings value]]
+  [Map
+    => new
+    => at: "symbols" put: [symbols value]
+    => at: "occurrences" put: [occurrences value]
+    => at: "bindings" put: [bindings value]]
   ] doc:
   "Parses once and answers the three source indexes used by project-aware navigation." ];
 
 [Reflect defineMethod: #diagFromStatic:text: on: Lsp as: [:self :snapshot :text |
   let start := [snapshot at: "start" ifAbsent: [| 0]];
   let finish := [snapshot at: "end" ifAbsent: [| start]];
-  let range0 := [Map new];
-  let range1 := [range0 at: "start" put: [self positionAtByte: start in: text]];
-  let range := [range1 at: "end" put: [self positionAtByte: finish in: text]];
+  let range := [Map
+    => new
+    => at: "start" put: [self positionAtByte: start in: text]
+    => at: "end" put: [self positionAtByte: finish in: text]];
   let kind := [snapshot at: "kind" ifAbsent: [| "static" ]];
   let message := [snapshot at: "message" ifAbsent: [| "static diagnostic" ]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "range" put: range];
-  let d2 := [d1 at: "severity" put: 1];
-  let d3 := [d2 at: "source" put: "birnam"];
-  let d4 := [d3 at: "code" put: kind];
-  [d4 at: "message" put: message]
+  [Map
+    => new
+    => at: "range" put: range
+    => at: "severity" put: 1
+    => at: "source" put: "birnam"
+    => at: "code" put: kind
+    => at: "message" put: message]
   ] doc:
   "Converts one source-analysis diagnostic with byte spans into an LSP Diagnostic." ];
 
@@ -670,7 +722,7 @@
       ifTrue: [| diags]
       ifFalse: [| [diags add: [self diagFromProject: project]]]]]
     ifFalse: [| diags]];
-  let params := [[[Map new] at: "uri" put: uri] at: "diagnostics" put: all];
+  let params := [Map => new => at: "uri" put: uri => at: "diagnostics" put: all];
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self] doc:
   "Statically diagnoses `text`, appends a shared project-resolution diagnostic when needed, and publishes the resulting diagnostics for `uri`." ];
@@ -678,9 +730,10 @@
 // -- source-backed navigation -----------------------------------------------
 
 [Reflect defineMethod: #rangeForStart:end:in: on: Lsp as: [:self :start :finish :text |
-  let r0 := [Map new];
-  let r1 := [r0 at: "start" put: [self positionAtByte: start in: text]];
-  [r1 at: "end" put: [self positionAtByte: finish in: text]]
+  [Map
+    => new
+    => at: "start" put: [self positionAtByte: start in: text]
+    => at: "end" put: [self positionAtByte: finish in: text]]
   ] doc:
   "Builds an LSP range from absolute UTF-8 byte spans." ];
 
@@ -694,12 +747,13 @@
   let selectionEnd := [entry at: "selectionEnd" ifAbsent: [| finish]];
   let range := [self rangeForStart: start end: finish in: text];
   let selection := [self rangeForStart: selectionStart end: selectionEnd in: text];
-  let d0 := [Map new];
-  let d1 := [d0 at: "name" put: name];
-  let d2 := [d1 at: "kind" put: kind];
-  let d3 := [d2 at: "detail" put: detail];
-  let d4 := [d3 at: "range" put: range];
-  [d4 at: "selectionRange" put: selection]
+  [Map
+    => new
+    => at: "name" put: name
+    => at: "kind" put: kind
+    => at: "detail" put: detail
+    => at: "range" put: range
+    => at: "selectionRange" put: selection]
   ] doc:
   "Converts one source-analysis symbol into an LSP DocumentSymbol." ];
 
@@ -713,9 +767,7 @@
   let start := [entry at: "start" ifAbsent: [| 0]];
   let finish := [entry at: "end" ifAbsent: [| start]];
   let range := [self rangeForStart: start end: finish in: text];
-  let d0 := [Map new];
-  let d1 := [d0 at: "uri" put: uri];
-  [d1 at: "range" put: range]
+  [Map => new => at: "uri" put: uri => at: "range" put: range]
   ] doc:
   "Answers an LSP Location for a source occurrence or declaration entry." ];
 
@@ -723,9 +775,7 @@
   let start := [entry at: "selectionStart" ifAbsent: [| [entry at: "start" ifAbsent: [| 0]]]];
   let finish := [entry at: "selectionEnd" ifAbsent: [| [entry at: "end" ifAbsent: [| start]]]];
   let range := [self rangeForStart: start end: finish in: text];
-  let d0 := [Map new];
-  let d1 := [d0 at: "uri" put: uri];
-  [d1 at: "range" put: range]
+  [Map => new => at: "uri" put: uri => at: "range" put: range]
   ] doc:
   "Answers an LSP definition Location using a symbol's selection range." ];
 
@@ -808,10 +858,11 @@
         [[[already isNil] & [[query isEmpty] | [name includesSubstring: query]]]
           ifTrue: [|
             [seen set: [[seen value] at: name put: true]];
-            let d0 := [Map new];
-            let d1 := [d0 at: "name" put: name];
-            let d2 := [d1 at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]];
-            [out add: [d2 at: "location" put: [self locationForIndexedSymbol: entry]]]]
+            [out add: [Map
+              => new
+              => at: "name" put: name
+              => at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]
+              => at: "location" put: [self locationForIndexedSymbol: entry]]]]
           ifFalse: [| out]]]]]]
   ] doc:
   "Answers workspace/symbol over the resolver-selected authored modules, including unopened dependencies." ];
@@ -825,26 +876,28 @@
 [Reflect defineMethod: #completionItemForBinding: on: Lsp as: [:self :entry |
   let name := [entry at: "name" ifAbsent: [| ""]];
   let module := [entry at: "module" ifAbsent: [| "<buffer>"]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "label" put: name];
-  let d2 := [d1 at: "kind" put: 6];
-  let d3 := [d2 at: "detail" put: [[entry at: "kind" ifAbsent: [| "local"]] , " in #" , module]];
-  [d3 at: "documentation" put: ["authored binding in " , [entry at: "path" ifAbsent: [| ""]]]]
+  [Map
+    => new
+    => at: "label" put: name
+    => at: "kind" put: 6
+    => at: "detail" put: [[entry at: "kind" ifAbsent: [| "local"]] , " in #" , module]
+    => at: "documentation" put: ["authored binding in " , [entry at: "path" ifAbsent: [| ""]]]]
   ] doc:
   "Builds a variable or parameter CompletionItem from an authored binding." ];
 
 [Reflect defineMethod: #completionItemForSymbol: on: Lsp as: [:self :entry |
   let kind := [entry at: "kind" ifAbsent: [| 13]];
-  let itemKind := [[kind = 6] ifTrue: [| 2] ifFalse: [| [[kind = 3] ifTrue: [| 9] ifFalse: [| 13]]]];
+  let itemKind := [{6 -> 2, 3 -> 9} at: kind ifAbsent: [| 13]];
   let name := [entry at: "name" ifAbsent: [| ""]];
   let detail := [[kind = 6]
     ifTrue: [| ["method on " , [entry at: "detail" ifAbsent: [| ""]]]]
-    ifFalse: [| [[kind = 3] ifTrue: [| "module"] ifFalse: [| "symbol"]]]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "label" put: name];
-  let d2 := [d1 at: "kind" put: itemKind];
-  let d3 := [d2 at: "detail" put: detail];
-  [d3 at: "documentation" put: [self symbolSourceBody: entry]]
+    ifFalse: [| [{3 -> "module"} at: kind ifAbsent: [| "symbol"]]]];
+  [Map
+    => new
+    => at: "label" put: name
+    => at: "kind" put: itemKind
+    => at: "detail" put: detail
+    => at: "documentation" put: [self symbolSourceBody: entry]]
   ] doc:
   "Builds a method, module, or authored symbol CompletionItem." ];
 
@@ -893,14 +946,15 @@
   let params := #[];
   [[count > 0] ifTrue: [|
     [0 to: [count - 1] do: [:i |
-      let d0 := [Map new];
-      let d1 := [d0 at: "label" put: ["arg" , [[i + 1] printString]]];
-      [params add: d1]]]]];
+      let label := ["arg" , [[i + 1] printString]];
+      let parameter := [Map => new => at: "label" put: label];
+      [params add: parameter]]]]];
   let label := [["#" , selector] , " on " , [entry at: "detail" ifAbsent: [| ""]]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "label" put: label];
-  let d2 := [d1 at: "documentation" put: [self symbolSourceBody: entry]];
-  [d2 at: "parameters" put: params]
+  [Map
+    => new
+    => at: "label" put: label
+    => at: "documentation" put: [self symbolSourceBody: entry]
+    => at: "parameters" put: params]
   ] doc:
   "Builds one LSP SignatureInformation from a source-backed method selector." ];
 
@@ -914,10 +968,11 @@
   let found := [[index isNil] ifTrue: [| nil] ifFalse: [| [self symbolForPosition: position uri: uri index: index]]];
   let result := [[found isNil] ifTrue: [| nil] ifFalse: [|
     let signature := [self signatureForSymbol: found];
-    let d0 := [Map new];
-    let d1 := [d0 at: "signatures" put: #[signature]];
-    let d2 := [d1 at: "activeSignature" put: 0];
-    [d2 at: "activeParameter" put: 0]]];
+    [Map
+      => new
+      => at: "signatures" put: #[signature]
+      => at: "activeSignature" put: 0
+      => at: "activeParameter" put: 0]]];
   [self respond: id result: result];
   self] doc:
   "Answers signature help for a method selector under the cursor; dynamic receiver dispatch remains intentionally unresolved." ];
@@ -925,20 +980,32 @@
 // -- JSON-RPC response builders -----------------------------------------------
 
 [Reflect defineMethod: #respond:result: on: Lsp as: [:self :id :result |
-  let msg := [[[[Map new] at: "jsonrpc" put: "2.0"] at: "id" put: id] at: "result" put: result];
+  let msg := [Map
+    => new
+    => at: "jsonrpc" put: "2.0"
+    => at: "id" put: id
+    => at: "result" put: result];
   [self sendMessage: [Json stringify: msg]];
   self] doc:
   "Sends a JSON-RPC success response: `result` under request `id`."];
 
 [Reflect defineMethod: #respondError: on: Lsp as: [:self :id |
-  let e := [[[Map new] at: "code" put: -32601] at: "message" put: "method not found"];
-  let msg := [[[[Map new] at: "jsonrpc" put: "2.0"] at: "id" put: id] at: "error" put: e];
+  let error := [Map => new => at: "code" put: -32601 => at: "message" put: "method not found"];
+  let msg := [Map
+    => new
+    => at: "jsonrpc" put: "2.0"
+    => at: "id" put: id
+    => at: "error" put: error];
   [self sendMessage: [Json stringify: msg]];
   self] doc:
   "Sends a JSON-RPC error response for `id`: -32601 method not found."];
 
 [Reflect defineMethod: #sendNote:params: on: Lsp as: [:self :method :params |
-  let note := [[[[Map new] at: "jsonrpc" put: "2.0"] at: "method" put: method] at: "params" put: params];
+  let note := [Map
+    => new
+    => at: "jsonrpc" put: "2.0"
+    => at: "method" put: method
+    => at: "params" put: params];
   [self sendMessage: [Json stringify: note]];
   self] doc:
   "Sends a JSON-RPC notification: `method` with `params` (no id, no reply expected)."];
@@ -1028,33 +1095,35 @@
   "Answers open-buffer text when available, otherwise the authored source at `path`; errors become empty analysis text." ];
 
 [Reflect defineMethod: #indexedSymbol:module:path:uri:text: on: Lsp as: [:self :entry :module :path :uri :text |
-  let d0 := [Map new];
-  let d1 := [d0 at: "name" put: [entry at: "name" ifAbsent: [| ""]]];
-  let d2 := [d1 at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]];
-  let d3 := [d2 at: "detail" put: [entry at: "detail" ifAbsent: [| ""]]];
-  let d4 := [d3 at: "start" put: [entry at: "start" ifAbsent: [| 0]]];
-  let d5 := [d4 at: "end" put: [entry at: "end" ifAbsent: [| 0]]];
-  let d6 := [d5 at: "selectionStart" put: [entry at: "selectionStart" ifAbsent: [| 0]]];
-  let d7 := [d6 at: "selectionEnd" put: [entry at: "selectionEnd" ifAbsent: [| 0]]];
-  let d8 := [d7 at: "module" put: module];
-  let d9 := [d8 at: "path" put: path];
-  let d10 := [d9 at: "uri" put: uri];
-  [d10 at: "source" put: text]
+  [Map
+    => new
+    => at: "name" put: [entry at: "name" ifAbsent: [| ""]]
+    => at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]
+    => at: "detail" put: [entry at: "detail" ifAbsent: [| ""]]
+    => at: "start" put: [entry at: "start" ifAbsent: [| 0]]
+    => at: "end" put: [entry at: "end" ifAbsent: [| 0]]
+    => at: "selectionStart" put: [entry at: "selectionStart" ifAbsent: [| 0]]
+    => at: "selectionEnd" put: [entry at: "selectionEnd" ifAbsent: [| 0]]
+    => at: "module" put: module
+    => at: "path" put: path
+    => at: "uri" put: uri
+    => at: "source" put: text]
   ] doc:
   "Adds canonical module/path/URI/source provenance to one parser-backed source symbol." ];
 
 [Reflect defineMethod: #indexedBinding:module:path:uri:text: on: Lsp as: [:self :entry :module :path :uri :text |
-  let d0 := [Map new];
-  let d1 := [d0 at: "kind" put: [entry at: "kind" ifAbsent: [| "local"]]];
-  let d2 := [d1 at: "name" put: [entry at: "name" ifAbsent: [| ""]]];
-  let d3 := [d2 at: "start" put: [entry at: "start" ifAbsent: [| 0]]];
-  let d4 := [d3 at: "end" put: [entry at: "end" ifAbsent: [| 0]]];
-  let d5 := [d4 at: "scopeStart" put: [entry at: "scopeStart" ifAbsent: [| 0]]];
-  let d6 := [d5 at: "scopeEnd" put: [entry at: "scopeEnd" ifAbsent: [| 0]]];
-  let d7 := [d6 at: "module" put: module];
-  let d8 := [d7 at: "path" put: path];
-  let d9 := [d8 at: "uri" put: uri];
-  [d9 at: "source" put: text]
+  [Map
+    => new
+    => at: "kind" put: [entry at: "kind" ifAbsent: [| "local"]]
+    => at: "name" put: [entry at: "name" ifAbsent: [| ""]]
+    => at: "start" put: [entry at: "start" ifAbsent: [| 0]]
+    => at: "end" put: [entry at: "end" ifAbsent: [| 0]]
+    => at: "scopeStart" put: [entry at: "scopeStart" ifAbsent: [| 0]]
+    => at: "scopeEnd" put: [entry at: "scopeEnd" ifAbsent: [| 0]]
+    => at: "module" put: module
+    => at: "path" put: path
+    => at: "uri" put: uri
+    => at: "source" put: text]
   ] doc:
   "Adds canonical module/path/URI/source provenance to one lexical binding." ];
 
@@ -1067,14 +1136,15 @@
   let rawBindings := [raw at: "bindings"];
   let bindings := [rawBindings inject: #[] into: [:out :entry |
     [out add: [self indexedBinding: entry module: module path: path uri: uri text: text]]]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "module" put: module];
-  let d2 := [d1 at: "path" put: path];
-  let d3 := [d2 at: "uri" put: uri];
-  let d4 := [d3 at: "source" put: text];
-  let d5 := [d4 at: "symbols" put: symbols];
-  let d6 := [d5 at: "occurrences" put: rawOccurrences];
-  [d6 at: "bindings" put: bindings]
+  [Map
+    => new
+    => at: "module" put: module
+    => at: "path" put: path
+    => at: "uri" put: uri
+    => at: "source" put: text
+    => at: "symbols" put: symbols
+    => at: "occurrences" put: rawOccurrences
+    => at: "bindings" put: bindings]
   ] doc:
   "Builds one parser-backed authored document index without evaluating its source." ];
 
@@ -1104,13 +1174,14 @@
       let allDocs := [addCurrent ifTrue: [| [docs add: currentDoc]] ifFalse: [| docs]];
       let currentSymbols := [addCurrent ifTrue: [| [currentDoc at: "symbols" ifAbsent: [| #[]]]] ifFalse: [| #[]]];
       let allSymbols := [currentSymbols inject: symbols into: [:out :entry | [out add: entry]]];
-      let d0 := [Map new];
-      let d1 := [d0 at: "digest" put: digest];
-      let d2 := [d1 at: "root" put: root];
-      let d3 := [d2 at: "documents" put: allDocs];
-      let d4 := [d3 at: "symbols" put: allSymbols];
-      [[db cellFor: self attr: #projectIndexes] set: [[self projectIndexesMap] at: root put: d4]];
-      d4]]
+      let index := [Map
+        => new
+        => at: "digest" put: digest
+        => at: "root" put: root
+        => at: "documents" put: allDocs
+        => at: "symbols" put: allSymbols];
+      [[db cellFor: self attr: #projectIndexes] set: [[self projectIndexesMap] at: root put: index]];
+      index]]
   ] doc:
   "Builds or returns the canonical-root authored-source index, using open buffers only for analysis." ];
 
@@ -1163,9 +1234,10 @@
   let start := [entry at: "selectionStart" ifAbsent: [| [entry at: "start" ifAbsent: [| 0]]]];
   let finish := [entry at: "selectionEnd" ifAbsent: [| [entry at: "end" ifAbsent: [| start]]]];
   let range := [self rangeForStart: start end: finish in: [entry at: "source" ifAbsent: [| ""]]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "uri" put: [entry at: "uri" ifAbsent: [| ""]]];
-  [d1 at: "range" put: range]
+  [Map
+    => new
+    => at: "uri" put: [entry at: "uri" ifAbsent: [| ""]]
+    => at: "range" put: range]
   ] doc:
   "Answers an LSP Location for an indexed authored symbol definition." ];
 
@@ -1173,9 +1245,10 @@
   let start := [entry at: "start" ifAbsent: [| 0]];
   let finish := [entry at: "end" ifAbsent: [| start]];
   let range := [self rangeForStart: start end: finish in: [doc at: "source" ifAbsent: [| ""]]];
-  let d0 := [Map new];
-  let d1 := [d0 at: "uri" put: [doc at: "uri" ifAbsent: [| ""]]];
-  [d1 at: "range" put: range]
+  [Map
+    => new
+    => at: "uri" put: [doc at: "uri" ifAbsent: [| ""]]
+    => at: "range" put: range]
   ] doc:
   "Answers an LSP Location for an indexed authored occurrence." ];
 
@@ -1194,25 +1267,14 @@
   let path := [entry at: "path" ifAbsent: [| ""]];
   let detail := [entry at: "detail" ifAbsent: [| ""]];
   let source := [entry at: "source" ifAbsent: [| ""]];
-  let method0 := ["Birnam method `#" , name];
-  let method1 := [method0 , "` on `"];
-  let method2 := [method1 , detail];
-  let method3 := [method2 , "\n\nmodule `#"];
-  let method4 := [method3 , module];
-  let method5 := [method4 , "`\n\nsource: `"];
-  let method6 := [method5 , path];
-  let method7 := [method6 , "`\n\n```birnam\n"];
-  let methodBody := [method7 , [source , "\n```"]];
-  let module0 := ["Birnam module `#" , name];
-  let module1 := [module0 , "`\n\nsource: `"];
-  let module2 := [module1 , path];
-  let moduleBody := [module2 , "`\n\nrequires its resolver-selected dependencies."];
-  let binding0 := ["Birnam binding `" , name];
-  let binding1 := [binding0 , "`\n\nmodule `#"];
-  let binding2 := [binding1 , module];
-  let binding3 := [binding2 , "`\n\nsource: `"];
-  let bindingBody := [binding3 , path];
-  [[kind = 6] ifTrue: [| methodBody] ifFalse: [| [[kind = 3] ifTrue: [| moduleBody] ifFalse: [| bindingBody]]]]
+  let methodBody := ["Birnam method `#" , name , "` on `" , detail
+    , "\n\nmodule `#" , module , "`\n\nsource: `" , path
+    , "`\n\n```birnam\n" , source , "\n```"];
+  let moduleBody := ["Birnam module `#" , name , "`\n\nsource: `" , path
+    , "`\n\nrequires its resolver-selected dependencies."];
+  let bindingBody := ["Birnam binding `" , name , "`\n\nmodule `#" , module
+    , "`\n\nsource: `" , path];
+  [{6 -> methodBody, 3 -> moduleBody} at: kind ifAbsent: [| bindingBody]]
   ] doc:
   "Builds semantic hover text from authored source provenance." ];
 
@@ -1297,18 +1359,23 @@
   let rootRaw := [folder at: "uri" ifAbsent: [| [p at: "rootUri" ifAbsent: [| [p at: "rootPath" ifAbsent: [| ""]]]]]];
   let root := [[rootRaw isNil] ifTrue: [| ""] ifFalse: [| rootRaw]];
   [[root isEmpty] ifFalse: [| [self primeWorkspaceFor: root]]];
-  let sync := [[[[Map new] at: "openClose" put: true] at: "change" put: 1] at: "save" put: true];
-  let caps0 := [[[Map new] at: "textDocumentSync" put: sync] at: "hoverProvider" put: true];
-  let caps1 := [caps0 at: "documentSymbolProvider" put: true];
-  let caps2 := [caps1 at: "definitionProvider" put: true];
-  let caps3 := [caps2 at: "referencesProvider" put: true];
-  let caps4 := [caps3 at: "workspaceSymbolProvider" put: true];
-  let completion := [[Map new] at: "resolveProvider" put: false];
-  let caps5 := [caps4 at: "completionProvider" put: completion];
-  let signature := [[Map new] at: "triggerCharacters" put: #[":"]];
-  let caps := [caps5 at: "signatureHelpProvider" put: signature];
-  let info := [[[Map new] at: "name" put: "birnam"] at: "version" put: "0.1"];
-  let result := [[[Map new] at: "capabilities" put: caps] at: "serverInfo" put: info];
+  let sync := [Map
+    => new
+    => at: "openClose" put: true
+    => at: "change" put: 1
+    => at: "save" put: true];
+  let caps := [Map
+    => new
+    => at: "textDocumentSync" put: sync
+    => at: "hoverProvider" put: true
+    => at: "documentSymbolProvider" put: true
+    => at: "definitionProvider" put: true
+    => at: "referencesProvider" put: true
+    => at: "workspaceSymbolProvider" put: true
+    => at: "completionProvider" put: [Map => new => at: "resolveProvider" put: false]
+    => at: "signatureHelpProvider" put: [Map => new => at: "triggerCharacters" put: #[":"]]];
+  let info := [Map => new => at: "name" put: "birnam" => at: "version" put: "0.1"];
+  let result := [Map => new => at: "capabilities" put: caps => at: "serverInfo" put: info];
   [self respond: id result: result];
   self] doc:
   "Answers initialize after selecting an explicit workspace URI when supplied; project resolution remains read-only."];
@@ -1371,7 +1438,7 @@
   [[db cellFor: self attr: #versions] set: [[self versionsMap] at: uri put: nil]];
   [[db cellFor: self attr: #documentPaths] set: [[self documentPathsMap] at: uri put: nil]];
   [self invalidateProjectIndexes];
-  let params := [[[Map new] at: "uri" put: uri] at: "diagnostics" put: #[]];
+  let params := [Map => new => at: "uri" put: uri => at: "diagnostics" put: #[]];
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self] doc:
   "didClose: releases the retained document text/version and clears its diagnostics."];
@@ -1410,8 +1477,11 @@
 
 // A byte that can appear in an identifier: A-Z a-z 0-9 _.
 [Reflect defineMethod: #isIdentByte: on: Lsp as: [:self :b |
-  let r := [[[[[b >= 65] & [b <= 90]] | [[b >= 97] & [b <= 122]]] | [[b >= 48] & [b <= 57]]] | [b = 95]];
-  r] doc:
+  let uppercase := [[b >= 65] & [b <= 90]];
+  let lowercase := [[b >= 97] & [b <= 122]];
+  let digit := [[b >= 48] & [b <= 57]];
+  let letter := [uppercase | lowercase];
+  [letter | [digit | [b = 95]]]] doc:
   "True iff byte `b` can appear in an identifier: A-Z, a-z, 0-9, or _."];
 
 [Reflect defineMethod: #scanLeft:in: on: Lsp as: [:self :i :line |
@@ -1453,10 +1523,9 @@
 
 // Build an LSP Hover result (markdown): a bold token header over a rendered body.
 [Reflect defineMethod: #hoverResult:token: on: Lsp as: [:self :body :tok |
-  let value := [[["**" , tok] , "**\n\n"] , body];
-  let contents := [[[Map new] at: "kind" put: "markdown"] at: "value" put: value];
-  let r := [[Map new] at: "contents" put: contents];
-  r] doc:
+  let value := ["**" , tok , "**\n\n" , body];
+  let contents := [Map => new => at: "kind" put: "markdown" => at: "value" put: value];
+  [Map => new => at: "contents" put: contents]] doc:
   "Answers an LSP Hover result (markdown): a bold `tok` header over the rendered `body`."];
 
 // textDocument/hover: the Doc body for the token under the cursor — a hand-written
@@ -1491,38 +1560,29 @@
   let m  := [msg at: "method" ifAbsent: [| ""]];
   let id := [msg at: "id" ifAbsent: [| nil]];
   let p  := [msg at: "params" ifAbsent: [| [Map new]]];
-  let r := [[m = "initialize"]
-    ifTrue: [| [self onInitialize: id params: p]]
-    ifFalse: [| [[m = "textDocument/hover"]
-      ifTrue: [| [self onHover: p id: id]]
-      ifFalse: [| [[m = "textDocument/didOpen"]
-        ifTrue: [| [self onDidOpen: p]]
-        ifFalse: [| [[m = "textDocument/didChange"]
-          ifTrue: [| [self onDidChange: p]]
-          ifFalse: [| [[m = "textDocument/didClose"]
-            ifTrue: [| [self onDidClose: p]]
-            ifFalse: [| [[m = "textDocument/didSave"]
-              ifTrue: [| [self onDidSave: p]]
-              ifFalse: [| [[m = "textDocument/documentSymbol"]
-                ifTrue: [| [self onDocumentSymbol: p id: id]]
-                ifFalse: [| [[m = "textDocument/definition"]
-                  ifTrue: [| [self onDefinition: p id: id]]
-                  ifFalse: [| [[m = "textDocument/references"]
-                    ifTrue: [| [self onReferences: p id: id]]
-                    ifFalse: [| [[m = "textDocument/completion"]
-                      ifTrue: [| [self onCompletion: p id: id]]
-                      ifFalse: [| [[m = "textDocument/signatureHelp"]
-                        ifTrue: [| [self onSignatureHelp: p id: id]]
-                        ifFalse: [| [[m = "workspace/symbol"]
-                          ifTrue: [| [self onWorkspaceSymbol: p id: id]]
-                          ifFalse: [| [[m = "shutdown"]
-                        ifTrue: [| [self onShutdown: id]]
-                        ifFalse: [| [[m = "exit"]
-                          ifTrue: [| [0 cExit]]
-                          ifFalse: [| [[id notNil]
-                            ifTrue: [| [self respondError: id]]
-                            ifFalse: [| self]]]]]]]]]]]]]]]]]]]]]]]]]]]]]];
-  r] doc:
+  let handlers := {
+    "initialize" -> [| [self onInitialize: id params: p]],
+    "textDocument/hover" -> [| [self onHover: p id: id]],
+    "textDocument/didOpen" -> [| [self onDidOpen: p]],
+    "textDocument/didChange" -> [| [self onDidChange: p]],
+    "textDocument/didClose" -> [| [self onDidClose: p]],
+    "textDocument/didSave" -> [| [self onDidSave: p]],
+    "textDocument/documentSymbol" -> [| [self onDocumentSymbol: p id: id]],
+    "textDocument/definition" -> [| [self onDefinition: p id: id]],
+    "textDocument/references" -> [| [self onReferences: p id: id]],
+    "textDocument/completion" -> [| [self onCompletion: p id: id]],
+    "textDocument/signatureHelp" -> [| [self onSignatureHelp: p id: id]],
+    "workspace/symbol" -> [| [self onWorkspaceSymbol: p id: id]],
+    "shutdown" -> [| [self onShutdown: id]],
+    "exit" -> [| [0 cExit]]};
+  let handler := [handlers at: m ifAbsent: [| nil]];
+  [[handler notNil]
+    ifTrue: [| [handler value]]
+    ifFalse: [|
+      [[id notNil]
+        ifTrue: [| [self respondError: id]]
+        ifFalse: [| self]]]]
+  ] doc:
   "Routes a parsed JSON-RPC `msg` to its handler by method name; unknown requests answer method-not-found."];
 
 // Parse a body and dispatch it; ignore malformed JSON.

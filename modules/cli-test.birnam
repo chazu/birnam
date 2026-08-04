@@ -112,6 +112,23 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t expect: [[bindings at: 0] at: "kind"] equals: "local" describes: "binding marks top-level locals"];
   [t expect: [[bindings at: 2] at: "kind"] equals: "parameter" describes: "binding marks block parameters"]]];
 
+[s test: "Lsp traverses every => leg and diagnoses restricted heads" do: [:t |
+  let occurrences := [Lsp sourceOccurrencesOf:
+    "[value => normalize => at: key put: [other => render]]"];
+  [t assert: [occurrences anySatisfy: [:entry | [[entry at: "name"] = "normalize"]]]
+     describes: "occurrences reach a unary threaded leg"];
+  [t assert: [occurrences anySatisfy: [:entry | [[entry at: "name"] = "at:"]]]
+     describes: "occurrences reach keyword selector parts"];
+  [t assert: [occurrences anySatisfy: [:entry | [[entry at: "name"] = "render"]]]
+     describes: "occurrences reach nested threaded arguments"];
+  let nested := [Lsp compileDiagnostics:
+    "[value => at: 0 put: [Reflect defineMethod: #needs: on: Integer as: [:self | 1]]]"];
+  [t expect: [[nested at: 0] at: "code"] equals: "selectorArity"
+     describes: "static diagnostics traverse a threaded keyword argument"];
+  let restricted := [Lsp compileDiagnostics: "[System => embedFile: \"x\"]"];
+  [t expect: [[restricted at: 0] at: "code"] equals: "threadedSpecialForm"
+     describes: "the editor reports the source-sensitive head restriction"]]];
+
 [s test: "Lsp translates UTF-8 byte spans and UTF-16 positions" do: [:t |
   [t expect: [Lsp utf16Offset: 3 in: "aé"] equals: 2 describes: "a two-byte code point is one UTF-16 unit"];
   [t expect: [Lsp byteOffsetForUtf16: 2 in: "aé"] equals: 3 describes: "a UTF-16 cursor advances over the full UTF-8 code point"]]];
