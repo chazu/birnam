@@ -16,7 +16,9 @@ The stackless driver gives that existing shape one narrow semantic contract:
 
 - `receiver` is the active Machine Oop;
 - `args` is an ordinary borrowed Oop argument buffer;
-- the initial driver invocation supplies no arguments, so `count` is zero; and
+- the driver supplies a descriptor-declared buffer of length 0 or 1, where a
+  declared operand is the resume token
+  ([60E §9.1](60e-resumable-registration-and-entry.md)); and
 - the result is one canonical StepAction Oop.
 
 The proposal does **not** add any of the following:
@@ -154,9 +156,12 @@ protocol. The driver validates its vtable, payload schema, owning Machine,
 generation, drive epoch, and slot operands before changing Machine state.
 
 The Method function type does not itself distinguish a synchronous value from a
-StepAction. Registration does. Invoking an address under the wrong semantic tag
-is malformed-artifact or runtime-corruption failure, just as invoking any
-foreign function under the wrong ABI contract would be.
+StepAction. Registration does, and
+[60E](60e-resumable-registration-and-entry.md) defines it: a vtable holds an
+ordinary entry thunk, never the StepMethod address, so an ordinary send can
+never reach a StepMethod with a non-Machine receiver. Invoking an address under
+the wrong semantic tag is malformed-artifact or runtime-corruption failure, just
+as invoking any foreign function under the wrong ABI contract would be.
 
 The function shape is not being overloaded with non-Oop control data. Receiver,
 arguments, and result retain their ordinary meanings. The additional rule is
@@ -365,7 +370,8 @@ If accepted, this record freezes only:
 - StepMethod uses the existing Method function shape;
 - the driver invokes it with Machine as receiver and an ordinary argument
   buffer;
-- the initial driver contract uses zero arguments;
+- the driver contract uses a descriptor-declared buffer of length 0 or 1, per
+  the 60E §9.1 amendment;
 - registration distinguishes synchronous Method from StepMethod; and
 - StepMethod returns one canonical StepAction Oop.
 
@@ -503,24 +509,30 @@ Measure:
 - allocation caused by action construction.
 
 Only if those measurements fail an agreed budget should S1 prototype a direct
-slot or specialized action-publication optimization. The baseline semantics
-remain the Method-shaped contract.
+slot or specialized action-publication optimization. That budget is stated in
+[60E §8](60e-resumable-registration-and-entry.md), against the recorded send
+constant. The baseline semantics remain the Method-shaped contract.
 
 ## 15. Questions for reviewers
 
-Review should now focus on the smaller set of real decisions:
+Review should now focus on the smaller set of real decisions. Questions 1, 4, and
+6 are answered by [60E](60e-resumable-registration-and-entry.md) and are recorded
+here as resolved rather than deleted:
 
-1. Is zero arguments the correct permanent driver convention, or should a
-   StepMethod be allowed descriptor-declared ordinary Oop arguments?
+1. **Resolved (60E §9.1).** Zero arguments is not frozen; the driver supplies a
+   descriptor-declared buffer of length 0 or 1, so a resume token need not cost
+   a microcode send.
 2. What is the minimum Machine microcode protocol needed by the S1 hand-written
    method?
 3. Should action publication be protocol on Machine, canonical StepAction
    prototypes, or immutable call-site descriptors?
-4. How should primitive-backed synchronous Machine methods be identified so the
-   compiler cannot mistake an arbitrary resumable send for microcode?
+4. **Resolved (60E §9.2).** Microcode selectors are installed on Machine's own
+   private vtable and sealed against overwrite, so an arbitrary resumable method
+   cannot displace a primitive the driver depends on.
 5. Should the driver invoke the registered Method pointer directly, or should
    current implementation selection itself be an object-visible dispatch step?
-6. What measured dispatch overhead would justify an optional fast tier?
+6. **Resolved (60E §8).** The provisional budget is stated against the recorded
+   send constant; exceeding it is the trigger for the §13.3 tier.
 7. Which parts of Machine policy must be replaceable on day one, and which
    primitive storage operations are acceptable under the governing ownership
    rule?

@@ -10,9 +10,10 @@
 > - [60b — Machine, frames, and GC](60b-stackless-machine-and-frames.md)
 > - [60c — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
 > - [60d — Concurrency fit and boundaries](60d-stackless-concurrency-fit.md)
+> - [60e — Resumable registration and the entry seam](60e-resumable-registration-and-entry.md)
 >
-> Future records will cover the remaining compiler/registration seam,
-> code-generation lifetime, host integration, and the acceptance matrix.
+> Future records will cover compiler lowering, code-generation lifetime, host
+> integration, and the acceptance matrix.
 
 ## 1. Scope
 
@@ -131,9 +132,9 @@ the primitive-backed Machine protocol and defers stronger native interfaces
 until measurements justify them. It is the human review surface for accepting
 or rejecting that minimal calling contract.
 
-A later compiler/registration record will define resumable registration, sync
-adaptation, CFG lowering, liveness, block captures, source maps, and live/AOT
-parity against the chosen calling contract.
+Resumable registration and the ordinary-send entry seam are decided in 60E. A
+later compiler record will define CFG lowering, liveness, block captures, source
+maps, and live/AOT parity against the chosen calling contract.
 
 ### 60D — Concurrency fit and boundaries
 
@@ -146,12 +147,23 @@ This record is the concurrency-compatibility gate for S1 and later scheduler
 work. It does not select a scheduler or reopen the reactor/isolate decisions in
 Design 48.
 
-### Future 60E — Lifetime and host integration
+### 60E — Resumable registration and the entry seam
+
+Decides what a vtable holds for a resumable implementation, how an ordinary send
+reaches one through an entry thunk, how the driver recognizes a resumable
+address without aliasing recycled code, and how synchronous callers acquire a
+Machine. It seals the Machine microcode selectors, amends the 60C driver
+argument count, and sets the provisional performance budget 60C leaves open.
+
+This record is the correctness gate for S1: without it, an installed StepMethod
+is directly callable by an ordinary send.
+
+### Future 60F — Lifetime and host integration
 
 Will define TCC/AOT code pinning, live replacement, host drive/suspend/resume,
 image rejection, and recovery behavior.
 
-### Future 60F — Acceptance and rollout
+### Future 60G — Acceptance and rollout
 
 Will define the implementation slices, compatibility matrix, stack bounds,
 performance budgets, and release gates.
@@ -160,9 +172,10 @@ performance budgets, and release gates.
 
 ### S0 — Documentation and contract freeze
 
-Accept 60A and 60B. Review the Method-shaped proposal in 60C, then record its
-acceptance or one semantic requirement it cannot express. Establish synchronous
-benchmarks and current ABI fixtures.
+Accept 60A, 60B, and 60E. Review the Method-shaped proposal in 60C, then record
+its acceptance or one semantic requirement it cannot express; acceptance carries
+the two amendments in 60E §9. Establish synchronous benchmarks and current ABI
+fixtures, including the send constant the 60E §8 budget is stated against.
 
 ### S1 — Parallel machine substrate
 
@@ -200,6 +213,8 @@ Implementation may begin after S0 when all of the following are written down:
 
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
 - the exact StepMethod calling contract selected after 60C review;
+- the resumable registration record, entry-thunk contract, and driver
+  recognition rule from 60E;
 - the Machine Oop capability and private-Frame accessor boundary for generated
   native code;
 - registry generation, trace, and finalization rules for native-backed state;
@@ -210,12 +225,23 @@ Implementation may begin after S0 when all of the following are written down:
 - code-generation pinning and restored-generation dispatch;
 - the minimal non-public suspend/resume test contract.
 
-The first proof is successful only when it demonstrates:
+Two proofs follow, and they are not the same milestone.
+
+The S1/S2 execution proof is successful only when it demonstrates:
 
 1. two mutually recursive resumable methods;
 2. at least one million calls without unbounded native-stack growth;
 3. a synchronous leaf invoked through the adapter;
-4. explicit frame roots surviving forced collection;
-5. deterministic rejection across a native barrier;
-6. suspension and resumption under the S0 contract;
-7. measured overhead against the current Rust synchronous path.
+4. a resumable method reached by an ordinary send from unmigrated code, with no
+   observable change to that send;
+5. explicit frame roots surviving forced collection;
+6. deterministic rejection across a native barrier;
+7. measured overhead against the current Rust synchronous path, published
+   against the 60E §8 budget whether or not it passes.
+
+The S3 suspension proof adds:
+
+8. suspension and resumption under the S0 contract;
+9. one-shot restoration rejecting its second restore;
+10. generation pins refusing code disposal while a frame or continuation holds
+    them.

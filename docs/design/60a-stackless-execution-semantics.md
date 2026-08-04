@@ -164,7 +164,9 @@ When a resumable frame returns a CallAction Oop:
    result slot against the frame descriptor.
 2. It resolves the current method address.
 3. If the address is registered as resumable, it pushes a frame for that
-   implementation and generation.
+   implementation and generation. Registration, recognition, and the rule that
+   forbids recognizing a recycled code address are defined in
+   [60E](60e-resumable-registration-and-entry.md).
 4. Otherwise it enters the synchronous Method barrier, invokes the Method with
    a driver-owned argument buffer, and writes the returned Oop to the result
    slot.
@@ -181,6 +183,13 @@ A synchronous Method may call IdApi.send recursively. Such sends may enter
 resumable methods, but they must drive them to completion before returning to
 the synchronous Method. The active synchronous Method remains a barrier for
 capture.
+
+That entry is not implicit. A resumable implementation is reached through an
+ordinary entry thunk that acquires a Machine, drives it to completion, and
+answers the ordinary result Oop; a vtable never holds a StepMethod address.
+[60E](60e-resumable-registration-and-entry.md) defines the thunk, the Machine
+acquisition rule, and the transparency requirement that migrating a method to
+resumable changes nothing an ordinary sender can observe.
 
 ## 6. Suspension and continuation behavior
 
@@ -267,6 +276,9 @@ The first driver must distinguish at least:
 - missingImplementation;
 - codeGenerationUnavailable;
 - continuationNotImageable.
+
+[60E §10](60e-resumable-registration-and-entry.md) extends this taxonomy with
+the registration, entry, sealing, and pinning failures.
 
 These are host/runtime failures. Language-level errors continue to be ordinary
 Birnam Oop results and must pass through the same Return path as any other
