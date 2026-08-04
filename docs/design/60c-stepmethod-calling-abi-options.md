@@ -83,11 +83,14 @@ and failure. It does not require a second function ABI.
 
 References:
 
-- [Scheme: An Interpreter for Extended Lambda Calculus](https://research.scheme.org/lambda-papers/lambda-papers-scheme-report.html),
+- [Scheme: An Interpreter for Extended Lambda
+  Calculus](https://research.scheme.org/lambda-papers/lambda-papers-scheme-report.html),
   especially sections 4.2, 5.1, and 5.2;
-- [R5RS proper tail recursion](https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html);
+- [R5RS proper tail
+  recursion](https://people.csail.mit.edu/jaffer/r5rs/Proper-tail-recursion.html);
   and
-- [Racket BC tail evaluation](https://docs.racket-lang.org/inside/Evaluation.html#%28part._.Tail_.Evaluation%29).
+- [Racket BC tail
+  evaluation](https://docs.racket-lang.org/inside/Evaluation.html#%28part._.Tail_.Evaluation%29).
 
 ## 3. Architectural constraints
 
@@ -123,7 +126,8 @@ The governing ownership rule remains:
 Relevant prior records are:
 
 - [30 — The destination](30-the-destination.md);
-- [42 — Object canonical, relational derived](42-object-canonical-relational-derived.md);
+- [42 — Object canonical, relational
+  derived](42-object-canonical-relational-derived.md);
 - [60A — Execution semantics](60a-stackless-execution-semantics.md);
 - [60B — Machine, Frames, and GC](60b-stackless-machine-and-frames.md); and
 - the current [IdApi ABI evidence](../../abi/README.md).
@@ -312,8 +316,10 @@ indices on every transition. The point of the example is the boundary:
 The Rust Machine driver remains a small irreducible loop:
 
 1. validate the Machine state and current Frame;
-2. resolve the registered StepMethod entry from the Frame's implementation
-   identity;
+2. use the StepMethod address the Frame captured when it was pushed — the
+   registry is consulted at Call and TailCall resolution, not per step, so
+   unregistration cannot reach a live frame
+   ([60E §7.1](60e-resumable-registration-and-entry.md));
 3. invoke that entry through the Method ABI with Machine and the
    descriptor-declared argument buffer;
 4. receive one Oop;
@@ -534,8 +540,10 @@ anchor. The baseline semantics remain the Method-shaped contract.
 
 ## 15. Questions for reviewers
 
-Review should now focus on the smaller set of real decisions. Questions 1, 4, and
-6 are answered by [60E](60e-resumable-registration-and-entry.md) and are recorded
+Review should now focus on the smaller set of real decisions. Questions 1, 4,
+and
+6 are answered by [60E](60e-resumable-registration-and-entry.md) and are
+recorded
 here as resolved rather than deleted:
 
 1. **Resolved (60E §9.1).** Zero arguments is not frozen; the driver supplies a

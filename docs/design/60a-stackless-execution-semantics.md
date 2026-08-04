@@ -70,7 +70,8 @@ slot tracing rules are defined in 60B.
 
 A StepMethod executes one bounded portion of the Machine's current Frame and
 returns one StepAction Oop to the Machine driver. The calling contract proposed
-in [60C](60c-stepmethod-calling-abi-options.md) reuses the existing Method shape:
+in [60C](60c-stepmethod-calling-abi-options.md) reuses the existing Method
+shape:
 Machine is the receiver, the driver supplies the argument buffer the frame's
 descriptor declares, and the result is the StepAction. Generated code accesses
 current Frame state
@@ -165,9 +166,11 @@ When a resumable frame returns a CallAction Oop:
 1. The driver validates the referenced receiver, selector, argument range, and
    result slot against the frame descriptor.
 2. It resolves the current method address.
-3. If the address is registered as resumable, it pushes a frame for that
-   implementation and generation. Registration, recognition, and the rule that
-   forbids recognizing a recycled code address are defined in
+3. If the resolved implementation — its defining vtable and selector, never the
+   code address alone — names a live registration, it pushes a frame for that
+   implementation and generation, capturing the step address and descriptor at
+   push. Registration, recognition, and the rule that forbids recognizing a
+   recycled code address are defined in
    [60E](60e-resumable-registration-and-entry.md).
 4. Otherwise it enters the synchronous Method barrier, invokes the Method with
    a driver-owned argument buffer, and writes the returned Oop to the result

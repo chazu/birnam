@@ -34,7 +34,8 @@ registry lock before invoking generated code.
 
 This record reads the following documents together:
 
-- [48 — Concurrency, reactors, and isolates](48-concurrency-reactors-and-isolates.md)
+- [48 — Concurrency, reactors, and
+  isolates](48-concurrency-reactors-and-isolates.md)
   prefers a single-threaded reactor for concurrent I/O and separate Runtime
   processes with copied messages for CPU parallelism;
 - [60A — Execution semantics](60a-stackless-execution-semantics.md) defines
@@ -46,7 +47,8 @@ This record reads the following documents together:
 - [60C — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
   proposes the existing Method shape with Machine as receiver, a
   descriptor-declared argument buffer, and StepAction as result; and
-- [60E — Resumable registration and the entry seam](60e-resumable-registration-and-entry.md)
+- [60E — Resumable registration and the entry
+  seam](60e-resumable-registration-and-entry.md)
   decides how an unmigrated send enters a resumable implementation, which adds
   the nested-drive and drive-stack cases this record must cover.
 
@@ -97,15 +99,18 @@ from the supplied Machine Oop.
 
 An implementation must preserve that property. A process-global or thread-local
 `CURRENT_MACHINE` or `CURRENT_FRAME` would make nested Machines, deterministic
-tests, and later reactor scheduling unnecessarily fragile. Temporary raw pointers
+tests, and later reactor scheduling unnecessarily fragile. Temporary raw
+pointers
 inside one Rust operation are acceptable; ambient execution identity is not.
 
 There is exactly one scoped exception, and it is not in generated code. The
 entry seam of [60E §5.2](60e-resumable-registration-and-entry.md) has no Machine
 in hand by construction — an entry thunk is reached by ordinary dispatch from an
 unmigrated caller — so the Runtime owns a drive stack naming the active drive
-and its epoch. Only the entry shim consults it. Generated StepMethod code and
-Machine microcode still receive Machine explicitly and must never read it.
+whose synchronous barrier is dynamically in scope. Only the entry shim consults
+it, and the epoch it validates against is the Machine's, not the stack's.
+Generated StepMethod code and Machine microcode still receive Machine
+explicitly and must never read it.
 
 ## 5. Scheduling boundary
 
@@ -310,7 +315,8 @@ entry.
 For the owner-thread reactor, collection occurs at existing synchronous
 safepoints. The reactor must not mutate ready queues or resume Machines from a
 foreign thread during tracing. A foreign I/O thread may signal readiness into a
-thread-safe host queue, but entry into Birnam and Machine resumption occur on the
+thread-safe host queue, but entry into Birnam and Machine resumption occur on
+the
 owner thread.
 
 Concurrent or moving collection would require a separate memory-model design.

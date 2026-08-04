@@ -151,11 +151,12 @@ Design 48.
 
 Decides what a vtable holds for a resumable implementation, how an ordinary send
 reaches one through an entry thunk, how the driver recognizes a resumable
-address without aliasing recycled code, and how an unmigrated caller crosses
-into resumable code without allocating a Machine per crossing. It seals the
-Machine microcode selectors, amends the 60C driver argument count, states what
-migration does and does not preserve, and sets the provisional performance
-budget 60C leaves open.
+implementation without aliasing recycled code, and how an unmigrated caller
+crosses into resumable code without allocating a Machine per crossing. It makes
+registration an emitted artifact operation so image boot re-registers rather
+than restoring installs without them, seals the Machine microcode selectors,
+amends the 60C driver argument count, states what migration does and does not
+preserve, and sets the provisional performance budget 60C leaves open.
 
 This record is the correctness gate for S1: without it, an installed StepMethod
 is directly callable by an ordinary send.
@@ -221,8 +222,9 @@ Implementation may begin after S0 when all of the following are written down:
 
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
 - the exact StepMethod calling contract selected after 60C review;
-- the resumable registration record, the entry-thunk contract, and the driver
-  recognition and address-reuse ordering rules from 60E;
+- the resumable registration record, the entry-thunk contract, the driver
+  recognition and address-reuse ordering rules, and the artifact/image
+  registration surface from 60E;
 - the Machine Oop capability and private-Frame accessor boundary for generated
   native code;
 - registry generation, trace, and finalization rules for native-backed state;

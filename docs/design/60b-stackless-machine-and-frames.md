@@ -363,7 +363,8 @@ Frame segment.
 
 ## 9. Code-generation pinning
 
-Each resumable Frame holds a pin on the generation that owns its step address and
+Each resumable Frame holds a pin on the generation that owns its step address
+and
 FrameDescriptor. The pin is acquired when the frame is pushed and released when
 the frame is popped, detached into a Continuation, or destroyed.
 
