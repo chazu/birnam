@@ -43,7 +43,7 @@ answer, not a failure. This record removes that possibility by construction.
 | Recognition | Stated as a requirement, not a mechanism: an implementation named by its **defining** vtable and selector maps to at most one live entry, never keyed by code address alone, and never aliasing across unload. |
 | Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
 | Failure surface | A 60A §9 driver failure reaching a thunk boundary is fatal, never an ordinary result value. |
-| Registration surfaces | The Store MOP for named methods, direct `birnam_method` for block bodies, `Tcc install:as:on:` for symbols resolved from a relocated unit, and image boot, which restores installs and must re-register before any send reaches a restored thunk. All produce the same record. |
+| Registration surfaces | The Store MOP for named methods, direct `birnam_method` for block bodies, `Tcc unit install:as:on:` for symbols resolved from a relocated unit, and image boot, which restores installs and must re-register before any send reaches a restored thunk. All produce the same record. |
 | Microcode | Microcode selectors are sealed in the method dictionary against add, overwrite, removal, and shadowing through a private child vtable alike. |
 
 ## 3. Two paths, and only one of them is the thunk
@@ -231,7 +231,8 @@ misdispatch. §7 states the gate that closes both directions.
 
 Three surfaces are live installs that can carry a registration alongside them:
 the Store MOP for named methods, direct `birnam_method` for block bodies, and
-`Tcc install:as:on:`, which resolves a symbol from a relocated unit and calls
+`Tcc unit install:as:on:`, which resolves a symbol from a relocated unit and
+calls
 `ensurePrivateVtable` plus `api.method` — the path `Alien wrap:signature:as:on:`
 is built on. The fourth cannot, and it is the one that breaks if registration is
 treated as a side effect of installation.
@@ -617,8 +618,9 @@ the one an ordinary reflective operation reaches without touching anything
 sealed.
 
 **Decision.** The seal is a per-selector flag in the method dictionary,
-consulted by every mutation path — add, overwrite, and remove alike. Removal
-matters as much as overwrite: removing `currentPc` makes the next microcode send
+consulted by every mutation path — add, overwrite, remove, and shadow alike.
+Removal matters as much as overwrite: removing `currentPc` makes the next
+microcode send
 miss, fall to `object_dnu`, and answer an error Oop where the step expected a
 program counter or a StepAction, so the driver reports `invalidStepAction` on a
 healthy program.
@@ -747,11 +749,13 @@ Store MOP, and no second send. `Alien wrap:signature:as:on:` is built on it, and
 to such a body — it differs from `S` only by the syscall inside it.
 
 So S0 adds a micro case timing an ordinary unary send to a body installed
-through `Tcc install:as:on:` with a trivial return. That keeps `S` inside the
+through `Tcc unit install:as:on:` with a trivial return. That keeps `S` inside
+the
 same harness as the anchors below, which a one-off Rust benchmark would not.
 `bench/micro.birnam` requires new cases to be appended at the end, because case
-order is load-bearing for its store-backed cases. Call that constant `S`.
-Budgets are multiples of it:
+order is load-bearing for its store-backed cases, and its exit gate asserts a
+fixed case count that the new case must bump. Call that constant `S`. Budgets
+are multiples of it:
 
 | Measure | Budget |
 |---|---|
@@ -800,7 +804,8 @@ Extending 60A §9. None is an ordinary value:
   synchronous Method is reached (60A §5 step 4), and §4.2's false-negative
   window is the only route by which a thunk can outlive its entry;
 - `resumableEntryStaleGeneration` — the entry's generation was released;
-- `sealedMicrocodeSelector` — add, overwrite, or removal of a sealed selector;
+- `sealedMicrocodeSelector` — add, overwrite, removal, or shadowing of a sealed
+  selector;
 - `codeGenerationPinned` — disposal refused under the §7 gate;
 - `resumableEntryUnrestored` — an image validity failure: a restored thunk has
   no live entry after boot re-registration (§4.3). Unlike the others this one is
@@ -937,7 +942,7 @@ Registration and entry are covered when tests demonstrate:
 
 ## 15. Open questions
 
-1. **Migration as a change event.** `lookup:` answers the thunk address, and
+1. **Migration as a change event.** lookup answers the thunk address, and
    `tracked_add_method` retracts the old carrier and asserts a new one on every
    install. Flipping a method's migration status therefore looks to the Store
    mirror — and to Design 49's reconciliation and rollback machinery — exactly
