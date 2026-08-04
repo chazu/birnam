@@ -43,7 +43,7 @@ answer, not a failure. This record removes that possibility by construction.
 | Recognition | Stated as a requirement, not a mechanism: an implementation named by its **defining** vtable and selector maps to at most one live entry, never keyed by code address alone, and never aliasing across unload. |
 | Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
 | Failure surface | A 60A §9 driver failure reaching a thunk boundary is fatal, never an ordinary result value. |
-| Registration surfaces | Three: the Store MOP for named methods, direct `birnam_method` for block bodies, and image boot, which restores installs and must re-register before any send reaches a restored thunk. All produce the same record. |
+| Registration surfaces | The Store MOP for named methods, direct `birnam_method` for block bodies, `Tcc install:as:on:` for symbols resolved from a relocated unit, and image boot, which restores installs and must re-register before any send reaches a restored thunk. All produce the same record. |
 | Microcode | Microcode selectors are sealed in the method dictionary against add, overwrite, removal, and shadowing through a private child vtable alike. |
 
 ## 3. Two paths, and only one of them is the thunk
@@ -180,8 +180,8 @@ This record states the requirement functionally and leaves the mechanism open:
 > a different generation.
 
 The implementation is named by the **defining** vtable and the selector — not by
-the code address alone, which §3.1's shared-thunk option makes non-unique, and
-not by the receiver's vtable, which is wrong for every inherited method. A
+the code address alone, which §4.2 shows can be recycled beneath a live vtable,
+and not by the receiver's vtable, which is wrong for every inherited method. A
 per-selector side table on the vtable record and a tag word beside the
 dictionary entry both satisfy this. What none of them may do is outlive the code
 they name.
@@ -227,12 +227,14 @@ character: the driver checks the registry, correctly misses, concludes
 barrier — the one path with no validation at all. A crash becomes a silent
 misdispatch. §7 states the gate that closes both directions.
 
-### 4.3 Three registration surfaces, not two
+### 4.3 Registration surfaces, and the one that cannot carry a registration
 
-Named methods register through the Store MOP and block methods through the
-direct `birnam_method` path. Both are live installs, and both can carry a
-registration alongside them. The third surface cannot, and it is the one that
-breaks if registration is treated as a side effect of installation.
+Three surfaces are live installs that can carry a registration alongside them:
+the Store MOP for named methods, direct `birnam_method` for block bodies, and
+`Tcc install:as:on:`, which resolves a symbol from a relocated unit and calls
+`ensurePrivateVtable` plus `api.method` — the path `Alien wrap:signature:as:on:`
+is built on. The fourth cannot, and it is the one that breaks if registration is
+treated as a side effect of installation.
 
 **Image boot restores installs without registrations.** The image heap encoder
 skips `SLOT_CODE` words outright, so no method address is serialized at all.
@@ -510,8 +512,8 @@ The third clause is the honest one and it is not currently satisfiable, which
 this record states rather than papers over. Vtables are allocated permanent and
 pushed onto an ordered registry that has no removal path, so enumerating with
 `vtableCount` / `vtableAt` / `vtableSelectorAt` — and resolving each selector
-through the vtable `lookup:` MOP, since the enumeration answers selectors rather
-than addresses — reports *registry membership*, not reachability. Every
+through the floor's internal lookup, since the enumeration answers selectors
+rather than addresses — reports *registry membership*, not reachability. Every
 generation evaluates blocks, every block evaluation installs into a vtable that
 the registry then holds forever, so a membership test answers "held" for every
 generation and disposal never runs again.
@@ -565,7 +567,14 @@ pushing a frame, not on every iteration of its loop.
 
 Nothing about generation unload covers a method being replaced. `add_method`
 overwriting a thunk, and `removeMethod:on:` removing one, must both unregister
-the entry. Without that, a REPL redefining one method accumulates a live entry
+the entry.
+
+The mechanism is the one §8 establishes for the seal, not a hook: neither the
+overwrite hook nor the Store authorizer can serve, for the reasons given there.
+The dictionary entry carries a registered-entry marker, set by the stackless
+runtime layer and consulted by `add_method` and `remove_method` alike. Same
+per-selector shape, same layering, no new ABI. Without that, a REPL redefining
+one method accumulates a live entry
 per redefinition in a registry that is deliberately not a GC root set, so
 nothing ever collects them.
 
@@ -586,8 +595,9 @@ break a frozen ABI field offset and 60 §3 invariant 10.
 everything.**
 `tracked_add_method` consults an authorizer and returns its answer, which is a
 genuine veto — but it is also single-slot and already taken by codegen-runtime,
-and it guards only the Store MOP path. The direct `birnam_method` path bypasses
-Store entirely, which is exactly the path block vtables use.
+and it guards only the Store MOP path. Both `birnam_method` and `Tcc
+install:as:on:` bypass Store entirely, which are the paths block bodies and
+FFI wrappers use.
 
 **Private vtable placement is not protection either, and the reason is worse
 than overwriting.** `Reflect defineMethod:on:as:` calls `ensurePrivateVtable` on
@@ -648,7 +658,8 @@ carrying a value.
 ### 9.2 Sealing
 
 60C §15 Q4 is answered by §8: a per-selector seal in the method dictionary,
-covering add, overwrite, and removal.
+covering add, overwrite, removal, and shadowing through any vtable whose parent
+chain reaches Machine's vtable.
 
 ### 9.3 Evidence item 8
 
@@ -723,17 +734,24 @@ using it as the *denominator of a ratio budget* for an operation it does not
 measure. A budget so denominated would be roughly fifteenfold too loose on the
 Rust floor.
 
-**No existing case measures what the budget needs, and no language-level surface
-can produce one.** Every Birnam method-definition path installs a trampoline:
-`Reflect defineMethod:on:as:` compiles a reflect trampoline, and artifact and
-image lowering emit an artifact-method trampoline. Both do a global lookup and a
-second `value:` send. The only directly installed bodies in the system are block
-bodies — which is `blocks.value`, explicitly not `S` — and Rust primitives.
+**No existing case measures what the budget needs, but a Birnam surface produces
+it.** The two definition paths that install trampolines are `Reflect
+defineMethod:on:as:`, whose trampoline does the global lookup and second send
+described above, and artifact/image lowering, whose trampoline reads an indexed
+candidate root and then sends. Neither is what `S` should measure.
 
-So S0's micro case must install a compiled body **directly**, through a
-hand-written `birnam_method` install rather than through any definition surface,
-and time an ordinary send to it. Call that constant `S`. Budgets are multiples
-of it:
+`Tcc unit install:as:on:` is: it resolves a symbol from a relocated unit and
+calls `ensurePrivateVtable` plus `api.method` directly, with no trampoline, no
+Store MOP, and no second send. `Alien wrap:signature:as:on:` is built on it, and
+`bench/micro.birnam`'s `ffi.wrapped-call` already times an ordinary unary send
+to such a body — it differs from `S` only by the syscall inside it.
+
+So S0 adds a micro case timing an ordinary unary send to a body installed
+through `Tcc install:as:on:` with a trivial return. That keeps `S` inside the
+same harness as the anchors below, which a one-off Rust benchmark would not.
+`bench/micro.birnam` requires new cases to be appended at the end, because case
+order is load-bearing for its store-backed cases. Call that constant `S`.
+Budgets are multiples of it:
 
 | Measure | Budget |
 |---|---|
@@ -775,9 +793,12 @@ measurement missed them.
 
 ## 12. Failure taxonomy additions
 
-Extending 60A §9. All are out-of-band under §3.3:
+Extending 60A §9. None is an ordinary value:
 
-- `resumableEntryUnregistered` — a resolved address names no live entry;
+- `resumableEntryUnregistered` — a **thunk** was invoked and no live entry names
+  it. A *driver-side* registry miss is not a failure at all: it is how every
+  synchronous Method is reached (60A §5 step 4), and §4.2's false-negative
+  window is the only route by which a thunk can outlive its entry;
 - `resumableEntryStaleGeneration` — the entry's generation was released;
 - `sealedMicrocodeSelector` — add, overwrite, or removal of a sealed selector;
 - `codeGenerationPinned` — disposal refused under the §7 gate;
@@ -821,7 +842,8 @@ Frozen:
 
 Not frozen:
 
-- per-implementation versus shared thunk emission;
+- per-implementation emission versus a runtime thunk pool, and how the pool is
+  sized;
 - the entry shim's exact name;
 - ResumableEntry layout, indexing, or registry data structure;
 - whether recognition is a vtable-record side table, a tag word beside the
@@ -841,8 +863,9 @@ Registration and entry are covered when tests demonstrate:
    before migration, for the same selector-determined argument count;
 2. **(S1)** no vtable holds a StepMethod address, asserted by enumerating with
    `vtableCount` / `vtableAt` / `vtableSelectorAt` and resolving each selector
-   through the vtable `lookup:` MOP, since the enumeration answers selectors
-   rather than addresses. The enumeration must skip the floor's opaque internal
+   through the floor's internal vtable lookup, since the enumeration answers
+   selectors rather than addresses and the `lookup` primitive is not reachable
+   from Birnam source. The enumeration must skip the floor's opaque internal
    dictionaries, whose values are exported Oops rather than method addresses;
 3. **(S1)** a resumable method reached by ordinary send from unmigrated code
    completes and returns through the thunk without the caller observing a
@@ -874,36 +897,39 @@ Registration and entry are covered when tests demonstrate:
 14. **(S1)** overwriting or removing a thunk unregisters its entry;
 15. **(S1)** a driver failure raised inside `do:` is fatal rather than discarded
     by `vector_do`, and is not catchable by `on:do:`;
-16. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
+16. **(S1)** disposal of a generation that installed a method is refused with a
+    kinded failure per §7's staging rule, while the author file, `.candidate`
+    sidecar, and `state discarded` fact still happen;
+17. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
     invocation and no native-stack growth, asserted by a probe counter on the
     entry shim that must read zero;
-17. **(S2)** the same holds when the implementation is **inherited** — a
+18. **(S2)** the same holds when the implementation is **inherited** — a
     resumable method installed on a prototype and sent to a child resolves
     through its defining vtable to its entry, with the probe counter still zero;
-18. **(S2)** a resumable **block body** registers and executes through the
+19. **(S2)** a resumable **block body** registers and executes through the
     direct `birnam_method` surface, not only through the Store MOP;
-19. **(S2)** live and AOT registration produce identical FrameDescriptor
+20. **(S2)** live and AOT registration produce identical FrameDescriptor
     identity, declared arity, and implementation identity for the same source;
-20. **(S2)** a TailCall to a synchronous Method increments the drive's
+21. **(S2)** a TailCall to a synchronous Method increments the drive's
     `tailCallToSynchronous`, and the tail-recursion proof asserts it is zero for
     the drive under test;
-21. **(S2)** an image saved with a migrated method boots through the mapped-code
+22. **(S2)** an image saved with a migrated method boots through the mapped-code
     path, re-registers its restored thunks, and answers the same result as the
     same image booted through the rebuild path; an image whose restored thunk
     has no live entry answers `resumableEntryUnrestored` at the §4.3 check point
     rather than aborting on first send;
-22. **(S3)** capture, suspension, Abort, and Restore that would cross an entry
+23. **(S3)** capture, suspension, Abort, and Restore that would cross an entry
     barrier each fail with `continuationBarrier`, and the outer drive resumes
     correctly afterward;
-23. **(S3)** after `dlclose`, no registry entry names an implementation in the
+24. **(S3)** after `dlclose`, no registry entry names an implementation in the
     unloaded generation's mapped range;
-24. **(S3)** disposal is refused with a kinded failure while a frame, a
+25. **(S3)** disposal is refused with a kinded failure while a frame, a
     continuation, or a registered vtable holds the generation — the vtable case
     demonstrated with a stored block, and the refusal expected to be
     unconditional per §7. Pin correctness is evidenced separately, by observing
     pin counts across push, pop, capture, and consume, since the refusal alone
     would pass with pinning unimplemented;
-25. the §11 measures are published whether or not they pass. S1 publishes the
+26. the §11 measures are published whether or not they pass. S1 publishes the
     Continue and microcode-per-step measures using its hand-written StepMethod,
     against the `S` micro case S0 adds; the Call/Return, entry, and depth
     measures need two migrated implementations and a thunk, so they belong
@@ -923,9 +949,9 @@ Registration and entry are covered when tests demonstrate:
    an unmigrated primitive, and chunks are retained after return (60B §3). Does
    a long-lived Runtime need a trim policy, and are returned chunks zeroed?
 3. **Descriptor blob home.** Should the FrameDescriptor live in the artifact as
-   data, or be constructed at registration from emitted metadata? The
-   shared-thunk
-   option of §3.1 makes the data form more attractive.
+   data, or be constructed at registration from emitted metadata? The thunk-pool
+   option of §3.1 makes the data form more attractive, since it is the form a
+   registrar without a code generator can supply.
 4. **What shape should the durable resumable tag take?** §4.3 decides *that*
    the projection must be self-describing about which methods are resumable,
    since image boot cannot reconstruct it. It does not decide whether that is a
