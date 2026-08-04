@@ -178,6 +178,13 @@ TailCall performs the same resolution but reuses the current frame storage when
 the new descriptor fits, or replaces it when it does not. It never retains the
 current return destination after the tail call.
 
+That rule is scoped to a resumable target. A synchronous Method has no
+FrameDescriptor, so a TailCall resolving to one degrades to Call-plus-Return and
+does retain the current frame across the callee;
+[60E §10](60e-resumable-registration-and-entry.md) requires the drive to count
+those, because a partially migrated tail cycle otherwise grows the native stack
+silently.
+
 Return with no caller completes the Machine. Return with a caller writes only
 the declared result slot before popping the frame.
 

@@ -181,8 +181,9 @@ performance budgets, and release gates.
 
 Accept 60A, 60B, and 60E. Review the Method-shaped proposal in 60C, then record
 its acceptance or one semantic requirement it cannot express; acceptance carries
-the two amendments in 60E §9. Establish synchronous benchmarks and current ABI
-fixtures, including the send constant the 60E §8 budget is stated against.
+the three amendments in 60E §9. Establish synchronous benchmarks and current ABI
+fixtures, including the compiled-send micro case the 60E §11 budget is stated
+against.
 
 ### S1 — Parallel machine substrate
 
@@ -244,7 +245,7 @@ The S1/S2 execution proof is successful only when it demonstrates:
 5. explicit frame roots surviving forced collection;
 6. deterministic rejection across a native barrier;
 7. measured overhead against the current Rust synchronous path, published
-   against the 60E §8 budget whether or not it passes.
+   against the 60E §11 budget whether or not it passes.
 
 The S3 suspension proof adds:
 

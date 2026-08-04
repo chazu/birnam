@@ -62,7 +62,7 @@ Birnam's intended mechanisms solve two different problems:
 | Requirement | Preferred mechanism | Stackless fit |
 |---|---|---|
 | Many pending I/O operations | One reactor, one active turn | Direct fit |
-| Many suspended Birnam computations | Several Machines on one owner thread | Direct fit |
+| Many suspended Birnam computations | Several Machines on one owner thread | Direct fit, but see 60E §5.3: while the callback-driving primitives are synchronous, an entry barrier sits below most real work and suspension is reachable only on a fully migrated probe |
 | CPU parallelism | Process-isolated Runtimes with copied messages | Composes cleanly |
 | In-process parallelism without shared state | Several isolated Runtimes | Possible later, existing module/runtime constraints apply |
 | Shared-heap parallelism | Several threads sharing one Runtime | Not supported |
@@ -223,8 +223,15 @@ following operations must fail deterministically:
 
 This exclusivity permits each Machine to reuse scratch StepAction Oops. Scratch
 identity and payload are per-Machine, not process-global. The driver validates
-the Machine generation and drive epoch before decoding the action and completes
-that decoding before another Machine turn can rewrite the same scratch payload.
+the Machine generation and drive epoch before decoding the action.
+
+Decoding must complete before any operation that can run generated code, not
+merely before another Machine's turn: a stacked drive on the *same* Machine
+rewrites the same scratch payload, so the cross-Machine framing of this rule is
+the wrong axis. The driver copies the operands it needs into driver-local
+scalars before releasing its borrow, and monotonic epochs
+([60E §5.1](60e-resumable-registration-and-entry.md)) make a stale re-read fail
+rather than decode.
 
 Different Machines must not share:
 
@@ -388,9 +395,13 @@ The first implementation must preserve all of the following:
 14. The drive stack is a distinct borrow domain from the machine registry and
     MachineState; entry acquires and releases it as a point operation, never
     across generated code.
-15. Action validation compares against the epoch of the innermost active drive,
-    so an outer drive's action is stale while a nested drive runs and current
-    again after it returns.
+15. Drive epochs are monotonic. Action validation compares against the epoch of
+    the innermost active drive, so an outer drive's action is stale during a
+    nested drive and stays stale afterward rather than revalidating over
+    rewritten scratch payload.
+16. Fresh-versus-nested entry is decided by synchronous-barrier scope, not by
+    thread activity, so a host or reactor callback taken while some Machine is
+    driving begins a new Machine rather than joining an unrelated one.
 
 ## 15. Acceptance tests
 

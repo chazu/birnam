@@ -81,7 +81,11 @@ owner-affine:
 - Machine creation, drive, suspension, restore, and destruction all require the
   owner thread;
 - Machine is not Send or Sync;
-- a Machine cannot be driven recursively while its driver is already running;
+- a Machine cannot be driven recursively while its driver is already running,
+  except by a stacked drive that establishes an entry-barrier delimiter
+  ([60E §5.1](60e-resumable-registration-and-entry.md)); such drives are nested
+  within one another, never concurrent, and a nested drive may not pop below its
+  barrier;
 - a synchronous Method may re-enter IdApi.send, but the nested send must return
   before the outer Method returns;
 - a suspended Machine may be resumed only once per accepted restore operation.
@@ -96,6 +100,12 @@ The lifecycle states are:
 | Completed | Destroyed |
 | Failed | Destroyed |
 | Destroyed | none |
+
+MachineState carries a drive depth, and Running to Completed requires depth
+zero. A Return at an entry-barrier frame ends that drive and decrements the
+depth; it does not complete the Machine, whose outer drives are still parked in
+live native activations and whose outer frames still hold chunks and generation
+pins.
 
 The state transition is owned by the primitive Machine driver. Birnam methods
 may request a StepAction, inspect state, or ask the primitive to drive/resume,
@@ -219,9 +229,15 @@ not need a recursive send. Moving an accessor, constructor, or policy method
 into Birnam does not change the StepMethod result type or object protocol.
 
 A Machine may retain one or more scratch StepAction Oops and rewrite their raw
-payloads before returning them from a step. Every issuance advances or records
-the Machine's drive epoch. The driver validates canonical vtable, schema,
-Machine capability, and epoch before interpreting variant fields. There is no
+payloads before returning them from a step. The Machine's drive epoch is
+strictly monotonic and is never restored to an earlier value: a stacked drive
+shares this scratch set, so an epoch that could be restored would revalidate an
+outer action over payload the nested drive has overwritten
+([60E §5.1](60e-resumable-registration-and-entry.md)). The driver validates
+canonical vtable, schema, Machine capability, and epoch before interpreting
+variant fields, and copies the operands it needs into driver-local scalars
+before releasing its borrow, so no action payload is re-read across generated
+code. There is no
 public action-submission operation: the driver accepts an action only as the
 direct result of the active StepMethod. A retained alias therefore grants no
 independent right to drive the Machine, and the language promises neither a
@@ -259,7 +275,10 @@ The registry is a capability lookup table, not a root set. Reachable native-
 backed objects trace their Rust-owned state:
 
 1. the Machine vtable trace hook resolves its checked capability and traces
-   every live Oop slot in MachineState;
+   every live Oop slot in MachineState, enumerating the frame arena rather than
+   walking the caller chain — a chain walk terminates at an entry-barrier frame,
+   whose caller is a native activation, and the outer frames beyond it hold Oops
+   in arena chunks that the native-stack scan does not cover;
 2. the Continuation vtable trace hook traces every live Oop slot in its detached
    segment;
 3. Machine tracing also marks scratch StepAction Oops and any generation or

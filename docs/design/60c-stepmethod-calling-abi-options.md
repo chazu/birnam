@@ -527,8 +527,10 @@ Measure:
 
 Only if those measurements fail an agreed budget should S1 prototype a direct
 slot or specialized action-publication optimization. That budget is stated in
-[60E §8](60e-resumable-registration-and-entry.md), against the recorded send
-constant. The baseline semantics remain the Method-shaped contract.
+[60E §11](60e-resumable-registration-and-entry.md), as multiples of a compiled-
+send constant that S0 must add a micro case to establish — the existing
+`sends.unary` case measures a reflective trampoline and is disqualified as an
+anchor. The baseline semantics remain the Method-shaped contract.
 
 ## 15. Questions for reviewers
 
@@ -543,13 +545,15 @@ here as resolved rather than deleted:
    method?
 3. Should action publication be protocol on Machine, canonical StepAction
    prototypes, or immutable call-site descriptors?
-4. **Resolved (60E §9.2).** Microcode selectors are installed on Machine's own
-   private vtable and sealed against overwrite, so an arbitrary resumable method
-   cannot displace a primitive the driver depends on.
+4. **Resolved (60E §9.2).** Microcode selectors carry a seal in the method
+   dictionary, consulted by add, overwrite, and removal alike, so an arbitrary
+   resumable method cannot displace a primitive the driver depends on and
+   removal cannot silently unbind one.
 5. Should the driver invoke the registered Method pointer directly, or should
    current implementation selection itself be an object-visible dispatch step?
-6. **Resolved (60E §8).** The provisional budget is stated against the recorded
-   send constant; exceeding it is the trigger for the §13.3 tier.
+6. **Resolved (60E §11).** The provisional budget is stated as multiples of a
+   compiled-send constant S0 must establish; exceeding it is the trigger for the
+   §13.3 tier.
 7. Which parts of Machine policy must be replaceable on day one, and which
    primitive storage operations are acceptable under the governing ownership
    rule?

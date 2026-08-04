@@ -36,12 +36,12 @@ answer, not a failure. This record removes that possibility by construction.
 | Area | Decision |
 |---|---|
 | Vtable contents | A vtable never holds a StepMethod address. It holds an ordinary Method: a synchronous implementation or an **entry thunk**. |
-| Driver path | A Call or TailCall whose resolved address names a live ResumableEntry pushes a frame and calls the StepMethod. **The thunk is not invoked.** |
+| Driver path | A Call or TailCall whose resolved implementation names a live ResumableEntry pushes a frame and calls the StepMethod. **The thunk is not invoked.** |
 | Send path | An ordinary `IdApi.send` from unmigrated code reaches the thunk, which drives the implementation and answers the ordinary result. |
-| Nested entry | A thunk reached while a drive is already active on this owner thread pushes onto the **current Machine** above an entry-barrier delimiter. It does not allocate a second Machine. |
+| Nested entry | A thunk reached from inside an active drive's synchronous barrier pushes onto the **current Machine** above an entry-barrier delimiter rather than allocating a second Machine. A thunk reached with no active barrier starts a fresh Machine. |
 | Registration record | A process-local **ResumableEntry** owns the StepMethod address, FrameDescriptor, generation pin, declared arity, and implementation identity. |
-| Recognition | Stated as a requirement, not a mechanism: a resolved implementation maps to at most one live entry, and recognition never aliases an address across unload. |
-| Preservation | Migration preserves result value, error values, and selector-determined arity. It does not preserve maximum call depth; §5.3 states what changes. |
+| Recognition | Stated as a requirement, not a mechanism: an implementation named by vtable and selector maps to at most one live entry, never keyed by code address alone, and never aliasing across unload. |
+| Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
 | Failure surface | A 60A §9 driver failure reaching a thunk boundary is fatal, never an ordinary result value. |
 | Registration surfaces | Named methods register through the Store MOP; block methods register through the direct `birnam_method` path. Both produce the same record. |
 | Microcode | Microcode selectors are sealed in the method dictionary against add, overwrite, and removal alike. |
@@ -53,7 +53,7 @@ explicitly:
 
 | Caller | Resolution | Cost |
 |---|---|---|
-| Migrated: a StepMethod issuing a Call or TailCall | The driver resolves the address (60A §5.2), finds a live ResumableEntry, and pushes a frame directly | One frame push. No thunk, no native frame, no Machine acquisition. |
+| Migrated: a StepMethod issuing a Call or TailCall | The driver resolves the implementation (60A §5.2), finds a live ResumableEntry, and pushes a frame directly | One frame push. No thunk, no native frame, no Machine acquisition. |
 | Unmigrated: any ordinary `IdApi.send` | Lookup answers the thunk address and `send_abi` calls it | One native activation plus a nested drive. |
 
 The migrated-to-migrated path is the one the whole design exists for, and it
@@ -84,6 +84,13 @@ registered without running a code generator, which 60C §13.4 preserves for a
 future non-native or sandboxed artifact format and which an interpreter tier
 would need.
 
+Keeping it available is what forces §4.1's keying rule. With a shared thunk
+every resumable method resolves to one address, so an address cannot name an
+entry — and the driver, which must decide *which* implementation a Call
+resolves to, would be left with no way to tell. A driver that fell back to
+invoking the shared thunk would send every migrated call through an entry, which
+is exactly the native-stack growth §3 exists to prevent.
+
 ### 3.2 Thunk behavior
 
 `birnam_enter_resumable` performs:
@@ -106,21 +113,41 @@ errors, and a thunk invoked inside an ordinary send **has no out-of-band
 channel** — its only carrier is the returned Oop.
 
 Converting those failures into ordinary error values would recreate the §1
-hazard in a new place, and the floor would swallow them. `vector_do` in
-birnam-collection discards its block's result entirely, so a driver failure
-raised inside `do:` would vanish and the loop would continue; `block_while_true`
-and `integer_to_do` in birnam-prelude do check for errors and would abort. The
-same runtime fault would be fatal in `whileTrue:`, fatal in `to:do:`, and
-invisible in `do:`. Worse, because this language has no non-local return and
-errors are ordinary values, `on:do:` would happily catch a driver failure and
-continue running against a Machine the driver has just declared invalid.
+hazard in a new place, and the floor would not treat them consistently.
+`vector_do` in birnam-collection discards its block's result entirely, so a
+driver failure raised inside `do:` would vanish and the loop would continue;
+`block_loop` and `integer_to_do` in birnam-prelude check for errors and return
+them, aborting their loop. The same runtime fault would end `whileTrue:` and
+`to:do:` as an ordinary error value and be invisible in `do:`. Worse, because
+this language has no non-local return and errors are ordinary values, `on:do:`
+would happily catch a driver failure and continue running against a Machine the
+driver has just declared invalid.
 
 **Decision.** A 60A §9 failure that reaches a thunk boundary is a fatal
 invariant, reported through the same host path `send_abi` already uses when
-`doesNotUnderstand:` is unbound. It is not returned. If a later record needs a
-recoverable subset, it must name those kinds explicitly and give them a kind
-that `kindMatches:` will not match against `#error`, and it must amend 60A §9,
-which today says none of its kinds are in-band.
+`doesNotUnderstand:` is unbound. It is not returned.
+
+A later record wanting a recoverable subset cannot get one by choosing an error
+kind. `kindMatches:` in `src/id/stdlib.birnam` answers true whenever the wanted
+kind is `#error`, before consulting the receiver's kind at all, so `#error` is
+an unconditional wildcard over every `ErrorVt` value and `on:do:` reaches
+`kindMatches:` only for values that are already `ErrorVt`. A recoverable subset
+would therefore need a representation that is not an `ErrorVt` value, and it
+must amend 60A §9, which today says none of its kinds are in-band.
+
+### 3.4 The failure surface is not uniform during migration
+
+§5.1 makes a drive entered from unmigrated code a nested drive, and §3.3 makes
+its failures fatal, while a drive the host starts directly reports 60A §6's
+`Failed(driver error)` as a value. Until the S4 primitives are migrated, most
+drives are nested, so the same runtime fault aborts the process in one context
+and answers a host result in another, decided only by whether an unmigrated
+frame happens to sit below it.
+
+That non-uniformity is accepted rather than hidden: the alternative is the §1
+hazard. It is a reason to prioritise S4, and a reason the S3 host-drive surface
+should be exercised on a fully migrated probe rather than on ordinary program
+text.
 
 ## 4. The ResumableEntry record
 
@@ -140,12 +167,15 @@ pattern of 60B §1.
 The driver holds a resolved address and must decide whether it is resumable.
 This record states the requirement functionally and leaves the mechanism open:
 
-> Recognition must map a resolved implementation to at most one live
-> ResumableEntry, and must never associate an address with an entry from a
-> different generation.
+> Recognition must map a resolved *implementation* to at most one live
+> ResumableEntry, and must never associate an implementation with an entry from
+> a different generation.
 
-An address-keyed table, a side table on the vtable record, and a tag word all
-satisfy this. What none of them may do is outlive the code they name.
+The implementation is named by the receiver's vtable and the selector, or by
+whatever dictionary record the lookup produced — not by the code address alone,
+which §3.1's shared-thunk option makes non-unique. A per-selector side table on
+the vtable record and a tag word beside the dictionary entry both satisfy this.
+What none of them may do is outlive the code they name.
 
 ### 4.2 Address recycling, in both directions
 
@@ -200,6 +230,43 @@ defeats that: a FrameView retained from one drive would validate successfully
 against the next and read another execution's slots through a stale arena
 handle.
 
+Sharing one Machine between stacked drives is only sound under four rules. Each
+closes a defect that the naive reading permits, and none is optional.
+
+**Epochs are monotonic and never restored.** The Machine may reuse scratch
+StepAction objects (60B §5), and a nested drive rewrites the same scratch set.
+If the outer drive's epoch were restored on return, an outer action Oop would
+validate again while carrying payload the nested drive wrote — an ABA that
+hands the driver a ReturnAction where it expected a CallAction, and a wrong slot
+index with it. Every drive entry advances the epoch, so an action issued before
+a nested drive is permanently stale afterward.
+
+**The driver never re-reads an action payload across generated code.** It copies
+every operand it needs into driver-local scalars before releasing its borrow to
+invoke a synchronous Method, per 60D §6.2. Monotonic epochs make a violation
+fail loudly; copying makes it not arise.
+
+**Delimiter searches terminate at the innermost entry barrier.** 60A §4 lets
+Abort unwind to a delimiter and 60A §6 lets Restore install at a compatible one.
+With one Machine, the outer drive's delimiters are in the same chain. Unwinding
+or splicing past an entry barrier would pop frames whose native activations are
+still live on the C stack, returning into a driver whose current frame no longer
+exists. Abort, Restore, and Capture all stop at the barrier and fail
+`continuationBarrier`.
+
+**A Return at the barrier frame ends the drive, not the Machine.** 60A §5 says a
+Return with no caller completes the Machine, and a thunk-pushed frame has no
+caller *frame*. Taken literally that would complete a Machine whose outer drive
+is still parked in a native activation, and 60B §3's teardown would release
+chunks and generation pins the outer frames still hold. MachineState therefore
+carries a drive depth; Running to Completed requires depth zero.
+
+**Arena slot generations advance on pop.** Nesting pushes and pops at the same
+arena offsets repeatedly, which makes slot reuse the common case rather than a
+rare one, so the generation counter is the only thing distinguishing a stale
+FrameView from a live one. It must advance on every pop, not only on chunk
+release.
+
 Reusing the current Machine also makes three properties fall out of mechanisms
 60B and 60A already define rather than being asserted separately:
 
@@ -212,11 +279,31 @@ Reusing the current Machine also makes three properties fall out of mechanisms
 - one logical execution remains one Machine with one contiguous frame chain, so
   depth is read off that chain rather than from a side counter.
 
+Tracing must follow the arena, not the frame chain. A chain walk from the
+current frame terminates at an entry-barrier frame, because that frame's caller
+is a native activation rather than another frame — and the outer frames it
+stopped short of hold Oops that the native-stack scan does not cover, since they
+live in arena chunks rather than on the C stack. 60B §6's trace hook therefore
+enumerates every live frame in the arena. The scoped root provider may name one
+Machine once per stacked drive, so marking must tolerate duplicates.
+
 ### 5.2 The drive stack is the one piece of ambient state
 
-Deciding fresh-versus-nested requires knowing whether a drive is active, and the
-thunk holds no Machine — that is the whole nature of the seam. The Runtime
-therefore owns a drive stack naming the active drive and its epoch.
+Deciding fresh-versus-nested requires knowing whether the send is dynamically
+inside a drive's synchronous barrier, and the thunk holds no Machine — that is
+the whole nature of the seam. The Runtime therefore owns a drive stack whose
+entries are pushed by the driver when it *enters a synchronous barrier* and
+popped when that barrier returns.
+
+The predicate is barrier scope, not thread activity, and the difference is not
+pedantic. A Machine may be driving while its synchronous leaf asks the host to
+begin unrelated work — a reactor taking a fresh item, a Store MOP hook, a
+codegen authorizer, an FFI callback — and that work reaches a thunk by ordinary
+dispatch. Nesting it onto the driving Machine would give a new logical execution
+no identity a scheduler could queue, no ability to suspend, a lifetime tied to
+an unrelated Machine, and a backtrace interleaved with one. A thunk reached with
+an active drive but no active barrier starts a fresh Machine, which is what 60D
+§3 wants when it lists several Machines on one owner thread as a direct fit.
 
 60D §4 forbids ambient execution identity, and that prohibition stands where it
 was aimed: **generated StepMethod code and Machine microcode never consult the
@@ -231,10 +318,11 @@ collection, or a foreign callback, per 60D §6.2. The drive stack must be a
 distinct borrow domain from the machine registry, or the nested case
 self-deadlocks on the second entry.
 
-Each drive invocation records its own epoch. Action validation compares against
-the epoch of the innermost active drive, so an action issued by an outer drive
-is correctly stale while a nested drive runs, and the outer epoch becomes
-current again when the nested drive returns.
+Each drive invocation advances the Machine's epoch and records its own. Action
+validation compares against the epoch of the innermost active drive. Because
+epochs are monotonic (§5.1), an action issued before a nested drive stays stale
+after that drive returns rather than becoming valid again over rewritten
+payload.
 
 ### 5.3 What migration does and does not preserve
 
@@ -258,7 +346,7 @@ synchronous, every recursion passing through one of them crosses a boundary per
 level, so a deep recursive tree walk can reach the native stack limit *sooner*
 after migration than before.
 
-Two consequences. First, no artificial depth bound is introduced: adding one
+Three consequences. First, no artificial depth bound is introduced: adding one
 would convert a program that answers today into one that answers an error, and
 the OS stack limit remains the bound it is today. Second, this reorders the
 argument for S4: the callback-driving primitives are not a convenience
@@ -266,6 +354,17 @@ migration, they are what converts the alternating case into the long-run case.
 S2 must measure and publish both axes — per-iteration entry cost in a loop, and
 maximum reachable depth for a recursion through an unmigrated primitive —
 because the second is the one that regresses.
+
+Third, and least comfortable: **suspension is largely unreachable until S4.**
+Capture and suspension fail above an entry barrier (§5.1), and boundary
+crossings sit near the top of a program's dynamic extent — `main` reaches `do:`
+reaches everything — so during S2–S4 the barrier sits below essentially all real
+work. `collection do: [:each | ... ]` cannot suspend at any depth until `do:` is
+migrated. S3 can therefore be demonstrated only on a fully migrated probe, and
+the reactor rationale of 60D §4 is not supported by ordinary program text until
+S4 lands. That is an argument for treating S3's acceptance as probe-scoped, not
+for weakening the barrier: the barrier is what a live native activation
+physically requires.
 
 ## 6. Arity
 
@@ -276,25 +375,40 @@ selector spelling, so an ordinary compiled send cannot mismatch. Where a
 mismatch does arrive — a native caller, or DNU forwarding — a codegen'd method
 today ignores the count and a Rust method answers nil.
 
-**Decision.** The arity check happens at frame push, shared by the driver path
-and the entry path, and it is variadic-tolerant: bind `min(count, arity)` slots
-and nil-fill the remainder, matching what the floor does today. It does not
-fabricate a `doesNotUnderstand` result.
+Two different checks are easy to conflate here, and they answer differently.
+
+**Language arity**, at frame push, is shared by the driver path and the entry
+path and is variadic-tolerant: bind `min(count, arity)` slots and nil-fill the
+remainder. It does not fabricate a `doesNotUnderstand` result.
+
+**Native buffer arity**, at StepMethod invocation, is strict: a count the
+FrameDescriptor does not declare is a malformed artifact and is rejected, per
+60C §4.1. That buffer is produced by the driver, not by a language caller, so
+tolerance there would only hide a broken artifact.
+
+Language-arity tolerance is a behavior change, and §2's preservation claim is
+correspondingly narrow. A synchronous Rust method today typically answers nil
+*without running* on a count mismatch — `vector_do` returns nil when its count
+is not 1 — whereas a migrated version runs its whole body with nil-filled
+arguments. Ordinary compiled sends cannot reach this, since the selector fixes
+the count, but native callers, reflective invocation, and DNU forwarding can.
 
 `doesNotUnderstand:` itself is not migratable in S1–S4. `send_abi` forwards an
-unbound send to it with `1 + n` arguments, so a resumable `doesNotUnderstand:`
-declaring arity 1 would mismatch on every keyword miss; answering DNU on
-mismatch would then resolve to the same implementation and recurse. The floor
-already fixed this shape of bug once — a `count != 1` guard in `object_dnu` that
-made every keyword and binary send answer nil instead of erroring — and the
-entry seam must not reintroduce it.
+unbound send to it with `1 + min(n, 16)` arguments, so a resumable
+`doesNotUnderstand:` declaring arity 1 would mismatch on every keyword miss;
+answering DNU on mismatch would then resolve to the same implementation and
+recurse. The floor already fixed this shape of bug once — a `count != 1` guard
+in `object_dnu` that made every keyword and binary send answer nil instead of
+erroring, corrected in "fix(error): raise doesNotUnderstand at every send
+arity" — and the entry seam must not reintroduce it.
 
 ## 7. The unload gate
 
 60B §9 forbids disposing code while a frame or continuation pins its generation.
 The current paths do not implement that, and today's refusal is not even a
 failure: `discardCandidate:` and `releaseCandidate:` refuse only while a
-candidate is active or prepared, and on refusal call `note_error` — which stashes
+candidate is active or prepared, and on refusal call `note_error` — which
+stashes
 a byte string in a mutex — then return the unit itself, indistinguishable from
 success.
 
@@ -302,13 +416,34 @@ S3 must therefore *introduce* a kinded failure here, not reuse one. Its
 condition must be wider than 60B §9 states, because of §4.2's second direction:
 
 > Disposal is refused unless the generation has zero live frames, zero live
-> continuations, and no vtable in the heap holds a method address in its mapped
+> continuations, and no reachable vtable holds a method address in its mapped
 > range.
 
-The third clause is checkable with the `vtableCount` / `vtableAt` /
-`vtableSelectorAt` enumeration the Store already uses to backfill its mirror. It
-is what covers block vtables, which hold addresses no frame and no continuation
-pins.
+The third clause is the honest one and it is not currently satisfiable, which
+this record states rather than papers over. Vtables are allocated permanent and
+pushed onto an ordered registry that has no removal path, so enumerating with
+`vtableCount` / `vtableAt` / `vtableSelectorAt` — and resolving each selector
+through the vtable `lookup:` MOP, since the enumeration answers selectors rather
+than addresses — reports *registry membership*, not reachability. Every
+generation evaluates blocks, every block evaluation installs into a vtable that
+the registry then holds forever, so a membership test answers "held" for every
+generation and disposal never runs again.
+
+The consequence is that until the vtable registry can distinguish reachable from
+merely registered, the gate degenerates to refusing disposal outright. That is
+the safe direction — leaked mapped code rather than misdispatch into freed code
+— but it is a leak per evolution cycle, and it means §4.2's false-negative
+direction is *contained, not closed*. Closing it needs one of: a collectable
+vtable registry, re-homing block vtables onto a surviving trampoline at unload,
+or an explicit unload-time sweep that rebinds affected selectors. That work
+belongs to the lifetime record (Future 60G), and the recognition path of §4.1
+must not be read as depending on it.
+
+**Staging.** Recognition ships in S1–S2 while this gate is an S3 deliverable, so
+the interval is knowingly exposed. Since the gate degenerates to refusal anyway,
+S1 should simply refuse `discardCandidate:` and `releaseCandidate:` for any
+generation that has ever installed a method, and record the refusal as a kinded
+failure from the start.
 
 ### 7.1 Entries are released on overwrite and removal, not only on unload
 
@@ -331,7 +466,8 @@ slot, already claimed by birnam-store's mirror, so installing a sealing hook
 would silently destroy the Store MOP mirror. Changing its signature would also
 break a frozen ABI field offset and 60 §3 invariant 10.
 
-**The Store method-mutation authorizer can refuse, but does not see everything.**
+**The Store method-mutation authorizer can refuse, but does not see
+everything.**
 `tracked_add_method` consults an authorizer and returns its answer, which is a
 genuine veto — but it is also single-slot and already taken by codegen-runtime,
 and it guards only the Store MOP path. The direct `birnam_method` path bypasses
@@ -392,7 +528,8 @@ native symbols". The entry thunk calls one: `birnam_enter_resumable`.
 
 **Amendment.** Item 8 becomes "generated C that uses no stackless-specific IdApi
 fields, and no stackless-specific native symbol other than the entry shim". The
-commitment worth keeping is that the independently useful id floor does not grow;
+commitment worth keeping is that the independently useful id floor does not
+grow;
 a host runtime shim in the existing `birnam_*` family is the same category as
 `birnam_method`, which generated code already calls.
 
@@ -408,16 +545,23 @@ Method to completion, writes the result, and pops. The current frame is retained
 across the callee, which is not a tail call.
 
 **Decision.** Proper tail behavior exists only for a TailCall whose resolved
-address names a live ResumableEntry. A TailCall resolving to a synchronous
-Method degrades to Call-plus-Return, and the Machine counts it.
+implementation names a live ResumableEntry. A TailCall resolving to a
+synchronous Method degrades to Call-plus-Return, and the drive counts it. 60A §5
+is amended to scope its no-retention rule to a resumable target, since it cannot
+hold for one that has no FrameDescriptor.
 
 The counter is not decoration. 60 §7 proof point 2 and 60C §14.1 both state
 their million-transition requirement unconditionally, but a mutually tail-
 recursive cycle with one unmigrated member — or one that routes through
-`ifTrue:ifFalse:` — grows the native stack per iteration and overflows long
-before a million. Nothing else in the design detects a partially migrated tail
-cycle. The S1 probe must publish `tailCallToSynchronous`, and the S2 tail proof
-must assert it is zero for the cycle under test.
+`ifTrue:ifFalse:`, which codegen emits as an ordinary send served by a Rust
+primitive that sends `value` to the chosen block — grows the native stack per
+iteration and overflows long before a million. Nothing else in the design
+detects a partially migrated tail cycle.
+
+The counter is per drive, not per Machine: §5.1 puts nested drives on one
+Machine, so a per-Machine counter would let an unrelated crossing's degraded
+tail call fail another drive's proof. The S1 probe publishes it and the S2 tail
+proof asserts it is zero for the drive under test.
 
 ## 11. Cost and the budget 60C leaves unset
 
@@ -425,32 +569,48 @@ must assert it is zero for the cycle under test.
 budget is written anywhere, which makes the gate unfalsifiable. This record sets
 a provisional one — and first disqualifies the obvious anchor.
 
-**`sends.unary` is not the send constant.** It reports 2078 ns/op in
-`bench/results/v0.11.0.json`, but `bench/micro.birnam` installs its probe
-methods through `Reflect defineMethod:`, which installs a *trampoline*: each
-measured op interns through a linear symbol-table scan, reads a global through a
-reverse scan of the entire fact log, and then sends into a block. It measures
-the reflective-trampoline idiom, not dispatch. Two checks confirm it:
-`blocks.value` costs 79 ns/op through the same `send_abi` path, and
-`sends.dnu-mint` at 1888 ns/op is *faster* than `sends.unary` despite walking
-the chain to the root, missing, and allocating an error — impossible if chain
-scanning dominated. A budget denominated in that number would be roughly 26×
-too loose, and it drifts with loaded-module footprint, so it can be passed by
-loading more modules.
+**`sends.unary` is not the send constant.** `bench/micro.birnam` installs its
+probe methods through `Reflect defineMethod:`, which installs a *trampoline*
+rather than the method body: the emitted function does a `birnam_global` lookup
+for the retained block — an intern through a linear symbol-table scan plus a
+Globals read served by a reverse scan of the fact log — then interns `value:`
+and performs a *second* send into the block. Every measured op is therefore two
+sends plus the symbol and Store work, which is the reflective-defineMethod
+idiom, not dispatch. On the Rust floor the case reports ~1400–1443 ns/op while
+`blocks.value` reports ~91–96 ns/op.
 
-**Budgets are stated against the operation each one replaces**, with an absolute
-ceiling so the gate cannot be met by regressing the denominator:
+The gap is not wholly attributable to the trampoline — an ordinary compiled send
+also resolves free names through `birnam_global`, so `blocks.value` pays some of
+the same cost and does not isolate it — but the doubled send and the extra
+symbol/Store work are verified in the emitted trampoline, and that is enough to
+disqualify the case as a dispatch anchor. It also drifts with loaded-module
+footprint, so a budget denominated in it can be passed by loading more modules.
 
-| Measure | Compared against | Budget |
-|---|---|---|
-| Continue transition | `blocks.value` (79 ns at v0.11.0) | ≤ 2× and ≤ 200 ns |
-| Call/Return pair, migrated to migrated | `blocks.value` | ≤ 4× and ≤ 400 ns |
-| Entry through a thunk | `loops.to-do` per iteration (247 ns) | ≤ 2× and ≤ 500 ns |
-| Microcode sends per source-level step | — | ≤ 4, reported per step kind |
+**No existing case measures what the budget needs.** S0 must add a micro case
+timing an ordinary send to a compiled method with no reflective trampoline. Call
+that constant `S`. Budgets are multiples of it:
 
-S0 must add a micro case measuring an ordinary send to a compiled method with no
-reflective trampoline, since no existing case is that measurement; `blocks.value`
-is the closest proxy until it exists. Exceeding a budget is the trigger 60C
+| Measure | Budget |
+|---|---|
+| Continue transition | ≤ 2 × S |
+| Call/Return pair, migrated to migrated | ≤ 4 × S |
+| Entry through a thunk | ≤ 6 × S |
+| Microcode sends per source-level step | ≤ 4, reported per step kind |
+| Maximum reachable depth through an unmigrated primitive | ≥ 0.5 × the pre-migration depth, reported with the measured native-stack capacity |
+
+Absolute ceilings are deliberately absent until `S` exists. Fixing them against
+today's numbers would set them so far above the multiples that only the
+multiples ever bind, which is the appearance of a second guard rather than one.
+
+Two anchors are recorded so a reader can sanity-check scale, both from the
+Rust-floor snapshot `bench/results/v0.11.0-rust-2fe44d2-…json` that
+[61A](61a-r6-performance-tradeoffs.md) accepts as evidence, run 1 of 3:
+`blocks.value` 96 ns/op and `loops.to-do` 214 ns/op. Neither is `S`.
+`bench/results/v0.11.0.json` must not be used: it predates the Rust floor.
+
+The last row is the axis §5.3 says regresses, and it is stated as a budget
+rather than a reporting requirement because a measurement nobody can fail is
+what this section exists to correct. Exceeding any budget is the trigger 60C
 §13.3 reserves for an optional fast tier. The numbers are provisional and may be
 amended by an explicit record; they may not be quietly retired because a
 measurement missed them.
@@ -464,8 +624,9 @@ Extending 60A §9. All are out-of-band under §3.3:
 - `sealedMicrocodeSelector` — add, overwrite, or removal of a sealed selector;
 - `codeGenerationPinned` — disposal refused under the §7 gate.
 
-Capture and suspension above an entry barrier use the existing
-`continuationBarrier`. No depth failure kind is introduced; §5.3 explains why.
+Capture, suspension, Abort, and Restore that would cross an entry barrier all
+use the existing `continuationBarrier`. No depth failure kind is introduced;
+§5.3 explains why.
 
 ## 13. What this record freezes
 
@@ -475,12 +636,17 @@ Frozen:
 - a Call or TailCall resolving to a live ResumableEntry pushes a frame and never
   invokes a thunk; the thunk is reached only by ordinary `IdApi.send`;
 - registration produces one ResumableEntry regardless of surface;
-- recognition maps a resolved implementation to at most one live entry and never
-  aliases across unload;
-- nested entry reuses the current Machine above an entry-barrier delimiter;
+- recognition maps a resolved implementation — named by vtable and selector, not
+  by code address — to at most one live entry, and never aliases across unload;
+- nested entry reuses the current Machine above an entry-barrier delimiter, and
+  is chosen by barrier scope rather than by thread activity;
+- drive epochs are monotonic and are never restored;
+- Abort, Restore, and Capture terminate at the innermost entry barrier;
+- a Return at a barrier frame ends the drive, not the Machine;
+- frame tracing enumerates the arena rather than walking the caller chain;
 - a driver failure reaching a thunk boundary is fatal, not a value;
-- migration preserves result, error values, and selector-determined arity, and
-  does not preserve maximum call depth;
+- migration preserves result and error values for a matching argument count, and
+  preserves neither mismatched-arity behavior nor maximum call depth;
 - proper tail behavior requires a resumable target;
 - microcode selectors are sealed against add, overwrite, and removal.
 
@@ -489,8 +655,8 @@ Not frozen:
 - per-implementation versus shared thunk emission;
 - the entry shim's exact name;
 - ResumableEntry layout, indexing, or registry data structure;
-- whether recognition is an address table, a vtable-record side table, or a tag
-  word;
+- whether recognition is a vtable-record side table, a tag word beside the
+  dictionary entry, or another per-implementation mapping;
 - arena chunk retention and trim policy;
 - descriptor blob encoding;
 - the §11 budget numbers, which are provisional by construction.
@@ -510,33 +676,46 @@ Registration and entry are ready for S1 when tests cover:
    and returns through the thunk without the caller observing a Machine;
 5. nested entry pushes onto the current Machine above an entry-barrier
    delimiter, and the Machine count does not grow with nesting depth;
-6. capture and suspension above an entry barrier fail with
-   `continuationBarrier`, and the outer drive resumes correctly afterward;
-7. an outer drive's StepAction is stale while a nested drive runs, and the outer
-   epoch is current again after it returns;
-8. the drive stack is a distinct borrow domain: nested entry does not panic or
-   deadlock on a reentrant borrow;
-9. a resumable **block body** registers and executes through the direct
-   `birnam_method` surface, not only through the Store MOP;
-10. after `dlclose`, no registry entry names an address in the unloaded
+6. capture, suspension, Abort, and Restore that would cross an entry barrier
+   each fail with `continuationBarrier`, and the outer drive resumes correctly
+   afterward;
+7. an outer drive's StepAction is stale during a nested drive **and remains
+   stale after it returns**, so a driver that re-read a rewritten scratch
+   payload would fail rather than decode it;
+8. a Return at the barrier frame ends the nested drive with the Machine still
+   Running, and the outer drive's frames, chunks, and generation pins survive
+   it;
+9. forced collection during a nested drive preserves a value live only in an
+   outer frame slot;
+10. a FrameView taken on a nested frame is stale after that frame pops and an
+    outer Call reuses its arena offset;
+11. a thunk reached with an active drive but no active barrier — a host or
+    reactor callback — starts a fresh Machine rather than nesting;
+12. the drive stack is a distinct borrow domain: nested entry does not panic or
+    deadlock on a reentrant borrow;
+13. a resumable **block body** registers and executes through the direct
+    `birnam_method` surface, not only through the Store MOP;
+14. after `dlclose`, no registry entry names an implementation in the unloaded
     generation's mapped range;
-11. disposal is refused, with a kinded failure, while a frame, a continuation,
-    or a heap vtable holds the generation — the vtable case demonstrated with a
-    stored block;
-12. overwriting or removing a thunk unregisters its entry;
-13. add, overwrite, and removal of a sealed microcode selector each fail with
+15. disposal is refused with a kinded failure while a frame, a continuation, or
+    a registered vtable holds the generation — the vtable case demonstrated with
+    a stored block, and the refusal expected to be unconditional per §7;
+16. overwriting or removing a thunk unregisters its entry;
+17. add, overwrite, and removal of a sealed microcode selector each fail with
     `sealedMicrocodeSelector`, leaving the original primitive installed;
-14. every microcode selector is owned by Machine's own vtable record rather than
+18. every microcode selector is owned by Machine's own vtable record rather than
     inherited, asserted structurally by reflection, not by timing;
-15. live and AOT registration produce identical FrameDescriptor identity,
+19. live and AOT registration produce identical FrameDescriptor identity,
     declared arity, and implementation identity for the same source;
-16. a driver failure raised inside `do:` is fatal rather than discarded by
+20. a driver failure raised inside `do:` is fatal rather than discarded by
     `vector_do`, and is not catchable by `on:do:`;
-17. a TailCall to a synchronous Method increments `tailCallToSynchronous`, and
-    the S2 tail-recursion proof asserts the counter is zero;
-18. the §11 measures are published whether or not they pass. The entry and
+21. a TailCall to a synchronous Method increments the drive's
+    `tailCallToSynchronous`, and the S2 tail-recursion proof asserts it is zero
+    for the drive under test;
+22. the §11 measures are published whether or not they pass. The entry and
     Call/Return measures require a thunk, so they belong to S2; S1 publishes the
-    Continue and microcode-per-step measures using its hand-written StepMethod.
+    Continue and microcode-per-step measures using its hand-written StepMethod,
+    against the `S` micro case S0 adds.
 
 ## 15. Open questions
 
@@ -547,11 +726,13 @@ Registration and entry are ready for S1 when tests cover:
    like a method change, with a new address and a new fact, even when the source
    is byte-identical. What should `deriveImageMethodTargets` and
    `managedMethodChanged:on:` see?
-2. **Arena trim.** A deep alternating recursion grows one Machine's arena to its
-   high-water mark. Chunks are retained after return (60B §3). Does a long-lived
-   Runtime need a trim policy, and are returned chunks zeroed?
+2. **Arena trim.** Under §5.1 one Machine's arena high-water mark is a function
+   of boundary crossings, which §5.3 says is unbounded for a recursion through
+   an unmigrated primitive, and chunks are retained after return (60B §3). Does
+   a long-lived Runtime need a trim policy, and are returned chunks zeroed?
 3. **Descriptor blob home.** Should the FrameDescriptor live in the artifact as
-   data, or be constructed at registration from emitted metadata? The shared-thunk
+   data, or be constructed at registration from emitted metadata? The
+   shared-thunk
    option of §3.1 makes the data form more attractive.
 4. **Does the Store mirror need the resumable tag?** The mirror records the
    thunk, which is correct for named methods and never sees block vtables at
