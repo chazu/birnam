@@ -1,6 +1,6 @@
 // micro.birnam — the micro benchmark suite (docs/design/46 Phase 2).
 //
-// The migration-gate numbers: the send constant and the native-vs-derived
+// The migration-gate numbers: stable send idioms and the native-vs-derived
 // boundaries that decide every self-hosting lift. Case names are a CONTRACT
 // (never rename — retire + add instead; see docs/design/46).
 //
@@ -23,9 +23,10 @@
 //     their numbers depend on how many facts earlier cases appended. Append
 //     new cases at the END.
 //
-// Acceptance anchor (docs/46 Phase 2): sends.unary must land near the
-// in-suite ReleaseSafe constant recorded there (standalone hand loops run
-// ~1.5–1.8µs; in-suite, with bench+os loaded, ~2.3µs on the 2026-07 machine).
+// Acceptance anchor (docs/46 Phase 2): sends.unary tracks the stable reflective
+// defineMethod: idiom and must land near the in-suite ReleaseSafe value recorded
+// there. Design 60's direct compiled-send denominator is sends.compiled-unary,
+// appended at the end of this suite.
 
 [System load: "modules/bench.birnam"];
 [System load: "modules/os.birnam"];
@@ -77,12 +78,22 @@ let CC := [db cellFor: CR attr: #c];
 // A raw C buffer for ffi.peek-poke.
 let BUF := [Alien alloc: 16];
 
+// A direct compiled unary Method for the Design 60 stackless-transition
+// budget. Unlike Reflect defineMethod:, TccUnit install:as:on: installs the
+// resolved body itself: no retained-block trampoline, global lookup, Store
+// mirror mutation, or second send sits inside the timed operation.
+let DIRECT_SEND_RECEIVER := [Object clone];
+let directSendUnit := [Tcc new];
+[directSendUnit compile: "void* birnam_bench_direct_send(void* self, void** args, unsigned long count) { (void)args; (void)count; return self; }"];
+[directSendUnit relocate];
+[directSendUnit install: "birnam_bench_direct_send" as: #benchDirectSend on: DIRECT_SEND_RECEIVER];
+
 // ---------------------------------------------------------------------------
 // The suite
 // ---------------------------------------------------------------------------
 let s := [BenchSuite named: "micro"];
 
-// -- sends: the constant itself ------------------------------------------------
+// -- sends: stable language-level idioms --------------------------------------
 [s case: "sends.unary" opsPerIter: 8 do: [:n |
   [1 to: n do: [:i |
     [P idself]; [P idself]; [P idself]; [P idself];
@@ -255,13 +266,23 @@ let s := [BenchSuite named: "micro"];
 [s case: "range.asVector" opsPerIter: 1 do: [:n |
   [1 to: n do: [:i | [[1 to: 10000] asVector]]]]];
 
+// -- Design 60 S0 compiled-send anchor -------------------------------------------
+// Appended rather than grouped with sends.* because case order is load-bearing.
+// This is the constant S used by Design 60E's provisional transition budgets.
+[s case: "sends.compiled-unary" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [DIRECT_SEND_RECEIVER benchDirectSend]; [DIRECT_SEND_RECEIVER benchDirectSend];
+    [DIRECT_SEND_RECEIVER benchDirectSend]; [DIRECT_SEND_RECEIVER benchDirectSend];
+    [DIRECT_SEND_RECEIVER benchDirectSend]; [DIRECT_SEND_RECEIVER benchDirectSend];
+    [DIRECT_SEND_RECEIVER benchDirectSend]; [DIRECT_SEND_RECEIVER benchDirectSend]]]]];
+
 // ---------------------------------------------------------------------------
 // Run + write + gate
 // ---------------------------------------------------------------------------
 [Bench runSuite: s];
 let written := [Bench writeResults: "bench/results/dev/micro.json"];
 
-let ok := [[[[[Bench results] size] = 28]
+let ok := [[[[[Bench results] size] = 29]
            & [[Bench failures] = 0]]
            & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
 [ok

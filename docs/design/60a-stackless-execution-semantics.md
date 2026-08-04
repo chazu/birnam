@@ -1,6 +1,6 @@
 # 60A — Stackless Execution Semantics
 
-> **Status:** S0 decision record, proposed for acceptance, revised 2026-08-04.
+> **Status:** S0 decision record, accepted 2026-08-04.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -17,13 +17,13 @@ is currently implemented as:
 This record defines the behavior visible at those boundaries. Machine and
 StepAction cross the compiler/runtime boundary as Birnam Oops. Frame storage
 does not. [60B](60b-stackless-machine-and-frames.md) defines that object/storage
-boundary. [60C](60c-stepmethod-calling-abi-options.md) proposes reusing the
+boundary. [60C](60c-stepmethod-calling-abi-options.md) accepts reuse of the
 existing Method calling shape and accessing private Frame state through a
 primitive-backed Machine protocol rather than a second native API.
 
 ## 2. S0 decisions
 
-These are the proposed first-delivery decisions.
+These are the accepted first-delivery decisions.
 
 | Area | First-delivery decision |
 |---|---|
@@ -69,7 +69,7 @@ slot tracing rules are defined in 60B.
 ### StepMethod
 
 A StepMethod executes one bounded portion of the Machine's current Frame and
-returns one StepAction Oop to the Machine driver. The calling contract proposed
+returns one StepAction Oop to the Machine driver. The calling contract accepted
 in [60C](60c-stepmethod-calling-abi-options.md) reuses the existing Method
 shape:
 Machine is the receiver, the driver supplies the argument buffer the frame's
@@ -96,11 +96,11 @@ opaque sink. A later Birnam implementation may replace those primitives without
 changing the fact that a StepMethod returns an Oop implementing the StepAction
 protocol.
 
-This ownership split is frozen for the stackless path: a future action-layout
-record may version the physical payload, but it must not replace the returned
-Oop with a Rust-only enum, native handle, or action sink. Metacircular
-visibility does not require the irreducible outer driver to dispatch a message
-to the action.
+This ownership split is frozen for the stackless path: a later action-layout
+version may extend the v1 physical payload frozen in 60B §5, but it must not
+replace the returned Oop with a Rust-only enum, native handle, or action sink.
+Metacircular visibility does not require the irreducible outer driver to
+dispatch a message to the action.
 
 The action operands are bounded raw slot indices, counts, delimiter identities,
 and other validated process-local handles; live language values remain in

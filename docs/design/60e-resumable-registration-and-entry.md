@@ -1,6 +1,6 @@
 # 60E — Resumable Registration and the Entry Seam
 
-> **Status:** S0 decision record, proposed for acceptance, 2026-08-04.
+> **Status:** S0 decision record, accepted 2026-08-04.
 > This record closes the registration seam that
 > [60A](60a-stackless-execution-semantics.md) §5 and
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
@@ -632,10 +632,10 @@ elsewhere on Machine — inspection, policy, drive protocol — is unaffected. T
 seal covers only the irreducible frame and action operations of 60B §1, which
 60C §6 already argues is the honest place for this boundary.
 
-## 9. Amendments to the 60C proposal
+## 9. Amendments incorporated into 60C
 
-These apply on acceptance of 60C, which remains an RFC. 60E does not freeze
-them independently.
+These amendments were incorporated when 60C was accepted. They remain recorded
+here because the entry seam supplies their rationale.
 
 ### 9.1 The driver argument count
 
@@ -736,11 +736,12 @@ using it as the *denominator of a ratio budget* for an operation it does not
 measure. A budget so denominated would be roughly fifteenfold too loose on the
 Rust floor.
 
-**No existing case measures what the budget needs, but a Birnam surface produces
-it.** The two definition paths that install trampolines are `Reflect
-defineMethod:on:as:`, whose trampoline does the global lookup and second send
-described above, and artifact/image lowering, whose trampoline reads an indexed
-candidate root and then sends. Neither is what `S` should measure.
+**Before S0 acceptance no existing case measured what the budget needs, but a
+Birnam surface produces it.** The two definition paths that install trampolines
+are `Reflect defineMethod:on:as:`, whose trampoline does the global lookup and
+second send described above, and artifact/image lowering, whose trampoline
+reads an indexed candidate root and then sends. Neither is what `S` should
+measure.
 
 `Tcc unit install:as:on:` is: it resolves a symbol from a relocated unit and
 calls `ensurePrivateVtable` plus `api.method` directly, with no trampoline, no
@@ -748,10 +749,10 @@ Store MOP, and no second send. `Alien wrap:signature:as:on:` is built on it, and
 `bench/micro.birnam`'s `ffi.wrapped-call` already times an ordinary unary send
 to such a body — it differs from `S` only by the syscall inside it.
 
-So S0 adds a micro case timing an ordinary unary send to a body installed
-through `Tcc unit install:as:on:` with a trivial return. That keeps `S` inside
-the
-same harness as the anchors below, which a one-off Rust benchmark would not.
+S0 adds `sends.compiled-unary`, a micro case timing an ordinary unary
+send to a body installed through `Tcc unit install:as:on:` with a trivial
+return. That keeps `S` inside the same harness as the anchors below, which a
+one-off Rust benchmark would not.
 `bench/micro.birnam` requires new cases to be appended at the end, because case
 order is load-bearing for its store-backed cases, and its exit gate asserts a
 fixed case count that the new case must bump. Call that constant `S`. Budgets
@@ -765,9 +766,11 @@ are multiples of it:
 | Microcode sends per source-level step | ≤ 4, reported per step kind |
 | Maximum reachable depth through an unmigrated primitive | ≥ 0.5 × the pre-migration depth, reported with the measured native-stack capacity |
 
-Absolute ceilings are deliberately absent until `S` exists. Fixing them against
-today's numbers would set them so far above the multiples that only the
-multiples ever bind, which is the appearance of a second guard rather than one.
+The S0 acceptance run used an isolated ReleaseSafe Rust prefix and quick harness
+mode and measured `S = 377 ns/op` on the 2026-08-04 development machine. That
+number is scale evidence, not a durable release baseline: each S1/S2 budget is
+evaluated against `sends.compiled-unary` from the same benchmark run so host and
+layout noise divide out. Fixed absolute ceilings are deliberately absent.
 
 Two anchors are recorded so a reader can sanity-check scale, both from the
 Rust-floor snapshot `bench/results/v0.11.0-rust-2fe44d2-…json` that
@@ -936,7 +939,7 @@ Registration and entry are covered when tests demonstrate:
     would pass with pinning unimplemented;
 26. the §11 measures are published whether or not they pass. S1 publishes the
     Continue and microcode-per-step measures using its hand-written StepMethod,
-    against the `S` micro case S0 adds; the Call/Return, entry, and depth
+    against the `sends.compiled-unary` value `S`; the Call/Return, entry, and depth
     measures need two migrated implementations and a thunk, so they belong
     to S2.
 

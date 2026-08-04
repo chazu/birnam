@@ -1,6 +1,6 @@
 # 60 — Stackless Native Execution
 
-> **Status:** Architecture overview and delivery index, updated 2026-08-04.
+> **Status:** Architecture overview and delivery index; S0 accepted 2026-08-04.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -126,12 +126,13 @@ This record is the memory-safety gate for S1 and S3.
 
 ### 60C — StepMethod calling contract
 
-Proposes reusing the existing Method ABI with Machine as receiver, a
+Accepts reuse of the existing Method ABI with Machine as receiver, a
 descriptor-declared argument buffer, and StepAction as result. It defines the
 floor/malleability split for
 the primitive-backed Machine protocol and defers stronger native interfaces
-until measurements justify them. It is the human review surface for accepting
-or rejecting that minimal calling contract.
+until measurements justify them. Its S1 probe validates that accepted minimal
+calling contract and returns to design review if a required semantic cannot be
+expressed.
 
 Resumable registration and the ordinary-send entry seam are decided in 60E;
 compiler lowering is the subject of Future 60F below.
@@ -180,11 +181,26 @@ performance budgets, and release gates.
 
 ### S0 — Documentation and contract freeze
 
-Accept 60A, 60B, and 60E. Review the Method-shaped proposal in 60C, then record
-its acceptance or one semantic requirement it cannot express; acceptance carries
-the three amendments in 60E §9. Establish synchronous benchmarks and current ABI
-fixtures, including the compiled-send micro case the 60E §11 budget is stated
-against.
+**Accepted 2026-08-04.** 60A, 60B, 60C, 60D, and 60E are the accepted contract
+set. The Method-shaped StepMethod contract includes the three amendments in 60E
+§9. The frozen IdApi v1 fixtures remain the compatibility floor, and
+`sends.compiled-unary` is the synchronous-send constant `S` against which 60E
+§11 states the provisional transition budgets.
+
+Acceptance authorizes S1 implementation of the parallel Machine substrate. It
+does not claim the S1 proof already passes: the hand-written StepMethod probe is
+the first validation of the accepted calling contract, and a concrete semantic
+failure returns to design review rather than silently changing the contract.
+
+Acceptance evidence on 2026-08-04:
+
+- the 29-case micro suite passed against an isolated ReleaseSafe Rust prefix;
+  `sends.compiled-unary` measured 377 ns/op in quick harness mode;
+- the frozen IdApi v1 native client, native module, mapped image, and rebuilt
+  image all passed against that prefix; and
+- the acceptance is a contract decision, not runtime-completion evidence. The
+  million-transition, GC, registration, nested-entry, and suspension proofs
+  remain owned by S1–S3 exactly where the companion records label them.
 
 ### S1 — Parallel machine substrate
 
@@ -218,10 +234,10 @@ durable continuation state as separately reviewed policy layers.
 
 ## 7. First implementation gate
 
-Implementation may begin after S0 when all of the following are written down:
+S0 acceptance records the following implementation gate as complete:
 
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
-- the exact StepMethod calling contract selected after 60C review;
+- the exact StepMethod calling contract accepted in 60C;
 - the resumable registration record, the entry-thunk contract, the driver
   recognition and address-reuse ordering rules, and the artifact/image
   registration surface from 60E;

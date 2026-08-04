@@ -1,17 +1,18 @@
 # 60C — The StepMethod Calling Contract
 
-> **Status:** Request for comment, revised 2026-08-04. No ABI decision has been
-> accepted. The current lean is to reuse the existing Method ABI without adding
-> a StepMethod-specific native API.
+> **Status:** S0 calling-contract decision, accepted 2026-08-04. StepMethod
+> reuses the existing Method ABI without adding a StepMethod-specific native
+> API. S1 must validate the accepted baseline with the bounded probe in §14;
+> evidence that the shape cannot express a required semantic must return as a
+> new design decision rather than silently growing the ABI.
 >
-> [60E §9](60e-resumable-registration-and-entry.md) proposes three amendments to
-> this record — the driver argument count, microcode sealing, and evidence item
-> 8 — which take effect only if this record is accepted with them. They are
-> marked inline below.
+> [60E §9](60e-resumable-registration-and-entry.md)'s three amendments — the
+> driver argument count, microcode sealing, and evidence item 8 — are part of
+> this accepted contract and are marked inline below.
 
-## 1. Decision under review
+## 1. Accepted decision
 
-A StepMethod should use the already frozen Method function shape:
+A StepMethod uses the already frozen Method function shape:
 
 ```c
 typedef Oop (*Method)(Oop receiver, const Oop *args, size_t count);
@@ -26,7 +27,7 @@ The stackless driver gives that existing shape one narrow semantic contract:
   ([60E §9.1](60e-resumable-registration-and-entry.md)); and
 - the result is one canonical StepAction Oop.
 
-The proposal does **not** add any of the following:
+The accepted contract does **not** add any of the following:
 
 - a `StepMethodV1` function-pointer shape;
 - a `BirnamStepInvocationV1` record;
@@ -384,7 +385,7 @@ execution test is not evidence that the roots are correct.
 
 ## 11. What is and is not frozen
 
-If accepted, this record freezes only:
+This record freezes only:
 
 - StepMethod uses the existing Method function shape;
 - the driver invokes it with Machine as receiver and an ordinary argument
@@ -449,7 +450,7 @@ before S1 demonstrates the execution path.
 
 The former Option A reused Method physically but changed `args` into a control
 array containing an ephemeral lease and introduced a separate slot helper.
-That design is not the current proposal. It made ordinary arguments carry
+That design is not the accepted contract. It made ordinary arguments carry
 non-language control meaning and created object-shaped identity for a value
 that intentionally had no Birnam protocol.
 
@@ -459,7 +460,7 @@ Birnam object passed as an ordinary argument.
 ### 13.2 Dedicated Machine-only function shape
 
 The former Option B used `Oop (*StepMethod)(Oop machine)`. It is conceptually
-close to the current proposal but physically unnecessary. The existing Method
+close to the accepted contract but physically unnecessary. The existing Method
 shape already expresses a Machine receiver and a declared argument buffer,
 avoids another function-pointer type, and preserves established loader
 behavior — and a Machine-only shape could not carry the resume token of §4.1 at
@@ -500,9 +501,11 @@ Birnam identity, protocol, inspection, and a uniform extension point for
 suspension and continuations. Returning a StepAction is a small semantic cost
 with substantial metacircular value.
 
-## 14. Evidence required before acceptance
+## 14. S1 validation evidence
 
-S1 should implement one hand-written StepMethod using only:
+Acceptance freezes the conservative semantic baseline; it does not claim that
+the runtime proof already exists. S1 must implement one hand-written StepMethod
+using only:
 
 - the existing Method ABI;
 - the process-owned IdApi;
@@ -534,17 +537,15 @@ Measure:
 Only if those measurements fail an agreed budget should S1 prototype a direct
 slot or specialized action-publication optimization. That budget is stated in
 [60E §11](60e-resumable-registration-and-entry.md), as multiples of a compiled-
-send constant that S0 must add a micro case to establish — the existing
-`sends.unary` case measures a reflective trampoline and is disqualified as an
-anchor. The baseline semantics remain the Method-shaped contract.
+send constant established by S0's `sends.compiled-unary` micro case — the
+existing `sends.unary` case measures a reflective trampoline and is disqualified
+as an anchor. The baseline semantics remain the Method-shaped contract.
 
-## 15. Questions for reviewers
+## 15. S1 implementation questions
 
-Review should now focus on the smaller set of real decisions. Questions 1, 4,
-and
-6 are answered by [60E](60e-resumable-registration-and-entry.md) and are
-recorded
-here as resolved rather than deleted:
+These questions bound the S1 probe without reopening the accepted physical
+calling shape. Questions 1, 4, and 6 are answered by
+[60E](60e-resumable-registration-and-entry.md) and remain recorded as resolved:
 
 1. **Resolved (60E §9.1).** Zero arguments is not frozen; the driver supplies a
    descriptor-declared buffer of length 0 or 1, so a resume token need not cost
@@ -561,13 +562,14 @@ here as resolved rather than deleted:
 5. Should the driver invoke the registered Method pointer directly, or should
    current implementation selection itself be an object-visible dispatch step?
 6. **Resolved (60E §11).** The provisional budget is stated as multiples of a
-   compiled-send constant S0 must establish; exceeding it is the trigger for the
-   §13.3 tier.
+   `sends.compiled-unary` constant S0 establishes; exceeding it is the trigger
+   for the §13.3 tier.
 7. Which parts of Machine policy must be replaceable on day one, and which
    primitive storage operations are acceptable under the governing ownership
    rule?
 
-The requested review outcome is either acceptance of the Method-shaped baseline
-or one concrete semantic requirement that the existing Method ABI cannot
-express. Convenience for native implementation is not, by itself, sufficient
-reason to grow the language floor.
+The Method-shaped baseline is accepted. If the S1 probe exposes one concrete
+semantic requirement that the existing Method ABI cannot express,
+implementation stops at that evidence and returns to design review. Convenience
+for native implementation is not, by itself, sufficient reason to grow the
+language floor.

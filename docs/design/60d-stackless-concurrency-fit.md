@@ -1,7 +1,7 @@
 # 60D — Stackless Concurrency Fit and Boundaries
 
-> **Status:** S0 concurrency compatibility record, proposed for review, revised
-> 2026-08-04 for the 60E entry seam.
+> **Status:** S0 concurrency compatibility record, accepted 2026-08-04 with
+> the 60E entry seam.
 > This document evaluates the stackless Machine design against Birnam's existing
 > reactor and isolate direction. It does not select a scheduler, introduce
 > shared-memory threads, or make Machine transferable between runtimes.
@@ -45,7 +45,7 @@ This record reads the following documents together:
   private Frame storage, Machine lifecycle, traced roots, and generation pins;
   and
 - [60C — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
-  proposes the existing Method shape with Machine as receiver, a
+  accepts the existing Method shape with Machine as receiver, a
   descriptor-declared argument buffer, and StepAction as result; and
 - [60E — Resumable registration and the entry
   seam](60e-resumable-registration-and-entry.md)

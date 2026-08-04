@@ -1,12 +1,11 @@
 # 60B — Stackless Machine, Frames, and GC
 
-> **Status:** S0 representation and memory-safety record, proposed for
-> acceptance, revised 2026-08-04.
+> **Status:** S0 representation and memory-safety record, accepted 2026-08-04.
 > This document defines the Birnam-object/private-Rust-storage boundary required
-> by [60A](60a-stackless-execution-semantics.md). It does not freeze the
-> StepMethod calling contract; the decision following
-> [60C](60c-stepmethod-calling-abi-options.md) must preserve the boundary
-> described here.
+> by [60A](60a-stackless-execution-semantics.md). It does not own the StepMethod
+> calling contract; the accepted decision in
+> [60C](60c-stepmethod-calling-abi-options.md) preserves the boundary described
+> here.
 
 ## 1. Representation boundary
 
@@ -42,7 +41,7 @@ operate on the current private Frame:
   ContinueAction Oop;
 - request the S3 suspension operation.
 
-The calling contract proposed in
+The calling contract accepted in
 [60C](60c-stepmethod-calling-abi-options.md) adds no invocation token, helper
 table, or separate native slot API. Generated code must never dereference a
 MachineState or Frame pointer directly or pass an Oop pointer as an action
@@ -199,31 +198,61 @@ version creates a new descriptor and cannot reinterpret an old frame.
 
 ## 5. Slot and action rules
 
-StepMethod returns a StepAction Oop. Its canonical vtable identifies the action
-kind and its declared payload contains a common raw header:
+StepMethod returns a StepAction Oop. S0 freezes action payload schema v1 as
+pointer-sized raw words. Each canonical action is allocated with exactly the
+payload size listed below, and its vtable uses the existing all-raw layout form
+(`count = 0`, `rest = SLOT_RAW`). The raw rest kind is not permission for a
+different payload size: the driver checks `objectPayloadSize` before reading the
+common header. The canonical vtable is the action-kind tag; no redundant kind
+word appears in the payload.
 
-- action schema version;
-- owning Machine registry index and generation;
-- issuing drive epoch.
+Words 0–3 are the common header for every action:
 
-The remaining fields refer to slots and ranges, not borrowed pointers:
+| Word | Field | Rule |
+|---:|---|---|
+| 0 | `schema_version` | Exactly `1` for this layout. |
+| 1 | `machine_index` | Registry index of the issuing Machine. |
+| 2 | `machine_generation` | Generation paired with `machine_index`. |
+| 3 | `drive_epoch` | Current Machine drive epoch. |
 
-| Canonical Oop | Slot operands |
-|---|---|
-| CallAction | receiver slot, selector slot, argument start/count, result slot |
-| TailCallAction | receiver slot, selector slot, argument start/count |
-| ReturnAction | value slot |
-| ContinueAction | none |
-| SuspendAction | suspension/result slot and delimiter identity |
-| CaptureAction | delimiter identity and result slot |
-| RestoreAction | continuation handle and supplied-value slot |
-| AbortAction | delimiter identity and failure/reason slot where applicable |
+The remaining words are fixed by canonical vtable:
 
-The future action-layout record defines the exact object layouts and their
-versioning. Whatever layout it chooses must use bounded integer operands and
-must not contain a pointer to a temporary argument array, a Frame pointer, or
-an unvalidated Oop. The StepMethod result remains an Oop, not a Rust enum,
-tagged C value, or opaque action sink.
+| Canonical Oop | Payload words after the common header | Total words |
+|---|---|---:|
+| CallAction | 4 `receiver_slot`, 5 `selector_slot`, 6 `argument_start`, 7 `argument_count`, 8 `result_slot` | 9 |
+| TailCallAction | 4 `receiver_slot`, 5 `selector_slot`, 6 `argument_start`, 7 `argument_count` | 8 |
+| ReturnAction | 4 `value_slot` | 5 |
+| ContinueAction | none | 4 |
+| SuspendAction | 4 `result_slot`, 5 `delimiter_index`, 6 `delimiter_generation` | 7 |
+| CaptureAction | 4 `delimiter_index`, 5 `delimiter_generation`, 6 `result_slot` | 7 |
+| RestoreAction | 4 `continuation_slot`, 5 `supplied_value_slot` | 6 |
+| AbortAction | 4 `delimiter_index`, 5 `delimiter_generation`, 6 `reason_slot` | 7 |
+
+Every name ending in `_slot` is an index into the current descriptor and must
+match the slot kind required by the operation. In particular,
+`continuation_slot` names an Oop slot containing the Continuation; the action
+never embeds that Oop. An argument range is the half-open interval
+`argument_start .. argument_start + argument_count`, checked for overflow before
+either bound is used. A delimiter identity is an arena index plus generation.
+For an Abort with no explicit delimiter, `delimiter_index` is `usize::MAX` and
+`delimiter_generation` is zero; no other field admits a sentinel.
+
+The reflective v1 protocol is also frozen. Every action answers `actionKind`,
+`schemaVersion`, `machineIndex`, `machineGeneration`, and `driveEpoch`.
+Specializations answer the camel-case form of each field listed above:
+`receiverSlot`, `selectorSlot`, `argumentStart`, `argumentCount`, `resultSlot`,
+`valueSlot`, `delimiterIndex`, `delimiterGeneration`, `continuationSlot`,
+`suppliedValueSlot`, and `reasonSlot` where applicable. `actionKind` answers one
+of `#call`, `#tailCall`, `#return`, `#continue`, `#suspend`, `#capture`,
+`#restore`, or `#abort`. AbortAction additionally answers `hasDelimiter`; its
+delimiter accessors answer nil when the raw sentinel is present. Numeric
+accessors answer nonnegative Integer Oops. Registry generations and drive epochs
+fail deterministically before wrapping beyond that representable range.
+
+A later schema may add a new canonical vtable/layout version, but cannot
+reinterpret a live v1 object. No schema may contain a borrowed argument-array
+pointer, Frame pointer, or unvalidated Oop. The StepMethod result remains an
+Oop, not a Rust enum, tagged C value, or opaque action sink.
 
 The canonical action vtables and field protocol are metacircularly visible.
 Birnam code can inspect an action's kind and operands through ordinary methods
@@ -241,11 +270,11 @@ outer action over payload the nested drive has overwritten
 canonical vtable, schema, Machine capability, and epoch before interpreting
 variant fields, and copies the operands it needs into driver-local scalars
 before releasing its borrow, so no action payload is re-read across generated
-code. There is no
-public action-submission operation: the driver accepts an action only as the
-direct result of the active StepMethod. A retained alias therefore grants no
-independent right to drive the Machine, and the language promises neither a
-fresh StepAction identity nor snapshot payload contents for every step.
+code. There is no public action-submission operation: the driver accepts an
+action only as the direct result of the active StepMethod. A retained alias
+therefore grants no independent right to drive the Machine, and the language
+promises neither a fresh StepAction identity nor snapshot payload contents for
+every step.
 
 Before returning Call, generated code stores every receiver, selector, argument,
 and live local in frame slots. The driver may then construct a temporary

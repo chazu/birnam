@@ -257,7 +257,7 @@ compare tool.
 
 | group.case | pins |
 |---|---|
-| `sends.unary` | the send constant itself |
+| `sends.unary` | the stable `Reflect defineMethod:` unary-send idiom: retained-block trampoline, lookup, and second send included; still the Design 46 regression anchor, but not Design 60E's direct-send denominator |
 | `sends.keyword3` | arity cost |
 | `sends.dnu-mint` | the DNU path: a failed lookup minting its error value (measures CHEAPER than a successful send — genuine: objDnu/mkError is native Zig and never enters TCC-emitted method code) |
 | `blocks.value` | closure invocation |
@@ -276,6 +276,7 @@ compare tool.
 | `ffi.wrapped-call` | Alien call overhead (a `clockNanos` loop — one wrapped libc call + boxing) |
 | `ffi.peek-poke` | raw C memory |
 | `vector.includes-miss` / `vector.reversed` / `vector.copy-1k` / `range.asVector` | the four tier-B lift boundaries (docs/44 §7), one case per candidate, on the shared 10k fixture — added post-v0.8.0, so the v0.8.0 snapshot lacks them (bench-compare reports new cases as notes) |
+| `sends.compiled-unary` | a direct compiled unary send installed through `TccUnit install:as:on:`; unlike `sends.unary`, it contains no retained-block trampoline, Store lookup, or second send, and is the `S` denominator for Design 60E's provisional stackless-transition budgets |
 
 ### Relational — `bench/relational.birnam` (process-isolated, see above)
 
