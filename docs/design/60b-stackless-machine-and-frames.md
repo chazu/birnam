@@ -150,7 +150,11 @@ reuse are Rust operations.
 
 Frame handles are validated by an arena identity and generation counter. A
 handle to a popped frame, released chunk, or destroyed Machine must fail before
-reading memory. Raw pointers may be used inside one Rust driver step for
+reading memory. The slot generation advances on every pop, not only on chunk
+release: stacked drives ([60E §5.1](60e-resumable-registration-and-entry.md))
+push and pop repeatedly at the same arena offsets, which makes slot reuse the
+common case and leaves the generation counter as the only discriminator for a
+retained FrameView. Raw pointers may be used inside one Rust driver step for
 performance, but they cannot escape that step or cross a foreign callback.
 
 The arena should retain capacity after ordinary returns when that is cheaper

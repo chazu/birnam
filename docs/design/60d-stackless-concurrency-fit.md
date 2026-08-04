@@ -164,13 +164,14 @@ One step must follow this sequence:
 ```text
 1. Borrow MachineState.
 2. Validate ownership and lifecycle.
-3. Mark the step active and advance or record the drive epoch.
+3. Mark the step active and advance the Machine's single drive epoch.
 4. Copy the Method address and immutable descriptor identity needed for entry.
 5. Release the MachineState borrow and every registry guard.
 6. Invoke generated StepMethod code.
 7. Machine microcode sends independently borrow, validate, mutate, and release.
 8. Reacquire MachineState after StepMethod returns.
-9. Validate and decode the returned StepAction.
+9. Validate and decode the returned StepAction, copying every operand needed
+   into driver-local scalars rather than re-reading the payload later.
 10. Commit the driver transition and release the borrow before callbacks.
 ```
 
@@ -395,10 +396,10 @@ The first implementation must preserve all of the following:
 14. The drive stack is a distinct borrow domain from the machine registry and
     MachineState; entry acquires and releases it as a point operation, never
     across generated code.
-15. Drive epochs are monotonic. Action validation compares against the epoch of
-    the innermost active drive, so an outer drive's action is stale during a
-    nested drive and stays stale afterward rather than revalidating over
-    rewritten scratch payload.
+15. A Machine has one drive epoch, advancing on drive entry and on drive exit.
+    Validation compares against that single current value, so an outer drive's
+    action is stale during a nested drive and stays stale afterward rather than
+    revalidating over rewritten scratch payload.
 16. Fresh-versus-nested entry is decided by synchronous-barrier scope, not by
     thread activity, so a host or reactor callback taken while some Machine is
     driving begins a new Machine rather than joining an unrelated one.

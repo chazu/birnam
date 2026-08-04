@@ -514,7 +514,7 @@ The probe must demonstrate:
    wrong-slot-kind cases;
 7. identical registration from live and AOT artifacts; and
 8. generated C that uses no stackless-specific IdApi fields, and no
-   stackless-specific native symbol other than the entry shim
+   stackless-specific native symbols other than the entry and registration shims
    ([60E §9.3](60e-resumable-registration-and-entry.md)).
 
 Measure:
