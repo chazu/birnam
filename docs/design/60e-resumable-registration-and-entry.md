@@ -69,8 +69,7 @@ no lookup of its own and no static mutable state.
 `birnam_enter_resumable` performs:
 
 1. resolve the ResumableEntry and validate its generation is still live;
-2. check `count` against the entry's declared arity, answering the ordinary
-   `doesNotUnderstand` result on mismatch so arity behavior is unchanged;
+2. check `count` against the entry's declared arity;
 3. acquire a Machine for this entry (§5);
 4. push the initial frame with the receiver and arguments copied into traced
    frame slots;
@@ -80,6 +79,21 @@ no lookup of its own and no static mutable state.
 
 Step 6 is the transparency rule: a completed drive is indistinguishable from a
 synchronous return. A caller that never mentions Machine never sees one.
+
+Step 2 needs care, because the floor has no per-method arity. `add_method`
+stores selector and address only (`rust/birnam-id/src/vtable.rs:311`), and
+`doesNotUnderstand` fires exactly when lookup misses
+(`rust/birnam-id/src/dispatch.rs:69`); `send_abi`'s only argument check is the
+null-with-nonzero-count invariant. Arity is carried by the selector spelling, so
+a wrong-count send to a synchronous method today simply runs it with a short
+buffer.
+
+The thunk's check is therefore a **new** check, not a preserved behavior. It is
+unreachable from ordinary compiled sends, where the selector determines the
+count, and exists to catch malformed artifacts and hand-written callers. It must
+answer the runtime failure of §10, not a fabricated `doesNotUnderstand`, because
+answering DNU would make the resumable case diverge from the synchronous one in
+the direction the transparency rule forbids.
 
 ### 3.3 What the thunk is not
 
