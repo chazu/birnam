@@ -1,7 +1,7 @@
 # 60D — Stackless Concurrency Fit and Boundaries
 
-> **Status:** S0 concurrency compatibility record, proposed for review,
-> 2026-08-01.
+> **Status:** S0 concurrency compatibility record, proposed for review, revised
+> 2026-08-04 for the 60E entry seam.
 > This document evaluates the stackless Machine design against Birnam's existing
 > reactor and isolate direction. It does not select a scheduler, introduce
 > shared-memory threads, or make Machine transferable between runtimes.
@@ -44,8 +44,11 @@ This record reads the following documents together:
   private Frame storage, Machine lifecycle, traced roots, and generation pins;
   and
 - [60C — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
-  proposes the existing Method shape with Machine as receiver, zero initial
-  arguments, and StepAction as result.
+  proposes the existing Method shape with Machine as receiver, a
+  descriptor-declared argument buffer, and StepAction as result; and
+- [60E — Resumable registration and the entry seam](60e-resumable-registration-and-entry.md)
+  decides how an unmigrated send enters a resumable implementation, which adds
+  the nested-drive and drive-stack cases this record must cover.
 
 This document does not reopen Design 48's choice to avoid shared-memory
 parallelism in the first concurrency architecture. It records whether Designs
@@ -97,6 +100,13 @@ An implementation must preserve that property. A process-global or thread-local
 tests, and later reactor scheduling unnecessarily fragile. Temporary raw pointers
 inside one Rust operation are acceptable; ambient execution identity is not.
 
+There is exactly one scoped exception, and it is not in generated code. The
+entry seam of [60E §5.2](60e-resumable-registration-and-entry.md) has no Machine
+in hand by construction — an entry thunk is reached by ordinary dispatch from an
+unmigrated caller — so the Runtime owns a drive stack naming the active drive
+and its epoch. Only the entry shim consults it. Generated StepMethod code and
+Machine microcode still receive Machine explicitly and must never read it.
+
 ## 5. Scheduling boundary
 
 The Machine driver regains control only when a StepMethod returns a StepAction.
@@ -136,7 +146,7 @@ The Method-shaped contract creates this valid control path:
 
 ```text
 Machine driver
-  -> invoke StepMethod(machine, null, 0)
+  -> invoke StepMethod(machine, declared-buffer, declared-count)
        -> IdApi.send(machine, machine-microcode-selector, ...)
             -> synchronous Machine primitive
                  -> access the same MachineState
@@ -191,10 +201,20 @@ not one large lock around a complete Machine turn.
 
 ## 7. Exclusive drive and per-Machine scratch state
 
-One Machine has at most one active driver invocation. The following operations
-must fail deterministically:
+One Machine has at most one active driver invocation *per barrier delimiter*.
+Stacked drives are legal and are how an unmigrated frame is crossed: when a
+synchronous Method reached from inside a drive sends into a resumable
+implementation, the entry seam pushes above an entry-barrier delimiter and runs
+a nested drive on the same Machine
+([60E §5.1](60e-resumable-registration-and-entry.md)). Those drives are stacked,
+not concurrent — the outer one is parked inside a native activation at a known
+point — and the nested drive may not pop below its delimiter.
 
-- recursive drive of a Running Machine;
+What remains forbidden is a drive that does not establish a barrier. The
+following operations must fail deterministically:
+
+- recursive drive of a Running Machine that does not establish an entry barrier,
+  including a host call to drive a Machine that is already driving;
 - concurrent drive from another host call;
 - drive or restore from a non-owner thread;
 - restore while the Machine is Running;
@@ -343,8 +363,10 @@ preemption counters.
 The first implementation must preserve all of the following:
 
 1. Machine identity, not TLS or a process global, selects current execution
-   state.
-2. One Machine has at most one active driver invocation.
+   state. The Runtime drive stack of §4 is the sole exception, is read only by
+   the entry shim, and is never read by generated code or microcode.
+2. One Machine has at most one active driver invocation per barrier delimiter;
+   stacked drives are legal, unbarriered recursive drives are not.
 3. Different Machines may alternate turns without sharing mutable execution
    state.
 4. MachineState and registry borrows never cross generated code, IdApi.send,
@@ -360,6 +382,15 @@ The first implementation must preserve all of the following:
 11. Foreign threads signal the owner; they never enter the Runtime directly.
 12. Shared-runtime parallelism is not inferred from the existence of private
     Frames.
+13. A vtable never holds a StepMethod address, so no scheduler, callback, or
+    reflective send can enter generated resumable code except through the two
+    paths of 60E §3.
+14. The drive stack is a distinct borrow domain from the machine registry and
+    MachineState; entry acquires and releases it as a point operation, never
+    across generated code.
+15. Action validation compares against the epoch of the innermost active drive,
+    so an outer drive's action is stale while a nested drive runs and current
+    again after it returns.
 
 ## 15. Acceptance tests
 
@@ -371,7 +402,10 @@ The stackless substrate is concurrency-compatible only when tests demonstrate:
 2. **Scratch isolation:** each Machine can reuse scratch StepActions without the
    other Machine observing payload or epoch changes.
 3. **Recursive-drive rejection:** a synchronous callback that attempts to drive
-   its already Running Machine receives the specified deterministic failure.
+   its already Running Machine directly — without establishing an entry barrier
+   — receives the specified deterministic failure. The barriered entry path of
+   60E §5.1 must succeed in the same test, so the two cases are distinguished
+   rather than conflated.
 4. **Concurrent-drive rejection:** two host attempts to drive one Machine cannot
    both enter generated code; the non-owner or losing attempt fails before
    touching Frame storage.

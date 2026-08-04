@@ -1,8 +1,13 @@
 # 60C — The StepMethod Calling Contract
 
-> **Status:** Request for comment, revised 2026-08-01. No ABI decision has been
+> **Status:** Request for comment, revised 2026-08-04. No ABI decision has been
 > accepted. The current lean is to reuse the existing Method ABI without adding
 > a StepMethod-specific native API.
+>
+> [60E §9](60e-resumable-registration-and-entry.md) proposes three amendments to
+> this record — the driver argument count, microcode sealing, and evidence item
+> 8 — which take effect only if this record is accepted with them. They are
+> marked inline below.
 
 ## 1. Decision under review
 
@@ -131,18 +136,22 @@ The driver resolves the current Frame's registered implementation entry and
 invokes it through the existing Method carrier:
 
 ```c
-Oop action = entry(machine, NULL, 0);
+Oop action = entry(machine, NULL, 0);            /* descriptor declares none */
+Oop action = entry(machine, &resume_token, 1);   /* descriptor declares one  */
 ```
 
 The null pointer is legal because the existing Method ABI permits a null
 argument buffer when `count` is zero. The source receiver, source arguments,
 locals, temporaries, and return destination are already in the current Frame;
-they are not repeated in the native argument buffer.
+they are not repeated in the native argument buffer. The one declarable operand
+is the **resume token**: a SmallInt program counter for the frame being entered,
+which spares the step a microcode send to recover it
+([60E §9.1](60e-resumable-registration-and-entry.md)).
 
 The entry validates that:
 
 - `receiver` is a live Machine of the expected runtime;
-- `count` is zero for the initial contract; and
+- `count` matches the count its FrameDescriptor declares; and
 - the Machine is actively driving the implementation and Frame described by
   the registration record.
 
@@ -257,12 +266,15 @@ static Oop send2(Oop receiver, Oop selector, Oop first, Oop second) {
     return id->send(receiver, selector, arguments, 2);
 }
 
+/* This implementation's descriptor declares one operand, so the driver
+   supplies the resume token and the step does not send for it. A descriptor
+   declaring none would instead recover the counter through microcode. */
 Oop example_step(Oop machine, const Oop *arguments, size_t count) {
-    if (count != 0) {
+    if (count != 1) {
         return send0(machine, selector_abort_invalid_invocation);
     }
 
-    Oop pc = send0(machine, selector_current_pc);
+    Oop pc = arguments[0];
     if (!id->isSmallInt(pc)) {
         return send0(machine, selector_abort_invalid_pc);
     }
@@ -302,7 +314,8 @@ The Rust Machine driver remains a small irreducible loop:
 1. validate the Machine state and current Frame;
 2. resolve the registered StepMethod entry from the Frame's implementation
    identity;
-3. invoke that entry through the Method ABI with Machine and zero arguments;
+3. invoke that entry through the Method ABI with Machine and the
+   descriptor-declared argument buffer;
 4. receive one Oop;
 5. directly validate and decode the canonical StepAction payload;
 6. update, push, pop, detach, or restore private Frame records;
@@ -441,8 +454,10 @@ Birnam object passed as an ordinary argument.
 
 The former Option B used `Oop (*StepMethod)(Oop machine)`. It is conceptually
 close to the current proposal but physically unnecessary. The existing Method
-shape already expresses a Machine receiver and zero arguments, avoids another
-function-pointer type, and preserves established loader behavior.
+shape already expresses a Machine receiver and a declared argument buffer,
+avoids another function-pointer type, and preserves established loader
+behavior — and a Machine-only shape could not carry the resume token of §4.1 at
+all.
 
 ### 13.3 Borrowed execution window
 
@@ -494,11 +509,13 @@ The probe must demonstrate:
 2. a resumable CallAction and ReturnAction pair;
 3. adaptation to an existing synchronous Method;
 4. forced GC with live Oops in every relevant Frame slot;
-5. rejection of nonzero driver argument count;
+5. rejection of a driver argument count the FrameDescriptor does not declare;
 6. rejection of wrong-Machine, stale-epoch, malformed-action, invalid-PC, and
    wrong-slot-kind cases;
 7. identical registration from live and AOT artifacts; and
-8. generated C that uses no stackless-specific native symbols.
+8. generated C that uses no stackless-specific IdApi fields, and no
+   stackless-specific native symbol other than the entry shim
+   ([60E §9.3](60e-resumable-registration-and-entry.md)).
 
 Measure:
 

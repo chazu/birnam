@@ -1,6 +1,6 @@
 # 60A — Stackless Execution Semantics
 
-> **Status:** S0 decision record, proposed for acceptance, revised 2026-08-01.
+> **Status:** S0 decision record, proposed for acceptance, revised 2026-08-04.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -32,6 +32,7 @@ These are the proposed first-delivery decisions.
 | Public surface | No public continuation syntax is required for S1 or S2. S3 begins with an explicit host/test suspension operation; language syntax is a later policy decision. |
 | Capture | Capture is legal only inside a resumable machine and never crosses a native or foreign barrier. |
 | Native methods | Existing Method implementations remain synchronous and atomic with respect to the machine. They may re-enter Birnam, but the machine must drive nested resumable work to completion before the native call returns. |
+| Entry | A vtable holds an ordinary Method — never a StepMethod address. Unmigrated callers reach an entry thunk; a Call or TailCall from a StepMethod bypasses it and pushes a frame directly. Nested entry reuses the current Machine above a barrier delimiter (60E). |
 | Errors | Ordinary Birnam errors remain Oop values. Driver, ownership, malformed-action, and barrier failures are out-of-band typed runtime errors. |
 | Code generations | A suspended frame continues in the generation that owns its step function and layout. Sends performed after restoration resolve through the current dispatch generation. |
 | Durability | Machine, StepAction, FrameView, and Continuation Oops are process-local. Image and durable Store persistence reject them with a kinded error. |
@@ -70,8 +71,9 @@ slot tracing rules are defined in 60B.
 A StepMethod executes one bounded portion of the Machine's current Frame and
 returns one StepAction Oop to the Machine driver. The calling contract proposed
 in [60C](60c-stepmethod-calling-abi-options.md) reuses the existing Method shape:
-Machine is the receiver, the initial driver call has zero ordinary arguments,
-and the result is the StepAction. Generated code accesses current Frame state
+Machine is the receiver, the driver supplies the argument buffer the frame's
+descriptor declares, and the result is the StepAction. Generated code accesses
+current Frame state
 through ordinary sends to a narrow synchronous, primitive-backed Machine
 protocol. It receives neither a Frame Oop, Frame pointer, nor raw invocation
 token.
@@ -184,12 +186,15 @@ resumable methods, but they must drive them to completion before returning to
 the synchronous Method. The active synchronous Method remains a barrier for
 capture.
 
-That entry is not implicit. A resumable implementation is reached through an
-ordinary entry thunk that acquires a Machine, drives it to completion, and
-answers the ordinary result Oop; a vtable never holds a StepMethod address.
-[60E](60e-resumable-registration-and-entry.md) defines the thunk, the Machine
-acquisition rule, and the transparency requirement that migrating a method to
-resumable changes nothing an ordinary sender can observe.
+That entry is not implicit, and it is not the path a migrated call takes. A
+vtable never holds a StepMethod address: it holds an ordinary entry thunk, which
+an unmigrated caller reaches through ordinary lookup and which drives the
+implementation to completion before answering. A Call or TailCall issued by a
+StepMethod does not use the thunk at all — the driver resolves the address,
+recognizes the registration, and pushes a frame directly.
+[60E](60e-resumable-registration-and-entry.md) defines both paths, the rule that
+nested entry reuses the current Machine above a barrier delimiter, and what
+migration does and does not preserve.
 
 ## 6. Suspension and continuation behavior
 
@@ -277,12 +282,20 @@ The first driver must distinguish at least:
 - codeGenerationUnavailable;
 - continuationNotImageable.
 
-[60E §10](60e-resumable-registration-and-entry.md) extends this taxonomy with
+[60E §12](60e-resumable-registration-and-entry.md) extends this taxonomy with
 the registration, entry, sealing, and pinning failures.
 
 These are host/runtime failures. Language-level errors continue to be ordinary
 Birnam Oop results and must pass through the same Return path as any other
 value.
+
+Every kind listed here is out-of-band, and that distinction is load-bearing at
+the entry seam: a thunk invoked inside an ordinary send has no out-of-band
+channel. [60E §3.3](60e-resumable-registration-and-entry.md) therefore requires
+such a failure to be fatal rather than returned as a value, because the floor
+would otherwise discard it silently in `do:` and catch it in `on:do:`. A later
+record that wants a recoverable subset must name those kinds here and give them
+a kind that does not match `#error`.
 
 ## 10. S0 acceptance tests
 

@@ -1,7 +1,7 @@
 # 60B — Stackless Machine, Frames, and GC
 
 > **Status:** S0 representation and memory-safety record, proposed for
-> acceptance, revised 2026-08-01.
+> acceptance, revised 2026-08-04.
 > This document defines the Birnam-object/private-Rust-storage boundary required
 > by [60A](60a-stackless-execution-semantics.md). It does not freeze the
 > StepMethod calling contract; the decision following
@@ -354,12 +354,11 @@ generation. A durable generation record does not by itself prove that a
 process-local native code handle remains mapped.
 
 No S3 operation may call dlclose or equivalent code disposal while a Frame or
-Continuation retains that generation. The current disposal paths do not yet
-enforce this: `discardCandidate:` and `releaseCandidate:` refuse only while a
-candidate is active or prepared. Adding a pin count to that refusal is also what
-makes resumable recognition sound, because an unloaded generation's code address
-may be reused by a later load; see
-[60E §4.1 and §7](60e-resumable-registration-and-entry.md).
+Continuation retains that generation. The current disposal paths do not enforce
+this, and frames and continuations are not the only holders: a heap vtable can
+outlive the generation whose code it names.
+[60E §7](60e-resumable-registration-and-entry.md) states the full gate and the
+kinded failure S3 must introduce for it.
 
 Frame migration across generations is not part of this contract.
 

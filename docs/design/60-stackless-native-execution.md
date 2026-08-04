@@ -1,6 +1,6 @@
 # 60 — Stackless Native Execution
 
-> **Status:** Architecture overview and delivery index, updated 2026-08-01.
+> **Status:** Architecture overview and delivery index, updated 2026-08-04.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -126,15 +126,15 @@ This record is the memory-safety gate for S1 and S3.
 
 ### 60C — StepMethod calling contract
 
-Proposes reusing the existing Method ABI with Machine as receiver, zero initial
-arguments, and StepAction as result. It defines the floor/malleability split for
+Proposes reusing the existing Method ABI with Machine as receiver, a
+descriptor-declared argument buffer, and StepAction as result. It defines the
+floor/malleability split for
 the primitive-backed Machine protocol and defers stronger native interfaces
 until measurements justify them. It is the human review surface for accepting
 or rejecting that minimal calling contract.
 
-Resumable registration and the ordinary-send entry seam are decided in 60E. A
-later compiler record will define CFG lowering, liveness, block captures, source
-maps, and live/AOT parity against the chosen calling contract.
+Resumable registration and the ordinary-send entry seam are decided in 60E;
+compiler lowering is the subject of Future 60F below.
 
 ### 60D — Concurrency fit and boundaries
 
@@ -151,19 +151,26 @@ Design 48.
 
 Decides what a vtable holds for a resumable implementation, how an ordinary send
 reaches one through an entry thunk, how the driver recognizes a resumable
-address without aliasing recycled code, and how synchronous callers acquire a
-Machine. It seals the Machine microcode selectors, amends the 60C driver
-argument count, and sets the provisional performance budget 60C leaves open.
+address without aliasing recycled code, and how an unmigrated caller crosses
+into resumable code without allocating a Machine per crossing. It seals the
+Machine microcode selectors, amends the 60C driver argument count, states what
+migration does and does not preserve, and sets the provisional performance
+budget 60C leaves open.
 
 This record is the correctness gate for S1: without it, an installed StepMethod
 is directly callable by an ordinary send.
 
-### Future 60F — Lifetime and host integration
+### Future 60F — Compiler lowering
+
+Will define CFG lowering, slot liveness, block captures, source maps, and
+live/AOT parity against the calling contract and the 60E registration record.
+
+### Future 60G — Lifetime and host integration
 
 Will define TCC/AOT code pinning, live replacement, host drive/suspend/resume,
 image rejection, and recovery behavior.
 
-### Future 60G — Acceptance and rollout
+### Future 60H — Acceptance and rollout
 
 Will define the implementation slices, compatibility matrix, stack bounds,
 performance budgets, and release gates.
@@ -213,8 +220,8 @@ Implementation may begin after S0 when all of the following are written down:
 
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
 - the exact StepMethod calling contract selected after 60C review;
-- the resumable registration record, entry-thunk contract, and driver
-  recognition rule from 60E;
+- the resumable registration record, the entry-thunk contract, and the driver
+  recognition and address-reuse ordering rules from 60E;
 - the Machine Oop capability and private-Frame accessor boundary for generated
   native code;
 - registry generation, trace, and finalization rules for native-backed state;
