@@ -231,9 +231,17 @@ impl Vtables {
     }
 
     pub(crate) fn trace_hook(&self, vtable: Oop) -> Option<TraceHook> {
-        self.by_address
-            .get(&vtable.addr())
-            .and_then(|record| record.trace_hook)
+        let mut current = vtable;
+        let mut remaining = self.by_address.len();
+        while !current.is_null() && remaining != 0 {
+            let record = self.by_address.get(&current.addr())?;
+            if let Some(hook) = record.trace_hook {
+                return Some(hook);
+            }
+            current = record.parent;
+            remaining -= 1;
+        }
+        None
     }
 
     pub(crate) fn set_layout(&mut self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
@@ -569,6 +577,7 @@ mod tests {
         vtables.set_trace_hook(parent, trace_hook);
         vtables.set_layout(parent, FIRST.as_ptr(), FIRST.len(), crate::abi::SLOT_RAW);
         assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_OOP);
+        assert!(vtables.trace_hook(child).is_some());
         assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_RAW);
         assert_eq!(vtables.slot_kind(parent, 2), 9);
         assert_eq!(vtables.slot_kind(parent, 3), crate::abi::SLOT_RAW);

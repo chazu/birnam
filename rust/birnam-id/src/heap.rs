@@ -259,6 +259,40 @@ impl Heap {
         })
     }
 
+    pub(crate) fn read_payload_word(&self, object: Oop, index: usize) -> Option<usize> {
+        let words = self.payload_words(object.addr())?;
+        if index >= words.len() {
+            return None;
+        }
+        // SAFETY: exact membership keeps the block live, and the bounds check
+        // above confines the read to its pointer-sized payload.
+        Some(unsafe { words.read(index) })
+    }
+
+    pub(crate) fn write_payload_word(&mut self, object: Oop, index: usize, value: usize) -> bool {
+        let Some(block) = self.blocks.get(&object.addr()) else {
+            return false;
+        };
+        let payload_size = block.total_size - VTABLE_HEADER_SIZE;
+        let Some(offset) = index.checked_mul(size_of::<usize>()) else {
+            return false;
+        };
+        if offset >= payload_size {
+            return false;
+        }
+        // SAFETY: exact registry membership retains allocation provenance;
+        // offset was checked to name one complete aligned payload word.
+        unsafe {
+            block
+                .payload
+                .as_ptr()
+                .add(offset)
+                .cast::<usize>()
+                .write(value)
+        };
+        true
+    }
+
     pub(crate) fn clear_marks(&mut self) {
         for block in self.blocks.values_mut() {
             block.marked = false;
@@ -527,6 +561,20 @@ mod tests {
         }
 
         assert_eq!(heap.allocation_count(), sizes.len());
+    }
+
+    #[test]
+    fn checked_payload_word_access_preserves_bounds_and_exact_membership() {
+        let mut heap = Heap::new();
+        let object = heap.allocate(2 * size_of::<usize>(), Permanence::Collectable);
+        assert!(heap.write_payload_word(object, 0, 17));
+        assert!(heap.write_payload_word(object, 1, 23));
+        assert_eq!(heap.read_payload_word(object, 0), Some(17));
+        assert_eq!(heap.read_payload_word(object, 1), Some(23));
+        assert!(!heap.write_payload_word(object, 2, 29));
+        assert_eq!(heap.read_payload_word(object, 2), None);
+        assert!(!heap.write_payload_word(core::ptr::null_mut(), 0, 31));
+        assert_eq!(heap.read_payload_word(core::ptr::null_mut(), 0), None);
     }
 
     #[test]

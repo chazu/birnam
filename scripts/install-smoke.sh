@@ -141,6 +141,33 @@ grep -q 'birnam> 42' "$tmp/image-run.out"
 printf '[RelocatedImageValue + 1]\n:quit\n' | "$bin" --rebuild "$image" >"$tmp/image-rebuild.out"
 grep -q 'birnam> 42' "$tmp/image-rebuild.out"
 
+# Process-local execution capabilities fail during Store/image preflight, before
+# code capture or publication. Each probe needs a fresh process because Store
+# history deliberately retains retracted facts.
+not_imageable_probe() {
+  local label=$1
+  local expression=$2
+  local expected=$3
+  local script="$tmp/not-imageable-$label.birnam"
+  local rejected_image="$tmp/not-imageable-$label.image"
+  cat >"$script" <<EOF
+let value := $expression;
+[db assert: #notImageableProbe attr: #value value: value];
+let result := [System saveImage: "$rejected_image"];
+[System println: [[result kind] printString]]
+EOF
+  test "$("$bin" "$script")" = "#$expected"
+  test ! -e "$rejected_image"
+}
+
+not_imageable_probe machine '[Machine new]' machineNotImageable
+not_imageable_probe continue-action '[ContinueAction clone]' stepActionNotImageable
+not_imageable_probe call-action '[CallAction clone]' stepActionNotImageable
+not_imageable_probe tail-call-action '[TailCallAction clone]' stepActionNotImageable
+not_imageable_probe return-action '[ReturnAction clone]' stepActionNotImageable
+not_imageable_probe frame-view '[FrameView clone]' frameViewNotImageable
+not_imageable_probe discard-receipt '[DiscardReceipt clone]' discardReceiptNotImageable
+
 # An image saved by a non-REPL script does not contain Repl. Its boot fallback
 # must install the process-local REPL from the relocated compiled unit.
 cat >"$tmp/save-no-repl.birnam" <<EOF

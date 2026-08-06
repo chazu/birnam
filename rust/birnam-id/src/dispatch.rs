@@ -64,6 +64,7 @@ impl Runtime {
         if args.is_null() && count != 0 {
             boundary::fatal_invariant("IdApi.send args is null with nonzero count");
         }
+        let _read = self.enter_dispatch_read();
 
         // SAFETY: send_abi's active-runtime and live-object contract applies.
         if let Some(method) = unsafe { self.bind_active(receiver, selector) } {

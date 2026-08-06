@@ -210,11 +210,29 @@ common case and leaves the generation counter as the only discriminator for a
 retained FrameView. Raw pointers may be used inside one Rust driver step for
 performance, but they cannot escape that step or cross a foreign callback.
 
-The arena should retain capacity after ordinary returns when that is cheaper
-than releasing chunks. Suspended Machines retain their active chunks. Destroyed
-Machines release all chunks after their generation pins and Oop roots have been
-removed from MachineState. The registry generation is advanced before the slot
-can be reused.
+S1.1 uses a simple retention baseline rather than putting allocator policy on
+the execution fast path. Ordinary pops retain arena chunks for reuse; retained
+free capacity is not live and the trace hook never scans it. Suspended Machines
+retain every chunk containing an active frame. Destroyed Machines release all
+chunks after their generation pins and Oop roots have been removed from
+MachineState. The registry generation is advanced before the slot can be
+reused.
+
+Frame initialization is part of the GC contract. Before a pushed frame can be
+observed by collection or generated code, every descriptor-live Oop slot is
+either populated from an already rooted input or initialized to nil. Pop first
+makes the frame non-live and advances its slot generation, then releases its Oop
+roots and generation pin. S1.1 does not zero whole returned chunks on the
+ordinary path; a reused frame initializes its live Oop slots again before a
+collection point. Debug poisoning or eager clearing is permitted, but cannot be
+required for correctness.
+
+S1.1 exposes current live-frame count, live-frame high-water count, and reserved
+arena bytes per Machine, with Runtime totals available to the host diagnostics
+surface. Automatic trimming is deferred until measurements justify a policy;
+the retained-capacity baseline and its telemetry make that a performance choice
+rather than an unspecified lifetime. A later trim policy may release only free
+chunks and cannot change Frame, FrameView, tracing, or pin semantics.
 
 ## 4. Frame layout
 
@@ -567,3 +585,10 @@ items.
 19. **(S1)** each frozen Machine publisher returns the canonical action kind,
     stamps the current Machine and epoch, and allocates no action object on the
     steady-state path; retained scratch aliases grant no submission authority.
+20. **(S1.1)** forced collection immediately after frame push observes every
+    descriptor-live Oop slot as rooted or nil, while a popped frame retained in
+    arena capacity contributes no roots and its offset cannot be read through
+    the old generation;
+21. **(S1.1)** arena diagnostics report current and high-water live frames and
+    reserved bytes, and finalizing or explicitly destroying a Machine returns
+    all of its reserved arena capacity after roots and pins drain.

@@ -10,10 +10,14 @@ let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
 let cuPolicyBaseline := "[Module named: #cuPolicy requires: #[]]; [Reflect defineMethod: #cuPolicyReplace on: Integer as: [:self | 11]]; [Reflect defineMethod: #cuPolicyRemove on: Integer as: [:self | 22]]";
 let cuChainBaseline := "[Module named: #cuChain requires: #[]]; [Reflect defineMethod: #cuInherited on: Integer as: [:self | 7]]; [Reflect defineMethod: #cuOverlay on: Integer as: [:self | 8]]";
 let cuGcBaseline := "[Module named: #cuGc requires: #[]]; [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 9]]";
+let cuDiscardMethodlessBaseline := "[Module named: #cuDiscardMethodless requires: #[]]; [Reflect defineMethod: #cuDiscardMethodless on: Integer as: [:self | 6]]";
+let cuDiscardPinnedBaseline := "[Module named: #cuDiscardPinned requires: #[]]; [Reflect defineMethod: #cuDiscardPinned on: Integer as: [:self | 5]]";
 let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy requires: #[]]; [Reflect defineMethod: #liveReplace on: Integer as: [:self | 10]]; [Reflect defineMethod: #liveRemove on: Integer as: [:self | 20]]";
 [Codegen recordModuleSource: cuPolicyBaseline named: #cuPolicy];
 [Codegen recordModuleSource: cuChainBaseline named: #cuChain];
 [Codegen recordModuleSource: cuGcBaseline named: #cuGc];
+[Codegen recordModuleSource: cuDiscardMethodlessBaseline named: #cuDiscardMethodless];
+[Codegen recordModuleSource: cuDiscardPinnedBaseline named: #cuDiscardPinned];
 [Codegen recordModuleSource: livePolicyBaseline named: #livePolicy];
 [DispatchGeneration initializeCurrent];
 
@@ -82,6 +86,69 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
   let committed := [Codegen commitPrepared: token];
   [t expect: [committed isError] equals: false describes: "generation survives collection"];
   [t expect: [3 cuGcRootProbe] equals: 99 describes: "rooted successor publishes dispatch"]]];
+
+[s test: "logical discard reports disposed methodless mappings" do: [:t |
+  [Reflect defineMethod: #cuDiscardMethodless on: Integer as: [:self | 6]];
+  let path := "/tmp/birnam-compiled-unit-discard-methodless.dylib";
+  let sidecar := [path , ".candidate"];
+  let source := "[Module named: #cuDiscardMethodless requires: #[]]; [Reflect removeMethod: #cuDiscardMethodless on: Integer]";
+  let compiled := [CompiledUnit compile: source named: #cuDiscardMethodless output: path];
+  [t expect: [compiled isError] equals: false describes: "methodless candidate compiles"];
+  let unit := [CompiledUnit open: path];
+  [t expect: [unit isError] equals: false describes: "methodless candidate opens"];
+  let mapped := [unit map];
+  [t expect: [mapped isError] equals: false describes: "methodless candidate maps"];
+  [t expect: mapped equals: unit describes: "methodless mapping returns its unit"];
+  let activated := [[unit activate] fulfill];
+  [t expect: activated equals: unit describes: "methodless candidate activates"];
+  [t expect: [Codegen lastError] equals: nil describes: "methodless activation leaves no native failure"];
+  [t expect: [unit state] equals: #active describes: "methodless activation publishes state"];
+  [t expect: [[3 cuDiscardMethodless] isError] equals: true describes: "probe removes rather than installs a method"];
+  let rolled := [[unit rollback] fulfill];
+  [t expect: rolled equals: unit describes: "methodless candidate rolls back"];
+  [t expect: [3 cuDiscardMethodless] equals: 6 describes: "rollback restores the removed method"];
+  [t expect: [[DiscardReceipt logical] isError] equals: false describes: "receipt prototype exposes its native accessors"];
+  let retainedBefore := [Codegen retainedGenerationCount];
+  let receipt := [unit discard];
+  [t expect: [receipt isError] equals: false describes: "methodless discard succeeds"];
+  [t expect: [Reflect vtableOf: receipt] equals: DiscardReceiptVt describes: "discard answers the canonical receipt family"];
+  [t expect: [receipt generation] equals: unit describes: "receipt names the discarded generation"];
+  [t expect: [receipt logical] equals: #discarded describes: "logical discard is explicit"];
+  [t expect: [receipt physical] equals: #disposed describes: "methodless mapping is physically disposed"];
+  [t expect: [[receipt reason] isNil] equals: true describes: "disposed mapping needs no retention reason"];
+  [t expect: [unit state] equals: #discarded describes: "discard publishes lifecycle state"];
+  [t expect: [[System readFile: path] isError] equals: true describes: "discard removes the author file"];
+  [t expect: [[System readFile: sidecar] isError] equals: true describes: "discard removes the candidate sidecar"];
+  [t expect: [Codegen retainedGenerationCount] equals: retainedBefore describes: "disposing methodless code does not grow retention telemetry"]]];
+
+[s test: "logical discard retains mappings that installed methods" do: [:t |
+  [Reflect defineMethod: #cuDiscardPinned on: Integer as: [:self | 5]];
+  let path := "/tmp/birnam-compiled-unit-discard-pinned.dylib";
+  let sidecar := [path , ".candidate"];
+  let source := "[Module named: #cuDiscardPinned requires: #[]]; [Reflect defineMethod: #cuDiscardPinned on: Integer as: [:self | 55]]";
+  [CompiledUnit compile: source named: #cuDiscardPinned output: path];
+  let unit := [CompiledUnit open: path];
+  [t expect: [unit isError] equals: false describes: "method-bearing candidate opens"];
+  let mapped := [unit map];
+  [t expect: [mapped isError] equals: false describes: "method-bearing candidate maps"];
+  let activated := [[unit activate] fulfill];
+  [t expect: activated equals: unit describes: "method-bearing candidate activates"];
+  [t expect: [Codegen lastError] equals: nil describes: "method-bearing activation leaves no native failure"];
+  [t expect: [unit state] equals: #active describes: "method-bearing activation publishes state"];
+  [t expect: [3 cuDiscardPinned] equals: 55 describes: "probe generation installs its method"];
+  [[unit rollback] fulfill];
+  [t expect: [3 cuDiscardPinned] equals: 5 describes: "rollback restores ordinary dispatch"];
+  let retainedBefore := [Codegen retainedGenerationCount];
+  let bytesBefore := [Codegen retainedGenerationBytes];
+  let receipt := [unit discard];
+  [t expect: [receipt generation] equals: unit describes: "retained receipt names the generation"];
+  [t expect: [receipt logical] equals: #discarded describes: "logical discard still completes"];
+  [t expect: [receipt physical] equals: #retained describes: "installed method pins physical mapping"];
+  [t expect: [receipt reason] equals: #codeGenerationPinned describes: "receipt explains conservative retention"];
+  [t expect: [Codegen retainedGenerationCount] equals: [retainedBefore + 1] describes: "retained generation count advances"];
+  [t expect: [[Codegen retainedGenerationBytes] > bytesBefore] equals: true describes: "retained byte telemetry advances"];
+  [t expect: [[System readFile: path] isError] equals: true describes: "retention does not preserve the author file"];
+  [t expect: [[System readFile: sidecar] isError] equals: true describes: "retention does not preserve the candidate sidecar"]]];
 
 [s test: "supersession inherits untouched managed bindings" do: [:t |
   [Reflect defineMethod: #cuInherited on: Integer as: [:self | 7]];

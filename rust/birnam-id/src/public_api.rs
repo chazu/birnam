@@ -408,6 +408,7 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
             .set_layout(vtable, core::ptr::null(), 0, crate::abi::SLOT_RAW);
     }
     bootstrap.runtime.publish_canonical_exports();
+    bootstrap.runtime.install_execution_objects();
     bootstrap
         .runtime
         .set_finalizer(canonical.string_prototype, string_finalizer);

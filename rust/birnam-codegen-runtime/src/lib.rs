@@ -10,9 +10,7 @@ use birnam_artifact_codec::candidate::{
     Operation as CandidateOperation, inspect as inspect_candidate, inspect_manifest,
 };
 use birnam_artifact_codec::inspect as inspect_artifact;
-use birnam_codegen::{
-    CstNode, Emitter, LowerError, OwnedCst, TranslationUnit, lower_program,
-};
+use birnam_codegen::{CstNode, Emitter, LowerError, OwnedCst, TranslationUnit, lower_program};
 use birnam_image_codec::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
 use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
@@ -44,6 +42,8 @@ const CANONICAL_CODEGEN_NAME: &[u8] = b"Codegen\0";
 const CANONICAL_REFLECT_VT_NAME: &[u8] = b"ReflectVt\0";
 const CANONICAL_REFLECT_NAME: &[u8] = b"Reflect\0";
 const CANONICAL_COLLECTOR_VT_NAME: &[u8] = b"ReflectFactCollectorVt\0";
+const DISCARD_RECEIPT_NAME: &[u8] = b"DiscardReceipt\0";
+const DISCARD_RECEIPT_VT_NAME: &[u8] = b"DiscardReceiptVt\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
@@ -113,6 +113,8 @@ const AUTHORIZE_METHOD_MUTATION_SELECTOR: &[u8] = b"authorizeManagedMethodMutati
 const ENTER_RUNNING_SELECTOR: &[u8] = b"enterRunning\0";
 const BEGIN_QUIESCENCE_SELECTOR: &[u8] = b"beginQuiescence\0";
 const END_QUIESCENCE_SELECTOR: &[u8] = b"endQuiescence\0";
+const RETAINED_GENERATION_COUNT_SELECTOR: &[u8] = b"retainedGenerationCount\0";
+const RETAINED_GENERATION_BYTES_SELECTOR: &[u8] = b"retainedGenerationBytes\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const LOAD_HOST_CAPABILITY_SELECTOR: &[u8] = b"loadHostCapability:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
@@ -160,6 +162,8 @@ struct Runtime {
     adapter_reflect_vt: usize,
     adapter_reflect: usize,
     adapter_collector_vt: usize,
+    discard_receipt_vt: usize,
+    discard_receipt: usize,
     tcc: usize,
     globals: usize,
     store: usize,
@@ -174,6 +178,7 @@ static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static CANDIDATE_ROOTS: Mutex<Vec<CandidateRoot>> = Mutex::new(Vec::new());
+static RETAINED_GENERATIONS: Mutex<Vec<RetainedGeneration>> = Mutex::new(Vec::new());
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -229,7 +234,22 @@ struct CandidateState {
     rollback: usize,
     prepared: usize,
     active: bool,
+    installed_method_ever: bool,
     predecessor: usize,
+}
+
+struct RetainedGeneration {
+    unit: usize,
+    handle: usize,
+    mapped_bytes: usize,
+}
+
+#[repr(C)]
+struct DiscardReceiptPayload {
+    generation: Oop,
+    logical: Oop,
+    physical: Oop,
+    reason: Oop,
 }
 
 struct PreparedState {
@@ -375,6 +395,13 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
                     mark(operation.vtable as Oop);
                 }
             }
+        }
+    }
+    if let Ok(retained) = RETAINED_GENERATIONS.lock() {
+        for generation in retained.iter() {
+            // SAFETY: retained native mappings keep their process-local
+            // generation identity rooted for telemetry and discard receipts.
+            unsafe { mark(generation.unit as Oop) };
         }
     }
     if let Ok(prepared) = PREPARED.lock() {
@@ -3482,16 +3509,17 @@ unsafe extern "C" fn rust_codegen_replay_methods(
             note_error(b"RustCodegen image method source is not indexable");
             return api.nilObj;
         };
-        replay_sources.extend(metadata.operations.into_iter().map(|operation| operation.source));
+        replay_sources.extend(
+            metadata
+                .operations
+                .into_iter()
+                .map(|operation| operation.source),
+        );
     }
     let method_operations = unsafe { ordered_method_operation_sources(api) };
-    replay_sources.extend(
-        method_operations
-            .into_iter()
-            .filter_map(|operation| {
-                unsafe { string_bytes(api, operation.source) }.map(|source| source.to_vec())
-            }),
-    );
+    replay_sources.extend(method_operations.into_iter().filter_map(|operation| {
+        unsafe { string_bytes(api, operation.source) }.map(|source| source.to_vec())
+    }));
     // Compile every operation through the pure emitter before evaluating the
     // first one. This closes the gap between metadata parsing and execution:
     // a later generated-C failure cannot leave an earlier method mutation
@@ -4788,6 +4816,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             rollback: 0,
             prepared: 0,
             active: false,
+            installed_method_ever: false,
             predecessor: 0,
         });
         return values[1];
@@ -5762,6 +5791,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         }
         ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
     }
+    let installed_method = operations.iter().any(|operation| operation.install);
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
             .iter()
@@ -5770,6 +5800,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             candidates[index].active = true;
             candidates[index].prepared = 0;
             candidates[index].operations = operations;
+            candidates[index].installed_method_ever |= installed_method;
             candidates[index].predecessor = prior;
             if prior != 0
                 && let Some(previous) = candidates
@@ -5821,8 +5852,7 @@ fn effective_candidate_operations(unit: usize) -> Vec<CandidateOperationState> {
     let mut result = Vec::new();
     let mut cursor = unit;
     while cursor != 0 {
-        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == cursor)
-        else {
+        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == cursor) else {
             break;
         };
         for operation in &candidate.operations {
@@ -6574,6 +6604,196 @@ unsafe extern "C" fn rust_codegen_last_error(
     unsafe { (api.mkString)(message.as_ptr(), message.len()) }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PhysicalDisposition {
+    Disposed,
+    Retained(&'static [u8]),
+}
+
+fn candidate_mapped_bytes(candidate: &CandidateState) -> usize {
+    fs::metadata(Path::new(OsStr::from_bytes(&candidate.author_path)))
+        .ok()
+        .and_then(|metadata| usize::try_from(metadata.len()).ok())
+        .unwrap_or(0)
+}
+
+unsafe fn dispose_or_retain_candidate(
+    candidate: &CandidateState,
+    mapped_bytes: usize,
+) -> PhysicalDisposition {
+    if candidate.handle == 0 {
+        return PhysicalDisposition::Disposed;
+    }
+    if candidate.installed_method_ever {
+        if let Ok(mut retained) = RETAINED_GENERATIONS.lock() {
+            retained.push(RetainedGeneration {
+                unit: candidate.unit,
+                handle: candidate.handle,
+                mapped_bytes,
+            });
+        }
+        return PhysicalDisposition::Retained(b"codeGenerationPinned\0");
+    }
+    // SAFETY: this mapping never installed a method and is detached from the
+    // candidate registry, so no vtable or lifecycle callback can reach it.
+    if unsafe { dlclose(candidate.handle as *mut c_void) } == 0 {
+        PhysicalDisposition::Disposed
+    } else {
+        if let Ok(mut retained) = RETAINED_GENERATIONS.lock() {
+            retained.push(RetainedGeneration {
+                unit: candidate.unit,
+                handle: candidate.handle,
+                mapped_bytes,
+            });
+        }
+        PhysicalDisposition::Retained(b"disposalFailed\0")
+    }
+}
+
+unsafe fn make_discard_receipt(
+    api: &IdApi,
+    generation: Oop,
+    disposition: PhysicalDisposition,
+) -> Oop {
+    let runtime = runtime();
+    let receipt = unsafe {
+        (api.alloc)(
+            runtime.discard_receipt_vt as Oop,
+            size_of::<DiscardReceiptPayload>(),
+        )
+    };
+    if receipt.is_null() {
+        return api.nilObj;
+    }
+    let (physical, reason) = match disposition {
+        PhysicalDisposition::Disposed => (unsafe { intern(api, b"disposed\0") }, api.nilObj),
+        PhysicalDisposition::Retained(reason) => (unsafe { intern(api, b"retained\0") }, unsafe {
+            intern(api, reason)
+        }),
+    };
+    // SAFETY: receipt owns the exact four-Oop payload declared above.
+    unsafe {
+        receipt
+            .cast::<DiscardReceiptPayload>()
+            .write(DiscardReceiptPayload {
+                generation,
+                logical: intern(api, b"discarded\0"),
+                physical,
+                reason,
+            })
+    };
+    receipt
+}
+
+unsafe fn discard_receipt_payload(receiver: Oop) -> Option<&'static DiscardReceiptPayload> {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    if receiver.is_null()
+        || unsafe { (api.vtableOf)(receiver) } != runtime.discard_receipt_vt as Oop
+        || unsafe { (api.objectPayloadSize)(receiver) } != size_of::<DiscardReceiptPayload>()
+    {
+        return None;
+    }
+    // SAFETY: the canonical vtable and exact payload extent were validated.
+    Some(unsafe { &*receiver.cast::<DiscardReceiptPayload>() })
+}
+
+unsafe extern "C" fn discard_receipt_generation(
+    receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { discard_receipt_payload(receiver) }
+        .map(|payload| payload.generation)
+        .unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn discard_receipt_logical(
+    receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { discard_receipt_payload(receiver) }
+        .map(|payload| payload.logical)
+        .unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn discard_receipt_physical(
+    receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { discard_receipt_payload(receiver) }
+        .map(|payload| payload.physical)
+        .unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn discard_receipt_reason(
+    receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { discard_receipt_payload(receiver) }
+        .map(|payload| payload.reason)
+        .unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn rust_codegen_retained_generation_count(
+    _receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let value = RETAINED_GENERATIONS
+        .lock()
+        .ok()
+        .map(|retained| retained.iter().filter(|entry| entry.handle != 0).count())
+        .unwrap_or(0)
+        .min(i64::MAX as usize) as i64;
+    unsafe { (api.mkSmallInt)(value) }
+}
+
+unsafe extern "C" fn rust_codegen_retained_generation_bytes(
+    _receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let value = RETAINED_GENERATIONS
+        .lock()
+        .ok()
+        .map(|retained| {
+            retained.iter().fold(0usize, |total, entry| {
+                total.saturating_add(entry.mapped_bytes)
+            })
+        })
+        .unwrap_or(0)
+        .min(i64::MAX as usize) as i64;
+    unsafe { (api.mkSmallInt)(value) }
+}
+
 unsafe extern "C" fn rust_codegen_discard_candidate(
     _self_object: Oop,
     pointer: *const Oop,
@@ -6596,25 +6816,36 @@ unsafe extern "C" fn rust_codegen_discard_candidate(
         }
         Some(candidates.remove(index))
     })() else {
-        if let Ok(candidates) = CANDIDATES.lock()
-            && candidates.iter().any(|candidate| {
+        let blocked = CANDIDATES.lock().ok().is_some_and(|candidates| {
+            candidates.iter().any(|candidate| {
                 candidate.unit == unit && (candidate.active || candidate.prepared != 0)
             })
-        {
+        });
+        if blocked {
             note_error(b"RustCodegen candidate cannot be discarded while active or prepared");
+        } else {
+            note_error(b"RustCodegen candidate unit is unknown");
         }
-        return if unit == 0 { api.nilObj } else { values[0] };
+        return api.nilObj;
     };
-    if candidate.handle != 0 {
-        // SAFETY: the candidate handle is detached from the registry before
-        // unloading, so no callback or lock can observe a half-cleaned entry.
-        unsafe { dlclose(candidate.handle as *mut c_void) };
-    }
-    let _ = fs::remove_file(Path::new(OsStr::from_bytes(&candidate.author_path)));
+    let mapped_bytes = candidate_mapped_bytes(&candidate);
+    let remove_file = |path: &[u8]| match fs::remove_file(Path::new(OsStr::from_bytes(path))) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(_) => false,
+    };
+    let author_removed = remove_file(&candidate.author_path);
     let mut sidecar = candidate.author_path.clone();
     sidecar.extend_from_slice(b".candidate");
-    let _ = fs::remove_file(Path::new(OsStr::from_bytes(&sidecar)));
-    let _ = unsafe {
+    let sidecar_removed = remove_file(&sidecar);
+    if !author_removed || !sidecar_removed {
+        if let Ok(mut candidates) = CANDIDATES.lock() {
+            candidates.push(candidate);
+        }
+        note_error(b"RustCodegen candidate files could not be discarded");
+        return api.nilObj;
+    }
+    if !(unsafe {
         assert_candidate_fact(
             api,
             runtime(),
@@ -6622,8 +6853,15 @@ unsafe extern "C" fn rust_codegen_discard_candidate(
             b"state\0",
             intern(api, b"discarded\0"),
         )
-    };
-    values[0]
+    }) {
+        if let Ok(mut candidates) = CANDIDATES.lock() {
+            candidates.push(candidate);
+        }
+        note_error(b"RustCodegen candidate Store is unavailable");
+        return api.nilObj;
+    }
+    let disposition = unsafe { dispose_or_retain_candidate(&candidate, mapped_bytes) };
+    unsafe { make_discard_receipt(api, values[0], disposition) }
 }
 
 unsafe extern "C" fn rust_codegen_release_candidate(
@@ -6657,10 +6895,8 @@ unsafe extern "C" fn rust_codegen_release_candidate(
         }
         return if unit == 0 { api.nilObj } else { values[0] };
     };
-    if candidate.handle != 0 {
-        // SAFETY: see discardCandidate:; the handle is no longer published.
-        unsafe { dlclose(candidate.handle as *mut c_void) };
-    }
+    let mapped_bytes = candidate_mapped_bytes(&candidate);
+    let _ = unsafe { dispose_or_retain_candidate(&candidate, mapped_bytes) };
     let _ = unsafe {
         assert_candidate_fact(
             api,
@@ -6733,18 +6969,15 @@ unsafe fn reflect_method_source_for_target_selector(
                 && operation.target == target_bytes
                 && operation.selector == selector_bytes
             {
-                found = unsafe { (api.mkString)(operation.source.as_ptr(), operation.source.len()) };
+                found =
+                    unsafe { (api.mkString)(operation.source.as_ptr(), operation.source.len()) };
             }
         }
     }
     found
 }
 
-unsafe fn reflect_method_target_name(
-    api: &IdApi,
-    vt: Oop,
-    global_rows: &[ReflectFactRow],
-) -> Oop {
+unsafe fn reflect_method_target_name(api: &IdApi, vt: Oop, global_rows: &[ReflectFactRow]) -> Oop {
     let owner = unsafe { (api.vtableOwner)(vt) };
     if !owner.is_null() {
         let exported = unsafe { reflect_exported_symbol(api, owner) };
@@ -6867,7 +7100,10 @@ unsafe extern "C" fn rust_reflect_name_of(
         }
         let kind = unsafe { intern(api, b"notASymbol\0") };
         let message = unsafe {
-            (api.mkString)(b"nameOf: expects a symbol".as_ptr(), b"nameOf: expects a symbol".len())
+            (api.mkString)(
+                b"nameOf: expects a symbol".as_ptr(),
+                b"nameOf: expects a symbol".len(),
+            )
         };
         return unsafe { send(api, error, b"kind:message:\0", &[kind, message]) };
     };
@@ -7096,14 +7332,7 @@ unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
     // Preserve the late-bound documentation hook. The source adapter sends
     // the four-argument form so the Birnam stdlib can retain the receiver
     // prototype and docstring rather than silently dropping the doc payload.
-    let result = unsafe {
-        send(
-            api,
-            self_object,
-            b"defineMethod:on:as:doc:\0",
-            &values[..4],
-        )
-    };
+    let result = unsafe { send(api, self_object, b"defineMethod:on:as:doc:\0", &values[..4]) };
     if result != api.nilObj {
         unsafe { record_method_operation(api, values[4]) };
     }
@@ -7163,9 +7392,8 @@ unsafe extern "C" fn rust_reflect_all_methods(
                 }
                 seen.push(selector);
                 let target = unsafe { reflect_method_target_name(api, vt, &global_rows) };
-                entries.push(unsafe {
-                    reflect_method_descriptor(api, runtime, vt, selector, target)
-                });
+                entries
+                    .push(unsafe { reflect_method_descriptor(api, runtime, vt, selector, target) });
             }
             vt = unsafe { (api.vtableParent)(vt) };
         }
@@ -7307,16 +7535,31 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         } else {
             unsafe { (host_api.proto)(host_api.object_vt) }
         };
+        let receipt_reloading =
+            unsafe { (host_api.isExported)(DISCARD_RECEIPT_NAME.as_ptr().cast()) != 0 };
+        let (discard_receipt_vt, discard_receipt) = if receipt_reloading {
+            (
+                unsafe { (host_api.import)(DISCARD_RECEIPT_VT_NAME.as_ptr().cast()) },
+                unsafe { (host_api.import)(DISCARD_RECEIPT_NAME.as_ptr().cast()) },
+            )
+        } else {
+            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
+            let object = unsafe { (host_api.alloc)(vt, 0) };
+            (vt, object)
+        };
         if adapter_codegen_vt.is_null()
             || adapter_codegen.is_null()
             || adapter_reflect_vt.is_null()
             || adapter_reflect.is_null()
             || adapter_collector_vt.is_null()
+            || discard_receipt_vt.is_null()
+            || discard_receipt.is_null()
         {
             abort("RustCodegen adapter exports were incomplete");
         }
         unsafe {
             (host_api.setLayout)(adapter_collector_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+            (host_api.setLayout)(discard_receipt_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
         }
         let tcc = unsafe { (host_api.import)(TCC_NAME.as_ptr().cast()) };
         if tcc.is_null() {
@@ -7333,6 +7576,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             adapter_reflect_vt: adapter_reflect_vt as usize,
             adapter_reflect: adapter_reflect as usize,
             adapter_collector_vt: adapter_collector_vt as usize,
+            discard_receipt_vt: discard_receipt_vt as usize,
+            discard_receipt: discard_receipt as usize,
             tcc: tcc as usize,
             globals: globals as usize,
             store: store as usize,
@@ -7613,6 +7858,40 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"lastError\0"),
             rust_codegen_last_error,
         );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, RETAINED_GENERATION_COUNT_SELECTOR),
+            rust_codegen_retained_generation_count,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, RETAINED_GENERATION_BYTES_SELECTOR),
+            rust_codegen_retained_generation_bytes,
+        );
+        for (selector, method) in [
+            (
+                b"generation\0".as_slice(),
+                discard_receipt_generation as birnam_abi::Method,
+            ),
+            (
+                b"logical\0".as_slice(),
+                discard_receipt_logical as birnam_abi::Method,
+            ),
+            (
+                b"physical\0".as_slice(),
+                discard_receipt_physical as birnam_abi::Method,
+            ),
+            (
+                b"reason\0".as_slice(),
+                discard_receipt_reason as birnam_abi::Method,
+            ),
+        ] {
+            (api.method)(
+                runtime.discard_receipt_vt as Oop,
+                intern(api, selector),
+                method,
+            );
+        }
         macro_rules! adapter_method {
             ($selector:expr, $method:expr) => {
                 (api.method)(
@@ -7727,6 +8006,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             rust_codegen_derive_image_method_targets
         );
         adapter_method!(b"lastError\0", rust_codegen_last_error);
+        adapter_method!(
+            RETAINED_GENERATION_COUNT_SELECTOR,
+            rust_codegen_retained_generation_count
+        );
+        adapter_method!(
+            RETAINED_GENERATION_BYTES_SELECTOR,
+            rust_codegen_retained_generation_bytes
+        );
         adapter_method!(LOAD_SELECTOR, rust_codegen_load);
         adapter_method!(
             LOAD_HOST_CAPABILITY_SELECTOR,
@@ -7788,6 +8075,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast(),
             runtime.adapter_collector_vt as Oop,
         );
+        if (api.isExported)(DISCARD_RECEIPT_NAME.as_ptr().cast()) == 0 {
+            let _ = (api.exportObj)(
+                DISCARD_RECEIPT_VT_NAME.as_ptr().cast(),
+                runtime.discard_receipt_vt as Oop,
+            );
+            let _ = (api.exportObj)(
+                DISCARD_RECEIPT_NAME.as_ptr().cast(),
+                runtime.discard_receipt as Oop,
+            );
+        }
         if canonical_exports_requested() {
             for (name, value) in [
                 (CANONICAL_CODEGEN_VT_NAME, runtime.adapter_codegen_vt as Oop),

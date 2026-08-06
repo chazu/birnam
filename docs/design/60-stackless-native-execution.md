@@ -5,7 +5,9 @@
 > binding-lifetime/resolve-and-pin, and live-dispatch-timing amendments accepted
 > 2026-08-05; the Runtime-ownership and acceptance-staging amendments were
 > accepted 2026-08-06, together with the code-disposition staging and S1-slicing
-> amendments and the frozen S1 Machine-microcode protocol.
+> amendments and the frozen S1 Machine-microcode protocol. S1.1-S1.5 were
+> implemented and accepted against the repository gates on 2026-08-06; source
+> compiler lowering remains S2 and still requires Future 60F.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -205,6 +207,10 @@ is directly callable by an ordinary send.
 
 Will define CFG lowering, slot liveness, block captures, source maps, and
 live/AOT parity against the calling contract and the 60E registration record.
+Before S2 lowering it must also freeze the physical descriptor carrier, decide
+how a migration-only implementation change appears to Design 49 reconciliation,
+and choose the durable resumable tag used by mapped-image validation, including
+coverage for block vtables.
 
 ### Future 60G — Lifetime and host integration
 
@@ -276,7 +282,10 @@ ordered vertical slices.
 Add the audited Runtime execution module, Machine capability and lifecycle,
 private Frame arena and descriptor validation, canonical ContinueAction and
 ReturnAction objects, checked action decoding, and Machine tracing and
-finalization. A hand-written StepMethod must execute through the existing Method
+finalization. Freeze the initial arena policy: initialize every live Oop slot
+before collection, trace no retained free capacity, retain reusable chunks
+until Machine destruction, and publish live-frame high-water and reserved-byte
+diagnostics. A hand-written StepMethod must execute through the existing Method
 ABI and answer the expected Oop; forced collection must preserve its live Frame
 Oops and later finalize an unreachable Machine exactly once.
 
@@ -287,23 +296,33 @@ execution entry barriers. Two hand-written StepMethods must mutually recurse for
 at least one million calls with bounded native-stack movement, TailCall must not
 grow Frame depth, synchronous re-entry must preserve the waiting Frame, and
 owner or exclusive-drive violations must fail before touching Frame storage.
+Publish the current and high-water synchronous-boundary depth for each drive,
+without imposing an artificial depth limit or adding locks, atomics, or
+allocation to the owner-thread path.
 
 #### S1.3 — Registered ordinary send
 
 Add Runtime-local ResumableEntry recognition, the versioned registration shim,
-the unique entry thunk, and resolve-and-pin classification. An ordinary send
-from unmigrated code must enter the Machine, execute the registered hand-written
+the semantic v1 registration carrier, the unique entry thunk, and resolve-and-
+pin classification. The carrier freezes its required fields, version/size
+validation, lifetime transfer, and failure-before-publication rules while
+leaving descriptor blob encoding to Future 60F. An ordinary send from
+unmigrated code must enter the Machine, execute the registered hand-written
 StepMethod, and answer the same result as its synchronous predecessor. This
-slice changes no source compiler lowering.
+slice changes no source compiler lowering and exposes registration only to its
+test artifact while physical unloading remains disabled.
 
 #### S1.4 — Mutation and lifetime
 
 Add direct-binding references, retirement state, registration and Frame pins,
 deterministic read-side protection tests, active-Frame redefinition behavior,
 independent Runtime registrations over a shared immutable mapping, conservative
-physical disposition, and retained-generation count/byte telemetry. Alias,
-inheritance, custom-lookup, failed-push, logical-discard, and multi-Runtime lease
-tests must exercise the integrated path.
+physical disposition, the mandatory logical-discard receipt, and retained-
+generation count/byte telemetry. The receipt identifies the generation and
+records both successful logical discard and `Disposed | Retained(reason)`; this
+slice must land before registration or disposal is exposed to ordinary
+artifacts. Alias, inheritance, custom-lookup, failed-push, logical-discard, and
+multi-Runtime lease tests must exercise the integrated path.
 
 #### S1.5 — Malleability and acceptance
 
@@ -319,6 +338,19 @@ executable integrated evidence rather than only dormant types. Source compiler
 lowering remains S2. A slice may use test-only hand-written StepMethods, but it
 may not expose a partially safe registration or disposal path to ordinary
 artifacts.
+
+**S1 accepted 2026-08-06.** The integrated evidence includes one-million
+Continue and mutual-TailCall runs, synchronous and registered-entry adapters,
+forced collection, nested and suppressed entry scopes, late-bound microcode
+mutation, independent Runtime registration, direct-binding retirement and pin
+transfer, FrameView staleness, kinded fatal boundary failures, process-local
+image rejection, and logical/physical discard receipts. The release-mode S1
+probe measured Continue at `0.155 x S` and synchronous resolve/classify plus
+leaf invocation at `0.795 x S`, with one microcode send per hand-written step;
+60E records the same-run raw measurements. The 456-case Birnam suite and the
+workspace/native-prefix/cold-archive/relocation verification gates passed.
+This acceptance does not claim S2 compiler lowering, S3 Continuations, or the
+actual reclamation owned by Future 60G.
 
 ### S2 — Minimal resumable compiler path
 

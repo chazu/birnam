@@ -330,6 +330,29 @@ thunk; and a restored thunk with no live entry answers
 `resumableEntryUnrestored` as an **image validity failure** rather than a runtime
 fatal on first use.
 
+S1.3 freezes the semantic v1 carrier accepted by that registration operation.
+It provides:
+
+- a schema version and byte size;
+- the thunk carrier and StepMethod addresses;
+- immutable FrameDescriptor identity and contents;
+- selector-determined language arity and the descriptor's driver argument
+  count;
+- implementation and code-generation identities; and
+- the generation lease from which Runtime-local registration and Frame pins are
+  acquired.
+
+Version 1 rejects a different schema version, a record shorter than its required
+fields, an invalid address/descriptor/arity combination, or a generation that
+cannot be leased. It does so before the binding becomes visible. A successful
+call leaves no borrowed carrier memory in the Runtime: it copies or interns the
+immutable descriptor metadata and owns or transfers every required generation
+handle before returning. The exact C field layout, descriptor blob encoding,
+and whether the descriptor originates as artifact data or emitted metadata are
+not frozen by S1.3; Future 60F must choose them before S2 emits registrations.
+The registration shim remains covered by the runtime ABI hash, so incompatible
+physical carriers do not silently interoperate.
+
 The check point has to be stated precisely, because "before execution" is not
 available: restored thunks come into being *while* the mapped code unit's
 initializer runs, and that initializer is ordinary program text interleaved with
@@ -510,7 +533,7 @@ synchronous, every recursion passing through one of them crosses a boundary per
 level, so a deep recursive tree walk can reach the native stack limit *sooner*
 after migration than before.
 
-Three consequences. First, no artificial depth bound is introduced: adding one
+Four consequences. First, no artificial depth bound is introduced: adding one
 would convert a program that answers today into one that answers an error, and
 the OS stack limit remains the bound it is today. Second, this reorders the
 argument for S4: the callback-driving primitives are not a convenience
@@ -519,7 +542,15 @@ S2 must measure and publish both axes — per-iteration entry cost in a loop, an
 maximum reachable depth for a recursion through an unmigrated primitive —
 because the second is the one that regresses.
 
-Third, and least comfortable: **suspension is largely unreachable until S4.**
+Third, S1.2 publishes owner-thread diagnostics for this transitional risk. Each
+drive records current and high-water synchronous-boundary depth, incrementing
+before the driver enters a synchronous Method and decrementing after it returns.
+The counters are raw MachineState fields: updating them allocates nothing and
+uses no lock, atomic, or reference count. They are diagnostics, not a new depth
+limit or a recoverable stack-overflow promise, and their cost is included in the
+S2 boundary measurements.
+
+Fourth, and least comfortable: **suspension is largely unreachable until S4.**
 Capture and suspension fail above an entry barrier (§5.1), and boundary
 crossings sit near the top of a program's dynamic extent — `main` reaches `do:`
 reaches everything — so during S2–S4 the barrier sits below essentially all real
@@ -573,12 +604,14 @@ The current paths do not implement that, and today's refusal is not observable
 as a result: `discardCandidate:` and `releaseCandidate:` refuse only while a
 candidate is active or prepared, call `note_error`, then return the unit itself.
 
-S1 must introduce a structured physical-disposition outcome before it registers
-the first resumable method. The code repository reports either `Disposed` or
-`Retained(reason)`, with `codeGenerationPinned` as the conservative-retention
-reason defined here. This process-local outcome is exposed through the Codegen
-protocol or its discard receipt, not by expanding IdApi. The disposal condition
-is wider than 60B §9 states, because of §4.2's second direction:
+S1.4 must introduce a structured physical-disposition outcome before
+registration or disposal is exposed to ordinary artifacts. S1.3 may exercise a
+test-only registration while physical unloading is unconditionally disabled.
+The code repository reports either `Disposed` or `Retained(reason)`, with
+`codeGenerationPinned` as the conservative-retention reason defined here. This
+process-local outcome is carried by the Codegen discard receipt, not by
+expanding IdApi. The disposal condition is wider than 60B §9 states, because of
+§4.2's second direction:
 
 > Disposal is refused unless the generation has zero registration handles,
 > direct binding references, pre-retirement dispatch readers, acquired
@@ -617,10 +650,14 @@ vtable-reachability problem and every Runtime has released its leases.
 Logical discard is a separate transition. A retained mapping must not suppress
 removal of the author file and `.candidate` sidecar or assertion of the
 `state discarded` fact, which are Store state Design 49's reconciliation reads.
-The discard result or receipt records both the successful logical transition
-and its `Disposed` or `Retained(reason)` physical disposition. Expected
-retention is not a Machine driver failure and must not make a self-hosted
-compiler retry a logical discard that already completed.
+The discard operation returns one process-local `DiscardReceipt` identifying
+the generation and recording `logical = Discarded` plus
+`physical = Disposed | Retained(reason)`. A successful logical transition never
+returns only the physical outcome, and a retained physical mapping never turns
+the logical field into failure. Expected retention is not a Machine driver
+failure and must not make a self-hosted compiler retry a logical discard that
+already completed. The receipt belongs to the Codegen protocol and does not
+expand IdApi or become durable image state.
 
 S1 also exposes retained-generation count and retained mapped bytes. These are
 required telemetry, not proof of pin correctness. Conservative retention is a
@@ -903,6 +940,23 @@ number is scale evidence, not a durable release baseline: each S1/S2 budget is
 evaluated against `sends.compiled-unary` from the same benchmark run so host and
 layout noise divide out. Fixed absolute ceilings are deliberately absent.
 
+The S1 acceptance run on 2026-08-06 used a fresh isolated Rust release prefix,
+quick micro-harness mode, and the release-mode ignored test
+`runtime::tests::publish_stackless_s1_transition_measurements`. In that same
+run, `sends.compiled-unary` measured `S = 419 ns/op`; the hand-written driver
+measured Continue at `64.805 ns/transition` (`0.155 x S`) and actual
+metacircular resolve/classify plus synchronous leaf invocation at
+`333.068 ns/invocation` (`0.795 x S`). The Continue, Call, and Return probe
+steps each issued exactly one Machine-microcode send. These are development-
+machine acceptance numbers rather than a durable release baseline, but both
+timed ratios pass the provisional `2 x S` budgets. The ordinary resolution
+path is separately guarded by
+`resolve_and_classify_fast_path_has_no_allocation_lock_atomic_or_refcount_surface`,
+which source-checks dispatch-read entry, registry classification, and
+resolve-and-pin for allocation, lock, atomic-RMW, and reference-count surfaces.
+The measurement probe remains ignored in normal test runs and requires
+`BIRNAM_S_NS` from the same micro-suite process before it will publish a ratio.
+
 Two anchors are recorded so a reader can sanity-check scale, both from the
 Rust-floor snapshot `bench/results/v0.11.0-rust-2fe44d2-…json` that
 [61A](61a-r6-performance-tradeoffs.md) accepts as evidence, run 1 of 3:
@@ -966,11 +1020,18 @@ Frozen:
   registration; compiler and loader state never own Machines or recognition;
 - an emitted registration operation targets the explicitly entered Runtime and
   is artifact ABI rather than an IdApi field;
+- the S1.3 semantic registration carrier is versioned and sized, provides the
+  thunk and StepMethod addresses, immutable descriptor, arities,
+  implementation and generation identities, and generation lease, rejects an
+  invalid record before publication, and leaves no borrowed carrier memory in
+  the Runtime;
 - a process code repository may own and share immutable mappings, but disposal
   waits for every isolated Runtime's leases and Runtime-local execution pins;
 - logical candidate discard is independent of physical mapping disposition;
-  S1 reports `Disposed` or `Retained(reason)`, conservatively retains every
-  method-bearing generation, and exposes retained-generation count and bytes;
+  S1.4 answers a generation-qualified `DiscardReceipt` containing
+  `logical = Discarded` and `physical = Disposed | Retained(reason)`,
+  conservatively retains every method-bearing generation, and exposes retained-
+  generation count and bytes;
 - S3 adds Continuations to the S1 holder accounting, while Future 60G owns
   actual reclamation of formerly method-bearing mappings;
 - lookup through classification and pin acquisition is one logical protected
@@ -997,6 +1058,12 @@ Frozen:
 - a Return at a barrier frame ends the drive, not the Machine;
 - frame tracing enumerates the arena rather than walking the caller chain;
 - arena slot generations advance on pop, not only on chunk release;
+- S1.1 initializes every live Oop slot before collection, excludes retained free
+  capacity from tracing, retains free chunks until Machine destruction, and
+  publishes live-frame and reserved-byte diagnostics;
+- S1.2 publishes per-drive current and high-water synchronous-boundary depth as
+  allocation-free owner-thread diagnostics and introduces no artificial depth
+  limit;
 - registration is an emitted artifact operation, and image boot re-registers
   before any send can reach a restored thunk;
 - a driver failure reaching a thunk boundary is fatal, not a value;
@@ -1020,8 +1087,8 @@ Not frozen:
 - the synchronization mechanism a future multithreaded Runtime uses to provide
   protected resolve-and-pin, except that it may not hold a lock or Rust borrow
   across metacircular lookup and must meet §11's performance evidence;
-- arena chunk retention and trim policy;
-- descriptor blob encoding;
+- automatic arena trim heuristics beyond S1.1's retain-until-destroy baseline;
+- descriptor blob encoding and physical home, which Future 60F owns before S2;
 - the §11 budget numbers, which are provisional by construction.
 
 ## 14. Acceptance tests
@@ -1089,14 +1156,15 @@ integration seam.
     invocation;
 14. **(S1)** a driver failure raised inside `do:` is fatal rather than discarded
     by `vector_do`, and is not catchable by `on:do:`;
-15. **(S1)** discarding a generation that installed no method completes with a
-    `Disposed` physical disposition once its leases drain. Discarding one that
-    installed a method completes the author-file, `.candidate`-sidecar, and
-    `state discarded` logical transitions but reports
-    `Retained(codeGenerationPinned)`. Retained-generation count and bytes rise
-    observably. Registration and Frame pin counts are observed directly across
-    resolve, push, failed push, pop, and binding retirement rather than inferred
-    from conservative retention;
+15. **(S1.4)** discarding a generation that installed no method answers a
+    `DiscardReceipt` naming that generation with `logical = Discarded` and
+    `physical = Disposed` once its leases drain. Discarding one that installed a
+    method completes the author-file, `.candidate`-sidecar, and `state
+    discarded` logical transitions and answers `logical = Discarded` with
+    `physical = Retained(codeGenerationPinned)`. Retained-generation count and
+    bytes rise observably. Registration and Frame pin counts are observed
+    directly across resolve, push, failed push, pop, and binding retirement
+    rather than inferred from conservative retention;
 16. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
     invocation and no native-stack growth, asserted by a probe counter on the
     entry shim that must read zero;
@@ -1130,34 +1198,42 @@ integration seam.
     Continue, synchronous resolve-and-pin, and microcode-per-step measures using
     its hand-written StepMethod, against the `sends.compiled-unary` value `S`,
     and asserts the zero-allocation/lock/atomic/refcount structural fast path.
-    The Call/Return, entry, and depth measures need two migrated implementations
-    and a thunk, so they belong to S2. Concurrent evolution later publishes the
+    S1.2's hand-written synchronous-entry probe asserts that current boundary
+    depth rises once per active synchronous crossing and returns to zero, while
+    its per-drive high-water value records the peak. The Call/Return, entry, and
+    native-stack depth measures need two migrated implementations and a thunk,
+    so they belong to S2 and publish the diagnostic high-water value alongside
+    measured native-stack capacity. Concurrent evolution later publishes the
     read-epoch and mutation-contention measures before it can be accepted.
 
-## 15. Open questions
+## 15. Stage-owned follow-up decisions
 
-1. **Migration as a change event.** lookup answers the thunk address, and
-   `tracked_add_method` retracts the old carrier and asserts a new one on every
-   install. Flipping a method's migration status therefore looks to the Store
-   mirror — and to Design 49's reconciliation and rollback machinery — exactly
-   like a method change, with a new address and a new fact, even when the source
-   is byte-identical. What should `deriveImageMethodTargets` and
-   `managedMethodChanged:on:` see?
-2. **Arena trim.** Under §5.1 one Machine's arena high-water mark is a function
-   of boundary crossings, which §5.3 says is unbounded for a recursion through
-   an unmigrated primitive, and chunks are retained after return (60B §3). Does
-   a long-lived Runtime need a trim policy, and are returned chunks zeroed?
-3. **Descriptor blob home.** Should the FrameDescriptor live in the artifact as
-   data, or be constructed at registration from emitted metadata? The thunk-pool
-   option of §3.1 makes the data form more attractive, since it is the form a
-   registrar without a code generator can supply.
-4. **What shape should the durable resumable tag take?** §4.3 decides *that*
-   the projection must be self-describing about which methods are resumable,
-   since image boot cannot reconstruct it. It does not decide whether that is a
-   fact on the existing method mirror, a section in the image, or part of the
-   artifact descriptor — and the mirror never sees block vtables at all, so
-   whatever is chosen must cover them by another route.
-5. **Depth diagnostics.** §5.3 declines an artificial depth bound. Should the
-   Machine nonetheless publish boundary-crossing depth so a native-stack
-   exhaustion can be attributed to an alternating chain rather than reported as
-   an opaque crash?
+No item in this section blocks S1.1. Each unresolved representation or
+integration choice has an owner and a latest decision point:
+
+1. **Migration as a change event — Future 60F, before S2 lowering.** lookup
+   answers the thunk address, and `tracked_add_method` retracts the old carrier
+   and asserts a new one on every install. Future 60F must decide what
+   `deriveImageMethodTargets` and `managedMethodChanged:on:` observe when only a
+   method's migration status changes, before source lowering can publish such a
+   change through Design 49 reconciliation.
+2. **Arena trim — S1.1 baseline frozen; later policy measurement-owned.** 60B
+   §3 retains free chunks until Machine destruction, traces only live frames,
+   initializes live Oop slots on every push, and publishes high-water and
+   reserved-byte telemetry. Whole-chunk zeroing and automatic trim heuristics
+   are not S1 correctness requirements; any later policy must be justified by
+   those measures and preserve the frozen tracing and generation rules.
+3. **Descriptor carrier — S1.3 semantics; Future 60F physical encoding.** §4.3
+   freezes the carrier's required values, version/size validation, and lifetime
+   transfer. Future 60F chooses whether FrameDescriptor data lives directly in
+   the artifact or is constructed from emitted metadata, and freezes its C/blob
+   encoding before S2 live/AOT registration parity can gate.
+4. **Durable resumable tag — Future 60F, before S2 image integration.** §4.3
+   requires a self-describing projection. Future 60F must choose whether that is
+   a method-mirror fact, image section, artifact descriptor field, or a reviewed
+   combination that also covers block vtables before 60E acceptance item 21 can
+   run.
+5. **Depth diagnostics — S1.2 resolved.** §5.3 requires per-drive current and
+   high-water synchronous-boundary depth without an artificial limit. S2's
+   alternating-depth evidence publishes the counter alongside measured native-
+   stack capacity.

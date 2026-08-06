@@ -10,6 +10,7 @@ pub(crate) use birnam_abi as abi;
 mod boundary;
 mod dispatch;
 mod env;
+mod execution;
 mod gc;
 mod heap;
 mod loader;
