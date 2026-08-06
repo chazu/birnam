@@ -1,6 +1,7 @@
 # 60B — Stackless Machine, Frames, and GC
 
-> **Status:** S0 representation and memory-safety record, accepted 2026-08-04.
+> **Status:** S0 representation and memory-safety record, accepted 2026-08-04;
+> resolve-and-pin ownership clarification accepted 2026-08-05.
 > This document defines the Birnam-object/private-Rust-storage boundary required
 > by [60A](60a-stackless-execution-semantics.md). It does not own the StepMethod
 > calling contract; the accepted decision in
@@ -393,9 +394,13 @@ Frame segment.
 ## 9. Code-generation pinning
 
 Each resumable Frame holds a pin on the generation that owns its step address
-and
-FrameDescriptor. The pin is acquired when the frame is pushed and released when
-the frame is popped, detached into a Continuation, or destroyed.
+and FrameDescriptor. 60E's ResumableEntry holds a distinct registration-
+generation handle while the entry is live or retiring. Resolve-and-pin acquires
+a call-generation pin; a successful Frame push transfers that pin to the Frame,
+and a failed push releases it. The Frame releases or transfers its pin when it
+is popped, detached into a Continuation, or destroyed. Unregistration releases
+the registration handle only after binding, reader, entry, Frame, Continuation,
+and explicit-lease quiescence.
 
 The generation registry must keep both:
 
@@ -466,9 +471,13 @@ The machine/frame implementation is ready for S1 only when tests cover:
 3. machine roots survive forced collection while Running;
 4. suspended roots survive forced collection while Suspended;
 5. continuation roots transfer correctly during Capture and Restore;
-6. generation pins remain until the last frame/continuation release;
+6. registration and call-generation pin counts prove acquire, failed-push
+   release, successful transfer to Frame, transfer to Continuation, and final
+   release independently of the unload-refusal gate;
 7. a synchronous Method can allocate and re-enter without losing machine roots;
-8. invalid actions fail before generated pointer dereference;
+8. every checked Frame primitive rejects the wrong Machine owner or lifecycle,
+   stale drive epoch, descriptor mismatch, invalid slot, and wrong slot kind
+   before that primitive mutates storage;
 9. owner-thread violations fail deterministically;
 10. an action from another Machine or stale epoch is rejected before operand
     decoding;

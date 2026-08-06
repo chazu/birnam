@@ -1,6 +1,9 @@
 # 60 — Stackless Native Execution
 
-> **Status:** Architecture overview and delivery index; S0 accepted 2026-08-04.
+> **Status:** Architecture overview and delivery index; S0 accepted 2026-08-04,
+> with the recognition, late-bound-microcode, same-execution-entry-scope,
+> binding-lifetime/resolve-and-pin, and live-dispatch-timing amendments accepted
+> 2026-08-05.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -155,9 +158,9 @@ reaches one through an entry thunk, how the driver recognizes a resumable
 implementation without aliasing recycled code, and how an unmigrated caller
 crosses into resumable code without allocating a Machine per crossing. It makes
 registration an emitted artifact operation so image boot re-registers rather
-than restoring installs without them, seals the Machine microcode selectors,
-amends the 60C driver argument count, states what migration does and does not
-preserve, and sets the provisional performance budget 60C leaves open.
+than restoring installs without them, keeps the Machine microcode ordinarily
+late-bound, amends the 60C driver argument count, states what migration does and
+does not preserve, and sets the provisional performance budget 60C leaves open.
 
 This record is the correctness gate for S1: without it, an installed StepMethod
 is directly callable by an ordinary send.
@@ -169,8 +172,11 @@ live/AOT parity against the calling contract and the 60E registration record.
 
 ### Future 60G — Lifetime and host integration
 
-Will define TCC/AOT code pinning, live replacement, host drive/suspend/resume,
-image rejection, and recovery behavior.
+Will complete TCC/AOT lifetime and live replacement above S1's minimal
+registration/Frame pins: binding retirement, continuation pin transfer,
+disposal, image rejection, and recovery behavior. Before concurrent evolution
+it must also supply 60D §8.1's read-side epochs, process-shared mapping lifetime,
+retirement diagnostics, and contention evidence.
 
 ### Future 60H — Acceptance and rollout
 
@@ -206,9 +212,13 @@ Acceptance evidence on 2026-08-04:
 
 Add the Machine Oop/native MachineState capability boundary, private Frame
 storage, canonical StepAction Oops, an action loop, root tracing/finalization,
-and a sync adapter. Do not change generated code yet. An internal test
-StepMethod must be able to run to completion and produce the same result as
-send, and Birnam reflection must see the execution-object protocols.
+and a sync adapter. Add the owner-thread, non-allocating resolve-and-pin shape,
+direct-binding reference accounting, retirement state, and the minimal
+registration/Frame generation-pin transfer; do not add per-resolution locks,
+atomic read-modify-write operations, or reference-count traffic. Do not change
+generated code yet. An internal test StepMethod must be able to run to
+completion and produce the same result as send, and Birnam reflection must see
+the execution-object protocols.
 
 ### S2 — Minimal resumable compiler path
 
@@ -219,7 +229,8 @@ with bounded native-stack movement and live/AOT registration parity.
 ### S3 — Suspension and one-shot restoration
 
 Add the explicitly defined host/test suspension operation, continuation
-lifecycle, forced-GC coverage, code-generation pinning, and image rejection.
+lifecycle, forced-GC coverage, continuation pin transfer, disposal enforcement,
+and image rejection.
 
 ### S4 — Callback-driving control primitives
 
@@ -239,8 +250,8 @@ S0 acceptance records the following implementation gate as complete:
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
 - the exact StepMethod calling contract accepted in 60C;
 - the resumable registration record, the entry-thunk contract, the driver
-  recognition and address-reuse ordering rules, and the artifact/image
-  registration surface from 60E;
+  resolve-and-pin, binding-retirement, and address-reuse ordering rules, and the
+  artifact/image registration surface from 60E;
 - the Machine Oop capability and private-Frame accessor boundary for generated
   native code;
 - registry generation, trace, and finalization rules for native-backed state;

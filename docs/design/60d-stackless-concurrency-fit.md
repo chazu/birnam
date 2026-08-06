@@ -1,7 +1,9 @@
 # 60D — Stackless Concurrency Fit and Boundaries
 
 > **Status:** S0 concurrency compatibility record, accepted 2026-08-04 with
-> the 60E entry seam.
+> the 60E entry seam; recognition-concurrency, same-execution-entry-scope, and
+> resolve-and-pin follow-up and live-dispatch-timing amendments accepted
+> 2026-08-05.
 > This document evaluates the stackless Machine design against Birnam's existing
 > reactor and isolate direction. It does not select a scheduler, introduce
 > shared-memory threads, or make Machine transferable between runtimes.
@@ -50,7 +52,7 @@ This record reads the following documents together:
 - [60E — Resumable registration and the entry
   seam](60e-resumable-registration-and-entry.md)
   decides how an unmigrated send enters a resumable implementation, which adds
-  the nested-drive and drive-stack cases this record must cover.
+  the nested-drive and entry-scope-stack cases this record must cover.
 
 This document does not reopen Design 48's choice to avoid shared-memory
 parallelism in the first concurrency architecture. It records whether Designs
@@ -105,12 +107,14 @@ inside one Rust operation are acceptable; ambient execution identity is not.
 
 There is exactly one scoped exception, and it is not in generated code. The
 entry seam of [60E §5.2](60e-resumable-registration-and-entry.md) has no Machine
-in hand by construction — an entry thunk is reached by ordinary dispatch from an
-unmigrated caller — so the Runtime owns a drive stack naming the active drive
-whose synchronous barrier is dynamically in scope. Only the entry shim consults
-it, and the epoch it validates against is the Machine's, not the stack's.
-Generated StepMethod code and Machine microcode still receive Machine
-explicitly and must never read it.
+in hand by construction — an entry thunk may be reached by ordinary dispatch
+from an unmigrated caller or by a late-bound microcode send from a StepMethod —
+so the Runtime owns an entry-scope stack naming the Machine whose native
+activation is waiting. The driver pushes that scope around StepMethod and
+synchronous-Method invocation. Only the entry shim consults it, and the epoch
+it validates against is the Machine's, not the stack's. Generated StepMethod
+code and Machine microcode still receive Machine explicitly and must never read
+it.
 
 ## 5. Scheduling boundary
 
@@ -172,8 +176,11 @@ One step must follow this sequence:
 3. Mark the step active and advance the Machine's single drive epoch.
 4. Copy the Method address and immutable descriptor identity needed for entry.
 5. Release the MachineState borrow and every registry guard.
-6. Invoke generated StepMethod code.
-7. Machine microcode sends independently borrow, validate, mutate, and release.
+6. Push a same-execution entry scope, invoke generated StepMethod code, pop the
+   scope, and retain no scope-stack borrow across the invocation.
+7. Machine microcode sends independently borrow, validate, mutate, and release;
+   a resumable replacement enters through the scope and completes above an
+   entry-barrier delimiter on the same Machine.
 8. Reacquire MachineState after StepMethod returns.
 9. Validate and decode the returned StepAction, copying every operand needed
    into driver-local scalars rather than re-reading the payload later.
@@ -208,10 +215,10 @@ not one large lock around a complete Machine turn.
 ## 7. Exclusive drive and per-Machine scratch state
 
 One Machine has at most one active driver invocation *per barrier delimiter*.
-Stacked drives are legal and are how an unmigrated frame is crossed: when a
-synchronous Method reached from inside a drive sends into a resumable
-implementation, the entry seam pushes above an entry-barrier delimiter and runs
-a nested drive on the same Machine
+Stacked drives are legal and are how a waiting native activation is crossed:
+when a synchronous Method or StepMethod reached from inside a drive sends into
+a resumable implementation, the entry seam uses the same-execution entry scope,
+pushes above an entry-barrier delimiter, and runs a nested drive on the same Machine
 ([60E §5.1](60e-resumable-registration-and-entry.md)). Those drives are stacked,
 not concurrent — the outer one is parked inside a native activation at a known
 point — and the nested drive may not pop below its delimiter.
@@ -274,6 +281,45 @@ not itself prevent migration. Machine carries the ownership identity. A future
 design can change Machine ownership without changing the StepMethod carrier if
 the surrounding Runtime becomes capable of safe migration.
 
+The Runtime-qualified entry-thunk registry of 60E §4.1 does not add a migration
+restriction. Its logical resolve-and-pin operation protects ordinary lookup
+through classification and generation-pin acquisition; after a successful push
+the Frame owns that pin independently of dispatch. Work stealing would transfer
+the Machine and its acquired pins, not re-resolve active Frames by thunk
+address.
+
+### 8.1 Required follow-up before concurrent evolution
+
+The owner-thread S1 implementation uses a plain owner-thread epoch/depth token,
+amortized across a Machine turn or top-level send, because metacircular lookup
+may re-enter mutation even without another thread. It must keep resolution non-
+allocating and free of per-call locks, atomic read-modify-write operations, and
+reference-count traffic. It must still centralize the logical resolve-and-pin
+API, direct-binding reference counts, retirement state, and pin-transfer cleanup
+so concurrency does not require a new calling contract.
+
+Before shared-Runtime parallelism, concurrent dispatch mutation, or concurrent
+code unload is enabled, a follow-up record and implementation must add:
+
+- a read-side epoch, RCU, immutable-snapshot, or equivalently reviewed protocol
+  spanning lookup through classification and pin acquisition;
+- retirement epochs that let a reader which resolved before mutation acquire
+  the old entry, while preventing readers begun after retirement from reviving
+  it;
+- process-shared mapped-generation lifetime accounting when independent Runtime
+  registries share immutable code;
+- explicit generation leases for native or custom-lookup caches that retain a
+  raw Method carrier beyond one protected resolution;
+- bounded retirement-queue behavior and diagnostics for stalled readers; and
+- the uncontended, contended, and mutation-throughput evidence required by 60E
+  §11.
+
+The read-side mechanism may be amortized over a Machine turn or top-level host
+send, and nested resolution should reuse it. A mutex, global atomic increment,
+heap allocation, or `Arc` clone on every send is not an acceptable default
+without evidence that it meets or beats the recorded budget. Metacircular
+lookup may have effects, so a sequence-counter design may not silently retry it.
+
 No current contract promises that this work will be desirable. Process isolates
 remain the preferred source of parallel execution.
 
@@ -299,7 +345,9 @@ If in-process parallelism is revisited, the preferred intermediate design is
 several isolated Runtime instances with copied messages. That direction must
 also address current native modules that retain a process-global IdApi pointer
 or singleton state. The StepMethod calling contract neither creates nor solves
-that pre-existing module boundary.
+that pre-existing module boundary. Each Runtime has an independent recognition
+map keyed by `(Runtime identity, thunk address)`, so sharing immutable mapped
+code does not merge their ResumableEntry or Machine state.
 
 ## 10. GC and scheduler roots
 
@@ -330,14 +378,20 @@ the same time. Every Frame pins the generation containing its StepMethod and
 FrameDescriptor until the Frame is popped, destroyed, or detached and later
 consumed.
 
-Live dispatch changes occur at safe points between Machine turns. After a
-Machine resumes, a new CallAction resolves its target through current dispatch;
-an already active Frame continues through its pinned implementation generation.
+For the owner-thread S1 Runtime, live dispatch changes occur only after the
+current StepMethod has returned and its StepAction operands have been copied and
+validated, while no StepMethod native activation is executing. A Frame may
+remain active across many such turn boundaries. Its captured StepMethod and
+descriptor stay pinned, while its next CallAction or TailCallAction performs a
+fresh resolve-and-pin against dispatch current at that operation's
+linearization point.
 
 A reactor must not asynchronously rewrite a Running Frame when activating a
 compiled unit. Activation may update future dispatch while old Frames remain
-pinned. This preserves atomic turns without requiring all Machines to reach the
-same generation simultaneously.
+pinned. Before concurrent mutation is enabled, §8.1 must define how an executor
+observes atomically either the old or new binding even when another Machine is
+mid-turn. This preserves atomic native activations without requiring all active
+Frames to share one generation.
 
 ## 12. Isolate composition
 
@@ -377,8 +431,8 @@ preemption counters.
 The first implementation must preserve all of the following:
 
 1. Machine identity, not TLS or a process global, selects current execution
-   state. The Runtime drive stack of §4 is the sole exception, is read only by
-   the entry shim, and is never read by generated code or microcode.
+   state. The Runtime entry-scope stack of §4 is the sole exception, is read
+   only by the entry shim, and is never read by generated code or microcode.
 2. One Machine has at most one active driver invocation per barrier delimiter;
    stacked drives are legal, unbarriered recursive drives are not.
 3. Different Machines may alternate turns without sharing mutable execution
@@ -399,16 +453,26 @@ The first implementation must preserve all of the following:
 13. A vtable never holds a StepMethod address, so no scheduler, callback, or
     reflective send can enter generated resumable code except through the two
     paths of 60E §3.
-14. The drive stack is a distinct borrow domain from the machine registry and
-    MachineState; entry acquires and releases it as a point operation, never
-    across generated code.
+14. The entry-scope stack is a distinct borrow domain from the machine registry
+    and MachineState; entry acquires and releases it as a point operation, never
+    retaining a stack borrow across generated code. The dynamic scope record
+    itself remains installed until the native activation returns.
 15. A Machine has one drive epoch, advancing on drive entry and on drive exit.
     Validation compares against that single current value, so an outer drive's
     action is stale during a nested drive and stays stale afterward rather than
     revalidating over rewritten scratch payload.
-16. Fresh-versus-nested entry is decided by synchronous-barrier scope, not by
-    thread activity, so a host or reactor callback taken while some Machine is
-    driving begins a new Machine rather than joining an unrelated one.
+16. Fresh-versus-nested entry is decided by inherited same-execution entry
+    scope, not by thread activity. A host or reactor callback beginning
+    unrelated work suppresses that scope and begins a new Machine rather than
+    joining an unrelated one.
+17. Resolve-and-pin protects metacircular lookup through classification and
+    generation-pin acquisition. It returns a pinned Runtime-local
+    ResumableEntry, a lifetime-protected synchronous Method, or unbound; it
+    never exposes a bare address across a retirement gap.
+18. Direct binding aliases own independent references, borrowed custom-lookup
+    results require a lease to outlive one protected resolution, and retirement
+    cannot reclaim or reuse an address until binding references, readers,
+    acquired entries, Frames, Continuations, and leases quiesce.
 
 ## 15. Acceptance tests
 
@@ -429,13 +493,21 @@ The stackless substrate is concurrency-compatible only when tests demonstrate:
    touching Frame storage.
 5. **Reentrant microcode:** a StepMethod can send every primitive Machine
    microcode message without a retained registry borrow, `RefCell` guard,
-   mutex guard, or mutable Frame borrow causing panic or deadlock.
+   mutex guard, or mutable Frame borrow causing panic or deadlock. Replacing one
+   microcode method with a resumable implementation reuses the same Machine,
+   preserves the waiting outer Frame, and cannot suspend or capture across its
+   entry barrier.
 6. **Queued rooting:** a suspended Machine retained only by a scheduler test
    queue survives forced collection with all live Frame Oops intact.
 7. **Abandoned collection:** removing that final queue root permits Machine
    finalization and releases external Frame state exactly once.
 8. **Generation overlap:** two Machines may run Frames from different pinned
-   generations while new sends resolve through current dispatch.
+   generations. On the owner-thread path, mutate dispatch after one StepMethod
+   returns but while its Frame remains active; that Frame's next CallAction sees
+   the new binding while its next step still uses its pinned implementation.
+   The future concurrent-evolution version additionally proves resolve-and-pin
+   observes atomically either the old or new binding while another Machine is
+   mid-turn.
 9. **Owner-thread rejection:** resume, restore, and destruction from a foreign
    thread fail without invoking generated code or mutating lifecycle state.
 10. **Safe cancellation:** a cancellation request becomes visible at the next
@@ -445,9 +517,16 @@ The stackless substrate is concurrency-compatible only when tests demonstrate:
     than accidentally claiming preemption.
 12. **Isolate boundary:** execution Oops are rejected by copied-value transport
     while ordinary durable/copyable values continue to cross successfully.
+13. **Resolution handoff and isolation:** pause a deterministic reader after
+    metacircular lookup returns a thunk but before classification, retire its
+    final direct binding, and then prove the reader acquires the old entry and
+    an observable generation pin rather than misclassifying it as synchronous.
+    A reader begun after retirement cannot revive the entry. Two Runtime test
+    harnesses may register the same mapped thunk address independently, and
+    retiring it from one does not disturb the other.
 
-Tests 3–5 are part of S1 even before a public scheduler exists. Tests 1, 2, and
-6 may use a deterministic two-Machine host harness rather than a reactor API.
+Tests 3–5 and 13 are part of S1 even before a public scheduler exists. Tests 1,
+2, 6, and 13 may use a deterministic host harness rather than a reactor API.
 The remaining tests gate the corresponding scheduling, live-evolution, or
 isolate integration slices.
 

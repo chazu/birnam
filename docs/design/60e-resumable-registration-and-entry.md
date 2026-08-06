@@ -1,6 +1,8 @@
 # 60E — Resumable Registration and the Entry Seam
 
-> **Status:** S0 decision record, accepted 2026-08-04.
+> **Status:** S0 decision record, accepted 2026-08-04; recognition, late-bound-
+> microcode, same-execution-entry-scope, binding-lifetime/resolve-and-pin, and
+> live-dispatch-timing amendments accepted 2026-08-05.
 > This record closes the registration seam that
 > [60A](60a-stackless-execution-semantics.md) §5 and
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
@@ -12,10 +14,10 @@
 ## 1. The gap this closes
 
 60C freezes a StepMethod as an ordinary `Method` invoked with a Machine receiver
-and answering a StepAction. 60A §5.3 then says the driver pushes a resumable
-frame "if the address is registered as resumable". Neither record says what
-performs that registration, where the record lives, or what an ordinary send
-does when it reaches a resumable selector.
+and answering a StepAction. 60A §5 then requires the driver to distinguish a
+resumable target and push its Frame rather than synchronously invoking it.
+Neither record says what performs registration, where the record lives, or what
+an ordinary send does when it reaches a resumable selector.
 
 That omission is not cosmetic. The floor installs methods as bare addresses:
 `birnam_install_method` in birnam-codegen-runtime reaches the Store MOP
@@ -36,15 +38,16 @@ answer, not a failure. This record removes that possibility by construction.
 | Area | Decision |
 |---|---|
 | Vtable contents | A vtable never holds a StepMethod address. It holds an ordinary Method: a synchronous implementation or an **entry thunk**. |
-| Driver path | A Call or TailCall whose resolved implementation names a live ResumableEntry pushes a frame and calls the StepMethod. **The thunk is not invoked.** |
+| Driver path | A Call or TailCall uses one logical **resolve-and-pin** operation: ordinary lookup followed, under uninterrupted lifetime protection, by classification as a pinned ResumableEntry, a protected synchronous Method, or unbound. A resumable result pushes a frame and calls the StepMethod. **The thunk is not invoked.** |
 | Send path | An ordinary `IdApi.send` from unmigrated code reaches the thunk, which drives the implementation and answers the ordinary result. |
-| Nested entry | A thunk reached from inside an active drive's synchronous barrier pushes onto the **current Machine** above an entry-barrier delimiter rather than allocating a second Machine. A thunk reached with no active barrier starts a fresh Machine. |
-| Registration record | A process-local **ResumableEntry** owns the StepMethod address, FrameDescriptor, generation pin, declared arity, and implementation identity. |
-| Recognition | Stated as a requirement, not a mechanism: an implementation named by its **defining** vtable and selector maps to at most one live entry, never keyed by code address alone, and never aliasing across unload. |
+| Nested entry | A thunk reached inside an inherited **same-execution entry scope** pushes onto the scoped Machine above an entry-barrier delimiter rather than allocating a second Machine. The driver establishes this scope around StepMethod and synchronous-Method invocation. Unrelated host/reactor work suppresses it and starts a fresh Machine. |
+| Registration record | A Runtime-scoped, process-local **ResumableEntry** owns its unique thunk address, StepMethod address, FrameDescriptor, registration-generation handle, declared arity, and implementation identity. Resolve-and-pin acquires the separate call-generation pin transferred to a Frame. |
+| Recognition | The active Runtime maps each unique live **entry-thunk address** to at most one ResumableEntry. Lookup-through-recognition is protected as one logical operation and acquires the entry plus a generation pin before the protection ends. |
+| Binding lifetime | Each direct installation owns one binding reference. Aliases own independent references; inheritance does not duplicate the defining reference. Lookup results are borrowed, and retaining a raw Method carrier requires an explicit generation lease. Retirement and address reuse wait for binding references, dispatch readers, acquired entries, Frames, Continuations, and leases to quiesce. |
 | Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
 | Failure surface | A 60A §9 driver failure reaching a thunk boundary is fatal, never an ordinary result value. |
 | Registration surfaces | The Store MOP for named methods, direct `birnam_method` for block bodies, `Tcc unit install:as:on:` for symbols resolved from a relocated unit, and image boot, which restores installs and must re-register before any send reaches a restored thunk. All produce the same record. |
-| Microcode | Microcode selectors are sealed in the method dictionary against add, overwrite, removal, and shadowing through a private child vtable alike. |
+| Microcode | Machine microcode is an ordinary late-bound Birnam protocol. Its checked primitive implementations may be redefined, removed, or shadowed. A Birnam-authored replacement using public capabilities receives no raw Frame or arena pointer; incompatible changes may alter or invalidate execution, but the driver still validates the final StepAction before applying its requested control transition. Prior valid checked mutations are not transactional or rolled back. Trusted native artifacts retain native authority. |
 
 ## 3. Two paths, and only one of them is the thunk
 
@@ -53,7 +56,7 @@ explicitly:
 
 | Caller | Resolution | Cost |
 |---|---|---|
-| Migrated: a StepMethod issuing a Call or TailCall | The driver resolves the implementation (60A §5.2), finds a live ResumableEntry, and pushes a frame directly | One frame push. No thunk, no native frame, no Machine acquisition. |
+| Migrated: a StepMethod issuing a Call or TailCall | The driver resolves and pins the ordinary lookup result (60A §5), then pushes a resumable frame directly or invokes the protected synchronous result | One protected resolution plus one frame push for a resumable target. No thunk invocation, native frame, or Machine acquisition on that path. |
 | Unmigrated: any ordinary `IdApi.send` | Lookup answers the thunk address and `send_abi` calls it | One native activation plus a nested drive. |
 
 The migrated-to-migrated path is the one the whole design exists for, and it
@@ -83,8 +86,8 @@ A single shared thunk cannot work: the Method ABI conveys no selector, so a
 thunk invoked under an arbitrary selector has no way to learn which
 implementation it is standing in for, and 60D §4 forbids the ambient state that
 would supply one. Recovering the entry from the receiver's vtable is not a way
-out either — that is the receiver-keyed rule §4.1 rejects, and it misses every
-inherited method.
+out either: inherited or custom metacircular lookup need not identify that
+receiver vtable as the binding's home.
 
 What preserves the no-code-generator path is a **pool of distinct runtime-owned
 thunks**, one bound per registration. Each pooled address is unique, so it
@@ -94,17 +97,18 @@ without running a code generator, which 60C §13.4 preserves for a future
 non-native or sandboxed artifact format and which an interpreter tier would
 need. Whether the pool is pre-built, grown, or exhausted is not decided here.
 
-Note that this is a property of the *thunk*, which needs to identify its own
-entry. It does not soften §4.1, which governs a different question: how the
-**driver** maps an implementation it has resolved to an entry, without invoking
-a thunk at all.
+The uniqueness is also what lets the **driver** recognize the same resolved
+address without invoking the thunk. Ordinary sends and driver calls therefore
+share the complete metacircular lookup result; only what they do with that
+result differs.
 
 ### 3.2 Thunk behavior
 
 `birnam_enter_resumable` performs:
 
-1. resolve the ResumableEntry and validate its generation is still live;
-2. consult the Runtime drive stack (§5.2) to decide fresh or nested entry;
+1. resolve the thunk's ResumableEntry in the active Runtime and acquire its live
+   generation pin;
+2. consult the Runtime entry-scope stack (§5.2) to decide fresh or nested entry;
 3. push the initial frame, binding receiver and arguments into traced frame
    slots under the §6 arity rule;
 4. drive until that frame returns;
@@ -160,45 +164,87 @@ text.
 ## 4. The ResumableEntry record
 
     ResumableEntry
+      unique entry-thunk address  (what ordinary lookup answers)
       StepMethod address           (what the driver calls)
       FrameDescriptor identity     (60B §4)
-      generation identity and pin  (60B §9)
+      generation identity and registration handle  (60B §9)
       declared arity
       implementation identity      (for FrameView, source maps, and 49)
 
-The registry is process-local, owner-thread-checked, and is not a GC root set.
-Entries are validated by index plus generation, following the Machine registry
-pattern of 60B §1.
+The registry belongs to one Runtime, is owner-thread-checked in the first
+delivery, and is not a GC root set. Its recognition key is `(Runtime identity,
+entry-thunk address)`, so the same mapped code may be registered independently
+by future in-process Runtimes without sharing execution state. Entries are also
+validated by index plus generation when held as capabilities, following the
+Machine registry pattern of 60B §1.
 
-### 4.1 The recognition requirement
+### 4.1 Resolve and pin is one logical operation
 
-The driver holds a resolved address and must decide whether it is resumable.
-This record states the requirement functionally and leaves the mechanism open:
+The driver must not hold a bare Method address across a lifetime gap. Its
+logical `resolve-and-pin` operation begins before ordinary metacircular lookup
+and ends only after the result has become one of:
 
-> Recognition must map a resolved *implementation* to at most one live
-> ResumableEntry, and must never associate an implementation with an entry from
-> a different generation.
+- a strong ResumableEntry reference plus a call-generation pin;
+- a synchronous Method whose code generation remains protected through its
+  immediate invocation; or
+- an unbound result that follows the existing DNU path.
 
-The implementation is named by the **defining** vtable and the selector — not by
-the code address alone, which §4.2 shows can be recycled beneath a live vtable,
-and not by the receiver's vtable, which is wrong for every inherited method. A
-per-selector side table on the vtable record and a tag word beside the
-dictionary entry both satisfy this. What none of them may do is outlive the code
-they name.
+This does not collapse the two paths of §3. A Machine driver classifies a
+registered thunk and bypasses it. Ordinary `IdApi.send` retains the same
+read-side lifetime protection through immediate invocation of the Method that
+lookup returned; when that Method is a thunk, the thunk acquires its
+ResumableEntry under the still-active protection and drives normally. No new
+argument or ambient Machine is added to the Method ABI.
 
-The floor's lookup does not report the defining vtable today: `Vtables::lookup`
-walks the parent chain and answers an address, discarding which record it came
-from. The driver's resolution therefore needs a lookup variant that reports
-both. That variant is internal to the floor — the driver is Rust — so it grows
-no IdApi surface, and it must not cost a second parent-chain walk, which would
-be unbudgeted against §11's Call/Return line.
+For a resumable result, a successful Frame push transfers the call-generation
+pin to the Frame; a failed push drops it. The ResumableEntry retains its own
+registration-generation handle until retirement completes. A synchronous
+result needs the same lifetime principle because concurrent unload of an
+ordinary Method between lookup and invocation would be the same use-after-free
+without a ResumableEntry.
 
-The alternative of keying on the receiver's vtable is not merely less precise;
-it is silently wrong. A resumable method installed on a prototype and sent to a
-child would miss, the driver would conclude "synchronous Method", and every
-inherited migrated call would degrade to the thunk path — restoring the
-per-level native activation §3 exists to remove, in exactly the case hardest to
-attribute.
+Resolution remains independent of how lookup found the address. An inherited
+dictionary binding and a custom metacircular lookup that returns the same live
+registered thunk both remain resumable. No second parent-chain walk,
+defining-vtable reconstruction, or exception to ordinary late binding is
+required. A custom lookup result is a borrowed dispatch result: retaining its
+raw Method carrier beyond that resolution requires an explicit generation
+lease. Native code that retains an unleased carrier already violates the same
+code-lifetime contract for synchronous Methods.
+
+Within one Runtime, a live thunk address names at most one ResumableEntry and
+each entry owns a unique thunk address. A raw StepMethod address is never
+installed or returned by lookup. An address never known as a live or retired
+thunk receives the existing synchronous-Method interpretation. A known retired
+thunk presented by a reader begun after retirement is a stale carrier failure,
+not a synchronous miss; returning a raw StepMethod under the synchronous
+interpretation is malformed native behavior, just as calling any Method address
+under the wrong semantic contract is today.
+
+The protection covers **lookup through classification and pin acquisition**;
+atomic recognition relative to unregistration alone is insufficient. Otherwise
+one executor can resolve the old thunk, a mutator can retire and recycle it,
+and the executor can then misclassify or invoke the recycled address.
+
+This is a semantic linearization contract, not a commitment to one lock. The
+owner-thread S1 Runtime serializes physical access, but metacircular lookup may
+re-enter mutation before returning. Its read protection may therefore be a
+plain owner-thread epoch/depth token, amortized across the current Machine turn
+or top-level send. The fast path must add no mutex, atomic read-modify-write,
+heap allocation, or reference-count operation per ordinary resolution.
+Registry classification remains a non-allocating lookup, and the minimal
+generation handle is acquired only when a resumable Frame is pushed. S1 must
+implement the API in this shape rather than scattering bare-address lookups, so
+later protection does not require rewriting the driver.
+
+Before shared-Runtime parallelism or concurrent code evolution is enabled, 60D
+requires a real read-side protocol. An epoch/RCU-style token is preferred: it
+may be amortized across a Machine turn or top-level host send, nested resolution
+reuses it, and it is not a Rust borrow or lock held across metacircular code.
+Immutable snapshots or another reviewed mechanism remain permitted. Mutation
+may publish immediately, but reclamation waits for older readers to drain; the
+lookup itself is never retried merely because an epoch changed, since custom
+lookup may have effects.
 
 ### 4.2 Address recycling, in both directions
 
@@ -207,10 +253,15 @@ Code addresses are recyclable: `dlclose` runs in birnam-codegen-runtime's
 code at the same address. Two directions follow, and only the first is a
 registry problem.
 
-**False positive.** A stale entry naming recycled code would make the driver
-push a frame for the wrong implementation. Prevented by ordering: an entry is
-unregistered before its generation's code is unloaded, and unloading is refused
-while the generation is pinned (§7).
+**False positive.** A stale vtable may retain a thunk address after its registry
+entry is removed. If a later generation reused that address and registered a
+new entry, the driver would push a frame for the wrong implementation. Ordering
+registry removal before `dlclose` is not sufficient: address reuse is forbidden
+until the old generation has no registration handle, binding reference,
+pre-retirement dispatch reader, acquired entry, Frame, Continuation, or explicit
+generation lease that can still produce or invoke the address. The conservative
+first delivery therefore refuses unload for every generation that installed a
+method (§7).
 
 **False negative, and it is worse.** A live vtable may hold a method address
 from an unloaded generation. Block vtables are the case: generated code builds
@@ -249,20 +300,21 @@ comes back with it.
 
 Under §3.3 that is not a degraded mode, it is an abort: the first send to a
 migrated selector reaches a restored thunk, finds no live entry, and raises a
-60A §9 failure at a thunk boundary. Worse, a restored entry identity that
-happens to match a live registry slot names the *wrong* implementation — the
-§4.2 false positive arriving by a route the ordering rule does not cover,
-because no unload occurred. The rebuild path is unaffected, since it
-re-evaluates method definitions through the Store MOP, so mapped and rebuilt
-images would differ in correctness — two routes to the same image answering
-differently, which is the kind of divergence 60 §3's compatibility invariants
-exist to prevent.
+60A §9 failure at a thunk boundary. The rebuild path is unaffected, since it
+re-evaluates method definitions through the Store MOP and recreates the
+Runtime-qualified address mapping, so mapped and rebuilt images would differ in
+correctness — two routes to the same image answering differently, which is the
+kind of divergence 60 §3's compatibility invariants exist to prevent.
 
 **Decision.** Registration is an emitted artifact operation, not a side effect
 of installation. Artifact lowering emits a registration call beside each
-install; image boot re-registers before any send can reach a restored thunk; and
-a restored thunk with no live entry answers `resumableEntryUnrestored` as an
-**image validity failure** rather than a runtime fatal on first use.
+install. The entry and its registration-generation handle exist before the
+binding becomes visible; successful publication adds that direct binding's
+reference, while rejected or failed installation rolls back any unpublished
+registration. Image boot re-registers before any send can reach a restored
+thunk; and a restored thunk with no live entry answers
+`resumableEntryUnrestored` as an **image validity failure** rather than a runtime
+fatal on first use.
 
 The check point has to be stated precisely, because "before execution" is not
 available: restored thunks come into being *while* the mapped code unit's
@@ -291,12 +343,14 @@ the path every unmigrated caller takes throughout S2 and S4.
 
 ### 5.1 Nested entry reuses the current Machine
 
-**Decision.** When a thunk is reached while a synchronous barrier established by
-an active drive is dynamically in scope on this owner thread, it does not
-allocate a second Machine. It pushes the new frame onto that Machine's arena
-above an **entry-barrier delimiter**, and runs a nested drive that may not pop
-below that delimiter. A thunk reached with no barrier in scope starts a fresh
-Machine; §5.2 explains why the predicate is barrier scope rather than thread
+**Decision.** When a thunk is reached inside a same-execution entry scope
+established by an active drive, it does not allocate a second Machine. It pushes
+the new frame onto that Machine's arena above an **entry-barrier delimiter**, and
+runs a nested drive that may not pop below that delimiter. The driver establishes
+the scope around both StepMethod and synchronous-Method invocation, because
+either native activation may make an ordinary send and must remain live until
+that send returns. A thunk reached with no inherited scope starts a fresh
+Machine; §5.2 explains why the predicate is logical scope rather than thread
 activity. When the nested frames
 return, the thunk answers and the intervening synchronous activation returns
 normally to the outer driver.
@@ -374,36 +428,42 @@ live in arena chunks rather than on the C stack. 60B §6's trace hook therefore
 enumerates every live frame in the arena. The scoped root provider may name one
 Machine once per stacked drive, so marking must tolerate duplicates.
 
-### 5.2 The drive stack is the one piece of ambient state
+### 5.2 The entry-scope stack is the one piece of ambient state
 
-Deciding fresh-versus-nested requires knowing whether the send is dynamically
-inside a drive's synchronous barrier, and the thunk holds no Machine — that is
-the whole nature of the seam. The Runtime therefore owns a drive stack whose
-entries are pushed by the driver when it *enters a synchronous barrier* and
-popped when that barrier returns.
+Deciding fresh-versus-nested requires knowing whether the send belongs to a
+native activation of the current logical drive, and the thunk holds no Machine
+— that is the whole nature of the seam. The Runtime therefore owns an
+entry-scope stack. The driver pushes a same-execution scope immediately before
+invoking a StepMethod or synchronous Method and pops it when that activation
+returns. A resumable microcode replacement reached by the StepMethod therefore
+uses the same Machine and the same entry-barrier rules as a resumable send made
+by an unmigrated synchronous Method.
 
-The predicate is barrier scope, not thread activity, and the difference is not
-pedantic. A Machine may be driving while its synchronous leaf asks the host to
-begin unrelated work — a reactor taking a fresh item, a Store MOP hook, a
-codegen authorizer, an FFI callback — and that work reaches a thunk by ordinary
-dispatch. Nesting it onto the driving Machine would give a new logical execution
-no identity a scheduler could queue, no ability to suspend, a lifetime tied to
-an unrelated Machine, and a backtrace interleaved with one. A thunk reached with
-an active drive but no active barrier starts a fresh Machine, which is what 60D
-§3 wants when it lists several Machines on one owner thread as a direct fit.
+The predicate is inherited logical scope, not thread activity, and the
+difference is not pedantic. A Machine may be driving when the host or reactor
+begins unrelated work — a fresh reactor item, Store reconciliation, codegen
+authorization, or an unrelated FFI callback — and that work may reach a thunk by
+ordinary dispatch. The host entry operation explicitly suppresses any inherited
+same-execution scope. Nesting that work onto the driving Machine would give a
+new logical execution no identity a scheduler could queue, no ability to
+suspend, a lifetime tied to an unrelated Machine, and a backtrace interleaved
+with one. A thunk reached with an active drive but no inherited scope starts a
+fresh Machine, which is what 60D §3 wants when it lists several Machines on one
+owner thread as a direct fit.
 
 60D §4 forbids ambient execution identity, and that prohibition stands where it
 was aimed: **generated StepMethod code and Machine microcode never consult the
-drive stack.** They receive Machine explicitly as their receiver. The drive
-stack is consulted only by the entry shim, at the one boundary where no Machine
-is in hand, and 60D §4 is amended to say so rather than left to be read as
-forbidding it.
+entry-scope stack.** They receive Machine explicitly as their receiver. The
+entry-scope stack is consulted only by the entry shim, at the one boundary where
+no Machine is in hand, and 60D §4 is amended to say so rather than left to be
+read as forbidding it.
 
-Acquisition and release are point operations. No drive-stack, registry, or
-MachineState borrow is held across generated code, `IdApi.send`, allocation,
-collection, or a foreign callback, per 60D §6.2. The drive stack must be a
-distinct borrow domain from the machine registry, or the nested case
-self-deadlocks on the second entry.
+Pushing and popping the dynamic scope are point operations. The scope record
+remains installed while the native activation runs, but no entry-scope-stack,
+registry, or MachineState borrow is held across generated code, `IdApi.send`,
+allocation, collection, or a foreign callback, per 60D §6.2. The entry-scope
+stack must be a distinct borrow domain from the machine registry, or the nested
+case self-deadlocks on the second entry.
 
 The Machine has one drive epoch, not one per drive, and validation always
 compares against that single current value. It advances on drive entry **and on
@@ -505,9 +565,10 @@ success.
 S3 must therefore *introduce* a kinded failure here, not reuse one. Its
 condition must be wider than 60B §9 states, because of §4.2's second direction:
 
-> Disposal is refused unless the generation has zero live frames, zero live
-> continuations, and no reachable vtable holds a method address in its mapped
-> range.
+> Disposal is refused unless the generation has zero registration handles,
+> direct binding references, pre-retirement dispatch readers, acquired
+> ResumableEntries, live frames, live continuations, and explicit generation
+> leases, and no reachable vtable holds a method address in its mapped range.
 
 The third clause is the honest one and it is not currently satisfiable, which
 this record states rather than papers over. Vtables are allocated permanent and
@@ -543,9 +604,20 @@ reconciliation reads.
 
 **Evidence.** Because the refusal is unconditional in practice, disposal
 behavior cannot serve as evidence that generation pinning works — a stubbed pin
-implementation would produce an identical observation. The S3 pin evidence must
-observe pin counts directly across frame push, pop, capture, and consume. 60 §7
+implementation would produce an identical observation. S1 must observe the
+minimal registration and Frame pin across resolve, push, failed push, pop, and
+binding retirement. S3 adds direct evidence across capture and consume. 60 §7
 proof point 10 should be read that way.
+
+For a future multithreaded Runtime, retirement and disposal are ordered against
+§4.1 protected resolution. Mutation first detaches or replaces the binding and
+retires its reference; reclamation then waits for read-side epochs, entry and
+Frame pins, Continuations, binding references, and explicit leases. The choice
+of snapshot, reference count, epoch, or RCU is not frozen, but an address may
+not return to the recognition map for a new generation before the old
+generation reaches that quiescent state. A process mapping shared by several
+Runtimes needs process-shared generation lifetime accounting even though each
+Runtime keeps an independent recognition map.
 
 ### 7.1 An active frame does not consult the registry
 
@@ -553,84 +625,94 @@ A frame captures its StepMethod address, FrameDescriptor identity, and
 generation pin when it is pushed. The registry is consulted at Call and TailCall
 resolution and at entry — never per step for a frame that already exists.
 
-Without that rule, unregistration would reach into live execution.
+Without that rule, binding retirement would reach into live execution.
 `Reflect defineMethod:` for a selector whose implementation is on the frame
-stack would unregister its entry, and the next step of that still-live frame
-would fail to resolve. Design 49's quiescence guard covers `CompiledUnit
+stack would retire its binding, and a driver that re-resolved on the next step
+would fail. Design 49's quiescence guard covers `CompiledUnit
 activate`, not reflective redefinition, so the case is reachable. It would also
 contradict 60A §8, 60B §9, and 60D §11, which all say an active frame continues
 through its pinned implementation generation while new sends resolve late.
 
-60C §8 step 2 is amended to match: the driver resolves a registered entry when
-pushing a frame, not on every iteration of its loop.
+60C §8 step 2 is amended to match: resolve-and-pin is used at Call or TailCall
+frame push, while a running Frame invokes its captured StepMethod without
+consulting dispatch again.
 
-### 7.2 Entries are released on overwrite and removal, not only on unload
+### 7.2 Bindings retire entries; one overwrite does not unregister an alias
 
-Nothing about generation unload covers a method being replaced. `add_method`
-overwriting a thunk, and `removeMethod:on:` removing one, must both unregister
-the entry.
+Nothing about generation unload covers a method being replaced, but removing
+one binding cannot unregister a thunk that another selector, vtable, or explicit
+lease can still produce. A unique thunk address identifies one implementation;
+it does not imply that the implementation has only one binding.
 
-The mechanism is the one §8 establishes for the seal, not a hook: neither the
-overwrite hook nor the Store authorizer can serve, for the reasons given there.
-The dictionary entry carries a registered-entry marker, set by the stackless
-runtime layer and consulted by `add_method` and `remove_method` alike. Same
-per-selector shape, same layering, no new ABI. Without that, a REPL redefining
-one method accumulates a live entry
-per redefinition in a registry that is deliberately not a GC root set, so
-nothing ever collects them.
+Each direct installation therefore owns one binding reference to its
+ResumableEntry. Installing the same thunk under another selector or vtable owns
+another reference. Inheritance reuses the defining binding and adds no
+reference. The authoritative `add_method` and `remove_method` mutation paths
+already receive the previous Method address, so they increment the new direct
+binding and retire only the replaced or removed direct binding. No defining-
+vtable reconstruction, selector sealing, or change to lookup order is required.
 
-## 8. Sealing the microcode
+A custom lookup result is borrowed for the protected resolution of §4.1. A
+custom lookup or native cache that must retain the carrier independently of a
+direct binding must hold an explicit generation lease. Without that lease, an
+address returned after its final binding has retired is stale native behavior,
+not an implicit permanent root.
+
+When the last binding reference retires, the entry moves to a retirement set;
+it is not immediately erased. Readers that began before retirement may still
+convert the address into a pin. Reclamation and unregistration occur only after
+those readers, acquired entries, Frames, Continuations, and explicit leases
+have drained. A Runtime may then release the registration-generation handle,
+and the mapping-generation owner may unload or recycle the address only after
+the wider §7 gate also passes.
+
+S1 has owner-thread serialization and an unload refusal for method-bearing
+generations, so its binding counts and retirement set use ordinary mutable
+state. It must nevertheless implement correct alias counts and the same state
+transitions now. Turning every removed binding into an immortal entry would
+hide the bug behind an unbounded code-generation leak; immediately erasing the
+entry would preserve the alias and lookup race. Neither shortcut is accepted.
+
+## 8. Keeping the microcode late-bound
 
 60C §15 Q4 asks how primitive-backed Machine methods are identified so an
-arbitrary resumable method cannot displace one. The answer must be a real veto,
-and the two mechanisms that look like one are not.
+arbitrary resumable method cannot displace one. The accepted answer is that
+they are not privileged bindings: Machine microcode is an ordinary Birnam
+protocol and uses the same late-bound lookup as every other send.
 
-**The method-overwrite hook cannot refuse.** `MethodOverwriteHook` returns void,
-and `Runtime::add_method` calls it and then overwrites unconditionally; its
-contract permits only Store-log mutation and read-only queries. It is a single
-slot, already claimed by birnam-store's mirror, so installing a sealing hook
-would silently destroy the Store MOP mirror. Changing its signature would also
-break a frozen ABI field offset and 60 §3 invariant 10.
+The initial implementations are synchronous Rust primitives because private
+Frame storage needs a small regress breaker. Each canonical primitive validates
+the Machine capability, owner, lifecycle, drive epoch, descriptor, slot bounds,
+and slot kind before touching that storage. No Birnam-authored replacement using
+the public protocol receives a Frame pointer, arena pointer, or unchecked
+storage capability merely by occupying the same selector. The outer driver
+independently validates the canonical StepAction returned by the StepMethod
+before changing Machine state.
 
-**The Store method-mutation authorizer can refuse, but does not see
-everything.**
-`tracked_add_method` consults an authorizer and returns its answer, which is a
-genuine veto — but it is also single-slot and already taken by codegen-runtime,
-and it guards only the Store MOP path. Both `birnam_method` and `Tcc
-install:as:on:` bypass Store entirely, which are the paths block bodies and
-FFI wrappers use.
+These checks are local, not transactional. A Birnam-authored replacement may
+perform a valid mutation through a checked primitive and then return a malformed
+StepAction. The malformed action prevents the requested driver transition and
+moves the Machine to Failed; it does not roll back that earlier valid mutation.
+Transactional Frame journaling or copy-on-write is not part of S1.
 
-**Private vtable placement is not protection either, and the reason is worse
-than overwriting.** `Reflect defineMethod:on:as:` calls `ensurePrivateVtable` on
-its target, and when the target does not already own its vtable that call
-*creates a child vtable* with the old one as parent and re-points the object. So
-`[Reflect defineMethod: #currentPc on: aMachine as: [:self | 7]]` never touches
-the sealed entry on Machine's vtable: it installs into a fresh child dictionary,
-which is an add rather than an overwrite, and no hook fires because the child's
-direct lookup misses. Ordinary dispatch from a StepMethod then finds the shadow
-first, and the driver reports `invalidStepAction` on a healthy program — fatal
-under §3.3 if any barrier is below it.
+Add, overwrite, removal, inherited replacement, a private-child shadow, and a
+custom metacircular lookup all retain their ordinary meanings. Their effects
+are visible at the next resolve-and-pin, including one issued by a Frame that
+was already active across the mutation's turn boundary. The Frame's currently
+captured StepMethod and descriptor are not rewritten. Under later concurrent
+mutation, resolve-and-pin linearizes the send as observing either the old or new
+binding. An incompatible change may alter the program, return an unexpected Oop, fall
+through `doesNotUnderstand:`, or ultimately cause a typed driver failure. The
+runtime promises storage safety under such a change; it does not promise that
+an active computation remains semantically correct after its execution
+protocol is incompatibly redefined.
 
-**Decision.** The seal is consulted on any install of a sealed selector into any
-vtable whose parent chain reaches Machine's vtable, not only on mutation of the
-record that carries the seal. Shadowing is the case that matters, because it is
-the one an ordinary reflective operation reaches without touching anything
-sealed.
-
-**Decision.** The seal is a per-selector flag in the method dictionary,
-consulted by every mutation path — add, overwrite, remove, and shadow alike.
-Removal matters as much as overwrite: removing `currentPc` makes the next
-microcode send
-miss, fall to `object_dnu`, and answer an error Oop where the step expected a
-program counter or a StepAction, so the driver reports `invalidStepAction` on a
-healthy program.
-
-This adds no IdApi surface. Machine's vtable and its microcode are installed by
-the stackless runtime layer in Rust, which sets the flag through internal
-runtime API; nothing outside the floor needs to seal anything. Malleability
-elsewhere on Machine — inspection, policy, drive protocol — is unaffected. The
-seal covers only the irreducible frame and action operations of 60B §1, which
-60C §6 already argues is the honest place for this boundary.
+This is the same malleability boundary as replacing any foundational protocol.
+Native artifacts remain trusted native code and can already violate process
+memory safety independently of method lookup; sealing selectors would not form
+a security boundary. A future versioned or generation-pinned microcode protocol
+may improve compatibility diagnostics, but S1 adds neither a mutation veto nor
+an exception to ordinary late binding.
 
 ## 9. Amendments incorporated into 60C
 
@@ -657,11 +739,12 @@ descriptor and validated like any other operand. The objection in §13.1 was to
 smuggling native control identity through the argument buffer, not to the buffer
 carrying a value.
 
-### 9.2 Sealing
+### 9.2 Late-bound microcode
 
-60C §15 Q4 is answered by §8: a per-selector seal in the method dictionary,
-covering add, overwrite, removal, and shadowing through any vtable whose parent
-chain reaches Machine's vtable.
+60C §15 Q4 is answered by §8: Machine microcode remains an ordinary late-bound
+protocol. Its checked primitive implementations own the initial private-storage
+mechanism, while replacement remains normal Birnam behavior and the driver
+retains the final StepAction validation boundary.
 
 ### 9.3 Evidence item 8
 
@@ -761,10 +844,29 @@ are multiples of it:
 | Measure | Budget |
 |---|---|
 | Continue transition | ≤ 2 × S |
+| Resolve-and-pin plus synchronous leaf invocation | ≤ 2 × S |
 | Call/Return pair, migrated to migrated | ≤ 4 × S |
 | Entry through a thunk | ≤ 6 × S |
 | Microcode sends per source-level step | ≤ 4, reported per step kind |
 | Maximum reachable depth through an unmigrated primitive | ≥ 0.5 × the pre-migration depth, reported with the measured native-stack capacity |
+
+The S1 owner-thread resolve-and-pin path has structural performance gates in
+addition to the ratio above: zero heap allocations, mutex acquisitions, atomic
+read-modify-write operations, or reference-count operations per ordinary
+resolution. Its read protection is a plain owner-thread epoch/depth token,
+amortized over a Machine turn or top-level send; registry classification is a
+non-allocating lookup. The benchmark must exercise the actual driver path to a
+synchronous leaf, not a helper that bypasses metacircular lookup or
+classification. A resumable hit separately reports registry probes and
+generation-pin operations per Frame push.
+
+Before concurrent code evolution is enabled, the concurrency follow-up adds
+uncontended and contended read-epoch measurements: cost per Machine turn and
+top-level host send, nested-token reuse, throughput with dispatch mutation, and
+retirement-queue drain latency. It must prefer an amortized read token over a
+mutex, global atomic increment, heap allocation, or `Arc` clone on every send.
+Any implementation choosing a different mechanism must publish same-run
+evidence that it meets or improves that shape.
 
 The S0 acceptance run used an isolated ReleaseSafe Rust prefix and quick harness
 mode and measured `S = 377 ns/op` on the 2026-08-04 development machine. That
@@ -802,13 +904,14 @@ measurement missed them.
 
 Extending 60A §9. None is an ordinary value:
 
-- `resumableEntryUnregistered` — a **thunk** was invoked and no live entry names
-  it. A *driver-side* registry miss is not a failure at all: it is how every
-  synchronous Method is reached (60A §5 step 4), and §4.2's false-negative
-  window is the only route by which a thunk can outlive its entry;
+- `resumableEntryUnregistered` — a **thunk** was invoked and no live or retiring
+  entry names it. A driver-side registry miss is not a failure only when the
+  address was never known as a thunk; that is how synchronous Methods are
+  reached (60A §5 step 4);
+- `resumableEntryRetired` — a known retired thunk was returned by a reader begun
+  after its retirement epoch, usually an unleased native or custom-lookup
+  cache. It is never reinterpreted as a synchronous Method;
 - `resumableEntryStaleGeneration` — the entry's generation was released;
-- `sealedMicrocodeSelector` — add, overwrite, removal, or shadowing of a sealed
-  selector;
 - `codeGenerationPinned` — disposal refused under the §7 gate;
 - `resumableEntryUnrestored` — an image validity failure: a restored thunk has
   no live entry after boot re-registration (§4.3). Unlike the others this one is
@@ -826,11 +929,24 @@ Frozen:
 - a Call or TailCall resolving to a live ResumableEntry pushes a frame and never
   invokes a thunk; the thunk is reached only by ordinary `IdApi.send`;
 - registration produces one ResumableEntry regardless of surface;
-- recognition maps a resolved implementation — named by its defining vtable and
-  selector, not by code address — to at most one live entry, and never aliases
-  across unload;
-- nested entry reuses the current Machine above an entry-barrier delimiter, and
-  is chosen by barrier scope rather than by thread activity;
+- lookup through classification and pin acquisition is one logical protected
+  `resolve-and-pin` operation; it returns a pinned ResumableEntry, a lifetime-
+  protected synchronous Method, or unbound, never a bare address whose code may
+  retire before use;
+- recognition is independent of inherited or custom metacircular lookup, and a
+  registry miss retains the synchronous-Method interpretation;
+- each direct binding owns a binding reference; aliases own independent
+  references, inheritance does not duplicate one, and retaining a borrowed
+  custom-lookup result requires an explicit generation lease;
+- retirement detaches only the affected binding and delays unregistration and
+  reclamation until older dispatch readers, binding references, acquired
+  entries, Frames, Continuations, and explicit leases are quiescent;
+- a thunk address cannot be reused until that complete quiescence condition
+  holds across every Runtime sharing the mapped generation;
+- nested entry reuses the scoped Machine above an entry-barrier delimiter, and
+  is chosen by inherited same-execution entry scope rather than by thread
+  activity; the driver installs that scope around StepMethod and synchronous-
+  Method invocation, while unrelated host/reactor work suppresses it;
 - a Machine has one drive epoch, advancing on drive entry and exit, and
   validation always compares against that single current value;
 - Abort, Restore, and Capture terminate at the innermost entry barrier;
@@ -843,8 +959,11 @@ Frozen:
 - migration preserves result and error values for a matching argument count, and
   preserves neither mismatched-arity behavior nor maximum call depth;
 - proper tail behavior requires a resumable target;
-- microcode selectors are sealed against add, overwrite, removal, and shadowing
-  through a private child vtable;
+- Machine microcode remains ordinarily late-bound and unsealed. A Birnam-
+  authored replacement using public capabilities receives no raw Frame or arena
+  pointer, and incompatible replacement cannot bypass final driver validation;
+  prior valid checked primitive mutations are not rolled back. Trusted native
+  artifacts retain their existing native authority;
 - an active frame captures its step address, descriptor, and generation pin at
   push, and does not consult the registry per step.
 
@@ -854,8 +973,9 @@ Not frozen:
   sized;
 - the entry shim's exact name;
 - ResumableEntry layout, indexing, or registry data structure;
-- whether recognition is a vtable-record side table, a tag word beside the
-  dictionary entry, or another per-implementation mapping;
+- the synchronization mechanism a future multithreaded Runtime uses to provide
+  protected resolve-and-pin, except that it may not hold a lock or Rust borrow
+  across metacircular lookup and must meet §11's performance evidence;
 - arena chunk retention and trim policy;
 - descriptor blob encoding;
 - the §11 budget numbers, which are provisional by construction.
@@ -866,6 +986,13 @@ Each item is labelled with the stage that can first run it. S1 gates on the S1
 items; the later ones gate their own stage.
 
 Registration and entry are covered when tests demonstrate:
+
+Microcode memory-safety evidence stays at its owning boundaries rather than
+being duplicated here: 60B §12 test 8 covers checked primitive validation before
+each primitive mutation, and 60A §10 test 9 covers malformed final-action
+failure before the requested driver transition. Neither test promises rollback
+of an earlier valid checked mutation. Item 12 below proves only the late-binding
+integration seam.
 
 1. **(S1)** an ordinary send to a migrated selector answers the same Oop as
    before migration, for the same selector-determined argument count;
@@ -879,14 +1006,17 @@ Registration and entry are covered when tests demonstrate:
    completes and returns through the thunk without the caller observing a
    Machine;
 4. **(S1)** a live frame keeps running after its selector is reflectively
-   redefined and its entry unregistered, because the frame captured its step
-   address and descriptor at push;
-5. **(S1)** nested entry pushes onto the current Machine above an entry-barrier
-   delimiter, and the Machine count does not grow with nesting depth;
-6. **(S1)** a thunk reached with an active drive but no active barrier — a host
-   or reactor callback — starts a fresh Machine rather than nesting;
-7. **(S1)** the drive stack is a distinct borrow domain: nested entry does not
-   panic or deadlock on a reentrant borrow;
+   redefined and its binding retired, because the frame captured its step
+   address, descriptor, and generation pin at push;
+5. **(S1)** nested entry from both a synchronous Method and a resumable
+   microcode replacement pushes onto the scoped Machine above an entry-barrier
+   delimiter; the Machine count does not grow, the waiting outer Frame survives,
+   and the nested work cannot suspend or capture across the delimiter;
+6. **(S1)** a thunk reached by unrelated host or reactor work with an active
+   drive but a suppressed entry scope starts a fresh Machine rather than
+   nesting;
+7. **(S1)** the entry-scope stack is a distinct borrow domain: nested entry does
+   not panic or deadlock on a reentrant borrow;
 8. **(S1)** an outer drive's StepAction is stale during a nested drive **and
    remains stale after it returns**, so a driver that re-read a rewritten
    scratch payload would fail rather than decode it;
@@ -897,51 +1027,65 @@ Registration and entry are covered when tests demonstrate:
     in an outer frame slot;
 11. **(S1)** a FrameView taken on a nested frame is stale after that frame pops
     and an outer Call reuses its arena offset;
-12. **(S1)** add, overwrite, removal, **and shadowing through a private child
-    vtable** of a sealed microcode selector each fail with
-    `sealedMicrocodeSelector`, leaving the original primitive installed;
-13. **(S1)** every microcode selector is owned by Machine's own vtable record
-    rather than inherited, asserted structurally by reflection, not by timing;
-14. **(S1)** overwriting or removing a thunk unregisters its entry;
-15. **(S1)** a driver failure raised inside `do:` is fatal rather than discarded
+12. **(S1)** add, overwrite, removal, inherited replacement, private-child
+    shadowing, and custom lookup of a microcode selector retain ordinary late-
+    binding behavior. Mutation occurs after a StepMethod returns while its Frame
+    remains active; that Frame's next resolve-and-pin observes the new binding,
+    while its captured StepMethod and descriptor remain unchanged;
+13. **(S1)** installing one thunk under two direct bindings gives it two binding
+    references; overwriting or removing one retires only that reference and the
+    other binding remains resumable. After the final reference retires, a
+    deterministic pause between lookup and classification still resolves to an
+    acquired entry plus directly observed generation pin, never a synchronous
+    misclassification; failed Frame push releases that pin. Runtime-local
+    registries may independently recognize the same mapped thunk address without
+    sharing entry state. A custom-lookup cache retaining the carrier with an
+    explicit lease remains valid through binding retirement; the same cache
+    without a lease receives `resumableEntryRetired`, never synchronous
+    invocation;
+14. **(S1)** a driver failure raised inside `do:` is fatal rather than discarded
     by `vector_do`, and is not catchable by `on:do:`;
-16. **(S1)** disposal of a generation that installed a method is refused with a
+15. **(S1)** disposal of a generation that installed a method is refused with a
     kinded failure per §7's staging rule, while the author file, `.candidate`
-    sidecar, and `state discarded` fact still happen;
-17. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
+    sidecar, and `state discarded` fact still happen. Registration and Frame pin
+    counts are observed directly across resolve, push, failed push, pop, and
+    binding retirement rather than inferred from unconditional refusal;
+16. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
     invocation and no native-stack growth, asserted by a probe counter on the
     entry shim that must read zero;
-18. **(S2)** the same holds when the implementation is **inherited** — a
-    resumable method installed on a prototype and sent to a child resolves
-    through its defining vtable to its entry, with the probe counter still zero;
-19. **(S2)** a resumable **block body** registers and executes through the
+17. **(S2)** the same holds when the implementation is **inherited** and when a
+    custom metacircular lookup returns its registered thunk address, with the
+    probe counter still zero in both cases;
+18. **(S2)** a resumable **block body** registers and executes through the
     direct `birnam_method` surface, not only through the Store MOP;
-20. **(S2)** live and AOT registration produce identical FrameDescriptor
+19. **(S2)** live and AOT registration produce identical FrameDescriptor
     identity, declared arity, and implementation identity for the same source;
-21. **(S2)** a TailCall to a synchronous Method increments the drive's
+20. **(S2)** a TailCall to a synchronous Method increments the drive's
     `tailCallToSynchronous`, and the tail-recursion proof asserts it is zero for
     the drive under test;
-22. **(S2)** an image saved with a migrated method boots through the mapped-code
+21. **(S2)** an image saved with a migrated method boots through the mapped-code
     path, re-registers its restored thunks, and answers the same result as the
     same image booted through the rebuild path; an image whose restored thunk
     has no live entry answers `resumableEntryUnrestored` at the §4.3 check point
     rather than aborting on first send;
-23. **(S3)** capture, suspension, Abort, and Restore that would cross an entry
+22. **(S3)** capture, suspension, Abort, and Restore that would cross an entry
     barrier each fail with `continuationBarrier`, and the outer drive resumes
     correctly afterward;
-24. **(S3)** after `dlclose`, no registry entry names an implementation in the
+23. **(S3)** after `dlclose`, no registry entry names an implementation in the
     unloaded generation's mapped range;
-25. **(S3)** disposal is refused with a kinded failure while a frame, a
+24. **(S3)** disposal is refused with a kinded failure while a frame, a
     continuation, or a registered vtable holds the generation — the vtable case
     demonstrated with a stored block, and the refusal expected to be
     unconditional per §7. Pin correctness is evidenced separately, by observing
     pin counts across push, pop, capture, and consume, since the refusal alone
     would pass with pinning unimplemented;
-26. the §11 measures are published whether or not they pass. S1 publishes the
-    Continue and microcode-per-step measures using its hand-written StepMethod,
-    against the `sends.compiled-unary` value `S`; the Call/Return, entry, and depth
-    measures need two migrated implementations and a thunk, so they belong
-    to S2.
+25. the §11 measures are published whether or not they pass. S1 publishes the
+    Continue, synchronous resolve-and-pin, and microcode-per-step measures using
+    its hand-written StepMethod, against the `sends.compiled-unary` value `S`,
+    and asserts the zero-allocation/lock/atomic/refcount structural fast path.
+    The Call/Return, entry, and depth measures need two migrated implementations
+    and a thunk, so they belong to S2. Concurrent evolution later publishes the
+    read-epoch and mutation-contention measures before it can be accepted.
 
 ## 15. Open questions
 

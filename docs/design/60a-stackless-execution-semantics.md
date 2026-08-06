@@ -1,6 +1,7 @@
 # 60A — Stackless Execution Semantics
 
-> **Status:** S0 decision record, accepted 2026-08-04.
+> **Status:** S0 decision record, accepted 2026-08-04; recognition, same-
+> execution-entry-scope, and resolve-and-pin amendments accepted 2026-08-05.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -165,17 +166,22 @@ When a resumable frame returns a CallAction Oop:
 
 1. The driver validates the referenced receiver, selector, argument range, and
    result slot against the frame descriptor.
-2. It resolves the current method address.
-3. If the resolved implementation — its defining vtable and selector, never the
-   code address alone — names a live registration, it pushes a frame for that
-   implementation and generation, capturing the step address and descriptor at
-   push. Registration, recognition, and the rule that forbids recognizing a
-   recycled code address are defined in
+2. Through the active Runtime's logical `resolve-and-pin` operation, it performs
+   ordinary metacircular lookup and converts the result, before its read
+   protection ends, into either a pinned ResumableEntry, a lifetime-protected
+   synchronous Method, or an unbound result. No unprotected Method address is
+   exposed between lookup and classification.
+3. For a ResumableEntry it pushes a frame for the captured implementation and
+   generation, transferring the acquired generation pin to the Frame. A failed
+   push releases the pin.
+4. For a synchronous Method it invokes the Method with a driver-owned argument
+   buffer while its code lifetime remains protected, then writes the returned
+   Oop to the result slot. Registration, binding lifetime, protected resolution,
+   and address-reuse quiescence are defined in
    [60E](60e-resumable-registration-and-entry.md).
-4. Otherwise it enters the synchronous Method barrier, invokes the Method with
-   a driver-owned argument buffer, and writes the returned Oop to the result
-   slot.
-5. The caller resumes at its saved program counter.
+5. For an unbound result it follows the existing DNU redispatch path under the
+   same lifetime rules.
+6. The caller resumes at its saved program counter.
 
 TailCall performs the same resolution but reuses the current frame storage when
 the new descriptor fits, or replaces it when it does not. It never retains the
@@ -243,22 +249,29 @@ different Machine in S3.
 
 ## 7. Native and foreign barriers
 
-The runtime enters a synchronous barrier before invoking any Method that is not
-registered as resumable. The barrier is dynamically scoped and is visible to
-capture validation.
+The driver establishes a **same-execution entry scope** before invoking either
+a StepMethod or a synchronous Method as part of the current logical drive. The
+scope names the current Machine for the entry shim; if that native activation
+re-enters resumable code through an ordinary send, the shim pushes an
+entry-barrier delimiter above the waiting Frame. Establishing this scope around
+a StepMethod does not make the StepMethod a synchronous language method or a
+scheduling boundary; it only protects the live native activation while an
+ordinary send made by that step is answered.
 
-While a synchronous barrier is active:
+While a same-execution entry scope has produced an entry barrier:
 
 - nested resumable sends may run to completion;
 - the native activation may retain Oops on its own stack;
 - capture that would include that activation fails deterministically;
 - the runtime does not copy, switch, or expose the native stack.
 
-Foreign calls and C callbacks are barriers for the duration of the foreign
-activation. A C callback may enter a nested Machine only if it drives that
-Machine to completion before returning its declared C result. Asynchronous
-foreign work must use an explicit completion operation later; it cannot retain
-a Birnam continuation through an unaware C caller.
+Foreign calls and C callbacks that remain part of the same logical call inherit
+the scope and are barriers for the duration of the foreign activation. A C
+callback may enter nested resumable work only if it drives that work to
+completion before returning its declared C result. Unrelated host or reactor
+work explicitly suppresses the inherited scope and starts a fresh Machine.
+Asynchronous foreign work must use an explicit completion operation later; it
+cannot retain a Birnam continuation through an unaware C caller.
 
 ## 8. Code-generation behavior after restoration
 
@@ -268,8 +281,8 @@ and program-counter interpretation.
 
 Any new send performed by that step is an ordinary current-generation lookup.
 If it resolves to a new resumable implementation, the new frame pins the new
-generation. If it resolves to a synchronous Method, the new frame enters the
-current synchronous barrier.
+generation. If it resolves to a synchronous Method, the driver invokes it under
+a same-execution entry scope.
 
 There is no suspended-frame migration across recompilation in S3. A future
 migration feature would need explicit frame maps and a conversion policy.
@@ -293,7 +306,7 @@ The first driver must distinguish at least:
 - continuationNotImageable.
 
 [60E §12](60e-resumable-registration-and-entry.md) extends this taxonomy with
-the registration, entry, sealing, and pinning failures.
+the registration, entry, and pinning failures.
 
 These are host/runtime failures. Language-level errors continue to be ordinary
 Birnam Oop results and must pass through the same Return path as any other
@@ -319,8 +332,10 @@ Before S1 implementation is accepted, tests must specify:
 6. one-shot restore rejects the second restore;
 7. generation pins survive a suspended frame and release after consumption;
 8. a continuation cannot be serialized into an image or durable Store fact;
-9. malformed action and slot references fail before dereferencing generated
-   pointers;
+9. a malformed action or slot reference prevents the requested driver control
+   transition, moves the Machine to Failed, and fails before dereferencing a
+   generated pointer. This does not roll back valid checked primitive mutations
+   already completed earlier in the StepMethod;
 10. an action from another Machine or an expired drive epoch is rejected;
 11. the driver decodes canonical StepAction objects without recursively sending
     to them.

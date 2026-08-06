@@ -1,13 +1,15 @@
 # 60C — The StepMethod Calling Contract
 
-> **Status:** S0 calling-contract decision, accepted 2026-08-04. StepMethod
+> **Status:** S0 calling-contract decision, accepted 2026-08-04; late-bound-
+> microcode, same-execution-entry-scope, and resolve-and-pin amendments accepted
+> 2026-08-05. StepMethod
 > reuses the existing Method ABI without adding a StepMethod-specific native
 > API. S1 must validate the accepted baseline with the bounded probe in §14;
 > evidence that the shape cannot express a required semantic must return as a
 > new design decision rather than silently growing the ABI.
 >
 > [60E §9](60e-resumable-registration-and-entry.md)'s three amendments — the
-> driver argument count, microcode sealing, and evidence item 8 — are part of
+> driver argument count, late-bound microcode, and evidence item 8 — are part of
 > this accepted contract and are marked inline below.
 
 ## 1. Accepted decision
@@ -137,8 +139,8 @@ Relevant prior records are:
 
 ### 4.1 Entry
 
-The driver resolves the current Frame's registered implementation entry and
-invokes it through the existing Method carrier:
+The driver invokes the current Frame's captured StepMethod entry through the
+existing Method carrier:
 
 ```c
 Oop action = entry(machine, NULL, 0);            /* descriptor declares none */
@@ -171,11 +173,14 @@ generation, drive epoch, and slot operands before changing Machine state.
 
 The Method function type does not itself distinguish a synchronous value from a
 StepAction. Registration does, and
-[60E](60e-resumable-registration-and-entry.md) defines it: a vtable holds an
-ordinary entry thunk, never the StepMethod address, so an ordinary send can
-never reach a StepMethod with a non-Machine receiver. Invoking an address under
-the wrong semantic tag is malformed-artifact or runtime-corruption failure, just
-as invoking any foreign function under the wrong ABI contract would be.
+[60E](60e-resumable-registration-and-entry.md) defines it: a vtable holds a
+unique ordinary entry thunk, never the StepMethod address, and the active
+Runtime protects ordinary lookup through classification and generation-pin
+acquisition before the driver calls the StepMethod. An ordinary send can
+therefore never reach a StepMethod with a non-Machine receiver. Invoking an
+address under the wrong semantic role is
+malformed-artifact or runtime-corruption failure, just as invoking any foreign
+function under the wrong ABI contract would be.
 
 The function shape is not being overloaded with non-Oop control data. Receiver,
 arguments, and result retain their ordinary meanings. The additional rule is
@@ -240,14 +245,19 @@ send as a synchronous primitive call would preserve the native-stack problem
 the design exists to remove.
 
 The synchronous primitive implementation is temporary ownership of mechanism,
-not permanent ownership of language policy. Moving a Machine operation into
-Birnam later requires preserving a non-recursive regress path; it cannot be
-done merely by replacing a primitive with an arbitrary resumable method while a
-StepMethod is waiting synchronously for its result.
+not permanent ownership of language policy. Microcode lookup remains ordinary
+late binding. Replacing one of these methods with a resumable implementation is
+legal: the ordinary entry thunk drives that nested work to completion above the
+entry-barrier delimiter selected by the same-execution entry scope surrounding
+the waiting StepMethod activation (60E §5.2). It cannot suspend or capture
+across that barrier, and it may add enough entry cost to fail the performance
+budget, but it is not forbidden.
 
-That limitation should be explicit and small. It is the real malleability
-boundary to review, rather than hiding the same boundary inside a native
-capability table.
+The irreducible access to private Frame storage must still terminate in a
+checked primitive somewhere; replacement does not acquire a Frame pointer or
+native capability merely by occupying the original selector. An incompatible
+replacement may change or invalidate execution. That is the accepted
+malleability consequence, not a mutation the runtime vetoes.
 
 ## 7. Illustrative generated code
 
@@ -319,7 +329,7 @@ The Rust Machine driver remains a small irreducible loop:
 1. validate the Machine state and current Frame;
 2. use the StepMethod address the Frame captured when it was pushed — the
    registry is consulted at Call and TailCall resolution, not per step, so
-   unregistration cannot reach a live frame
+   binding retirement cannot reach a live frame
    ([60E §7.1](60e-resumable-registration-and-entry.md));
 3. invoke that entry through the Method ABI with Machine and the
    descriptor-declared argument buffer;
@@ -341,9 +351,10 @@ replaces a resumable Frame instead.
 ## 9. Frame access, lifetime, and trust
 
 No lease is passed to StepMethod. Machine validates that a drive is active and
-selects its current Frame. Every Machine microcode method validates slot kinds,
-bounds, implementation identity, and current drive epoch before touching
-storage.
+selects its current Frame. Every canonical primitive that touches private
+storage validates slot kinds, bounds, implementation identity, and current
+drive epoch before doing so. A replacement method receives no private storage
+authority unless it delegates to that checked protocol.
 
 A lease would improve diagnostics for accidental stale use, but it would not
 create a security boundary. A loaded native artifact already executes trusted
@@ -409,8 +420,8 @@ It does not freeze:
   60A and 60B.
 
 Reusing Method is conservative because that ABI is already frozen. The new
-one-way commitment is the semantic registration tag and returned-StepAction
-contract, not another native layout.
+one-way commitment is Runtime-qualified entry-thunk resolve-and-pin and the
+returned-StepAction contract, not another native layout.
 
 ## 12. Benefits and costs
 
@@ -432,12 +443,13 @@ contract, not another native layout.
 
 - Machine microcode messages pay normal dispatch overhead unless later compiler
   evidence justifies a compatible optimization.
-- Some primitive-backed Machine operations must remain synchronous at the
-  regress boundary.
+- Private Frame access must ultimately terminate in checked primitives, even
+  when the visible microcode method has been replaced by Birnam behavior.
 - Machine's current Frame is dynamic state rather than an explicit invocation
   capability.
 - Method and StepMethod share a physical function-pointer type, so artifact
-  validation and registration tags must be correct.
+  validation, unique-thunk registration, and resolve-and-pin lifetime
+  ordering must be correct.
 - Native code is trusted; Machine and epoch checks improve correctness but do
   not sandbox a malicious artifact.
 
@@ -554,11 +566,13 @@ calling shape. Questions 1, 4, and 6 are answered by
    method?
 3. Should action publication be protocol on Machine, canonical StepAction
    prototypes, or immutable call-site descriptors?
-4. **Resolved (60E §9.2).** Microcode selectors carry a seal in the method
-   dictionary, consulted by add, overwrite, removal, and shadowing through a
-   private child vtable alike, so an arbitrary resumable method cannot displace
-   a primitive the driver depends on, removal cannot silently unbind one, and a
-   reflective definition on a Machine instance cannot shadow one.
+4. **Resolved (60E §9.2).** Microcode is an ordinary late-bound Machine
+   protocol. Its initial checked primitive methods are replaceable, and an
+   incompatible replacement or removal may alter or invalidate active
+   execution. Birnam-authored replacements using the public protocol receive no
+   raw Frame or arena capability and cannot bypass the driver's validation of a
+   returned StepAction; trusted native artifacts retain their existing native
+   authority.
 5. Should the driver invoke the registered Method pointer directly, or should
    current implementation selection itself be an object-visible dispatch step?
 6. **Resolved (60E §11).** The provisional budget is stated as multiples of a
