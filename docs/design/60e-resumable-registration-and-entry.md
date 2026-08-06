@@ -2,7 +2,9 @@
 
 > **Status:** S0 decision record, accepted 2026-08-04; recognition, late-bound-
 > microcode, same-execution-entry-scope, binding-lifetime/resolve-and-pin, and
-> live-dispatch-timing amendments accepted 2026-08-05.
+> live-dispatch-timing amendments accepted 2026-08-05; Runtime ownership
+> and code-disposition staging accepted 2026-08-06, together with the S1
+> Machine-microcode protocol.
 > This record closes the registration seam that
 > [60A](60a-stackless-execution-semantics.md) §5 and
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
@@ -42,6 +44,9 @@ answer, not a failure. This record removes that possibility by construction.
 | Send path | An ordinary `IdApi.send` from unmigrated code reaches the thunk, which drives the implementation and answers the ordinary result. |
 | Nested entry | A thunk reached inside an inherited **same-execution entry scope** pushes onto the scoped Machine above an entry-barrier delimiter rather than allocating a second Machine. The driver establishes this scope around StepMethod and synchronous-Method invocation. Unrelated host/reactor work suppresses it and starts a fresh Machine. |
 | Registration record | A Runtime-scoped, process-local **ResumableEntry** owns its unique thunk address, StepMethod address, FrameDescriptor, registration-generation handle, declared arity, and implementation identity. Resolve-and-pin acquires the separate call-generation pin transferred to a Frame. |
+| Runtime authority | The active `birnam-id::Runtime` is the sole semantic authority for Machine state, Runtime-local entry recognition, binding retirement, dispatch-read protection, and generation pins. The registration shim targets the explicitly entered Runtime; TLS may route the call but is not the authority. |
+| Code custody | Codegen/TCC or another process code repository owns physical mappings. It may share immutable code across isolated Runtimes, but disposal waits for every Runtime lease; it cannot unregister or unload code behind a Runtime's execution state. |
+| Candidate discard | Logical candidate retirement and physical mapping disposition are separate outcomes. Logical discard may complete while the repository reports `Retained(codeGenerationPinned)`; this is not failure of the logical transition. |
 | Recognition | The active Runtime maps each unique live **entry-thunk address** to at most one ResumableEntry. Lookup-through-recognition is protected as one logical operation and acquires the entry plus a generation pin before the protection ends. |
 | Binding lifetime | Each direct installation owns one binding reference. Aliases own independent references; inheritance does not duplicate the defining reference. Lookup results are borrowed, and retaining a raw Method carrier requires an explicit generation lease. Retirement and address reuse wait for binding references, dispatch readers, acquired entries, Frames, Continuations, and leases to quiesce. |
 | Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
@@ -177,6 +182,15 @@ entry-thunk address)`, so the same mapped code may be registered independently
 by future in-process Runtimes without sharing execution state. Entries are also
 validated by index plus generation when held as capabilities, following the
 Machine registry pattern of 60B §1.
+
+The authoritative registry and its retirement/read-epoch state live with
+dispatch in `birnam-id::Runtime`, not in the compiler or loader. Codegen's
+process state is a Codegen context, not a second Birnam Runtime. The emitted
+registration shim uses the explicitly entered Runtime and fails when none is
+active. A process code repository may own the physical mapping and aggregate
+leases from several isolated Runtimes; the Runtime retains the safety decision
+about whether its entries, bindings, Frames, Continuations, or readers can still
+reach that generation.
 
 ### 4.1 Resolve and pin is one logical operation
 
@@ -554,16 +568,17 @@ arity" — and the entry seam must not reintroduce it.
 
 ## 7. The unload gate
 
-60B §9 forbids disposing code while a frame or continuation pins its generation.
-The current paths do not implement that, and today's refusal is not even a
-failure: `discardCandidate:` and `releaseCandidate:` refuse only while a
-candidate is active or prepared, and on refusal call `note_error` — which
-stashes
-a byte string in a mutex — then return the unit itself, indistinguishable from
-success.
+60B §9 forbids disposing code while a Frame or Continuation pins its generation.
+The current paths do not implement that, and today's refusal is not observable
+as a result: `discardCandidate:` and `releaseCandidate:` refuse only while a
+candidate is active or prepared, call `note_error`, then return the unit itself.
 
-S3 must therefore *introduce* a kinded failure here, not reuse one. Its
-condition must be wider than 60B §9 states, because of §4.2's second direction:
+S1 must introduce a structured physical-disposition outcome before it registers
+the first resumable method. The code repository reports either `Disposed` or
+`Retained(reason)`, with `codeGenerationPinned` as the conservative-retention
+reason defined here. This process-local outcome is exposed through the Codegen
+protocol or its discard receipt, not by expanding IdApi. The disposal condition
+is wider than 60B §9 states, because of §4.2's second direction:
 
 > Disposal is refused unless the generation has zero registration handles,
 > direct binding references, pre-retirement dispatch readers, acquired
@@ -590,24 +605,35 @@ or an explicit unload-time sweep that rebinds affected selectors. That work
 belongs to the lifetime record (Future 60G), and the recognition path of §4.1
 must not be read as depending on it.
 
-**Staging.** Recognition ships in S1–S2 while this gate is an S3 deliverable, so
-the interval is knowingly exposed. Since the gate degenerates to refusal anyway,
-S1 should refuse code disposal for any generation whose code is reachable from a
-registered vtable, and record the refusal as a kinded failure from the start.
-That predicate is the one §7 says is not yet computable, so in practice S1
-refuses whenever the generation installed a method — but the refusal must be
-stated in terms of reachability, so that making the registry collectable later
-narrows it rather than requiring the rule to be rewritten. Refusing disposal
-must not suppress the rest of `discardCandidate:`: the author file, the
-`.candidate` sidecar, and the `state discarded` fact are Store state Design 49's
-reconciliation reads.
+**Staging.** The gate ships with recognition in S1. Since reachable vtables are
+not yet computable, S1 retains every generation that installed a method; a
+generation that installed none may still answer `Disposed` once its ordinary
+mapping leases drain. The conservative rule is stated in terms of reachability
+so that making the registry collectable later narrows it rather than rewriting
+it. S3 adds Continuations to the holder accounting. Future 60G may answer
+`Disposed` for a formerly method-bearing generation only after it closes the
+vtable-reachability problem and every Runtime has released its leases.
+
+Logical discard is a separate transition. A retained mapping must not suppress
+removal of the author file and `.candidate` sidecar or assertion of the
+`state discarded` fact, which are Store state Design 49's reconciliation reads.
+The discard result or receipt records both the successful logical transition
+and its `Disposed` or `Retained(reason)` physical disposition. Expected
+retention is not a Machine driver failure and must not make a self-hosted
+compiler retry a logical discard that already completed.
+
+S1 also exposes retained-generation count and retained mapped bytes. These are
+required telemetry, not proof of pin correctness. Conservative retention is a
+known leak per evolution cycle, and continuous self-hosted compilation is not a
+production-ready mode until Future 60G closes reclamation or accepts and enforces
+a bound.
 
 **Evidence.** Because the refusal is unconditional in practice, disposal
 behavior cannot serve as evidence that generation pinning works — a stubbed pin
 implementation would produce an identical observation. S1 must observe the
 minimal registration and Frame pin across resolve, push, failed push, pop, and
-binding retirement. S3 adds direct evidence across capture and consume. 60 §7
-proof point 10 should be read that way.
+binding retirement. S3 adds direct evidence across capture and consume. These
+are 60 §7 proof points 8 and 11 respectively.
 
 For a future multithreaded Runtime, retirement and disposal are ordered against
 §4.1 protected resolution. Mutation first detaches or replaces the binding and
@@ -730,6 +756,9 @@ program counter through a microcode send costs a full dispatch on every step —
 **Amendment.** The driver invokes a StepMethod with a descriptor-declared
 argument buffer of length 0 or 1. When the descriptor declares one, `args[0]` is
 the resume token: a SmallInt program counter for the frame being entered.
+
+A zero-argument descriptor is limited to a single-entry StepMethod that does not
+inspect its current PC; every multi-PC StepMethod declares the resume token.
 
 This is not the rejected Option A of 60C §13.1. That option made `args` a
 control array carrying an ephemeral lease — an object-shaped identity with no
@@ -912,7 +941,6 @@ Extending 60A §9. None is an ordinary value:
   after its retirement epoch, usually an unleased native or custom-lookup
   cache. It is never reinterpreted as a synchronous Method;
 - `resumableEntryStaleGeneration` — the entry's generation was released;
-- `codeGenerationPinned` — disposal refused under the §7 gate;
 - `resumableEntryUnrestored` — an image validity failure: a restored thunk has
   no live entry after boot re-registration (§4.3). Unlike the others this one is
   raised during image validation rather than at a thunk boundary.
@@ -920,6 +948,11 @@ Extending 60A §9. None is an ordinary value:
 Capture, suspension, Abort, and Restore that would cross an entry barrier all
 use the existing `continuationBarrier`. No depth failure kind is introduced;
 §5.3 explains why.
+
+`codeGenerationPinned` is instead the reason carried by the §7
+`Retained(reason)` physical-disposition outcome. A low-level operation that
+specifically requires immediate unmapping may treat it as a typed refusal, but
+a completed logical candidate discard does not become a runtime failure.
 
 ## 13. What this record freezes
 
@@ -929,6 +962,17 @@ Frozen:
 - a Call or TailCall resolving to a live ResumableEntry pushes a frame and never
   invokes a thunk; the thunk is reached only by ordinary `IdApi.send`;
 - registration produces one ResumableEntry regardless of surface;
+- one `birnam-id::Runtime` owns semantic execution state and Runtime-local entry
+  registration; compiler and loader state never own Machines or recognition;
+- an emitted registration operation targets the explicitly entered Runtime and
+  is artifact ABI rather than an IdApi field;
+- a process code repository may own and share immutable mappings, but disposal
+  waits for every isolated Runtime's leases and Runtime-local execution pins;
+- logical candidate discard is independent of physical mapping disposition;
+  S1 reports `Disposed` or `Retained(reason)`, conservatively retains every
+  method-bearing generation, and exposes retained-generation count and bytes;
+- S3 adds Continuations to the S1 holder accounting, while Future 60G owns
+  actual reclamation of formerly method-bearing mappings;
 - lookup through classification and pin acquisition is one logical protected
   `resolve-and-pin` operation; it returns a pinned ResumableEntry, a lifetime-
   protected synchronous Method, or unbound, never a bare address whose code may
@@ -1045,11 +1089,14 @@ integration seam.
     invocation;
 14. **(S1)** a driver failure raised inside `do:` is fatal rather than discarded
     by `vector_do`, and is not catchable by `on:do:`;
-15. **(S1)** disposal of a generation that installed a method is refused with a
-    kinded failure per §7's staging rule, while the author file, `.candidate`
-    sidecar, and `state discarded` fact still happen. Registration and Frame pin
-    counts are observed directly across resolve, push, failed push, pop, and
-    binding retirement rather than inferred from unconditional refusal;
+15. **(S1)** discarding a generation that installed no method completes with a
+    `Disposed` physical disposition once its leases drain. Discarding one that
+    installed a method completes the author-file, `.candidate`-sidecar, and
+    `state discarded` logical transitions but reports
+    `Retained(codeGenerationPinned)`. Retained-generation count and bytes rise
+    observably. Registration and Frame pin counts are observed directly across
+    resolve, push, failed push, pop, and binding retirement rather than inferred
+    from conservative retention;
 16. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
     invocation and no native-stack growth, asserted by a probe counter on the
     entry shim that must read zero;
@@ -1071,14 +1118,14 @@ integration seam.
 22. **(S3)** capture, suspension, Abort, and Restore that would cross an entry
     barrier each fail with `continuationBarrier`, and the outer drive resumes
     correctly afterward;
-23. **(S3)** after `dlclose`, no registry entry names an implementation in the
-    unloaded generation's mapped range;
-24. **(S3)** disposal is refused with a kinded failure while a frame, a
-    continuation, or a registered vtable holds the generation — the vtable case
-    demonstrated with a stored block, and the refusal expected to be
-    unconditional per §7. Pin correctness is evidenced separately, by observing
-    pin counts across push, pop, capture, and consume, since the refusal alone
-    would pass with pinning unimplemented;
+23. **(60G)** after actual reclamation of a method-bearing mapping, no Runtime
+    registry or reachable vtable names an implementation in the unloaded
+    generation's mapped range;
+24. **(S3)** a live Continuation contributes a directly observable generation
+    pin and the repository reports `Retained(codeGenerationPinned)` while it is
+    held. Pin counts are observed across push, pop, capture, consume, and
+    finalization; conservative method-generation retention alone is not accepted
+    as evidence that Continuation pinning works;
 25. the §11 measures are published whether or not they pass. S1 publishes the
     Continue, synchronous resolve-and-pin, and microcode-per-step measures using
     its hand-written StepMethod, against the `sends.compiled-unary` value `S`,

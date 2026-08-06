@@ -3,7 +3,9 @@
 > **Status:** Architecture overview and delivery index; S0 accepted 2026-08-04,
 > with the recognition, late-bound-microcode, same-execution-entry-scope,
 > binding-lifetime/resolve-and-pin, and live-dispatch-timing amendments accepted
-> 2026-08-05.
+> 2026-08-05; the Runtime-ownership and acceptance-staging amendments were
+> accepted 2026-08-06, together with the code-disposition staging and S1-slicing
+> amendments and the frozen S1 Machine-microcode protocol.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -82,6 +84,40 @@ The implementation must preserve these invariants:
     read-only FrameView Oops.
 12. Birnam owns execution-object identity and protocol. Rust temporarily owns
     the low-level storage and primitive operations behind that protocol.
+13. One Birnam Runtime is the sole semantic authority for its object universe
+    and in-flight execution. Codegen and loaders may hold physical code
+    resources, but cannot register, retire, or dispose them behind that
+    Runtime's execution authority.
+
+### 3.1 Runtime ownership
+
+The production `birnam-id::Runtime` is the ownership island for one Birnam
+object universe. Its private execution state owns Machine capabilities, Frame
+arenas, ResumableEntry recognition, protected dispatch resolution, binding
+retirement, entry scopes, and Runtime-local generation pins. This is mechanism
+at the same floor as send, allocation, and tracing; it does not move scheduler,
+compiler, or language policy into the floor.
+
+The host or reactor is the **executor** of a Runtime, not its owner of semantic
+state. The first implementation gives one Runtime one owner thread and
+interleaves many Machines cooperatively. Parallel computation uses isolated
+Runtimes with copied values, initially in separate processes. A later in-process
+isolate implementation may give several Runtimes separate heaps, Stores,
+dispatch, and execution registries; it may not reinterpret that model as several
+threads sharing one mutable Runtime.
+
+Codegen/TCC and artifact loaders have **physical custody** of mapped code. A
+process code repository may share immutable mappings across isolated Runtimes,
+but each Runtime registers its own ResumableEntries and holds its own generation
+leases. Disposal is an effect performed by the code repository only after every
+Runtime has released the mapping. The Runtime owns the safety verdict; the
+loader owns `dlclose` or its equivalent.
+
+Both the cold compiler and a future self-hosted compiler emit the same versioned
+registration operation. Its host shim registers against the currently entered
+Runtime and is invalid with no active Runtime. This is artifact ABI, not an
+IdApi extension. The compiler describes executable entries; it never owns
+Machine, dispatch, or entry-registry state.
 
 ## 4. Explicit non-goals for the first delivery
 
@@ -173,15 +209,19 @@ live/AOT parity against the calling contract and the 60E registration record.
 ### Future 60G — Lifetime and host integration
 
 Will complete TCC/AOT lifetime and live replacement above S1's minimal
-registration/Frame pins: binding retirement, continuation pin transfer,
-disposal, image rejection, and recovery behavior. Before concurrent evolution
-it must also supply 60D §8.1's read-side epochs, process-shared mapping lifetime,
-retirement diagnostics, and contention evidence.
+registration/Frame pins: binding retirement, continuation pin transfer, actual
+reclamation of method-bearing mappings, image rejection, and recovery behavior.
+Before concurrent evolution it must also supply 60D §8.1's read-side epochs,
+process-shared mapping lifetime, retirement diagnostics, and contention
+evidence. Continuous self-hosted compilation is not production-ready until this
+record either closes reclamation or establishes an accepted bound on retained
+code.
 
 ### Future 60H — Acceptance and rollout
 
-Will define the implementation slices, compatibility matrix, stack bounds,
-performance budgets, and release gates.
+Will define the compatibility matrix, release gates, and rollout policy. The S1
+implementation slices and their local exit evidence are part of this record;
+they cannot be deferred until rollout planning.
 
 ## 6. Delivery sequence
 
@@ -197,6 +237,12 @@ Acceptance authorizes S1 implementation of the parallel Machine substrate. It
 does not claim the S1 proof already passes: the hand-written StepMethod probe is
 the first validation of the accepted calling contract, and a concrete semantic
 failure returns to design review rather than silently changing the contract.
+
+Acceptance lists are cross-stage contracts. S0 acceptance freezes the complete
+list; an implementation stage gates only on items labelled for that stage, and
+later stages add their labelled evidence cumulatively. A compound obligation is
+split when its Machine/Frame portion first runs in S1 and its suspension or
+Continuation portion first runs in S3.
 
 Acceptance evidence on 2026-08-04:
 
@@ -214,11 +260,65 @@ Add the Machine Oop/native MachineState capability boundary, private Frame
 storage, canonical StepAction Oops, an action loop, root tracing/finalization,
 and a sync adapter. Add the owner-thread, non-allocating resolve-and-pin shape,
 direct-binding reference accounting, retirement state, and the minimal
-registration/Frame generation-pin transfer; do not add per-resolution locks,
-atomic read-modify-write operations, or reference-count traffic. Do not change
-generated code yet. An internal test StepMethod must be able to run to
-completion and produce the same result as send, and Birnam reflection must see
-the execution-object protocols.
+registration/Frame generation-pin transfer. Add the conservative physical-
+disposition gate and retained-generation count/byte telemetry; do not add per-
+resolution locks, atomic read-modify-write operations, or reference-count
+traffic. Do not change generated code yet. An internal test StepMethod must be
+able to run to completion and produce the same result as send, and Birnam
+reflection must see the execution-object protocols.
+
+Questions 2 and 3 in 60C §15 are resolved by the frozen Machine-microcode
+protocol in 60B §1 and 60C §5. S1 is implemented as the following dependency-
+ordered vertical slices.
+
+#### S1.1 — Leaf Machine
+
+Add the audited Runtime execution module, Machine capability and lifecycle,
+private Frame arena and descriptor validation, canonical ContinueAction and
+ReturnAction objects, checked action decoding, and Machine tracing and
+finalization. A hand-written StepMethod must execute through the existing Method
+ABI and answer the expected Oop; forced collection must preserve its live Frame
+Oops and later finalize an unreachable Machine exactly once.
+
+#### S1.2 — Stackless calls
+
+Add CallAction, TailCallAction, the synchronous-Method adapter, and same-
+execution entry barriers. Two hand-written StepMethods must mutually recurse for
+at least one million calls with bounded native-stack movement, TailCall must not
+grow Frame depth, synchronous re-entry must preserve the waiting Frame, and
+owner or exclusive-drive violations must fail before touching Frame storage.
+
+#### S1.3 — Registered ordinary send
+
+Add Runtime-local ResumableEntry recognition, the versioned registration shim,
+the unique entry thunk, and resolve-and-pin classification. An ordinary send
+from unmigrated code must enter the Machine, execute the registered hand-written
+StepMethod, and answer the same result as its synchronous predecessor. This
+slice changes no source compiler lowering.
+
+#### S1.4 — Mutation and lifetime
+
+Add direct-binding references, retirement state, registration and Frame pins,
+deterministic read-side protection tests, active-Frame redefinition behavior,
+independent Runtime registrations over a shared immutable mapping, conservative
+physical disposition, and retained-generation count/byte telemetry. Alias,
+inheritance, custom-lookup, failed-push, logical-discard, and multi-Runtime lease
+tests must exercise the integrated path.
+
+#### S1.5 — Malleability and acceptance
+
+Complete the canonical Machine, StepAction, and FrameView reflective protocols;
+checked primitive replacement; malformed, stale, wrong-Machine, and wrong-slot-
+kind rejection; process-local image rejection; and every S1-labelled acceptance
+item in 60A, 60B, 60D, and 60E. Publish the 60C/60E measurements and enforce the
+zero-allocation/lock/atomic/refcount structural fast-path checks.
+
+Every slice preserves the synchronous path and frozen IdApi, keeps unsafe
+physical unloading disabled, passes the repository verification gate, and adds
+executable integrated evidence rather than only dormant types. Source compiler
+lowering remains S2. A slice may use test-only hand-written StepMethods, but it
+may not expose a partially safe registration or disposal path to ordinary
+artifacts.
 
 ### S2 — Minimal resumable compiler path
 
@@ -229,8 +329,8 @@ with bounded native-stack movement and live/AOT registration parity.
 ### S3 — Suspension and one-shot restoration
 
 Add the explicitly defined host/test suspension operation, continuation
-lifecycle, forced-GC coverage, continuation pin transfer, disposal enforcement,
-and image rejection.
+lifecycle, forced-GC coverage, continuation pin transfer, extension of the S1
+disposition gate to Continuation holders, and image rejection.
 
 ### S4 — Callback-driving control primitives
 
@@ -274,11 +374,17 @@ The S1/S2 execution proof is successful only when it demonstrates:
 5. explicit frame roots surviving forced collection;
 6. deterministic rejection across a native barrier;
 7. measured overhead against the current Rust synchronous path, published
-   against the 60E §11 budget whether or not it passes.
+   against the 60E §11 budget whether or not it passes;
+8. directly observed registration and Frame pins, plus conservative physical
+   disposition and retained-generation count/byte telemetry.
 
 The S3 suspension proof adds:
 
-8. suspension and resumption under the S0 contract;
-9. one-shot restoration rejecting its second restore;
-10. generation pins refusing code disposal while a frame or continuation holds
-    them.
+9. suspension and resumption under the S0 contract;
+10. one-shot restoration rejecting its second restore;
+11. directly observed Continuation pin transfer while the S1 disposition gate
+    continues to retain the mapping.
+
+Future 60G owns proof that a formerly method-bearing mapping can actually be
+reclaimed without leaving a Runtime registry or reachable vtable naming its
+address range.

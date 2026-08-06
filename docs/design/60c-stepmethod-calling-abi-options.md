@@ -2,7 +2,8 @@
 
 > **Status:** S0 calling-contract decision, accepted 2026-08-04; late-bound-
 > microcode, same-execution-entry-scope, and resolve-and-pin amendments accepted
-> 2026-08-05. StepMethod
+> 2026-08-05; Runtime ownership and the S1 Machine-microcode protocol accepted
+> 2026-08-06. StepMethod
 > reuses the existing Method ABI without adding a StepMethod-specific native
 > API. S1 must validate the accepted baseline with the bounded probe in §14;
 > evidence that the shape cannot express a required semantic must return as a
@@ -200,20 +201,26 @@ Machine is the explicit semantic context of a StepMethod. Its current private
 Frame is analogous to the current register bank and continuation link in the
 Scheme interpreter.
 
-Generated code accesses that state through ordinary messages to Machine. The
-initial protocol needs operations in these categories:
+Generated code accesses that state through ordinary messages to Machine. S1
+freezes the smallest useful protocol as `oopAt:`, `oopAt:put:`, `continueAt:`,
+`callSite:`, `tailCallSite:`, `returnAt:`, and `abortAt:`. Their exact meanings
+are specified in 60B §1.
 
-- inspect the current program counter;
-- load an Oop or raw value from a descriptor-validated Frame slot;
-- store an Oop or raw value into a descriptor-validated Frame slot;
-- publish Call, TailCall, Return, Continue, and Abort actions; and
-- later, publish suspension, capture, and restoration actions.
+The descriptor-declared resume token supplies the current program counter.
+Control publishers validate and install the next counter where required, so
+there is no separate program-counter or validation message. S1 and S2 expose
+only descriptor-validated Oop slots; private raw storage is not part of the
+initial language protocol. A zero-argument descriptor is limited to a single-
+entry StepMethod that does not inspect its current PC; every multi-PC StepMethod
+uses the one-argument resume-token form.
 
-The exact selector names and decomposition are not frozen by this record. S1
-must demonstrate the smallest useful protocol before those details are accepted.
-For example, S1 may find that action publication belongs on canonical action
-prototypes rather than Machine, or that the current program counter need not be
-exposed as a separate message.
+Action publication belongs to Machine. It alone can stamp the current Machine
+capability and drive epoch into a rooted scratch action without allocation.
+Canonical StepAction prototypes provide identity and reflection. Immutable
+call-site descriptors provide static receiver, selector, argument-range,
+result-slot, and continuation-PC metadata; `callSite:` and `tailCallSite:`
+expand that metadata into the frozen action schema. Descriptors do not become
+actions and cannot publish one independently.
 
 The protocol is metacircularly visible: Machine, selectors, StepAction
 prototypes, methods, and returned actions are all Birnam Oops. The initial
@@ -267,55 +274,57 @@ generated-C conveniences, not exported ABI:
 ```c
 static IdApi *id;
 
-static Oop send0(Oop receiver, Oop selector) {
-    return id->send(receiver, selector, NULL, 0);
-}
-
 static Oop send1(Oop receiver, Oop selector, Oop argument) {
     Oop arguments[] = {argument};
     return id->send(receiver, selector, arguments, 1);
 }
 
-static Oop send2(Oop receiver, Oop selector, Oop first, Oop second) {
-    Oop arguments[] = {first, second};
-    return id->send(receiver, selector, arguments, 2);
-}
-
 /* This implementation's descriptor declares one operand, so the driver
-   supplies the resume token and the step does not send for it. A descriptor
-   declaring none would instead recover the counter through microcode. */
+   supplies the resume token and the step does not send for it. It also reserves
+   Oop reason slots for the two cold Abort paths below. */
 Oop example_step(Oop machine, const Oop *arguments, size_t count) {
     if (count != 1) {
-        return send0(machine, selector_abort_invalid_invocation);
+        return send1(
+            machine,
+            selector_abort_at,
+            id->mkSmallInt(SLOT_INVALID_INVOCATION)
+        );
     }
 
     Oop pc = arguments[0];
     if (!id->isSmallInt(pc)) {
-        return send0(machine, selector_abort_invalid_pc);
+        return send1(
+            machine,
+            selector_abort_at,
+            id->mkSmallInt(SLOT_INVALID_PC)
+        );
     }
     switch (id->smallIntValue(pc)) {
     case 0:
-        return send2(
+        return send1(
             machine,
-            selector_call_using_descriptor,
-            id->mkSmallInt(CALL_SITE_0),
-            id->mkSmallInt(PC_AFTER_CALL_0)
+            selector_call_site,
+            id->mkSmallInt(CALL_SITE_0)
         );
     case 1:
         return send1(
             machine,
-            selector_return_using_slot,
+            selector_return_at,
             id->mkSmallInt(SLOT_RESULT)
         );
     default:
-        return send0(machine, selector_abort_invalid_pc);
+        return send1(
+            machine,
+            selector_abort_at,
+            id->mkSmallInt(SLOT_INVALID_PC)
+        );
     }
 }
 ```
 
-The exact Machine selectors and operands are illustrative. In particular, an
-immutable call-site descriptor may be preferable to passing several slot
-indices on every transition. The point of the example is the boundary:
+The C variable names are local conveniences; the Birnam selectors and their
+operand meanings are the frozen protocol above. The point of the example is the
+boundary:
 
 - the function has the existing Method shape;
 - every native argument and result is an Oop;
@@ -404,16 +413,19 @@ This record freezes only:
 - the driver contract uses a descriptor-declared buffer of length 0 or 1, per
   the 60E §9.1 amendment;
 - registration distinguishes synchronous Method from StepMethod; and
-- StepMethod returns one canonical StepAction Oop.
+- StepMethod returns one canonical StepAction Oop;
+- S1 Machine microcode consists of `oopAt:`, `oopAt:put:`, `continueAt:`,
+  `callSite:`, `tailCallSite:`, `returnAt:`, and `abortAt:`;
+- only Machine publishes a drive-valid action, expanding immutable call-site
+  metadata and stamping the current capability and epoch; and
+- steady-state action publication performs no heap allocation.
 
 It does not freeze:
 
 - Frame layout or arena representation;
 - Machine payload layout;
-- Machine selector names;
-- the number or decomposition of Machine microcode methods;
-- StepAction allocation versus per-Machine scratch reuse;
-- call-site descriptor layout;
+- the private scratch-pool shape or number of reusable cells;
+- call-site descriptor encoding;
 - compiler IR or generated-C helper names;
 - a direct-slot optimized tier; or
 - suspension and continuation policy beyond the semantics already accepted in
@@ -544,7 +556,9 @@ Measure:
 - nanoseconds per Call/Return pair;
 - Machine protocol sends per source-level step;
 - time spent in ordinary dispatch versus driver validation; and
-- allocation caused by action construction.
+- setup allocation for Machine-owned scratch actions.
+
+The measured steady-state transition path must allocate zero action objects.
 
 Only if those measurements fail an agreed budget should S1 prototype a direct
 slot or specialized action-publication optimization. That budget is stated in
@@ -553,19 +567,25 @@ send constant established by S0's `sends.compiled-unary` micro case — the
 existing `sends.unary` case measures a reflective trampoline and is disqualified
 as an anchor. The baseline semantics remain the Method-shaped contract.
 
-## 15. S1 implementation questions
+## 15. Resolved S1 implementation questions
 
-These questions bound the S1 probe without reopening the accepted physical
-calling shape. Questions 1, 4, and 6 are answered by
+These questions bounded the S1 probe without reopening the accepted physical
+calling shape. All are answered by
+[60B](60b-stackless-machine-and-frames.md) and
 [60E](60e-resumable-registration-and-entry.md) and remain recorded as resolved:
 
 1. **Resolved (60E §9.1).** Zero arguments is not frozen; the driver supplies a
    descriptor-declared buffer of length 0 or 1, so a resume token need not cost
    a microcode send.
-2. What is the minimum Machine microcode protocol needed by the S1 hand-written
-   method?
-3. Should action publication be protocol on Machine, canonical StepAction
-   prototypes, or immutable call-site descriptors?
+2. **Resolved (60B §1 and 60C §5).** The S1 protocol is `oopAt:`,
+   `oopAt:put:`, `continueAt:`, `callSite:`, `tailCallSite:`, `returnAt:`, and
+   `abortAt:`. The resume token and fused publication remove separate PC and
+   validation messages; raw slots remain private in S1 and S2. Zero-argument
+   descriptors are limited to single-entry StepMethods.
+3. **Resolved (60B §1 and 60C §5).** Machine publishes drive-valid actions from
+   a rooted scratch pool. Canonical prototypes own identity and reflection;
+   immutable call-site descriptors own static operands and continuation PCs.
+   Neither can stamp an action independently.
 4. **Resolved (60E §9.2).** Microcode is an ordinary late-bound Machine
    protocol. Its initial checked primitive methods are replaceable, and an
    incompatible replacement or removal may alter or invalidate active
@@ -573,14 +593,19 @@ calling shape. Questions 1, 4, and 6 are answered by
    raw Frame or arena capability and cannot bypass the driver's validation of a
    returned StepAction; trusted native artifacts retain their existing native
    authority.
-5. Should the driver invoke the registered Method pointer directly, or should
-   current implementation selection itself be an object-visible dispatch step?
+5. **Resolved (60E §7.1 and Runtime ownership).** An active Frame invokes its
+   captured StepMethod directly. Current implementation selection remains
+   object-visible at Call and TailCall through ordinary metacircular lookup and
+   Runtime-owned resolve-and-pin; it is not repeated per step.
 6. **Resolved (60E §11).** The provisional budget is stated as multiples of a
    `sends.compiled-unary` constant S0 establishes; exceeding it is the trigger
    for the §13.3 tier.
-7. Which parts of Machine policy must be replaceable on day one, and which
-   primitive storage operations are acceptable under the governing ownership
-   rule?
+7. **Resolved (60B §1 and Runtime ownership).** Machine and StepAction identity,
+   protocols, scheduling, inspection presentation, and higher control policy are
+   Birnam-visible and late-bound. Frame memory, checked slot access, action
+   validation, driver transitions, GC integration, protected resolution, and
+   generation-pin accounting are irreducible Runtime mechanisms. Codegen emits
+   descriptions and registration operations; it owns neither category.
 
 The Method-shaped baseline is accepted. If the S1 probe exposes one concrete
 semantic requirement that the existing Method ABI cannot express,

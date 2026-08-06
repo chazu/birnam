@@ -1,7 +1,9 @@
 # 60B — Stackless Machine, Frames, and GC
 
 > **Status:** S0 representation and memory-safety record, accepted 2026-08-04;
-> resolve-and-pin ownership clarification accepted 2026-08-05.
+> resolve-and-pin ownership clarification accepted 2026-08-05; Runtime
+> ownership, acceptance staging, and code-disposition staging accepted
+> 2026-08-06, together with the S1 Machine-microcode protocol.
 > This document defines the Birnam-object/private-Rust-storage boundary required
 > by [60A](60a-stackless-execution-semantics.md). It does not own the StepMethod
 > calling contract; the accepted decision in
@@ -31,16 +33,38 @@ Concretely:
   a StepAction, because that would recurse through the mechanism being driven.
 
 Generated native code receives the Machine Oop as its existing Method receiver
-and uses ordinary IdApi sends to a narrow, primitive-backed Machine protocol to
-operate on the current private Frame:
+and uses ordinary IdApi sends to this frozen, primitive-backed S1 protocol:
 
-- read and write the program counter;
-- read and write an Oop slot;
-- read and write a raw slot;
-- validate a slot index against the current descriptor;
-- obtain a slot-indexed CallAction, TailCallAction, ReturnAction, or
-  ContinueAction Oop;
-- request the S3 suspension operation.
+| Selector | S1 meaning |
+|---|---|
+| `oopAt:` | Read one descriptor-validated Oop slot. |
+| `oopAt:put:` | Write one descriptor-validated Oop slot and answer the stored Oop. |
+| `continueAt:` | Validate and install the next program counter, then publish ContinueAction. |
+| `callSite:` | Validate an immutable Call call-site descriptor, install its caller continuation PC, then publish its expanded CallAction. |
+| `tailCallSite:` | Validate an immutable TailCall call-site descriptor, then publish its expanded TailCallAction. |
+| `returnAt:` | Validate an Oop result slot, then publish ReturnAction. |
+| `abortAt:` | Validate an Oop reason slot, then publish AbortAction. |
+
+Slot, call-site, and program-counter operands are nonnegative SmallInts. The
+StepMethod receives its current program counter as the descriptor-declared
+resume token, so S1 exposes no separate program-counter getter or setter. Each
+operation performs its own complete validation before mutation, so there is no
+standalone `validateSlot:` message. S1 and S2 expose only Oop slots; raw slots
+remain Runtime-private unless later compiler evidence justifies a separately
+reviewed protocol addition. A descriptor declaring no resume-token argument is
+therefore valid only for a single-entry StepMethod that never needs to inspect
+its current PC; a multi-PC StepMethod declares the one-argument form.
+
+Machine alone publishes drive-valid actions because it owns the current
+capability and drive epoch. Canonical StepAction prototypes own vtable identity
+and reflection, but do not stamp actions. Immutable call-site descriptors own
+static slot and continuation-PC metadata, but are not actions or execution
+authority. The Machine uses a rooted scratch-action pool so the steady-state S1
+transition path allocates no action objects. Scratch pool shape is private, and
+the language promises no fresh identity or stable retained payload.
+
+S3 extends this Machine protocol with its suspension, capture, restore, and
+abort-to-delimiter operations without changing the S1 selectors.
 
 The calling contract accepted in
 [60C](60c-stepmethod-calling-abi-options.md) adds no invocation token, helper
@@ -51,6 +75,35 @@ operand.
 This resolves the important distinction between an object protocol and a
 storage layout: generated code and Birnam code traffic in Oops while Rust
 retains freedom to change frame allocation, validation, and tracing.
+
+### Runtime and code ownership
+
+The production `birnam-id::Runtime` owns one object universe and its private
+execution state. That execution state owns:
+
+- the Machine and Continuation capability registries;
+- Frame arenas and descriptors held by active execution;
+- Runtime-local ResumableEntry recognition and binding retirement;
+- protected dispatch-read epochs and entry scopes; and
+- Runtime-local registration, Frame, and Continuation generation pins.
+
+These concerns should form an audited execution module inside `birnam-id`; they
+must not be scattered through dispatch, GC, Codegen, or host code. The module may
+later be factored mechanically, but doing so does not create a second semantic
+Runtime or a second object floor.
+
+Codegen/TCC and artifact loading remain outside this state. A process code
+repository owns physical mapping handles and lends opaque generation leases to
+Runtimes. A Runtime decides whether its execution may still reach a generation;
+the repository performs disposal only after every Runtime has released it. This
+keeps `birnam-id` independent of compiler and loader implementation while
+preventing either from unloading live Frame code.
+
+The Runtime entry-scope stack is a distinct dynamic borrow domain from the heap,
+dispatch dictionaries, Machine registry, MachineState, and Frame arena. It names
+the Runtime and Machine for same-execution nested entry but is never the
+authority for either identity. TLS may route a host shim to the currently entered
+Runtime; it may not supply an ambient current Machine to generated code.
 
 ### Native-backed payload
 
@@ -135,14 +188,14 @@ root. Reachability flows in the other direction: a live Machine Oop traces the
 Oops in its MachineState. Otherwise an unreachable Machine would keep itself
 and every frame value alive forever.
 
-The current runtime already has vtable trace hooks and per-object finalizers.
-Before collectable Machine and Continuation Oops ship, S1 must install the
-appropriate trace hooks and finalizers so collection invalidates each capability
-and releases its registry entry. No new finalization ABI is required. Explicit
-completion or close may release state early, but callers are not required to
-close an unreachable object for memory safety. Finalization must obey the
-existing no-allocation callback boundary and must not run Birnam code or
-resurrect the object.
+The current runtime already has vtable trace hooks and per-object finalizers. S1
+must install the appropriate Machine hooks before a collectable Machine Oop
+ships; S3 has the same gate for Continuation Oops. Collection invalidates each
+capability and releases its registry entry. No new finalization ABI is required.
+Explicit completion or close may release state early, but callers are not
+required to close an unreachable object for memory safety. Finalization must
+obey the existing no-allocation callback boundary and must not run Birnam code
+or resurrect the object.
 
 The frame arena uses stable chunks or segments. A Frame is not a separately
 GC-allocated Birnam object and does not enter the Store. Chunk allocation and
@@ -176,7 +229,14 @@ Every resumable implementation has an immutable FrameDescriptor:
       Oop-slot bitmap
       raw-slot metadata
       return-slot policy
+      call-site descriptor table
       source-map identity
+
+Each call-site entry is immutably tagged Call or TailCall. It contains the
+receiver and selector Oop slots, argument start and count, and, for Call, the
+result slot and caller continuation PC. `callSite:` and `tailCallSite:` require
+the matching tag and expand the entry into the corresponding frozen StepAction
+payload only after validating every slot, range, and PC.
 
 The frame payload contains:
 
@@ -257,13 +317,15 @@ Oop, not a Rust enum, tagged C value, or opaque action sink.
 
 The canonical action vtables and field protocol are metacircularly visible.
 Birnam code can inspect an action's kind and operands through ordinary methods
-and reflection. Those accessors and constructors may initially terminate in
-Rust primitives; the outer driver alone uses trusted direct decoding so it does
-not need a recursive send. Moving an accessor, constructor, or policy method
-into Birnam does not change the StepMethod result type or object protocol.
+and reflection. Those accessors and the Machine publication methods may
+initially terminate in Rust primitives; only Machine can stamp a drive-valid
+action. The outer driver uses trusted direct decoding so it does not need a
+recursive send. Moving an accessor, publisher, or policy method into Birnam does
+not change the StepMethod result type or object protocol.
 
-A Machine may retain one or more scratch StepAction Oops and rewrite their raw
-payloads before returning them from a step. The Machine's drive epoch is
+An S1 Machine retains a rooted scratch-action pool and rewrites raw payloads
+before returning actions from a step, so steady-state publication allocates no
+action objects. The Machine's drive epoch is
 strictly monotonic and is never restored to an earlier value: a stacked drive
 shares this scratch set, so an epoch that could be restored would revalidate an
 outer action over payload the nested drive has overwritten
@@ -411,12 +473,14 @@ Pinning is separate from the durable Store projection of the current dispatch
 generation. A durable generation record does not by itself prove that a
 process-local native code handle remains mapped.
 
-No S3 operation may call dlclose or equivalent code disposal while a Frame or
-Continuation retains that generation. The current disposal paths do not enforce
-this, and frames and continuations are not the only holders: a heap vtable can
-outlive the generation whose code it names.
-[60E §7](60e-resumable-registration-and-entry.md) states the full gate and the
-kinded failure S3 must introduce for it.
+From S1 onward, no operation may call `dlclose` or equivalent code disposal
+without the owning Runtimes' safety verdicts. S1 accounts for registrations,
+bindings, readers, acquired entries, Frames, and explicit leases; S3 extends
+that set with Continuations. Frames and continuations are not the only holders:
+a heap vtable can outlive the generation whose code it names. Until vtable
+reachability is computable, S1 conservatively retains every generation that
+installed a method. [60E §7](60e-resumable-registration-and-entry.md) defines
+the structured physical-disposition result and the later reclamation gate.
 
 Frame migration across generations is not part of this contract.
 
@@ -464,28 +528,42 @@ continuation identity.
 
 ## 12. 60B acceptance tests
 
-The machine/frame implementation is ready for S1 only when tests cover:
+S0 acceptance freezes this complete matrix. Each item is labelled with the
+first stage that can execute it; a stage gates only on its own and earlier
+items.
 
-1. frame handles reject use-after-pop and use-after-destroy;
-2. descriptors reject invalid program counters and slot kinds;
-3. machine roots survive forced collection while Running;
-4. suspended roots survive forced collection while Suspended;
-5. continuation roots transfer correctly during Capture and Restore;
-6. registration and call-generation pin counts prove acquire, failed-push
-   release, successful transfer to Frame, transfer to Continuation, and final
-   release independently of the unload-refusal gate;
-7. a synchronous Method can allocate and re-enter without losing machine roots;
-8. every checked Frame primitive rejects the wrong Machine owner or lifecycle,
-   stale drive epoch, descriptor mismatch, invalid slot, and wrong slot kind
-   before that primitive mutates storage;
-9. owner-thread violations fail deterministically;
-10. an action from another Machine or stale epoch is rejected before operand
-    decoding;
-11. a live Machine Oop traces external Frame Oops without the registry rooting
-    every Machine;
-12. Machine and Continuation finalization invalidates their capabilities and
-    releases external state exactly once;
-13. stale FrameViews reject reused arena slots;
-14. Birnam reflection can observe the canonical Machine, StepAction, and
+1. **(S1)** frame handles reject use-after-pop and use-after-destroy;
+2. **(S1)** descriptors reject invalid program counters, slot kinds, call-site
+   tags, and call-site fields;
+3. **(S1)** machine roots survive forced collection while Running;
+4. **(S3)** suspended roots survive forced collection while Suspended;
+5. **(S3)** continuation roots transfer correctly during Capture and Restore;
+6. **(S1)** registration and call-generation pin counts prove acquire, failed-
+   push release, successful transfer to Frame, and final release independently
+   of the unload-refusal gate;
+7. **(S3)** pin counts prove transfer from Frame to Continuation and final
+   release after consumption or finalization;
+8. **(S1)** a synchronous Method can allocate and re-enter without losing
+   machine roots;
+9. **(S1)** every checked Frame primitive rejects the wrong Machine owner or
+   lifecycle, stale drive epoch, descriptor mismatch, invalid slot, and wrong
+   slot kind before that primitive mutates storage;
+10. **(S1)** owner-thread violations fail deterministically;
+11. **(S1)** an action from another Machine or stale epoch is rejected before
+    operand decoding;
+12. **(S1)** a live Machine Oop traces external Frame Oops without the registry
+    rooting every Machine;
+13. **(S1)** Machine finalization invalidates its capability and releases
+    external state exactly once;
+14. **(S3)** Continuation finalization invalidates its capability and releases
+    external state exactly once;
+15. **(S1)** stale FrameViews reject reused arena slots;
+16. **(S1)** Birnam reflection can observe the canonical Machine, StepAction, and
     FrameView protocols;
-15. durable image validation rejects every process-local execution capability.
+17. **(S1)** durable image validation rejects every process-local execution
+    capability introduced through S1;
+18. **(S3)** durable image validation also rejects Continuation and suspension
+    capabilities introduced in S3.
+19. **(S1)** each frozen Machine publisher returns the canonical action kind,
+    stamps the current Machine and epoch, and allocates no action object on the
+    steady-state path; retained scratch aliases grant no submission authority.

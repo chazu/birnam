@@ -3,7 +3,7 @@
 > **Status:** S0 concurrency compatibility record, accepted 2026-08-04 with
 > the 60E entry seam; recognition-concurrency, same-execution-entry-scope, and
 > resolve-and-pin follow-up and live-dispatch-timing amendments accepted
-> 2026-08-05.
+> 2026-08-05; Runtime ownership accepted 2026-08-06.
 > This document evaluates the stackless Machine design against Birnam's existing
 > reactor and isolate direction. It does not select a scheduler, introduce
 > shared-memory threads, or make Machine transferable between runtimes.
@@ -20,7 +20,8 @@ The short answer is:
 - process-isolated parallelism composes without changing the StepMethod calling
   contract;
 - multiple Machines may be interleaved on one owner thread;
-- one Machine may not be driven concurrently or recursively;
+- one Machine may not be driven concurrently or recursively without an entry
+  barrier; same-execution stacked drives are the explicit exception;
 - thread migration and work stealing are intentionally unavailable initially;
   and
 - several OS threads sharing one Runtime remain blocked by broader runtime
@@ -75,6 +76,32 @@ Birnam's intended mechanisms solve two different problems:
 Stackless execution is necessary for suspending a Birnam computation without
 retaining an unbounded native stack. It is not, by itself, a scheduler, a memory
 model, or a thread-safety mechanism.
+
+### 3.1 Runtime is the ownership island
+
+One Birnam Runtime owns one heap, Store, dispatch environment, Machine registry,
+entry registry, and set of Runtime-local generation pins. Its host or reactor is
+an executor: it enters the Runtime, drives one turn at a time, and retains queued
+Machine Oops as roots. It does not own or duplicate Runtime execution state.
+
+The first implementation has one owner thread per Runtime and many cooperatively
+interleaved Machines. CPU parallelism uses isolated Runtimes with copied values,
+initially as processes. Future in-process isolates may share immutable code
+mappings through a process repository while retaining independent registrations,
+heaps, Stores, dispatch, Machines, and pins. They do not share Oops or mutable
+Runtime state.
+
+The process code repository has physical custody of TCC/dylib mappings. Each
+Runtime holds leases and supplies the safety verdict for its own execution; the
+repository may dispose a mapping only after all Runtime leases have drained.
+This is the only process-shared lifetime accounting implied by the design. It
+does not make one Runtime safe for shared-memory execution.
+
+Runtime entry is explicit at each top-level host or reactor turn. TLS may route
+existing context-free C ABI shims to that entered Runtime, including the emitted
+registration shim, but it is not semantic execution identity. Generated code
+receives Machine explicitly, and fresh-versus-nested entry is decided by the
+Runtime's same-execution scope rather than by thread activity.
 
 ## 4. Why the design fits a reactor
 

@@ -1,7 +1,8 @@
 # 60A — Stackless Execution Semantics
 
 > **Status:** S0 decision record, accepted 2026-08-04; recognition, same-
-> execution-entry-scope, and resolve-and-pin amendments accepted 2026-08-05.
+> execution-entry-scope, and resolve-and-pin amendments accepted 2026-08-05;
+> Runtime ownership and acceptance staging accepted 2026-08-06.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -43,6 +44,12 @@ These are the accepted first-delivery decisions.
 These decisions narrow the proof. They do not choose whether the eventual public
 surface is generators, coroutines, shift/reset, or a lower-level continuation
 object.
+
+The Runtime named here is the sole semantic authority for its heap, dispatch,
+Machines, Frames, entry recognition, and generation pins. A host or reactor may
+drive it, and a code repository may retain its mapped native code, but neither
+owns that execution state. Parallelism uses isolated Runtimes and copied values;
+cooperative concurrency within one Runtime interleaves owner-thread Machines.
 
 ## 3. Semantic objects
 
@@ -320,24 +327,30 @@ would otherwise discard it silently in `do:` and catch it in `on:do:`. A later
 record that wants a recoverable subset must name those kinds here and give them
 a kind that does not match `#error`.
 
-## 10. S0 acceptance tests
+## 10. Cross-stage acceptance tests
 
-Before S1 implementation is accepted, tests must specify:
+S0 acceptance freezes this complete matrix. Each item is labelled with the
+first stage that can execute it; a stage gates only on its own and earlier
+items.
 
-1. a synchronous send still returns its existing Oop result;
-2. a resumable Call can invoke a synchronous leaf and continue;
-3. a TailCall does not grow frame depth;
-4. a nested Machine remains owner-thread constrained;
-5. a barrier rejects capture without copying native state;
-6. one-shot restore rejects the second restore;
-7. generation pins survive a suspended frame and release after consumption;
-8. a continuation cannot be serialized into an image or durable Store fact;
-9. a malformed action or slot reference prevents the requested driver control
-   transition, moves the Machine to Failed, and fails before dereferencing a
-   generated pointer. This does not roll back valid checked primitive mutations
-   already completed earlier in the StepMethod;
-10. an action from another Machine or an expired drive epoch is rejected;
-11. the driver decodes canonical StepAction objects without recursively sending
-    to them.
+1. **(S1)** a synchronous send still returns its existing Oop result;
+2. **(S1)** a resumable Call can invoke a synchronous leaf and continue;
+3. **(S1)** a TailCall does not grow frame depth;
+4. **(S1)** a nested Machine remains owner-thread constrained;
+5. **(S3)** a barrier rejects capture without copying native state;
+6. **(S3)** one-shot restore rejects the second restore;
+7. **(S3)** generation pins survive a suspended frame and release after
+   consumption;
+8. **(S3)** a continuation cannot be serialized into an image or durable Store
+   fact;
+9. **(S1)** a malformed action or slot reference prevents the requested driver
+   control transition, moves the Machine to Failed, and fails before
+   dereferencing a generated pointer. This does not roll back valid checked
+   primitive mutations already completed earlier in the StepMethod;
+10. **(S1)** an action from another Machine or an expired drive epoch is
+    rejected;
+11. **(S1)** the driver decodes canonical StepAction objects without recursively
+    sending to them.
+
 The public control surface and scheduler remain intentionally undecided after
 these tests pass.
