@@ -160,7 +160,9 @@ A future cooperative scheduler may:
 It may not preempt arbitrary generated code in the middle of a StepMethod.
 Therefore every StepMethod must execute a bounded amount of work. Compiler
 lowering must not place an unbounded source loop, recursive send chain, or
-blocking wait inside one step.
+blocking wait inside one step. [60F](60f-resumable-compiler-lowering.md) makes
+every migrated source send a driver boundary and defines the bounded CFG/PC
+contract used by S2.
 
 Synchronous Methods are larger atomic regions. A long computation or blocking
 FFI call in a synchronous Method blocks the complete owner-thread reactor until
@@ -209,9 +211,15 @@ One step must follow this sequence:
    a resumable replacement enters through the scope and completes above an
    entry-barrier delimiter on the same Machine.
 8. Reacquire MachineState after StepMethod returns.
-9. Validate and decode the returned StepAction, copying every operand needed
-   into driver-local scalars rather than re-reading the payload later.
-10. Commit the driver transition and release the borrow before callbacks.
+9. Validate and decode the returned StepAction, copying and rooting every Oop
+   operand needed rather than re-reading the payload later.
+10. For descriptor layout v2, validate the action against the publisher's
+    pending-transition record, commit 60F's non-allocating edge-transfer plan,
+    clear reassigned slots, advance the root-state PC to the semantic successor
+    PC already installed by `continueAt:` or `callSite:`, and clear the pending
+    record while the borrow is held.
+11. Release the borrow before protected lookup, generated-code entry, or any
+    other callback. Reborrow only for the next validated Runtime mutation.
 ```
 
 No `&mut MachineState`, `RefCell` guard, registry guard, mutex guard, arena

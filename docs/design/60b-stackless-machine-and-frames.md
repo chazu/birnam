@@ -3,12 +3,15 @@
 > **Status:** S0 representation and memory-safety record, accepted 2026-08-04;
 > resolve-and-pin ownership clarification accepted 2026-08-05; Runtime
 > ownership, acceptance staging, and code-disposition staging accepted
-> 2026-08-06, together with the S1 Machine-microcode protocol.
+> 2026-08-06, together with the S1 Machine-microcode protocol; descriptor-v2
+> per-PC roots, colored-slot ownership, and edge-transfer amendments accepted
+> 2026-08-07 with 60F.
 > This document defines the Birnam-object/private-Rust-storage boundary required
 > by [60A](60a-stackless-execution-semantics.md). It does not own the StepMethod
 > calling contract; the accepted decision in
 > [60C](60c-stepmethod-calling-abi-options.md) preserves the boundary described
-> here.
+> here. [60F](60f-resumable-compiler-lowering.md) owns the S2 compiler analysis
+> and physical Frame-layout construction that satisfy this memory contract.
 
 ## 1. Representation boundary
 
@@ -44,6 +47,16 @@ and uses ordinary IdApi sends to this frozen, primitive-backed S1 protocol:
 | `tailCallSite:` | Validate an immutable TailCall call-site descriptor, then publish its expanded TailCallAction. |
 | `returnAt:` | Validate an Oop result slot, then publish ReturnAction. |
 | `abortAt:` | Validate an Oop reason slot, then publish AbortAction. |
+
+Descriptor layout v2 preserves these publisher meanings. Because Continue and
+Call install their successor PC before the driver has copied slot-referenced
+action operands or committed colored-slot ownership, their checked publishers
+also create a short Runtime-private pending-transition record. The Frame keeps
+tracing its predecessor root-state PC until the driver validates the exact
+returned action and commits 60F's edge plan. Further Frame mutation or action
+publication while pending fails before touching storage. This adds no selector
+or StepAction field; [60F §10](60f-resumable-compiler-lowering.md) defines the
+ordering.
 
 Slot, call-site, and program-counter operands are nonnegative SmallInts. The
 StepMethod receives its current program counter as the descriptor-declared
@@ -250,6 +263,29 @@ Every resumable implementation has an immutable FrameDescriptor:
       call-site descriptor table
       source-map identity
 
+S1 hand-written StepMethods use descriptor layout v1. In layout v1 the Oop-slot
+bitmap is static: every Oop slot is traced for the complete lifetime of a live
+Frame.
+
+S2 compiler artifacts use descriptor layout v2. Layout v2 adds:
+
+    entry receiver slot and contiguous entry-argument range
+    per-PC root bitmap table
+    per-edge transfer and clear plans
+    reusable call-staging window description
+    logical-value/source-location table reference
+
+The layout-v2 root map for a PC is the safepoint-live union for the complete
+StepMethod execution at that PC, not only its live-in set. An edge plan records
+logical ownership across physical slot reuse: preserved values, parallel copies,
+clears, pending Call-result initialization, and the successor PC. Root-map bit
+differences alone cannot describe a transition because slot coloring may assign
+different logical values to the same rooted physical slot on adjacent PCs.
+
+The exact descriptor-v2 C/blob encoding remains a 60F pre-implementation
+decision. Its semantic contents and validation rules are frozen here and in
+[60F §§7–10](60f-resumable-compiler-lowering.md).
+
 Each call-site entry is immutably tagged Call or TailCall. It contains the
 receiver and selector Oop slots, argument start and count, and, for Call, the
 result slot and caller continuation PC. `callSite:` and `tailCallSite:` require
@@ -261,6 +297,8 @@ The frame payload contains:
     Frame
       descriptor identity
       program counter
+      root-state program counter (layout v2)
+      pending action/edge identity where present (layout v2)
       receiver slot
       argument slots
       local and temporary slots
@@ -400,8 +438,23 @@ backed objects trace their Rust-owned state:
 4. FrameView traces its owning Machine through its declared Oop field and does
    not trace frame storage independently.
 
-For each Frame, tracing consults the immutable FrameDescriptor and marks only
-Oop slots. Raw slots are never interpreted as Oop candidates.
+For each Frame, tracing consults the immutable FrameDescriptor. Layout v1 marks
+every Oop slot. Layout v2 marks only the Oop slots selected by the Frame's
+committed root-state PC. During action publication that root-state PC may
+temporarily remain at the predecessor after `continueAt:` or `callSite:` has
+installed the semantic successor PC; the pending-transition record prevents
+StepMethod re-entry or further Frame mutation in that interval. Raw slots are
+never interpreted as Oop candidates.
+
+During a layout-v2 edge transition, the driver first validates the returned
+action against the pending record and roots every copied action operand it still
+needs. It then applies the non-allocating parallel-copy and clear plan, advances
+the root-state PC to the already installed semantic successor PC, and clears
+the pending record. GC therefore observes a complete predecessor root state,
+driver-owned transition roots, or a complete successor root state; it never
+observes half-applied slot ownership. A dead or reassigned physical Oop slot is
+cleared to canonical nil before FrameView or generated code can observe the
+successor state.
 
 The Runtime root provider is limited to scoped host ownership that is not
 already represented by a reachable heap Oop: a Machine while a host drive is in
@@ -426,19 +479,24 @@ idempotent and owner-thread checked.
 ## 7. Allocation and safepoints
 
 A resumable step has one rule for Oop liveness: an Oop that may be live across
-an allocation, synchronous Method call, or step return must already be in a
-descriptor-marked frame slot.
+an allocation, synchronous Method call, late-bound Machine send, callback, or
+step return must already be in a descriptor-marked frame slot or an explicitly
+scoped driver root.
 
 The compiler and Machine protocol must not leave an Oop only in a C local
 across:
 
 - birnam allocation;
 - a call to a synchronous Method;
+- a Machine microcode or other IdApi send;
 - a GC-capable helper;
+- a callback into host, foreign, or metacircular code;
 - a return to the Machine driver.
 
 S1 can enforce this rule manually for the test StepMethod. S2 must validate it
-through emitted frame metadata and targeted forced-collection tests.
+through emitted frame metadata and targeted forced-collection tests. Its per-PC
+root map covers every value live at any safepoint while that PC's step executes,
+including values created after entry but before the StepMethod returns.
 
 During a synchronous Method call, the current Machine Oop remains in the
 driver's scoped root set. The native-stack scan covers temporary C/Rust locals;
@@ -527,6 +585,9 @@ Inspection does not return native function pointers, Frame addresses, arena
 addresses, or mutable references to frame storage. It is owner-thread-only in
 the first implementation. FrameView's identity and read protocol are
 metacircularly visible even while its reads terminate in Rust primitives.
+During a layout-v2 pending transition, a FrameView may report the kinded
+`frameTransitionPending` state but physical slot reads fail with that kind
+rather than exposing predecessor values under a successor source location.
 
 ## 11. Persistence boundary
 
@@ -591,4 +652,31 @@ items.
     the old generation;
 21. **(S1.1)** arena diagnostics report current and high-water live frames and
     reserved bytes, and finalizing or explicitly destroying a Machine returns
-    all of its reserved arena capacity after roots and pins drain.
+    all of its reserved arena capacity after roots and pins drain;
+22. **(S2)** descriptor-v2 validation rejects missing or malformed PC root maps,
+    out-of-range/non-Oop bits, invalid padding, and edge plans that cannot
+    establish the successor root state;
+23. **(S2)** every safepoint-live logical value is in the current root-state
+    PC's colored map, including a value created before late-bound microcode
+    allocates;
+24. **(S2)** interfering logical values never share a slot, while a fixture with
+    disjoint live ranges proves that coloring reuses one;
+25. **(S2)** a physical slot whose logical owner changes across an edge is
+    cleared or transferred even when its root bit is set in both PC maps;
+26. **(S2)** parallel-copy cycles preserve every rooted Oop without exposing a
+    half-applied transition to collection;
+27. **(S2)** a pending Call result is rooted as nil and receives the result
+    before the successor StepMethod runs;
+28. **(S2)** forced collection at step entry, after generated stores, in
+    late-bound microcode, during a synchronous leaf, while a caller is parked,
+    and immediately after transition preserves the required roots;
+29. **(S2)** FrameView never exposes an untraced stale Oop from a dead or
+    reassigned colored slot; and
+30. **(S2)** live and AOT artifacts produce identical layout-v2 coloring, root
+    maps, edge transfers, call windows, and source-location identities;
+31. **(S2)** `continueAt:` and `callSite:` preserve their frozen PC-installing
+    semantics while tracing remains on the predecessor root-state map until the
+    exact returned action commits; and
+32. **(S2)** mismatched action return, repeated publication, StepMethod re-entry,
+    Frame mutation, and FrameView slot reads while a transition is pending fail
+    deterministically without dropping predecessor roots.

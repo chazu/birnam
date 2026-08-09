@@ -10,8 +10,8 @@
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
 > defer. It decides what a vtable holds for a resumable implementation, how a
 > send from unmigrated code reaches one, and how the driver recognizes one. It
-> does not define compiler lowering, liveness, or source maps; those remain the
-> later compiler record.
+> does not define compiler lowering, liveness, or source maps; those are defined
+> by [60F](60f-resumable-compiler-lowering.md).
 
 ## 1. The gap this closes
 
@@ -347,9 +347,12 @@ fields, an invalid address/descriptor/arity combination, or a generation that
 cannot be leased. It does so before the binding becomes visible. A successful
 call leaves no borrowed carrier memory in the Runtime: it copies or interns the
 immutable descriptor metadata and owns or transfers every required generation
-handle before returning. The exact C field layout, descriptor blob encoding,
-and whether the descriptor originates as artifact data or emitted metadata are
-not frozen by S1.3; Future 60F must choose them before S2 emits registrations.
+handle before returning. For S2, the immutable descriptor contents include 60F's
+entry locations, call-staging description, colored-slot count, per-PC root maps,
+per-edge transfer plans, and logical-value source-map identity. The exact C
+field layout, descriptor blob encoding, and whether the descriptor originates
+as artifact data or emitted metadata are not frozen by S1.3; 60F §16 must choose
+them before S2 emits registrations.
 The registration shim remains covered by the runtime ABI hash, so incompatible
 physical carriers do not silently interoperate.
 
@@ -1088,7 +1091,7 @@ Not frozen:
   protected resolve-and-pin, except that it may not hold a lock or Rust borrow
   across metacircular lookup and must meet §11's performance evidence;
 - automatic arena trim heuristics beyond S1.1's retain-until-destroy baseline;
-- descriptor blob encoding and physical home, which Future 60F owns before S2;
+- descriptor blob encoding and physical home, which 60F §16 owns before S2;
 - the §11 budget numbers, which are provisional by construction.
 
 ## 14. Acceptance tests
@@ -1211,9 +1214,9 @@ integration seam.
 No item in this section blocks S1.1. Each unresolved representation or
 integration choice has an owner and a latest decision point:
 
-1. **Migration as a change event — Future 60F, before S2 lowering.** lookup
+1. **Migration as a change event — 60F §16, before S2 lowering.** lookup
    answers the thunk address, and `tracked_add_method` retracts the old carrier
-   and asserts a new one on every install. Future 60F must decide what
+   and asserts a new one on every install. 60F must decide what
    `deriveImageMethodTargets` and `managedMethodChanged:on:` observe when only a
    method's migration status changes, before source lowering can publish such a
    change through Design 49 reconciliation.
@@ -1223,13 +1226,15 @@ integration choice has an owner and a latest decision point:
    reserved-byte telemetry. Whole-chunk zeroing and automatic trim heuristics
    are not S1 correctness requirements; any later policy must be justified by
    those measures and preserve the frozen tracing and generation rules.
-3. **Descriptor carrier — S1.3 semantics; Future 60F physical encoding.** §4.3
+3. **Descriptor carrier — S1.3 semantics; 60F §16 physical encoding.** §4.3
    freezes the carrier's required values, version/size validation, and lifetime
-   transfer. Future 60F chooses whether FrameDescriptor data lives directly in
+   transfer. 60F §§7–13 add descriptor-v2 root maps, colored-slot/entry/call-
+   window layout, edge transfers, and source-map identity. 60F §16 chooses
+   whether FrameDescriptor data lives directly in
    the artifact or is constructed from emitted metadata, and freezes its C/blob
    encoding before S2 live/AOT registration parity can gate.
-4. **Durable resumable tag — Future 60F, before S2 image integration.** §4.3
-   requires a self-describing projection. Future 60F must choose whether that is
+4. **Durable resumable tag — 60F §16, before S2 image integration.** §4.3
+   requires a self-describing projection. 60F must choose whether that is
    a method-mirror fact, image section, artifact descriptor field, or a reviewed
    combination that also covers block vtables before 60E acceptance item 21 can
    run.

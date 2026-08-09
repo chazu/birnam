@@ -7,7 +7,10 @@
 > accepted 2026-08-06, together with the code-disposition staging and S1-slicing
 > amendments and the frozen S1 Machine-microcode protocol. S1.1-S1.5 were
 > implemented and accepted against the repository gates on 2026-08-06; source
-> compiler lowering remains S2 and still requires Future 60F.
+> compiler lowering remains S2. The lowering, liveness, root-map, slot-coloring,
+> and edge-transfer portions of 60F were accepted 2026-08-07; 60F's physical
+> carrier, Design 49 migration-event, selection-carrier, and durable-tag
+> decisions remain open and gate implementation.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -18,9 +21,10 @@
 > - [60c — StepMethod calling contract](60c-stepmethod-calling-abi-options.md)
 > - [60d — Concurrency fit and boundaries](60d-stackless-concurrency-fit.md)
 > - [60e — Resumable registration and the entry seam](60e-resumable-registration-and-entry.md)
+> - [60f — Resumable compiler lowering](60f-resumable-compiler-lowering.md)
 >
-> Future records will cover compiler lowering, code-generation lifetime, host
-> integration, and the acceptance matrix.
+> Future records will cover code-generation lifetime, host integration, and the
+> acceptance matrix.
 
 ## 1. Scope
 
@@ -176,7 +180,7 @@ calling contract and returns to design review if a required semantic cannot be
 expressed.
 
 Resumable registration and the ordinary-send entry seam are decided in 60E;
-compiler lowering is the subject of Future 60F below.
+compiler lowering is the subject of 60F below.
 
 ### 60D — Concurrency fit and boundaries
 
@@ -203,14 +207,20 @@ does not preserve, and sets the provisional performance budget 60C leaves open.
 This record is the correctness gate for S1: without it, an installed StepMethod
 is directly callable by an ordinary send.
 
-### Future 60F — Compiler lowering
+### 60F — Resumable compiler lowering
 
-Will define CFG lowering, slot liveness, block captures, source maps, and
-live/AOT parity against the calling contract and the 60E registration record.
-Before S2 lowering it must also freeze the physical descriptor carrier, decide
-how a migration-only implementation change appears to Design 49 reconciliation,
-and choose the durable resumable tag used by mapped-image validation, including
-coverage for block vtables.
+[60F](60f-resumable-compiler-lowering.md) defines explicit per-implementation
+migration, receiver-first/argument-left-to-right evaluation followed by fresh
+lookup, one Machine boundary per source send, deterministic CFG and PC
+assignment, Oop liveness, descriptor-v2 per-PC root maps, interference-based
+slot coloring, per-edge transfer plans, a contiguous reusable call-staging
+window, logical-value source maps, and live/AOT parity.
+
+Its lowering and layout semantics were accepted 2026-08-07. Before S2 compiler
+implementation it must still freeze the physical descriptor carrier, decide how
+a migration-only implementation change appears to Design 49 reconciliation,
+freeze the compiler selection carrier, and choose the durable resumable tag used
+by mapped-image validation, including coverage for block vtables.
 
 ### Future 60G — Lifetime and host integration
 
@@ -306,7 +316,7 @@ Add Runtime-local ResumableEntry recognition, the versioned registration shim,
 the semantic v1 registration carrier, the unique entry thunk, and resolve-and-
 pin classification. The carrier freezes its required fields, version/size
 validation, lifetime transfer, and failure-before-publication rules while
-leaving descriptor blob encoding to Future 60F. An ordinary send from
+leaving descriptor blob encoding to 60F §16. An ordinary send from
 unmigrated code must enter the Machine, execute the registered hand-written
 StepMethod, and answer the same result as its synchronous predecessor. This
 slice changes no source compiler lowering and exposes registration only to its
@@ -354,9 +364,14 @@ actual reclamation owned by Future 60G.
 
 ### S2 — Minimal resumable compiler path
 
-Lower a small subset—literals, locals, blocks, and ordinary sends—to basic
-blocks with explicit slots and program counters. Prove deep mutual recursion
-with bounded native-stack movement and live/AOT registration parity.
+Under [60F](60f-resumable-compiler-lowering.md), explicitly select individual
+method and block-body implementations and lower the accepted subset—literals,
+locals, blocks, and ordinary sends—to deterministic basic blocks. Emit colored
+Oop slots, explicit PCs, per-PC root maps, per-edge transfers, source locations,
+and registered descriptor-v2 artifacts without changing lookup semantics or the
+IdApi floor. Prove deep mutual recursion with bounded native-stack movement,
+forced-GC safety at generated boundaries, live/AOT registration parity, and
+mapped/rebuilt image parity.
 
 ### S3 — Suspension and one-shot restoration
 

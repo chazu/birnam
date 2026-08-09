@@ -3,11 +3,11 @@
 > **Status:** S0 calling-contract decision, accepted 2026-08-04; late-bound-
 > microcode, same-execution-entry-scope, and resolve-and-pin amendments accepted
 > 2026-08-05; Runtime ownership and the S1 Machine-microcode protocol accepted
-> 2026-08-06. StepMethod
+> 2026-08-06. The bounded S1 probe passed 2026-08-06; 60F's S2 lowering contract
+> uses this Method-shaped baseline without expanding it. StepMethod
 > reuses the existing Method ABI without adding a StepMethod-specific native
-> API. S1 must validate the accepted baseline with the bounded probe in §14;
-> evidence that the shape cannot express a required semantic must return as a
-> new design decision rather than silently growing the ABI.
+> API. Evidence that the shape cannot express a required semantic must return
+> as a new design decision rather than silently growing the ABI.
 >
 > [60E §9](60e-resumable-registration-and-entry.md)'s three amendments — the
 > driver argument count, late-bound microcode, and evidence item 8 — are part of
@@ -250,6 +250,9 @@ every Machine micro-operation as a separate resumable language call would make
 one source step explode into many driver transitions. Treating every language
 send as a synchronous primitive call would preserve the native-stack problem
 the design exists to remove.
+[60F](60f-resumable-compiler-lowering.md) therefore makes every ordinary source
+send a Call/TailCall boundary while keeping the generated Machine protocol
+inside the bounded StepMethod activation.
 
 The synchronous primitive implementation is temporary ownership of mechanism,
 not permanent ownership of language policy. Microcode lookup remains ordinary

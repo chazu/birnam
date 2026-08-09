@@ -2,7 +2,9 @@
 
 > **Status:** S0 decision record, accepted 2026-08-04; recognition, same-
 > execution-entry-scope, and resolve-and-pin amendments accepted 2026-08-05;
-> Runtime ownership and acceptance staging accepted 2026-08-06.
+> Runtime ownership and acceptance staging accepted 2026-08-06; source-send
+> evaluation, lookup-order, and lowering-malleability amendments accepted
+> 2026-08-07 with 60F.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -22,6 +24,9 @@ does not. [60B](60b-stackless-machine-and-frames.md) defines that object/storage
 boundary. [60C](60c-stepmethod-calling-abi-options.md) accepts reuse of the
 existing Method calling shape and accessing private Frame state through a
 primitive-backed Machine protocol rather than a second native API.
+[60F](60f-resumable-compiler-lowering.md) defines how source expressions become
+PCs, logical values, colored Frame slots, and StepActions without changing the
+semantics in this record.
 
 ## 2. S0 decisions
 
@@ -219,6 +224,32 @@ recognizes the registration, and pushes a frame directly.
 nested entry reuses the current Machine above a barrier delimiter, and what
 migration does and does not preserve.
 
+### 5.1 Source evaluation and lookup order
+
+Resumable lowering does not move lookup ahead of operand evaluation. For every
+ordinary source send, synchronous and resumable compilation share this order:
+
+1. evaluate the receiver exactly once;
+2. evaluate each argument exactly once from left to right;
+3. retain every completed operand as a rooted Oop while later operands run;
+4. only after all operands are ready, perform fresh ordinary metacircular
+   lookup; and
+5. invoke the protected synchronous Method, push the pinned resumable Frame, or
+   follow ordinary DNU redispatch.
+
+Each nested operand send follows the same rule. If evaluating the receiver or an
+argument changes the outer selector's binding, inheritance, custom lookup, or
+metacircular lookup policy, the outer lookup observes the new state. A compiler
+may prepare non-observable descriptor data earlier, but it may not resolve,
+cache, or guard the target before this point in S2.
+
+Every ordinary source send in a migrated implementation therefore returns a
+Call or TailCall action to the Machine. The action is a dynamic boundary, not a
+claim that the current target is resumable. Tail position is determined from
+source control flow; target kind remains a result of late lookup. The complete
+lowering and rooting rules live in
+[60F](60f-resumable-compiler-lowering.md).
+
 ## 6. Suspension and continuation behavior
 
 ### Host suspension
@@ -350,7 +381,15 @@ items.
 10. **(S1)** an action from another Machine or an expired drive epoch is
     rejected;
 11. **(S1)** the driver decodes canonical StepAction objects without recursively
-    sending to them.
+    sending to them;
+12. **(S2)** receiver and argument side effects occur once in receiver-first,
+    argument-left-to-right order, and outer lookup occurs afterward;
+13. **(S2)** redefining an outer selector or its lookup policy during operand
+    evaluation changes that outer send's selected implementation;
+14. **(S2)** every migrated source send crosses a Call/TailCall action boundary,
+    including one whose current target is synchronous; and
+15. **(S2)** synchronous and resumable compilation answer the same ordinary
+    result or ErrorVt value for the accepted subset.
 
 The public control surface and scheduler remain intentionally undecided after
 these tests pass.
