@@ -396,8 +396,11 @@ The calling contract does not impose a no-allocation or no-GC region.
 - A Machine store primitive must root its incoming Oop before any operation that
   can collect.
 - Generated code must store a newly produced Oop in a traced slot before another
-  operation that may allocate unless the ordinary Method/send rooting contract
-  already covers that dynamic extent.
+  operation that may allocate. It may use 60F's bounded ingress handoff only
+  when the compiler proves there is no safepoint between production and the
+  immediately following store send. `IdApi.send` then roots receiver, selector,
+  and arguments before lookup or allocation, and the late-bound store keeps the
+  incoming Oop rooted until the Frame slot owns it.
 - Temporary C argument arrays are borrowed only for the synchronous IdApi.send
   that receives them. They never appear in StepAction or Frame state.
 - Returned StepAction Oops are traced through Machine-owned scratch roots or

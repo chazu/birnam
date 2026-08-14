@@ -4,7 +4,9 @@
 > microcode, same-execution-entry-scope, binding-lifetime/resolve-and-pin, and
 > live-dispatch-timing amendments accepted 2026-08-05; Runtime ownership
 > and code-disposition staging accepted 2026-08-06, together with the S1
-> Machine-microcode protocol.
+> Machine-microcode protocol; S2's retained implementation object, physical
+> carrier, Design 49 execution-disposition, durable `ResumableManifest`, lazy
+> block-vtable recovery, and no-IdApi-growth amendments accepted 2026-08-14.
 > This record closes the registration seam that
 > [60A](60a-stackless-execution-semantics.md) §5 and
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
@@ -43,15 +45,16 @@ answer, not a failure. This record removes that possibility by construction.
 | Driver path | A Call or TailCall uses one logical **resolve-and-pin** operation: ordinary lookup followed, under uninterrupted lifetime protection, by classification as a pinned ResumableEntry, a protected synchronous Method, or unbound. A resumable result pushes a frame and calls the StepMethod. **The thunk is not invoked.** |
 | Send path | An ordinary `IdApi.send` from unmigrated code reaches the thunk, which drives the implementation and answers the ordinary result. |
 | Nested entry | A thunk reached inside an inherited **same-execution entry scope** pushes onto the scoped Machine above an entry-barrier delimiter rather than allocating a second Machine. The driver establishes this scope around StepMethod and synchronous-Method invocation. Unrelated host/reactor work suppresses it and starts a fresh Machine. |
-| Registration record | A Runtime-scoped, process-local **ResumableEntry** owns its unique thunk address, StepMethod address, FrameDescriptor, registration-generation handle, declared arity, and implementation identity. Resolve-and-pin acquires the separate call-generation pin transferred to a Frame. |
+| Registration record | A Runtime-scoped, process-local **ResumableEntry** owns its unique thunk address, StepMethod address, FrameDescriptor, registration-generation handle, declared arity, implementation identity, descriptor hash, and optional strongly rooted implementation object. The object is required by 60F's named-method adapter and absent for a generic block-vtable entry. Resolve-and-pin acquires the separate call-generation pin transferred to a Frame. |
 | Runtime authority | The active `birnam-id::Runtime` is the sole semantic authority for Machine state, Runtime-local entry recognition, binding retirement, dispatch-read protection, and generation pins. The registration shim targets the explicitly entered Runtime; TLS may route the call but is not the authority. |
 | Code custody | Codegen/TCC or another process code repository owns physical mappings. It may share immutable code across isolated Runtimes, but disposal waits for every Runtime lease; it cannot unregister or unload code behind a Runtime's execution state. |
 | Candidate discard | Logical candidate retirement and physical mapping disposition are separate outcomes. Logical discard may complete while the repository reports `Retained(codeGenerationPinned)`; this is not failure of the logical transition. |
 | Recognition | The active Runtime maps each unique live **entry-thunk address** to at most one ResumableEntry. Lookup-through-recognition is protected as one logical operation and acquires the entry plus a generation pin before the protection ends. |
-| Binding lifetime | Each direct installation owns one binding reference. Aliases own independent references; inheritance does not duplicate the defining reference. Lookup results are borrowed, and retaining a raw Method carrier requires an explicit generation lease. Retirement and address reuse wait for binding references, dispatch readers, acquired entries, Frames, Continuations, and leases to quiesce. |
+| Binding lifetime | Each direct installation owns one binding reference. Aliases own independent references; inheritance does not duplicate the defining reference. An accepted S2 unit owns one manifest reference for each declared entry, including a block entry whose vtable remains unallocated. Lookup results are borrowed, and retaining a raw Method carrier requires an explicit generation lease. Retirement and address reuse wait for manifest and binding references, dispatch readers, acquired entries, Frames, Continuations, and leases to quiesce. |
 | Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
 | Failure surface | A 60A §9 driver failure reaching a thunk boundary is fatal, never an ordinary result value. |
-| Registration surfaces | The Store MOP for named methods, direct `birnam_method` for block bodies, `Tcc unit install:as:on:` for symbols resolved from a relocated unit, and image boot, which restores installs and must re-register before any send reaches a restored thunk. All produce the same record. |
+| Registration and publication surfaces | The emitted registration operation prepares one Runtime record independently of installation. The Store MOP publishes named bindings, direct `birnam_method` publishes block bindings, and `Tcc unit install:as:on:` publishes relocated symbols; image boot replays the same artifact registration before restoring those bindings. All resumable surfaces associate the published thunk with the same record shape. |
+| Durable image tag | One pointer-free `ResumableManifest` enumerates every named and block entry. Image v5 carries the same manifest plus tagged generated-block-vtable references. Boot verifies image, artifact, registry, resolver results, and final bindings before user entry. The Runtime supplies image discovery through a private side catalog, not an IdApi field. |
 | Microcode | Machine microcode is an ordinary late-bound Birnam protocol. Its checked primitive implementations may be redefined, removed, or shadowed. A Birnam-authored replacement using public capabilities receives no raw Frame or arena pointer; incompatible changes may alter or invalidate execution, but the driver still validates the final StepAction before applying its requested control transition. Prior valid checked mutations are not transactional or rolled back. Trusted native artifacts retain native authority. |
 
 ## 3. Two paths, and only one of them is the thunk
@@ -68,6 +71,13 @@ The migrated-to-migrated path is the one the whole design exists for, and it
 never passes through a thunk. An implementation that routes it through the thunk
 reintroduces exactly the native-stack growth 60 exists to remove, and will fail
 60 §7 proof point 2 on its first run.
+
+For a named method, the pushed Frame is 60F's retained-implementation adapter.
+The entry owns the exact object supplied to `defineMethod:on:as:` and the adapter
+performs a second, fresh `value:`-family lookup on that object. That inner call
+may push the independently registered block Frame or enter a protected
+synchronous Method. “No thunk invocation” does not mean “no second lookup”: the
+latter is existing Birnam malleability and remains part of the method contract.
 
 ### 3.1 Thunk shape
 
@@ -175,6 +185,9 @@ text.
       generation identity and registration handle  (60B §9)
       declared arity
       implementation identity      (for FrameView, source maps, and 49)
+      descriptor SHA-256 and entry kind
+      optional retained implementation Oop
+      manifest and direct-binding reference state
 
 The registry belongs to one Runtime, is owner-thread-checked in the first
 delivery, and is not a GC root set. Its recognition key is `(Runtime identity,
@@ -183,14 +196,22 @@ by future in-process Runtimes without sharing execution state. Entries are also
 validated by index plus generation when held as capabilities, following the
 Machine registry pattern of 60B §1.
 
-The authoritative registry and its retirement/read-epoch state live with
-dispatch in `birnam-id::Runtime`, not in the compiler or loader. Codegen's
+The authoritative registry, generation-manifest references, block-vtable image
+catalog, and retirement/read-epoch state live with dispatch in
+`birnam-id::Runtime`, not in the compiler, image codec, or loader. Codegen's
 process state is a Codegen context, not a second Birnam Runtime. The emitted
 registration shim uses the explicitly entered Runtime and fails when none is
 active. A process code repository may own the physical mapping and aggregate
 leases from several isolated Runtimes; the Runtime retains the safety decision
-about whether its entries, bindings, Frames, Continuations, or readers can still
-reach that generation.
+about whether its entries, block vtables, bindings, Frames, Continuations, or
+readers can still reach that generation.
+
+The catalog is a private Runtime service passed explicitly to the image writer
+and loader. It is not an IdApi query. It maps an instantiated generated block
+vtable Oop to 60F §13.4's durable entry key and current binding fingerprint, and
+maps that key back through the owning artifact's idempotent resolver during
+recovery. It contributes any required vtable Oops to existing Runtime root
+enumeration; generated native statics are never accepted as the only GC root.
 
 ### 4.1 Resolve and pin is one logical operation
 
@@ -294,13 +315,13 @@ misdispatch. §7 states the gate that closes both directions.
 
 ### 4.3 Registration surfaces, and the one that cannot carry a registration
 
-Three surfaces are live installs that can carry a registration alongside them:
-the Store MOP for named methods, direct `birnam_method` for block bodies, and
-`Tcc unit install:as:on:`, which resolves a symbol from a relocated unit and
-calls
-`ensurePrivateVtable` plus `api.method` — the path `Alien wrap:signature:as:on:`
-is built on. The fourth cannot, and it is the one that breaks if registration is
-treated as a side effect of installation.
+Three surfaces are live installs that can associate an already prepared
+registration with a published thunk: the Store MOP for named methods, direct
+`birnam_method` for block bodies, and `Tcc unit install:as:on:`, which resolves a
+symbol from a relocated unit and calls `ensurePrivateVtable` plus `api.method` —
+the path `Alien wrap:signature:as:on:` is built on. The fourth cannot reconstruct
+a registration as a side effect of installation, and that is the one that
+breaks if the emitted operation is omitted.
 
 **Image boot restores installs without registrations.** The image heap encoder
 skips `SLOT_CODE` words outright, so no method address is serialized at all.
@@ -350,22 +371,41 @@ immutable descriptor metadata and owns or transfers every required generation
 handle before returning. For S2, the immutable descriptor contents include 60F's
 entry locations, call-staging description, colored-slot count, per-PC root maps,
 per-edge transfer plans, and logical-value source-map identity. The exact C
-field layout, descriptor blob encoding, and whether the descriptor originates
-as artifact data or emitted metadata are not frozen by S1.3; 60F §16 must choose
-them before S2 emits registrations.
+field layout and blob encoding are frozen by 60F §13: one sized native envelope
+carries process-local pointers, the optional implementation Oop, and a
+generation lease beside a canonical pointer-free descriptor-v2 blob. The
+Runtime validates and owns every decoded component before publication.
 The registration shim remains covered by the runtime ABI hash, so incompatible
 physical carriers do not silently interoperate.
 
 The check point has to be stated precisely, because "before execution" is not
 available: restored thunks come into being *while* the mapped code unit's
 initializer runs, and that initializer is ordinary program text interleaved with
-installs. The check therefore runs after the code unit's initializer completes
-and before the image's entry point, or as a manifest-versus-registry
-cross-check that does not require executing the unit at all.
+installs. Every S2 artifact therefore registers all entries named by 60F
+§13.4's pointer-free `ResumableManifest` during unit initialization, including a
+block body whose literal has never been evaluated. This metadata operation does
+not allocate its block or vtable. Named installs and block vtables created by
+top-level evaluation may consume prepared entries during the transaction; the
+remaining exact entries are retained by generation-manifest references after
+the initializer returns.
 
-This also settles what would otherwise be an open question about the durable
-projection: it must be self-describing about which methods are resumable,
-because boot cannot reconstruct that otherwise.
+The artifact loader then compares the exported manifest with every prepared and
+published generation-owned entry and atomically commits that exact set. Missing,
+extra, duplicate, wrong-kind, wrong-arity, or descriptor-mismatched entries roll
+back the unit. For image recovery, image v5 first supplies the independently
+framed expected manifest. After initialization the loader requires byte identity
+between image and artifact manifests, commits the registry set, materializes
+heap and fact references to generated block vtables through the artifact's
+idempotent resolver, reconciles bindings, and performs one final check before
+the image entry point. A digest match alone is not sufficient evidence.
+
+The durable projection is therefore self-describing about every resumable named
+adapter and block body. It stores stable authority, implementation, descriptor,
+selector/arity, and source-binding identities, never native addresses. The
+image codec obtains block-vtable identity from the Runtime's private catalog;
+neither IdApi nor malleable Store facts become native-code admission authority.
+Any failed final check answers `resumableEntryUnrestored` before a send can
+reach the affected thunk.
 
 Two costs, stated plainly. Registration needs its own emitted symbol, since
 `birnam_method`'s signature cannot express an entry and widening it would break
@@ -373,7 +413,9 @@ every existing artifact — so §9.3's amendment names two symbols rather than o
 And the registration shim joins the image's hashed runtime shim list, changing
 the runtime ABI hash, so images written before this lands degrade to the rebuild
 path. Design 40 already designs for that degradation; it is a cost to state, not
-a defect. The Codegen shim table is not hashed and does not carry that cost.
+a defect. S2 also makes a clean image-v5 cut for the `Resumables` record and
+tagged block-vtable references. The Codegen shim table is not hashed and does
+not carry that cost.
 
 ## 5. Entering from unmigrated code
 
@@ -617,9 +659,10 @@ expanding IdApi. The disposal condition is wider than 60B §9 states, because of
 §4.2's second direction:
 
 > Disposal is refused unless the generation has zero registration handles,
-> direct binding references, pre-retirement dispatch readers, acquired
-> ResumableEntries, live frames, live continuations, and explicit generation
-> leases, and no reachable vtable holds a method address in its mapped range.
+> manifest references, direct binding references, pre-retirement dispatch
+> readers, acquired ResumableEntries, live frames, live continuations, and
+> explicit generation leases, and no reachable vtable holds a method address in
+> its mapped range.
 
 The third clause is the honest one and it is not currently satisfiable, which
 this record states rather than papers over. Vtables are allocated permanent and
@@ -677,13 +720,13 @@ are 60 §7 proof points 8 and 11 respectively.
 
 For a future multithreaded Runtime, retirement and disposal are ordered against
 §4.1 protected resolution. Mutation first detaches or replaces the binding and
-retires its reference; reclamation then waits for read-side epochs, entry and
-Frame pins, Continuations, binding references, and explicit leases. The choice
-of snapshot, reference count, epoch, or RCU is not frozen, but an address may
-not return to the recognition map for a new generation before the old
-generation reaches that quiescent state. A process mapping shared by several
-Runtimes needs process-shared generation lifetime accounting even though each
-Runtime keeps an independent recognition map.
+retires its reference; reclamation then waits for read-side epochs, manifest
+and binding references, entry and Frame pins, Continuations, and explicit
+leases. The choice of snapshot, reference count, epoch, or RCU is not frozen,
+but an address may not return to the recognition map for a new generation
+before the old generation reaches that quiescent state. A process mapping
+shared by several Runtimes needs process-shared generation lifetime accounting
+even though each Runtime keeps an independent recognition map.
 
 ### 7.1 An active frame does not consult the registry
 
@@ -703,7 +746,7 @@ through its pinned implementation generation while new sends resolve late.
 frame push, while a running Frame invokes its captured StepMethod without
 consulting dispatch again.
 
-### 7.2 Bindings retire entries; one overwrite does not unregister an alias
+### 7.2 Manifest and bindings retain entries; one overwrite does not unregister an alias
 
 Nothing about generation unload covers a method being replaced, but removing
 one binding cannot unregister a thunk that another selector, vtable, or explicit
@@ -718,19 +761,28 @@ already receive the previous Method address, so they increment the new direct
 binding and retire only the replaced or removed direct binding. No defining-
 vtable reconstruction, selector sealing, or change to lookup order is required.
 
+An accepted S2 unit additionally owns one generation-manifest reference for
+every entry declared by its exact 60F §13.4 manifest. That reference keeps a
+never-instantiated block body registered without forcing its private vtable to
+exist. It also permits a still-pinned old Frame to evaluate one of its block
+literals after the entry's original named binding has been replaced. The
+manifest reference is released only when that mapped generation can no longer
+execute; it is not a permanent Runtime-global root and does not substitute for
+the wider disposal gate.
+
 A custom lookup result is borrowed for the protected resolution of §4.1. A
 custom lookup or native cache that must retain the carrier independently of a
 direct binding must hold an explicit generation lease. Without that lease, an
 address returned after its final binding has retired is stale native behavior,
 not an implicit permanent root.
 
-When the last binding reference retires, the entry moves to a retirement set;
-it is not immediately erased. Readers that began before retirement may still
-convert the address into a pin. Reclamation and unregistration occur only after
-those readers, acquired entries, Frames, Continuations, and explicit leases
-have drained. A Runtime may then release the registration-generation handle,
-and the mapping-generation owner may unload or recycle the address only after
-the wider §7 gate also passes.
+When the last binding and manifest reference retires, the entry moves to a
+retirement set; it is not immediately erased. Readers that began before
+retirement may still convert the address into a pin. Reclamation and
+unregistration occur only after those readers, acquired entries, Frames,
+Continuations, and explicit leases have drained. A Runtime may then release the
+registration-generation handle, and the mapping-generation owner may unload or
+recycle the address only after the wider §7 gate also passes.
 
 S1 has owner-thread serialization and an unload refusal for method-bearing
 generations, so its binding counts and retirement set use ordinary mutable
@@ -1028,6 +1080,17 @@ Frozen:
   implementation and generation identities, and generation lease, rejects an
   invalid record before publication, and leaves no borrowed carrier memory in
   the Runtime;
+- S2 artifacts register every canonical manifest entry during unit
+  initialization; acceptance atomically commits an exact generation-manifest
+  reference set, including entries for block vtables that remain lazily
+  unallocated;
+- image v5 carries one self-describing `Resumables` record and tagged generated
+  block-vtable references, and mapped boot compares image, artifact, registry,
+  resolver results, and final bindings before user entry;
+- the Runtime's block-vtable image catalog and artifact resolver are private
+  side services: no durable native address, malleable Store fact, IdApi field,
+  object/vtable slot, exported generated name, or changed lookup rule carries
+  resumable identity;
 - a process code repository may own and share immutable mappings, but disposal
   waits for every isolated Runtime's leases and Runtime-local execution pins;
 - logical candidate discard is independent of physical mapping disposition;
@@ -1043,12 +1106,13 @@ Frozen:
   retire before use;
 - recognition is independent of inherited or custom metacircular lookup, and a
   registry miss retains the synchronous-Method interpretation;
-- each direct binding owns a binding reference; aliases own independent
-  references, inheritance does not duplicate one, and retaining a borrowed
-  custom-lookup result requires an explicit generation lease;
+- each accepted S2 manifest and each direct binding own distinct references;
+  aliases own independent binding references, inheritance does not duplicate
+  one, and retaining a borrowed custom-lookup result requires an explicit
+  generation lease;
 - retirement detaches only the affected binding and delays unregistration and
-  reclamation until older dispatch readers, binding references, acquired
-  entries, Frames, Continuations, and explicit leases are quiescent;
+  reclamation until older manifest and binding references, dispatch readers,
+  acquired entries, Frames, Continuations, and explicit leases are quiescent;
 - a thunk address cannot be reused until that complete quiescence condition
   holds across every Runtime sharing the mapped generation;
 - nested entry reuses the scoped Machine above an entry-barrier delimiter, and
@@ -1181,11 +1245,17 @@ integration seam.
 20. **(S2)** a TailCall to a synchronous Method increments the drive's
     `tailCallToSynchronous`, and the tail-recursion proof asserts it is zero for
     the drive under test;
-21. **(S2)** an image saved with a migrated method boots through the mapped-code
-    path, re-registers its restored thunks, and answers the same result as the
-    same image booted through the rebuild path; an image whose restored thunk
-    has no live entry answers `resumableEntryUnrestored` at the §4.3 check point
-    rather than aborting on first send;
+21. **(S2)** image v5 carries exactly one canonical `Resumables` record for its
+    Code authority; a saved migrated named method and generated block vtable
+    boot through mapped code with the image and artifact manifests, exact
+    generation registry, resolver-returned vtable identity, and final bindings
+    all agreeing before user entry. Mapped and rebuilt paths answer the same
+    result and preserve block-vtable sharing. Missing, extra, duplicate,
+    wrong-kind, wrong-arity, wrong-descriptor, wrong-resolver, or drifted
+    entries answer `resumableEntryUnrestored` at the §4.3 checkpoint rather than
+    aborting on first send. A never-evaluated block body is registered without
+    allocating its vtable, and frozen IdApi layout/fingerprint fixtures remain
+    byte-identical;
 22. **(S3)** capture, suspension, Abort, and Restore that would cross an entry
     barrier each fail with `continuationBarrier`, and the outer drive resumes
     correctly afterward;
@@ -1214,30 +1284,29 @@ integration seam.
 No item in this section blocks S1.1. Each unresolved representation or
 integration choice has an owner and a latest decision point:
 
-1. **Migration as a change event — 60F §16, before S2 lowering.** lookup
-   answers the thunk address, and `tracked_add_method` retracts the old carrier
-   and asserts a new one on every install. 60F must decide what
-   `deriveImageMethodTargets` and `managedMethodChanged:on:` observe when only a
-   method's migration status changes, before source lowering can publish such a
-   change through Design 49 reconciliation.
+1. **Migration as a change event — resolved by 60F §13.3.** lookup answers the
+   thunk address, and `tracked_add_method` retracts the old carrier and asserts
+   a new one on every install. SourceRevision remains unchanged for a carrier-
+   only switch; the successor DispatchGeneration records `Synchronous` or
+   `Resumable { descriptor_sha256 }`, and reconciliation compares generation-
+   owned fingerprints rather than durable native addresses.
 2. **Arena trim — S1.1 baseline frozen; later policy measurement-owned.** 60B
    §3 retains free chunks until Machine destruction, traces only live frames,
    initializes live Oop slots on every push, and publishes high-water and
    reserved-byte telemetry. Whole-chunk zeroing and automatic trim heuristics
    are not S1 correctness requirements; any later policy must be justified by
    those measures and preserve the frozen tracing and generation rules.
-3. **Descriptor carrier — S1.3 semantics; 60F §16 physical encoding.** §4.3
-   freezes the carrier's required values, version/size validation, and lifetime
-   transfer. 60F §§7–13 add descriptor-v2 root maps, colored-slot/entry/call-
-   window layout, edge transfers, and source-map identity. 60F §16 chooses
-   whether FrameDescriptor data lives directly in
-   the artifact or is constructed from emitted metadata, and freezes its C/blob
-   encoding before S2 live/AOT registration parity can gate.
-4. **Durable resumable tag — 60F §16, before S2 image integration.** §4.3
-   requires a self-describing projection. 60F must choose whether that is
-   a method-mirror fact, image section, artifact descriptor field, or a reviewed
-   combination that also covers block vtables before 60E acceptance item 21 can
-   run.
+3. **Descriptor carrier — resolved by 60F §§13.1–13.2.** §4.3 freezes the
+   carrier's required values, version/size validation, and lifetime transfer.
+   S2 uses the accepted sized native envelope plus pointer-free canonical
+   descriptor-v2 blob, including root maps, colored-slot/entry/call-window
+   layout, edge transfers, source maps, SHA-256 validation, and owned decoding.
+4. **Durable resumable tag — resolved by 60F §13.4.** One canonical pointer-free
+   `ResumableManifest` is exported by the artifact and projected into image v5's
+   required `Resumables` record. Tagged heap/fact references use an idempotent
+   unit-local resolver for private generated block vtables; the Runtime supplies
+   discovery through its side catalog. §4.3's post-initializer and final-binding
+   checks cover named and block entries without expanding IdApi.
 5. **Depth diagnostics — S1.2 resolved.** §5.3 requires per-drive current and
    high-water synchronous-boundary depth without an artificial limit. S2's
    alternating-depth evidence publishes the counter alongside measured native-

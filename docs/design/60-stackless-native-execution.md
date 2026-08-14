@@ -9,8 +9,13 @@
 > implemented and accepted against the repository gates on 2026-08-06; source
 > compiler lowering remains S2. The lowering, liveness, root-map, slot-coloring,
 > and edge-transfer portions of 60F were accepted 2026-08-07; 60F's physical
-> carrier, Design 49 migration-event, selection-carrier, and durable-tag
-> decisions remain open and gate implementation.
+> carrier and Design 49 migration-event decisions, together with the review's
+> fresh-Oop, retained-closure, and exact-eligibility amendments, were accepted
+> 2026-08-14. The durable `ResumableManifest`, image-v5 block-vtable recovery,
+> and no-IdApi-growth boundary were accepted 2026-08-14. The canonical
+> `ExecutionSelection` carrier, relational materialization boundary, and
+> live/AOT generation-provenance rule were accepted 2026-08-14. Design 60F's
+> S2 pre-implementation gate is closed.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -216,11 +221,19 @@ assignment, Oop liveness, descriptor-v2 per-PC root maps, interference-based
 slot coloring, per-edge transfer plans, a contiguous reusable call-staging
 window, logical-value source maps, and live/AOT parity.
 
-Its lowering and layout semantics were accepted 2026-08-07. Before S2 compiler
-implementation it must still freeze the physical descriptor carrier, decide how
-a migration-only implementation change appears to Design 49 reconciliation,
-freeze the compiler selection carrier, and choose the durable resumable tag used
-by mapped-image validation, including coverage for block vtables.
+Its lowering and layout semantics were accepted 2026-08-07. The review
+amendments, canonical pointer-free descriptor blob plus native registration
+envelope, and carrier-only Design 49 successor-generation projection were
+accepted 2026-08-14. The same review cycle then accepted one canonical
+pointer-free `ResumableManifest`, its required image-v5 projection, an
+idempotent lazy block-vtable resolver and Runtime image catalog, exact
+post-initializer/final-binding checks, and the boundary that none of these grow
+IdApi or change lookup. It then freezes a revision-qualified canonical
+`ExecutionSelection`: relational policy is materialized before compilation,
+artifacts and DispatchGenerations retain the accepted total table, and image/AOT
+compilation replays that provenance rather than choosing again. 60F has no
+remaining pre-implementation decision; its evidence gates still govern
+acceptance of the implementation.
 
 ### Future 60G — Lifetime and host integration
 

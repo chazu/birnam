@@ -481,7 +481,12 @@ idempotent and owner-thread checked.
 A resumable step has one rule for Oop liveness: an Oop that may be live across
 an allocation, synchronous Method call, late-bound Machine send, callback, or
 step return must already be in a descriptor-marked frame slot or an explicitly
-scoped driver root.
+scoped driver root. The one bounded exception is 60F's fresh-Oop ingress
+handoff: a generated local may carry a new Oop through a compiler-proven
+safepoint-free sequence into the immediately following IdApi send. That send
+must establish scoped roots for receiver, selector, and arguments before lookup
+or allocation, and the store must establish the descriptor root before the
+scope ends.
 
 The compiler and Machine protocol must not leave an Oop only in a C local
 across:
@@ -497,6 +502,12 @@ S1 can enforce this rule manually for the test StepMethod. S2 must validate it
 through emitted frame metadata and targeted forced-collection tests. Its per-PC
 root map covers every value live at any safepoint while that PC's step executes,
 including values created after entry but before the StepMethod returns.
+
+The ingress exception is not permission to trust conservative stack scanning.
+The compiler rejects any producer-to-send path containing a Birnam allocation,
+helper safepoint, callback, lookup, send, or return to the driver. Source-send
+results are rooted and written to the pending caller result slot by the driver;
+they do not cross this generated-local bridge.
 
 During a synchronous Method call, the current Machine Oop remains in the
 driver's scoped root set. The native-stack scan covers temporary C/Rust locals;
