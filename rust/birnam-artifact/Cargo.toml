@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
+sha2.workspace = true
 
 [lints]
 workspace = true

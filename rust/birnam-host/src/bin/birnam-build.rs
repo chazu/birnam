@@ -57,9 +57,7 @@ const STAGE1_MODULES: &[(&str, &str)] = &[
 ];
 
 fn usage() {
-    eprintln!(
-        "usage: birnam-build install --root DIR --prefix DIR [--profile debug|release]"
-    );
+    eprintln!("usage: birnam-build install --root DIR --prefix DIR [--profile debug|release]");
 }
 
 #[derive(Debug)]

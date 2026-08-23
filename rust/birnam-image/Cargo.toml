@@ -11,6 +11,8 @@ module = []
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
+birnam-artifact = { path = "../birnam-artifact" }
+sha2.workspace = true
 
 [lib]
 name = "birnam_image"

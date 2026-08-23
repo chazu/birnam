@@ -25,9 +25,11 @@ Activation applies the complete prevalidated binding set through Store's tracked
 MOP; rollback restores replaced/removed bindings and exactly removes additions.
 The active object dictionary remains canonical, Store records the unit graph,
 history, and MOP mirror, and compiled code remains the primary executable layer.
-Arbitrary module top-level effects are deliberately outside the transaction: this
-is exact dispatch-generation rollback, not a fiction that I/O, FFI, and every live
-object mutation can be undone.
+One VM-owned initializer shape is part of the transaction: a capture-free
+top-level `let name := [block]` may replace its Globals root together with the
+dispatch generation. Arbitrary module top-level effects remain outside the
+transaction: this is exact generation rollback, not a fiction that I/O, FFI,
+and every live object mutation can be undone.
 
 ## 1. Why this is the next boundary
 
@@ -89,6 +91,7 @@ The implementation is accepted only if all of these remain true.
 A candidate source is declarative. The first slice accepts:
 
 - one optional `[Module named: #x requires: #[...]]` declaration;
+- capture-free top-level `let name := [block]` bindings;
 - `[Reflect defineMethod: #sel on: NamedTarget as: ...]` and its doc form; and
 - `[Reflect removeMethod: #sel on: NamedTarget]`.
 
@@ -104,10 +107,18 @@ removals require an existing direct binding. Absence from a candidate means "lea
 unchanged," not "delete everything formerly supplied by this module"; removal is
 never inferred from a partial patch.
 
+Projected bindings are evaluated exactly once at activation. Their exact prior
+and post Globals values are journaled, checked for drift, and restored on
+activation compensation or rollback. They may change between revisions while
+the residual nonmethod digest—every nonprojected top-level form—stays equal.
+Candidate manifest v4 still requires at least one portable method operation;
+projected bindings widen a method-bearing generation transaction rather than
+define an initializer-only candidate format.
+
 ### Deliberately excluded
 
 - arbitrary top-level sends or object creation;
-- creating/replacing user globals;
+- creating/replacing globals except for the capture-free projected block shape;
 - FFI open/wrap/close and callbacks;
 - filesystem, network, process, or other external effects;
 - vtable parent/layout changes;
@@ -303,14 +314,20 @@ mechanically applies it after the native binding commit. It does not invent poli
 These methods are private mechanism in the same sense as the raw id vtable messages:
 Birnam has no access modifier, but the only supported lifecycle surface is
 `CompiledUnit`. Calling a `commitPrepared...` method directly is an explicit escape
-that forfeits managed-state guarantees. Tokens are opaque, process-local, bound to
-one unit/base snapshot, and one-shot, so a prepared validation cannot be replayed
-after the base changes.
+that forfeits managed-state guarantees. Tokens are opaque, process-local SmallInt
+capability IDs, bound to one unit, exact active-generation identity, and numeric
+Store basis, and one-shot, so a prepared validation cannot be replayed after the
+base changes. Collection may run finalizers that advance the Store basis; such a
+collection safely stales the prepared token even when generation identity is
+unchanged. The numeric carrier contains no native address or durable identity.
 
 `discardPrepared:` consumes an unused token and releases preparation-only roots when
-no active/predecessor ledger can reach them. Prepared tokens also carry a finalizer
-with the same conservative cleanup, so abandoning a validation cannot leave a live
-capability indefinitely. Dylib mappings remain subject to the no-unload rule.
+no active/predecessor ledger can reach them. The native registry roots the copied
+publication plan, not the numeric token object; explicit discard or commit is the
+one-shot cleanup boundary. A mapping that ever installed code remains subject to
+the no-unload rule. A zero-entry resumable stage retains no registration identity,
+so a methodless mapping that installed no code may be physically disposed and its
+loader handle may later be reused under a fresh monotonic lease.
 
 They also never open a mutable authoring path directly. Codegen copies the completed
 dylib to a fresh file while hashing those same bytes, verifies the envelope checksum,
@@ -371,8 +388,9 @@ rollback ledger names it; the first implementation may conservatively retain suc
 releasable roots until process exit.
 
 The same root provider marks every Oop retained by transient ledger entries and by
-the native plan behind a still-live prepared token. It does not root the token object
-itself—the caller must retain that capability, and its finalizer removes the plan.
+the native plan behind a still-live prepared token. It does not root the boxed
+SmallInt token object because the native registry stores only its monotonic numeric
+ID; the caller retains the carrier until explicit commit or discard consumes it.
 Raw code pointers and dylib handles are not Oops and are never traced.
 
 The table is mechanism only: it contains Oops and native handles, never lifecycle
@@ -417,7 +435,8 @@ unless the caller also supplied portable operation/provenance.
 1. Read the pointer-free envelope, hash the finished artifact, and reject forbidden
    Mach-O initializer sections or dependency load commands without mapping it.
 2. Reject unsupported manifest/candidate ABI, runtime-shim ABI, platform, integrity,
-   metadata disagreement, or unsafe source.
+   metadata disagreement, unsafe source, a noncanonical candidate-manifest v4
+   frame, or an expected-predecessor/ArtifactSelection disagreement.
 3. Register/verify dependency **names** through `Module`, but do not load anything.
 4. Materialize the CompiledUnit and binding-operation facts as `#candidate`.
 5. Report any unloaded dependencies as `#dependenciesMissing`; do not change
@@ -615,6 +634,19 @@ candidates against the composed live base, but reopening does not resurrect the 
 unit's pointer snapshot. Preserving several rollbackable native generations inside
 an image is a later format feature, not implied.
 
+The production implementation closes this boundary by creating one `#composed`
+component unit per source-map row inside a fresh, predecessor-free
+`DispatchGeneration`. The generation retains byte-identical source revisions,
+base digest, and GenerationSelection; Image supplies a domain-separated SHA-256
+identity over the admitted ordered code checksums. Pure Birnam publishes the
+facts and marks saved origin units `#historical`/`#composedInto`; Codegen admits
+the new durable current generation only during image recovery and snapshots live
+direct bindings for stable-owned targets. Bootstrap/private targets remain
+reproducible code but do not enter the candidate ledger. The release-prefix smoke
+proves mapped/rebuilt identity and behavior parity, no surviving rollback chain,
+composed-image resave/reboot, and successor activation plus rollback over the
+reconstructed base.
+
 ## 11. Source/binary equivalence
 
 There is one candidate path:
@@ -669,9 +701,13 @@ immediate edit vs staged generation, never source vs dylib delivery.
   initializer/dependency load commands, mutable-path replacement/race, metadata disagreement,
   arity mismatch, missing/unstable target, duplicate binding, lifecycle-stale base,
   actual-pointer-stale base, unmanaged present base, and missing removal reject before
-  mutation; GC preserves blocks belonging to active/superseded rollback-reachable
-  units, an abandoned prepared token releases only its preparation roots, and only
-  unreachable/forfeited candidate roots become releasable.
+  mutation; candidate preparation suppresses removals as well as installs; native
+  nil preparation/commit results become kinded lifecycle Errors; GC preserves
+  blocks belonging to active/superseded rollback-reachable units, and any
+  finalizer-induced Store-basis change safely stales a rooted prepared plan without
+  changing lifecycle or dispatch. An abandoned prepared token releases only its
+  preparation roots, and only unreachable/forfeited candidate roots become
+  releasable.
 - Lifecycle: candidate adds + replaces + removes; activation changes all behavior;
   rollback restores all behavior and unit states/history; ordinary edit or target/
   vtable drift after activation makes rollback reject without clobbering the edit.

@@ -4,7 +4,10 @@
 > execution-entry-scope, and resolve-and-pin amendments accepted 2026-08-05;
 > Runtime ownership and acceptance staging accepted 2026-08-06; source-send
 > evaluation, lookup-order, and lowering-malleability amendments accepted
-> 2026-08-07 with 60F.
+> 2026-08-07 with 60F; shared private target resolution for ordinary sends and
+> Machine calls accepted 2026-08-15 with 60E; S3 host suspension, delimited
+> one-shot Continuations, and barrier enforcement implemented and accepted
+> 2026-08-23.
 > This document turns the stackless overview into an executable semantic
 > contract. It deliberately defines the first implementation surface without
 > committing Birnam to durable or multi-shot continuations.
@@ -39,7 +42,7 @@ These are the accepted first-delivery decisions.
 | Public surface | No public continuation syntax is required for S1 or S2. S3 begins with an explicit host/test suspension operation; language syntax is a later policy decision. |
 | Capture | Capture is legal only inside a resumable machine and never crosses a native or foreign barrier. |
 | Native methods | Existing Method implementations remain synchronous and atomic with respect to the machine. They may re-enter Birnam, but the machine must drive nested resumable work to completion before the native call returns. |
-| Entry | A vtable holds an ordinary Method — never a StepMethod address. Unmigrated callers reach an entry thunk; a Call or TailCall from a StepMethod bypasses it and pushes a frame directly. Nested entry reuses the current Machine above a barrier delimiter (60E). |
+| Entry | A vtable holds an ordinary Method — never a StepMethod address. Ordinary `IdApi.send` and Machine Call/TailCall share the Runtime's private resolve-and-pin classification. Either enters a resumable target without invoking its entry thunk; the thunk remains the installed Method carrier and direct-invocation fallback. Nested entry reuses the current Machine above a barrier delimiter (60E). |
 | Errors | Ordinary Birnam errors remain Oop values. Driver, ownership, malformed-action, and barrier failures are out-of-band typed runtime errors. |
 | Code generations | A suspended frame continues in the generation that owns its step function and layout. Sends performed after restoration resolve through the current dispatch generation. |
 | Durability | Machine, StepAction, FrameView, and Continuation Oops are process-local. Image and durable Store persistence reject them with a kinded error. |
@@ -214,13 +217,15 @@ resumable methods, but they must drive them to completion before returning to
 the synchronous Method. The active synchronous Method remains a barrier for
 capture.
 
-That entry is not implicit, and it is not the path a migrated call takes. A
-vtable never holds a StepMethod address: it holds an ordinary entry thunk, which
-an unmigrated caller reaches through ordinary lookup and which drives the
-implementation to completion before answering. A Call or TailCall issued by a
-StepMethod does not use the thunk at all — the driver resolves the address,
-recognizes the registration, and pushes a frame directly.
-[60E](60e-resumable-registration-and-entry.md) defines both paths, the rule that
+That entry is explicit in the Runtime substrate. A vtable never holds a
+StepMethod address: it holds an ordinary entry thunk as the Method-compatible
+carrier. Both an unmigrated `IdApi.send` and a Call or TailCall issued by a
+StepMethod pass the exact ordinary lookup result through the same private
+resolve-and-pin classification. The send enters and drives the resumable target;
+the Machine call pushes its frame directly. Neither primary path invokes the
+thunk. A direct raw-Method invocation of the carrier may still use the thunk as
+a compatibility fallback and must produce the same ordinary answer.
+[60E](60e-resumable-registration-and-entry.md) defines these continuations, the rule that
 nested entry reuses the current Machine above a barrier delimiter, and what
 migration does and does not preserve.
 
@@ -289,8 +294,8 @@ different Machine in S3.
 
 The driver establishes a **same-execution entry scope** before invoking either
 a StepMethod or a synchronous Method as part of the current logical drive. The
-scope names the current Machine for the entry shim; if that native activation
-re-enters resumable code through an ordinary send, the shim pushes an
+scope names the current Machine for the Runtime entry helper; if that native activation
+re-enters resumable code through an ordinary send, the helper pushes an
 entry-barrier delimiter above the waiting Frame. Establishing this scope around
 a StepMethod does not make the StepMethod a synchronous language method or a
 scheduling boundary; it only protects the live native activation while an
@@ -351,9 +356,9 @@ Birnam Oop results and must pass through the same Return path as any other
 value.
 
 Every kind listed here is out-of-band, and that distinction is load-bearing at
-the entry seam: a thunk invoked inside an ordinary send has no out-of-band
-channel. [60E §3.3](60e-resumable-registration-and-entry.md) therefore requires
-such a failure to be fatal rather than returned as a value, because the floor
+the entry seam: an ordinary synchronous send or direct fallback-thunk call has
+no out-of-band channel. [60E §3.3](60e-resumable-registration-and-entry.md)
+therefore requires such a failure to be fatal rather than returned as a value, because the floor
 would otherwise discard it silently in `do:` and catch it in `on:do:`. A later
 record that wants a recoverable subset must name those kinds here and give them
 a kind that does not match `#error`.

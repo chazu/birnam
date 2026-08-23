@@ -42,19 +42,20 @@ Normal boot validates the image format, source-map authority, generation digest,
 code checksum, and code-to-generation binding before mapping executable bytes.
 There is deliberately no old-format migration path.
 
-`--rebuild` skips the mapped unit and evaluates the same complete authored module
-documents, each exactly once and in dependency order, then replays the ordered
-source-backed method operations. This includes methods defined by a standalone
-script or REPL session. Both paths restore the same generation digest.
+`--rebuild` skips the captured native unit, recompiles the same accepted
+GenerationProjection from durable source and selection, and maps that fresh
+unit before replaying external capabilities. This includes methods defined by
+a standalone script or REPL session. Both paths restore the same generation
+digest and selected carriers.
 
 What comes back:
 
 - globals, entities, facts, and cells from the durable Store;
 - the single current `DispatchGeneration` and its sealed source map;
-- methods from the mapped unit or the complete-document-plus-method-operation
-  rebuild, including source-backed methods defined directly by a script or REPL;
+- methods from the mapped unit or freshly compiled projection, including
+  source-backed methods defined directly by a script or REPL;
 - module singletons and Alien FFI wrappers, with external capabilities replayed;
-- source-backed block globals, rederived after data and dispatch are restored.
+- projected block globals, rederived by the mapped or freshly rebuilt unit.
 
 ## Main convention
 
@@ -66,8 +67,9 @@ let main := [| [System println: banner]];
 [System saveImage: "/tmp/app.image"]
 ```
 
-`CompiledUnit` remains the lower-level candidate mechanism; ordinary direct method
-edits are rejected while the runtime is running.
+`CompiledUnit` remains the lower-level candidate mechanism; selection-bearing
+candidate AOT produces the same candidate envelope and activation path. Ordinary
+direct method edits are rejected while the runtime is running.
 
 ## Baking
 

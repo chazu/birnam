@@ -5,13 +5,16 @@
 > ownership, acceptance staging, and code-disposition staging accepted
 > 2026-08-06, together with the S1 Machine-microcode protocol; descriptor-v2
 > per-PC roots, colored-slot ownership, and edge-transfer amendments accepted
-> 2026-08-07 with 60F.
+> 2026-08-07 with 60F; S3 detached segments, Continuation tracing/finalization,
+> and direct continuation-pin accounting implemented and accepted 2026-08-23.
 > This document defines the Birnam-object/private-Rust-storage boundary required
 > by [60A](60a-stackless-execution-semantics.md). It does not own the StepMethod
 > calling contract; the accepted decision in
 > [60C](60c-stepmethod-calling-abi-options.md) preserves the boundary described
 > here. [60F](60f-resumable-compiler-lowering.md) owns the S2 compiler analysis
-> and physical Frame-layout construction that satisfy this memory contract.
+> and physical Frame-layout construction that satisfy this memory contract;
+> [60I](60i-stackless-artifact-byte-grammar.md) owns the exact descriptor-v2
+> bytes.
 
 ## 1. Representation boundary
 
@@ -42,7 +45,7 @@ and uses ordinary IdApi sends to this frozen, primitive-backed S1 protocol:
 |---|---|
 | `oopAt:` | Read one descriptor-validated Oop slot. |
 | `oopAt:put:` | Write one descriptor-validated Oop slot and answer the stored Oop. |
-| `continueAt:` | Validate and install the next program counter, then publish ContinueAction. |
+| `continueAt:` | Select an exact target from the current PC's descriptor edge group, validate and install it, then publish ContinueAction. |
 | `callSite:` | Validate an immutable Call call-site descriptor, install its caller continuation PC, then publish its expanded CallAction. |
 | `tailCallSite:` | Validate an immutable TailCall call-site descriptor, then publish its expanded TailCallAction. |
 | `returnAt:` | Validate an Oop result slot, then publish ReturnAction. |
@@ -57,6 +60,12 @@ returned action and commits 60F's edge plan. Further Frame mutation or action
 publication while pending fails before touching storage. This adds no selector
 or StepAction field; [60F §10](60f-resumable-compiler-lowering.md) defines the
 ordering.
+
+A Continue PC may have multiple statically admitted successors. Its descriptor
+edges form one contiguous group ordered by target PC; `continueAt:` must select
+exactly one member by the requested next PC. A missing target rejects before
+the Frame, pending-transition state, or semantic PC changes. A Call PC still
+has exactly one continuation edge selected by its immutable call site.
 
 Slot, call-site, and program-counter operands are nonnegative SmallInts. The
 StepMethod receives its current program counter as the descriptor-declared
@@ -98,7 +107,7 @@ execution state. That execution state owns:
 - Frame arenas and descriptors held by active execution;
 - Runtime-local ResumableEntry recognition and binding retirement;
 - protected dispatch-read epochs and entry scopes; and
-- Runtime-local registration, Frame, and Continuation generation pins.
+- Runtime-local registration, Frame, and Continuation physical-code pins.
 
 These concerns should form an audited execution module inside `birnam-id`; they
 must not be scattered through dispatch, GC, Codegen, or host code. The module may
@@ -106,8 +115,9 @@ later be factored mechanically, but doing so does not create a second semantic
 Runtime or a second object floor.
 
 Codegen/TCC and artifact loading remain outside this state. A process code
-repository owns physical mapping handles and lends opaque generation leases to
-Runtimes. A Runtime decides whether its execution may still reach a generation;
+repository owns physical mapping handles and lends opaque `CodeGeneration`
+leases to Runtimes. A Runtime decides whether its execution may still reach a
+physical code generation;
 the repository performs disposal only after every Runtime has released it. This
 keeps `birnam-id` independent of compiler and loader implementation while
 preventing either from unloading live Frame code.
@@ -193,7 +203,7 @@ The representation is conceptually:
         frame arena
         delimiter records
         suspension state
-        active generation pins
+        active physical-code pins
         lifecycle state
 
 The registry entry owns MachineState but does not make the Machine Oop a GC
@@ -252,8 +262,7 @@ chunks and cannot change Frame, FrameView, tracing, or pin semantics.
 Every resumable implementation has an immutable FrameDescriptor:
 
     FrameDescriptor
-      implementation identity
-      generation identity
+      portable implementation identity
       layout version
       program-counter range
       slot count
@@ -282,9 +291,11 @@ clears, pending Call-result initialization, and the successor PC. Root-map bit
 differences alone cannot describe a transition because slot coloring may assign
 different logical values to the same rooted physical slot on adjacent PCs.
 
-The exact descriptor-v2 C/blob encoding remains a 60F pre-implementation
-decision. Its semantic contents and validation rules are frozen here and in
-[60F §§7–10](60f-resumable-compiler-lowering.md).
+The exact descriptor-v2 blob encoding is the 60I pre-implementation gate. Its
+semantic contents and validation rules are frozen here and in
+[60F §§7–10](60f-resumable-compiler-lowering.md); its normative offsets, record
+layouts, bounds, and fixtures belong only to
+[60I](60i-stackless-artifact-byte-grammar.md).
 
 Each call-site entry is immutably tagged Call or TailCall. It contains the
 receiver and selector Oop slots, argument start and count, and, for Call, the
@@ -456,10 +467,22 @@ observes half-applied slot ownership. A dead or reassigned physical Oop slot is
 cleared to canonical nil before FrameView or generated code can observe the
 successor state.
 
+The private Rust substrate implements this order as of 2026-08-22. Layout-v2
+descriptors own dense root maps, validated canonical edge plans, and maximum-
+copy-sized scratch reserved when the Frame is pushed. Direct layout-v1 PC
+mutation rejects a layout-v2 Frame; only begin/commit edge operations can move
+its semantic and root-state PCs. Artifact registration does not expose this
+substrate until canonical descriptor admission and generated-code integration
+are connected.
+
 The Runtime root provider is limited to scoped host ownership that is not
 already represented by a reachable heap Oop: a Machine while a host drive is in
-progress, a just-returned StepAction during validation, and host-retained
-process-local handles. It must not enumerate every registry entry.
+progress, a just-returned StepAction during validation, host-retained
+process-local handles, and 60E's dense implementation-anchor slots. An anchor
+slot is an explicit mutable GC root owned by one named ResumableEntry; the
+provider traces those slots directly and may update them for a moving collector.
+It must not walk the capability registry or infer roots from every registry
+entry. Generic block entries have no implementation-anchor slot.
 
 Trace hooks, the scoped provider, and the eventual finalization hook obey the
 existing synchronous GC callback rules:
@@ -542,23 +565,25 @@ Frame segment.
 
 ## 9. Code-generation pinning
 
-Each resumable Frame holds a pin on the generation that owns its step address
-and FrameDescriptor. 60E's ResumableEntry holds a distinct registration-
-generation handle while the entry is live or retiring. Resolve-and-pin acquires
-a call-generation pin; a successful Frame push transfers that pin to the Frame,
-and a failed push releases it. The Frame releases or transfers its pin when it
-is popped, detached into a Continuation, or destroyed. Unregistration releases
-the registration handle only after binding, reader, entry, Frame, Continuation,
-and explicit-lease quiescence.
+Each resumable Frame holds a physical `CodeGeneration` pin on the mapping that
+owns its step address and FrameDescriptor storage. 60E's ResumableEntry holds a
+distinct registration-code handle while the entry is live or retiring.
+Resolve-and-pin acquires a call-code pin; a successful Frame push transfers that
+pin to the Frame, and a failed push releases it. The Frame releases or transfers
+its pin when it is popped, detached into a Continuation, or destroyed.
+Unregistration releases the registration-code handle only after binding,
+reader, entry, Frame, Continuation, and explicit-lease quiescence.
 
-The generation registry must keep both:
+The physical-code registry must keep both:
 
 - the native code handle alive so the step address remains callable;
 - the descriptor and source metadata alive so the frame remains interpretable.
 
-Pinning is separate from the durable Store projection of the current dispatch
-generation. A durable generation record does not by itself prove that a
-process-local native code handle remains mapped.
+Physical pinning is separate from the durable Store projection of the current
+`DispatchGeneration`. A durable dispatch record does not by itself prove that a
+process-local native code handle remains mapped. Conversely, a mapped
+`CodeGeneration` does not identify the logical DispatchGeneration in which one
+of its entries is published.
 
 From S1 onward, no operation may call `dlclose` or equivalent code disposal
 without the owning Runtimes' safety verdicts. S1 accounts for registrations,
@@ -581,7 +606,8 @@ same Oop.
 
 The FrameView Birnam protocol returns copied, safe data:
 
-- implementation and generation identity;
+- portable implementation identity, runtime-local DispatchGeneration
+  association, and physical CodeGeneration identity as distinct values;
 - selector or method identity;
 - source-map location;
 - program counter;
@@ -628,7 +654,7 @@ items.
 3. **(S1)** machine roots survive forced collection while Running;
 4. **(S3)** suspended roots survive forced collection while Suspended;
 5. **(S3)** continuation roots transfer correctly during Capture and Restore;
-6. **(S1)** registration and call-generation pin counts prove acquire, failed-
+6. **(S1)** registration and physical call-code pin counts prove acquire, failed-
    push release, successful transfer to Frame, and final release independently
    of the unload-refusal gate;
 7. **(S3)** pin counts prove transfer from Frame to Continuation and final

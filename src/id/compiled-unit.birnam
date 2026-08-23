@@ -26,6 +26,12 @@
 [db assert: #sourceRevision attr: #cardinality value: #one];
 [db assert: #sourceMap attr: #cardinality value: #one];
 [db assert: #baseDigest attr: #cardinality value: #one];
+[db assert: #generationSelection attr: #cardinality value: #one];
+[db assert: #kind attr: #cardinality value: #one];
+[db assert: #rollbackAvailable attr: #cardinality value: #one];
+[db assert: #composedInto attr: #cardinality value: #one];
+[db assert: #compositionIdentity attr: #cardinality value: #one];
+[db assert: #expectedBaseDigest attr: #cardinality value: #one];
 [db assert: #predecessor attr: #cardinality value: #one];
 [db assert: #deltaUnit attr: #cardinality value: #one];
 [db assert: #activeGeneration attr: #cardinality value: #one];
@@ -61,11 +67,17 @@
 [Reflect defineMethod: #baseDigest on: DispatchGeneration as: [:self |
   [db currentValue: self attr: #baseDigest]]];
 
+[Reflect defineMethod: #generationSelection on: DispatchGeneration as: [:self |
+  [db currentValue: self attr: #generationSelection]]];
+
 [Reflect defineMethod: #predecessor on: DispatchGeneration as: [:self |
   [db currentValue: self attr: #predecessor]]];
 
 [Reflect defineMethod: #deltaUnit on: DispatchGeneration as: [:self |
   [db currentValue: self attr: #deltaUnit]]];
+
+[Reflect defineMethod: #compositionIdentity on: DispatchGeneration as: [:self |
+  [db currentValue: self attr: #compositionIdentity]]];
 
 [Reflect defineMethod: #entryFor: on: DispatchGeneration as: [:self :name |
   [[self sourceMap] inject: nil into: [:found :entry |
@@ -88,6 +100,7 @@
   let generation := [self clone];
   [db assert: generation attr: #sourceMap value: [projection at: 1]];
   [db assert: generation attr: #baseDigest value: [projection at: 2]];
+  [db assert: generation attr: #generationSelection value: [projection at: 3]];
   [[prior isNil] ifTrue: [| nil] ifFalse: [| [db assert: generation attr: #predecessor value: prior]]];
   [[unit isNil] ifTrue: [| nil] ifFalse: [| [db assert: generation attr: #deltaUnit value: unit]]];
   generation]];
@@ -106,9 +119,60 @@
           [Codegen sealInitialGeneration];
           generation]]]]]];
 
+// Image recovery has already restored dispatch before this policy method runs.
+// Mint one process-local composed component per source-map row, publish a fresh
+// rollback-free DispatchGeneration with the exact same source/selection
+// authority, then ask Codegen to snapshot the live direct bindings into its
+// transient ledger. No candidate pointer snapshot crosses the image boundary.
+[Reflect defineMethod: #reconcileImageComposition: on: CompiledUnit as: [:self :identity |
+  let origin := [DispatchGeneration current];
+  let components := [[origin sourceMap] inject: #[] into: [:rows :entry |
+    let name := [entry at: 0];
+    let revision := [entry at: 1];
+    let component := [self clone];
+    [db assert: component attr: #unitName value: name];
+    [db assert: component attr: #generation value: [self nextGenerationFor: name]];
+    [db assert: component attr: #kind value: #composed];
+    [db assert: component attr: #state value: #active];
+    [db assert: component attr: #rollbackAvailable value: false];
+    [db assert: component attr: #sourceRevision value: revision];
+    [db assert: component attr: #authoredSource value: [revision at: 3]];
+    [db assert: component attr: #revisionDigest value: [revision at: 6]];
+    [db assert: component attr: #requires value: [revision at: 2]];
+    [db assert: component attr: #provides value: #[]];
+    [db assert: component attr: #compositionIdentity value: identity];
+    [rows add: #[name revision component]]]];
+  let projection := #[#generationProjection components [origin baseDigest] [origin generationSelection]];
+  let composed := [DispatchGeneration fromProjection: projection predecessor: nil delta: nil];
+  [db assert: composed attr: #kind value: #composed];
+  [db assert: composed attr: #compositionIdentity value: identity];
+  let active := [db cellFor: #dispatch attr: #activeGeneration];
+  [active set: composed];
+  let adopted := [Codegen adoptComposedGeneration: composed];
+  [[adopted isNil]
+    ifTrue: [| [active set: origin]; [Error kind: #imageCompositionRejected]]
+    ifFalse: [|
+      [[origin sourceMap] inject: nil into: [:ignored :entry |
+        let prior := [entry at: 2];
+        [[prior isNil]
+          ifTrue: [| nil]
+          ifFalse: [|
+            [db assert: prior attr: #state value: #historical];
+            [db assert: prior attr: #rollbackAvailable value: false];
+            [db assert: prior attr: #composedInto value: composed]]]]];
+      [db assert: origin attr: #composedInto value: composed];
+      composed]]]];
+
 [Reflect defineMethod: #state on: CompiledUnit as: [:self |
-  [Codegen reconcileCandidate: self];
+  let recorded := [db currentValue: self attr: #state];
+  [[recorded = #active] ifTrue: [| [Codegen reconcileCandidate: self]] ifFalse: [| nil]];
   [db currentValue: self attr: #state]]];
+
+[Reflect defineMethod: #kind on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #kind]]];
+
+[Reflect defineMethod: #composedInto on: CompiledUnit as: [:self |
+  [db currentValue: self attr: #composedInto]]];
 
 [Reflect defineMethod: #unitName on: CompiledUnit as: [:self |
   [db currentValue: self attr: #unitName]]];
@@ -210,6 +274,11 @@
 [Reflect defineMethod: #compile:named:output: on: CompiledUnit as: [:self :source :name :path |
   [Codegen compileCandidate: source named: name output: path]]];
 
+// Selection is copied and validated by Codegen before lowering. This wrapper
+// carries no policy of its own and cannot infer or repair malformed rows.
+[Reflect defineMethod: #compile:named:output:selection: on: CompiledUnit as: [:self :source :name :path :selection |
+  [Codegen compileCandidate: source named: name output: path selection: selection]]];
+
 // Inspect-only open. Codegen verifies the sidecar and complete artifact hash
 // before reflecting metadata into this freshly minted policy object.
 [Reflect defineMethod: #open: on: CompiledUnit as: [:self :path |
@@ -261,9 +330,16 @@
         ifFalse: [|
           let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
           let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: [current unitFor: [self unitName]] expected: current successor: successor]];
-          [[token isError]
-            ifTrue: [| token]
-            ifFalse: [| [Codegen discardPrepared: token]; self]]]]]]]];
+          [[token isNil]
+            ifTrue: [| [Error kind: #candidatePreparationFailed]]
+            ifFalse: [|
+              [[token isError]
+                ifTrue: [| token]
+                ifFalse: [|
+                  let discarded := [Codegen discardPrepared: token];
+                  [[discarded isNil]
+                    ifTrue: [| [Error kind: #candidateDiscardFailed]]
+                    ifFalse: [| [[discarded isError] ifTrue: [| discarded] ifFalse: [| self]]]]]]]]]]]]]];
 
 [Reflect defineMethod: #recordEvent:prior: on: CompiledUnit as: [:self :action :prior |
   let event := [Object clone];
@@ -298,13 +374,16 @@
               let successor := [DispatchGeneration fromProjection: projection predecessor: current delta: self];
               let prior := [current unitFor: name];
               let token := [Codegen prepareActivation: self plan: [self publicationPlan: #activate prior: prior expected: current successor: successor]];
-              [[token isError]
-                ifTrue: [| token]
+              [[token isNil]
+                ifTrue: [| [Error kind: #candidatePreparationFailed]]
                 ifFalse: [|
-                  let committed := [Codegen commitPrepared: token];
-                  [[committed isError]
-                    ifTrue: [| committed]
-                    ifFalse: [| self]]]]]]]]]
+                  [[token isError]
+                    ifTrue: [| token]
+                    ifFalse: [|
+                      let committed := [Codegen commitPrepared: token];
+                      [[committed isNil]
+                        ifTrue: [| [Error kind: #candidateCommitFailed]]
+                        ifFalse: [| [[committed isError] ifTrue: [| committed] ifFalse: [| self]]]]]]]]]]]]]
     ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]];
 
 [Reflect defineMethod: #rollback on: CompiledUnit as: [:self |
@@ -327,13 +406,16 @@
                 ifFalse: [|
                   let prior := [predecessor unitFor: [self unitName]];
                   let token := [Codegen prepareRollback: self plan: [self publicationPlan: #rollback prior: prior expected: current successor: predecessor]];
-                  [[token isError]
-                    ifTrue: [| token]
+                  [[token isNil]
+                    ifTrue: [| [Error kind: #candidateRollbackPreparationFailed]]
                     ifFalse: [|
-                      let rolled := [Codegen commitPreparedRollback: token];
-                      [[rolled isError]
-                        ifTrue: [| rolled]
-                        ifFalse: [| self]]]]]]]]]
+                      [[token isError]
+                        ifTrue: [| token]
+                        ifFalse: [|
+                          let rolled := [Codegen commitPreparedRollback: token];
+                          [[rolled isNil]
+                            ifTrue: [| [Error kind: #candidateRollbackCommitFailed]]
+                            ifFalse: [| [[rolled isError] ifTrue: [| rolled] ifFalse: [| self]]]]]]]]]]]]]
         ifFalse: [| [Error kind: #invalidLifecycleTransition]]]]]]];
 
 [Reflect defineMethod: #activeFor: on: CompiledUnit as: [:self :name |

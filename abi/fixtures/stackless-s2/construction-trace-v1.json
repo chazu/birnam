@@ -1,0 +1,56 @@
+{
+  "schema": "birnam.stackless-s2.construction-trace.v1",
+  "source_revision": {
+    "module": "trace",
+    "dependencies": [],
+    "authored_source": "run => self\nblock => [ self ]\n",
+    "sha256": "0b0261b15fce452514549a5369bb41624215eaa4e6469a3c370495bdffdaa8a1"
+  },
+  "portable_operation": {
+    "module": "trace",
+    "target": "Trace",
+    "selector": "run",
+    "action": "Install",
+    "definition_source": "run => self",
+    "definition_sha256": "0127cea74177a8b9b1fb4c930b572f84dfb750dcd35ad4417c23de7897b973ea",
+    "carrier": "Resumable",
+    "descriptor_sha256": "d670335de8efd9c6db228e19a70affb3fe738e0864dee726dde273928a5171cf"
+  },
+  "block_body": {
+    "lexical_path": [0],
+    "descriptor_sha256": "0349c27104f611bb9898eef9c4132d536dec5a6237a2752811701a2e50a48560"
+  },
+  "artifact_selection": {
+    "file": "artifact-selection-construction-trace.bin",
+    "sha256": "9f3f5eb6dbbe1567e6798eba426e791c90be1c3e0e1361378809e8ce75ee7c20"
+  },
+  "generation_selection": {
+    "file": "generation-selection-construction-trace.bin",
+    "sha256": "0246cbd4d149a369a095da35bdd8525974acf58d9f4c1b499e580393c9b42197"
+  },
+  "dispatch_generation": {
+    "domain": "birnam.dispatch-base.v2\\0",
+    "authority_sha256": "7d1a817173f4b47139581aaf2996009012ae398f1e251a3bfe5e75498c5f823c"
+  },
+  "resumable_manifest": {
+    "file": "resumable-manifest-construction-trace.bin",
+    "sha256": "3a6da81af68a0c91836aec32ace894c5ed6e18ec1d7b6bd0cb6f3cbe40bbd6ad"
+  },
+  "image": {
+    "file": "image-v5-construction-trace.bin",
+    "sha256": "a4c329ded2cda7ee712183370334516ca87e5466fc0ce0cc782df80b57becc7b",
+    "runtime_abi_v3": "6c3b67f0ef1614b3",
+    "block_manifest_index": 1,
+    "repeated_reference_count": 4
+  },
+  "acyclic_order": [
+    "source revision",
+    "artifact and generation selections",
+    "frame descriptors",
+    "generation-selection digest",
+    "dispatch-generation authority",
+    "resumable manifest",
+    "native registration envelopes",
+    "image v5"
+  ]
+}

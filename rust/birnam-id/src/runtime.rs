@@ -4,6 +4,8 @@
 use core::cell::{Cell, UnsafeCell};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use birnam_artifact::stackless_selection::ImplementationKind;
+
 use crate::abi::SLOT_OOP;
 use crate::abi::{MarkFn, Method, MethodOverwriteHook, Oop};
 use crate::boundary;
@@ -20,6 +22,7 @@ use crate::gc::{
 };
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
+use crate::registration::{ABORT_V1, BirnamResumableRegistrationV1, PREPARE_V1, StagedUnit};
 use crate::symbol::{EmbeddedNul, Symbols};
 use crate::values::Values;
 use crate::vtable::{AddMethod, Vtables};
@@ -71,6 +74,60 @@ struct RuntimeState {
     environment: Environment,
     method_overwrite_hook: Option<MethodOverwriteHook>,
     execution: ExecutionState,
+    staged_resumable_unit: Option<StagedUnit>,
+    staged_resumable_claims: Option<Vec<Option<RuntimeRegistrationClaim>>>,
+    staged_resumable_publications: Option<Vec<StagedResumablePublication>>,
+    staged_catalog_drift: Option<Vec<bool>>,
+    committed_resumable_units: Vec<CommittedResumableUnit>,
+    block_vtable_catalog: Vec<BlockVtableCatalogEntry>,
+    registration_tokens: Vec<RuntimeRegistrationToken>,
+    next_registration_token: u64,
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeRegistrationToken {
+    token: u64,
+    manifest_entry_index: u32,
+    thunk: MethodAddress,
+    capability: crate::execution::ResumableEntryCapability,
+    code_generation_identity: u64,
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeRegistrationClaim {
+    thunk: MethodAddress,
+    capability: crate::execution::ResumableEntryCapability,
+}
+
+#[derive(Clone, Copy)]
+struct StagedResumablePublication {
+    vtable: Oop,
+    selector: Oop,
+    installed: Option<MethodAddress>,
+    previous: Option<MethodAddress>,
+}
+
+struct CommittedResumableEntry {
+    manifest_entry_index: u32,
+    implementation_kind: ImplementationKind,
+    thunk: MethodAddress,
+    capability: crate::execution::ResumableEntryCapability,
+}
+
+struct CommittedResumableUnit {
+    authority: [u8; 32],
+    manifest_bytes: Vec<u8>,
+    code_generation_identity: u64,
+    entries: Vec<CommittedResumableEntry>,
+}
+
+struct BlockVtableCatalogEntry {
+    vtable: Oop,
+    authority: [u8; 32],
+    manifest_entry_index: u32,
+    capability: crate::execution::ResumableEntryCapability,
+    code_generation_identity: u64,
+    drifted: bool,
 }
 
 /// One runtime owned by the thread that constructed it.
@@ -223,6 +280,14 @@ impl Runtime {
                 environment: Environment::new(),
                 method_overwrite_hook: None,
                 execution: ExecutionState::new(current_thread_token()),
+                staged_resumable_unit: None,
+                staged_resumable_claims: None,
+                staged_resumable_publications: None,
+                staged_catalog_drift: None,
+                committed_resumable_units: Vec::new(),
+                block_vtable_catalog: Vec::new(),
+                registration_tokens: Vec::new(),
+                next_registration_token: 1,
             }),
         }
     }
@@ -301,24 +366,48 @@ impl Runtime {
                 .add_method(vtable, selector, method)
         };
         let added = MethodAddress::from_method(method);
+        let staged = unsafe { (&*self.state.get()).staged_resumable_publications.is_some() };
         // Direct-binding accounting follows the mutation result so aliases own
         // independent references and inherited lookup adds none.
         unsafe {
-            let execution = &mut (&mut *self.state.get()).execution;
+            let state = &mut *self.state.get();
             if let AddMethod::Overwrote(previous) = result
                 && previous != added
             {
-                execution
-                    .note_direct_binding_removed(previous)
-                    .unwrap_or_else(|_| {
-                        boundary::fatal_invariant("resumable binding removal accounting failed")
-                    });
+                let removed = if staged {
+                    state.execution.note_staged_direct_binding_removed(previous)
+                } else {
+                    state.execution.note_direct_binding_removed(previous)
+                };
+                removed.unwrap_or_else(|_| {
+                    boundary::fatal_invariant("resumable binding removal accounting failed")
+                });
+                note_block_vtable_replaced(state, vtable, previous);
             }
             if !matches!(result, AddMethod::Overwrote(previous) if previous == added) {
-                execution
+                state
+                    .execution
                     .note_direct_binding_added(added)
                     .unwrap_or_else(|_| {
                         boundary::fatal_invariant("resumable binding addition accounting failed")
+                    });
+                note_block_vtable_bound(state, vtable, added);
+            }
+            if staged && !matches!(result, AddMethod::Overwrote(previous) if previous == added) {
+                state
+                    .staged_resumable_publications
+                    .as_mut()
+                    .unwrap_or_else(|| {
+                        boundary::fatal_invariant("staged publication journal disappeared")
+                    })
+                    .push(StagedResumablePublication {
+                        vtable,
+                        selector,
+                        installed: Some(added),
+                        previous: match result {
+                            AddMethod::Added => None,
+                            AddMethod::Overwrote(previous) => Some(previous),
+                        },
                     });
             }
         }
@@ -350,12 +439,31 @@ impl Runtime {
         if let Some(method) = removed {
             // SAFETY: owner-thread point accounting after dictionary mutation.
             unsafe {
-                (&mut *self.state.get())
-                    .execution
-                    .note_direct_binding_removed(method)
-                    .unwrap_or_else(|_| {
-                        boundary::fatal_invariant("resumable binding removal accounting failed")
-                    });
+                let state = &mut *self.state.get();
+                let staged = state.staged_resumable_publications.is_some();
+                let result = if staged {
+                    state.execution.note_staged_direct_binding_removed(method)
+                } else {
+                    state.execution.note_direct_binding_removed(method)
+                };
+                result.unwrap_or_else(|_| {
+                    boundary::fatal_invariant("resumable binding removal accounting failed")
+                });
+                note_block_vtable_replaced(state, vtable, method);
+                if staged {
+                    state
+                        .staged_resumable_publications
+                        .as_mut()
+                        .unwrap_or_else(|| {
+                            boundary::fatal_invariant("staged publication journal disappeared")
+                        })
+                        .push(StagedResumablePublication {
+                            vtable,
+                            selector,
+                            installed: None,
+                            previous: Some(method),
+                        });
+                }
             }
         }
         removed
@@ -727,12 +835,19 @@ impl Runtime {
         let globals = self.globals();
         let machine_vtable = self.create_vtable(globals.object_vt);
         let frame_view_vtable = self.create_vtable(globals.object_vt);
+        let continuation_vtable = self.create_vtable(globals.object_vt);
         let continue_action_vtable = self.create_vtable(globals.object_vt);
         let call_action_vtable = self.create_vtable(globals.object_vt);
         let tail_call_action_vtable = self.create_vtable(globals.object_vt);
         let return_action_vtable = self.create_vtable(globals.object_vt);
+        let suspend_action_vtable = self.create_vtable(globals.object_vt);
+        let capture_action_vtable = self.create_vtable(globals.object_vt);
+        let restore_action_vtable = self.create_vtable(globals.object_vt);
+        let abort_action_vtable = self.create_vtable(globals.object_vt);
         let machine_prototype = self.allocate_empty(machine_vtable, Permanence::Permanent);
         let frame_view_prototype = self.allocate_empty(frame_view_vtable, Permanence::Permanent);
+        let continuation_prototype =
+            self.allocate_empty(continuation_vtable, Permanence::Permanent);
         let continue_action_prototype =
             self.allocate_empty(continue_action_vtable, Permanence::Permanent);
         let call_action_prototype = self.allocate_empty(call_action_vtable, Permanence::Permanent);
@@ -740,6 +855,14 @@ impl Runtime {
             self.allocate_empty(tail_call_action_vtable, Permanence::Permanent);
         let return_action_prototype =
             self.allocate_empty(return_action_vtable, Permanence::Permanent);
+        let suspend_action_prototype =
+            self.allocate_empty(suspend_action_vtable, Permanence::Permanent);
+        let capture_action_prototype =
+            self.allocate_empty(capture_action_vtable, Permanence::Permanent);
+        let restore_action_prototype =
+            self.allocate_empty(restore_action_vtable, Permanence::Permanent);
+        let abort_action_prototype =
+            self.allocate_empty(abort_action_vtable, Permanence::Permanent);
         let oop_at = self
             .intern(b"oopAt:")
             .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
@@ -797,6 +920,24 @@ impl Runtime {
         let result_slot_selector = self
             .intern(b"resultSlot")
             .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+        let delimiter_index_selector = self
+            .intern(b"delimiterIndex")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+        let delimiter_generation_selector = self
+            .intern(b"delimiterGeneration")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+        let continuation_slot_selector = self
+            .intern(b"continuationSlot")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+        let supplied_value_slot_selector = self
+            .intern(b"suppliedValueSlot")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+        let reason_slot_selector = self
+            .intern(b"reasonSlot")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
+        let has_delimiter_selector = self
+            .intern(b"hasDelimiter")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
         let continue_kind = self
             .intern(b"continue")
             .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
@@ -808,6 +949,18 @@ impl Runtime {
             .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
         let return_kind = self
             .intern(b"return")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
+        let suspend_kind = self
+            .intern(b"suspend")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
+        let capture_kind = self
+            .intern(b"capture")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
+        let restore_kind = self
+            .intern(b"restore")
+            .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
+        let abort_kind = self
+            .intern(b"abort")
             .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
         let live_frame_count = self
             .intern(b"liveFrameCount")
@@ -873,6 +1026,11 @@ impl Runtime {
             (call_action_vtable, call_action_prototype),
             (tail_call_action_vtable, tail_call_action_prototype),
             (return_action_vtable, return_action_prototype),
+            (suspend_action_vtable, suspend_action_prototype),
+            (capture_action_vtable, capture_action_prototype),
+            (restore_action_vtable, restore_action_prototype),
+            (abort_action_vtable, abort_action_prototype),
+            (continuation_vtable, continuation_prototype),
         ] {
             self.set_vtable_owner(vtable, owner);
             self.set_layout(vtable, core::ptr::null(), 0, crate::abi::SLOT_RAW);
@@ -885,14 +1043,23 @@ impl Runtime {
             crate::abi::SLOT_RAW,
         );
         self.set_trace_hook(machine_vtable, crate::execution::machine_trace_hook);
+        self.set_trace_hook(
+            continuation_vtable,
+            crate::execution::continuation_trace_hook,
+        );
         self.gc_register_root_provider(crate::execution::execution_root_provider);
         for (name, object) in [
             (&b"Machine"[..], machine_prototype),
             (&b"FrameView"[..], frame_view_prototype),
+            (&b"Continuation"[..], continuation_prototype),
             (&b"ContinueAction"[..], continue_action_prototype),
             (&b"CallAction"[..], call_action_prototype),
             (&b"TailCallAction"[..], tail_call_action_prototype),
             (&b"ReturnAction"[..], return_action_prototype),
+            (&b"SuspendAction"[..], suspend_action_prototype),
+            (&b"CaptureAction"[..], capture_action_prototype),
+            (&b"RestoreAction"[..], restore_action_prototype),
+            (&b"AbortAction"[..], abort_action_prototype),
         ] {
             self.export(name, object).unwrap_or_else(|_| {
                 boundary::fatal_invariant("static execution export name contains NUL")
@@ -964,6 +1131,10 @@ impl Runtime {
             call_action_vtable,
             tail_call_action_vtable,
             return_action_vtable,
+            suspend_action_vtable,
+            capture_action_vtable,
+            restore_action_vtable,
+            abort_action_vtable,
         ] {
             for (selector, method) in [
                 (
@@ -1022,6 +1193,78 @@ impl Runtime {
             result_slot_selector,
             crate::execution::call_action_result_slot,
         );
+        for (vtable, fields) in [
+            (
+                suspend_action_vtable,
+                [
+                    (
+                        result_slot_selector,
+                        crate::execution::action_word_four as crate::abi::Method,
+                    ),
+                    (
+                        delimiter_index_selector,
+                        crate::execution::action_word_five as crate::abi::Method,
+                    ),
+                    (
+                        delimiter_generation_selector,
+                        crate::execution::action_word_six as crate::abi::Method,
+                    ),
+                ],
+            ),
+            (
+                capture_action_vtable,
+                [
+                    (
+                        delimiter_index_selector,
+                        crate::execution::action_word_four as crate::abi::Method,
+                    ),
+                    (
+                        delimiter_generation_selector,
+                        crate::execution::action_word_five as crate::abi::Method,
+                    ),
+                    (
+                        result_slot_selector,
+                        crate::execution::action_word_six as crate::abi::Method,
+                    ),
+                ],
+            ),
+        ] {
+            for (selector, method) in fields {
+                let _ = self.add_method(vtable, selector, method);
+            }
+        }
+        for (selector, method) in [
+            (
+                continuation_slot_selector,
+                crate::execution::action_word_four as crate::abi::Method,
+            ),
+            (
+                supplied_value_slot_selector,
+                crate::execution::action_word_five as crate::abi::Method,
+            ),
+        ] {
+            let _ = self.add_method(restore_action_vtable, selector, method);
+        }
+        for (selector, method) in [
+            (
+                has_delimiter_selector,
+                crate::execution::abort_action_has_delimiter as crate::abi::Method,
+            ),
+            (
+                delimiter_index_selector,
+                crate::execution::abort_action_delimiter_index as crate::abi::Method,
+            ),
+            (
+                delimiter_generation_selector,
+                crate::execution::abort_action_delimiter_generation as crate::abi::Method,
+            ),
+            (
+                reason_slot_selector,
+                crate::execution::action_word_six as crate::abi::Method,
+            ),
+        ] {
+            let _ = self.add_method(abort_action_vtable, selector, method);
+        }
         for (selector, method) in [
             (
                 implementation_identity,
@@ -1072,6 +1315,8 @@ impl Runtime {
                     machine_prototype,
                     frame_view_vtable,
                     frame_view_prototype,
+                    continuation_vtable,
+                    continuation_prototype,
                     continue_action_vtable,
                     continue_action_prototype,
                     call_action_vtable,
@@ -1080,10 +1325,22 @@ impl Runtime {
                     tail_call_action_prototype,
                     return_action_vtable,
                     return_action_prototype,
+                    suspend_action_vtable,
+                    suspend_action_prototype,
+                    capture_action_vtable,
+                    capture_action_prototype,
+                    restore_action_vtable,
+                    restore_action_prototype,
+                    abort_action_vtable,
+                    abort_action_prototype,
                     continue_kind,
                     call_kind,
                     tail_call_kind,
                     return_kind,
+                    suspend_kind,
+                    capture_kind,
+                    restore_kind,
+                    abort_kind,
                     oop_slot_kind,
                     raw_slot_kind,
                     stale_frame_view_kind,
@@ -1113,6 +1370,14 @@ impl Runtime {
             self.allocate_instance(objects.tail_call_action_vtable, size_of::<[usize; 8]>());
         let return_action =
             self.allocate_instance(objects.return_action_vtable, 5 * size_of::<usize>());
+        let suspend_action =
+            self.allocate_instance(objects.suspend_action_vtable, 7 * size_of::<usize>());
+        let capture_action =
+            self.allocate_instance(objects.capture_action_vtable, 7 * size_of::<usize>());
+        let restore_action =
+            self.allocate_instance(objects.restore_action_vtable, 6 * size_of::<usize>());
+        let abort_action =
+            self.allocate_instance(objects.abort_action_vtable, 7 * size_of::<usize>());
         let owner = current_thread_token();
         // SAFETY: allocations completed; owner-thread serialization permits one
         // short mutable access with no callback or allocation in this scope.
@@ -1125,6 +1390,10 @@ impl Runtime {
                 call_action,
                 tail_call_action,
                 return_action,
+                suspend_action,
+                capture_action,
+                restore_action,
+                abort_action,
             )?;
             state
                 .execution
@@ -1254,6 +1523,31 @@ impl Runtime {
             (&mut *self.state.get())
                 .execution
                 .finalize_detached_machine(machine)
+        };
+    }
+
+    pub(crate) fn trace_stackless_continuation(&self, continuation: Oop, mark: MarkFn) {
+        // SAFETY: trace-hook invocation is owner-thread-only and immutable.
+        unsafe {
+            let state = &*self.state.get();
+            state
+                .execution
+                .trace_continuation_roots(&state.heap, continuation, mark);
+        }
+    }
+
+    /// Finalize a detached Continuation payload under the active Runtime.
+    ///
+    /// # Safety
+    ///
+    /// The heap must still own the detached allocation until this call returns.
+    pub(crate) unsafe fn finalize_stackless_continuation(&self, continuation: Oop) {
+        // SAFETY: owner-thread finalization provides exclusive execution-state
+        // access, and the caller forwards the detached-payload lifetime.
+        unsafe {
+            (&mut *self.state.get())
+                .execution
+                .finalize_detached_continuation(continuation)
         };
     }
 
@@ -1456,6 +1750,55 @@ impl Runtime {
         }
     }
 
+    pub(crate) fn stackless_suspend_current(
+        &self,
+        machine: Oop,
+        result_slot: usize,
+        next_pc: usize,
+    ) -> Result<Oop, ExecutionError> {
+        let capability = self.stackless_machine_capability(machine)?;
+        // SAFETY: delimiter lookup and scratch publication are one
+        // allocation-free owner-thread operation over disjoint fields.
+        unsafe {
+            let state = &mut *self.state.get();
+            let delimiter = state
+                .execution
+                .current_delimiter(current_thread_token(), capability)?;
+            state.execution.publish_suspend(
+                &mut state.heap,
+                current_thread_token(),
+                capability,
+                result_slot,
+                delimiter,
+                next_pc,
+            )
+        }
+    }
+
+    pub(crate) fn stackless_capture_current(
+        &self,
+        machine: Oop,
+        result_slot: usize,
+        next_pc: usize,
+    ) -> Result<Oop, ExecutionError> {
+        let capability = self.stackless_machine_capability(machine)?;
+        // SAFETY: same short disjoint-field borrow as suspension publication.
+        unsafe {
+            let state = &mut *self.state.get();
+            let delimiter = state
+                .execution
+                .current_delimiter(current_thread_token(), capability)?;
+            state.execution.publish_capture(
+                &mut state.heap,
+                current_thread_token(),
+                capability,
+                delimiter,
+                result_slot,
+                next_pc,
+            )
+        }
+    }
+
     pub(crate) fn stackless_call_site(
         &self,
         machine: Oop,
@@ -1499,6 +1842,15 @@ impl Runtime {
         self.make_integer(value)
     }
 
+    pub(crate) fn stackless_action_word(&self, action: Oop, index: usize) -> Option<usize> {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and immutable access only.
+        unsafe {
+            let state = &*self.state.get();
+            state.execution.action_word(&state.heap, action, index)
+        }
+    }
+
     pub(crate) fn stackless_machine_diagnostic_word(&self, machine: Oop, index: usize) -> Oop {
         let capability = match self.stackless_machine_capability(machine) {
             Ok(capability) => capability,
@@ -1539,6 +1891,481 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread immutable scalar snapshot.
         unsafe { (*self.state.get()).execution.registration_diagnostics() }
+    }
+
+    pub(crate) fn stackless_block_vtable_image_reference(
+        &self,
+        vtable: Oop,
+        authority: [u8; 32],
+    ) -> Option<u32> {
+        self.assert_owner();
+        // SAFETY: owner-thread immutable catalog lookup.
+        let state = unsafe { &*self.state.get() };
+        let mut matches = state.block_vtable_catalog.iter().filter(|entry| {
+            entry.vtable == vtable
+                && entry.authority == authority
+                && !entry.drifted
+                && state
+                    .committed_resumable_units
+                    .iter()
+                    .any(|unit| unit.code_generation_identity == entry.code_generation_identity)
+        });
+        let entry = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(entry.manifest_entry_index)
+    }
+
+    pub(crate) fn stackless_resumable_manifest_matches(
+        &self,
+        authority: [u8; 32],
+        code_generation_identity: u64,
+        manifest_bytes: &[u8],
+    ) -> bool {
+        self.assert_owner();
+        // SAFETY: owner-thread immutable retained-manifest comparison.
+        let state = unsafe { &*self.state.get() };
+        let mut matches = state.committed_resumable_units.iter().filter(|unit| {
+            unit.authority == authority
+                && unit.code_generation_identity == code_generation_identity
+                && unit.manifest_bytes == manifest_bytes
+        });
+        matches.next().is_some() && matches.next().is_none()
+    }
+
+    pub(crate) fn stackless_block_vtable_for_manifest_index(
+        &self,
+        authority: [u8; 32],
+        manifest_entry_index: u32,
+    ) -> Option<Oop> {
+        self.assert_owner();
+        // SAFETY: owner-thread immutable catalog lookup.
+        let state = unsafe { &*self.state.get() };
+        let mut matches = state.block_vtable_catalog.iter().filter(|entry| {
+            entry.authority == authority
+                && entry.manifest_entry_index == manifest_entry_index
+                && !entry.drifted
+                && state
+                    .committed_resumable_units
+                    .iter()
+                    .any(|unit| unit.code_generation_identity == entry.code_generation_identity)
+        });
+        let entry = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(entry.vtable)
+    }
+
+    pub(crate) fn begin_staged_resumable_unit(
+        &self,
+        manifest: &[u8],
+        authority: [u8; 32],
+        code_generation_identity: u64,
+        code_generation_lease: u64,
+    ) -> bool {
+        self.assert_owner();
+        let Ok(staged) = StagedUnit::new(
+            manifest,
+            authority,
+            code_generation_identity,
+            code_generation_lease,
+        ) else {
+            return false;
+        };
+        // SAFETY: owner-thread point mutation with no callback.
+        let state = unsafe { &mut *self.state.get() };
+        if state.staged_resumable_unit.is_some()
+            || state.staged_resumable_claims.is_some()
+            || state.staged_resumable_publications.is_some()
+            || state.staged_catalog_drift.is_some()
+            || state
+                .committed_resumable_units
+                .iter()
+                .any(|unit| unit.code_generation_identity == code_generation_identity)
+        {
+            return false;
+        }
+        state.staged_catalog_drift = Some(
+            state
+                .block_vtable_catalog
+                .iter()
+                .map(|entry| entry.drifted)
+                .collect(),
+        );
+        state.staged_resumable_publications = Some(Vec::new());
+        state.staged_resumable_claims = Some(vec![None; staged.entry_count()]);
+        state.staged_resumable_unit = Some(staged);
+        true
+    }
+
+    pub(crate) fn finish_staged_resumable_unit(&self) -> bool {
+        self.close_staged_resumable_unit(true)
+    }
+
+    pub(crate) fn cancel_staged_resumable_unit(&self) -> bool {
+        self.close_staged_resumable_unit(false)
+    }
+
+    fn close_staged_resumable_unit(&self, commit: bool) -> bool {
+        self.assert_owner();
+        // SAFETY: owner-thread point mutation with no callback.
+        let state = unsafe { &mut *self.state.get() };
+        let Some(staged) = state.staged_resumable_unit.take() else {
+            return false;
+        };
+        let claims = state.staged_resumable_claims.take();
+        let publications = state.staged_resumable_publications.take();
+        let catalog_drift = state.staged_catalog_drift.take();
+        let code_generation_identity = staged.code_generation_identity();
+        let authority = staged.authority();
+        let manifest_bytes = staged.manifest_bytes().to_vec();
+        let implementation_kinds = (0..staged.entry_count())
+            .map(|index| staged.implementation_kind(index))
+            .collect::<Option<Vec<_>>>();
+        let complete_claims = claims
+            .as_ref()
+            .is_some_and(|claims| claims.iter().all(Option::is_some));
+        if commit
+            && staged.finish().is_ok()
+            && complete_claims
+            && implementation_kinds.is_some()
+            && publications.is_some()
+            && catalog_drift.is_some()
+        {
+            let claims = claims.expect("complete staged claims checked");
+            let claim_thunks = claims
+                .iter()
+                .filter_map(|claim| claim.as_ref().map(|claim| claim.thunk))
+                .collect::<Vec<_>>();
+            for publication in publications.as_ref().expect("publication journal checked") {
+                if let Some(previous) = publication.previous
+                    && !claim_thunks.contains(&previous)
+                {
+                    state
+                        .execution
+                        .commit_staged_binding_removal(previous)
+                        .unwrap_or_else(|_| {
+                            boundary::fatal_invariant(
+                                "staged prior binding retirement could not commit",
+                            )
+                        });
+                }
+            }
+            for claim in claims.iter().filter_map(Option::as_ref) {
+                state
+                    .execution
+                    .settle_staged_registration(claim.capability)
+                    .unwrap_or_else(|_| {
+                        boundary::fatal_invariant("staged registration could not commit")
+                    });
+            }
+            let entries: Vec<CommittedResumableEntry> = claims
+                .into_iter()
+                .zip(implementation_kinds.expect("staged kinds checked"))
+                .enumerate()
+                .map(|(index, (claim, implementation_kind))| {
+                    let claim = claim.expect("complete staged claim checked");
+                    CommittedResumableEntry {
+                        manifest_entry_index: index as u32,
+                        implementation_kind,
+                        thunk: claim.thunk,
+                        capability: claim.capability,
+                    }
+                })
+                .collect();
+            state
+                .registration_tokens
+                .retain(|record| record.code_generation_identity != code_generation_identity);
+            if !entries.is_empty() {
+                state
+                    .committed_resumable_units
+                    .push(CommittedResumableUnit {
+                        authority,
+                        manifest_bytes,
+                        code_generation_identity,
+                        entries,
+                    });
+            }
+            return true;
+        }
+        let Some(publications) = publications else {
+            boundary::fatal_invariant("staged publication journal disappeared");
+        };
+        for publication in publications.into_iter().rev() {
+            match publication.installed {
+                Some(installed) => {
+                    let removed = state
+                        .vtables
+                        .remove_method(publication.vtable, publication.selector)
+                        .unwrap_or_else(|| {
+                            boundary::fatal_invariant(
+                                "staged installed binding disappeared during rollback",
+                            )
+                        });
+                    if removed != installed {
+                        boundary::fatal_invariant(
+                            "staged installed binding changed before rollback",
+                        );
+                    }
+                    state
+                        .execution
+                        .note_staged_direct_binding_removed(installed)
+                        .unwrap_or_else(|_| {
+                            boundary::fatal_invariant(
+                                "staged installed binding accounting could not roll back",
+                            )
+                        });
+                }
+                None => {
+                    if state
+                        .vtables
+                        .direct_lookup(publication.vtable, publication.selector)
+                        .is_some()
+                    {
+                        boundary::fatal_invariant(
+                            "staged removed binding was replaced before rollback",
+                        );
+                    }
+                }
+            }
+            if let Some(previous) = publication.previous {
+                if state.vtables.add_method(
+                    publication.vtable,
+                    publication.selector,
+                    previous.to_method(),
+                ) != AddMethod::Added
+                {
+                    boundary::fatal_invariant(
+                        "staged prior binding could not be restored during rollback",
+                    );
+                }
+                state
+                    .execution
+                    .note_direct_binding_added(previous)
+                    .unwrap_or_else(|_| {
+                        boundary::fatal_invariant(
+                            "staged prior binding accounting could not roll back",
+                        )
+                    });
+            }
+        }
+        let Some(catalog_drift) = catalog_drift else {
+            boundary::fatal_invariant("staged catalog snapshot disappeared");
+        };
+        state.block_vtable_catalog.truncate(catalog_drift.len());
+        for (entry, drifted) in state.block_vtable_catalog.iter_mut().zip(catalog_drift) {
+            entry.drifted = drifted;
+        }
+        if let Some(claims) = claims.as_ref() {
+            for claim in claims.iter().filter_map(Option::as_ref) {
+                state
+                    .execution
+                    .settle_staged_registration(claim.capability)
+                    .unwrap_or_else(|_| {
+                        boundary::fatal_invariant(
+                            "staged registration could not return to unpublished state",
+                        )
+                    });
+            }
+        }
+        let mut index = state.registration_tokens.len();
+        while index != 0 {
+            index -= 1;
+            if state.registration_tokens[index].code_generation_identity != code_generation_identity
+            {
+                continue;
+            }
+            let record = state.registration_tokens.swap_remove(index);
+            let _ = state
+                .execution
+                .unregister_unpublished_resumable(current_thread_token(), record.capability);
+        }
+        state
+            .block_vtable_catalog
+            .retain(|entry| entry.code_generation_identity != code_generation_identity);
+        !commit
+    }
+
+    /// Consume one exact C registration carrier while a Runtime is active.
+    ///
+    /// # Safety
+    ///
+    /// The caller supplies exclusive writable access to one complete carrier;
+    /// its descriptor pointer follows the synchronous Prepare contract.
+    pub(crate) unsafe fn register_resumable_envelope(
+        &self,
+        envelope: &mut BirnamResumableRegistrationV1,
+    ) -> u32 {
+        self.assert_owner();
+        match envelope.operation {
+            PREPARE_V1 => {
+                let descriptor = {
+                    // SAFETY: immutable owner-thread access. The returned
+                    // descriptor borrow is bounded by this synchronous call.
+                    let state = unsafe { &*self.state.get() };
+                    let Some(staged) = state.staged_resumable_unit.as_ref() else {
+                        return crate::registration::REJECTED_V1;
+                    };
+                    // SAFETY: forwarded envelope contract.
+                    let Ok((bytes, selection)) = (unsafe { staged.validate_prepare(envelope) })
+                    else {
+                        return crate::registration::REJECTED_V1;
+                    };
+                    let Some(step_method) = envelope.step_method else {
+                        return crate::registration::REJECTED_V1;
+                    };
+                    let Ok(descriptor) = FrameDescriptor::admit_v2(
+                        bytes,
+                        selection,
+                        envelope.code_generation_identity,
+                        step_method,
+                    ) else {
+                        return crate::registration::REJECTED_V1;
+                    };
+                    descriptor
+                };
+                let Some(binding) = descriptor.v2_entry_binding() else {
+                    return crate::registration::REJECTED_V1;
+                };
+                if binding.argument_count != envelope.language_arity as usize {
+                    return crate::registration::REJECTED_V1;
+                }
+                let Some(thunk) = envelope.entry_thunk else {
+                    return crate::registration::REJECTED_V1;
+                };
+                let mut carrier = SemanticRegistrationV1::new(
+                    thunk,
+                    descriptor,
+                    envelope.language_arity as usize,
+                    binding.receiver_slot,
+                    binding.argument_start,
+                )
+                .with_generation_lease(
+                    crate::execution::RegistrationGenerationLease::new(
+                        envelope.code_generation_identity,
+                    ),
+                );
+                if !envelope.implementation_oop.is_null() {
+                    carrier = carrier.with_implementation_anchor(envelope.implementation_oop);
+                }
+
+                // SAFETY: the immutable validation borrow ended above; this is
+                // one owner-thread transfer into Runtime-owned state.
+                let state = unsafe { &mut *self.state.get() };
+                let Ok(capability) = state
+                    .execution
+                    .register_resumable(current_thread_token(), carrier)
+                else {
+                    return crate::registration::REJECTED_V1;
+                };
+                let Some(next_token) = state.next_registration_token.checked_add(1) else {
+                    let _ = state
+                        .execution
+                        .unregister_unpublished_resumable(current_thread_token(), capability);
+                    return crate::registration::REJECTED_V1;
+                };
+                let claim = state
+                    .staged_resumable_unit
+                    .as_mut()
+                    .ok_or(())
+                    .and_then(|staged| staged.claim(envelope.manifest_entry_index).map_err(|_| ()));
+                if claim.is_err() {
+                    let _ = state
+                        .execution
+                        .unregister_unpublished_resumable(current_thread_token(), capability);
+                    return crate::registration::REJECTED_V1;
+                }
+                let claim_slot = state
+                    .staged_resumable_claims
+                    .as_mut()
+                    .and_then(|claims| claims.get_mut(envelope.manifest_entry_index as usize));
+                let Some(claim_slot) = claim_slot else {
+                    let _ = state
+                        .staged_resumable_unit
+                        .as_mut()
+                        .and_then(|staged| staged.release(envelope.manifest_entry_index).ok());
+                    let _ = state
+                        .execution
+                        .unregister_unpublished_resumable(current_thread_token(), capability);
+                    return crate::registration::REJECTED_V1;
+                };
+                if claim_slot.is_some() {
+                    let _ = state
+                        .staged_resumable_unit
+                        .as_mut()
+                        .and_then(|staged| staged.release(envelope.manifest_entry_index).ok());
+                    let _ = state
+                        .execution
+                        .unregister_unpublished_resumable(current_thread_token(), capability);
+                    return crate::registration::REJECTED_V1;
+                }
+                *claim_slot = Some(RuntimeRegistrationClaim {
+                    thunk: MethodAddress::from_method(thunk),
+                    capability,
+                });
+                let token = state.next_registration_token;
+                state.next_registration_token = next_token;
+                state.registration_tokens.push(RuntimeRegistrationToken {
+                    token,
+                    manifest_entry_index: envelope.manifest_entry_index,
+                    thunk: MethodAddress::from_method(thunk),
+                    capability,
+                    code_generation_identity: envelope.code_generation_identity,
+                });
+                envelope.registration_token = token;
+                crate::registration::OK_V1
+            }
+            ABORT_V1 => {
+                if envelope.validate_abort_shape().is_err() {
+                    return crate::registration::REJECTED_V1;
+                }
+                // SAFETY: owner-thread point mutation after complete shape
+                // validation; token lookup occurs before registry mutation.
+                let state = unsafe { &mut *self.state.get() };
+                let Some(index) = state.registration_tokens.iter().position(|record| {
+                    record.token == envelope.registration_token
+                        && record.manifest_entry_index == envelope.manifest_entry_index
+                }) else {
+                    return crate::registration::REJECTED_V1;
+                };
+                let record = state.registration_tokens[index];
+                let claim_matches = state
+                    .staged_resumable_claims
+                    .as_ref()
+                    .and_then(|claims| claims.get(record.manifest_entry_index as usize))
+                    .and_then(Option::as_ref)
+                    .is_some_and(|claim| claim.capability == record.capability);
+                if !claim_matches {
+                    return crate::registration::REJECTED_V1;
+                }
+                if state
+                    .execution
+                    .unregister_unpublished_resumable(current_thread_token(), record.capability)
+                    .is_err()
+                {
+                    return crate::registration::REJECTED_V1;
+                }
+                if state
+                    .staged_resumable_unit
+                    .as_mut()
+                    .is_none_or(|staged| staged.release(record.manifest_entry_index).is_err())
+                {
+                    boundary::fatal_invariant("staged registration claim could not be released");
+                }
+                *state
+                    .staged_resumable_claims
+                    .as_mut()
+                    .and_then(|claims| claims.get_mut(record.manifest_entry_index as usize))
+                    .unwrap_or_else(|| {
+                        boundary::fatal_invariant("staged Runtime claim disappeared")
+                    }) = None;
+                state.registration_tokens.swap_remove(index);
+                crate::registration::OK_V1
+            }
+            _ => crate::registration::REJECTED_V1,
+        }
     }
 
     pub(crate) fn register_stackless_resumable(
@@ -1595,7 +2422,7 @@ impl Runtime {
         }
     }
 
-    fn resolve_stackless_target(
+    pub(crate) fn resolve_stackless_target(
         &self,
         receiver: Oop,
         selector: Oop,
@@ -1622,14 +2449,44 @@ impl Runtime {
         receiver: Oop,
         arguments: &[Oop],
     ) -> Result<MaterializedEntry, ExecutionError> {
-        let result = unsafe {
-            (*self.state.get()).execution.materialize_acquired_entry(
-                entry,
-                receiver,
-                arguments,
-                self.canonical().nil,
-            )
-        };
+        let result = (|| {
+            // SAFETY: Runtime owner-thread serialization permits one bounded
+            // immutable inspection of both the registry and capture carrier.
+            let state = unsafe { &*self.state.get() };
+            let capture_count = state
+                .execution
+                .acquired_entry_capture_count(entry)
+                .map_err(ExecutionError::from)?;
+            let captures = if capture_count == 0 {
+                Vec::new()
+            } else {
+                let expected_size = capture_count
+                    .checked_mul(core::mem::size_of::<usize>())
+                    .ok_or(ExecutionError::InvalidAction)?;
+                if state.heap.payload_size(receiver) != Some(expected_size) {
+                    return Err(ExecutionError::InvalidAction);
+                }
+                let mut captures = Vec::with_capacity(capture_count);
+                for index in 0..capture_count {
+                    let word = state
+                        .heap
+                        .read_payload_word(receiver, index)
+                        .ok_or(ExecutionError::InvalidAction)?;
+                    captures.push(core::ptr::with_exposed_provenance_mut(word));
+                }
+                captures
+            };
+            state
+                .execution
+                .materialize_acquired_entry(
+                    entry,
+                    receiver,
+                    arguments,
+                    &captures,
+                    self.canonical().nil,
+                )
+                .map_err(ExecutionError::from)
+        })();
         if result.is_err() {
             // SAFETY: a failed materialization cannot transfer the acquisition.
             let _ = unsafe {
@@ -1667,6 +2524,15 @@ impl Runtime {
         let StacklessTarget::Registered { entry } = target else {
             return Err(ExecutionError::MissingImplementation);
         };
+        self.enter_acquired_resumable(entry, receiver, arguments)
+    }
+
+    pub(crate) fn enter_acquired_resumable(
+        &self,
+        entry: crate::execution::ResumableEntryCapability,
+        receiver: Oop,
+        arguments: &[Oop],
+    ) -> Result<Oop, ExecutionError> {
         let MaterializedEntry {
             descriptor,
             initial_oops,
@@ -1689,7 +2555,20 @@ impl Runtime {
                 },
             )
         } else {
-            let machine = self.create_stackless_machine()?;
+            let machine = match self.create_stackless_machine() {
+                Ok(machine) => machine,
+                Err(error) => {
+                    // Materialization has not transferred the acquired entry
+                    // to a Frame yet, so a failed Machine allocation must
+                    // release it here.
+                    unsafe {
+                        (&mut *self.state.get())
+                            .execution
+                            .release_acquired_entry(entry)
+                    }?;
+                    return Err(error.into());
+                }
+            };
             let result = self.drive_stackless_with_resolver(
                 machine,
                 descriptor,
@@ -1819,6 +2698,65 @@ impl Runtime {
                 runtime.resolve_stackless_target(receiver, selector)
             },
         )
+    }
+
+    pub(crate) fn resume_stackless_machine(
+        &self,
+        machine: Oop,
+        supplied_value: Oop,
+    ) -> Result<Oop, ExecutionError> {
+        self.assert_owner();
+        let capability = self.stackless_machine_capability(machine)?;
+        let owner = current_thread_token();
+        unsafe {
+            (&mut *self.state.get())
+                .execution
+                .resume_suspended_machine(owner, capability, supplied_value)?;
+        }
+        self.run_resumed_stackless(machine, capability, owner)
+    }
+
+    pub(crate) fn restore_stackless_continuation(
+        &self,
+        machine: Oop,
+        continuation: Oop,
+        supplied_value: Oop,
+    ) -> Result<Oop, ExecutionError> {
+        self.assert_owner();
+        let capability = self.stackless_machine_capability(machine)?;
+        let owner = current_thread_token();
+        unsafe {
+            let state = &mut *self.state.get();
+            let continuation_capability = state
+                .execution
+                .continuation_capability_for_object(&state.heap, continuation)?;
+            state.execution.restore_continuation(
+                owner,
+                capability,
+                continuation_capability,
+                supplied_value,
+            )?;
+        }
+        self.run_resumed_stackless(machine, capability, owner)
+    }
+
+    fn run_resumed_stackless(
+        &self,
+        machine: Oop,
+        capability: MachineCapability,
+        owner: u64,
+    ) -> Result<Oop, ExecutionError> {
+        let nil = self.canonical().nil;
+        self.push_stackless_scoped_root(machine);
+        let _root_guard = StacklessDriveRootGuard {
+            runtime: self,
+            machine,
+        };
+        let mut resolve = |runtime: &Runtime, receiver: Oop, selector: Oop, _arguments: &[Oop]| {
+            runtime.resolve_stackless_target(receiver, selector)
+        };
+        let result = self.run_stackless_loop(machine, capability, owner, nil, &mut resolve);
+        self.fail_stackless_drive_on_error(owner, capability, result)
     }
 
     fn drive_stackless_with_resolver(
@@ -2298,6 +3236,94 @@ impl Runtime {
                         return Ok(answer);
                     }
                 }
+                DecodedAction::Suspend {
+                    result_slot,
+                    delimiter,
+                } => {
+                    unsafe {
+                        (&mut *self.state.get()).execution.apply_suspend(
+                            owner,
+                            capability,
+                            result_slot,
+                            delimiter,
+                        )?;
+                    }
+                    return Ok(machine);
+                }
+                DecodedAction::Capture {
+                    delimiter,
+                    result_slot,
+                } => {
+                    let objects = unsafe { (*self.state.get()).execution.objects() }
+                        .ok_or(ExecutionError::InvalidAction)?;
+                    let continuation =
+                        self.allocate_instance(objects.continuation_vtable, 3 * size_of::<usize>());
+                    unsafe {
+                        let state = &mut *self.state.get();
+                        state.execution.capture_continuation(
+                            &mut state.heap,
+                            owner,
+                            capability,
+                            delimiter,
+                            result_slot,
+                            continuation,
+                        )?;
+                    }
+                    self.set_finalizer(continuation, crate::execution::continuation_finalizer);
+                    return Ok(continuation);
+                }
+                DecodedAction::Restore {
+                    continuation_slot,
+                    supplied_value_slot,
+                } => {
+                    let (continuation, supplied_value) = unsafe {
+                        let state = &*self.state.get();
+                        let machine_state = state.execution.machine(owner, capability)?;
+                        let frame = machine_state
+                            .arena()
+                            .current_handle()
+                            .ok_or(crate::execution::FrameError::StaleHandle)?;
+                        (
+                            machine_state.arena().read_oop(frame, continuation_slot)?,
+                            machine_state.arena().read_oop(frame, supplied_value_slot)?,
+                        )
+                    };
+                    let continuation_capability = unsafe {
+                        let state = &*self.state.get();
+                        state
+                            .execution
+                            .continuation_capability_for_object(&state.heap, continuation)?
+                    };
+                    unsafe {
+                        (&mut *self.state.get()).execution.restore_continuation(
+                            owner,
+                            capability,
+                            continuation_capability,
+                            supplied_value,
+                        )?;
+                    }
+                }
+                DecodedAction::Abort {
+                    delimiter: _,
+                    reason_slot,
+                } => {
+                    let reason = unsafe {
+                        let state = &*self.state.get();
+                        let machine_state = state.execution.machine(owner, capability)?;
+                        let frame = machine_state
+                            .arena()
+                            .current_handle()
+                            .ok_or(crate::execution::FrameError::StaleHandle)?;
+                        machine_state.arena().read_oop(frame, reason_slot)?
+                    };
+                    unsafe {
+                        (&mut *self.state.get())
+                            .execution
+                            .machine_mut(owner, capability)?
+                            .fail(owner)?;
+                    }
+                    return Ok(reason);
+                }
             }
         }
     }
@@ -2731,6 +3757,99 @@ fn mark_floor_roots(state: &mut RuntimeState, marker: &mut Marker) {
     for root in export_values.into_iter().chain(interned_symbols) {
         marker.mark_oop(&mut state.heap, root);
     }
+    for root in state.execution.registration_roots() {
+        marker.mark_oop(&mut state.heap, root);
+    }
+    for entry in &state.block_vtable_catalog {
+        marker.mark_oop(&mut state.heap, entry.vtable);
+    }
+}
+
+fn block_registration_for_method(
+    state: &RuntimeState,
+    method: MethodAddress,
+) -> Option<(
+    [u8; 32],
+    u32,
+    crate::execution::ResumableEntryCapability,
+    u64,
+)> {
+    if let (Some(staged), Some(claims)) = (
+        state.staged_resumable_unit.as_ref(),
+        state.staged_resumable_claims.as_ref(),
+    ) {
+        for (index, claim) in claims.iter().enumerate() {
+            let Some(claim) = claim else { continue };
+            if claim.thunk == method
+                && staged.implementation_kind(index) == Some(ImplementationKind::BlockBody)
+            {
+                return Some((
+                    staged.authority(),
+                    index as u32,
+                    claim.capability,
+                    staged.code_generation_identity(),
+                ));
+            }
+        }
+    }
+    let mut found = None;
+    for unit in &state.committed_resumable_units {
+        for entry in &unit.entries {
+            if entry.thunk != method || entry.implementation_kind != ImplementationKind::BlockBody {
+                continue;
+            }
+            let candidate = (
+                unit.authority,
+                entry.manifest_entry_index,
+                entry.capability,
+                unit.code_generation_identity,
+            );
+            if found.replace(candidate).is_some() {
+                return None;
+            }
+        }
+    }
+    found
+}
+
+fn note_block_vtable_bound(state: &mut RuntimeState, vtable: Oop, method: MethodAddress) {
+    if vtable.is_null() {
+        return;
+    }
+    let Some((authority, manifest_entry_index, capability, code_generation_identity)) =
+        block_registration_for_method(state, method)
+    else {
+        return;
+    };
+    let mut drifted = false;
+    for entry in &mut state.block_vtable_catalog {
+        if entry.capability == capability || entry.vtable == vtable {
+            if entry.capability == capability && entry.vtable == vtable && !entry.drifted {
+                return;
+            }
+            entry.drifted = true;
+            drifted = true;
+        }
+    }
+    state.block_vtable_catalog.push(BlockVtableCatalogEntry {
+        vtable,
+        authority,
+        manifest_entry_index,
+        capability,
+        code_generation_identity,
+        drifted,
+    });
+}
+
+fn note_block_vtable_replaced(state: &mut RuntimeState, vtable: Oop, method: MethodAddress) {
+    let capability = block_registration_for_method(state, method).map(|entry| entry.2);
+    for entry in &mut state.block_vtable_catalog {
+        if entry.vtable == vtable
+            && capability.is_none_or(|capability| entry.capability == capability)
+        {
+            entry.drifted = true;
+        }
+    }
 }
 
 fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
@@ -2805,12 +3924,22 @@ mod tests {
     use crate::abi::{Oop, SLOT_OOP};
     use crate::dispatch::build_bootstrap;
     use crate::execution::{
-        CallSiteDescriptor, CallSiteKind, DescriptorIdentity, FRAME_LAYOUT_VERSION_V1,
-        FrameDescriptor, FrameDescriptorSpec, SemanticRegistrationV1, SlotKind, StacklessTarget,
+        CallSiteDescriptor, CallSiteKind, DescriptorIdentity, ExecutionError,
+        FRAME_LAYOUT_VERSION_V1, FrameDescriptor, FrameDescriptorSpec, FrameDescriptorV2Spec,
+        SemanticRegistrationV1, SlotKind, StacklessTarget,
     };
     use crate::gc::Marker;
     use crate::heap::Permanence;
+    use crate::raw::MethodAddress;
+    use crate::registration::{
+        ABORT_V1, BirnamResumableRegistrationV1, CARRIER_VERSION_V1, PREPARE_V1,
+        birnam_id_cancel_resumable_unit_v1, birnam_id_stackless_block_vtable_image_reference_v1,
+        birnam_id_stackless_block_vtable_matches_v1,
+        birnam_id_stackless_resumable_manifest_matches_v1, birnam_register_resumable_v1,
+    };
+    use crate::vtable::AddMethod;
     use core::cell::Cell;
+    use sha2::{Digest, Sha256};
 
     const CONTINUE_PROBE_TRANSITIONS: usize = 1_000_000;
 
@@ -2850,12 +3979,112 @@ mod tests {
         static MEASURE_LIMIT: Cell<usize> = const { Cell::new(0) };
         static MEASURE_COUNT: Cell<usize> = const { Cell::new(0) };
         static MEASURE_VALUE_SLOT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static MEASURE_CHILD_VALUE_SLOT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static DEPTH_BASELINE_SELECTOR: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static DEPTH_MIGRATED_SELECTOR: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
+        static DEPTH_SYNCHRONOUS_SELECTOR: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     }
 
     unsafe extern "C" fn inert_finalizer(_: Oop) {}
 
     unsafe extern "C" fn inert_step(_: Oop, _: *const Oop, _: usize) -> Oop {
         core::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn capture_once_step(machine: Oop, args: *const Oop, count: usize) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 1 || args.is_null() {
+                return runtime.canonical().nil;
+            }
+            // SAFETY: this descriptor declares exactly one resume token.
+            let token = unsafe { args.read() };
+            match runtime.integer_value(token) {
+                0 => runtime
+                    .stackless_capture_current(machine, 0, 1)
+                    .unwrap_or_else(|_| runtime.canonical().nil),
+                1 => runtime
+                    .stackless_return_at(machine, 0)
+                    .unwrap_or_else(|_| runtime.canonical().nil),
+                _ => runtime.canonical().nil,
+            }
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    unsafe extern "C" fn suspend_once_step(machine: Oop, args: *const Oop, count: usize) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 1 || args.is_null() {
+                return runtime.canonical().nil;
+            }
+            // SAFETY: this descriptor declares exactly one resume token.
+            let token = unsafe { args.read() };
+            match runtime.integer_value(token) {
+                0 => runtime
+                    .stackless_suspend_current(machine, 0, 1)
+                    .unwrap_or_else(|_| runtime.canonical().nil),
+                1 => runtime
+                    .stackless_return_at(machine, 0)
+                    .unwrap_or_else(|_| runtime.canonical().nil),
+                _ => runtime.canonical().nil,
+            }
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    fn frozen_registration_envelope(
+        manifest_name: &str,
+        descriptor_name: &str,
+        implementation: Oop,
+    ) -> (Vec<u8>, [u8; 32], Vec<u8>, BirnamResumableRegistrationV1) {
+        let fixture = |name: &str| {
+            std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../abi/fixtures/stackless-s2")
+                    .join(name),
+            )
+            .unwrap()
+        };
+        let manifest_bytes = fixture(manifest_name);
+        let authority: [u8; 32] = manifest_bytes[0xc0..0xe0].try_into().unwrap();
+        let descriptor = fixture(descriptor_name);
+        let manifest =
+            birnam_artifact::resumable_manifest::inspect(&manifest_bytes, authority).unwrap();
+        let entry = manifest.entry(0).unwrap();
+        let driver_argument_count = birnam_artifact::frame_descriptor::inspect(
+            &descriptor,
+            birnam_artifact::stackless_selection::SelectionSpec {
+                source_revision: entry.source_revision,
+                root_kind: entry.root_kind,
+                root_index: entry.root_index,
+                path: &entry.path.iter().collect::<Vec<_>>(),
+                implementation_kind: entry.implementation_kind,
+                disposition: birnam_artifact::stackless_selection::Disposition::ResumableRequired,
+            },
+        )
+        .unwrap()
+        .metadata()
+        .driver_argument_count;
+        let envelope = BirnamResumableRegistrationV1 {
+            carrier_version: CARRIER_VERSION_V1,
+            struct_size: core::mem::size_of::<BirnamResumableRegistrationV1>() as u32,
+            operation: PREPARE_V1,
+            flags: 0,
+            manifest_entry_index: 0,
+            reserved0: 0,
+            registration_token: 0,
+            descriptor_bytes: descriptor.as_ptr(),
+            descriptor_length: descriptor.len() as u64,
+            entry_thunk: Some(registered_probe_thunk),
+            step_method: Some(inert_step),
+            implementation_oop: implementation,
+            code_generation_identity: 101,
+            code_generation_lease: 103,
+            portable_implementation_identity: entry.portable_implementation_identity,
+            language_arity: entry.language_arity,
+            driver_argument_count,
+            descriptor_sha256: Sha256::digest(&descriptor).into(),
+        };
+        (manifest_bytes, authority, descriptor, envelope)
     }
 
     unsafe extern "C" fn malformed_action_step(_: Oop, _: *const Oop, _: usize) -> Oop {
@@ -3019,6 +4248,106 @@ mod tests {
                         &[MEASURE_VALUE_SLOT.get()],
                     )
                 }
+            }
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    unsafe extern "C" fn measured_registered_child_step(
+        machine: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 0 || !args.is_null() {
+                return runtime.canonical().nil;
+            }
+            let stack_probe = 0usize;
+            let stack_address = core::ptr::addr_of!(stack_probe).addr();
+            PROBE_STACK_MIN.set(PROBE_STACK_MIN.get().min(stack_address));
+            PROBE_STACK_MAX.set(PROBE_STACK_MAX.get().max(stack_address));
+            REGISTERED_FRAME_PIN_HIGH_WATER.set(
+                REGISTERED_FRAME_PIN_HIGH_WATER.get().max(
+                    runtime
+                        .stackless_registration_diagnostics()
+                        .active_frame_pins,
+                ),
+            );
+            runtime.send_slice(
+                machine,
+                RETURN_PROBE_SELECTOR.get(),
+                &[MEASURE_CHILD_VALUE_SLOT.get()],
+            )
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    unsafe extern "C" fn depth_baseline_method(
+        receiver: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 1 || args.is_null() {
+                return runtime.canonical().nil;
+            }
+            let depth = runtime.integer_value(unsafe { args.read() });
+            if depth == 0 {
+                return runtime.make_integer(0);
+            }
+            let next = runtime.make_integer(depth - 1);
+            runtime.send_slice(receiver, DEPTH_BASELINE_SELECTOR.get(), &[next])
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    unsafe extern "C" fn depth_synchronous_barrier_method(
+        receiver: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 1 || args.is_null() {
+                return runtime.canonical().nil;
+            }
+            let depth = runtime.integer_value(unsafe { args.read() });
+            if depth == 0 {
+                return runtime.make_integer(0);
+            }
+            let next = runtime.make_integer(depth - 1);
+            runtime.send_slice(receiver, DEPTH_MIGRATED_SELECTOR.get(), &[next])
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    unsafe extern "C" fn depth_migrated_step(machine: Oop, args: *const Oop, count: usize) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 1 || args.is_null() {
+                return runtime.canonical().nil;
+            }
+            let pc = runtime.integer_value(unsafe { args.read() });
+            if pc == 0 {
+                let selector_slot = runtime.make_integer(1);
+                let oop_at_put = runtime.intern(b"oopAt:put:").expect("static selector");
+                let stored = runtime.send_slice(
+                    machine,
+                    oop_at_put,
+                    &[selector_slot, DEPTH_SYNCHRONOUS_SELECTOR.get()],
+                );
+                if stored != DEPTH_SYNCHRONOUS_SELECTOR.get() {
+                    return runtime.canonical().nil;
+                }
+                runtime.send_slice(
+                    machine,
+                    CALL_SITE_PROBE_SELECTOR.get(),
+                    &[runtime.make_integer(0)],
+                )
+            } else {
+                runtime.send_slice(
+                    machine,
+                    RETURN_PROBE_SELECTOR.get(),
+                    &[runtime.make_integer(3)],
+                )
             }
         })
         .unwrap_or(core::ptr::null_mut())
@@ -3560,6 +4889,392 @@ mod tests {
     }
 
     #[test]
+    fn host_capture_restores_once_and_supplies_the_saved_result_slot() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let machine = runtime
+            .create_stackless_machine()
+            .expect("stackless Machine creates");
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 301,
+                generation: 1,
+                source_map: 301,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_kinds: vec![SlotKind::Oop],
+            call_sites: Vec::new(),
+            step_method: capture_once_step,
+        })
+        .expect("capture descriptor validates");
+        let initial = runtime.make_integer(7);
+        let continuation = runtime
+            .drive_stackless(machine, descriptor, &[(0, initial)])
+            .expect("capture returns a process-local handle");
+        let objects = unsafe { (*runtime.state.get()).execution.objects() }.unwrap();
+        assert_eq!(
+            runtime.checked_vtable_of(continuation),
+            objects.continuation_vtable
+        );
+        let capability = runtime.stackless_machine_capability(machine).unwrap();
+        assert_eq!(
+            unsafe {
+                (*runtime.state.get())
+                    .execution
+                    .machine(current_thread_token(), capability)
+                    .unwrap()
+                    .lifecycle()
+            },
+            crate::execution::MachineLifecycle::Suspended
+        );
+
+        let supplied = runtime.make_integer(42);
+        assert_eq!(
+            runtime
+                .restore_stackless_continuation(machine, continuation, supplied)
+                .expect("first restore resumes and completes"),
+            supplied
+        );
+        assert_eq!(
+            runtime.restore_stackless_continuation(machine, continuation, supplied),
+            Err(ExecutionError::ContinuationConsumed)
+        );
+    }
+
+    #[test]
+    fn host_suspension_resumes_with_one_supplied_answer() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let machine = runtime
+            .create_stackless_machine()
+            .expect("stackless Machine creates");
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 302,
+                generation: 1,
+                source_map: 302,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_kinds: vec![SlotKind::Oop],
+            call_sites: Vec::new(),
+            step_method: suspend_once_step,
+        })
+        .expect("suspension descriptor validates");
+        let initial = runtime.make_integer(5);
+        assert_eq!(
+            runtime
+                .drive_stackless(machine, descriptor, &[(0, initial)])
+                .expect("suspension returns its Machine handle"),
+            machine
+        );
+        let supplied = runtime.make_integer(99);
+        assert_eq!(
+            runtime
+                .resume_stackless_machine(machine, supplied)
+                .expect("resume completes"),
+            supplied
+        );
+        assert_eq!(
+            runtime.resume_stackless_machine(machine, supplied),
+            Err(ExecutionError::MachineNotSuspended)
+        );
+    }
+
+    #[test]
+    fn capture_at_nested_entry_barrier_is_rejected_without_disturbing_outer_frame() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let machine = runtime.create_stackless_machine().unwrap();
+        let capability = runtime.stackless_machine_capability(machine).unwrap();
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 303,
+                generation: 1,
+                source_map: 303,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 1,
+            driver_argument_count: 0,
+            slot_kinds: vec![SlotKind::Oop],
+            call_sites: Vec::new(),
+            step_method: inert_step,
+        })
+        .unwrap();
+        let nil = runtime.canonical().nil;
+        unsafe {
+            let state = &mut *runtime.state.get();
+            let owner = current_thread_token();
+            let outer = {
+                let machine_state = state.execution.machine_mut(owner, capability).unwrap();
+                machine_state.begin_initial_drive(owner).unwrap();
+                machine_state
+                    .arena_mut()
+                    .push(descriptor.clone(), 0, nil, &[(0, nil)])
+                    .unwrap()
+            };
+            {
+                let machine_state = state.execution.machine_mut(owner, capability).unwrap();
+                machine_state.begin_nested_drive(owner).unwrap();
+                machine_state
+                    .arena_mut()
+                    .push(descriptor, 0, nil, &[(0, nil)])
+                    .unwrap();
+            }
+            let delimiter = state
+                .execution
+                .current_delimiter(owner, capability)
+                .unwrap();
+            assert_eq!(
+                state.execution.publish_capture(
+                    &mut state.heap,
+                    owner,
+                    capability,
+                    delimiter,
+                    0,
+                    0,
+                ),
+                Err(ExecutionError::Machine(
+                    crate::execution::MachineError::ContinuationBarrier
+                ))
+            );
+            let machine_state = state.execution.machine_mut(owner, capability).unwrap();
+            machine_state.arena_mut().pop().unwrap();
+            machine_state.complete_nested_drive(owner).unwrap();
+            assert_eq!(machine_state.arena().current_handle(), Some(outer));
+            assert_eq!(
+                machine_state.lifecycle(),
+                crate::execution::MachineLifecycle::Running
+            );
+        }
+    }
+
+    #[test]
+    fn continuation_owns_the_registered_generation_pin_until_restore() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let selector = runtime.intern(b"capturedRegisteredFrame").unwrap();
+        let receiver = runtime.canonical().object_prototype;
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 304,
+                generation: 17,
+                source_map: 304,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_kinds: vec![SlotKind::Oop],
+            call_sites: Vec::new(),
+            step_method: capture_once_step,
+        })
+        .unwrap();
+        runtime
+            .register_stackless_resumable(SemanticRegistrationV1::new(
+                registered_probe_thunk,
+                descriptor,
+                0,
+                0,
+                1,
+            ))
+            .unwrap();
+        let _ = runtime.add_method(
+            runtime.globals().object_vt,
+            selector,
+            registered_probe_thunk,
+        );
+        let read = runtime.enter_dispatch_read();
+        let method = runtime
+            .lookup_method(runtime.globals().object_vt, selector)
+            .unwrap();
+        let target = unsafe {
+            (&mut *runtime.state.get())
+                .execution
+                .classify_resumable(method)
+                .unwrap()
+                .unwrap()
+        };
+        drop(read);
+        let StacklessTarget::Registered { entry } = target else {
+            panic!("registered carrier must classify")
+        };
+        let materialized = runtime
+            .materialize_registered_target(entry, receiver, &[])
+            .unwrap();
+        let machine = runtime.create_stackless_machine().unwrap();
+        let continuation = runtime
+            .drive_stackless_with_resolver(
+                machine,
+                materialized.descriptor,
+                &materialized.initial_oops,
+                Some(entry),
+                |runtime, receiver, selector, _| {
+                    runtime.resolve_stackless_target(receiver, selector)
+                },
+            )
+            .unwrap();
+        let captured = runtime.stackless_registration_diagnostics();
+        assert_eq!(captured.active_frame_pins, 0);
+        assert_eq!(captured.continuation_frame_pins, 1);
+
+        let answer = runtime.make_integer(123);
+        assert_eq!(
+            runtime
+                .restore_stackless_continuation(machine, continuation, answer)
+                .unwrap(),
+            answer
+        );
+        let completed = runtime.stackless_registration_diagnostics();
+        assert_eq!(completed.active_frame_pins, 0);
+        assert_eq!(completed.continuation_frame_pins, 0);
+    }
+
+    #[test]
+    fn continuation_finalization_releases_detached_pin_exactly_once() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let selector = runtime.intern(b"finalizedCapturedFrame").unwrap();
+        let receiver = runtime.canonical().object_prototype;
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 305,
+                generation: 18,
+                source_map: 305,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_kinds: vec![SlotKind::Oop],
+            call_sites: Vec::new(),
+            step_method: capture_once_step,
+        })
+        .unwrap();
+        runtime
+            .register_stackless_resumable(SemanticRegistrationV1::new(
+                registered_probe_thunk,
+                descriptor,
+                0,
+                0,
+                1,
+            ))
+            .unwrap();
+        let _ = runtime.add_method(
+            runtime.globals().object_vt,
+            selector,
+            registered_probe_thunk,
+        );
+        let read = runtime.enter_dispatch_read();
+        let method = runtime
+            .lookup_method(runtime.globals().object_vt, selector)
+            .unwrap();
+        let StacklessTarget::Registered { entry } = (unsafe {
+            (&mut *runtime.state.get())
+                .execution
+                .classify_resumable(method)
+                .unwrap()
+                .unwrap()
+        }) else {
+            panic!("registered carrier must classify")
+        };
+        drop(read);
+        let materialized = runtime
+            .materialize_registered_target(entry, receiver, &[])
+            .unwrap();
+        let machine = runtime.create_stackless_machine().unwrap();
+        let continuation = runtime
+            .drive_stackless_with_resolver(
+                machine,
+                materialized.descriptor,
+                &materialized.initial_oops,
+                Some(entry),
+                |runtime, receiver, selector, _| {
+                    runtime.resolve_stackless_target(receiver, selector)
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .continuation_frame_pins,
+            1
+        );
+        unsafe { runtime.finalize_stackless_continuation(continuation) };
+        unsafe { runtime.finalize_stackless_continuation(continuation) };
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .continuation_frame_pins,
+            0
+        );
+        assert_eq!(
+            runtime.restore_stackless_continuation(machine, continuation, runtime.canonical().nil,),
+            Err(ExecutionError::ContinuationConsumed)
+        );
+    }
+
+    #[test]
+    fn reachable_continuation_traces_detached_frame_roots_and_owning_machine() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let machine = runtime.create_stackless_machine().unwrap();
+        let selected = runtime.allocate_instance(runtime.globals().object_vt, 0);
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 306,
+                generation: 1,
+                source_map: 306,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_kinds: vec![SlotKind::Oop],
+            call_sites: Vec::new(),
+            step_method: capture_once_step,
+        })
+        .unwrap();
+        let continuation = runtime
+            .drive_stackless(machine, descriptor, &[(0, selected)])
+            .unwrap();
+
+        let marker = unsafe {
+            let state = &mut *runtime.state.get();
+            state.heap.clear_marks();
+            let mut marker = Marker::new();
+            marker.mark_oop(&mut state.heap, continuation);
+            marker
+        };
+        runtime.enter(|| runtime.run_mark_phase(marker));
+        assert_eq!(runtime.is_marked_for_test(machine), Some(true));
+        assert_eq!(runtime.is_marked_for_test(selected), Some(true));
+
+        let marker = unsafe {
+            let state = &mut *runtime.state.get();
+            state.heap.clear_marks();
+            let mut marker = Marker::new();
+            marker.mark_oop(&mut state.heap, machine);
+            marker
+        };
+        runtime.enter(|| runtime.run_mark_phase(marker));
+        assert_eq!(runtime.is_marked_for_test(selected), Some(false));
+        assert_eq!(runtime.is_marked_for_test(continuation), Some(false));
+    }
+
+    #[test]
     fn nested_entry_reuses_and_restores_the_active_runtime() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
@@ -3645,7 +5360,7 @@ mod tests {
         })
         .expect("integration descriptor validates");
 
-        let (frame, continue_action, call_action, tail_call_action, return_action) = unsafe {
+        let (frame, continue_action, call_action, tail_call_action, return_action, s3_actions) = unsafe {
             let state = &mut *runtime.state.get();
             let machine_state = state
                 .execution
@@ -3664,7 +5379,14 @@ mod tests {
                 )
                 .expect("frame push initializes roots");
             let actions = machine_state.scratch_actions();
-            (frame, actions.0, actions.1, actions.2, actions.3)
+            (
+                frame,
+                actions.0,
+                actions.1,
+                actions.2,
+                actions.3,
+                machine_state.s3_scratch_actions(),
+            )
         };
 
         let marker = unsafe {
@@ -3681,6 +5403,9 @@ mod tests {
         assert_eq!(runtime.is_marked_for_test(call_action), Some(true));
         assert_eq!(runtime.is_marked_for_test(tail_call_action), Some(true));
         assert_eq!(runtime.is_marked_for_test(return_action), Some(true));
+        for action in s3_actions {
+            assert_eq!(runtime.is_marked_for_test(action), Some(true));
+        }
 
         let marker = unsafe {
             let state = &mut *runtime.state.get();
@@ -3701,6 +5426,9 @@ mod tests {
         assert_eq!(runtime.is_marked_for_test(call_action), Some(true));
         assert_eq!(runtime.is_marked_for_test(tail_call_action), Some(true));
         assert_eq!(runtime.is_marked_for_test(return_action), Some(true));
+        for action in s3_actions {
+            assert_eq!(runtime.is_marked_for_test(action), Some(true));
+        }
     }
 
     #[test]
@@ -4247,6 +5975,354 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Release-mode S2 publication probe; run with BIRNAM_S_NS from the same micro suite"]
+    fn publish_stackless_s2_entry_and_call_measurements() {
+        fn median_ns(mut samples: Vec<f64>) -> f64 {
+            samples.sort_by(f64::total_cmp);
+            samples[samples.len() / 2]
+        }
+
+        const CALL_ITERATIONS: usize = 200_000;
+        const ENTRY_ITERATIONS: usize = 20_000;
+        const SAMPLES: usize = 5;
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        CONTINUE_PROBE_SELECTOR.set(runtime.intern(b"continueAt:").expect("static selector"));
+        CALL_SITE_PROBE_SELECTOR.set(runtime.intern(b"callSite:").expect("static selector"));
+        RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").expect("static selector"));
+        PROBE_ZERO.set(runtime.make_integer(0));
+        MEASURE_VALUE_SLOT.set(runtime.make_integer(3));
+        MEASURE_CHILD_VALUE_SLOT.set(runtime.make_integer(1));
+        PROBE_STACK_MIN.set(usize::MAX);
+        PROBE_STACK_MAX.set(0);
+        REGISTERED_THUNK_CALLS.set(0);
+        REGISTERED_FRAME_PIN_HIGH_WATER.set(0);
+
+        let migrated_selector = runtime
+            .intern(b"measuredRegisteredIdentity:")
+            .expect("static selector");
+        let receiver = runtime.canonical().object_prototype;
+        let argument = runtime.make_integer(41);
+        let child = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 204,
+                generation: 1,
+                source_map: 204,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 1,
+            driver_argument_count: 0,
+            slot_kinds: vec![SlotKind::Oop; 2],
+            call_sites: Vec::new(),
+            step_method: measured_registered_child_step,
+        })
+        .expect("measurement child descriptor validates");
+        runtime
+            .register_stackless_resumable(SemanticRegistrationV1::new(
+                registered_probe_thunk,
+                child,
+                1,
+                0,
+                1,
+            ))
+            .expect("measurement child registers");
+        let _ = runtime.add_method(
+            runtime.globals().object_vt,
+            migrated_selector,
+            registered_probe_thunk,
+        );
+
+        let parent = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 205,
+                generation: 1,
+                source_map: 205,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_kinds: vec![SlotKind::Oop; 4],
+            call_sites: vec![CallSiteDescriptor {
+                kind: CallSiteKind::Call,
+                receiver_slot: 0,
+                selector_slot: 1,
+                argument_start: 2,
+                argument_count: 1,
+                result_slot: Some(3),
+                continuation_pc: Some(1),
+            }],
+            step_method: measured_synchronous_step,
+        })
+        .expect("measurement caller descriptor validates");
+
+        let mut call_samples = Vec::with_capacity(SAMPLES);
+        let mut entry_samples = Vec::with_capacity(SAMPLES);
+        let mut fallback_samples = Vec::with_capacity(SAMPLES);
+        let mut high_water_live_frames = 0;
+        let mut high_water_boundary_depth = 0;
+
+        for _ in 0..SAMPLES {
+            let machine = runtime
+                .create_stackless_machine()
+                .expect("Call/Return measurement Machine creates");
+            MEASURE_LIMIT.set(CALL_ITERATIONS);
+            MEASURE_COUNT.set(0);
+            let started = std::time::Instant::now();
+            let answer = runtime
+                .drive_stackless(
+                    machine,
+                    parent.clone(),
+                    &[(0, receiver), (1, migrated_selector), (2, argument)],
+                )
+                .expect("migrated Call/Return measurement completes");
+            let elapsed = started.elapsed();
+            std::hint::black_box(answer);
+            assert_eq!(answer, argument);
+            assert_eq!(MEASURE_COUNT.get(), CALL_ITERATIONS);
+            call_samples.push(elapsed.as_nanos() as f64 / CALL_ITERATIONS as f64);
+            let capability = runtime
+                .stackless_machine_capability(machine)
+                .expect("measurement Machine remains inspectable");
+            let diagnostics = unsafe {
+                (*runtime.state.get())
+                    .execution
+                    .machine_diagnostics(current_thread_token(), capability)
+                    .expect("measurement diagnostics resolve")
+            };
+            high_water_live_frames = high_water_live_frames.max(diagnostics.high_water_live_frames);
+            high_water_boundary_depth =
+                high_water_boundary_depth.max(diagnostics.high_water_synchronous_boundary_depth);
+            runtime
+                .destroy_stackless_machine(machine)
+                .expect("measurement Machine destroys");
+
+            let before_direct = REGISTERED_THUNK_CALLS.get();
+            let started = std::time::Instant::now();
+            runtime.enter(|| {
+                for _ in 0..ENTRY_ITERATIONS {
+                    let answer = runtime.send_slice(receiver, migrated_selector, &[argument]);
+                    std::hint::black_box(answer);
+                    assert_eq!(answer, argument);
+                }
+            });
+            let elapsed = started.elapsed();
+            assert_eq!(
+                REGISTERED_THUNK_CALLS.get(),
+                before_direct,
+                "ordinary entry bypasses the installed thunk"
+            );
+            entry_samples.push(elapsed.as_nanos() as f64 / ENTRY_ITERATIONS as f64);
+
+            let fallback_arguments = [argument];
+            let before_fallback = REGISTERED_THUNK_CALLS.get();
+            let started = std::time::Instant::now();
+            runtime.enter(|| {
+                for _ in 0..ENTRY_ITERATIONS {
+                    let answer = unsafe {
+                        registered_probe_thunk(
+                            receiver,
+                            fallback_arguments.as_ptr(),
+                            fallback_arguments.len(),
+                        )
+                    };
+                    std::hint::black_box(answer);
+                    assert_eq!(answer, argument);
+                }
+            });
+            let elapsed = started.elapsed();
+            assert_eq!(
+                REGISTERED_THUNK_CALLS.get() - before_fallback,
+                ENTRY_ITERATIONS,
+                "fallback measurement invokes the exact installed thunk"
+            );
+            fallback_samples.push(elapsed.as_nanos() as f64 / ENTRY_ITERATIONS as f64);
+        }
+
+        let baseline = std::env::var("BIRNAM_S_NS")
+            .expect("set BIRNAM_S_NS to same-run sends.compiled-unary ns/op")
+            .parse::<f64>()
+            .expect("BIRNAM_S_NS is numeric");
+        let call_ns = median_ns(call_samples);
+        let entry_ns = median_ns(entry_samples);
+        let fallback_ns = median_ns(fallback_samples);
+        let call_ratio = call_ns / baseline;
+        let entry_ratio = entry_ns / baseline;
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../abi/fixtures/stackless-s2/frame-descriptor-call.bin");
+        let canonical_descriptor_bytes = std::fs::metadata(fixture)
+            .expect("canonical Call descriptor fixture resolves")
+            .len();
+        let runtime_descriptor_bytes = parent.owned_byte_size();
+        let stack_movement_bytes = PROBE_STACK_MAX.get().saturating_sub(PROBE_STACK_MIN.get());
+        assert_eq!(REGISTERED_FRAME_PIN_HIGH_WATER.get(), 1);
+        assert_eq!(runtime.stackless_runtime_diagnostics().live_machines, 0);
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .active_frame_pins,
+            0
+        );
+        assert_eq!(high_water_live_frames, 2);
+        assert_eq!(high_water_boundary_depth, 0);
+        assert!(stack_movement_bytes <= 4096);
+        assert!(call_ratio <= 4.0, "migrated Call/Return exceeds 4 x S");
+        assert!(entry_ratio <= 6.0, "ordinary resumable entry exceeds 6 x S");
+        println!(
+            "STACKLESS_S2_MEASUREMENTS baseline_s_ns={baseline:.3} call_return_ns={call_ns:.3} call_return_ratio={call_ratio:.3} ordinary_entry_ns={entry_ns:.3} ordinary_entry_ratio={entry_ratio:.3} fallback_thunk_ns={fallback_ns:.3} thunk_calls_direct=0 high_water_frames={high_water_live_frames} high_water_boundary_depth={high_water_boundary_depth} native_stack_movement_bytes={stack_movement_bytes} canonical_call_descriptor_bytes={canonical_descriptor_bytes} runtime_call_descriptor_bytes={runtime_descriptor_bytes} microcode_sends_call=1 microcode_sends_child_return=1 microcode_sends_continue=1 microcode_sends_parent_return=1 call_iterations={CALL_ITERATIONS} entry_iterations={ENTRY_ITERATIONS} samples={SAMPLES}"
+        );
+    }
+
+    #[test]
+    #[ignore = "Release-mode S2 native-depth publication probe"]
+    fn publish_stackless_s2_depth_measurement() {
+        const MODE_ENV: &str = "BIRNAM_STACKLESS_S2_DEPTH_MODE";
+        const DEPTH_ENV: &str = "BIRNAM_STACKLESS_S2_DEPTH";
+        const THREAD_STACK_BYTES: usize = 2 * 1024 * 1024;
+
+        if let (Ok(mode), Ok(depth)) = (std::env::var(MODE_ENV), std::env::var(DEPTH_ENV)) {
+            let depth = depth.parse::<i64>().expect("depth probe value is numeric");
+            std::thread::Builder::new()
+                .name("stackless-s2-depth-child".to_owned())
+                .stack_size(THREAD_STACK_BYTES)
+                .spawn(move || {
+                    let bootstrap = build_bootstrap();
+                    let runtime = &bootstrap.runtime;
+                    runtime.publish_canonical_exports();
+                    runtime.install_execution_objects();
+                    let receiver = runtime.canonical().object_prototype;
+                    let argument = runtime.make_integer(depth);
+                    if mode == "baseline" {
+                        let selector = runtime
+                            .intern(b"measuredBaselineDepth:")
+                            .expect("static selector");
+                        DEPTH_BASELINE_SELECTOR.set(selector);
+                        let _ = runtime.add_method(
+                            runtime.globals().object_vt,
+                            selector,
+                            depth_baseline_method,
+                        );
+                        let answer =
+                            runtime.enter(|| runtime.send_slice(receiver, selector, &[argument]));
+                        assert_eq!(runtime.integer_value(answer), 0);
+                        return;
+                    }
+                    assert_eq!(mode, "mixed");
+                    CALL_SITE_PROBE_SELECTOR
+                        .set(runtime.intern(b"callSite:").expect("static selector"));
+                    RETURN_PROBE_SELECTOR
+                        .set(runtime.intern(b"returnAt:").expect("static selector"));
+                    let synchronous_selector = runtime
+                        .intern(b"measuredDepthBarrier:")
+                        .expect("static selector");
+                    let migrated_selector = runtime
+                        .intern(b"measuredMigratedDepth:")
+                        .expect("static selector");
+                    DEPTH_MIGRATED_SELECTOR.set(migrated_selector);
+                    DEPTH_SYNCHRONOUS_SELECTOR.set(synchronous_selector);
+                    let _ = runtime.add_method(
+                        runtime.globals().object_vt,
+                        synchronous_selector,
+                        depth_synchronous_barrier_method,
+                    );
+                    let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+                        identity: DescriptorIdentity {
+                            implementation: 206,
+                            generation: 1,
+                            source_map: 206,
+                        },
+                        layout_version: FRAME_LAYOUT_VERSION_V1,
+                        program_counter_count: 2,
+                        driver_argument_count: 1,
+                        slot_kinds: vec![SlotKind::Oop; 4],
+                        call_sites: vec![CallSiteDescriptor {
+                            kind: CallSiteKind::Call,
+                            receiver_slot: 0,
+                            selector_slot: 1,
+                            argument_start: 2,
+                            argument_count: 1,
+                            result_slot: Some(3),
+                            continuation_pc: Some(1),
+                        }],
+                        step_method: depth_migrated_step,
+                    })
+                    .expect("mixed-depth descriptor validates");
+                    runtime
+                        .register_stackless_resumable(SemanticRegistrationV1::new(
+                            registered_probe_thunk,
+                            descriptor,
+                            1,
+                            0,
+                            2,
+                        ))
+                        .expect("mixed-depth entry registers");
+                    let _ = runtime.add_method(
+                        runtime.globals().object_vt,
+                        migrated_selector,
+                        registered_probe_thunk,
+                    );
+                    let answer = runtime
+                        .enter(|| runtime.send_slice(receiver, migrated_selector, &[argument]));
+                    assert_eq!(runtime.integer_value(answer), 0);
+                })
+                .expect("depth probe thread starts")
+                .join()
+                .expect("depth probe thread completes");
+            return;
+        }
+
+        fn survives(mode: &str, depth: usize) -> bool {
+            std::process::Command::new(
+                std::env::current_exe().expect("current test executable resolves"),
+            )
+            .args([
+                "--exact",
+                "runtime::tests::publish_stackless_s2_depth_measurement",
+                "--ignored",
+            ])
+            .env("BIRNAM_STACKLESS_S2_DEPTH_MODE", mode)
+            .env("BIRNAM_STACKLESS_S2_DEPTH", depth.to_string())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("depth child process starts")
+            .success()
+        }
+
+        fn maximum_depth(mode: &str) -> usize {
+            assert!(survives(mode, 8), "shallow depth probe must succeed");
+            let mut low = 8usize;
+            let mut high = 16usize;
+            while high < 65_536 && survives(mode, high) {
+                low = high;
+                high *= 2;
+            }
+            assert!(high < 65_536, "depth probe needs a finite upper bound");
+            while low + 1 < high {
+                let middle = low + (high - low) / 2;
+                if survives(mode, middle) {
+                    low = middle;
+                } else {
+                    high = middle;
+                }
+            }
+            low
+        }
+
+        let baseline_depth = maximum_depth("baseline");
+        let mixed_depth = maximum_depth("mixed");
+        let depth_ratio = mixed_depth as f64 / baseline_depth as f64;
+        println!(
+            "STACKLESS_S2_DEPTH baseline_depth={baseline_depth} mixed_depth={mixed_depth} depth_ratio={depth_ratio:.3} thread_stack_bytes={THREAD_STACK_BYTES}"
+        );
+        assert!(
+            depth_ratio >= 0.5,
+            "mixed resumable/synchronous depth is below the provisional 0.5 baseline budget"
+        );
+    }
+
+    #[test]
     fn resumable_call_returns_into_waiting_frame_then_adapts_synchronous_method() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
@@ -4648,7 +6724,7 @@ mod tests {
     }
 
     #[test]
-    fn registered_ordinary_send_enters_thunk_and_answers_predecessor_value() {
+    fn registered_ordinary_send_bypasses_thunk_and_direct_fallback_still_works() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
         runtime.publish_canonical_exports();
@@ -4740,7 +6816,11 @@ mod tests {
             runtime.enter(|| runtime.send_slice(receiver, migrated_selector, &[expected]));
         assert_eq!(migrated, predecessor);
         assert_eq!(migrated, expected);
-        assert_eq!(REGISTERED_THUNK_CALLS.get(), 1);
+        assert_eq!(
+            REGISTERED_THUNK_CALLS.get(),
+            0,
+            "ordinary send resolves and pins without invoking the carrier thunk"
+        );
         assert_eq!(REGISTERED_FRAME_PIN_HIGH_WATER.get(), 1);
         assert_eq!(
             runtime
@@ -4753,7 +6833,22 @@ mod tests {
         assert_eq!(
             runtime.stackless_runtime_diagnostics().live_machines,
             0,
-            "ordinary caller never observes the thunk's fresh Machine"
+            "ordinary caller never observes the resolver's fresh Machine"
+        );
+
+        let fallback_arguments = [expected];
+        let fallback = runtime.enter(|| unsafe {
+            registered_probe_thunk(
+                receiver,
+                fallback_arguments.as_ptr(),
+                fallback_arguments.len(),
+            )
+        });
+        assert_eq!(fallback, expected);
+        assert_eq!(
+            REGISTERED_THUNK_CALLS.get(),
+            1,
+            "direct raw Method invocation remains a working fallback"
         );
 
         let parent = FrameDescriptor::validate(FrameDescriptorSpec {
@@ -4838,6 +6933,555 @@ mod tests {
         assert_eq!(diagnostics.direct_binding_references, 0);
         assert_eq!(diagnostics.live_entries, 0);
         assert_eq!(diagnostics.retired_entries, 1);
+    }
+
+    #[test]
+    fn empty_staged_units_do_not_pin_a_reusable_mapping_identity() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let manifest = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../abi/fixtures/stackless-s2/resumable-manifest-empty.bin"),
+        )
+        .unwrap();
+        let authority: [u8; 32] = manifest[0xc0..0xe0].try_into().unwrap();
+
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert!(runtime.finish_staged_resumable_unit());
+        assert!(
+            runtime.begin_staged_resumable_unit(&manifest, authority, 101, 107),
+            "a zero-entry unit retains no code or registration identity"
+        );
+        assert!(runtime.finish_staged_resumable_unit());
+    }
+
+    #[test]
+    fn committed_registration_owns_metadata_and_invalidates_initializer_abort() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let (manifest, authority, descriptor, mut envelope) = frozen_registration_envelope(
+            "resumable-manifest-block-only.bin",
+            "frame-descriptor-source-map-block.bin",
+            core::ptr::null_mut(),
+        );
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        let status = runtime
+            .enter(|| unsafe { birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope)) });
+        assert_eq!(status, crate::registration::OK_V1);
+        assert_ne!(envelope.registration_token, 0);
+        assert!(runtime.finish_staged_resumable_unit());
+        drop(descriptor);
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .registered_entries,
+            1,
+            "Runtime owns admitted metadata after artifact bytes disappear"
+        );
+
+        let token = envelope.registration_token;
+        envelope = BirnamResumableRegistrationV1 {
+            carrier_version: CARRIER_VERSION_V1,
+            struct_size: core::mem::size_of::<BirnamResumableRegistrationV1>() as u32,
+            operation: ABORT_V1,
+            flags: 0,
+            manifest_entry_index: 0,
+            reserved0: 0,
+            registration_token: token,
+            descriptor_bytes: core::ptr::null(),
+            descriptor_length: 0,
+            entry_thunk: None,
+            step_method: None,
+            implementation_oop: core::ptr::null_mut(),
+            code_generation_identity: 0,
+            code_generation_lease: 0,
+            portable_implementation_identity: 0,
+            language_arity: 0,
+            driver_argument_count: 0,
+            descriptor_sha256: [0; 32],
+        };
+        let status = runtime
+            .enter(|| unsafe { birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope)) });
+        assert_eq!(status, crate::registration::REJECTED_V1);
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .registered_entries,
+            1,
+            "manifest commit replaces the initializer-local Abort token"
+        );
+    }
+
+    #[test]
+    fn explicit_staged_unit_cancel_rolls_back_even_a_complete_manifest() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let (manifest, authority, _descriptor, mut envelope) = frozen_registration_envelope(
+            "resumable-manifest-block-only.bin",
+            "frame-descriptor-source-map-block.bin",
+            core::ptr::null_mut(),
+        );
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+        assert_eq!(
+            runtime.enter(|| birnam_id_cancel_resumable_unit_v1()),
+            crate::registration::OK_V1
+        );
+        assert!(!runtime.stackless_resumable_manifest_matches(authority, 101, &manifest));
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .registered_entries,
+            0
+        );
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert!(runtime.cancel_staged_resumable_unit());
+    }
+
+    #[test]
+    fn named_manifest_commit_roots_the_implementation_and_invalidates_abort() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let implementation = runtime.allocate_instance(runtime.globals().object_vt, 0);
+        let (manifest, authority, _descriptor, mut envelope) = frozen_registration_envelope(
+            "resumable-manifest-named-only.bin",
+            "frame-descriptor-minimal-return.bin",
+            implementation,
+        );
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+        assert!(runtime.finish_staged_resumable_unit());
+        runtime.gc_mark_floor_roots_for_test();
+        assert_eq!(runtime.is_marked_for_test(implementation), Some(true));
+
+        let token = envelope.registration_token;
+        envelope = BirnamResumableRegistrationV1 {
+            carrier_version: CARRIER_VERSION_V1,
+            struct_size: core::mem::size_of::<BirnamResumableRegistrationV1>() as u32,
+            operation: ABORT_V1,
+            flags: 0,
+            manifest_entry_index: 0,
+            reserved0: 0,
+            registration_token: token,
+            descriptor_bytes: core::ptr::null(),
+            descriptor_length: 0,
+            entry_thunk: None,
+            step_method: None,
+            implementation_oop: core::ptr::null_mut(),
+            code_generation_identity: 0,
+            code_generation_lease: 0,
+            portable_implementation_identity: 0,
+            language_arity: 0,
+            driver_argument_count: 0,
+            descriptor_sha256: [0; 32],
+        };
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::REJECTED_V1
+        );
+        runtime.gc_mark_floor_roots_for_test();
+        assert_eq!(runtime.is_marked_for_test(implementation), Some(true));
+    }
+
+    #[test]
+    fn committed_block_catalog_is_bidirectional_rooted_and_fails_on_binding_drift() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let (manifest, authority, _descriptor, mut envelope) = frozen_registration_envelope(
+            "resumable-manifest-block-only.bin",
+            "frame-descriptor-source-map-block.bin",
+            core::ptr::null_mut(),
+        );
+        let thunk = envelope.entry_thunk.expect("fixture has an entry thunk");
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+
+        let vtable = runtime.create_vtable(runtime.globals().object_vt);
+        let selector = runtime.intern(b"value:").expect("static selector");
+        let _ = runtime.add_method(vtable, selector, thunk);
+        assert_eq!(
+            runtime.stackless_block_vtable_image_reference(vtable, authority),
+            None,
+            "staged bindings are not image authority before manifest commit"
+        );
+        assert!(runtime.finish_staged_resumable_unit());
+        assert!(runtime.stackless_resumable_manifest_matches(authority, 101, &manifest));
+        let mut wrong_manifest = manifest.clone();
+        wrong_manifest[0] ^= 1;
+        assert!(!runtime.stackless_resumable_manifest_matches(authority, 101, &wrong_manifest));
+        assert_eq!(
+            runtime.stackless_block_vtable_image_reference(vtable, authority),
+            Some(0)
+        );
+        assert_eq!(
+            runtime.stackless_block_vtable_for_manifest_index(authority, 0),
+            Some(vtable)
+        );
+        let mut image_index = u32::MAX;
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_id_stackless_block_vtable_image_reference_v1(
+                    authority.as_ptr(),
+                    authority.len(),
+                    vtable,
+                    core::ptr::addr_of_mut!(image_index),
+                )
+            }),
+            1
+        );
+        assert_eq!(image_index, 0);
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_id_stackless_block_vtable_matches_v1(
+                    authority.as_ptr(),
+                    authority.len(),
+                    image_index,
+                    vtable,
+                )
+            }),
+            1
+        );
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_id_stackless_resumable_manifest_matches_v1(
+                    authority.as_ptr(),
+                    authority.len(),
+                    101,
+                    manifest.as_ptr(),
+                    manifest.len(),
+                )
+            }),
+            1
+        );
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_id_stackless_block_vtable_image_reference_v1(
+                    authority.as_ptr(),
+                    authority.len() - 1,
+                    vtable,
+                    core::ptr::addr_of_mut!(image_index),
+                )
+            }),
+            0,
+            "the private bridge rejects malformed pointer extents"
+        );
+        assert_eq!(
+            runtime.permanence_of(vtable),
+            Some(Permanence::Permanent),
+            "today's vtable allocator is permanent; catalog root enumeration preserves the contract if that changes"
+        );
+
+        let _ = runtime.add_method(vtable, selector, synchronous_identity);
+        assert_eq!(
+            runtime.stackless_block_vtable_image_reference(vtable, authority),
+            None,
+            "overwriting the generated thunk invalidates durable catalog identity"
+        );
+        assert_eq!(
+            runtime.stackless_block_vtable_for_manifest_index(authority, 0),
+            None
+        );
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_id_stackless_block_vtable_matches_v1(
+                    authority.as_ptr(),
+                    authority.len(),
+                    0,
+                    vtable,
+                )
+            }),
+            0,
+            "the private bridge observes catalog drift"
+        );
+    }
+
+    #[test]
+    fn named_publication_roots_the_implementation_only_until_entry_retirement() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let implementation = runtime.allocate_instance(runtime.globals().object_vt, 0);
+        let (manifest, authority, _descriptor, mut envelope) = frozen_registration_envelope(
+            "resumable-manifest-named-only.bin",
+            "frame-descriptor-minimal-return.bin",
+            implementation,
+        );
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+        assert!(runtime.finish_staged_resumable_unit());
+
+        let selector = runtime
+            .intern(b"retiringNamedAnchor")
+            .expect("static selector");
+        let thunk = envelope
+            .entry_thunk
+            .expect("Prepare requires an entry thunk");
+        let _ = runtime.add_method(runtime.globals().object_vt, selector, thunk);
+        runtime.gc_mark_floor_roots_for_test();
+        assert_eq!(runtime.is_marked_for_test(implementation), Some(true));
+
+        assert!(
+            runtime
+                .remove_method(runtime.globals().object_vt, selector)
+                .is_some()
+        );
+        assert_eq!(
+            runtime.stackless_registration_diagnostics().retired_entries,
+            1
+        );
+        runtime.gc_mark_floor_roots_for_test();
+        assert_eq!(runtime.is_marked_for_test(implementation), Some(false));
+    }
+
+    #[test]
+    fn incomplete_manifest_restores_publications_and_commit_consumes_abort_token() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let fixture = |name: &str| {
+            std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../abi/fixtures/stackless-s2")
+                    .join(name),
+            )
+            .unwrap()
+        };
+        let mixed = fixture("resumable-manifest-mixed.bin");
+        let authority: [u8; 32] = mixed[0xc0..0xe0].try_into().unwrap();
+        let named_descriptor = fixture("frame-descriptor-minimal-return.bin");
+        let manifest = birnam_artifact::resumable_manifest::inspect(&mixed, authority).unwrap();
+        let entry = manifest.entry(0).unwrap();
+        let implementation = runtime.allocate_instance(runtime.globals().object_vt, 0);
+        let overwritten_selector = runtime
+            .intern(b"stagedOverwriteRollback")
+            .expect("static selector");
+        let added_selector = runtime
+            .intern(b"stagedAddRollback")
+            .expect("static selector");
+        assert_eq!(
+            runtime.add_method(
+                runtime.globals().object_vt,
+                overwritten_selector,
+                synchronous_identity,
+            ),
+            AddMethod::Added
+        );
+        let mut envelope = BirnamResumableRegistrationV1 {
+            carrier_version: CARRIER_VERSION_V1,
+            struct_size: core::mem::size_of::<BirnamResumableRegistrationV1>() as u32,
+            operation: PREPARE_V1,
+            flags: 0,
+            manifest_entry_index: 0,
+            reserved0: 0,
+            registration_token: 0,
+            descriptor_bytes: named_descriptor.as_ptr(),
+            descriptor_length: named_descriptor.len() as u64,
+            entry_thunk: Some(registered_probe_thunk),
+            step_method: Some(inert_step),
+            implementation_oop: implementation,
+            code_generation_identity: 101,
+            code_generation_lease: 103,
+            portable_implementation_identity: entry.portable_implementation_identity,
+            language_arity: entry.language_arity,
+            driver_argument_count: 0,
+            descriptor_sha256: entry.descriptor_sha256,
+        };
+        assert!(runtime.begin_staged_resumable_unit(&mixed, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+        assert_eq!(
+            runtime.add_method(
+                runtime.globals().object_vt,
+                overwritten_selector,
+                registered_probe_thunk,
+            ),
+            AddMethod::Overwrote(MethodAddress::from_method(synchronous_identity))
+        );
+        assert_eq!(
+            runtime.add_method(
+                runtime.globals().object_vt,
+                added_selector,
+                registered_probe_thunk,
+            ),
+            AddMethod::Added
+        );
+        assert!(!runtime.finish_staged_resumable_unit());
+        assert_eq!(
+            runtime.lookup_method(runtime.globals().object_vt, overwritten_selector),
+            Some(MethodAddress::from_method(synchronous_identity)),
+            "rollback restores the exact overwritten predecessor"
+        );
+        assert_eq!(
+            runtime.lookup_method(runtime.globals().object_vt, added_selector),
+            None,
+            "rollback removes bindings introduced by the failed unit"
+        );
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .registered_entries,
+            0
+        );
+
+        let (manifest, authority, _descriptor, mut envelope) = frozen_registration_envelope(
+            "resumable-manifest-block-only.bin",
+            "frame-descriptor-source-map-block.bin",
+            core::ptr::null_mut(),
+        );
+        assert!(runtime.begin_staged_resumable_unit(&manifest, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+        assert!(runtime.finish_staged_resumable_unit());
+        let token = envelope.registration_token;
+        let selector = runtime.intern(b"publishedBlock").unwrap();
+        runtime.add_method(
+            runtime.globals().object_vt,
+            selector,
+            registered_probe_thunk,
+        );
+        envelope = BirnamResumableRegistrationV1 {
+            carrier_version: CARRIER_VERSION_V1,
+            struct_size: core::mem::size_of::<BirnamResumableRegistrationV1>() as u32,
+            operation: ABORT_V1,
+            flags: 0,
+            manifest_entry_index: 0,
+            reserved0: 0,
+            registration_token: token,
+            descriptor_bytes: core::ptr::null(),
+            descriptor_length: 0,
+            entry_thunk: None,
+            step_method: None,
+            implementation_oop: core::ptr::null_mut(),
+            code_generation_identity: 0,
+            code_generation_lease: 0,
+            portable_implementation_identity: 0,
+            language_arity: 0,
+            driver_argument_count: 0,
+            descriptor_sha256: [0; 32],
+        };
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::REJECTED_V1,
+            "binding publication consumes the initializer-local Abort token"
+        );
+        assert_eq!(runtime.stackless_registration_diagnostics().live_entries, 1);
+    }
+
+    #[test]
+    fn incomplete_manifest_removes_staged_block_binding_and_catalog_entry() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let fixture = |name: &str| {
+            std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../abi/fixtures/stackless-s2")
+                    .join(name),
+            )
+            .unwrap()
+        };
+        let mixed = fixture("resumable-manifest-mixed.bin");
+        let authority: [u8; 32] = mixed[0xc0..0xe0].try_into().unwrap();
+        let descriptor = fixture("frame-descriptor-source-map-block.bin");
+        let manifest = birnam_artifact::resumable_manifest::inspect(&mixed, authority).unwrap();
+        let entry = manifest.entry(1).expect("mixed fixture has a block row");
+        assert_eq!(
+            entry.implementation_kind,
+            birnam_artifact::stackless_selection::ImplementationKind::BlockBody
+        );
+        let path = entry.path.iter().collect::<Vec<_>>();
+        let selection = birnam_artifact::stackless_selection::SelectionSpec {
+            source_revision: entry.source_revision,
+            root_kind: entry.root_kind,
+            root_index: entry.root_index,
+            path: &path,
+            implementation_kind: entry.implementation_kind,
+            disposition: birnam_artifact::stackless_selection::Disposition::ResumableRequired,
+        };
+        let driver_argument_count =
+            birnam_artifact::frame_descriptor::inspect(&descriptor, selection)
+                .unwrap()
+                .metadata()
+                .driver_argument_count;
+        let mut envelope = BirnamResumableRegistrationV1 {
+            carrier_version: CARRIER_VERSION_V1,
+            struct_size: core::mem::size_of::<BirnamResumableRegistrationV1>() as u32,
+            operation: PREPARE_V1,
+            flags: 0,
+            manifest_entry_index: 1,
+            reserved0: 0,
+            registration_token: 0,
+            descriptor_bytes: descriptor.as_ptr(),
+            descriptor_length: descriptor.len() as u64,
+            entry_thunk: Some(registered_probe_thunk),
+            step_method: Some(inert_step),
+            implementation_oop: core::ptr::null_mut(),
+            code_generation_identity: 101,
+            code_generation_lease: 103,
+            portable_implementation_identity: entry.portable_implementation_identity,
+            language_arity: entry.language_arity,
+            driver_argument_count,
+            descriptor_sha256: entry.descriptor_sha256,
+        };
+        assert!(runtime.begin_staged_resumable_unit(&mixed, authority, 101, 103));
+        assert_eq!(
+            runtime.enter(|| unsafe {
+                birnam_register_resumable_v1(core::ptr::addr_of_mut!(envelope))
+            }),
+            crate::registration::OK_V1
+        );
+        let vtable = runtime.create_vtable(runtime.globals().object_vt);
+        let selector = runtime.intern(b"value:").expect("static selector");
+        assert_eq!(
+            runtime.add_method(vtable, selector, registered_probe_thunk),
+            AddMethod::Added
+        );
+        assert_eq!(
+            unsafe { (*runtime.state.get()).block_vtable_catalog.len() },
+            1
+        );
+
+        assert!(!runtime.finish_staged_resumable_unit());
+        assert_eq!(runtime.lookup_method(vtable, selector), None);
+        assert_eq!(
+            unsafe { (*runtime.state.get()).block_vtable_catalog.len() },
+            0
+        );
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .registered_entries,
+            0
+        );
     }
 
     #[test]
@@ -5013,7 +7657,11 @@ mod tests {
             .expect("all microcode messages remain reentrant");
         assert!(runtime.is_integer(result));
         assert_eq!(runtime.integer_value(result), 211);
-        assert_eq!(MICROCODE_REPLACEMENT_CALLS.get(), 1);
+        assert_eq!(
+            MICROCODE_REPLACEMENT_CALLS.get(),
+            0,
+            "ordinary microcode send enters the registered replacement without its thunk"
+        );
         assert!(OUTER_ACTION_STALE_DURING_NESTED.get());
         assert!(OUTER_ACTION_STALE_AFTER_NESTED.get());
         assert_eq!(
@@ -5236,6 +7884,104 @@ mod tests {
         let diagnostics = runtime.stackless_registration_diagnostics();
         assert_eq!(diagnostics.live_entries, 0);
         assert_eq!(diagnostics.retired_entries, 1);
+    }
+
+    #[test]
+    fn registered_block_captures_materialize_from_exact_receiver_payload() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let selector = runtime.intern(b"capturedValue").expect("static selector");
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+            identity: DescriptorIdentity {
+                implementation: 79,
+                generation: 29,
+                source_map: 79,
+            },
+            program_counter_count: 1,
+            driver_argument_count: 0,
+            slot_count: 2,
+            entry_receiver_slot: 0,
+            entry_argument_start: 1,
+            entry_argument_count: 0,
+            entry_capture_slots: vec![1],
+            implementation_slot: None,
+            root_bitmap_words: vec![0b11],
+            call_sites: Vec::new(),
+            edges: Vec::new(),
+            step_method: inert_step,
+        })
+        .expect("capture descriptor validates");
+        runtime
+            .register_stackless_resumable(SemanticRegistrationV1::new(
+                registered_probe_thunk,
+                descriptor,
+                0,
+                0,
+                1,
+            ))
+            .expect("capturing entry registers");
+        let closure_vtable = runtime.create_vtable(runtime.globals().object_vt);
+        assert_eq!(
+            runtime.add_method(closure_vtable, selector, registered_probe_thunk),
+            AddMethod::Added
+        );
+        let malformed = runtime.allocate_instance(closure_vtable, 0);
+        let capture = runtime.make_integer(131);
+        let closure = runtime.allocate_instance(closure_vtable, core::mem::size_of::<usize>());
+        assert!(unsafe {
+            (&mut *runtime.state.get())
+                .heap
+                .write_payload_word(closure, 0, capture.addr())
+        });
+
+        let acquire = |receiver| {
+            let read = runtime.enter_dispatch_read();
+            let method = runtime
+                .lookup_method(closure_vtable, selector)
+                .expect("published block thunk resolves");
+            let target = unsafe {
+                (&mut *runtime.state.get())
+                    .execution
+                    .classify_resumable(method)
+                    .expect("published block thunk classifies")
+                    .expect("registered block thunk is resumable")
+            };
+            drop(read);
+            let StacklessTarget::Registered { entry } = target else {
+                panic!("classification must acquire the registered block entry")
+            };
+            (receiver, entry)
+        };
+
+        let (malformed, entry) = acquire(malformed);
+        assert!(
+            matches!(
+                runtime.materialize_registered_target(entry, malformed, &[]),
+                Err(crate::execution::ExecutionError::InvalidAction)
+            ),
+            "capture-bearing entry rejects a receiver without the exact capture vector"
+        );
+        assert_eq!(
+            runtime
+                .stackless_registration_diagnostics()
+                .acquired_entries,
+            0,
+            "failed capture materialization releases its acquisition"
+        );
+
+        let (closure, entry) = acquire(closure);
+        let materialized = runtime
+            .materialize_registered_target(entry, closure, &[])
+            .expect("exact capture carrier materializes");
+        assert_eq!(materialized.initial_oops, vec![(0, closure), (1, capture)]);
+        unsafe {
+            (&mut *runtime.state.get())
+                .execution
+                .release_acquired_entry(entry)
+                .expect("test releases successful materialization")
+        };
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -5674,7 +8420,11 @@ mod tests {
             expected,
             "the custom lookup cache remains resumable while explicitly leased"
         );
-        assert_eq!(REGISTERED_THUNK_CALLS.get(), 1);
+        assert_eq!(
+            REGISTERED_THUNK_CALLS.get(),
+            0,
+            "custom metacircular lookup shares resolve-and-pin and bypasses the thunk"
+        );
         let diagnostics = runtime.stackless_registration_diagnostics();
         assert_eq!(diagnostics.acquired_entries, 0);
         assert_eq!(diagnostics.active_frame_pins, 0);

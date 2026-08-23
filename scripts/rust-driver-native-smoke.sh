@@ -28,6 +28,8 @@ mkdir -p "$prefix_parent/home"
 )
 grep -Fxq 'FizzBuzz' "$prefix_parent/fizzbuzz-clean-env.out"
 
+scripts/stackless-image-lifecycle-smoke.sh "$prefix"
+
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
 import json
 import sys

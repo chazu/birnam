@@ -7,13 +7,23 @@
 > Machine-microcode protocol; S2's retained implementation object, physical
 > carrier, Design 49 execution-disposition, durable `ResumableManifest`, lazy
 > block-vtable recovery, and no-IdApi-growth amendments accepted 2026-08-14.
+> The shared private target-resolution amendment was accepted 2026-08-15:
+> ordinary `IdApi.send` and Machine Call/TailCall now use one Runtime-owned
+> resolve-and-pin authority, while entry thunks remain Method-shaped carriers
+> and compatibility fallbacks rather than the primary ordinary-send path.
+> The implemented S1 substrate was aligned with that amendment and its
+> correctness, structural-fast-path, and replicated performance gates passed
+> 2026-08-22. S3 entry-barrier enforcement and Frame-to-Continuation pin
+> transfer were implemented and accepted 2026-08-23.
 > This record closes the registration seam that
 > [60A](60a-stackless-execution-semantics.md) §5 and
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
 > defer. It decides what a vtable holds for a resumable implementation, how a
 > send from unmigrated code reaches one, and how the driver recognizes one. It
 > does not define compiler lowering, liveness, or source maps; those are defined
-> by [60F](60f-resumable-compiler-lowering.md).
+> by [60F](60f-resumable-compiler-lowering.md). Exact descriptor, manifest,
+> image-v5 stackless, and native-envelope bytes belong to
+> [60I](60i-stackless-artifact-byte-grammar.md).
 
 ## 1. The gap this closes
 
@@ -30,6 +40,11 @@ calls `api.method`. `Vtables::lookup` answers that address and `send_abi` calls
 it immediately. `MethodAddress` is a bare non-null pointer with no tag. Nothing
 on that path can consult a registration record.
 
+That paragraph describes the pre-amendment S1 implementation, not the accepted
+S2 substrate. The 2026-08-15 amendment changes the private `send_abi` decision
+point after lookup; it does not change what lookup returns or any public IdApi
+field.
+
 So if a StepMethod address were installed in a vtable under its own selector,
 every ordinary send to that selector — from unmigrated Rust methods, the REPL,
 `modules/*.birnam`, or reflection — would invoke it with a non-Machine receiver
@@ -42,35 +57,38 @@ answer, not a failure. This record removes that possibility by construction.
 | Area | Decision |
 |---|---|
 | Vtable contents | A vtable never holds a StepMethod address. It holds an ordinary Method: a synchronous implementation or an **entry thunk**. |
-| Driver path | A Call or TailCall uses one logical **resolve-and-pin** operation: ordinary lookup followed, under uninterrupted lifetime protection, by classification as a pinned ResumableEntry, a protected synchronous Method, or unbound. A resumable result pushes a frame and calls the StepMethod. **The thunk is not invoked.** |
-| Send path | An ordinary `IdApi.send` from unmigrated code reaches the thunk, which drives the implementation and answers the ordinary result. |
-| Nested entry | A thunk reached inside an inherited **same-execution entry scope** pushes onto the scoped Machine above an entry-barrier delimiter rather than allocating a second Machine. The driver establishes this scope around StepMethod and synchronous-Method invocation. Unrelated host/reactor work suppresses it and starts a fresh Machine. |
-| Registration record | A Runtime-scoped, process-local **ResumableEntry** owns its unique thunk address, StepMethod address, FrameDescriptor, registration-generation handle, declared arity, implementation identity, descriptor hash, and optional strongly rooted implementation object. The object is required by 60F's named-method adapter and absent for a generic block-vtable entry. Resolve-and-pin acquires the separate call-generation pin transferred to a Frame. |
-| Runtime authority | The active `birnam-id::Runtime` is the sole semantic authority for Machine state, Runtime-local entry recognition, binding retirement, dispatch-read protection, and generation pins. The registration shim targets the explicitly entered Runtime; TLS may route the call but is not the authority. |
+| Private dispatch authority | Ordinary `IdApi.send` and Machine Call/TailCall use one Runtime-owned **resolve-and-pin** operation: ordinary metacircular lookup followed, under uninterrupted lifetime protection, by classification as a pinned ResumableEntry, a protected synchronous Method, or unbound. There is no second lookup, vtable, inheritance walk, or selection policy. |
+| Driver path | A Call or TailCall consumes that classified result. A resumable result pushes a frame and calls the StepMethod; a synchronous result is invoked under its protection. **The thunk is not invoked.** |
+| Send path | An ordinary `IdApi.send` consumes the same classified result. A resumable result enters or drives the Machine directly and answers the ordinary result; a synchronous result retains the existing direct call. The thunk is not the primary send path. |
+| Nested entry | A resumable target selected inside an inherited **same-execution entry scope** pushes onto the scoped Machine above an entry-barrier delimiter rather than allocating a second Machine. The driver establishes this scope around StepMethod and synchronous-Method invocation. Unrelated host/reactor work suppresses it and starts a fresh Machine. |
+| Registration record | A Runtime-scoped, process-local **ResumableEntry** owns its unique thunk address, StepMethod address, FrameDescriptor, physical `CodeGeneration` registration handle, declared arity, portable implementation identity, descriptor hash, and optional implementation-anchor handle. The anchor is required by 60F's named-method adapter and absent for a generic block-vtable entry. Resolve-and-pin acquires the separate physical call-code pin transferred to a Frame; publication separately associates the entry with a logical DispatchGeneration. |
+| Runtime authority | The active `birnam-id::Runtime` is the sole semantic authority for Machine state, Runtime-local entry recognition, binding retirement, dispatch-read protection, implementation anchors, and physical code pins. The registration shim targets the explicitly entered Runtime; TLS may route the call but is not the authority. |
 | Code custody | Codegen/TCC or another process code repository owns physical mappings. It may share immutable code across isolated Runtimes, but disposal waits for every Runtime lease; it cannot unregister or unload code behind a Runtime's execution state. |
 | Candidate discard | Logical candidate retirement and physical mapping disposition are separate outcomes. Logical discard may complete while the repository reports `Retained(codeGenerationPinned)`; this is not failure of the logical transition. |
-| Recognition | The active Runtime maps each unique live **entry-thunk address** to at most one ResumableEntry. Lookup-through-recognition is protected as one logical operation and acquires the entry plus a generation pin before the protection ends. |
+| Recognition | The active Runtime maps each unique live **entry-thunk address** to at most one ResumableEntry. The shared resolver classifies the exact carrier returned by metacircular lookup and acquires the entry plus a physical call-code pin before protection ends. The thunk address remains the Method-compatible tag; no public tag or IdApi field is added. |
 | Binding lifetime | Each direct installation owns one binding reference. Aliases own independent references; inheritance does not duplicate the defining reference. An accepted S2 unit owns one manifest reference for each declared entry, including a block entry whose vtable remains unallocated. Lookup results are borrowed, and retaining a raw Method carrier requires an explicit generation lease. Retirement and address reuse wait for manifest and binding references, dispatch readers, acquired entries, Frames, Continuations, and leases to quiesce. |
 | Preservation | Migration preserves result and error values for a matching argument count. It preserves neither mismatched-arity behavior (§6) nor maximum call depth (§5.3). |
-| Failure surface | A 60A §9 driver failure reaching a thunk boundary is fatal, never an ordinary result value. |
+| Failure surface | A 60A §9 driver failure crossing an ordinary synchronous send or fallback-thunk boundary is fatal, never an ordinary result value. |
 | Registration and publication surfaces | The emitted registration operation prepares one Runtime record independently of installation. The Store MOP publishes named bindings, direct `birnam_method` publishes block bindings, and `Tcc unit install:as:on:` publishes relocated symbols; image boot replays the same artifact registration before restoring those bindings. All resumable surfaces associate the published thunk with the same record shape. |
 | Durable image tag | One pointer-free `ResumableManifest` enumerates every named and block entry. Image v5 carries the same manifest plus tagged generated-block-vtable references. Boot verifies image, artifact, registry, resolver results, and final bindings before user entry. The Runtime supplies image discovery through a private side catalog, not an IdApi field. |
 | Microcode | Machine microcode is an ordinary late-bound Birnam protocol. Its checked primitive implementations may be redefined, removed, or shadowed. A Birnam-authored replacement using public capabilities receives no raw Frame or arena pointer; incompatible changes may alter or invalidate execution, but the driver still validates the final StepAction before applying its requested control transition. Prior valid checked mutations are not transactional or rolled back. Trusted native artifacts retain native authority. |
 
-## 3. Two paths, and only one of them is the thunk
+## 3. One resolver, two continuations
 
 This is the distinction the rest of the record depends on, so it is stated once,
 explicitly:
 
 | Caller | Resolution | Cost |
 |---|---|---|
-| Migrated: a StepMethod issuing a Call or TailCall | The driver resolves and pins the ordinary lookup result (60A §5), then pushes a resumable frame directly or invokes the protected synchronous result | One protected resolution plus one frame push for a resumable target. No thunk invocation, native frame, or Machine acquisition on that path. |
-| Unmigrated: any ordinary `IdApi.send` | Lookup answers the thunk address and `send_abi` calls it | One native activation plus a nested drive. |
+| Migrated: a StepMethod issuing a Call or TailCall | The driver consumes the shared resolver result, then pushes a resumable frame directly or invokes the protected synchronous result | One protected resolution plus one frame push for a resumable target. No thunk invocation, native frame, or Machine acquisition on that path. |
+| Unmigrated: any ordinary `IdApi.send` | `send_abi` consumes the same resolver result, then enters/drives a resumable target directly or invokes the protected synchronous result | One native `send_abi` activation plus a nested or fresh drive. No entry-thunk activation on the ordinary path. |
 
-The migrated-to-migrated path is the one the whole design exists for, and it
-never passes through a thunk. An implementation that routes it through the thunk
-reintroduces exactly the native-stack growth 60 exists to remove, and will fail
-60 §7 proof point 2 on its first run.
+Neither primary path passes through a thunk. An implementation that routes a
+migrated Call or TailCall through one reintroduces exactly the native-stack
+growth 60 exists to remove. Routing ordinary `IdApi.send` through one remains
+semantically valid as a compatibility implementation, but duplicates
+classification and makes stacklessness an adapter accident rather than a
+property of the Runtime substrate; it is not the accepted S2 architecture.
 
 For a named method, the pushed Frame is 60F's retained-implementation adapter.
 The entry owns the exact object supplied to `defineMethod:on:as:` and the adapter
@@ -79,9 +97,9 @@ may push the independently registered block Frame or enter a protected
 synchronous Method. “No thunk invocation” does not mean “no second lookup”: the
 latter is existing Birnam malleability and remains part of the method contract.
 
-### 3.1 Thunk shape
+### 3.1 Thunk shape and reduced role
 
-The thunk is an ordinary Method and introduces no new function shape:
+The thunk remains an ordinary Method and introduces no new function shape:
 
 ```c
 static Oop example_entry(Oop receiver, const Oop *arguments, size_t count) {
@@ -91,8 +109,19 @@ static Oop example_entry(Oop receiver, const Oop *arguments, size_t count) {
 
 `birnam_enter_resumable` is a host-provided runtime symbol in the same family as
 `birnam_method` and `birnam_install_method`. It is not an IdApi field, so 60C's
-commitment that the id floor does not grow for stackless execution holds; 60C
-§14's evidence item 8 is amended to match (§9.3).
+commitment that the public id floor does not grow for stackless execution
+holds; 60C §14's evidence item 8 is amended to match (§9.3).
+
+The thunk has two jobs only:
+
+1. it is the unique Method-shaped carrier installed in a vtable and classified
+   by the private Runtime resolver; and
+2. it preserves correct behavior for an ABI-compatible caller that directly
+   invokes a retained Method carrier instead of entering through `IdApi.send`.
+
+It is not the Runtime's normal dispatch adapter. `send_abi` already owns the
+semantic send boundary and must classify the carrier before deciding how the
+selected implementation executes.
 
 A per-implementation thunk is the obvious emission and is what a compiler will
 produce. It is **not** required, but the alternative is not one shared thunk.
@@ -112,17 +141,18 @@ without running a code generator, which 60C §13.4 preserves for a future
 non-native or sandboxed artifact format and which an interpreter tier would
 need. Whether the pool is pre-built, grown, or exhausted is not decided here.
 
-The uniqueness is also what lets the **driver** recognize the same resolved
-address without invoking the thunk. Ordinary sends and driver calls therefore
-share the complete metacircular lookup result; only what they do with that
-result differs.
+The uniqueness lets the shared private resolver recognize the exact address
+returned by metacircular lookup without invoking it. Ordinary sends and driver
+calls therefore share both lookup and classification; only their continuation
+after a resumable classification differs.
 
-### 3.2 Thunk behavior
+### 3.2 Resumable entry behavior
 
-`birnam_enter_resumable` performs:
+Whether called directly by `send_abi` with an already acquired entry or reached
+through a fallback thunk, the common resumable-entry helper performs:
 
-1. resolve the thunk's ResumableEntry in the active Runtime and acquire its live
-   generation pin;
+1. consume the already acquired ResumableEntry, or classify the fallback
+   thunk's carrier and acquire its live generation pin;
 2. consult the Runtime entry-scope stack (§5.2) to decide fresh or nested entry;
 3. push the initial frame, binding receiver and arguments into traced frame
    slots under the §6 arity rule;
@@ -136,8 +166,8 @@ never mentions Machine never sees one.
 
 Step 5 answers only language values. This matters because 60A §9 classes driver,
 ownership, malformed-action, and barrier failures as out-of-band typed runtime
-errors, and a thunk invoked inside an ordinary send **has no out-of-band
-channel** — its only carrier is the returned Oop.
+errors, while an ordinary synchronous `IdApi.send` or direct fallback-thunk
+call **has no out-of-band channel** — its only carrier is the returned Oop.
 
 Converting those failures into ordinary error values would recreate the §1
 hazard in a new place, and the floor would not treat them consistently.
@@ -150,9 +180,10 @@ this language has no non-local return and errors are ordinary values, `on:do:`
 would happily catch a driver failure and continue running against a Machine the
 driver has just declared invalid.
 
-**Decision.** A 60A §9 failure that reaches a thunk boundary is a fatal
-invariant, reported through the same host path `send_abi` already uses when
-`doesNotUnderstand:` is unbound. It is not returned.
+**Decision.** A 60A §9 failure that crosses an ordinary synchronous send or
+fallback-thunk boundary is a fatal invariant, reported through the same host
+path `send_abi` already uses when `doesNotUnderstand:` is unbound. It is not
+returned.
 
 A later record wanting a recoverable subset cannot get one by choosing an error
 kind. `kindMatches:` in `src/id/stdlib.birnam` answers true whenever the wanted
@@ -182,11 +213,11 @@ text.
       unique entry-thunk address  (what ordinary lookup answers)
       StepMethod address           (what the driver calls)
       FrameDescriptor identity     (60B §4)
-      generation identity and registration handle  (60B §9)
+      physical CodeGeneration identity and registration handle  (60B §9)
       declared arity
-      implementation identity      (for FrameView, source maps, and 49)
+      portable implementation identity  (for FrameView and source maps)
       descriptor SHA-256 and entry kind
-      optional retained implementation Oop
+      optional implementation-anchor handle
       manifest and direct-binding reference state
 
 The registry belongs to one Runtime, is owner-thread-checked in the first
@@ -195,6 +226,29 @@ entry-thunk address)`, so the same mapped code may be registered independently
 by future in-process Runtimes without sharing execution state. Entries are also
 validated by index plus generation when held as capabilities, following the
 Machine registry pattern of 60B §1.
+
+The implementation-anchor handle indexes a separate dense Runtime-owned root
+table; it is not an Oop and the entry registry is not interpreted as a root set.
+Each stable anchor slot contains the exact implementation Oop for one named
+adapter. The collector traces the slots directly and may rewrite them for a
+moving collection. A generic block-body entry owns no slot because its captures
+belong to ordinary heap block objects and, once invoked, Frame slots.
+
+`Prepare` installs the named implementation Oop in its anchor before the staged
+entry can become visible. Failure or `Abort` removes the unpublished anchor and
+publishes nothing. Resolve-and-pin reads the anchored Oop under the entry's
+existing lifetime protection; successful Frame construction copies it into the
+descriptor-declared implementation slot before that protection ends. The
+Frame's PC root map then owns the execution root. Aliased bindings share the
+entry's one anchor while retaining independent binding references.
+
+An anchor remains live while a manifest or binding reference can make its entry
+callable. Retirement first prevents fresh resolution and waits for the existing
+reader, acquired-entry, Frame, Continuation, and explicit-lease quiescence; only
+full entry teardown releases the anchor. Image recovery recreates and anchors
+the implementation Oop before restoring a binding. Anchor indices and slot
+addresses are process-local, never serialized, exposed through IdApi, or
+projected as mutable Store authority.
 
 The authoritative registry, generation-manifest references, block-vtable image
 catalog, and retirement/read-epoch state live with dispatch in
@@ -208,28 +262,39 @@ readers can still reach that generation.
 
 The catalog is a private Runtime service passed explicitly to the image writer
 and loader. It is not an IdApi query. It maps an instantiated generated block
-vtable Oop to 60F §13.4's durable entry key and current binding fingerprint, and
-maps that key back through the owning artifact's idempotent resolver during
-recovery. It contributes any required vtable Oops to existing Runtime root
-enumeration; generated native statics are never accepted as the only GC root.
+vtable Oop to its owning artifact authority, canonical manifest index, 60F
+§13.4 durable entry key, and current binding fingerprint. Recovery passes the
+checked index directly to that artifact's idempotent resolver and verifies the
+returned Oop against the catalog; it never searches by the `u64` implementation
+identity. The catalog contributes any required vtable Oops to existing Runtime
+root enumeration; generated native statics are never accepted as the only GC
+root.
 
-### 4.1 Resolve and pin is one logical operation
+### 4.1 Resolve and pin is the private dispatch substrate
 
-The driver must not hold a bare Method address across a lifetime gap. Its
-logical `resolve-and-pin` operation begins before ordinary metacircular lookup
-and ends only after the result has become one of:
+No Runtime caller may hold a bare Method address across a lifetime gap. The
+single private `resolve-and-pin` authority used by both `send_abi` and the
+Machine driver begins before ordinary metacircular lookup and ends only after
+the result has become one of:
 
 - a strong ResumableEntry reference plus a call-generation pin;
 - a synchronous Method whose code generation remains protected through its
   immediate invocation; or
 - an unbound result that follows the existing DNU path.
 
-This does not collapse the two paths of §3. A Machine driver classifies a
-registered thunk and bypasses it. Ordinary `IdApi.send` retains the same
-read-side lifetime protection through immediate invocation of the Method that
-lookup returned; when that Method is a thunk, the thunk acquires its
-ResumableEntry under the still-active protection and drives normally. No new
-argument or ambient Machine is added to the Method ABI.
+Conceptually the private result is
+`ResolvedTarget::{Resumable(PinnedEntry), Synchronous(ProtectedMethod),
+Unbound}`. This name and Rust representation are not ABI, but the three-way
+semantic result is frozen. The resolver does not execute the target and does
+not decide scheduler or compiler policy.
+
+`send_abi` consumes the result by invoking a protected synchronous Method,
+entering/driving a pinned resumable entry, or following the existing DNU path.
+The Machine driver consumes the same result by invoking a protected synchronous
+Method or pushing/replacing a Frame. A fallback thunk may enter through the same
+resumable-entry helper when a retained raw Method carrier is invoked directly,
+but no primary Runtime send path performs a second lookup or classification.
+No new argument or ambient Machine is added to the Method ABI.
 
 For a resumable result, a successful Frame push transfers the call-generation
 pin to the Frame; a failed push drops it. The ResumableEntry retains its own
@@ -268,9 +333,11 @@ plain owner-thread epoch/depth token, amortized across the current Machine turn
 or top-level send. The fast path must add no mutex, atomic read-modify-write,
 heap allocation, or reference-count operation per ordinary resolution.
 Registry classification remains a non-allocating lookup, and the minimal
-generation handle is acquired only when a resumable Frame is pushed. S1 must
-implement the API in this shape rather than scattering bare-address lookups, so
-later protection does not require rewriting the driver.
+generation handle is acquired only when a resumable Frame is pushed or an
+ordinary send acquires an entry for immediate frame construction. The Runtime
+must implement the API in this shape rather than scattering bare-address
+lookups, so later protection does not require separately rewriting send and the
+driver.
 
 Before shared-Runtime parallelism or concurrent code evolution is enabled, 60D
 requires a real read-side protocol. An epoch/RCU-style token is preferred: it
@@ -334,8 +401,8 @@ identity. So a thunk address comes back into the vtable and no ResumableEntry
 comes back with it.
 
 Under §3.3 that is not a degraded mode, it is an abort: the first send to a
-migrated selector reaches a restored thunk, finds no live entry, and raises a
-60A §9 failure at a thunk boundary. The rebuild path is unaffected, since it
+migrated selector classifies a restored thunk, finds no live entry, and raises a
+60A §9 failure at the synchronous send boundary. The rebuild path is unaffected, since it
 re-evaluates method definitions through the Store MOP and recreates the
 Runtime-qualified address mapping, so mapped and rebuilt images would differ in
 correctness — two routes to the same image answering differently, which is the
@@ -359,9 +426,11 @@ It provides:
 - immutable FrameDescriptor identity and contents;
 - selector-determined language arity and the descriptor's driver argument
   count;
-- implementation and code-generation identities; and
-- the generation lease from which Runtime-local registration and Frame pins are
-  acquired.
+- the exact canonical manifest entry index assigned after manifest sorting;
+- a portable implementation identity;
+- a process-local physical CodeGeneration identity; and
+- the physical code lease from which Runtime-local registration and Frame pins
+  are acquired.
 
 Version 1 rejects a different schema version, a record shorter than its required
 fields, an invalid address/descriptor/arity combination, or a generation that
@@ -371,30 +440,36 @@ immutable descriptor metadata and owns or transfers every required generation
 handle before returning. For S2, the immutable descriptor contents include 60F's
 entry locations, call-staging description, colored-slot count, per-PC root maps,
 per-edge transfer plans, and logical-value source-map identity. The exact C
-field layout and blob encoding are frozen by 60F §13: one sized native envelope
-carries process-local pointers, the optional implementation Oop, and a
-generation lease beside a canonical pointer-free descriptor-v2 blob. The
+field layout and blob encoding are owned by 60I: one sized native envelope
+carries the artifact-local manifest index, process-local pointers, the optional
+implementation Oop, and a physical CodeGeneration lease beside a canonical
+pointer-free descriptor-v2 blob. The
 Runtime validates and owns every decoded component before publication.
 The registration shim remains covered by the runtime ABI hash, so incompatible
 physical carriers do not silently interoperate.
 
-The check point has to be stated precisely, because "before execution" is not
-available: restored thunks come into being *while* the mapped code unit's
-initializer runs, and that initializer is ordinary program text interleaved with
-installs. Every S2 artifact therefore registers all entries named by 60F
-§13.4's pointer-free `ResumableManifest` during unit initialization, including a
+The check point has to be stated precisely. Physical mapping first exposes the
+static manifest and resolver without invoking the generated Birnam initializer.
+The loader copies and validates that manifest and opens a staged-unit context
+binding its canonical indices to the physical CodeGeneration; native static
+constructors may not register or publish resumable entries. Restored thunks then
+come into being *while* the generated initializer runs, and that initializer is
+ordinary program text interleaved with installs. Every S2 artifact therefore
+registers all entries named semantically by 60F §13.4 and encoded by 60I's
+pointer-free `ResumableManifest` during unit initialization, including a
 block body whose literal has never been evaluated. This metadata operation does
 not allocate its block or vtable. Named installs and block vtables created by
 top-level evaluation may consume prepared entries during the transaction; the
 remaining exact entries are retained by generation-manifest references after
 the initializer returns.
 
-The artifact loader then compares the exported manifest with every prepared and
-published generation-owned entry and atomically commits that exact set. Missing,
-extra, duplicate, wrong-kind, wrong-arity, or descriptor-mismatched entries roll
-back the unit. For image recovery, image v5 first supplies the independently
-framed expected manifest. After initialization the loader requires byte identity
-between image and artifact manifests, commits the registry set, materializes
+The artifact loader then compares every manifest-indexed prepared and published
+entry with the already validated export and atomically commits that exact set to
+the successor logical DispatchGeneration. Missing, extra, duplicate, wrong-kind,
+wrong-arity, or descriptor-mismatched entries roll back the unit. For image
+recovery, image v5 first supplies the independently framed expected manifest.
+Before the generated initializer the loader requires byte identity between image
+and artifact manifests; afterward it commits the registry set, materializes
 heap and fact references to generated block vtables through the artifact's
 idempotent resolver, reconciles bindings, and performs one final check before
 the image entry point. A digest match alone is not sufficient evidence.
@@ -425,14 +500,15 @@ the path every unmigrated caller takes throughout S2 and S4.
 
 ### 5.1 Nested entry reuses the current Machine
 
-**Decision.** When a thunk is reached inside a same-execution entry scope
-established by an active drive, it does not allocate a second Machine. It pushes
-the new frame onto that Machine's arena above an **entry-barrier delimiter**, and
-runs a nested drive that may not pop below that delimiter. The driver establishes
-the scope around both StepMethod and synchronous-Method invocation, because
-either native activation may make an ordinary send and must remain live until
-that send returns. A thunk reached with no inherited scope starts a fresh
-Machine; §5.2 explains why the predicate is logical scope rather than thread
+**Decision.** When `send_abi` selects a resumable target inside a
+same-execution entry scope established by an active drive, it does not allocate
+a second Machine. It pushes the new frame onto that Machine's arena above an
+**entry-barrier delimiter**, and runs a nested drive that may not pop below that
+delimiter. A directly invoked fallback thunk follows the same rule. The driver
+establishes the scope around both StepMethod and synchronous-Method invocation,
+because either native activation may make an ordinary send and must remain live
+until that send returns. A resumable entry with no inherited scope starts a
+fresh Machine; §5.2 explains why the predicate is logical scope rather than thread
 activity. When the nested frames
 return, the thunk answers and the intervening synchronous activation returns
 normally to the outer driver.
@@ -523,22 +599,24 @@ by an unmigrated synchronous Method.
 
 The predicate is inherited logical scope, not thread activity, and the
 difference is not pedantic. A Machine may be driving when the host or reactor
-begins unrelated work — a fresh reactor item, Store reconciliation, codegen
-authorization, or an unrelated FFI callback — and that work may reach a thunk by
-ordinary dispatch. The host entry operation explicitly suppresses any inherited
+begins unrelated work—a fresh reactor item, Store reconciliation, codegen
+authorization, or an unrelated FFI callback—and that work may select a
+resumable carrier through ordinary dispatch. The host entry operation
+explicitly suppresses any inherited
 same-execution scope. Nesting that work onto the driving Machine would give a
 new logical execution no identity a scheduler could queue, no ability to
 suspend, a lifetime tied to an unrelated Machine, and a backtrace interleaved
-with one. A thunk reached with an active drive but no inherited scope starts a
-fresh Machine, which is what 60D §3 wants when it lists several Machines on one
-owner thread as a direct fit.
+with one. A resumable entry selected with an active drive but no inherited scope
+starts a fresh Machine, which is what 60D §3 wants when it lists several
+Machines on one owner thread as a direct fit.
 
 60D §4 forbids ambient execution identity, and that prohibition stands where it
 was aimed: **generated StepMethod code and Machine microcode never consult the
 entry-scope stack.** They receive Machine explicitly as their receiver. The
-entry-scope stack is consulted only by the entry shim, at the one boundary where
-no Machine is in hand, and 60D §4 is amended to say so rather than left to be
-read as forbidding it.
+entry-scope stack is consulted only by the Runtime resumable-entry helper used
+by `send_abi` and the fallback thunk, at the one boundary where no Machine is
+in hand, and 60D §4 is amended to say so rather than left to be read as
+forbidding it.
 
 Pushing and popping the dynamic scope are point operations. The scope record
 remains installed while the native activation runs, but no entry-scope-stack,
@@ -762,7 +840,8 @@ binding and retire only the replaced or removed direct binding. No defining-
 vtable reconstruction, selector sealing, or change to lookup order is required.
 
 An accepted S2 unit additionally owns one generation-manifest reference for
-every entry declared by its exact 60F §13.4 manifest. That reference keeps a
+   every entry declared by its exact 60I manifest satisfying 60F §13.4. That
+   reference keeps a
 never-instantiated block body registered without forcing its private vtable to
 exist. It also permits a still-pinned old Frame to evaluate one of its block
 literals after the entry's original named binding has been replaced. The
@@ -967,7 +1046,8 @@ are multiples of it:
 | Continue transition | ≤ 2 × S |
 | Resolve-and-pin plus synchronous leaf invocation | ≤ 2 × S |
 | Call/Return pair, migrated to migrated | ≤ 4 × S |
-| Entry through a thunk | ≤ 6 × S |
+| Ordinary `IdApi.send` entry into a resumable target, with zero thunk activations | ≤ 6 × S |
+| Direct fallback-thunk entry | reported separately; correctness-gated, no S2 fast-path budget |
 | Microcode sends per source-level step | ≤ 4, reported per step kind |
 | Maximum reachable depth through an unmigrated primitive | ≥ 0.5 × the pre-migration depth, reported with the measured native-stack capacity |
 
@@ -980,6 +1060,14 @@ non-allocating lookup. The benchmark must exercise the actual driver path to a
 synchronous leaf, not a helper that bypasses metacircular lookup or
 classification. A resumable hit separately reports registry probes and
 generation-pin operations per Frame push.
+
+The 2026-08-15 shared-resolution amendment changes every ordinary send by
+adding private carrier classification. Its substrate-alignment gate therefore
+runs a tracked, replicated Design 46 A/B against the pre-amendment S1 code.
+`sends.compiled-unary` must remain within the existing 10% micro-regression
+threshold, and both absolute values must be published. Later transition ratios
+use the post-amendment value of `S`; publishing both prevents a slower send
+denominator from disguising stackless overhead.
 
 Before concurrent code evolution is enabled, the concurrency follow-up adds
 uncontended and contended read-epoch measurements: cost per Machine turn and
@@ -1012,6 +1100,46 @@ resolve-and-pin for allocation, lock, atomic-RMW, and reference-count surfaces.
 The measurement probe remains ignored in normal test runs and requires
 `BIRNAM_S_NS` from the same micro-suite process before it will publish a ratio.
 
+The shared-resolution alignment run on 2026-08-22 compared three fresh quick
+ReleaseSafe micro processes for pre-amendment `c773115` and the aligned
+worktree. `sends.compiled-unary` samples were 421/437/425 ns/op before and
+428/430/425 ns/op after, for medians of 425 and 428 ns/op: a 0.7% increase,
+inside the 10% gate. With aligned `S = 428 ns/op`, the ignored release probe
+measured Continue at 69.126 ns/transition (`0.162 x S`) and synchronous
+resolve/classify plus leaf invocation at 332.940 ns/invocation (`0.778 x S`).
+All 83 active `birnam-id` tests passed; ordinary and Machine registered entry
+assert zero thunk activations, while explicit raw-Method entry asserts one.
+
+The S2 entry/call acceptance run on 2026-08-23 used a fresh isolated Rust
+release prefix and the ignored release probe
+`runtime::tests::publish_stackless_s2_entry_and_call_measurements`. In the same
+run, quick `sends.compiled-unary` measured `S = 431 ns/op`. A registered
+migrated-to-migrated Call/Return loop measured 504.298 ns/pair (`1.170 x S`,
+inside the `4 x S` budget), while ordinary `IdApi.send` entry into the same
+registered target measured 563.819 ns/invocation (`1.308 x S`, inside the `6 x
+S` budget) with zero thunk activations. Direct fallback-thunk entry measured
+519.054 ns/invocation and remains report-only. The drive recorded two live
+Frames at high water, zero synchronous-boundary depth, 528 bytes of observed
+native-stack-address movement across 200,000 pairs, a 1,087-byte canonical Call
+descriptor fixture, and 268 bytes of Runtime-owned Call descriptor storage.
+Each Call, child Return, Continue, and final parent Return issued one microcode
+send. These are development-machine ratios, not fixed release ceilings; reruns
+must take `BIRNAM_S_NS` from their own same-run micro process.
+
+The companion fixed-stack depth probe deliberately remains a failing ignored
+gate. On 2026-08-23, three consecutive Release runs with a 2 MiB thread stack
+each reached a synchronous pre-migration baseline depth of 3,557 and a mixed
+resumable/synchronous-barrier depth of 1,277: `0.359 x` baseline, below the
+provisional `0.5 x` budget. The comparator recursively enters the direct
+synchronous Method path for the baseline; the mixed path enters a registered
+resumable method, calls one unmigrated synchronous Method, and re-enters the
+registered method above the required barrier. This is the boundary §5.3 and
+this section anticipated: it triggers S4 migration of callback-driving control
+primitives, not 60C's optimizing direct-call tier. The retained
+`runtime::tests::publish_stackless_s2_depth_measurement` prints both capacities
+and fails explicitly while the ratio remains below budget; normal suites keep
+it ignored because stack exhaustion is isolated through child processes.
+
 Two anchors are recorded so a reader can sanity-check scale, both from the
 Rust-floor snapshot `bench/results/v0.11.0-rust-2fe44d2-…json` that
 [61A](61a-r6-performance-tradeoffs.md) accepts as evidence, run 1 of 3:
@@ -1021,9 +1149,9 @@ Rust-floor snapshot `bench/results/v0.11.0-rust-2fe44d2-…json` that
 The last row is the axis §5.3 says regresses, and it is stated as a budget
 rather than a reporting requirement because a measurement nobody can fail is
 what this section exists to correct. Its threshold is provisional in a stronger
-sense than the others: §5.3's own accounting — driver, barrier, synchronous
-method, `send_abi`, `bind_active`, thunk, nested driver replacing roughly four
-activations — puts the design near the line before anything is measured, and the
+sense than the others: §5.3's own accounting—driver, barrier, synchronous
+method, `send_abi`, `bind_active`, and nested driver replacing roughly four
+activations—puts the design near the line before anything is measured, and the
 0.5 figure is a placeholder to be set once `S` and the native-stack capacity are
 both known. It belongs to S2, with the entry measure.
 
@@ -1042,17 +1170,17 @@ measurement missed them.
 
 Extending 60A §9. None is an ordinary value:
 
-- `resumableEntryUnregistered` — a **thunk** was invoked and no live or retiring
-  entry names it. A driver-side registry miss is not a failure only when the
-  address was never known as a thunk; that is how synchronous Methods are
-  reached (60A §5 step 4);
+- `resumableEntryUnregistered` — a carrier classified or directly invoked as a
+  resumable thunk has no live or retiring entry. A registry miss is not a
+  failure only when the address was never known as a thunk; that is how
+  synchronous Methods are reached (60A §5 step 4);
 - `resumableEntryRetired` — a known retired thunk was returned by a reader begun
   after its retirement epoch, usually an unleased native or custom-lookup
   cache. It is never reinterpreted as a synchronous Method;
 - `resumableEntryStaleGeneration` — the entry's generation was released;
 - `resumableEntryUnrestored` — an image validity failure: a restored thunk has
   no live entry after boot re-registration (§4.3). Unlike the others this one is
-  raised during image validation rather than at a thunk boundary.
+  raised during image validation rather than at a synchronous entry boundary.
 
 Capture, suspension, Abort, and Restore that would cross an entry barrier all
 use the existing `continuationBarrier`. No depth failure kind is introduced;
@@ -1068,8 +1196,12 @@ a completed logical candidate discard does not become a runtime failure.
 Frozen:
 
 - a vtable never holds a StepMethod address;
-- a Call or TailCall resolving to a live ResumableEntry pushes a frame and never
-  invokes a thunk; the thunk is reached only by ordinary `IdApi.send`;
+- ordinary `IdApi.send` and Machine Call/TailCall share one private
+  Runtime-owned resolve-and-pin authority over the exact metacircular lookup
+  result;
+- either caller resolving to a live ResumableEntry enters or pushes a frame
+  without invoking a thunk; the thunk remains the installed Method carrier and
+  direct-invocation compatibility fallback;
 - registration produces one ResumableEntry regardless of surface;
 - one `birnam-id::Runtime` owns semantic execution state and Runtime-local entry
   registration; compiler and loader state never own Machines or recognition;
@@ -1077,8 +1209,9 @@ Frozen:
   is artifact ABI rather than an IdApi field;
 - the S1.3 semantic registration carrier is versioned and sized, provides the
   thunk and StepMethod addresses, immutable descriptor, arities,
-  implementation and generation identities, and generation lease, rejects an
-  invalid record before publication, and leaves no borrowed carrier memory in
+  portable implementation identity, process-local physical CodeGeneration
+  identity and lease, and optional implementation anchor input; it rejects an
+  invalid record before publication and leaves no borrowed carrier memory in
   the Runtime;
 - S2 artifacts register every canonical manifest entry during unit
   initialization; acceptance atomically commits an exact generation-manifest
@@ -1132,8 +1265,9 @@ Frozen:
   allocation-free owner-thread diagnostics and introduces no artificial depth
   limit;
 - registration is an emitted artifact operation, and image boot re-registers
-  before any send can reach a restored thunk;
-- a driver failure reaching a thunk boundary is fatal, not a value;
+  before any send can classify or directly invoke a restored thunk;
+- a driver failure crossing an ordinary synchronous send or fallback-thunk
+  boundary is fatal, not a value;
 - migration preserves result and error values for a matching argument count, and
   preserves neither mismatched-arity behavior nor maximum call depth;
 - proper tail behavior requires a resumable target;
@@ -1155,7 +1289,7 @@ Not frozen:
   protected resolve-and-pin, except that it may not hold a lock or Rust borrow
   across metacircular lookup and must meet §11's performance evidence;
 - automatic arena trim heuristics beyond S1.1's retain-until-destroy baseline;
-- descriptor blob encoding and physical home, which 60F §16 owns before S2;
+- descriptor blob encoding and physical home, which 60I now freezes;
 - the §11 budget numbers, which are provisional by construction.
 
 ## 14. Acceptance tests
@@ -1180,9 +1314,11 @@ integration seam.
    selectors rather than addresses and the `lookup` primitive is not reachable
    from Birnam source. The enumeration must skip the floor's opaque internal
    dictionaries, whose values are exported Oops rather than method addresses;
-3. **(S1)** a resumable method reached by ordinary send from unmigrated code
-   completes and returns through the thunk without the caller observing a
-   Machine;
+3. **(S1 amendment)** a resumable method reached by ordinary send from
+   unmigrated code is classified by the shared private resolver, completes and
+   returns without invoking the entry thunk or exposing a Machine; a separate
+   raw-Method fixture directly invokes the thunk and proves the compatibility
+   fallback answers the same Oop;
 4. **(S1)** a live frame keeps running after its selector is reflectively
    redefined and its binding retired, because the frame captured its step
    address, descriptor, and generation pin at push;
@@ -1233,8 +1369,8 @@ integration seam.
     directly across resolve, push, failed push, pop, and binding retirement
     rather than inferred from conservative retention;
 16. **(S2)** a migrated-to-migrated Call is served by a frame push with no thunk
-    invocation and no native-stack growth, asserted by a probe counter on the
-    entry shim that must read zero;
+    invocation and no native-stack growth, asserted by a thunk-activation probe
+    counter that must read zero;
 17. **(S2)** the same holds when the implementation is **inherited** and when a
     custom metacircular lookup returns its registered thunk address, with the
     probe counter still zero in both cases;
@@ -1273,10 +1409,11 @@ integration seam.
     and asserts the zero-allocation/lock/atomic/refcount structural fast path.
     S1.2's hand-written synchronous-entry probe asserts that current boundary
     depth rises once per active synchronous crossing and returns to zero, while
-    its per-drive high-water value records the peak. The Call/Return, entry, and
-    native-stack depth measures need two migrated implementations and a thunk,
-    so they belong to S2 and publish the diagnostic high-water value alongside
-    measured native-stack capacity. Concurrent evolution later publishes the
+    its per-drive high-water value records the peak. The Call/Return, ordinary
+    stackless entry, fallback-thunk entry, and native-stack depth measures need
+    two migrated implementations and a thunk, so they belong to S2 and publish
+    the diagnostic high-water value alongside measured native-stack capacity.
+    Concurrent evolution later publishes the
     read-epoch and mutation-contention measures before it can be accepted.
 
 ## 15. Stage-owned follow-up decisions
@@ -1296,12 +1433,14 @@ integration choice has an owner and a latest decision point:
    reserved-byte telemetry. Whole-chunk zeroing and automatic trim heuristics
    are not S1 correctness requirements; any later policy must be justified by
    those measures and preserve the frozen tracing and generation rules.
-3. **Descriptor carrier — resolved by 60F §§13.1–13.2.** §4.3 freezes the
-   carrier's required values, version/size validation, and lifetime transfer.
-   S2 uses the accepted sized native envelope plus pointer-free canonical
-   descriptor-v2 blob, including root maps, colored-slot/entry/call-window
-   layout, edge transfers, source maps, SHA-256 validation, and owned decoding.
-4. **Durable resumable tag — resolved by 60F §13.4.** One canonical pointer-free
+3. **Descriptor carrier semantics — resolved by 60F §§13.1–13.2 and 60I.**
+   §4.3 freezes the carrier's required values, version/size validation,
+   and lifetime transfer. S2 uses the accepted sized native envelope plus
+   pointer-free canonical descriptor-v2 blob, including root maps,
+   colored-slot/entry/call-window layout, edge transfers, source maps, SHA-256
+   validation, and owned decoding. 60I freezes every field and offset.
+4. **Durable resumable tag semantics — resolved by 60F §13.4 and 60I.** One
+   canonical pointer-free
    `ResumableManifest` is exported by the artifact and projected into image v5's
    required `Resumables` record. Tagged heap/fact references use an idempotent
    unit-local resolver for private generated block vtables; the Runtime supplies
@@ -1311,3 +1450,11 @@ integration choice has an owner and a latest decision point:
    high-water synchronous-boundary depth without an artificial limit. S2's
    alternating-depth evidence publishes the counter alongside measured native-
    stack capacity.
+6. **Shared private target resolution — implemented and gated 2026-08-22.**
+   `send_abi` and Machine Call/TailCall consume the same protected three-way
+   classification. The thunk remains the installed Method carrier and working
+   direct-invocation fallback. Registration, DNU, inherited/custom lookup,
+   redefinition, lifetime, nested-entry, failure-boundary, fast-path, and
+   IdApi-floor tests passed; counters prove ordinary send and Machine calls do
+   not activate the thunk while direct raw-Method invocation does. The tracked
+   Design 46 A/B result is recorded in §11.

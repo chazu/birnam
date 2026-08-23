@@ -6,8 +6,11 @@
 //! any Birnam value.
 
 pub mod candidate;
+pub mod frame_descriptor;
 #[cfg(feature = "module")]
 mod module;
+pub mod resumable_manifest;
+pub mod stackless_selection;
 
 pub const ABI: &[u8] = b"birnam-artifact-generation-v1";
 pub const TARGET: &[u8] = b"aarch64-macos";

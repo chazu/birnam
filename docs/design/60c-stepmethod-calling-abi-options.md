@@ -177,8 +177,10 @@ StepAction. Registration does, and
 [60E](60e-resumable-registration-and-entry.md) defines it: a vtable holds a
 unique ordinary entry thunk, never the StepMethod address, and the active
 Runtime protects ordinary lookup through classification and generation-pin
-acquisition before the driver calls the StepMethod. An ordinary send can
-therefore never reach a StepMethod with a non-Machine receiver. Invoking an
+acquisition before either `send_abi` or the Machine driver chooses how to
+execute the target. A resumable classification enters or pushes a Frame without
+invoking the thunk. An ordinary send can therefore never reach a StepMethod
+with a non-Machine receiver. Invoking an
 address under the wrong semantic role is
 malformed-artifact or runtime-corruption failure, just as invoking any foreign
 function under the wrong ABI contract would be.
@@ -257,9 +259,10 @@ inside the bounded StepMethod activation.
 The synchronous primitive implementation is temporary ownership of mechanism,
 not permanent ownership of language policy. Microcode lookup remains ordinary
 late binding. Replacing one of these methods with a resumable implementation is
-legal: the ordinary entry thunk drives that nested work to completion above the
-entry-barrier delimiter selected by the same-execution entry scope surrounding
-the waiting StepMethod activation (60E §5.2). It cannot suspend or capture
+legal: `send_abi` classifies the selected carrier and drives that nested work to
+completion above the entry-barrier delimiter selected by the same-execution
+entry scope surrounding the waiting StepMethod activation (60E §5.2). It does
+not invoke the carrier thunk on the primary path, and cannot suspend or capture
 across that barrier, and it may add enough entry cost to fail the performance
 budget, but it is not forbidden.
 
@@ -438,8 +441,10 @@ It does not freeze:
   60A and 60B.
 
 Reusing Method is conservative because that ABI is already frozen. The new
-one-way commitment is Runtime-qualified entry-thunk resolve-and-pin and the
-returned-StepAction contract, not another native layout.
+one-way commitment is Runtime-qualified classification of the unique
+Method-shaped carrier, one private resolve-and-pin authority shared by
+`send_abi` and the Machine driver, and the returned-StepAction contract—not
+another native layout.
 
 ## 12. Benefits and costs
 

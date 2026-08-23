@@ -6,6 +6,15 @@
 
 use std::borrow::Cow;
 
+pub mod resumable;
+pub mod resumable_block;
+pub mod resumable_c;
+pub mod resumable_descriptor;
+pub mod resumable_named;
+pub mod resumable_registration_c;
+pub mod resumable_resolver_c;
+pub use birnam_artifact::stackless_selection as artifact_stackless_selection;
+
 /// A bounded-independent byte emitter. Callers retain ownership of the returned
 /// translation-unit bytes and may compare them byte-for-byte with the reference.
 #[derive(Debug, Default)]
@@ -15,9 +24,34 @@ pub struct Emitter {
     bound_names: Vec<Vec<u8>>,
     baked_globals: Vec<Vec<u8>>,
     next_block: usize,
+    next_send: usize,
     artifact_mode: bool,
     artifact_salt: u64,
     artifact_method_counter: usize,
+    artifact_operation_counter: u32,
+    named_resumables: Vec<NamedResumableEmission>,
+    block_resumables: Vec<BlockResumableEmission>,
+    block_keys: Vec<(usize, resumable::ImplementationKey)>,
+}
+
+/// One precompiled named-adapter fragment selected for an exact portable
+/// method-operation position in an artifact translation unit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NamedResumableEmission {
+    pub operation_index: u32,
+    pub symbol_index: u32,
+    pub c_source: Vec<u8>,
+}
+
+/// One precompiled block-body fragment selected by its complete stable key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockResumableEmission {
+    pub key: resumable::ImplementationKey,
+    pub symbol_index: u32,
+    pub manifest_entry_index: u32,
+    pub selector: Vec<u8>,
+    pub captures: Vec<Vec<u8>>,
+    pub c_source: Vec<u8>,
 }
 
 /// The pure expression subset consumed by the first Rust emission seam.
@@ -609,6 +643,7 @@ const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
 #define MKV(x) (birnam_mkSmallInt((long)(x)))
 extern void* birnam_send(void* rcv, void* sel, void** args, long n);
 extern void* birnam_intern(const char* name);
+extern long birnam_smallIntValue(void* value);
 extern void* birnam_mkString(const char* p, long n);
 extern void* birnam_mkFloat(double v);
 extern void* birnam_nil(void);
@@ -622,10 +657,11 @@ extern void* birnam_install_method(void* vt, void* sel, void* method, const char
 extern void* birnam_remove_method(void* target, void* sel, const char* src, long n);
 extern void* birnam_candidate_root_get(unsigned long long salt, long index);
 extern void* birnam_candidate_root_set(unsigned long long salt, long index, void* value);
+extern long birnam_candidate_preparing(void);
 extern void* birnam_proto(void* parent);
 extern void* birnam_blockVt(void);
-extern void* birnam_method(void* vt, void* selector, void* method);
-extern void* birnam_layoutAllOops(void* vt);
+extern void birnam_method(void* vt, void* selector, void* method);
+extern void birnam_layoutAllOops(void* vt);
 extern void* birnam_alloc(void* vt, long bytes);
 "#;
 
@@ -717,6 +753,95 @@ impl Emitter {
             artifact_salt: salt,
             ..Self::default()
         }
+    }
+
+    /// Construct an artifact emitter with exact operation-indexed named
+    /// resumable fragments. Selection admission and manifest composition own
+    /// the fragment set; this emitter preserves their publication ordering.
+    pub fn new_resumable_candidate_artifact(
+        salt: u64,
+        named_resumables: Vec<NamedResumableEmission>,
+    ) -> Result<Self, EmitError> {
+        Self::new_selected_resumable_candidate_artifact(salt, named_resumables, Vec::new())
+    }
+
+    /// Construct a candidate emitter with exact named and block-body
+    /// resumable fragments. Every fragment is emitted once, while block
+    /// registrations run eagerly at activation before literal resolution.
+    pub fn new_selected_resumable_candidate_artifact(
+        salt: u64,
+        mut named_resumables: Vec<NamedResumableEmission>,
+        mut block_resumables: Vec<BlockResumableEmission>,
+    ) -> Result<Self, EmitError> {
+        named_resumables.sort_by_key(|entry| entry.operation_index);
+        if named_resumables
+            .windows(2)
+            .any(|entries| entries[0].operation_index == entries[1].operation_index)
+            || block_resumables.iter().any(|entry| {
+                entry.key.implementation_kind != resumable::InventoryImplementationKind::BlockBody
+                    || entry.key.path.is_empty()
+            })
+        {
+            return Err(EmitError::Unsupported);
+        }
+        block_resumables.sort_by(|left, right| left.key.cmp(&right.key));
+        if block_resumables
+            .windows(2)
+            .any(|entries| entries[0].key == entries[1].key)
+            || named_resumables.iter().enumerate().any(|(index, named)| {
+                named_resumables[..index]
+                    .iter()
+                    .any(|prior| prior.symbol_index == named.symbol_index)
+                    || block_resumables
+                        .iter()
+                        .any(|block| block.symbol_index == named.symbol_index)
+            })
+            || block_resumables.iter().enumerate().any(|(index, block)| {
+                block_resumables[..index]
+                    .iter()
+                    .any(|prior| prior.symbol_index == block.symbol_index)
+            })
+        {
+            return Err(EmitError::Unsupported);
+        }
+        let mut emitter = Self {
+            artifact_mode: true,
+            artifact_salt: salt,
+            named_resumables,
+            block_resumables,
+            ..Self::default()
+        };
+        if !emitter.named_resumables.is_empty() || !emitter.block_resumables.is_empty() {
+            emitter
+                .function_defs
+                .extend_from_slice(resumable_registration_c::registration_prelude_v1());
+            if !emitter.block_resumables.is_empty() {
+                emitter.function_defs.extend_from_slice(
+                    b"void* __birnam_resolve_block_vtable_v1(unsigned int manifest_entry_index);\n",
+                );
+            }
+            for entry in &emitter.named_resumables {
+                emitter.function_defs.extend_from_slice(&entry.c_source);
+            }
+            for entry in &emitter.block_resumables {
+                emitter.function_defs.extend_from_slice(&entry.c_source);
+            }
+            if !emitter.block_resumables.is_empty() {
+                let specs = emitter
+                    .block_resumables
+                    .iter()
+                    .map(|entry| resumable_resolver_c::BlockVtableSpec {
+                        manifest_entry_index: entry.manifest_entry_index,
+                        symbol_index: entry.symbol_index,
+                        selector: &entry.selector,
+                    })
+                    .collect::<Vec<_>>();
+                let resolver = resumable_resolver_c::emit_block_vtable_resolver_v1(&specs)
+                    .map_err(|_| EmitError::Unsupported)?;
+                emitter.function_defs.extend_from_slice(&resolver);
+            }
+        }
+        Ok(emitter)
     }
 
     /// Construct an emitter for the requested translation-unit mode. Global
@@ -910,30 +1035,94 @@ impl Emitter {
     /// any nested block definitions. Runtime error propagation and persistent
     /// top-level global writes remain N6.3 orchestration concerns.
     pub fn emit_program(&mut self, program: &Program<'_>) -> Result<(), EmitError> {
-        self.emit_program_mode(program, false)
+        self.emit_program_mode(program, false, None)
     }
 
     /// Emit a top-level program whose `let` bindings update the shared global
     /// environment after their local value is computed. Nested block locals
     /// remain lexical and never persist.
     pub fn emit_program_persisting(&mut self, program: &Program<'_>) -> Result<(), EmitError> {
-        self.emit_program_mode(program, true)
+        self.emit_program_mode(program, true, None)
+    }
+
+    /// Emit the declarative part of a candidate generation projection. Method
+    /// operations retain their ordinary candidate treatment; only the named
+    /// top-level statements are additionally evaluated and published as
+    /// Globals. The caller must derive the indices from
+    /// `resumable::projected_block_bindings`, not from source offsets.
+    pub fn emit_projected_candidate_program(
+        &mut self,
+        program: &Program<'_>,
+        projected_statement_indices: &[usize],
+    ) -> Result<(), EmitError> {
+        if projected_statement_indices
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+            || projected_statement_indices
+                .iter()
+                .any(|index| *index >= program.body.len())
+        {
+            return Err(EmitError::Unsupported);
+        }
+        self.emit_program_mode(program, true, Some(projected_statement_indices))
     }
 
     fn emit_program_mode(
         &mut self,
         program: &Program<'_>,
         persist_top_level: bool,
+        projected_statement_indices: Option<&[usize]>,
     ) -> Result<(), EmitError> {
         let saved_bytes = std::mem::take(&mut self.bytes);
         let saved_bound_names = std::mem::take(&mut self.bound_names);
+        let saved_block_keys = std::mem::take(&mut self.block_keys);
         let saved_function_defs_len = self.function_defs.len();
         self.bytes = Vec::new();
         self.bound_names = Vec::new();
-        let body_result = self.emit_block_body(&program.body, persist_top_level);
+        self.block_keys = resumable::implementation_inventory(program)
+            .into_iter()
+            .filter_map(|key| {
+                resumable::resolve_block_implementation(program, &key)
+                    .map(|resolved| (resolved.block as *const Block<'_> as usize, key))
+            })
+            .collect();
+        if self.artifact_mode && !self.block_resumables.is_empty() {
+            self.bytes
+                .extend_from_slice(b"if(!birnam_candidate_preparing()){");
+            for entry in &self.block_resumables {
+                self.bytes
+                    .extend_from_slice(b"if(__birnam_resumable_prepare_");
+                self.bytes
+                    .extend_from_slice(entry.symbol_index.to_string().as_bytes());
+                self.bytes
+                    .extend_from_slice(b"((void*)0)!=0U)return birnam_nil();");
+            }
+            self.bytes.extend_from_slice(b"}\n");
+        }
+        let selected_indices = projected_statement_indices.map(|projected| {
+            program
+                .body
+                .iter()
+                .enumerate()
+                .filter_map(|(index, statement)| {
+                    let expression = match statement {
+                        Statement::Let { value, .. } | Statement::Expr(value) => value,
+                    };
+                    (resumable::method_operation(expression).is_some()
+                        || projected.binary_search(&index).is_ok())
+                    .then_some(index)
+                })
+                .collect::<Vec<_>>()
+        });
+        let body_result = if let Some(indices) = selected_indices.as_deref() {
+            self.emit_block_body_indices(&program.body, persist_top_level, indices)
+        } else {
+            self.emit_block_body(&program.body, persist_top_level)
+        };
         let body = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
         self.bound_names = saved_bound_names;
+        self.block_keys = saved_block_keys;
         if let Err(error) = body_result {
             self.function_defs.truncate(saved_function_defs_len);
             return Err(error);
@@ -976,7 +1165,8 @@ impl Emitter {
                     && ((selector.as_ref() == b"defineMethod:on:as:" && args.len() == 3)
                         || (selector.as_ref() == b"defineMethod:on:as:doc:" && args.len() == 4))
                 {
-                    return self.emit_reflect_method_sourced(receiver, selector, args, source, depth);
+                    return self
+                        .emit_reflect_method_sourced(receiver, selector, args, source, depth);
                 }
                 if self.artifact_mode
                     && matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
@@ -985,25 +1175,7 @@ impl Emitter {
                 {
                     return self.emit_artifact_method_remove(args, source);
                 }
-                self.bytes.extend_from_slice(b"birnam_send(");
-                self.emit_expr_at_depth(receiver, depth + 1)?;
-                self.bytes.extend_from_slice(b", ");
-                self.emit_symbol(selector.as_ref());
-                if args.is_empty() {
-                    self.bytes.extend_from_slice(b", 0, 0L)");
-                    return Ok(());
-                }
-                self.bytes.extend_from_slice(b", (void*[]){");
-                for (index, arg) in args.iter().enumerate() {
-                    if index != 0 {
-                        self.bytes.extend_from_slice(b", ");
-                    }
-                    self.emit_expr_at_depth(arg, depth + 1)?;
-                }
-                self.bytes.extend_from_slice(b"}, ");
-                self.bytes
-                    .extend_from_slice(args.len().to_string().as_bytes());
-                self.bytes.extend_from_slice(b"L)");
+                self.emit_sequenced_send(receiver, selector, args, None, depth)?;
             }
         }
         Ok(())
@@ -1017,31 +1189,82 @@ impl Emitter {
         source: &[u8],
         depth: usize,
     ) -> Result<(), EmitError> {
-        self.bytes.extend_from_slice(b"birnam_send(");
-        self.emit_expr_at_depth(receiver, depth + 1)?;
-        self.bytes.extend_from_slice(b", ");
-        if selector == b"defineMethod:on:as:doc:" {
-            self.bytes
-                .extend_from_slice(b"birnam_intern(\"defineMethod:on:as:doc:source:\"), ");
+        let sourced_selector = if selector == b"defineMethod:on:as:doc:" {
+            b"defineMethod:on:as:doc:source:".as_slice()
         } else {
+            b"defineMethod:on:as:source:".as_slice()
+        };
+        self.emit_sequenced_send(receiver, sourced_selector, args, Some(source), depth)
+    }
+
+    fn emit_sequenced_send(
+        &mut self,
+        receiver: &Expr<'_>,
+        selector: &[u8],
+        args: &[Expr<'_>],
+        extra_source: Option<&[u8]>,
+        depth: usize,
+    ) -> Result<(), EmitError> {
+        let send = self.next_send;
+        self.next_send += 1;
+        self.bytes.extend_from_slice(b"({void* __birnam_send_");
+        self.bytes.extend_from_slice(send.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"_receiver=");
+        self.emit_expr_at_depth(receiver, depth + 1)?;
+        self.bytes.extend_from_slice(b";");
+
+        for (index, argument) in args.iter().enumerate() {
+            self.bytes.extend_from_slice(b"void* __birnam_send_");
+            self.bytes.extend_from_slice(send.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"_arg_");
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"=");
+            self.emit_expr_at_depth(argument, depth + 1)?;
+            self.bytes.extend_from_slice(b";");
+        }
+        if let Some(source) = extra_source {
+            self.bytes.extend_from_slice(b"void* __birnam_send_");
+            self.bytes.extend_from_slice(send.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"_arg_");
             self.bytes
-                .extend_from_slice(b"birnam_intern(\"defineMethod:on:as:source:\"), ");
+                .extend_from_slice(args.len().to_string().as_bytes());
+            self.bytes.extend_from_slice(b"=");
+            self.emit_string(source);
+            self.bytes.extend_from_slice(b";");
         }
-        self.bytes.extend_from_slice(b"(void*[]){");
-        for (index, arg) in args.iter().enumerate() {
-            if index != 0 {
-                self.bytes.extend_from_slice(b", ");
+
+        let argument_count = args.len() + usize::from(extra_source.is_some());
+        if argument_count != 0 {
+            self.bytes.extend_from_slice(b"void* __birnam_send_");
+            self.bytes.extend_from_slice(send.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"_args[]={");
+            for index in 0..argument_count {
+                if index != 0 {
+                    self.bytes.extend_from_slice(b",");
+                }
+                self.bytes.extend_from_slice(b"__birnam_send_");
+                self.bytes.extend_from_slice(send.to_string().as_bytes());
+                self.bytes.extend_from_slice(b"_arg_");
+                self.bytes.extend_from_slice(index.to_string().as_bytes());
             }
-            self.emit_expr_at_depth(arg, depth + 1)?;
+            self.bytes.extend_from_slice(b"};");
         }
-        if !args.is_empty() {
-            self.bytes.extend_from_slice(b", ");
+
+        self.bytes.extend_from_slice(b"birnam_send(__birnam_send_");
+        self.bytes.extend_from_slice(send.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"_receiver,birnam_intern(\"");
+        self.push_c_string_body(selector);
+        if argument_count == 0 {
+            self.bytes.extend_from_slice(b"\"),0,0L);")
+        } else {
+            self.bytes.extend_from_slice(b"\"),__birnam_send_");
+            self.bytes.extend_from_slice(send.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"_args,");
+            self.bytes
+                .extend_from_slice(argument_count.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"L);");
         }
-        self.emit_string(source);
-        self.bytes.extend_from_slice(b"}, ");
-        self.bytes
-            .extend_from_slice((args.len() + 1).to_string().as_bytes());
-        self.bytes.extend_from_slice(b"L)");
+        self.bytes.extend_from_slice(b"})");
         Ok(())
     }
 
@@ -1054,6 +1277,16 @@ impl Emitter {
             (Expr::Symbol(selector), Expr::Block(block)) => (*selector, block),
             _ => return Err(EmitError::Unsupported),
         };
+        let operation_index = self.artifact_operation_counter;
+        self.artifact_operation_counter = self
+            .artifact_operation_counter
+            .checked_add(1)
+            .ok_or(EmitError::Unsupported)?;
+        let selected = self
+            .named_resumables
+            .iter()
+            .find(|entry| entry.operation_index == operation_index)
+            .cloned();
         let arity = selector_arity(selector);
         let method_number = self.artifact_method_counter;
         self.artifact_method_counter += 1;
@@ -1067,34 +1300,36 @@ impl Emitter {
         let block_expression = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
 
-        self.function_defs.extend_from_slice(b"void* __amtramp");
-        self.function_defs
-            .extend_from_slice(method_number.to_string().as_bytes());
-        self.function_defs
-            .extend_from_slice(b"(void* self, void** args, long n){ (void)n; void* a[");
-        self.function_defs
-            .extend_from_slice((arity + 1).to_string().as_bytes());
-        self.function_defs
-            .extend_from_slice(b"]; a[0]=self; long i; for(i=0;i<");
-        self.function_defs
-            .extend_from_slice(arity.to_string().as_bytes());
-        self.function_defs.extend_from_slice(
-            b";i++) a[i+1]=args[i]; return birnam_send(birnam_candidate_root_get(",
-        );
-        self.function_defs
-            .extend_from_slice(self.artifact_salt.to_string().as_bytes());
-        self.function_defs.extend_from_slice(b"ULL,");
-        self.function_defs
-            .extend_from_slice(method_number.to_string().as_bytes());
-        self.function_defs
-            .extend_from_slice(b"L), birnam_intern(\"");
-        for _ in 0..arity + 1 {
-            self.function_defs.extend_from_slice(b"value:");
+        if selected.is_none() {
+            self.function_defs.extend_from_slice(b"void* __amtramp");
+            self.function_defs
+                .extend_from_slice(method_number.to_string().as_bytes());
+            self.function_defs
+                .extend_from_slice(b"(void* self, void** args, long n){ (void)n; void* a[");
+            self.function_defs
+                .extend_from_slice((arity + 1).to_string().as_bytes());
+            self.function_defs
+                .extend_from_slice(b"]; a[0]=self; long i; for(i=0;i<");
+            self.function_defs
+                .extend_from_slice(arity.to_string().as_bytes());
+            self.function_defs.extend_from_slice(
+                b";i++) a[i+1]=args[i]; return birnam_send(birnam_candidate_root_get(",
+            );
+            self.function_defs
+                .extend_from_slice(self.artifact_salt.to_string().as_bytes());
+            self.function_defs.extend_from_slice(b"ULL,");
+            self.function_defs
+                .extend_from_slice(method_number.to_string().as_bytes());
+            self.function_defs
+                .extend_from_slice(b"L), birnam_intern(\"");
+            for _ in 0..arity + 1 {
+                self.function_defs.extend_from_slice(b"value:");
+            }
+            self.function_defs.extend_from_slice(b"\"), a, ");
+            self.function_defs
+                .extend_from_slice((arity + 1).to_string().as_bytes());
+            self.function_defs.extend_from_slice(b"); }\n");
         }
-        self.function_defs.extend_from_slice(b"\"), a, ");
-        self.function_defs
-            .extend_from_slice((arity + 1).to_string().as_bytes());
-        self.function_defs.extend_from_slice(b"); }\n");
 
         self.bytes
             .extend_from_slice(b"({ void* _vt = birnam_ensurePrivateVtable(");
@@ -1115,18 +1350,47 @@ impl Emitter {
             .extend_from_slice(method_number.to_string().as_bytes());
         self.bytes.extend_from_slice(b"L, ");
         self.bytes.extend_from_slice(&block_expression);
-        self.bytes
-            .extend_from_slice(b"); } birnam_install_method(_vt, birnam_intern(\"");
+        self.bytes.extend_from_slice(b"); }");
+        if let Some(selected) = selected.as_ref() {
+            self.bytes.extend_from_slice(
+                b" if(!birnam_candidate_preparing()){if(__birnam_resumable_prepare_",
+            );
+            self.bytes
+                .extend_from_slice(selected.symbol_index.to_string().as_bytes());
+            self.bytes.extend_from_slice(
+                b"(_blk)!=0U)return birnam_nil(); void* _installed=birnam_install_method(_vt, birnam_intern(\"",
+            );
+        } else {
+            self.bytes
+                .extend_from_slice(b" birnam_install_method(_vt, birnam_intern(\"");
+        }
         self.push_c_string_body(selector);
-        self.bytes.extend_from_slice(b"\"), (void*)&__amtramp");
-        self.bytes
-            .extend_from_slice(method_number.to_string().as_bytes());
+        if let Some(selected) = selected.as_ref() {
+            self.bytes
+                .extend_from_slice(b"\"), (void*)&__birnam_resumable_thunk_");
+            self.bytes
+                .extend_from_slice(selected.symbol_index.to_string().as_bytes());
+        } else {
+            self.bytes.extend_from_slice(b"\"), (void*)&__amtramp");
+            self.bytes
+                .extend_from_slice(method_number.to_string().as_bytes());
+        }
         self.bytes.extend_from_slice(b", \"");
         self.push_c_string_body(source);
         self.bytes.extend_from_slice(b"\", ");
         self.bytes
             .extend_from_slice(source.len().to_string().as_bytes());
-        self.bytes.extend_from_slice(b"L); _vt; })");
+        if let Some(selected) = selected {
+            self.bytes.extend_from_slice(
+                b"L); if(!_installed||_installed==birnam_nil()){if(__birnam_resumable_abort_",
+            );
+            self.bytes
+                .extend_from_slice(selected.symbol_index.to_string().as_bytes());
+            self.bytes
+                .extend_from_slice(b"()!=0U)return birnam_nil();return birnam_nil();}} _vt; })");
+        } else {
+            self.bytes.extend_from_slice(b"L); _vt; })");
+        }
         Ok(())
     }
 
@@ -1135,6 +1399,10 @@ impl Emitter {
         args: &[Expr<'_>],
         source: &[u8],
     ) -> Result<(), EmitError> {
+        self.artifact_operation_counter = self
+            .artifact_operation_counter
+            .checked_add(1)
+            .ok_or(EmitError::Unsupported)?;
         let selector = match &args[0] {
             Expr::Symbol(selector) => *selector,
             _ => return Err(EmitError::Unsupported),
@@ -1153,20 +1421,24 @@ impl Emitter {
     }
 
     fn emit_block(&mut self, block: &Block<'_>) -> Result<(), EmitError> {
-        let mut references = Vec::new();
-        for statement in &block.body {
-            collect_statement_refs(statement, &mut references);
-        }
-        let captures = self
-            .bound_names
+        let captures = resumable::lexical_capture_names(block, &self.bound_names);
+        let key = self
+            .block_keys
             .iter()
-            .filter(|name| {
-                references.iter().any(|reference| reference == *name)
-                    && !block.params.contains(&name.as_slice())
-                    && !block_has_let(block, name)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+            .find(|(pointer, _)| *pointer == block as *const Block<'_> as usize)
+            .map(|(_, key)| key);
+        let selected = key.and_then(|key| {
+            self.block_resumables
+                .iter()
+                .find(|entry| entry.key == *key)
+                .cloned()
+        });
+        if selected
+            .as_ref()
+            .is_some_and(|entry| entry.captures != captures)
+        {
+            return Err(EmitError::Unsupported);
+        }
 
         let number = self.next_block;
         self.next_block += 1;
@@ -1212,36 +1484,68 @@ impl Emitter {
         self.function_defs.extend_from_slice(&body);
         self.function_defs.extend_from_slice(b"}\n");
 
-        self.bytes.extend_from_slice(b"({ static void* __vt");
-        self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b" = 0; if(!__vt");
-        self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b"){ __vt");
-        self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes
-            .extend_from_slice(b" = birnam_proto(birnam_blockVt()); birnam_method(__vt");
-        self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b", birnam_intern(\"");
-        if block.params.is_empty() {
-            self.bytes.extend_from_slice(b"value");
+        self.bytes.extend_from_slice(b"({ ");
+        if let Some(selected) = selected.as_ref() {
+            self.bytes.extend_from_slice(b"void* __vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes
+                .extend_from_slice(b"=0;if(!birnam_candidate_preparing()){__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes
+                .extend_from_slice(b"=__birnam_resolve_block_vtable_v1(");
+            self.bytes
+                .extend_from_slice(selected.manifest_entry_index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"U);if(!__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b")return birnam_nil();}");
         } else {
-            for _ in &block.params {
-                self.bytes.extend_from_slice(b"value:");
+            self.bytes.extend_from_slice(b"static void* __vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b" = 0; if(!__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"){ __vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes
+                .extend_from_slice(b" = birnam_proto(birnam_blockVt()); birnam_method(__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b", birnam_intern(\"");
+            if block.params.is_empty() {
+                self.bytes.extend_from_slice(b"value");
+            } else {
+                for _ in &block.params {
+                    self.bytes.extend_from_slice(b"value:");
+                }
             }
+            self.bytes.extend_from_slice(b"\"), (void*)&__blk");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes
+                .extend_from_slice(b"); birnam_layoutAllOops(__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"); }");
         }
-        self.bytes.extend_from_slice(b"\"), (void*)&__blk");
+        self.bytes.extend_from_slice(b" void* __o");
         self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes
-            .extend_from_slice(b"); birnam_layoutAllOops(__vt");
-        self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b"); } void* __o");
-        self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b" = birnam_alloc(__vt");
+        self.bytes.extend_from_slice(b" = ");
+        if selected.is_some() {
+            self.bytes.extend_from_slice(b"__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"?");
+        }
+        self.bytes.extend_from_slice(b"birnam_alloc(__vt");
         self.bytes.extend_from_slice(number.to_string().as_bytes());
         self.bytes.extend_from_slice(b", ");
         self.bytes
             .extend_from_slice(captures.len().to_string().as_bytes());
-        self.bytes.extend_from_slice(b"*sizeof(void*));\n");
+        self.bytes.extend_from_slice(b"*sizeof(void*))");
+        if selected.is_some() {
+            self.bytes.extend_from_slice(b":birnam_nil()");
+        }
+        self.bytes.extend_from_slice(b";\n");
+        if selected.is_some() && !captures.is_empty() {
+            self.bytes.extend_from_slice(b"if(__vt");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"){");
+        }
         for (index, name) in captures.iter().enumerate() {
             self.bytes.extend_from_slice(b"((void**)__o");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
@@ -1250,6 +1554,9 @@ impl Emitter {
             self.bytes.extend_from_slice(b"] = b_");
             self.bytes.extend_from_slice(name);
             self.bytes.extend_from_slice(b";\n");
+        }
+        if selected.is_some() && !captures.is_empty() {
+            self.bytes.extend_from_slice(b"}");
         }
         self.bytes.extend_from_slice(b"__o");
         self.bytes.extend_from_slice(number.to_string().as_bytes());
@@ -1262,12 +1569,23 @@ impl Emitter {
         body: &[Statement<'_>],
         persist_top_level: bool,
     ) -> Result<(), EmitError> {
-        if body.is_empty() {
+        let indices = (0..body.len()).collect::<Vec<_>>();
+        self.emit_block_body_indices(body, persist_top_level, &indices)
+    }
+
+    fn emit_block_body_indices(
+        &mut self,
+        body: &[Statement<'_>],
+        persist_top_level: bool,
+        indices: &[usize],
+    ) -> Result<(), EmitError> {
+        if indices.is_empty() {
             self.bytes.extend_from_slice(b"return birnam_nil();\n");
             return Ok(());
         }
-        for (index, statement) in body.iter().enumerate() {
-            let last = index + 1 == body.len();
+        for (position, index) in indices.iter().copied().enumerate() {
+            let statement = body.get(index).ok_or(EmitError::Unsupported)?;
+            let last = position + 1 == indices.len();
             match statement {
                 Statement::Let { name, value } => {
                     self.bytes.extend_from_slice(b"void* b_");
@@ -1324,10 +1642,17 @@ impl Emitter {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use std::fs;
+    use std::process::Command;
+
+    use birnam_artifact::stackless_selection::{
+        Disposition, ImplementationKind, RootKind, SelectionSpec,
+    };
 
     use super::{
-        Block, CstNode, EmitError, Emitter, Expr, LowerError, OwnedCst, Program, Statement,
-        TranslationUnit, lower_expr, lower_literal, lower_program, selector_arity,
+        Block, CstNode, EmitError, Emitter, Expr, LowerError, NamedResumableEmission, OwnedCst,
+        Program, Statement, TranslationUnit, lower_expr, lower_literal, lower_program,
+        selector_arity,
     };
 
     struct TestNode {
@@ -1404,7 +1729,7 @@ mod tests {
         emitter.emit_expr(&expression).unwrap();
         assert_eq!(
             String::from_utf8(emitter.finish()).unwrap(),
-            "birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"at:\"), (void*[]){birnam_mkString(\"answer\", 6L)}, 1L)"
+            "({void* __birnam_send_0_receiver=birnam_global_b((void*)__g0);void* __birnam_send_0_arg_0=birnam_mkString(\"answer\", 6L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"at:\"),__birnam_send_0_args,1L);})"
         );
 
         let result = std::thread::Builder::new()
@@ -1457,6 +1782,136 @@ mod tests {
     }
 
     #[test]
+    fn projected_candidate_emits_only_methods_and_named_safe_initializers() {
+        let side_effect = Expr::Send {
+            receiver: Box::new(Expr::Global(b"System")),
+            selector: Cow::Borrowed(b"println:"),
+            args: vec![Expr::String(b"must not run")],
+            source: b"[System println: \"must not run\"]",
+        };
+        let projected = Statement::Let {
+            name: b"projectedClosure",
+            value: Expr::Block(Box::new(Block {
+                params: Vec::new(),
+                body: vec![Statement::Expr(Expr::SmallInt(99))],
+            })),
+        };
+        let method = Expr::Send {
+            receiver: Box::new(Expr::Global(b"Reflect")),
+            selector: Cow::Borrowed(b"defineMethod:on:as:"),
+            args: vec![
+                Expr::Symbol(b"answer"),
+                Expr::Global(b"Integer"),
+                Expr::Block(Box::new(Block {
+                    params: vec![b"self"],
+                    body: vec![Statement::Expr(Expr::SmallInt(71))],
+                })),
+            ],
+            source: b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]",
+        };
+        let program = Program {
+            body: vec![
+                Statement::Expr(side_effect),
+                projected,
+                Statement::Expr(method),
+            ],
+        };
+        let mut emitter = Emitter::new_candidate_artifact(7);
+        emitter
+            .emit_projected_candidate_program(&program, &[1])
+            .unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains("birnam_global_set(\"projectedClosure\""));
+        assert!(output.contains("birnam_install_method"));
+        assert!(!output.contains("must not run"));
+        assert!(!output.contains("println:"));
+    }
+
+    #[test]
+    fn selected_named_adapter_prepares_before_publishing_its_unique_thunk() {
+        let expression = Expr::Send {
+            receiver: Box::new(Expr::Global(b"Reflect")),
+            selector: Cow::Borrowed(b"defineMethod:on:as:"),
+            args: vec![
+                Expr::Symbol(b"answer"),
+                Expr::Global(b"Integer"),
+                Expr::Block(Box::new(Block {
+                    params: vec![b"self"],
+                    body: vec![Statement::Expr(Expr::SmallInt(71))],
+                })),
+            ],
+            source: b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]",
+        };
+        let authority = SelectionSpec {
+            source_revision: [0x31; 32],
+            root_kind: RootKind::MethodOperation,
+            root_index: 0,
+            path: &[],
+            implementation_kind: ImplementationKind::NamedAdapter,
+            disposition: Disposition::ResumableRequired,
+        };
+        let compiled = crate::resumable_named::compile_named_adapter_v1(
+            b"answer",
+            authority,
+            b"module.birnam",
+            b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]",
+            7,
+            0,
+        )
+        .unwrap();
+        let mut emitter = Emitter::new_resumable_candidate_artifact(
+            11,
+            vec![NamedResumableEmission {
+                operation_index: 0,
+                symbol_index: 7,
+                c_source: compiled.c_source,
+            }],
+        )
+        .unwrap();
+        emitter
+            .emit_program(&Program {
+                body: vec![Statement::Expr(expression)],
+            })
+            .unwrap();
+        let baked_globals = emitter.baked_globals().to_vec();
+        let (function_defs, body) = emitter.finish_parts();
+        let mut unit = TranslationUnit::new(true);
+        for name in baked_globals {
+            unit.add_baked_global(&name);
+        }
+        unit.push_function(&function_defs);
+        unit.push_body(&body);
+        let output = String::from_utf8(unit.finish()).unwrap();
+        assert!(output.contains("__birnam_resumable_context_begin_v1"));
+        assert!(output.contains("__birnam_resumable_prepare_7(_blk)"));
+        assert!(output.contains("(void*)&__birnam_resumable_thunk_7"));
+        assert!(output.contains("__birnam_resumable_abort_7()"));
+        assert!(!output.contains("__amtramp0"));
+
+        let directory = std::env::temp_dir();
+        let path = directory.join(format!(
+            "birnam-selected-named-{}-{}.c",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::write(&path, output).unwrap();
+        let status = Command::new("cc")
+            .args([
+                "-std=gnu11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-Wno-unused-variable",
+                "-fsyntax-only",
+            ])
+            .arg(&path)
+            .status()
+            .unwrap();
+        let _ = fs::remove_file(path);
+        assert!(status.success());
+    }
+
+    #[test]
     fn binary_operator_method_trampolines_forward_the_operand() {
         assert_eq!(selector_arity(b"="), 1);
         assert_eq!(selector_arity(b"value"), 0);
@@ -1501,7 +1956,7 @@ mod tests {
         emitter.emit_expr(&expression).unwrap();
         assert_eq!(
             String::from_utf8(emitter.finish()).unwrap(),
-            "birnam_send(birnam_mkFloat(-0.25), birnam_intern(\"ifTrue:ifFalse:\"), (void*[]){birnam_true(), birnam_mkString(\"a\\n\\\\c\", 4L)}, 2L)"
+            "({void* __birnam_send_0_receiver=birnam_mkFloat(-0.25);void* __birnam_send_0_arg_0=birnam_true();void* __birnam_send_0_arg_1=birnam_mkString(\"a\\n\\\\c\", 4L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0,__birnam_send_0_arg_1};birnam_send(__birnam_send_0_receiver,birnam_intern(\"ifTrue:ifFalse:\"),__birnam_send_0_args,2L);})"
         );
 
         let mut emitter = Emitter::new();
@@ -1624,7 +2079,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(MKV(3L), birnam_intern(\"+\"), (void*[]){MKV(4L)}, 1L)"
+            b"({void* __birnam_send_0_receiver=MKV(3L);void* __birnam_send_0_arg_0=MKV(4L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"+\"),__birnam_send_0_args,1L);})"
         );
 
         let keyword_source = b"[x foo: 1 bar: 2]";
@@ -1678,7 +2133,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"foo:bar:\"), (void*[]){MKV(1L), MKV(2L)}, 2L)"
+            b"({void* __birnam_send_0_receiver=birnam_global_b((void*)__g0);void* __birnam_send_0_arg_0=MKV(1L);void* __birnam_send_0_arg_1=MKV(2L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0,__birnam_send_0_arg_1};birnam_send(__birnam_send_0_receiver,birnam_intern(\"foo:bar:\"),__birnam_send_0_args,2L);})"
         );
     }
 
@@ -1690,22 +2145,22 @@ mod tests {
             .emit_expr(&Expr::Send {
                 receiver: Box::new(Expr::Global(b"Reflect")),
                 selector: Cow::Borrowed(b"defineMethod:on:as:"),
-                args: vec![
-                    Expr::Symbol(b"value:"),
-                    Expr::Global(b"Object"),
-                    Expr::Nil,
-                ],
+                args: vec![Expr::Symbol(b"value:"), Expr::Global(b"Object"), Expr::Nil],
                 source,
             })
             .unwrap();
         let output = emitter.finish();
-        assert!(output.windows(b"defineMethod:on:as:source:".len()).any(|window| {
-            window == b"defineMethod:on:as:source:"
-        }));
-        assert!(output.windows(b"birnam_mkString(\"[Reflect defineMethod:".len()).any(|window| {
-            window == b"birnam_mkString(\"[Reflect defineMethod:"
-        }));
-        assert!(output.ends_with(b"}, 4L)"));
+        assert!(
+            output
+                .windows(b"defineMethod:on:as:source:".len())
+                .any(|window| { window == b"defineMethod:on:as:source:" })
+        );
+        assert!(
+            output
+                .windows(b"birnam_mkString(\"[Reflect defineMethod:".len())
+                .any(|window| { window == b"birnam_mkString(\"[Reflect defineMethod:" })
+        );
+        assert!(output.ends_with(b"__birnam_send_0_args,4L);})"));
     }
 
     #[test]
@@ -1753,10 +2208,14 @@ mod tests {
         emitter
             .emit_expr(&lower_expr(&send, source).unwrap())
             .unwrap();
-        assert_eq!(
-            emitter.finish(),
-            b"birnam_send(birnam_send(MKV(1L), birnam_intern(\"+\"), (void*[]){MKV(2L)}, 1L), birnam_intern(\"+\"), (void*[]){MKV(3L)}, 1L)"
-        );
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        let receiver = output.find("__birnam_send_1_receiver=MKV(1L)").unwrap();
+        let first = output.find("__birnam_send_1_arg_0=MKV(2L)").unwrap();
+        let first_lookup = output.find("birnam_send(__birnam_send_1_receiver").unwrap();
+        let second = output.find("__birnam_send_0_arg_0=MKV(3L)").unwrap();
+        let second_lookup = output.find("birnam_send(__birnam_send_0_receiver").unwrap();
+        assert!(receiver < first && first < first_lookup && first_lookup < second);
+        assert!(second < second_lookup, "outer lookup follows its argument");
     }
 
     #[test]
@@ -1827,10 +2286,18 @@ mod tests {
         emitter
             .emit_expr(&lower_expr(&send, source).unwrap())
             .unwrap();
-        assert_eq!(
-            emitter.finish(),
-            b"birnam_send(birnam_send(birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"foo\"), 0, 0L), birnam_intern(\"+\"), (void*[]){MKV(1L)}, 1L), birnam_intern(\"bar:\"), (void*[]){MKV(2L)}, 1L)"
-        );
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        let receiver = output
+            .find("__birnam_send_2_receiver=birnam_global_b")
+            .unwrap();
+        let first_lookup = output.find("birnam_send(__birnam_send_2_receiver").unwrap();
+        let first_arg = output.find("__birnam_send_1_arg_0=MKV(1L)").unwrap();
+        let second_lookup = output.find("birnam_send(__birnam_send_1_receiver").unwrap();
+        let second_arg = output.find("__birnam_send_0_arg_0=MKV(2L)").unwrap();
+        let final_lookup = output.find("birnam_send(__birnam_send_0_receiver").unwrap();
+        assert!(receiver < first_lookup && first_lookup < first_arg);
+        assert!(first_arg < second_lookup && second_lookup < second_arg);
+        assert!(second_arg < final_lookup);
     }
 
     #[test]
@@ -1849,10 +2316,11 @@ mod tests {
         emitter
             .emit_expr(&lower_expr(&vector, vector_source).unwrap())
             .unwrap();
-        assert_eq!(
-            emitter.finish(),
-            b"birnam_send(birnam_send(birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"add:\"), (void*[]){MKV(1L)}, 1L), birnam_intern(\"add:\"), (void*[]){MKV(2L)}, 1L)"
-        );
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        let new_lookup = output.find("birnam_send(__birnam_send_2_receiver").unwrap();
+        let first = output.find("__birnam_send_1_arg_0=MKV(1L)").unwrap();
+        let second = output.find("__birnam_send_0_arg_0=MKV(2L)").unwrap();
+        assert!(new_lookup < first && first < second);
 
         let map_source = b"{#a -> 1}";
         let map = node(
@@ -1873,10 +2341,14 @@ mod tests {
         emitter
             .emit_expr(&lower_expr(&map, map_source).unwrap())
             .unwrap();
-        assert_eq!(
-            emitter.finish(),
-            b"birnam_send(birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"new\"), 0, 0L), birnam_intern(\"at:put:\"), (void*[]){birnam_intern(\"a\"), MKV(1L)}, 2L)"
-        );
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        let new_lookup = output.find("birnam_send(__birnam_send_1_receiver").unwrap();
+        let key = output
+            .find("__birnam_send_0_arg_0=birnam_intern(\"a\")")
+            .unwrap();
+        let value = output.find("__birnam_send_0_arg_1=MKV(1L)").unwrap();
+        let put_lookup = output.find("birnam_send(__birnam_send_0_receiver").unwrap();
+        assert!(new_lookup < key && key < value && value < put_lookup);
 
         let logic_source = b"?p";
         let logic = node(
@@ -1891,7 +2363,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"birnam_send(birnam_global_b((void*)__g0), birnam_intern(\"named:\"), (void*[]){birnam_intern(\"p\")}, 1L)"
+            b"({void* __birnam_send_0_receiver=birnam_global_b((void*)__g0);void* __birnam_send_0_arg_0=birnam_intern(\"p\");void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"named:\"),__birnam_send_0_args,1L);})"
         );
     }
 

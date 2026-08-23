@@ -384,9 +384,16 @@ artifact required. The Rust host owns the complete runtime and build closure.
   lessons. Digla is not part of the current runtime, verification graph, or
   product roadmap.
 - [Stackless native execution](docs/design/60-stackless-native-execution.md)
-  assesses a parallel resumable-method ABI, explicit per-fiber frames,
-  trampolining, and delimited continuations. It records a migration path and
-  first proof, not an active implementation commitment.
+  implements the S1 substrate and the S2 selected named, method-owned-block,
+  and projected nonmethod-owned-block lowering, registration, candidate AOT
+  delivery, and nonempty image-recovery path for explicit
+  per-fiber frames and resumable native methods. Its private Runtime substrate
+  uses one protected target resolver shared by ordinary sends and Machine calls
+  without growing the public IdApi. Its
+  [artifact byte grammar](docs/design/60i-stackless-artifact-byte-grammar.md)
+  freezes the implemented descriptor, manifest, selection, registration, and
+  image-v5 formats. Arbitrary effectful initializers, suspension, and durable
+  continuations remain later stages.
 - [The Rust libid rewrite plan](docs/design/61-rust-libid-rewrite-plan.md)
   records the floor boundary, unsafe/reentrancy discipline, and performance
   gates for the completed Rust implementation.

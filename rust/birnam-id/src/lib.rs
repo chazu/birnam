@@ -18,6 +18,7 @@ mod loader;
 mod membership_bench;
 mod public_api;
 mod raw;
+mod registration;
 mod runtime;
 mod symbol;
 mod values;

@@ -7,21 +7,48 @@
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use birnam_artifact_codec::candidate::{
     CANDIDATE_ABI, CANDIDATE_MAGIC, CANDIDATE_PLATFORM, Manifest as CandidateManifest,
-    Operation as CandidateOperation, inspect as inspect_candidate, inspect_manifest,
+    ManifestVersion as CandidateManifestVersion, Operation as CandidateOperation,
+    inspect as inspect_candidate, inspect_manifest,
 };
 use birnam_artifact_codec::inspect as inspect_artifact;
-use birnam_codegen::{CstNode, Emitter, LowerError, OwnedCst, TranslationUnit, lower_program};
-use birnam_image_codec::{Facts, Field, Fields, Heap, Image, RecordKind, SlotKind};
+use birnam_artifact_codec::resumable_manifest::{self, ManifestEntrySpec};
+use birnam_artifact_codec::stackless_selection::{
+    Disposition as SelectionDisposition, ImplementationKind as SelectionImplementationKind,
+    ImplementationSpec, MAX_CANONICAL_VALUE_BYTES, MAX_IMPLEMENTATION_ROWS, MAX_PATH_DEPTH,
+    RootKind, SelectionRequest, SelectionSpec, compose_generation_selection,
+    inspect_artifact_selection, inspect_generation_selection, materialize_artifact_selection,
+    replace_generation_selection,
+};
+use birnam_codegen::artifact_stackless_selection::{
+    Disposition as CodegenDisposition, ImplementationKind as CodegenImplementationKind,
+    RootKind as CodegenRootKind, SelectionSpec as CodegenSelectionSpec,
+};
+use birnam_codegen::resumable::{
+    ImplementationKey, InventoryImplementationKind, InventoryRootKind, implementation_inventory,
+    resolve_block_implementation,
+};
+use birnam_codegen::resumable_block::compile_block_with_literals_v1;
+use birnam_codegen::resumable_c::{BlockLiteralDisposition, BlockLiteralSpec};
+use birnam_codegen::resumable_named::compile_named_adapter_v1;
+use birnam_codegen::{
+    BlockResumableEmission, CstNode, Emitter, LowerError, NamedResumableEmission, OwnedCst,
+    Program, TranslationUnit, lower_program,
+};
+use birnam_image_codec::v5::{
+    Facts, Field, Fields, Heap, Image, RecordKind, SlotKind, VtableLocator,
+};
+use birnam_image_codec::{IMAGE_ARCH_TAG, runtime_abi_hash};
 use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
 use core::ptr;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, OsStr, OsString};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const IDENTITY: &[u8] = b"rust-codegen-n6.3-emitter\0";
@@ -70,6 +97,8 @@ const COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:\0";
 const COMPILE_OUTPUT_FROM_SELECTOR: &[u8] = b"compile:output:from:\0";
 const COMPILE_OUTPUT_ROOT_SELECTOR: &[u8] = b"compile:output:root:\0";
 const COMPILE_CANDIDATE_SELECTOR: &[u8] = b"compileCandidate:named:output:\0";
+const COMPILE_OUTPUT_SELECTION_SELECTOR: &[u8] = b"compile:output:selection:\0";
+const COMPILE_CANDIDATE_SELECTION_SELECTOR: &[u8] = b"compileCandidate:named:output:selection:\0";
 const EMBEDDED_FILES_SELECTOR: &[u8] = b"embeddedFilesOf:\0";
 const MODULE_METADATA_SELECTOR: &[u8] = b"moduleMetadataOf:\0";
 const SOURCE_REVISION_SELECTOR: &[u8] = b"sourceRevisionOf:\0";
@@ -84,6 +113,8 @@ const GENERATION_SOURCES_SELECTOR: &[u8] = b"generationSources\0";
 const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
+const COMPILE_IMAGE_CODE_MANIFEST_SELECTOR: &[u8] = b"compileImageCode:manifest:\0";
+const REBUILD_IMAGE_CODE_SELECTOR: &[u8] = b"rebuildImageCode\0";
 const PREFLIGHT_IMAGE_SELECTOR: &[u8] = b"preflightImage:\0";
 const MAP_IMAGE_CODE_SELECTOR: &[u8] = b"mapImageCode:\0";
 const REPLAY_IMAGE_FACTS_SELECTOR: &[u8] = b"replayImageFacts:\0";
@@ -106,6 +137,7 @@ const COMMIT_PREPARED_ROLLBACK_SELECTOR: &[u8] = b"commitPreparedRollback:\0";
 const DISCARD_PREPARED_SELECTOR: &[u8] = b"discardPrepared:\0";
 const RECONCILE_CANDIDATE_SELECTOR: &[u8] = b"reconcileCandidate:\0";
 const RECONCILE_ALL_CANDIDATES_SELECTOR: &[u8] = b"reconcileAllCandidates\0";
+const ADOPT_COMPOSED_GENERATION_SELECTOR: &[u8] = b"adoptComposedGeneration:\0";
 const BEGIN_IMAGE_RECOVERY_SELECTOR: &[u8] = b"beginImageDispatchRecovery\0";
 const END_IMAGE_RECOVERY_SELECTOR: &[u8] = b"endImageDispatchRecovery\0";
 const MANAGED_METHOD_CHANGED_SELECTOR: &[u8] = b"managedMethodChanged:on:\0";
@@ -132,6 +164,7 @@ const SET_SELECTOR: &[u8] = b"set:\0";
 const INSTALL_SELECTOR: &[u8] = b"install:as:on:\0";
 const ENTRY_SELECTOR: &[u8] = b"__ev\0";
 const STORE_ASSERT_SELECTOR: &[u8] = b"assert:attr:value:\0";
+const STORE_RETRACT_SELECTOR: &[u8] = b"retract:attr:value:\0";
 const STORE_RAW_CURRENT_SELECTOR: &[u8] = b"rawCurrentValue:attr:\0";
 const SET_METHOD_OBSERVER_SELECTOR: &[u8] = b"setMethodMutationObserver:\0";
 const SET_METHOD_AUTHORIZER_SELECTOR: &[u8] = b"setMethodMutationAuthorizer:\0";
@@ -178,7 +211,9 @@ static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static CANDIDATE_ROOTS: Mutex<Vec<CandidateRoot>> = Mutex::new(Vec::new());
+static INITIALIZER_TRANSACTION: Mutex<Option<InitializerTransaction>> = Mutex::new(None);
 static RETAINED_GENERATIONS: Mutex<Vec<RetainedGeneration>> = Mutex::new(Vec::new());
+static MAPPED_IMAGE_RESUMABLES: Mutex<Option<MappedImageResumables>> = Mutex::new(None);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -187,6 +222,8 @@ static HOST_CAPABILITY_LOADING: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_PREFLIGHT: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
+static NEXT_CODE_GENERATION_LEASE: AtomicU64 = AtomicU64::new(1);
+static NEXT_PREPARED_TOKEN: AtomicU64 = AtomicU64::new(1);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
@@ -225,8 +262,14 @@ struct CandidateState {
     method_digest: [u8; 64],
     revision_digest: [u8; 64],
     manifest: Vec<u8>,
+    artifact_selection: Vec<u8>,
+    resumable_manifest: Vec<u8>,
+    expected_predecessor_digest: [u8; 64],
+    projected_authority: Option<[u8; 32]>,
+    projected_selection: Vec<u8>,
     requires: Vec<Vec<u8>>,
     operations: Vec<CandidateOperationState>,
+    initializer_writes: Vec<CandidateGlobalMutation>,
     handle: usize,
     validate: usize,
     prepare: usize,
@@ -242,6 +285,14 @@ struct RetainedGeneration {
     unit: usize,
     handle: usize,
     mapped_bytes: usize,
+}
+
+#[derive(Clone)]
+struct MappedImageResumables {
+    authority: [u8; 32],
+    manifest: Vec<u8>,
+    code_generation_identity: u64,
+    resolver: usize,
 }
 
 #[repr(C)]
@@ -269,10 +320,6 @@ struct CandidateRoot {
 
 #[derive(Clone, Copy, Default)]
 struct PublicationPlanState {
-    unit: usize,
-    name: usize,
-    prior: usize,
-    rollback: bool,
     event: usize,
     basis: usize,
     expected_generation: usize,
@@ -291,6 +338,19 @@ struct CandidateOperationState {
     prior_present: bool,
     post_method: usize,
     post_present: bool,
+}
+
+#[derive(Clone)]
+struct CandidateGlobalMutation {
+    name: Vec<u8>,
+    key: usize,
+    prior: usize,
+    post: usize,
+}
+
+struct InitializerTransaction {
+    unit: usize,
+    writes: Vec<CandidateGlobalMutation>,
 }
 
 fn abort(message: &str) -> ! {
@@ -394,6 +454,30 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
                     mark(operation.target as Oop);
                     mark(operation.vtable as Oop);
                 }
+                for write in &candidate.initializer_writes {
+                    mark(write.key as Oop);
+                    if write.prior != 0 {
+                        mark(write.prior as Oop);
+                    }
+                    if write.post != 0 {
+                        mark(write.post as Oop);
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(transaction) = INITIALIZER_TRANSACTION.lock()
+        && let Some(transaction) = transaction.as_ref()
+    {
+        for write in &transaction.writes {
+            unsafe {
+                mark(write.key as Oop);
+                if write.prior != 0 {
+                    mark(write.prior as Oop);
+                }
+                if write.post != 0 {
+                    mark(write.post as Oop);
+                }
             }
         }
     }
@@ -406,10 +490,9 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
     }
     if let Ok(prepared) = PREPARED.lock() {
         for state in prepared.iter() {
-            // SAFETY: prepared tokens are Object instances retained by this
-            // process-local lifecycle registry until consumed or discarded.
+            // SAFETY: prepared token IDs are native integers; only the plan
+            // Oops need tracing until the token is consumed or discarded.
             unsafe {
-                mark(state.token as Oop);
                 if state.plan.event != 0 {
                     mark(state.plan.event as Oop);
                 }
@@ -467,6 +550,68 @@ pub unsafe extern "C" fn birnam_global(name: *const c_char) -> Oop {
     }
 }
 
+fn begin_initializer_transaction(unit: usize) -> bool {
+    let Ok(mut transaction) = INITIALIZER_TRANSACTION.lock() else {
+        return false;
+    };
+    if transaction.is_some() {
+        return false;
+    }
+    *transaction = Some(InitializerTransaction {
+        unit,
+        writes: Vec::new(),
+    });
+    true
+}
+
+fn take_initializer_transaction(unit: usize) -> Option<Vec<CandidateGlobalMutation>> {
+    let mut transaction = INITIALIZER_TRANSACTION.lock().ok()?;
+    let active = transaction.take()?;
+    (active.unit == unit).then_some(active.writes)
+}
+
+unsafe fn current_global_raw(api: &IdApi, key: Oop) -> Oop {
+    unsafe {
+        send(
+            api,
+            runtime().store as Oop,
+            STORE_RAW_CURRENT_SELECTOR,
+            &[intern(api, GLOBALS_ENTITY_NAME), key],
+        )
+    }
+}
+
+unsafe fn restore_initializer_writes(api: &IdApi, writes: &[CandidateGlobalMutation]) -> bool {
+    let store = runtime().store as Oop;
+    let entity = unsafe { intern(api, GLOBALS_ENTITY_NAME) };
+    for write in writes.iter().rev() {
+        let key = write.key as Oop;
+        let current = unsafe { current_global_raw(api, key) };
+        if current as usize != write.post {
+            return false;
+        }
+        if !current.is_null()
+            && unsafe { send(api, store, STORE_RETRACT_SELECTOR, &[entity, key, current]) }
+                == api.nilObj
+        {
+            return false;
+        }
+        if write.prior != 0
+            && unsafe {
+                send(
+                    api,
+                    store,
+                    STORE_ASSERT_SELECTOR,
+                    &[entity, key, write.prior as Oop],
+                )
+            } == api.nilObj
+        {
+            return false;
+        }
+    }
+    true
+}
+
 #[unsafe(no_mangle)]
 /// Store a generated top-level `let` through the live `Globals` singleton.
 ///
@@ -482,6 +627,34 @@ pub unsafe extern "C" fn birnam_global_set(name: *const c_char, value: Oop) -> O
         return api.nilObj;
     }
     let key = unsafe { (api.intern)(name) };
+    let transaction_active = INITIALIZER_TRANSACTION
+        .lock()
+        .ok()
+        .is_some_and(|transaction| transaction.is_some());
+    if transaction_active {
+        let prior = unsafe { current_global_raw(api, key) };
+        let name_bytes = unsafe { CStr::from_ptr(name) }.to_bytes().to_vec();
+        let Ok(mut transaction) = INITIALIZER_TRANSACTION.lock() else {
+            return api.nilObj;
+        };
+        let Some(transaction) = transaction.as_mut() else {
+            return api.nilObj;
+        };
+        if let Some(write) = transaction
+            .writes
+            .iter_mut()
+            .find(|write| write.key == key as usize)
+        {
+            write.post = value as usize;
+        } else {
+            transaction.writes.push(CandidateGlobalMutation {
+                name: name_bytes,
+                key: key as usize,
+                prior: prior as usize,
+                post: value as usize,
+            });
+        }
+    }
     unsafe { send(api, globals, GLOBAL_AT_PUT_SELECTOR, &[key, value]) }
 }
 
@@ -712,6 +885,9 @@ pub unsafe extern "C" fn birnam_rust_codegen_remove_method(
 ) -> Oop {
     let runtime = runtime();
     let api = unsafe { api(runtime) };
+    if CANDIDATE_PREPARING.load(Ordering::Acquire) {
+        return runtime.store as Oop;
+    }
     let vtable = unsafe { (api.vtableOf)(target) };
     if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
         return api.nilObj;
@@ -807,6 +983,16 @@ pub unsafe extern "C" fn birnam_candidate_prepare_mode(on: c_long) {
     unsafe { birnam_rust_codegen_candidate_prepare_mode(on) }
 }
 
+#[unsafe(export_name = "birnam_rust_codegen_candidate_preparing")]
+pub extern "C" fn birnam_rust_codegen_candidate_preparing() -> c_long {
+    CANDIDATE_PREPARING.load(Ordering::Acquire) as c_long
+}
+
+#[unsafe(export_name = "birnam_candidate_preparing")]
+pub extern "C" fn birnam_candidate_preparing() -> c_long {
+    birnam_rust_codegen_candidate_preparing()
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_candidate_validate_binding")]
 /// Validate one candidate target and selector binding against the live floor.
 ///
@@ -863,7 +1049,65 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     }
     let name = unsafe { (api.mkString)(b"birnam_global_set".as_ptr(), 17) };
     let address = unsafe { (api.mkSmallInt)(birnam_global_set as *const () as usize as i64) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let Some(registration) = (unsafe { floor_symbol(api, b"birnam_register_resumable_v1\0") })
+    else {
+        return false;
+    };
+    let name = unsafe { (api.mkString)(b"birnam_register_resumable_v1".as_ptr(), 28) };
+    let Ok(registration) = i64::try_from(registration) else {
+        return false;
+    };
+    let address = unsafe { (api.mkSmallInt)(registration) };
     unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
+}
+
+#[repr(C)]
+struct DlInfo {
+    filename: *const c_char,
+    base: *mut c_void,
+    symbol_name: *const c_char,
+    symbol_address: *mut c_void,
+}
+
+#[cfg_attr(target_os = "linux", link(name = "dl"))]
+unsafe extern "C" {
+    fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
+}
+
+unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
+    if name.last() != Some(&0) {
+        return None;
+    }
+    static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
+    let handle = *FLOOR_HANDLE.get_or_init(|| {
+        let mut info = DlInfo {
+            filename: ptr::null(),
+            base: ptr::null_mut(),
+            symbol_name: ptr::null(),
+            symbol_address: ptr::null_mut(),
+        };
+        // The host deliberately loads the selected floor RTLD_LOCAL. Discover
+        // that exact image from one frozen IdApi function pointer, then acquire
+        // a process-lifetime handle to the same image for private symbol lookup.
+        if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
+            || info.filename.is_null()
+        {
+            return 0;
+        }
+        #[cfg(target_os = "macos")]
+        const RTLD_NOW_LOCAL: c_int = 2 | 4;
+        #[cfg(not(target_os = "macos"))]
+        const RTLD_NOW_LOCAL: c_int = 2;
+        unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) as usize }
+    });
+    if handle == 0 {
+        return None;
+    }
+    let address = unsafe { (api.dlsym)(handle as *mut c_void, name.as_ptr().cast()) };
+    (!address.is_null()).then_some(address as usize)
 }
 
 unsafe fn bind_baked_global_shims(api: &IdApi, unit: Oop, baked_globals: &[Vec<u8>]) -> bool {
@@ -1022,6 +1266,8 @@ fn artifact_source(
     native_requires: &[Vec<u8>],
     generated: &[u8],
     include_source: bool,
+    artifact_selection: Option<&[u8]>,
+    resumable_manifest: Option<&[u8]>,
 ) -> Vec<u8> {
     let mut payload = Vec::new();
     descriptor_field(&mut payload, b"module");
@@ -1072,15 +1318,49 @@ fn artifact_source(
     output.extend_from_slice(b"const unsigned long __birnam_artifact_descriptor_len = ");
     output.extend_from_slice(descriptor.len().to_string().as_bytes());
     output.extend_from_slice(b"UL;\n");
+    if let Some(selection) = artifact_selection {
+        output.extend_from_slice(b"const unsigned char __birnam_artifact_selection_v1[] = {");
+        for (index, byte) in selection.iter().enumerate() {
+            if index != 0 {
+                output.push(b',');
+            }
+            output.extend_from_slice(byte.to_string().as_bytes());
+        }
+        output.extend_from_slice(
+            b"};\nconst unsigned long long __birnam_artifact_selection_v1_size = ",
+        );
+        output.extend_from_slice(selection.len().to_string().as_bytes());
+        output.extend_from_slice(b"ULL;\n");
+    }
+    if let Some(manifest) = resumable_manifest {
+        output.extend_from_slice(b"const unsigned char __birnam_resumable_manifest_v1[] = {");
+        for (index, byte) in manifest.iter().enumerate() {
+            if index != 0 {
+                output.push(b',');
+            }
+            output.extend_from_slice(byte.to_string().as_bytes());
+        }
+        output.extend_from_slice(
+            b"};\nconst unsigned long long __birnam_resumable_manifest_v1_size = ",
+        );
+        output.extend_from_slice(manifest.len().to_string().as_bytes());
+        output.extend_from_slice(b"ULL;\n");
+    }
     output.extend_from_slice(generated);
     output
 }
 
-fn candidate_manifest(metadata: &RevisionMetadata, source_digest: &[u8; 64]) -> Vec<u8> {
+fn candidate_manifest(
+    metadata: &RevisionMetadata,
+    source_digest: &[u8; 64],
+    selection_digest: &[u8; 64],
+) -> Vec<u8> {
     let mut manifest = Vec::new();
-    manifest.extend_from_slice(b"v2|");
+    manifest.extend_from_slice(b"v4|");
     manifest.extend_from_slice(ARTIFACT_ABI);
     manifest.push(b'|');
+    manifest.extend_from_slice(metadata.name.len().to_string().as_bytes());
+    manifest.push(b':');
     manifest.extend_from_slice(&metadata.name);
     manifest.push(b'|');
     manifest.extend_from_slice(source_digest);
@@ -1091,26 +1371,802 @@ fn candidate_manifest(metadata: &RevisionMetadata, source_digest: &[u8; 64]) -> 
     manifest.push(b'|');
     manifest.extend_from_slice(&metadata.revision_digest);
     manifest.push(b'|');
-    for (index, requirement) in metadata.requires.iter().enumerate() {
-        if index != 0 {
-            manifest.push(b',');
-        }
+    manifest.extend_from_slice(selection_digest);
+    manifest.push(b'|');
+    manifest.extend_from_slice(b"1:");
+    manifest.extend_from_slice(&metadata.revision_digest);
+    manifest.push(b'|');
+    manifest.extend_from_slice(metadata.requires.len().to_string().as_bytes());
+    manifest.push(b':');
+    for requirement in &metadata.requires {
+        manifest.extend_from_slice(requirement.len().to_string().as_bytes());
+        manifest.push(b':');
         manifest.extend_from_slice(requirement);
     }
     manifest.push(b'|');
-    for (index, operation) in metadata.operations.iter().enumerate() {
-        if index != 0 {
-            manifest.push(b';');
-        }
+    manifest.extend_from_slice(metadata.operations.len().to_string().as_bytes());
+    manifest.push(b':');
+    for operation in &metadata.operations {
+        manifest.extend_from_slice(operation.target.len().to_string().as_bytes());
+        manifest.push(b':');
         manifest.extend_from_slice(&operation.target);
-        manifest.push(b',');
+        manifest.extend_from_slice(operation.selector.len().to_string().as_bytes());
+        manifest.push(b':');
         manifest.extend_from_slice(&operation.selector);
-        manifest.push(b',');
         manifest.push(if operation.install { b'I' } else { b'R' });
-        manifest.push(b',');
         manifest.extend_from_slice(selector_arity(&operation.selector).to_string().as_bytes());
+        manifest.push(b':');
     }
     manifest
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OwnedSelectionRequest {
+    source_revision: [u8; 32],
+    root_kind: RootKind,
+    root_index: u32,
+    path: Vec<u32>,
+    implementation_kind: SelectionImplementationKind,
+    disposition: SelectionDisposition,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct OwnedSelectionRequestKey {
+    source_revision: [u8; 32],
+    root_kind: RootKind,
+    root_index: u32,
+    path: Vec<u32>,
+    implementation_kind: SelectionImplementationKind,
+}
+
+impl OwnedSelectionRequest {
+    fn key(&self) -> OwnedSelectionRequestKey {
+        OwnedSelectionRequestKey {
+            source_revision: self.source_revision,
+            root_kind: self.root_kind,
+            root_index: self.root_index,
+            path: self.path.clone(),
+            implementation_kind: self.implementation_kind,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SelectionRequestError {
+    Vector,
+    Limit,
+    Row,
+    Tag,
+    Digest,
+    RootKind,
+    Index,
+    Path,
+    ImplementationKind,
+    Disposition,
+    Shape,
+    Duplicate,
+}
+
+fn smallint_u32(api: &IdApi, value: Oop) -> Option<u32> {
+    if unsafe { (api.isSmallInt)(value) } == 0 {
+        return None;
+    }
+    u32::try_from(unsafe { (api.smallIntValue)(value) }).ok()
+}
+
+unsafe fn parse_selection_requests(
+    api: &IdApi,
+    request: Oop,
+) -> Result<Vec<OwnedSelectionRequest>, SelectionRequestError> {
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    if vector_vt.is_null() || vector_vt == api.nilObj {
+        return Err(SelectionRequestError::Vector);
+    }
+    let count =
+        unsafe { vector_length(api, request, vector_vt) }.ok_or(SelectionRequestError::Vector)?;
+    if count > MAX_IMPLEMENTATION_ROWS {
+        return Err(SelectionRequestError::Limit);
+    }
+    let mut requests = Vec::with_capacity(count);
+    let mut keys = BTreeSet::new();
+    for index in 0..count {
+        let row = unsafe { vector_item(api, request, index) };
+        if unsafe { vector_length(api, row, vector_vt) } != Some(7) {
+            return Err(SelectionRequestError::Row);
+        }
+        let tag = unsafe { symbol_bytes(api, vector_item(api, row, 0)) }
+            .ok_or(SelectionRequestError::Tag)?;
+        if tag != b"implementationDisposition" {
+            return Err(SelectionRequestError::Tag);
+        }
+        let digest_spelling = unsafe { string_bytes(api, vector_item(api, row, 1)) }
+            .ok_or(SelectionRequestError::Digest)?;
+        let digest_spelling: [u8; 64] = digest_spelling
+            .try_into()
+            .map_err(|_| SelectionRequestError::Digest)?;
+        let source_revision =
+            decode_hex_digest(&digest_spelling).ok_or(SelectionRequestError::Digest)?;
+        let root_kind = match unsafe { symbol_bytes(api, vector_item(api, row, 2)) }.as_deref() {
+            Some(b"nonMethodProgram") => RootKind::NonMethodProgram,
+            Some(b"methodOperation") => RootKind::MethodOperation,
+            _ => return Err(SelectionRequestError::RootKind),
+        };
+        let root_index = smallint_u32(api, unsafe { vector_item(api, row, 3) })
+            .ok_or(SelectionRequestError::Index)?;
+        let path_object = unsafe { vector_item(api, row, 4) };
+        let path_count = unsafe { vector_length(api, path_object, vector_vt) }
+            .ok_or(SelectionRequestError::Path)?;
+        if path_count > MAX_PATH_DEPTH {
+            return Err(SelectionRequestError::Limit);
+        }
+        let mut path = Vec::with_capacity(path_count);
+        for path_index in 0..path_count {
+            path.push(
+                smallint_u32(api, unsafe { vector_item(api, path_object, path_index) })
+                    .ok_or(SelectionRequestError::Path)?,
+            );
+        }
+        let implementation_kind =
+            match unsafe { symbol_bytes(api, vector_item(api, row, 5)) }.as_deref() {
+                Some(b"namedAdapter") => SelectionImplementationKind::NamedAdapter,
+                Some(b"blockBody") => SelectionImplementationKind::BlockBody,
+                _ => return Err(SelectionRequestError::ImplementationKind),
+            };
+        let disposition = match unsafe { symbol_bytes(api, vector_item(api, row, 6)) }.as_deref() {
+            Some(b"synchronous") => SelectionDisposition::Synchronous,
+            Some(b"resumableRequired") => SelectionDisposition::ResumableRequired,
+            _ => return Err(SelectionRequestError::Disposition),
+        };
+        let valid_shape = match implementation_kind {
+            SelectionImplementationKind::NamedAdapter => {
+                root_kind == RootKind::MethodOperation && path.is_empty()
+            }
+            SelectionImplementationKind::BlockBody => !path.is_empty(),
+        } && (root_kind != RootKind::NonMethodProgram || root_index == 0);
+        if !valid_shape {
+            return Err(SelectionRequestError::Shape);
+        }
+        let key = OwnedSelectionRequestKey {
+            source_revision,
+            root_kind,
+            root_index,
+            path: path.clone(),
+            implementation_kind,
+        };
+        if !keys.insert(key) {
+            return Err(SelectionRequestError::Duplicate);
+        }
+        requests.push(OwnedSelectionRequest {
+            source_revision,
+            root_kind,
+            root_index,
+            path,
+            implementation_kind,
+            disposition,
+        });
+    }
+    Ok(requests)
+}
+
+fn artifact_selection(metadata: &RevisionMetadata) -> Option<Vec<u8>> {
+    artifact_selection_with_requests(metadata, &[])
+}
+
+fn artifact_selection_with_requests(
+    metadata: &RevisionMetadata,
+    requests: &[OwnedSelectionRequest],
+) -> Option<Vec<u8>> {
+    let revision = decode_hex_digest(&metadata.revision_digest)?;
+    let inventory: Vec<_> = metadata
+        .inventory
+        .iter()
+        .map(|implementation| ImplementationSpec {
+            source_revision: revision,
+            root_kind: match implementation.root_kind {
+                InventoryRootKind::NonMethodProgram => RootKind::NonMethodProgram,
+                InventoryRootKind::MethodOperation => RootKind::MethodOperation,
+            },
+            root_index: implementation.root_index,
+            path: implementation.path.as_slice(),
+            implementation_kind: match implementation.implementation_kind {
+                InventoryImplementationKind::NamedAdapter => {
+                    SelectionImplementationKind::NamedAdapter
+                }
+                InventoryImplementationKind::BlockBody => SelectionImplementationKind::BlockBody,
+            },
+        })
+        .collect();
+    let requests: Vec<_> = requests
+        .iter()
+        .map(|request| SelectionRequest {
+            implementation: ImplementationSpec {
+                source_revision: request.source_revision,
+                root_kind: request.root_kind,
+                root_index: request.root_index,
+                path: &request.path,
+                implementation_kind: request.implementation_kind,
+            },
+            disposition: request.disposition,
+        })
+        .collect();
+    materialize_artifact_selection(&[revision], &inventory, &requests).ok()
+}
+
+/// Project one complete accepted generation selection into the domain-separated
+/// artifact selection owned by its monolithic image code unit, plus the exact
+/// resumable rows that require lowering. No policy is chosen here: every row
+/// and disposition is copied from the durable generation carrier.
+fn image_artifact_selection_and_requests(
+    generation_selection: &[u8],
+) -> Option<(Vec<u8>, Vec<OwnedSelectionRequest>)> {
+    let selection = inspect_generation_selection(generation_selection).ok()?;
+    let revisions = (0..selection.revision_count())
+        .map(|index| selection.revision(index))
+        .collect::<Option<Vec<_>>>()?;
+    let rows = selection
+        .rows()
+        .map(|row| {
+            let row = row.ok()?;
+            Some(OwnedSelectionRequest {
+                source_revision: row.source_revision,
+                root_kind: row.root_kind,
+                root_index: row.root_index,
+                path: row.path.iter().collect(),
+                implementation_kind: row.implementation_kind,
+                disposition: row.disposition,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let specs = rows
+        .iter()
+        .map(|row| ImplementationSpec {
+            source_revision: row.source_revision,
+            root_kind: row.root_kind,
+            root_index: row.root_index,
+            path: &row.path,
+            implementation_kind: row.implementation_kind,
+        })
+        .collect::<Vec<_>>();
+    let requests = rows
+        .iter()
+        .map(|row| SelectionRequest {
+            implementation: ImplementationSpec {
+                source_revision: row.source_revision,
+                root_kind: row.root_kind,
+                root_index: row.root_index,
+                path: &row.path,
+                implementation_kind: row.implementation_kind,
+            },
+            disposition: row.disposition,
+        })
+        .collect::<Vec<_>>();
+    let artifact = materialize_artifact_selection(&revisions, &specs, &requests).ok()?;
+    let resumable = rows
+        .into_iter()
+        .filter(|row| row.disposition == SelectionDisposition::ResumableRequired)
+        .collect();
+    Some((artifact, resumable))
+}
+
+fn decode_hex_digest(value: &[u8; 64]) -> Option<[u8; 32]> {
+    let mut digest = [0; 32];
+    for (output, pair) in digest.iter_mut().zip(value.chunks_exact(2)) {
+        *output = hex_nibble(pair[0])?.checked_mul(16)? | hex_nibble(pair[1])?;
+    }
+    Some(digest)
+}
+
+#[cfg(test)]
+fn empty_resumable_manifest(authority: [u8; 32]) -> Option<Vec<u8>> {
+    let selection_bytes =
+        birnam_artifact_codec::stackless_selection::encode_artifact_selection(&[], &[]).ok()?;
+    let selection = inspect_artifact_selection(&selection_bytes).ok()?;
+    resumable_manifest::materialize(authority, selection, &[]).ok()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CompiledResumablePlan {
+    manifest: Vec<u8>,
+    entries: Vec<CompiledResumableEntry>,
+    named_emissions: Vec<NamedResumableEmission>,
+    block_emissions: Vec<BlockResumableEmission>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CompiledResumableEntry {
+    request: OwnedSelectionRequest,
+    selector: Vec<u8>,
+    descriptor: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResumablePlanError {
+    Revision,
+    Selection,
+    Operation,
+    Compile,
+    Manifest,
+}
+
+fn resumable_indices(
+    requests: &[OwnedSelectionRequest],
+) -> Result<BTreeMap<OwnedSelectionRequestKey, (u32, u32)>, ResumablePlanError> {
+    let mut keys = requests
+        .iter()
+        .filter(|request| request.disposition == SelectionDisposition::ResumableRequired)
+        .map(OwnedSelectionRequest::key)
+        .collect::<Vec<_>>();
+    keys.sort();
+    let mut manifest_keys = keys.clone();
+    manifest_keys.sort_by(|left, right| {
+        left.implementation_kind
+            .cmp(&right.implementation_kind)
+            .then_with(|| left.source_revision.cmp(&right.source_revision))
+            .then_with(|| left.root_kind.cmp(&right.root_kind))
+            .then_with(|| left.root_index.cmp(&right.root_index))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let manifest_indices = manifest_keys
+        .into_iter()
+        .enumerate()
+        .map(|(index, key)| {
+            u32::try_from(index)
+                .map(|index| (key, index))
+                .map_err(|_| ResumablePlanError::Compile)
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
+    keys.into_iter()
+        .enumerate()
+        .map(|(index, key)| {
+            let index = u32::try_from(index).map_err(|_| ResumablePlanError::Compile)?;
+            let manifest_index = *manifest_indices
+                .get(&key)
+                .ok_or(ResumablePlanError::Manifest)?;
+            Ok((key, (index, manifest_index)))
+        })
+        .collect()
+}
+
+fn compile_resumable_plan<'a>(
+    metadata: &RevisionMetadata,
+    requests: &[OwnedSelectionRequest],
+    artifact_selection: &[u8],
+    authority: [u8; 32],
+    diagnostic_path: &[u8],
+    source: &[u8],
+    program: &'a Program<'a>,
+) -> Result<CompiledResumablePlan, ResumablePlanError> {
+    let indices = resumable_indices(requests)?;
+    let mut plan = compile_resumable_plan_indexed(
+        metadata,
+        requests,
+        &indices,
+        0,
+        diagnostic_path,
+        source,
+        program,
+    )?;
+    let selection = inspect_artifact_selection(artifact_selection)
+        .map_err(|_| ResumablePlanError::Selection)?;
+    let entries = plan
+        .entries
+        .iter()
+        .map(|entry| ManifestEntrySpec {
+            selection: SelectionSpec {
+                source_revision: entry.request.source_revision,
+                root_kind: entry.request.root_kind,
+                root_index: entry.request.root_index,
+                path: &entry.request.path,
+                implementation_kind: entry.request.implementation_kind,
+                disposition: entry.request.disposition,
+            },
+            descriptor: &entry.descriptor,
+            selector: &entry.selector,
+        })
+        .collect::<Vec<_>>();
+    plan.manifest = resumable_manifest::materialize(authority, selection, &entries)
+        .map_err(|_| ResumablePlanError::Manifest)?;
+    let manifest = resumable_manifest::inspect(&plan.manifest, authority)
+        .map_err(|_| ResumablePlanError::Manifest)?;
+    for entry in &plan.entries {
+        let expected = indices
+            .get(&entry.request.key())
+            .map(|(_, manifest_index)| *manifest_index)
+            .ok_or(ResumablePlanError::Manifest)?;
+        let actual = (0..manifest.entry_count())
+            .find(|index| {
+                manifest.entry(*index).is_some_and(|row| {
+                    row.source_revision == entry.request.source_revision
+                        && row.root_kind == entry.request.root_kind
+                        && row.root_index == entry.request.root_index
+                        && row.path.iter().eq(entry.request.path.iter().copied())
+                        && row.implementation_kind == entry.request.implementation_kind
+                })
+            })
+            .and_then(|index| u32::try_from(index).ok())
+            .ok_or(ResumablePlanError::Manifest)?;
+        if actual != expected {
+            return Err(ResumablePlanError::Manifest);
+        }
+    }
+    Ok(plan)
+}
+
+fn compile_resumable_plan_indexed<'a>(
+    metadata: &RevisionMetadata,
+    requests: &[OwnedSelectionRequest],
+    indices: &BTreeMap<OwnedSelectionRequestKey, (u32, u32)>,
+    synchronous_function_offset: u32,
+    diagnostic_path: &[u8],
+    source: &[u8],
+    program: &'a Program<'a>,
+) -> Result<CompiledResumablePlan, ResumablePlanError> {
+    let revision =
+        decode_hex_digest(&metadata.revision_digest).ok_or(ResumablePlanError::Revision)?;
+    let mut resumable_requests = requests
+        .iter()
+        .filter(|request| request.disposition == SelectionDisposition::ResumableRequired)
+        .cloned()
+        .collect::<Vec<_>>();
+    resumable_requests.sort_by(|left, right| {
+        (
+            left.source_revision,
+            left.root_kind,
+            left.root_index,
+            &left.path,
+            left.implementation_kind,
+        )
+            .cmp(&(
+                right.source_revision,
+                right.root_kind,
+                right.root_index,
+                &right.path,
+                right.implementation_kind,
+            ))
+    });
+
+    enum PreparedKind<'a> {
+        Named,
+        Block {
+            block: &'a birnam_codegen::Block<'a>,
+            captures: Vec<Vec<u8>>,
+        },
+    }
+
+    struct Prepared<'a> {
+        request: &'a OwnedSelectionRequest,
+        codegen_selection: CodegenSelectionSpec<'a>,
+        symbol_index: u32,
+        selector: Vec<u8>,
+        descriptor: Vec<u8>,
+        kind: PreparedKind<'a>,
+    }
+
+    let mut synchronous_function_index = synchronous_function_offset;
+    let mut placeholder_block_literals = Vec::new();
+    for key in metadata
+        .inventory
+        .iter()
+        .filter(|key| key.implementation_kind == InventoryImplementationKind::BlockBody)
+    {
+        let resolved =
+            resolve_block_implementation(program, key).ok_or(ResumablePlanError::Operation)?;
+        let selected = resumable_requests.iter().any(|request| {
+            request.implementation_kind == SelectionImplementationKind::BlockBody
+                && request.root_kind
+                    == match key.root_kind {
+                        InventoryRootKind::NonMethodProgram => RootKind::NonMethodProgram,
+                        InventoryRootKind::MethodOperation => RootKind::MethodOperation,
+                    }
+                && request.root_index == key.root_index
+                && request.path == key.path
+        });
+        let disposition = if selected {
+            Some(BlockLiteralDisposition::Resumable {
+                manifest_entry_index: 0,
+            })
+        } else if key.root_kind == InventoryRootKind::MethodOperation {
+            Some(BlockLiteralDisposition::Synchronous {
+                function_index: synchronous_function_index,
+                language_arity: u32::try_from(resolved.block.params.len())
+                    .map_err(|_| ResumablePlanError::Compile)?,
+            })
+        } else {
+            None
+        };
+        if let Some(disposition) = disposition {
+            placeholder_block_literals.push(BlockLiteralSpec {
+                block: resolved.block,
+                disposition,
+            });
+        }
+        if key.root_kind == InventoryRootKind::MethodOperation {
+            synchronous_function_index = synchronous_function_index
+                .checked_add(1)
+                .ok_or(ResumablePlanError::Compile)?;
+        }
+    }
+
+    let mut prepared = Vec::with_capacity(resumable_requests.len());
+    for request in &resumable_requests {
+        if request.source_revision != revision {
+            return Err(ResumablePlanError::Operation);
+        }
+        let symbol_index = indices
+            .get(&request.key())
+            .map(|(symbol_index, _)| *symbol_index)
+            .ok_or(ResumablePlanError::Manifest)?;
+        let codegen_selection = CodegenSelectionSpec {
+            source_revision: request.source_revision,
+            root_kind: match request.root_kind {
+                RootKind::NonMethodProgram => CodegenRootKind::NonMethodProgram,
+                RootKind::MethodOperation => CodegenRootKind::MethodOperation,
+            },
+            root_index: request.root_index,
+            path: &request.path,
+            implementation_kind: match request.implementation_kind {
+                SelectionImplementationKind::NamedAdapter => {
+                    CodegenImplementationKind::NamedAdapter
+                }
+                SelectionImplementationKind::BlockBody => CodegenImplementationKind::BlockBody,
+            },
+            disposition: CodegenDisposition::ResumableRequired,
+        };
+        let (selector, descriptor, kind) = match request.implementation_kind {
+            SelectionImplementationKind::NamedAdapter => {
+                if request.root_kind != RootKind::MethodOperation || !request.path.is_empty() {
+                    return Err(ResumablePlanError::Operation);
+                }
+                let operation = metadata
+                    .operations
+                    .get(request.root_index as usize)
+                    .filter(|operation| operation.install)
+                    .ok_or(ResumablePlanError::Operation)?;
+                let compiled = compile_named_adapter_v1(
+                    &operation.selector,
+                    codegen_selection,
+                    diagnostic_path,
+                    source,
+                    symbol_index,
+                    0,
+                )
+                .map_err(|_| ResumablePlanError::Compile)?;
+                (
+                    operation.selector.clone(),
+                    compiled.descriptor,
+                    PreparedKind::Named,
+                )
+            }
+            SelectionImplementationKind::BlockBody => {
+                let key = ImplementationKey {
+                    root_kind: match request.root_kind {
+                        RootKind::NonMethodProgram => InventoryRootKind::NonMethodProgram,
+                        RootKind::MethodOperation => InventoryRootKind::MethodOperation,
+                    },
+                    root_index: request.root_index,
+                    path: request.path.clone(),
+                    implementation_kind: InventoryImplementationKind::BlockBody,
+                };
+                let resolved = resolve_block_implementation(program, &key)
+                    .ok_or(ResumablePlanError::Operation)?;
+                let capture_refs = resolved
+                    .captures
+                    .iter()
+                    .map(Vec::as_slice)
+                    .collect::<Vec<_>>();
+                let compiled = compile_block_with_literals_v1(
+                    resolved.block,
+                    &capture_refs,
+                    codegen_selection,
+                    diagnostic_path,
+                    source,
+                    symbol_index,
+                    0,
+                    &placeholder_block_literals,
+                )
+                .map_err(|_| ResumablePlanError::Compile)?;
+                (
+                    compiled.selector,
+                    compiled.descriptor,
+                    PreparedKind::Block {
+                        block: resolved.block,
+                        captures: resolved.captures,
+                    },
+                )
+            }
+        };
+        prepared.push(Prepared {
+            request,
+            codegen_selection,
+            symbol_index,
+            selector,
+            descriptor,
+            kind,
+        });
+    }
+
+    let mut synchronous_function_index = synchronous_function_offset;
+    let mut block_literals = Vec::new();
+    for key in metadata
+        .inventory
+        .iter()
+        .filter(|key| key.implementation_kind == InventoryImplementationKind::BlockBody)
+    {
+        let resolved =
+            resolve_block_implementation(program, key).ok_or(ResumablePlanError::Operation)?;
+        let selected = resumable_requests.iter().find(|request| {
+            request.implementation_kind == SelectionImplementationKind::BlockBody
+                && request.root_kind
+                    == match key.root_kind {
+                        InventoryRootKind::NonMethodProgram => RootKind::NonMethodProgram,
+                        InventoryRootKind::MethodOperation => RootKind::MethodOperation,
+                    }
+                && request.root_index == key.root_index
+                && request.path == key.path
+        });
+        let disposition = if let Some(request) = selected {
+            let manifest_entry_index = indices
+                .get(&request.key())
+                .map(|(_, manifest_entry_index)| *manifest_entry_index)
+                .ok_or(ResumablePlanError::Manifest)?;
+            Some(BlockLiteralDisposition::Resumable {
+                manifest_entry_index,
+            })
+        } else if key.root_kind == InventoryRootKind::MethodOperation {
+            Some(BlockLiteralDisposition::Synchronous {
+                function_index: synchronous_function_index,
+                language_arity: u32::try_from(resolved.block.params.len())
+                    .map_err(|_| ResumablePlanError::Compile)?,
+            })
+        } else {
+            None
+        };
+        if let Some(disposition) = disposition {
+            block_literals.push(BlockLiteralSpec {
+                block: resolved.block,
+                disposition,
+            });
+        }
+        if key.root_kind == InventoryRootKind::MethodOperation {
+            synchronous_function_index = synchronous_function_index
+                .checked_add(1)
+                .ok_or(ResumablePlanError::Compile)?;
+        }
+    }
+    let mut named_emissions = Vec::new();
+    let mut block_emissions = Vec::new();
+    for prepared in &prepared {
+        let manifest_entry_index = indices
+            .get(&prepared.request.key())
+            .map(|(_, manifest_entry_index)| *manifest_entry_index)
+            .ok_or(ResumablePlanError::Manifest)?;
+        match &prepared.kind {
+            PreparedKind::Named => {
+                let compiled = compile_named_adapter_v1(
+                    &prepared.selector,
+                    prepared.codegen_selection,
+                    diagnostic_path,
+                    source,
+                    prepared.symbol_index,
+                    manifest_entry_index,
+                )
+                .map_err(|_| ResumablePlanError::Compile)?;
+                if compiled.descriptor != prepared.descriptor {
+                    return Err(ResumablePlanError::Compile);
+                }
+                named_emissions.push(NamedResumableEmission {
+                    operation_index: prepared.request.root_index,
+                    symbol_index: prepared.symbol_index,
+                    c_source: compiled.c_source,
+                });
+            }
+            PreparedKind::Block { block, captures } => {
+                let capture_refs = captures.iter().map(Vec::as_slice).collect::<Vec<_>>();
+                let compiled = compile_block_with_literals_v1(
+                    block,
+                    &capture_refs,
+                    prepared.codegen_selection,
+                    diagnostic_path,
+                    source,
+                    prepared.symbol_index,
+                    manifest_entry_index,
+                    &block_literals,
+                )
+                .map_err(|_| ResumablePlanError::Compile)?;
+                if compiled.descriptor != prepared.descriptor {
+                    return Err(ResumablePlanError::Compile);
+                }
+                block_emissions.push(BlockResumableEmission {
+                    key: ImplementationKey {
+                        root_kind: match prepared.request.root_kind {
+                            RootKind::NonMethodProgram => InventoryRootKind::NonMethodProgram,
+                            RootKind::MethodOperation => InventoryRootKind::MethodOperation,
+                        },
+                        root_index: prepared.request.root_index,
+                        path: prepared.request.path.clone(),
+                        implementation_kind: InventoryImplementationKind::BlockBody,
+                    },
+                    symbol_index: prepared.symbol_index,
+                    manifest_entry_index,
+                    selector: compiled.selector,
+                    captures: captures.clone(),
+                    c_source: compiled.c_source,
+                });
+            }
+        }
+    }
+    let entries = prepared
+        .into_iter()
+        .map(|entry| CompiledResumableEntry {
+            request: entry.request.clone(),
+            selector: entry.selector,
+            descriptor: entry.descriptor,
+        })
+        .collect();
+    Ok(CompiledResumablePlan {
+        manifest: Vec::new(),
+        entries,
+        named_emissions,
+        block_emissions,
+    })
+}
+
+fn rebase_image_resumable_plan(
+    plan: &mut CompiledResumablePlan,
+    operation_offset: u32,
+    non_method_block_offset: u32,
+) -> Option<()> {
+    for emission in &mut plan.named_emissions {
+        emission.operation_index = emission.operation_index.checked_add(operation_offset)?;
+    }
+    for emission in &mut plan.block_emissions {
+        match emission.key.root_kind {
+            InventoryRootKind::MethodOperation => {
+                emission.key.root_index = emission.key.root_index.checked_add(operation_offset)?;
+            }
+            InventoryRootKind::NonMethodProgram => {
+                let first = emission.key.path.first_mut()?;
+                *first = first.checked_add(non_method_block_offset)?;
+            }
+        }
+    }
+    Some(())
+}
+
+fn non_method_block_count(metadata: &RevisionMetadata) -> Option<u32> {
+    metadata
+        .inventory
+        .iter()
+        .filter(|key| {
+            key.root_kind == InventoryRootKind::NonMethodProgram
+                && key.implementation_kind == InventoryImplementationKind::BlockBody
+        })
+        .try_fold(0u32, |count, key| {
+            key.path
+                .first()
+                .copied()
+                .and_then(|ordinal| ordinal.checked_add(1))
+                .map(|next| count.max(next))
+        })
+}
+
+fn block_function_count(metadata: &RevisionMetadata) -> Option<u32> {
+    u32::try_from(
+        metadata
+            .inventory
+            .iter()
+            .filter(|key| key.implementation_kind == InventoryImplementationKind::BlockBody)
+            .count(),
+    )
+    .ok()
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        _ => None,
+    }
 }
 
 fn candidate_generated(
@@ -1126,13 +2182,9 @@ fn candidate_generated(
     } else {
         generated.to_vec()
     };
-    let prepare_mode = codegen_shim_name(b"birnam_candidate_prepare_mode", rust_owned_shims);
     let validate_binding =
         codegen_shim_name(b"birnam_candidate_validate_binding", rust_owned_shims);
     let mut output = Vec::with_capacity(generated.len() + manifest.len() + 512);
-    output.extend_from_slice(b"extern void ");
-    output.extend_from_slice(prepare_mode);
-    output.extend_from_slice(b"(long on);\n");
     output.extend_from_slice(b"extern void* ");
     output.extend_from_slice(validate_binding);
     output.extend_from_slice(b"(const char*, const char*, long, long);\n");
@@ -1158,13 +2210,13 @@ fn candidate_generated(
         output.extend_from_slice(b")!=birnam_true())return birnam_false();\n");
     }
     output.extend_from_slice(b"return birnam_true();}\n");
+    // Preparation is deliberately structural. Running `__ev` here would
+    // execute an initializer twice and could leak arbitrary effects before the
+    // host safe point. Lowering and the validator have already proved the
+    // projected statement set; VM-owned root changes occur exactly once in the
+    // rollback-capable activation transaction below.
     output.extend_from_slice(
-        format!(
-            "void* __birnam_candidate_prepare(void* s, void** a, long n){{{}(1L);(void)__ev(s,a,n);{}(0L);return birnam_true();}}\n",
-            String::from_utf8_lossy(prepare_mode),
-            String::from_utf8_lossy(prepare_mode),
-        )
-        .as_bytes(),
+        b"void* __birnam_candidate_prepare(void* s, void** a, long n){(void)s;(void)a;(void)n;return birnam_true();}\n",
     );
     output.extend_from_slice(
         b"void* __birnam_candidate_activate(void* s, void** a, long n){return __ev(s,a,n);}\n"
@@ -1181,6 +2233,7 @@ fn codegen_shim_name(name: &[u8], rust_owned: bool) -> &'static [u8] {
     if !rust_owned {
         return match name {
             b"birnam_candidate_prepare_mode" => b"birnam_candidate_prepare_mode",
+            b"birnam_candidate_preparing" => b"birnam_candidate_preparing",
             b"birnam_candidate_validate_binding" => b"birnam_candidate_validate_binding",
             _ => unreachable!("unknown Codegen shim"),
         };
@@ -1197,6 +2250,7 @@ fn codegen_shim_name(name: &[u8], rust_owned: bool) -> &'static [u8] {
         b"birnam_candidate_root_set" => b"birnam_rust_codegen_candidate_root_set",
         b"birnam_candidate_root_get" => b"birnam_rust_codegen_candidate_root_get",
         b"birnam_candidate_prepare_mode" => b"birnam_rust_codegen_candidate_prepare_mode",
+        b"birnam_candidate_preparing" => b"birnam_rust_codegen_candidate_preparing",
         b"birnam_candidate_validate_binding" => b"birnam_rust_codegen_candidate_validate_binding",
         _ => unreachable!("unknown Codegen shim"),
     }
@@ -1204,9 +2258,10 @@ fn codegen_shim_name(name: &[u8], rust_owned: bool) -> &'static [u8] {
 
 fn rewrite_codegen_shims(generated: &[u8]) -> Vec<u8> {
     let mut rewritten = generated.to_vec();
-    const NAMES: [&[u8]; 12] = [
+    const NAMES: [&[u8]; 13] = [
         b"birnam_candidate_validate_binding",
         b"birnam_candidate_prepare_mode",
+        b"birnam_candidate_preparing",
         b"birnam_candidate_root_set",
         b"birnam_candidate_root_get",
         b"birnam_record_module_source",
@@ -1607,6 +2662,7 @@ unsafe fn artifact_metadata(api: &IdApi, source_object: Oop) -> Option<ArtifactM
     Some((module, native_requires))
 }
 
+#[derive(Clone)]
 struct RevisionOperation {
     target: Vec<u8>,
     selector: Vec<u8>,
@@ -1614,14 +2670,17 @@ struct RevisionOperation {
     source: Vec<u8>,
 }
 
+#[derive(Clone)]
 struct RevisionMetadata {
     name: Vec<u8>,
     requires: Vec<Vec<u8>>,
     #[allow(dead_code)]
     operations: Vec<RevisionOperation>,
     non_method_digest: [u8; 64],
+    initializer_residual_digest: [u8; 64],
     method_digest: [u8; 64],
     revision_digest: [u8; 64],
+    inventory: Vec<ImplementationKey>,
 }
 
 fn append_digest_field(input: &mut Vec<u8>, bytes: &[u8]) {
@@ -1675,13 +2734,13 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
         let whole = skip_cst_wrappers(statement.child(0)?)?;
         let whole_source = source_span(whole, source)?;
         if whole.rule() != b"send" || whole.child_count() != 2 {
-            non_method_spans.push(whole_source.to_vec());
+            non_method_spans.push((index, whole_source.to_vec()));
             continue;
         }
         let receiver = skip_cst_wrappers(whole.child(0)?)?;
         let message = skip_cst_wrappers(whole.child(1)?)?;
         let Some((selector, args)) = keyword_selector_args(message, source) else {
-            non_method_spans.push(whole_source.to_vec());
+            non_method_spans.push((index, whole_source.to_vec()));
             continue;
         };
         if receiver.rule() == b"ident"
@@ -1694,20 +2753,20 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
             }
             name = Some(symbol_literal(args[0], source)?);
             requires = vector_symbols(args[1], source)?;
-            non_method_spans.push(whole_source.to_vec());
+            non_method_spans.push((index, whole_source.to_vec()));
             continue;
         }
         if receiver.rule() != b"ident"
             || source_span(receiver, source) != Some(b"Reflect".as_slice())
         {
-            non_method_spans.push(whole_source.to_vec());
+            non_method_spans.push((index, whole_source.to_vec()));
             continue;
         }
         let is_define = (selector == b"defineMethod:on:as:" && args.len() == 3)
             || (selector == b"defineMethod:on:as:doc:" && args.len() == 4);
         let is_remove = selector == b"removeMethod:on:" && args.len() == 2;
         if !is_define && !is_remove {
-            non_method_spans.push(whole_source.to_vec());
+            non_method_spans.push((index, whole_source.to_vec()));
             continue;
         }
         let operation_selector = symbol_literal(args[0], source)?;
@@ -1735,11 +2794,22 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
         });
     }
     let name = name?;
+    let normalized = lower_program(tree, source).ok()?;
+    let projected_statements = birnam_codegen::resumable::projected_block_bindings(&normalized)
+        .into_iter()
+        .filter(|binding| binding.captures.is_empty())
+        .map(|binding| binding.statement_index)
+        .collect::<BTreeSet<_>>();
     let mut non_method_input = b"birnam.non-method.v1\0".to_vec();
-    for span in non_method_spans {
+    let mut initializer_residual_input = b"birnam.initializer-residual.v1\0".to_vec();
+    for (statement_index, span) in non_method_spans {
         append_digest_field(&mut non_method_input, &span);
+        if !projected_statements.contains(&statement_index) {
+            append_digest_field(&mut initializer_residual_input, &span);
+        }
     }
     let non_method_digest = sha256_hex(&non_method_input);
+    let initializer_residual_digest = sha256_hex(&initializer_residual_input);
 
     let mut method_input = b"birnam.methods.v1\0".to_vec();
     for operation in &operations {
@@ -1759,13 +2829,16 @@ fn revision_metadata(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata>
     append_digest_field(&mut revision_input, source);
     let revision_digest = sha256_hex(&revision_input);
 
+    let inventory = implementation_inventory(&normalized);
     Some(RevisionMetadata {
         name,
         requires,
         operations,
         non_method_digest,
+        initializer_residual_digest,
         method_digest,
         revision_digest,
+        inventory,
     })
 }
 
@@ -1774,6 +2847,7 @@ fn candidate_manifest_matches(
     manifest: CandidateManifest<'_>,
     source: &[u8],
     metadata: &RevisionMetadata,
+    artifact_selection: &[u8],
 ) -> bool {
     if manifest.name != metadata.name
         || manifest.source_digest != sha256_hex(source)
@@ -1783,14 +2857,32 @@ fn candidate_manifest_matches(
     {
         return false;
     }
-    let mut dependencies = Vec::new();
-    for (index, dependency) in metadata.requires.iter().enumerate() {
-        if index != 0 {
-            dependencies.push(b',');
+    match manifest.version {
+        CandidateManifestVersion::V2 => {
+            if !artifact_selection.is_empty() {
+                return false;
+            }
         }
-        dependencies.extend_from_slice(dependency);
+        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+            if !artifact_selection_matches_inventory(metadata, artifact_selection) {
+                return false;
+            }
+            let selection_digest = sha256_hex(artifact_selection);
+            if manifest.artifact_selection_digest != Some(selection_digest.as_slice())
+                || manifest.covered_revision_count() != 1
+                || manifest.covered_revision(0) != Some(metadata.revision_digest.as_slice())
+            {
+                return false;
+            }
+        }
     }
-    if manifest.dependencies != dependencies {
+    if manifest.dependency_count() != metadata.requires.len()
+        || metadata
+            .requires
+            .iter()
+            .enumerate()
+            .any(|(index, dependency)| manifest.dependency(index) != Some(dependency.as_slice()))
+    {
         return false;
     }
     if manifest.operation_count() != metadata.operations.len() {
@@ -1805,6 +2897,84 @@ fn candidate_manifest_matches(
         }
     }
     true
+}
+
+fn artifact_selection_matches_inventory(metadata: &RevisionMetadata, bytes: &[u8]) -> bool {
+    let Some(revision) = decode_hex_digest(&metadata.revision_digest) else {
+        return false;
+    };
+    let Ok(selection) = inspect_artifact_selection(bytes) else {
+        return false;
+    };
+    if selection.revision_count() != 1
+        || selection.revision(0) != Some(revision)
+        || selection.row_count() != metadata.inventory.len()
+    {
+        return false;
+    }
+    selection
+        .rows()
+        .zip(&metadata.inventory)
+        .all(|(row, expected)| {
+            let Ok(row) = row else {
+                return false;
+            };
+            row.source_revision == revision
+                && row.root_kind
+                    == match expected.root_kind {
+                        InventoryRootKind::NonMethodProgram => RootKind::NonMethodProgram,
+                        InventoryRootKind::MethodOperation => RootKind::MethodOperation,
+                    }
+                && row.root_index == expected.root_index
+                && row.path.iter().eq(expected.path.iter().copied())
+                && row.implementation_kind
+                    == match expected.implementation_kind {
+                        InventoryImplementationKind::NamedAdapter => {
+                            SelectionImplementationKind::NamedAdapter
+                        }
+                        InventoryImplementationKind::BlockBody => {
+                            SelectionImplementationKind::BlockBody
+                        }
+                    }
+        })
+}
+
+fn candidate_selection_matches(
+    manifest: CandidateManifest<'_>,
+    expected: &[u8],
+    exported: &[u8],
+) -> bool {
+    match manifest.version {
+        CandidateManifestVersion::V2 => expected.is_empty() && exported.is_empty(),
+        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+            let exported_digest = sha256_hex(exported);
+            if expected != exported
+                || manifest.artifact_selection_digest != Some(exported_digest.as_slice())
+            {
+                return false;
+            }
+            let Ok(selection) = inspect_artifact_selection(exported) else {
+                return false;
+            };
+            if manifest.covered_revision_count() != selection.revision_count() {
+                return false;
+            }
+            (0..selection.revision_count()).all(|index| {
+                let Some(manifest_revision) = manifest.covered_revision(index) else {
+                    return false;
+                };
+                let Some(manifest_revision) = decode_hex_digest_slice(manifest_revision) else {
+                    return false;
+                };
+                selection.revision(index) == Some(manifest_revision)
+            })
+        }
+    }
+}
+
+fn decode_hex_digest_slice(value: &[u8]) -> Option<[u8; 32]> {
+    let value: &[u8; 64] = value.try_into().ok()?;
+    decode_hex_digest(value)
 }
 
 #[allow(dead_code)]
@@ -2248,40 +3418,337 @@ unsafe fn revision_transition_allowed(api: &IdApi, current: Oop, successor: Oop)
             return false;
         }
     }
-    (unsafe { string_bytes(api, vector_item(api, current, 4)) })
-        == (unsafe { string_bytes(api, vector_item(api, successor, 4)) })
+    let current_source = unsafe { vector_item(api, current, 3) };
+    let successor_source = unsafe { vector_item(api, successor, 3) };
+    let Some((_, current_metadata)) = (unsafe { parse_revision_metadata(api, current_source) })
+    else {
+        return false;
+    };
+    let Some((_, successor_metadata)) = (unsafe { parse_revision_metadata(api, successor_source) })
+    else {
+        return false;
+    };
+    current_metadata.initializer_residual_digest == successor_metadata.initializer_residual_digest
 }
 
-unsafe fn generation_digest(api: &IdApi, source_map: Oop) -> Option<[u8; 64]> {
+#[derive(Clone)]
+struct GenerationModuleProjection {
+    name: Vec<u8>,
+    revision: [u8; 32],
+    source: Vec<u8>,
+    metadata: RevisionMetadata,
+}
+
+struct CandidateGenerationProjection {
+    selection: Vec<u8>,
+    authority: [u8; 32],
+}
+
+fn sha256_raw(bytes: &[u8]) -> [u8; 32] {
+    decode_hex_digest(&sha256_hex(bytes)).expect("sha256_hex always returns lowercase SHA-256")
+}
+
+fn push_be_field(output: &mut Vec<u8>, bytes: &[u8]) -> Option<()> {
+    output.extend_from_slice(&u32::try_from(bytes.len()).ok()?.to_be_bytes());
+    output.extend_from_slice(bytes);
+    Some(())
+}
+
+unsafe fn generation_modules(
+    api: &IdApi,
+    source_map: Oop,
+) -> Option<Vec<GenerationModuleProjection>> {
     let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
     let count = unsafe { vector_length(api, source_map, vector_vt) }?;
-    let mut digest_input = b"birnam.dispatch-generation.v1\0".to_vec();
-    digest_input.extend_from_slice(&(count as u64).to_be_bytes());
-    let mut names = Vec::with_capacity(count);
+    let mut modules = Vec::with_capacity(count);
     for index in 0..count {
         let entry = unsafe { vector_item(api, source_map, index) };
         if unsafe { vector_length(api, entry, vector_vt) } != Some(3) {
             return None;
         }
         let name = unsafe { symbol_bytes(api, vector_item(api, entry, 0)) }?;
-        let revision = unsafe { vector_item(api, entry, 1) };
-        if !unsafe { valid_revision(api, revision) } {
+        let revision_object = unsafe { vector_item(api, entry, 1) };
+        if !unsafe { valid_revision(api, revision_object) } {
             return None;
         }
-        if unsafe { symbol_bytes(api, vector_item(api, revision, 1)) }? != name {
+        let source_object = unsafe { vector_item(api, revision_object, 3) };
+        let source = unsafe { string_bytes(api, source_object) }?;
+        let (_, metadata) = unsafe { parse_revision_metadata(api, source_object) }?;
+        if metadata.name != name
+            || unsafe { string_bytes(api, vector_item(api, revision_object, 6)) }?
+                != metadata.revision_digest
+        {
             return None;
         }
-        if names.iter().any(|existing| existing == &name) {
-            return None;
-        }
-        names.push(name.clone());
-        let digest = unsafe { string_bytes(api, vector_item(api, revision, 6)) }?;
-        digest_input.extend_from_slice(&(name.len() as u64).to_be_bytes());
-        digest_input.extend_from_slice(&name);
-        digest_input.extend_from_slice(&(digest.len() as u64).to_be_bytes());
-        digest_input.extend_from_slice(&digest);
+        let revision = decode_hex_digest(&metadata.revision_digest)?;
+        modules.push(GenerationModuleProjection {
+            name,
+            revision,
+            source,
+            metadata,
+        });
     }
-    Some(sha256_hex(&digest_input))
+    modules.sort_by(|left, right| left.name.cmp(&right.name));
+    if modules.windows(2).any(|pair| pair[0].name == pair[1].name) {
+        return None;
+    }
+    Some(modules)
+}
+
+fn generation_revisions(modules: &[GenerationModuleProjection]) -> Option<Vec<[u8; 32]>> {
+    let mut revisions = modules
+        .iter()
+        .map(|module| module.revision)
+        .collect::<Vec<_>>();
+    revisions.sort_unstable();
+    if revisions.windows(2).any(|pair| pair[0] == pair[1]) {
+        return None;
+    }
+    Some(revisions)
+}
+
+fn all_synchronous_generation_selection(modules: &[GenerationModuleProjection]) -> Option<Vec<u8>> {
+    let revisions = generation_revisions(modules)?;
+    let slices = modules
+        .iter()
+        .map(|module| artifact_selection(&module.metadata))
+        .collect::<Option<Vec<_>>>()?;
+    let inspected = slices
+        .iter()
+        .map(|slice| inspect_artifact_selection(slice).ok())
+        .collect::<Option<Vec<_>>>()?;
+    compose_generation_selection(&revisions, &inspected).ok()
+}
+
+fn visit_generation_module(
+    modules: &[GenerationModuleProjection],
+    index: usize,
+    state: &mut [u8],
+    ordered: &mut Vec<usize>,
+) -> bool {
+    if state[index] == 2 {
+        return true;
+    }
+    if state[index] == 1 {
+        return false;
+    }
+    state[index] = 1;
+    for requirement in &modules[index].metadata.requires {
+        if let Ok(dependency) =
+            modules.binary_search_by(|module| module.name.as_slice().cmp(requirement))
+            && !visit_generation_module(modules, dependency, state, ordered)
+        {
+            return false;
+        }
+    }
+    state[index] = 2;
+    ordered.push(index);
+    true
+}
+
+fn generation_module_order(modules: &[GenerationModuleProjection]) -> Option<Vec<usize>> {
+    let mut state = vec![0u8; modules.len()];
+    let mut ordered = Vec::with_capacity(modules.len());
+    for index in 0..modules.len() {
+        if !visit_generation_module(modules, index, &mut state, &mut ordered) {
+            return None;
+        }
+    }
+    Some(ordered)
+}
+
+fn named_operation_descriptor_hash(
+    module: &GenerationModuleProjection,
+    operation_index: usize,
+    selection: birnam_artifact_codec::stackless_selection::Selection<'_>,
+) -> Option<[u8; 32]> {
+    let row = named_operation_selection_row(module, operation_index, selection)?;
+    if row.disposition != SelectionDisposition::ResumableRequired {
+        return None;
+    }
+    let path = row.path.iter().collect::<Vec<_>>();
+    let compiled = compile_named_adapter_v1(
+        &module.metadata.operations.get(operation_index)?.selector,
+        CodegenSelectionSpec {
+            source_revision: row.source_revision,
+            root_kind: CodegenRootKind::MethodOperation,
+            root_index: row.root_index,
+            path: &path,
+            implementation_kind: CodegenImplementationKind::NamedAdapter,
+            disposition: CodegenDisposition::ResumableRequired,
+        },
+        &module.name,
+        &module.source,
+        u32::try_from(operation_index).ok()?,
+        0,
+    )
+    .ok()?;
+    Some(sha256_raw(&compiled.descriptor))
+}
+
+fn named_operation_selection_row<'a>(
+    module: &GenerationModuleProjection,
+    operation_index: usize,
+    selection: birnam_artifact_codec::stackless_selection::Selection<'a>,
+) -> Option<birnam_artifact_codec::stackless_selection::SelectionRow<'a>> {
+    selection.rows().find_map(|row| {
+        let row = row.ok()?;
+        (row.source_revision == module.revision
+            && row.root_kind == RootKind::MethodOperation
+            && row.root_index == operation_index as u32
+            && row.path.is_empty()
+            && row.implementation_kind == SelectionImplementationKind::NamedAdapter)
+            .then_some(row)
+    })
+}
+
+fn dispatch_generation_authority(
+    modules: &[GenerationModuleProjection],
+    generation_selection: &[u8],
+) -> Option<[u8; 32]> {
+    dispatch_generation_authority_with(modules, generation_selection, |module, index, selection| {
+        named_operation_descriptor_hash(module, index, selection)
+    })
+}
+
+fn dispatch_generation_authority_with(
+    modules: &[GenerationModuleProjection],
+    generation_selection: &[u8],
+    mut descriptor_hash: impl FnMut(
+        &GenerationModuleProjection,
+        usize,
+        birnam_artifact_codec::stackless_selection::Selection<'_>,
+    ) -> Option<[u8; 32]>,
+) -> Option<[u8; 32]> {
+    let selection = inspect_generation_selection(generation_selection).ok()?;
+    let revisions = generation_revisions(modules)?;
+    if selection.revision_count() != revisions.len()
+        || !(0..selection.revision_count())
+            .all(|index| selection.revision(index) == revisions.get(index).copied())
+    {
+        return None;
+    }
+
+    let mut input = b"birnam.dispatch-base.v2\0".to_vec();
+    input.extend_from_slice(&u32::try_from(modules.len()).ok()?.to_be_bytes());
+    for module in modules {
+        push_be_field(&mut input, &module.name)?;
+        input.extend_from_slice(&module.revision);
+    }
+    let operation_count = modules.iter().try_fold(0usize, |count, module| {
+        count.checked_add(module.metadata.operations.len())
+    })?;
+    input.extend_from_slice(&u32::try_from(operation_count).ok()?.to_be_bytes());
+    for module_index in generation_module_order(modules)? {
+        let module = &modules[module_index];
+        for (operation_index, operation) in module.metadata.operations.iter().enumerate() {
+            push_be_field(&mut input, &module.name)?;
+            push_be_field(&mut input, &operation.target)?;
+            push_be_field(&mut input, &operation.selector)?;
+            input.push(if operation.install { 1 } else { 2 });
+            if operation.install {
+                let mut definition = b"birnam.definition.v1\0".to_vec();
+                definition.extend_from_slice(&operation.source);
+                input.extend_from_slice(&sha256_raw(&definition));
+                let row = named_operation_selection_row(module, operation_index, selection)?;
+                match row.disposition {
+                    SelectionDisposition::ResumableRequired => {
+                        let descriptor = descriptor_hash(module, operation_index, selection)?;
+                        input.push(2);
+                        input.extend_from_slice(&descriptor);
+                    }
+                    SelectionDisposition::Synchronous => {
+                        input.push(1);
+                        input.extend_from_slice(&[0; 32]);
+                    }
+                }
+            } else {
+                input.extend_from_slice(&[0; 32]);
+                input.push(0);
+                input.extend_from_slice(&[0; 32]);
+            }
+        }
+    }
+    input.extend_from_slice(&sha256_raw(generation_selection));
+    Some(sha256_raw(&input))
+}
+
+fn project_candidate_generation(
+    mut modules: Vec<GenerationModuleProjection>,
+    candidate: GenerationModuleProjection,
+    predecessor_selection: &[u8],
+    artifact_selection: &[u8],
+) -> Option<CandidateGenerationProjection> {
+    let module_index = modules
+        .binary_search_by(|module| module.name.cmp(&candidate.name))
+        .ok()?;
+    let removed_revision = modules[module_index].revision;
+    modules[module_index] = candidate;
+    let revisions = generation_revisions(&modules)?;
+    let predecessor = inspect_generation_selection(predecessor_selection).ok()?;
+    let replacement = inspect_artifact_selection(artifact_selection).ok()?;
+    let selection =
+        replace_generation_selection(predecessor, &[removed_revision], &revisions, replacement)
+            .ok()?;
+    let authority = dispatch_generation_authority(&modules, &selection)?;
+    Some(CandidateGenerationProjection {
+        selection,
+        authority,
+    })
+}
+
+unsafe fn project_open_candidate_generation(
+    api: &IdApi,
+    predecessor: Oop,
+    expected_predecessor_digest: &[u8; 64],
+    candidate_source: Oop,
+    artifact_selection: &[u8],
+) -> Option<CandidateGenerationProjection> {
+    if unsafe { durable_generation_base_digest(api, predecessor) }.as_ref()
+        != Some(expected_predecessor_digest)
+    {
+        return None;
+    }
+    let source_map = unsafe {
+        send(
+            api,
+            runtime().store as Oop,
+            CURRENT_VALUE_SELECTOR,
+            &[predecessor, intern(api, b"sourceMap\0")],
+        )
+    };
+    let modules = unsafe { generation_modules(api, source_map) }?;
+    let predecessor_selection = unsafe { durable_generation_selection(api, predecessor) }?;
+    let (source, metadata) = unsafe { parse_revision_metadata(api, candidate_source) }?;
+    let revision = decode_hex_digest(&metadata.revision_digest)?;
+    project_candidate_generation(
+        modules,
+        GenerationModuleProjection {
+            name: metadata.name.clone(),
+            revision,
+            source,
+            metadata,
+        },
+        &predecessor_selection,
+        artifact_selection,
+    )
+}
+
+fn generation_digest_with_selection(
+    modules: &[GenerationModuleProjection],
+    generation_selection: &[u8],
+) -> Option<[u8; 64]> {
+    let authority = dispatch_generation_authority(modules, generation_selection)?;
+    Some(raw_digest_spelling(authority))
+}
+
+fn raw_digest_spelling(authority: [u8; 32]) -> [u8; 64] {
+    let mut spelling = [0u8; 64];
+    for (index, byte) in authority.iter().copied().enumerate() {
+        spelling[index * 2] = b"0123456789abcdef"[(byte >> 4) as usize];
+        spelling[index * 2 + 1] = b"0123456789abcdef"[(byte & 0x0f) as usize];
+    }
+    spelling
 }
 
 unsafe fn durable_current_generation(api: &IdApi) -> Oop {
@@ -2293,6 +3760,58 @@ unsafe fn durable_current_generation(api: &IdApi) -> Oop {
     let dispatch = unsafe { intern(api, DISPATCH_NAME) };
     let attribute = unsafe { intern(api, ACTIVE_GENERATION_NAME) };
     unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[dispatch, attribute]) }
+}
+
+unsafe fn durable_generation_base_digest(api: &IdApi, generation: Oop) -> Option<[u8; 64]> {
+    if generation.is_null() || generation == api.nilObj {
+        return None;
+    }
+    let digest = unsafe {
+        send(
+            api,
+            runtime().store as Oop,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"baseDigest\0")],
+        )
+    };
+    let digest = unsafe { string_bytes(api, digest) }?;
+    let digest: [u8; 64] = digest.try_into().ok()?;
+    decode_hex_digest(&digest)?;
+    Some(digest)
+}
+
+unsafe fn durable_generation_selection(api: &IdApi, generation: Oop) -> Option<Vec<u8>> {
+    if generation.is_null() || generation == api.nilObj {
+        return None;
+    }
+    let store = runtime().store as Oop;
+    let source_map = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"sourceMap\0")],
+        )
+    };
+    let modules = unsafe { generation_modules(api, source_map) }?;
+    let recorded = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"generationSelection\0")],
+        )
+    };
+    if !recorded.is_null() && recorded != api.nilObj {
+        let bytes = unsafe { string_bytes(api, recorded) }?;
+        dispatch_generation_authority(&modules, &bytes)?;
+        return Some(bytes);
+    }
+    // Transitional G0 values predate the S2 carrier. Their only admissible
+    // projection is the complete all-synchronous inventory derived from their
+    // exact retained SourceRevisions. Once a v2 generation is published the
+    // canonicality check below requires the retained bytes.
+    all_synchronous_generation_selection(&modules)
 }
 
 /// Recover module source pairs from the durable generation projection after an
@@ -2358,7 +3877,13 @@ unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool 
             &[generation, intern(api, b"baseDigest\0")],
         )
     };
-    let Some(actual) = (unsafe { generation_digest(api, source_map) }) else {
+    let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
+        return false;
+    };
+    let Some(selection) = (unsafe { durable_generation_selection(api, generation) }) else {
+        return false;
+    };
+    let Some(actual) = generation_digest_with_selection(&modules, &selection) else {
         return false;
     };
     unsafe { string_bytes(api, recorded) }
@@ -2370,31 +3895,8 @@ unsafe fn image_generation_matches_durable(api: &IdApi) -> bool {
     if durable == api.nilObj {
         return true;
     }
-    let runtime = runtime();
-    let projection = unsafe {
-        send(
-            api,
-            runtime.rust_codegen as Oop,
-            INITIAL_GENERATION_PROJECTION_SELECTOR,
-            &[],
-        )
-    };
-    if projection.is_null() || projection == api.nilObj {
-        return false;
-    }
-    let projection_digest = unsafe { vector_item(api, projection, 2) };
-    let store = runtime.store as Oop;
-    let durable_digest = unsafe {
-        send(
-            api,
-            store,
-            CURRENT_VALUE_SELECTOR,
-            &[durable, intern(api, b"baseDigest\0")],
-        )
-    };
-    let projection_bytes = unsafe { string_bytes(api, projection_digest) };
-    let durable_bytes = unsafe { string_bytes(api, durable_digest) };
-    projection_bytes == durable_bytes
+    let active = ACTIVE_GENERATION.load(Ordering::Acquire) as Oop;
+    active == durable && unsafe { durable_generation_is_canonical(api, durable) }
 }
 
 /// A portable image is authorized by the generation digest embedded in its
@@ -2591,13 +4093,28 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
         entries.push(unsafe { make_vector(api, vector_proto, &[name, revision, api.nilObj]) });
     }
     let source_map = unsafe { make_vector(api, vector_proto, &entries) };
-    let Some(digest) = (unsafe { generation_digest(api, source_map) }) else {
+    let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
+        note_error(b"RustCodegen generation source map is malformed");
+        return api.nilObj;
+    };
+    let Some(selection) = all_synchronous_generation_selection(&modules) else {
+        note_error(b"RustCodegen generation selection is malformed");
+        return api.nilObj;
+    };
+    let Some(digest) = generation_digest_with_selection(&modules, &selection) else {
         note_error(b"RustCodegen generation projection is malformed");
         return api.nilObj;
     };
     let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let selection_object = unsafe { (api.mkString)(selection.as_ptr(), selection.len()) };
     let tag = unsafe { intern(api, b"generationProjection\0") };
-    unsafe { make_vector(api, vector_proto, &[tag, source_map, digest_object]) }
+    unsafe {
+        make_vector(
+            api,
+            vector_proto,
+            &[tag, source_map, digest_object, selection_object],
+        )
+    }
 }
 
 unsafe extern "C" fn rust_codegen_successor_generation_projection(
@@ -2637,6 +4154,47 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
         note_error(b"RustCodegen module name was not a Symbol");
         return api.nilObj;
     };
+    let predecessor = unsafe { durable_current_generation(api) };
+    if predecessor.is_null() || predecessor == api.nilObj {
+        note_error(b"RustCodegen predecessor generation is unavailable");
+        return api.nilObj;
+    }
+    let current_source_map = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            CURRENT_VALUE_SELECTOR,
+            &[predecessor, intern(api, b"sourceMap\0")],
+        )
+    };
+    if current_source_map != values[0] {
+        note_error(b"RustCodegen predecessor source map is stale");
+        return api.nilObj;
+    }
+    let (candidate_name, expected_digest, projected_authority, projected_selection, manifest) = {
+        let Ok(candidates) = CANDIDATES.lock() else {
+            note_error(b"RustCodegen candidate registry is unavailable");
+            return api.nilObj;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.unit == values[3] as usize)
+        else {
+            note_error(b"RustCodegen candidate unit is unknown");
+            return api.nilObj;
+        };
+        (
+            candidate.name as Oop,
+            candidate.expected_predecessor_digest,
+            candidate.projected_authority,
+            candidate.projected_selection.clone(),
+            candidate.resumable_manifest.clone(),
+        )
+    };
+    if candidate_name != values[1] {
+        note_error(b"RustCodegen candidate projection name mismatches");
+        return api.nilObj;
+    }
     let mut entries = Vec::with_capacity(count);
     let mut found = false;
     for index in 0..count {
@@ -2673,13 +4231,35 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
         return api.nilObj;
     }
     let successor = unsafe { make_vector(api, vector_proto, &entries) };
-    let Some(digest) = (unsafe { generation_digest(api, successor) }) else {
-        note_error(b"RustCodegen successor projection is malformed");
+    if unsafe { durable_generation_base_digest(api, predecessor) }.as_ref()
+        != Some(&expected_digest)
+    {
+        note_error(b"RustCodegen candidate predecessor is stale");
+        return api.nilObj;
+    }
+    let Some(projected_authority) = projected_authority else {
+        note_error(b"RustCodegen candidate projection is unavailable");
         return api.nilObj;
     };
+    if projected_selection.is_empty()
+        || (!manifest.is_empty()
+            && resumable_manifest::inspect(&manifest, projected_authority).is_err())
+    {
+        note_error(b"RustCodegen candidate resumable authority mismatches");
+        return api.nilObj;
+    }
+    let digest = raw_digest_spelling(projected_authority);
     let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let selection_object =
+        unsafe { (api.mkString)(projected_selection.as_ptr(), projected_selection.len()) };
     let tag = unsafe { intern(api, b"generationProjection\0") };
-    unsafe { make_vector(api, vector_proto, &[tag, successor, digest_object]) }
+    unsafe {
+        make_vector(
+            api,
+            vector_proto,
+            &[tag, successor, digest_object, selection_object],
+        )
+    }
 }
 
 unsafe fn visit_generation_source(
@@ -2939,8 +4519,8 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen compileImageCode: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen compileImageCode: expects one output path");
+    if values.len() != 1 && values.len() != 2 {
+        abort("RustCodegen image compilation expects a code path and optional manifest path");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
@@ -2952,24 +4532,65 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         }
     }
     let _auto_gc = AutoGc(api);
-    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
-        note_error(b"RustCodegen image source ordering failed");
-        return api.nilObj;
-    };
-    if sources.is_empty() {
-        note_error(b"RustCodegen image has no generation sources");
-        return api.nilObj;
-    }
-    if !unsafe { image_generation_matches_durable(api) } {
+    let recovery_generation_available = IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        && RUNTIME_PHASE.load(Ordering::Acquire) == PHASE_IMAGE_RECOVERY
+        && unsafe { durable_generation_is_canonical(api, durable_current_generation(api)) };
+    if !unsafe { image_generation_matches_durable(api) } && !recovery_generation_available {
         note_error(b"RustCodegen image generation is stale");
         return api.nilObj;
     }
+    let generation = unsafe { durable_current_generation(api) };
+    let source_map = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"sourceMap\0")],
+        )
+    };
+    let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
+        note_error(b"RustCodegen durable image source map is malformed");
+        return api.nilObj;
+    };
+    let Some(module_order) = generation_module_order(&modules) else {
+        note_error(b"RustCodegen image source ordering failed");
+        return api.nilObj;
+    };
+    if modules.is_empty() {
+        note_error(b"RustCodegen image has no generation sources");
+        return api.nilObj;
+    }
+    let Some(generation_selection) = (unsafe { durable_generation_selection(api, generation) })
+    else {
+        note_error(b"RustCodegen image generation selection is unavailable");
+        return api.nilObj;
+    };
+    let Some(authority) = dispatch_generation_authority(&modules, &generation_selection) else {
+        note_error(b"RustCodegen image generation selection is not authoritative");
+        return api.nilObj;
+    };
+    let Some((artifact_selection, mut resumable_requests)) =
+        image_artifact_selection_and_requests(&generation_selection)
+    else {
+        note_error(b"RustCodegen image artifact selection could not be projected");
+        return api.nilObj;
+    };
+    resumable_requests.sort_by_key(OwnedSelectionRequest::key);
+    let Ok(indices) = resumable_indices(&resumable_requests) else {
+        note_error(b"RustCodegen image resumable index space overflowed");
+        return api.nilObj;
+    };
+
     let mut program = Vec::new();
-    for source in sources {
-        let Some(bytes) = (unsafe { string_bytes(api, source) }) else {
-            note_error(b"RustCodegen image source is not a String");
-            return api.nilObj;
-        };
+    let mut entries = Vec::new();
+    let mut named_resumables = Vec::new();
+    let mut block_resumables = Vec::new();
+    let mut operation_offset = 0u32;
+    let mut non_method_block_offset = 0u32;
+    let mut block_function_offset = 0u32;
+    for module_index in module_order {
+        let module = &modules[module_index];
+        let bytes = &module.source;
         program.extend_from_slice(&bytes);
         let mut end = bytes.len();
         while end > 0 && bytes[end - 1].is_ascii_whitespace() {
@@ -2980,6 +4601,77 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         } else {
             program.push(b'\n');
         }
+        let module_requests = resumable_requests
+            .iter()
+            .filter(|request| request.source_revision == module.revision)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !module_requests.is_empty() {
+            let source_object = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+            let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+            let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
+            let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+            if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+                note_error(b"RustCodegen selected image source could not be parsed");
+                return api.nilObj;
+            }
+            let Some(tree) = (unsafe { cst_tree(api, cst, 0) }) else {
+                note_error(b"RustCodegen selected image CST is invalid");
+                return api.nilObj;
+            };
+            let Some(tree) = rewrite_embedded(tree, bytes, b".") else {
+                note_error(b"RustCodegen selected image embedded source is unavailable");
+                return api.nilObj;
+            };
+            let Ok(normalized) = lower_program(&tree, bytes) else {
+                note_error(b"RustCodegen selected image source could not be lowered");
+                return api.nilObj;
+            };
+            let Ok(mut plan) = compile_resumable_plan_indexed(
+                &module.metadata,
+                &module_requests,
+                &indices,
+                block_function_offset,
+                &module.name,
+                bytes,
+                &normalized,
+            ) else {
+                note_error(b"RustCodegen selected image resumable lowering failed");
+                return api.nilObj;
+            };
+            if rebase_image_resumable_plan(&mut plan, operation_offset, non_method_block_offset)
+                .is_none()
+            {
+                note_error(b"RustCodegen image resumable key space overflowed");
+                return api.nilObj;
+            }
+            entries.extend(plan.entries);
+            named_resumables.extend(plan.named_emissions);
+            block_resumables.extend(plan.block_emissions);
+        }
+        let Some(operation_count) = u32::try_from(module.metadata.operations.len()).ok() else {
+            note_error(b"RustCodegen image operation space overflowed");
+            return api.nilObj;
+        };
+        let Some(next_operation_offset) = operation_offset.checked_add(operation_count) else {
+            note_error(b"RustCodegen image operation space overflowed");
+            return api.nilObj;
+        };
+        operation_offset = next_operation_offset;
+        let Some(next_non_method_offset) = non_method_block_count(&module.metadata)
+            .and_then(|count| non_method_block_offset.checked_add(count))
+        else {
+            note_error(b"RustCodegen image non-method block space overflowed");
+            return api.nilObj;
+        };
+        non_method_block_offset = next_non_method_offset;
+        let Some(next_block_function_offset) = block_function_count(&module.metadata)
+            .and_then(|count| block_function_offset.checked_add(count))
+        else {
+            note_error(b"RustCodegen image block function space overflowed");
+            return api.nilObj;
+        };
+        block_function_offset = next_block_function_offset;
     }
     for operation in unsafe { ordered_method_operation_sources(api) } {
         let Some(bytes) = (unsafe { string_bytes(api, operation.source) }) else {
@@ -2990,12 +4682,200 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         program.extend_from_slice(b";\n");
     }
     let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
-    let arguments = [source_object, values[0]];
     let _ = self_object;
-    unsafe { rust_codegen_compile_output_impl(arguments.as_ptr(), arguments.len(), false, true) }
+    entries.sort_by_key(|entry| entry.request.key());
+    let selection = match inspect_artifact_selection(&artifact_selection) {
+        Ok(selection) => selection,
+        Err(_) => {
+            note_error(b"RustCodegen image artifact selection is invalid");
+            return api.nilObj;
+        }
+    };
+    let manifest_entries = entries
+        .iter()
+        .map(|entry| ManifestEntrySpec {
+            selection: SelectionSpec {
+                source_revision: entry.request.source_revision,
+                root_kind: entry.request.root_kind,
+                root_index: entry.request.root_index,
+                path: &entry.request.path,
+                implementation_kind: entry.request.implementation_kind,
+                disposition: entry.request.disposition,
+            },
+            descriptor: &entry.descriptor,
+            selector: &entry.selector,
+        })
+        .collect::<Vec<_>>();
+    let Ok(manifest) = resumable_manifest::materialize(authority, selection, &manifest_entries)
+    else {
+        note_error(b"RustCodegen image resumable manifest could not be materialized");
+        return api.nilObj;
+    };
+    let emissions_present = !named_resumables.is_empty() || !block_resumables.is_empty();
+    let Some(emitted) = (unsafe {
+        emit_source(
+            api,
+            source_object,
+            true,
+            true,
+            None,
+            false,
+            None,
+            emissions_present.then_some(named_resumables),
+            emissions_present.then_some(block_resumables),
+            None,
+        )
+    }) else {
+        note_error(b"RustCodegen could not lower selected image source");
+        return api.nilObj;
+    };
+    let result = unsafe {
+        write_emitted_artifact(
+            api,
+            source_object,
+            values[0],
+            emitted,
+            true,
+            Some(&artifact_selection),
+            Some(&manifest),
+        )
+    };
+    if result == api.nilObj || values.len() == 1 {
+        return result;
+    }
+    let Some(manifest_path) = (unsafe { string_bytes(api, values[1]) }) else {
+        note_error(b"RustCodegen image manifest path was not a String");
+        return api.nilObj;
+    };
+    let manifest_path = Path::new(OsStr::from_bytes(&manifest_path));
+    if fs::write(manifest_path, &manifest).is_err() {
+        if let Some(code_path) = unsafe { string_bytes(api, values[0]) } {
+            let _ = fs::remove_file(Path::new(OsStr::from_bytes(&code_path)));
+        }
+        note_error(b"RustCodegen could not write the image resumable manifest");
+        return api.nilObj;
+    }
+    result
 }
 
-/// Validate a portable v4 image without changing the live runtime.
+/// Recompile the durable generation's exact accepted projection and map the
+/// fresh unit during source recovery. Unlike ordinary mapped recovery, this
+/// path does not trust or execute the image's captured native bytes.
+unsafe extern "C" fn rust_codegen_rebuild_image_code(
+    self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen rebuildImageCode expects no arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen image code rebuild requires image recovery");
+        return api.nilObj;
+    }
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut stem = std::env::temp_dir().into_os_string().into_vec();
+    if !stem.ends_with(b"/") {
+        stem.push(b'/');
+    }
+    stem.extend_from_slice(b"birnam-image-rebuild-");
+    stem.extend_from_slice(std::process::id().to_string().as_bytes());
+    stem.push(b'-');
+    stem.extend_from_slice(sequence.to_string().as_bytes());
+    let mut code_path = stem.clone();
+    code_path.extend_from_slice(b".dylib");
+    let mut manifest_path = stem;
+    manifest_path.extend_from_slice(b".manifest");
+    struct RebuiltPaths<'a> {
+        code: &'a [u8],
+        manifest: &'a [u8],
+    }
+    impl Drop for RebuiltPaths<'_> {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(Path::new(OsStr::from_bytes(self.code)));
+            let _ = fs::remove_file(Path::new(OsStr::from_bytes(self.manifest)));
+        }
+    }
+    let _paths = RebuiltPaths {
+        code: &code_path,
+        manifest: &manifest_path,
+    };
+    let code_object = unsafe { (api.mkString)(code_path.as_ptr(), code_path.len()) };
+    let manifest_object = unsafe { (api.mkString)(manifest_path.as_ptr(), manifest_path.len()) };
+    let compiled = unsafe {
+        rust_codegen_compile_image_code(self_object, [code_object, manifest_object].as_ptr(), 2)
+    };
+    if compiled.is_null() || compiled == api.nilObj {
+        note_error(b"RustCodegen image code rebuild failed");
+        return api.nilObj;
+    }
+    let Ok(manifest) = fs::read(Path::new(OsStr::from_bytes(&manifest_path))) else {
+        note_error(b"RustCodegen rebuilt image manifest is unavailable");
+        return api.nilObj;
+    };
+    let generation = unsafe { durable_current_generation(api) };
+    let Some(digest) = (unsafe { durable_generation_base_digest(api, generation) }) else {
+        note_error(b"RustCodegen rebuilt image authority is unavailable");
+        return api.nilObj;
+    };
+    let Some(authority) = decode_hex_digest(&digest) else {
+        note_error(b"RustCodegen rebuilt image authority is invalid");
+        return api.nilObj;
+    };
+    if resumable_manifest::inspect(&manifest, authority).is_err() {
+        note_error(b"RustCodegen rebuilt image manifest is invalid");
+        return api.nilObj;
+    }
+    unsafe {
+        rust_codegen_load_impl(
+            self_object,
+            &code_object,
+            1,
+            Some(ResumableLoadExpectation {
+                authority,
+                manifest: &manifest,
+            }),
+        )
+    }
+}
+
+unsafe fn image_v5_layout(api: &IdApi, name: &[u8], words: u32) -> Option<Vec<SlotKind>> {
+    let mut terminated = Vec::with_capacity(name.len().checked_add(1)?);
+    terminated.extend_from_slice(name);
+    terminated.push(0);
+    let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
+    if vtable.is_null() || vtable == api.nilObj {
+        return None;
+    }
+    let words = usize::try_from(words).ok()?;
+    let mut layout = Vec::with_capacity(words);
+    for word in 0..words {
+        layout.push(match unsafe { (api.slotKind)(vtable, word) } {
+            birnam_abi::SLOT_OOP => SlotKind::Oop,
+            birnam_abi::SLOT_RAW => SlotKind::RawWord,
+            birnam_abi::SLOT_CODE => SlotKind::Code,
+            _ => return None,
+        });
+    }
+    Some(layout)
+}
+
+unsafe fn preflight_image_v5<'a>(api: &IdApi, bytes: &'a [u8]) -> Result<Image<'a>, ()> {
+    Image::preflight_with_layout(
+        bytes,
+        IMAGE_ARCH_TAG,
+        runtime_abi_hash(),
+        |name, words| unsafe { image_v5_layout(api, name, words) },
+    )
+    .map_err(|_| ())
+}
+
+/// Validate a portable v5 image without changing the live runtime.
 ///
 /// This is deliberately a framing boundary: the pure image crate checks the
 /// header, record envelopes, single authority, and authority/code binding, but
@@ -3032,20 +4912,24 @@ unsafe extern "C" fn rust_codegen_preflight_image(
         note_error(b"RustCodegen image preflight could not read the image");
         return api.nilObj;
     };
-    let Ok(image) = Image::parse(&bytes) else {
+    let Ok(image) = (unsafe { preflight_image_v5(api, &bytes) }) else {
         note_error(b"RustCodegen image preflight framing is invalid");
         return api.nilObj;
     };
-    if image.validate_facts().is_err() {
-        note_error(b"RustCodegen image preflight facts are invalid");
-        return api.nilObj;
-    }
-    if !unsafe { image_authority_matches_durable(api, image.authority.digest) } {
+    if !unsafe { image_authority_matches_durable(api, image.authority.spelling) } {
         note_error(b"RustCodegen image preflight authority is stale");
         return api.nilObj;
     }
     if let Some(code) = image.code()
-        && !unsafe { preflight_image_code_unit(api, code.unit) }
+        && !unsafe {
+            preflight_image_code_unit(
+                api,
+                code.unit,
+                image
+                    .resumables()
+                    .expect("v5 Code preflight requires Resumables"),
+            )
+        }
     {
         note_error(b"RustCodegen image preflight code unit is invalid");
         return api.nilObj;
@@ -3091,20 +4975,84 @@ fn stage_image_code(unit: &[u8]) -> Result<StagedImageCode, ()> {
     Ok(StagedImageCode { path })
 }
 
-unsafe fn preflight_image_code_unit(api: &IdApi, unit: &[u8]) -> bool {
+unsafe fn staged_image_manifest_matches(
+    api: &IdApi,
+    staged: &StagedImageCode,
+    resumables: &birnam_image_codec::v5::Resumables<'_>,
+) -> bool {
+    let mut path = staged.path.clone();
+    path.push(0);
+    let handle = unsafe { (api.dlopen)(path.as_ptr().cast(), 9) };
+    if handle.is_null() {
+        return false;
+    }
+    let matches = (|| {
+        let manifest_symbol =
+            unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1".as_ptr()) };
+        let manifest_size_symbol =
+            unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1_size".as_ptr()) };
+        if manifest_symbol.is_null() || manifest_size_symbol.is_null() {
+            return false;
+        }
+        let manifest_size = unsafe { ptr::read_unaligned(manifest_size_symbol.cast::<u64>()) };
+        let Ok(manifest_size) = usize::try_from(manifest_size) else {
+            return false;
+        };
+        if manifest_size > resumable_manifest::MAX_MANIFEST_BYTES
+            || manifest_size != resumables.manifest_bytes.len()
+        {
+            return false;
+        }
+        let manifest =
+            unsafe { core::slice::from_raw_parts(manifest_symbol.cast::<u8>(), manifest_size) };
+        if manifest != resumables.manifest_bytes {
+            return false;
+        }
+        !resumables.has_block_entries()
+            || !(unsafe { (api.dlsym)(handle, c"__birnam_resolve_block_vtable_v1".as_ptr()) })
+                .is_null()
+    })();
+    unsafe { dlclose(handle) };
+    matches
+}
+
+#[derive(Clone, Copy)]
+struct ResumableLoadExpectation<'a> {
+    authority: [u8; 32],
+    manifest: &'a [u8],
+}
+
+unsafe fn preflight_image_code_unit(
+    api: &IdApi,
+    unit: &[u8],
+    resumables: &birnam_image_codec::v5::Resumables<'_>,
+) -> bool {
     let Ok(staged) = stage_image_code(unit) else {
         return false;
     };
+    if !unsafe { staged_image_manifest_matches(api, &staged, resumables) } {
+        return false;
+    }
     let mut path = staged.path.clone();
     path.push(0);
     let path_object = unsafe { (api.mkString)(path.as_ptr(), path.len() - 1) };
     IMAGE_CODE_PREFLIGHT.store(true, Ordering::Release);
-    let result = unsafe { rust_codegen_load(runtime().rust_codegen as Oop, &path_object, 1) };
+    let result = unsafe {
+        rust_codegen_load_impl(
+            runtime().rust_codegen as Oop,
+            &path_object,
+            1,
+            Some(ResumableLoadExpectation {
+                authority: resumables.manifest.authority(),
+                manifest: resumables.manifest_bytes,
+            }),
+        )
+    };
     IMAGE_CODE_PREFLIGHT.store(false, Ordering::Release);
     result == api.trueObj
 }
 
-/// Stage the checksum-verified v4 code unit through the existing Rust artifact
+/// Stage the checksum-verified v5 code unit through the existing Rust artifact
 /// loader. This is deliberately an image-recovery-only handoff: it maps the
 /// captured dylib and runs its entry point, but does not materialize heap
 /// records or apply facts. Those operations remain owned by later recovery
@@ -3135,15 +5083,11 @@ unsafe extern "C" fn rust_codegen_map_image_code(
         note_error(b"RustCodegen image code mapping could not read the image");
         return api.nilObj;
     };
-    let Ok(image) = Image::parse(&bytes) else {
+    let Ok(image) = (unsafe { preflight_image_v5(api, &bytes) }) else {
         note_error(b"RustCodegen image code mapping framing is invalid");
         return api.nilObj;
     };
-    if image.validate_facts().is_err() {
-        note_error(b"RustCodegen image code mapping facts are invalid");
-        return api.nilObj;
-    }
-    if !unsafe { image_authority_matches_durable(api, image.authority.digest) } {
+    if !unsafe { image_authority_matches_durable(api, image.authority.spelling) } {
         note_error(b"RustCodegen image code mapping authority is stale");
         return api.nilObj;
     }
@@ -3156,8 +5100,73 @@ unsafe extern "C" fn rust_codegen_map_image_code(
         note_error(b"RustCodegen image code mapping could not stage the unit");
         return api.nilObj;
     };
+    let Some(resumables) = image.resumables() else {
+        note_error(b"RustCodegen image code mapping has no resumable manifest");
+        return api.nilObj;
+    };
+    if !unsafe { staged_image_manifest_matches(api, &staged, resumables) } {
+        note_error(b"RustCodegen image artifact manifest mismatches the image");
+        return api.nilObj;
+    }
     let staged_object = unsafe { (api.mkString)(staged.path.as_ptr(), staged.path.len()) };
-    unsafe { rust_codegen_load(self_object, &staged_object, 1) }
+    unsafe {
+        rust_codegen_load_impl(
+            self_object,
+            &staged_object,
+            1,
+            Some(ResumableLoadExpectation {
+                authority: resumables.manifest.authority(),
+                manifest: resumables.manifest_bytes,
+            }),
+        )
+    }
+}
+
+unsafe fn resolve_image_block_vtable(api: &IdApi, manifest_entry_index: u32) -> Option<Oop> {
+    let mapped = MAPPED_IMAGE_RESUMABLES.lock().ok()?.clone()?;
+    if mapped.resolver == 0 {
+        return None;
+    }
+    let manifest = resumable_manifest::inspect(&mapped.manifest, mapped.authority).ok()?;
+    let entry = manifest.entry(manifest_entry_index as usize)?;
+    if entry.implementation_kind != SelectionImplementationKind::BlockBody {
+        return None;
+    }
+    let resolver: unsafe extern "C" fn(u32) -> Oop =
+        unsafe { core::mem::transmute(mapped.resolver) };
+    let vtable = unsafe { resolver(manifest_entry_index) };
+    if vtable.is_null() || vtable == api.nilObj {
+        return None;
+    }
+    let matches_address =
+        unsafe { floor_symbol(api, b"birnam_id_stackless_block_vtable_matches_v1\0") }?;
+    let matches: unsafe extern "C" fn(*const u8, usize, u32, Oop) -> u32 =
+        unsafe { core::mem::transmute(matches_address) };
+    if unsafe {
+        matches(
+            mapped.authority.as_ptr(),
+            mapped.authority.len(),
+            manifest_entry_index,
+            vtable,
+        )
+    } != 1
+    {
+        return None;
+    }
+    let manifest_matches_address =
+        unsafe { floor_symbol(api, b"birnam_id_stackless_resumable_manifest_matches_v1\0") }?;
+    let manifest_matches: unsafe extern "C" fn(*const u8, usize, u64, *const u8, usize) -> u32 =
+        unsafe { core::mem::transmute(manifest_matches_address) };
+    (unsafe {
+        manifest_matches(
+            mapped.authority.as_ptr(),
+            mapped.authority.len(),
+            mapped.code_generation_identity,
+            mapped.manifest.as_ptr(),
+            mapped.manifest.len(),
+        )
+    } == 1)
+        .then_some(vtable)
 }
 
 unsafe fn materialize_image_field_with_relocations(
@@ -3185,6 +5194,9 @@ unsafe fn materialize_image_field_with_relocations(
             .and_then(|entries| entries.get(index as usize).copied())
             .filter(|value| !value.is_null())
             .ok_or(()),
+        Field::ResumableBlockVtableRef(index) => {
+            unsafe { resolve_image_block_vtable(api, index) }.ok_or(())
+        }
     }
 }
 
@@ -3194,7 +5206,7 @@ struct PendingHeapObject<'a> {
     encoded_slots: &'a [u8],
 }
 
-unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<Oop>, ()> {
+unsafe fn materialize_image_heaps(api: &IdApi, image: &Image<'_>) -> Result<Vec<Oop>, ()> {
     let mut relocations = Vec::new();
     let mut pending = Vec::new();
     let mut records = image.records();
@@ -3206,34 +5218,48 @@ unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<O
         }
         let mut heap = Heap::parse(record.payload).map_err(|_| ())?;
         while let Some(header) = heap.peek_header().map_err(|_| ())? {
-            let vtable_name = header.vtable_name;
-            let mut terminated = Vec::with_capacity(vtable_name.len() + 1);
-            terminated.extend_from_slice(vtable_name);
-            terminated.push(0);
-            let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
-            if vtable.is_null() || vtable == api.nilObj {
-                return Err(());
-            }
             let word_count = usize::try_from(header.word_count).map_err(|_| ())?;
             let payload_size = word_count.checked_mul(size_of::<usize>()).ok_or(())?;
-            let mut layout = Vec::with_capacity(word_count);
-            for word in 0..word_count {
-                let kind = match unsafe { (api.slotKind)(vtable, word) } {
-                    birnam_abi::SLOT_OOP => SlotKind::Oop,
-                    birnam_abi::SLOT_CODE => SlotKind::Code,
-                    _ => SlotKind::RawWord,
-                };
-                layout.push(kind);
-            }
+            let (vtable, layout, encoded_slots) = match header.vtable {
+                VtableLocator::Export(vtable_name) => {
+                    let mut terminated = Vec::with_capacity(vtable_name.len() + 1);
+                    terminated.extend_from_slice(vtable_name);
+                    terminated.push(0);
+                    let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
+                    if vtable.is_null() || vtable == api.nilObj {
+                        return Err(());
+                    }
+                    let mut layout = Vec::with_capacity(word_count);
+                    for word in 0..word_count {
+                        let kind = match unsafe { (api.slotKind)(vtable, word) } {
+                            birnam_abi::SLOT_OOP => SlotKind::Oop,
+                            birnam_abi::SLOT_CODE => SlotKind::Code,
+                            _ => SlotKind::RawWord,
+                        };
+                        layout.push(kind);
+                    }
+                    let encoded_slots = heap
+                        .next_object(&layout)
+                        .map_err(|_| ())?
+                        .ok_or(())?
+                        .encoded_slots;
+                    (vtable, layout, encoded_slots)
+                }
+                VtableLocator::ResumableBlockVtableRef(index) => {
+                    let vtable = unsafe { resolve_image_block_vtable(api, index) }.ok_or(())?;
+                    let layout = vec![SlotKind::Oop; word_count];
+                    let encoded_slots = heap
+                        .next_resumable_object()
+                        .map_err(|_| ())?
+                        .ok_or(())?
+                        .encoded_slots;
+                    (vtable, layout, encoded_slots)
+                }
+            };
             let object = unsafe { (api.alloc)(vtable, payload_size) };
             if object.is_null() {
                 return Err(());
             }
-            let encoded_slots = heap
-                .next_object(&layout)
-                .map_err(|_| ())?
-                .ok_or(())?
-                .encoded_slots;
             relocations.push(object);
             pending.push(PendingHeapObject {
                 object,
@@ -3271,7 +5297,7 @@ unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<O
                     cursor = end;
                 }
                 SlotKind::Code => unsafe {
-                    // Code slots are intentionally elided from v4 heap
+                    // Code slots are intentionally elided from ordinary v5 heap
                     // payloads; mapped-unit recovery fills them later. Keep
                     // the freshly allocated object deterministic and match
                     // the loader's zeroed code-slot contract.
@@ -3286,7 +5312,7 @@ unsafe fn materialize_image_heaps(api: &IdApi, image: Image<'_>) -> Result<Vec<O
     Ok(relocations)
 }
 
-/// Replay v4 facts through the Rust Store image ABI after all heap objects and
+/// Replay v5 facts through the Rust Store image ABI after all heap objects and
 /// field values have been decoded successfully. Heap allocation and swizzling
 /// happen before Store mutation so malformed relocation data cannot masquerade
 /// as successful recovery or leave a partial fact load behind.
@@ -3339,16 +5365,12 @@ unsafe fn rust_codegen_replay_image_facts_impl(
         note_error(b"RustCodegen image facts could not read the image");
         return api.nilObj;
     };
-    let Ok(image) = Image::parse(&bytes) else {
+    let Ok(image) = (unsafe { preflight_image_v5(api, &bytes) }) else {
         note_error(b"RustCodegen image facts framing is invalid");
         return api.nilObj;
     };
-    if image.validate_facts().is_err() {
-        note_error(b"RustCodegen image facts framing is invalid");
-        return api.nilObj;
-    }
     if !allow_stale_authority
-        && !unsafe { image_authority_matches_durable(api, image.authority.digest) }
+        && !unsafe { image_authority_matches_durable(api, image.authority.spelling) }
     {
         note_error(b"RustCodegen image facts authority is stale");
         return api.nilObj;
@@ -3362,7 +5384,7 @@ unsafe fn rust_codegen_replay_image_facts_impl(
         }
     }
     let _auto_gc = AutoGc(api);
-    let relocations = match unsafe { materialize_image_heaps(api, image) } {
+    let relocations = match unsafe { materialize_image_heaps(api, &image) } {
         Ok(relocations) => relocations,
         Err(_) => {
             note_error(b"RustCodegen image heap materialization failed");
@@ -3391,16 +5413,16 @@ unsafe fn rust_codegen_replay_image_facts_impl(
             note_error(b"RustCodegen image facts framing is invalid");
             return api.nilObj;
         };
-        // v4 serializes all fixed-width integers little-endian, independently
+        // v5 serializes all fixed-width integers little-endian, independently
         // of the host that is replaying the image.
-        max_basis = max_basis.max(i64::from_le_bytes(facts.basis.to_le_bytes()));
+        max_basis = max_basis.max(i64::from_le_bytes(facts.basis().to_le_bytes()));
         loop {
             let Ok(next) = facts.next_fact() else {
                 note_error(b"RustCodegen image facts framing is invalid");
                 return api.nilObj;
             };
             let Some(fact) = next else { break };
-            if fact.op > 1 {
+            if fact.operation > 1 {
                 note_error(b"RustCodegen image facts operation is invalid");
                 return api.nilObj;
             }
@@ -3422,7 +5444,7 @@ unsafe fn rust_codegen_replay_image_facts_impl(
                 note_error(b"RustCodegen image facts require materialized heap references");
                 return api.nilObj;
             };
-            pending.push((entity, attribute, value, fact.tx, fact.op));
+            pending.push((entity, attribute, value, fact.transaction, fact.operation));
         }
     }
     // Heap-only images are valid framing inputs, but they have no Store
@@ -3759,6 +5781,9 @@ unsafe fn emit_source(
     source_path: Option<&[u8]>,
     source_path_is_root: bool,
     candidate_salt: Option<u64>,
+    named_resumables: Option<Vec<NamedResumableEmission>>,
+    block_resumables: Option<Vec<BlockResumableEmission>>,
+    projected_statement_indices: Option<&[usize]>,
 ) -> Option<EmittedSource> {
     let source = unsafe { string_bytes(api, source_object) }?;
     let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
@@ -3792,10 +5817,29 @@ unsafe fn emit_source(
             u64::from_be_bytes(digest[..8].try_into().unwrap())
         })
     });
-    let mut emitter = artifact_salt
-        .map(Emitter::new_candidate_artifact)
-        .unwrap_or_else(|| Emitter::new_for_artifact(artifact));
-    if persist_top_level {
+    let mut emitter = match (artifact_salt, named_resumables, block_resumables) {
+        (Some(salt), Some(named), blocks) => Emitter::new_selected_resumable_candidate_artifact(
+            salt,
+            named,
+            blocks.unwrap_or_default(),
+        )
+        .ok()?,
+        (Some(salt), None, Some(blocks)) => {
+            Emitter::new_selected_resumable_candidate_artifact(salt, Vec::new(), blocks).ok()?
+        }
+        (Some(salt), None, None) => Emitter::new_candidate_artifact(salt),
+        (None, Some(_), _) | (None, _, Some(_)) => return None,
+        (None, None, None) => Emitter::new_for_artifact(artifact),
+    };
+    if let Some(indices) = projected_statement_indices {
+        if emitter
+            .emit_projected_candidate_program(&program, indices)
+            .is_err()
+        {
+            note_error(b"RustCodegen could not emit the projected initializer");
+            return None;
+        }
+    } else if persist_top_level {
         if emitter.emit_program_persisting(&program).is_err() {
             note_error(b"RustCodegen could not emit the source");
             return None;
@@ -3838,8 +5882,11 @@ unsafe extern "C" fn rust_codegen_emit(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let Some(output) = (unsafe { emit_source(api, values[0], false, false, None, false, None) })
-    else {
+    let Some(output) = (unsafe {
+        emit_source(
+            api, values[0], false, false, None, false, None, None, None, None,
+        )
+    }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
@@ -3958,6 +6005,14 @@ unsafe extern "C" fn rust_codegen_source_revision(
         note_error(b"RustCodegen source was not a String");
         return api.nilObj;
     };
+    unsafe { source_revision_from_metadata(api, values[0], &metadata) }
+}
+
+unsafe fn source_revision_from_metadata(
+    api: &IdApi,
+    source_object: Oop,
+    metadata: &RevisionMetadata,
+) -> Oop {
     let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
     if vector_proto.is_null() {
         note_error(b"RustCodegen Vector is unavailable");
@@ -3999,7 +6054,7 @@ unsafe extern "C" fn rust_codegen_source_revision(
         unsafe { intern(api, b"sourceRevision\0") },
         name_symbol,
         requires_vector,
-        values[0],
+        source_object,
         non_method_digest,
         method_digest,
         revision_digest,
@@ -4036,6 +6091,9 @@ unsafe extern "C" fn rust_codegen_eval(
             false,
             source_path.as_deref(),
             false,
+            None,
+            None,
+            None,
             None,
         )
     }) else {
@@ -4139,6 +6197,9 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
             source_path.as_deref(),
             false,
             None,
+            None,
+            None,
+            None,
         )
     }) else {
         note_error(b"RustCodegen could not lower the source");
@@ -4196,7 +6257,7 @@ unsafe extern "C" fn rust_codegen_compile_output(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
-    unsafe { rust_codegen_compile_output_impl(pointer, count, false, false) }
+    unsafe { rust_codegen_compile_output_impl(pointer, count, false, false, false, None) }
 }
 
 unsafe extern "C" fn rust_codegen_compile_output_root(
@@ -4204,7 +6265,87 @@ unsafe extern "C" fn rust_codegen_compile_output_root(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
-    unsafe { rust_codegen_compile_output_impl(pointer, count, true, false) }
+    unsafe { rust_codegen_compile_output_impl(pointer, count, true, false, false, None) }
+}
+
+unsafe extern "C" fn rust_codegen_compile_output_selection(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { rust_codegen_compile_output_impl(pointer, count, false, false, true, None) }
+}
+
+unsafe fn write_emitted_artifact(
+    api: &IdApi,
+    source_object: Oop,
+    output_path: Oop,
+    source: EmittedSource,
+    image_artifact: bool,
+    explicit_selection: Option<&[u8]>,
+    resumable_manifest: Option<&[u8]>,
+) -> Oop {
+    let tcc = runtime().tcc as Oop;
+    if tcc.is_null() {
+        note_error(b"RustCodegen Tcc is unavailable");
+        return api.nilObj;
+    }
+    let Some(source_bytes) = (unsafe { string_bytes(api, source_object) }) else {
+        note_error(b"RustCodegen source was not a String");
+        return api.nilObj;
+    };
+    let Some(path_bytes) = (unsafe { string_bytes(api, output_path) }) else {
+        note_error(b"RustCodegen output path was not a String");
+        return api.nilObj;
+    };
+    let (identity, requires, native_requires) = if image_artifact {
+        let native_requires = unsafe { artifact_metadata(api, source_object) }
+            .map(|(_, native_requires)| native_requires)
+            .unwrap_or_default();
+        (artifact_identity(&path_bytes), Vec::new(), native_requires)
+    } else {
+        match unsafe { artifact_metadata(api, source_object) } {
+            Some((Some((identity, requires)), native_requires)) => {
+                (identity, requires, native_requires)
+            }
+            Some((None, native_requires)) => {
+                (artifact_identity(&path_bytes), Vec::new(), native_requires)
+            }
+            None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
+        }
+    };
+    let source_digest = sha256_hex(&source_bytes);
+    let revision_digest = unsafe { parse_revision_metadata(api, source_object) }
+        .map(|(_, metadata)| metadata.revision_digest)
+        .unwrap_or(source_digest);
+    let artifact = artifact_source(
+        &source_bytes,
+        &identity,
+        &source_digest,
+        &revision_digest,
+        &requires,
+        &native_requires,
+        &source.bytes,
+        !image_artifact,
+        explicit_selection,
+        resumable_manifest,
+    );
+    let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
+    let kind = unsafe { intern(api, b"dll\0") };
+    let result = unsafe {
+        send(
+            api,
+            tcc,
+            TCC_COMPILE_OUTPUT_SELECTOR,
+            &[c_source, output_path, kind],
+        )
+    };
+    if result == api.nilObj {
+        note_error(b"RustCodegen could not write the compiled dylib");
+        api.nilObj
+    } else {
+        output_path
+    }
 }
 
 unsafe fn rust_codegen_compile_output_impl(
@@ -4212,21 +6353,41 @@ unsafe fn rust_codegen_compile_output_impl(
     count: usize,
     source_path_is_root: bool,
     image_artifact: bool,
+    selection_bearing: bool,
+    resumable_manifest: Option<&[u8]>,
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen compile:output: received invalid arguments"));
-    if values.len() != 2 && values.len() != 3 {
+    if (selection_bearing && values.len() != 3)
+        || (!selection_bearing && values.len() != 2 && values.len() != 3)
+    {
         abort("RustCodegen compile:output: expects source/output or source/output/source path");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let source_path = if values.len() == 3 {
+    // A selection-bearing candidate AOT unit is a prebuilt generation candidate,
+    // not an ordinary eager module. Route it through the same envelope,
+    // predecessor projection, initializer transaction, and activation path as
+    // CompiledUnit compilation. This keeps delivery form from creating a
+    // second authority model: callers open/map/activate the resulting path.
+    if selection_bearing {
+        let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
+            note_error(b"RustCodegen selection-bearing source is not indexable");
+            return api.nilObj;
+        };
+        let name = unsafe { intern_bytes(api, &metadata.name) };
+        let candidate_args = [values[0], name, values[1], values[2]];
+        return unsafe {
+            rust_codegen_compile_candidate_impl(candidate_args.as_ptr(), candidate_args.len(), true)
+        };
+    }
+    let source_path = if values.len() == 3 && !selection_bearing {
         unsafe { string_bytes(api, values[2]) }
     } else {
         None
     };
-    if values.len() == 3 && source_path.is_none() {
+    if values.len() == 3 && !selection_bearing && source_path.is_none() {
         note_error(b"RustCodegen source path was not a String");
         return api.nilObj;
     }
@@ -4239,69 +6400,24 @@ unsafe fn rust_codegen_compile_output_impl(
             source_path.as_deref(),
             source_path_is_root,
             None,
+            None,
+            None,
+            None,
         )
     }) else {
         note_error(b"RustCodegen could not lower the source");
         return api.nilObj;
     };
-    let tcc = runtime.tcc as Oop;
-    if tcc.is_null() {
-        note_error(b"RustCodegen Tcc is unavailable");
-        return api.nilObj;
-    }
-    let Some(source_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
-        note_error(b"RustCodegen source was not a String");
-        return api.nilObj;
-    };
-    let Some(path_bytes) = (unsafe { string_bytes(api, values[1]) }) else {
-        note_error(b"RustCodegen output path was not a String");
-        return api.nilObj;
-    };
-    let (identity, requires, native_requires) = if image_artifact {
-        let native_requires = unsafe { artifact_metadata(api, values[0]) }
-            .map(|(_, native_requires)| native_requires)
-            .unwrap_or_default();
-        (artifact_identity(&path_bytes), Vec::new(), native_requires)
-    } else {
-        match unsafe { artifact_metadata(api, values[0]) } {
-            Some((Some((identity, requires)), native_requires)) => {
-                (identity, requires, native_requires)
-            }
-            Some((None, native_requires)) => {
-                (artifact_identity(&path_bytes), Vec::new(), native_requires)
-            }
-            None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
-        }
-    };
-    let source_digest = sha256_hex(&source_bytes);
-    let revision_digest = unsafe { parse_revision_metadata(api, values[0]) }
-        .map(|(_, metadata)| metadata.revision_digest)
-        .unwrap_or(source_digest);
-    let artifact = artifact_source(
-        &source_bytes,
-        &identity,
-        &source_digest,
-        &revision_digest,
-        &requires,
-        &native_requires,
-        &source.bytes,
-        !image_artifact,
-    );
-    let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
-    let kind = unsafe { intern(api, b"dll\0") };
-    let result = unsafe {
-        send(
+    unsafe {
+        write_emitted_artifact(
             api,
-            tcc,
-            TCC_COMPILE_OUTPUT_SELECTOR,
-            &[c_source, values[1], kind],
+            values[0],
+            values[1],
+            source,
+            image_artifact,
+            None,
+            resumable_manifest,
         )
-    };
-    if result == api.nilObj {
-        note_error(b"RustCodegen could not write the compiled dylib");
-        api.nilObj
-    } else {
-        values[1]
     }
 }
 
@@ -4310,11 +6426,27 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
-    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
-        abort("RustCodegen compileCandidate:named:output: received invalid arguments")
-    });
-    if values.len() != 3 {
-        abort("RustCodegen compileCandidate:named:output: expects source, name, and output");
+    unsafe { rust_codegen_compile_candidate_impl(pointer, count, false) }
+}
+
+unsafe extern "C" fn rust_codegen_compile_candidate_selection(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { rust_codegen_compile_candidate_impl(pointer, count, true) }
+}
+
+unsafe fn rust_codegen_compile_candidate_impl(
+    pointer: *const Oop,
+    count: usize,
+    selection_bearing: bool,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen candidate compilation received invalid arguments"));
+    let expected = if selection_bearing { 4 } else { 3 };
+    if values.len() != expected {
+        abort("RustCodegen candidate compilation received the wrong argument count");
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
@@ -4344,6 +6476,17 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
         note_error(b"RustCodegen candidate output path is invalid");
         return api.nilObj;
     }
+    let requests = if selection_bearing {
+        match unsafe { parse_selection_requests(api, values[3]) } {
+            Ok(requests) => requests,
+            Err(_) => {
+                note_error(b"RustCodegen candidate selection request is invalid");
+                return api.nilObj;
+            }
+        }
+    } else {
+        Vec::new()
+    };
     let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
         note_error(b"RustCodegen candidate source is not indexable");
         return api.nilObj;
@@ -4356,13 +6499,154 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
         note_error(b"RustCodegen candidate has no method delta");
         return api.nilObj;
     }
-
-    let mut program = Vec::new();
-    for operation in &metadata.operations {
-        program.extend_from_slice(&operation.source);
-        program.extend_from_slice(b";\n");
+    let predecessor = unsafe { durable_current_generation(api) };
+    if predecessor.is_null()
+        || predecessor == api.nilObj
+        || !unsafe { durable_generation_is_canonical(api, predecessor) }
+    {
+        note_error(b"RustCodegen candidate predecessor generation is unavailable");
+        return api.nilObj;
     }
-    let program_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
+    let Some(expected_predecessor_digest) =
+        (unsafe { durable_generation_base_digest(api, predecessor) })
+    else {
+        note_error(b"RustCodegen candidate predecessor digest is unavailable");
+        return api.nilObj;
+    };
+    let Some(selection) = artifact_selection_with_requests(&metadata, &requests) else {
+        note_error(b"RustCodegen candidate selection does not match its implementation inventory");
+        return api.nilObj;
+    };
+    let source_map = unsafe {
+        send(
+            api,
+            runtime.store as Oop,
+            CURRENT_VALUE_SELECTOR,
+            &[predecessor, intern(api, b"sourceMap\0")],
+        )
+    };
+    let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
+        note_error(b"RustCodegen candidate predecessor source map is invalid");
+        return api.nilObj;
+    };
+    let Some(predecessor_selection) = (unsafe { durable_generation_selection(api, predecessor) })
+    else {
+        note_error(b"RustCodegen candidate predecessor selection is unavailable");
+        return api.nilObj;
+    };
+    let Some(revision) = decode_hex_digest(&metadata.revision_digest) else {
+        note_error(b"RustCodegen candidate revision digest is invalid");
+        return api.nilObj;
+    };
+    let Some(projected) = project_candidate_generation(
+        modules,
+        GenerationModuleProjection {
+            name: metadata.name.clone(),
+            revision,
+            source: source_bytes.clone(),
+            metadata: metadata.clone(),
+        },
+        &predecessor_selection,
+        &selection,
+    ) else {
+        note_error(b"RustCodegen candidate successor generation cannot be projected");
+        return api.nilObj;
+    };
+    let has_resumables = requests
+        .iter()
+        .any(|request| request.disposition == SelectionDisposition::ResumableRequired);
+    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
+    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+        note_error(b"RustCodegen candidate source could not be parsed");
+        return api.nilObj;
+    }
+    let Some(tree) = (unsafe { cst_tree(api, cst, 0) }) else {
+        note_error(b"RustCodegen candidate CST is invalid");
+        return api.nilObj;
+    };
+    let Some(tree) = rewrite_embedded(tree, &source_bytes, b".") else {
+        note_error(b"RustCodegen candidate embedded source is unavailable");
+        return api.nilObj;
+    };
+    let Ok(normalized) = lower_program(&tree, &source_bytes) else {
+        note_error(b"RustCodegen candidate source could not be lowered");
+        return api.nilObj;
+    };
+    let projected_bindings = birnam_codegen::resumable::projected_block_bindings(&normalized);
+    for request in requests.iter().filter(|request| {
+        request.disposition == SelectionDisposition::ResumableRequired
+            && request.root_kind == RootKind::NonMethodProgram
+            && request.implementation_kind == SelectionImplementationKind::BlockBody
+    }) {
+        let Some(binding) = projected_bindings.iter().find(|binding| {
+            binding.key.root_index == request.root_index && binding.key.path == request.path
+        }) else {
+            note_error(
+                b"RustCodegen selected nonmethod closure is not a projected top-level binding",
+            );
+            return api.nilObj;
+        };
+        if !binding.captures.is_empty() {
+            note_error(b"RustCodegen projected top-level closure has lexical captures");
+            return api.nilObj;
+        }
+    }
+    let mut projected_statements = projected_bindings
+        .iter()
+        .filter(|binding| binding.captures.is_empty())
+        .map(|binding| binding.statement_index)
+        .collect::<Vec<_>>();
+    projected_statements.sort_unstable();
+    projected_statements.dedup();
+    let (resumable_manifest, named_resumables, block_resumables) = if has_resumables {
+        let plan = match compile_resumable_plan(
+            &metadata,
+            &requests,
+            &selection,
+            projected.authority,
+            &path_bytes,
+            &source_bytes,
+            &normalized,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let message =
+                    format!("RustCodegen selected resumable candidate lowering failed: {error:?}");
+                note_error(message.as_bytes());
+                return api.nilObj;
+            }
+        };
+        (
+            plan.manifest,
+            Some(plan.named_emissions),
+            Some(plan.block_emissions),
+        )
+    } else {
+        let Ok(selection_view) = inspect_artifact_selection(&selection) else {
+            note_error(b"RustCodegen candidate selection is invalid");
+            return api.nilObj;
+        };
+        let Ok(manifest) =
+            resumable_manifest::materialize(projected.authority, selection_view, &[])
+        else {
+            note_error(b"RustCodegen candidate resumable manifest cannot be materialized");
+            return api.nilObj;
+        };
+        (manifest, None, None)
+    };
+
+    let program_object = if projected_statements.is_empty() {
+        let mut program = Vec::new();
+        for operation in &metadata.operations {
+            program.extend_from_slice(&operation.source);
+            program.extend_from_slice(b";\n");
+        }
+        unsafe { (api.mkString)(program.as_ptr(), program.len()) }
+    } else {
+        values[0]
+    };
     let source_digest = sha256_hex(&source_bytes);
     let artifact_salt = u64::from_be_bytes(source_digest[..8].try_into().unwrap());
     let Some(generated) = (unsafe {
@@ -4374,6 +6658,9 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
             None,
             false,
             Some(artifact_salt),
+            named_resumables,
+            block_resumables,
+            (!projected_statements.is_empty()).then_some(projected_statements.as_slice()),
         )
     }) else {
         note_error(b"RustCodegen candidate source could not be emitted");
@@ -4382,7 +6669,8 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
     let native_requires = unsafe { artifact_metadata(api, values[0]) }
         .map(|(_, native_requires)| native_requires)
         .unwrap_or_default();
-    let manifest = candidate_manifest(&metadata, &source_digest);
+    let selection_digest = sha256_hex(&selection);
+    let manifest = candidate_manifest(&metadata, &source_digest, &selection_digest);
     let rust_owned_shims = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } == 0;
     let candidate_generated = candidate_generated(
         &generated.bytes,
@@ -4399,6 +6687,8 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
         &native_requires,
         &candidate_generated,
         true,
+        Some(&selection),
+        Some(&resumable_manifest),
     );
     let tcc = runtime.tcc as Oop;
     if tcc.is_null() || tcc == api.nilObj {
@@ -4436,8 +6726,14 @@ unsafe extern "C" fn rust_codegen_compile_candidate(
     sidecar.extend_from_slice(CANDIDATE_ABI.to_string().as_bytes());
     sidecar.extend_from_slice(b"\nplatform=");
     sidecar.extend_from_slice(CANDIDATE_PLATFORM);
+    sidecar.extend_from_slice(b"\npredecessor=");
+    sidecar.extend_from_slice(&expected_predecessor_digest);
     sidecar.extend_from_slice(b"\nmanifest=");
     sidecar.extend_from_slice(&manifest);
+    sidecar.extend_from_slice(b"\nselection=");
+    sidecar.extend_from_slice(selection.len().to_string().as_bytes());
+    sidecar.push(b'\n');
+    sidecar.extend_from_slice(&selection);
     sidecar.extend_from_slice(b"\nsource=");
     sidecar.extend_from_slice(source_bytes.len().to_string().as_bytes());
     sidecar.push(b'\n');
@@ -4716,10 +7012,22 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         note_error(b"RustCodegen candidate manifest is invalid");
         return api.nilObj;
     };
-    if !candidate_manifest_matches(manifest, &source, &metadata) {
+    if !candidate_manifest_matches(manifest, &source, &metadata, envelope.artifact_selection) {
         note_error(b"RustCodegen candidate metadata mismatches source");
         return api.nilObj;
     }
+    let artifact_selection = match manifest.version {
+        CandidateManifestVersion::V2 => envelope.artifact_selection.to_vec(),
+        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+            envelope.artifact_selection.to_vec()
+        }
+    };
+    let Ok(expected_predecessor_digest) =
+        <[u8; 64]>::try_from(envelope.expected_predecessor_digest)
+    else {
+        note_error(b"RustCodegen candidate predecessor digest is invalid");
+        return api.nilObj;
+    };
     let operations = (0..manifest.operation_count())
         .filter_map(|index| manifest.operation(index))
         .map(|operation| CandidateOperationState {
@@ -4767,7 +7075,18 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
     };
     let source_hash = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
     let checksum_object = unsafe { (api.mkString)(checksum.as_ptr(), checksum.len()) };
+    let expected_predecessor_object = unsafe {
+        (api.mkString)(
+            expected_predecessor_digest.as_ptr(),
+            expected_predecessor_digest.len(),
+        )
+    };
     let requires = unsafe { candidate_manifest_vector(api, &metadata) };
+    let source_revision = unsafe { source_revision_from_metadata(api, source_object, &metadata) };
+    if source_revision.is_null() || source_revision == api.nilObj {
+        note_error(b"RustCodegen candidate source revision is unavailable");
+        return api.nilObj;
+    }
     let facts = [
         (b"unitName\0".as_slice(), name),
         (b"kind\0".as_slice(), unsafe {
@@ -4775,17 +7094,24 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         }),
         (b"sourceHash\0".as_slice(), source_hash),
         (b"authoredSource\0".as_slice(), source_object),
+        (b"sourceRevision\0".as_slice(), source_revision),
         (b"nonMethodDigest\0".as_slice(), non_method),
         (b"methodDigest\0".as_slice(), method),
         (b"revisionDigest\0".as_slice(), revision),
         (b"artifactChecksum\0".as_slice(), checksum_object),
+        (
+            b"expectedBaseDigest\0".as_slice(),
+            expected_predecessor_object,
+        ),
         (b"platform\0".as_slice(), unsafe {
             intern(api, b"aarch64-macos\0")
         }),
         (b"runtimeAbi\0".as_slice(), unsafe {
             intern_bytes(api, ARTIFACT_ABI)
         }),
-        (b"candidateAbi\0".as_slice(), unsafe { (api.mkSmallInt)(3) }),
+        (b"candidateAbi\0".as_slice(), unsafe {
+            (api.mkSmallInt)(i64::from(CANDIDATE_ABI))
+        }),
         (b"requires\0".as_slice(), requires),
         (b"mapped\0".as_slice(), api.falseObj),
     ];
@@ -4807,8 +7133,14 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             method_digest: metadata.method_digest,
             revision_digest: metadata.revision_digest,
             manifest: envelope.manifest.to_vec(),
+            artifact_selection,
+            resumable_manifest: Vec::new(),
+            expected_predecessor_digest,
+            projected_authority: None,
+            projected_selection: Vec::new(),
             requires: metadata.requires.clone(),
             operations,
+            initializer_writes: Vec::new(),
             handle: 0,
             validate: 0,
             prepare: 0,
@@ -4833,6 +7165,126 @@ unsafe fn map_candidate_failure(api: &IdApi, handle: *mut c_void, message: &[u8]
     }
     note_error(message);
     api.nilObj
+}
+
+type BeginResumableUnitV1 = unsafe extern "C" fn(*const u8, usize, *const u8, u64, u64) -> u32;
+type CloseResumableUnitV1 = unsafe extern "C" fn() -> u32;
+type BeginArtifactContextV1 = unsafe extern "C" fn(u64, u64) -> u32;
+type EndArtifactContextV1 = unsafe extern "C" fn() -> u32;
+
+struct ActiveResumableStageV1 {
+    finish: CloseResumableUnitV1,
+    cancel: CloseResumableUnitV1,
+    artifact_end: Option<EndArtifactContextV1>,
+}
+
+impl ActiveResumableStageV1 {
+    unsafe fn close(self, accept: bool) -> bool {
+        let context_ok = self
+            .artifact_end
+            .is_none_or(|artifact_end| unsafe { artifact_end() } == 0);
+        let close = if accept && context_ok {
+            self.finish
+        } else {
+            self.cancel
+        };
+        (unsafe { close() }) == 0 && accept && context_ok
+    }
+}
+
+unsafe fn begin_resumable_stage_v1(
+    api: &IdApi,
+    handle: *mut c_void,
+    manifest: &[u8],
+    authority: [u8; 32],
+) -> Result<ActiveResumableStageV1, &'static [u8]> {
+    let admitted = resumable_manifest::inspect(manifest, authority)
+        .map_err(|_| b"RustCodegen resumable manifest is invalid".as_slice())?;
+    let begin_address = unsafe { floor_symbol(api, b"birnam_id_begin_resumable_unit_v1\0") }
+        .ok_or(b"RustCodegen resumable staging begin seam is unavailable".as_slice())?;
+    let finish_address = unsafe { floor_symbol(api, b"birnam_id_finish_resumable_unit_v1\0") }
+        .ok_or(b"RustCodegen resumable staging finish seam is unavailable".as_slice())?;
+    let cancel_address = unsafe { floor_symbol(api, b"birnam_id_cancel_resumable_unit_v1\0") }
+        .ok_or(b"RustCodegen resumable staging cancel seam is unavailable".as_slice())?;
+    let code_generation_identity = handle as usize as u64;
+    let code_generation_lease = issue_code_generation_lease()
+        .ok_or(b"RustCodegen code-generation lease space is exhausted".as_slice())?;
+    if code_generation_identity == 0 {
+        return Err(b"RustCodegen code-generation identity is invalid");
+    }
+    let begin: BeginResumableUnitV1 = unsafe { core::mem::transmute(begin_address) };
+    let finish: CloseResumableUnitV1 = unsafe { core::mem::transmute(finish_address) };
+    let cancel: CloseResumableUnitV1 = unsafe { core::mem::transmute(cancel_address) };
+    if unsafe {
+        begin(
+            manifest.as_ptr(),
+            manifest.len(),
+            authority.as_ptr(),
+            code_generation_identity,
+            code_generation_lease,
+        )
+    } != 0
+    {
+        return Err(b"RustCodegen resumable staged unit was rejected");
+    }
+    let artifact_end = if admitted.entry_count() == 0 {
+        None
+    } else {
+        let begin_context_symbol =
+            unsafe { (api.dlsym)(handle, c"__birnam_resumable_context_begin_v1".as_ptr()) };
+        let end_context_symbol =
+            unsafe { (api.dlsym)(handle, c"__birnam_resumable_context_end_v1".as_ptr()) };
+        if begin_context_symbol.is_null() || end_context_symbol.is_null() {
+            if unsafe { cancel() } != 0 {
+                abort("resumable staged unit compensation failed");
+            }
+            return Err(b"RustCodegen artifact resumable context exports are unavailable");
+        }
+        let begin_context: BeginArtifactContextV1 =
+            unsafe { core::mem::transmute(begin_context_symbol) };
+        let end_context: EndArtifactContextV1 = unsafe { core::mem::transmute(end_context_symbol) };
+        if unsafe { begin_context(code_generation_identity, code_generation_lease) } != 0 {
+            if unsafe { cancel() } != 0 {
+                abort("resumable staged unit compensation failed");
+            }
+            return Err(b"RustCodegen artifact resumable context begin was rejected");
+        }
+        Some(end_context)
+    };
+    Ok(ActiveResumableStageV1 {
+        finish,
+        cancel,
+        artifact_end,
+    })
+}
+
+fn issue_code_generation_lease() -> Option<u64> {
+    NEXT_CODE_GENERATION_LEASE
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current.checked_add(1)
+        })
+        .ok()
+        .filter(|lease| *lease != 0)
+}
+
+fn issue_prepared_token(api: &IdApi) -> Option<(usize, Oop)> {
+    let value = NEXT_PREPARED_TOKEN
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current
+                .checked_add(1)
+                .filter(|next| *next <= i64::MAX as u64)
+        })
+        .ok()
+        .filter(|value| *value != 0)?;
+    let token = unsafe { (api.mkSmallInt)(value as i64) };
+    Some((usize::try_from(value).ok()?, token))
+}
+
+unsafe fn prepared_token_value(api: &IdApi, token: Oop) -> Option<usize> {
+    if unsafe { (api.isSmallInt)(token) } == 0 {
+        return None;
+    }
+    usize::try_from(unsafe { (api.smallIntValue)(token) }).ok()
 }
 
 unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: Oop) -> bool {
@@ -5117,7 +7569,16 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     clear_error();
     unsafe { ensure_store_callbacks(api, runtime) };
 
-    let (author_path, checksum, manifest, requires, existing_handle) = {
+    let (
+        author_path,
+        checksum,
+        manifest,
+        artifact_selection,
+        candidate_source,
+        expected_predecessor_digest,
+        requires,
+        existing_handle,
+    ) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -5133,6 +7594,9 @@ unsafe extern "C" fn rust_codegen_map_candidate(
             candidate.author_path.clone(),
             candidate.checksum,
             candidate.manifest.clone(),
+            candidate.artifact_selection.clone(),
+            candidate.source as Oop,
+            candidate.expected_predecessor_digest,
             candidate.requires.clone(),
             candidate.handle,
         )
@@ -5188,6 +7652,137 @@ unsafe extern "C" fn rust_codegen_map_candidate(
             map_candidate_failure(api, handle, b"RustCodegen candidate manifest mismatches")
         };
     }
+    let Ok(parsed_manifest) = inspect_manifest(&manifest) else {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate manifest is invalid")
+        };
+    };
+    match parsed_manifest.version {
+        CandidateManifestVersion::V2 => {
+            if !candidate_selection_matches(parsed_manifest, &artifact_selection, &[]) {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen candidate selection mismatches",
+                    )
+                };
+            }
+        }
+        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+            let selection_symbol =
+                unsafe { (api.dlsym)(handle, c"__birnam_artifact_selection_v1".as_ptr()) };
+            let selection_size_symbol =
+                unsafe { (api.dlsym)(handle, c"__birnam_artifact_selection_v1_size".as_ptr()) };
+            if selection_symbol.is_null() || selection_size_symbol.is_null() {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen candidate selection is unavailable",
+                    )
+                };
+            }
+            let selection_size =
+                unsafe { ptr::read_unaligned(selection_size_symbol.cast::<u64>()) };
+            let Ok(selection_size) = usize::try_from(selection_size) else {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen candidate selection is invalid",
+                    )
+                };
+            };
+            if selection_size > MAX_CANONICAL_VALUE_BYTES
+                || selection_size != artifact_selection.len()
+            {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen candidate selection mismatches",
+                    )
+                };
+            }
+            let exported_selection = unsafe {
+                core::slice::from_raw_parts(selection_symbol.cast::<u8>(), selection_size)
+            };
+            if !candidate_selection_matches(
+                parsed_manifest,
+                &artifact_selection,
+                exported_selection,
+            ) {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen candidate selection mismatches",
+                    )
+                };
+            }
+        }
+    }
+    let predecessor = unsafe { durable_current_generation(api) };
+    let Some(projected) = (unsafe {
+        project_open_candidate_generation(
+            api,
+            predecessor,
+            &expected_predecessor_digest,
+            candidate_source,
+            &artifact_selection,
+        )
+    }) else {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate predecessor is stale")
+        };
+    };
+    let resumable_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1".as_ptr()) };
+    let resumable_size_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1_size".as_ptr()) };
+    if resumable_symbol.is_null() || resumable_size_symbol.is_null() {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen candidate resumable manifest is unavailable",
+            )
+        };
+    }
+    let resumable_size = unsafe { ptr::read_unaligned(resumable_size_symbol.cast::<u64>()) };
+    let Ok(resumable_size) = usize::try_from(resumable_size) else {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen candidate resumable manifest is invalid",
+            )
+        };
+    };
+    if resumable_size > resumable_manifest::MAX_MANIFEST_BYTES {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen candidate resumable manifest is invalid",
+            )
+        };
+    }
+    let resumable_bytes =
+        unsafe { core::slice::from_raw_parts(resumable_symbol.cast::<u8>(), resumable_size) };
+    if resumable_manifest::inspect(resumable_bytes, projected.authority).is_err() {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen candidate resumable authority mismatches",
+            )
+        };
+    }
+    let resumable_bytes = resumable_bytes.to_vec();
+    let projected_authority = projected.authority;
+    let projected_selection = projected.selection;
     let validate_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_validate".as_ptr()) };
     let prepare_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_prepare".as_ptr()) };
     let activate_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_activate".as_ptr()) };
@@ -5204,22 +7799,6 @@ unsafe extern "C" fn rust_codegen_map_candidate(
         };
     }
 
-    // SAFETY: the generated candidate ABI exports these exact function
-    // signatures, and all calls occur while the dlopen handle is retained.
-    let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
-    let validate: Method = unsafe { core::mem::transmute(validate_symbol) };
-    unsafe { init() };
-    if unsafe { validate(api.nilObj, ptr::null(), 0) } != api.trueObj {
-        return unsafe {
-            map_candidate_failure(api, handle, b"RustCodegen candidate validation failed")
-        };
-    }
-
-    let Ok(parsed_manifest) = inspect_manifest(&manifest) else {
-        return unsafe {
-            map_candidate_failure(api, handle, b"RustCodegen candidate manifest is invalid")
-        };
-    };
     for index in 0..parsed_manifest.operation_count() {
         let Some(operation) = parsed_manifest.operation(index) else {
             return unsafe {
@@ -5239,6 +7818,19 @@ unsafe extern "C" fn rust_codegen_map_candidate(
                 map_candidate_failure(api, handle, b"RustCodegen candidate validation failed")
             };
         }
+    }
+
+    // SAFETY: the generated candidate ABI exports these exact function
+    // signatures, and all calls occur while the dlopen handle is retained.
+    // All immutable manifest and selection admission above completes before
+    // this first execution of candidate-owned code.
+    let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
+    let validate: Method = unsafe { core::mem::transmute(validate_symbol) };
+    unsafe { init() };
+    if unsafe { validate(api.nilObj, ptr::null(), 0) } != api.trueObj {
+        return unsafe {
+            map_candidate_failure(api, handle, b"RustCodegen candidate validation failed")
+        };
     }
 
     let mapped =
@@ -5267,6 +7859,9 @@ unsafe extern "C" fn rust_codegen_map_candidate(
         };
     };
     candidate.handle = handle as usize;
+    candidate.resumable_manifest = resumable_bytes;
+    candidate.projected_authority = Some(projected_authority);
+    candidate.projected_selection = projected_selection;
     candidate.validate = validate_symbol as usize;
     candidate.prepare = prepare_symbol as usize;
     candidate.activate = activate_symbol as usize;
@@ -5397,14 +7992,6 @@ unsafe fn parse_publication_plan(
             prior as usize
         },
         PublicationPlanState {
-            unit: unit as usize,
-            name: name as usize,
-            prior: if prior == api.nilObj {
-                0
-            } else {
-                prior as usize
-            },
-            rollback: action == b"rollback\0",
             event: event as usize,
             basis: basis as usize,
             expected_generation: expected_generation as usize,
@@ -5417,30 +8004,13 @@ unsafe fn parse_publication_plan(
 unsafe fn publication_plan_is_current(api: &IdApi, plan: PublicationPlanState) -> bool {
     let durable = unsafe { durable_current_generation(api) };
     if durable != api.nilObj {
-        let prior = if plan.prior == 0 {
-            api.nilObj
-        } else {
-            plan.prior as Oop
-        };
-        let action = if plan.rollback {
-            b"rollback\0".as_slice()
-        } else {
-            b"activate\0".as_slice()
-        };
-        return durable == plan.expected_generation as Oop
-            && unsafe { durable_generation_is_canonical(api, plan.expected_generation as Oop) }
-            && unsafe { durable_generation_is_canonical(api, plan.successor_generation as Oop) }
-            && unsafe {
-                durable_generation_plan_is_valid(
-                    api,
-                    plan.unit as Oop,
-                    plan.name as Oop,
-                    prior,
-                    plan.expected_generation as Oop,
-                    plan.successor_generation as Oop,
-                    action,
-                )
-            };
+        let store = runtime().store as Oop;
+        let basis = unsafe { send0(api, store, b"basis\0") };
+        let planned_basis = plan.basis as Oop;
+        let basis_matches = unsafe { (api.isSmallInt)(basis) } != 0
+            && unsafe { (api.isSmallInt)(planned_basis) } != 0
+            && unsafe { (api.smallIntValue)(basis) == (api.smallIntValue)(planned_basis) };
+        return durable == plan.expected_generation as Oop && basis_matches;
     }
     let current = ACTIVE_GENERATION.load(Ordering::Acquire);
     current == 0 || current == plan.expected_generation
@@ -5578,18 +8148,10 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
         note_error(b"RustCodegen candidate preparation failed");
         return api.nilObj;
     }
-    let token = {
-        let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
-        if vector.is_null() || vector == api.nilObj {
-            api.nilObj
-        } else {
-            unsafe { send0(api, vector, NEW_SELECTOR) }
-        }
-    };
-    if token.is_null() || token == api.nilObj {
+    let Some((token_value, token)) = issue_prepared_token(api) else {
         note_error(b"RustCodegen prepared token allocation failed");
         return api.nilObj;
-    }
+    };
     let Ok(mut prepared_states) = PREPARED.lock() else {
         note_error(b"RustCodegen prepared registry is unavailable");
         return api.nilObj;
@@ -5599,10 +8161,10 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             .iter_mut()
             .find(|candidate| candidate.unit == values[0] as usize)
     {
-        candidate.prepared = token as usize;
+        candidate.prepared = token_value;
         candidate.operations = operations;
         prepared_states.push(PreparedState {
-            token: token as usize,
+            token: token_value,
             unit: values[0] as usize,
             rollback: false,
             prior,
@@ -5627,7 +8189,10 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let token = values[0] as usize;
+    let Some(token) = (unsafe { prepared_token_value(api, values[0]) }) else {
+        note_error(b"RustCodegen prepared token is invalid");
+        return api.nilObj;
+    };
     let (unit, prior, plan) = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
@@ -5672,7 +8237,14 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         note_error(b"RustCodegen publication commit is stale");
         return api.nilObj;
     }
-    let activate = {
+    let (
+        activate,
+        handle,
+        resumable_manifest_bytes,
+        candidate_source,
+        artifact_selection,
+        expected_predecessor_digest,
+    ) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -5685,14 +8257,96 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             note_error(b"RustCodegen prepared token is invalid");
             return api.nilObj;
         }
-        candidate.activate
+        (
+            candidate.activate,
+            candidate.handle as *mut c_void,
+            candidate.resumable_manifest.clone(),
+            candidate.source as Oop,
+            candidate.artifact_selection.clone(),
+            candidate.expected_predecessor_digest,
+        )
+    };
+    if handle.is_null() || resumable_manifest_bytes.is_empty() {
+        note_error(b"RustCodegen candidate resumable staging is unavailable");
+        return api.nilObj;
+    }
+    let authority = if plan.enforce_lifecycle {
+        let digest = unsafe {
+            send(
+                api,
+                runtime.store as Oop,
+                CURRENT_VALUE_SELECTOR,
+                &[
+                    plan.successor_generation as Oop,
+                    intern(api, b"baseDigest\0"),
+                ],
+            )
+        };
+        let Some(digest) = (unsafe { string_bytes(api, digest) }) else {
+            note_error(b"RustCodegen successor generation authority is unavailable");
+            return api.nilObj;
+        };
+        let Ok(digest) = <[u8; 64]>::try_from(digest.as_slice()) else {
+            note_error(b"RustCodegen successor generation authority is invalid");
+            return api.nilObj;
+        };
+        let Some(authority) = decode_hex_digest(&digest) else {
+            note_error(b"RustCodegen successor generation authority is invalid");
+            return api.nilObj;
+        };
+        authority
+    } else {
+        let predecessor = unsafe { durable_current_generation(api) };
+        let Some(projected) = (unsafe {
+            project_open_candidate_generation(
+                api,
+                predecessor,
+                &expected_predecessor_digest,
+                candidate_source,
+                &artifact_selection,
+            )
+        }) else {
+            note_error(b"RustCodegen candidate predecessor is stale");
+            return api.nilObj;
+        };
+        projected.authority
+    };
+    let stage = match unsafe {
+        begin_resumable_stage_v1(api, handle, &resumable_manifest_bytes, authority)
+    } {
+        Ok(stage) => stage,
+        Err(message) => {
+            note_error(message);
+            return api.nilObj;
+        }
     };
     // SAFETY: the hook is retained by the mapped candidate handle.
     let activate: Method = unsafe { core::mem::transmute(activate) };
+    if !begin_initializer_transaction(unit) {
+        let _ = unsafe { stage.close(false) };
+        note_error(b"RustCodegen initializer transaction is unavailable");
+        return api.nilObj;
+    }
     MOP_MUTATION_IN_PROGRESS.store(true, Ordering::Release);
     let result = unsafe { activate(api.nilObj, ptr::null(), 0) };
     MOP_MUTATION_IN_PROGRESS.store(false, Ordering::Release);
-    if result == api.nilObj {
+    let Some(initializer_writes) = take_initializer_transaction(unit) else {
+        let _ = unsafe { stage.close(false) };
+        abort("candidate initializer transaction disappeared");
+    };
+    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let accepted = result != api.nilObj
+        && (error_vt.is_null()
+            || error_vt == api.nilObj
+            || unsafe { (api.vtableOf)(result) } != error_vt);
+    if !accepted && !unsafe { restore_initializer_writes(api, &initializer_writes) } {
+        let _ = unsafe { stage.close(false) };
+        abort("candidate initializer compensation failed");
+    }
+    if !unsafe { stage.close(accepted) } {
+        if accepted && !unsafe { restore_initializer_writes(api, &initializer_writes) } {
+            abort("candidate initializer compensation failed after registration rejection");
+        }
         note_error(b"RustCodegen candidate activation failed");
         return api.nilObj;
     }
@@ -5800,6 +8454,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             candidates[index].active = true;
             candidates[index].prepared = 0;
             candidates[index].operations = operations;
+            candidates[index].initializer_writes = initializer_writes;
             candidates[index].installed_method_ever |= installed_method;
             candidates[index].predecessor = prior;
             if prior != 0
@@ -5842,6 +8497,15 @@ unsafe fn candidate_operations_match_post(
     true
 }
 
+unsafe fn candidate_initializer_writes_match_post(
+    api: &IdApi,
+    writes: &[CandidateGlobalMutation],
+) -> bool {
+    writes
+        .iter()
+        .all(|write| (unsafe { current_global_raw(api, write.key as Oop) }) as usize == write.post)
+}
+
 /// Return the effective operation ledger for a generation root. Newer
 /// generations shadow the same target/selector pair in their predecessors;
 /// untouched predecessor operations remain rollback obligations of the root.
@@ -5863,6 +8527,32 @@ fn effective_candidate_operations(unit: usize) -> Vec<CandidateOperationState> {
                 continue;
             }
             result.push(operation.clone());
+        }
+        cursor = candidate.predecessor;
+    }
+    result
+}
+
+/// Return the active projected-global ledger with the same successor-shadowing
+/// rule as dispatch operations.
+fn effective_candidate_initializer_writes(unit: usize) -> Vec<CandidateGlobalMutation> {
+    let Ok(candidates) = CANDIDATES.lock() else {
+        return Vec::new();
+    };
+    let mut result = Vec::new();
+    let mut cursor = unit;
+    while cursor != 0 {
+        let Some(candidate) = candidates.iter().find(|candidate| candidate.unit == cursor) else {
+            break;
+        };
+        for write in &candidate.initializer_writes {
+            if result
+                .iter()
+                .any(|existing: &CandidateGlobalMutation| existing.name == write.name)
+            {
+                continue;
+            }
+            result.push(write.clone());
         }
         cursor = candidate.predecessor;
     }
@@ -5900,7 +8590,10 @@ unsafe extern "C" fn rust_codegen_reconcile_candidate(
         return values[0];
     }
     let operations = effective_candidate_operations(values[0] as usize);
-    if unsafe { candidate_operations_match_post(api, runtime, &operations) } {
+    let initializer_writes = effective_candidate_initializer_writes(values[0] as usize);
+    if unsafe { candidate_operations_match_post(api, runtime, &operations) }
+        && unsafe { candidate_initializer_writes_match_post(api, &initializer_writes) }
+    {
         return values[0];
     }
     let drifted = unsafe { intern(api, b"drifted\0") };
@@ -5949,6 +8642,150 @@ unsafe extern "C" fn rust_codegen_reconcile_all_candidates(
     api.trueObj
 }
 
+/// Adopt the reflected composed generation created by the pure-Birnam image
+/// lifecycle policy and rebuild its process-local binding ledgers from the
+/// dispatch dictionary that image recovery just established.
+///
+/// Every source-map row must name a distinct `#composed` CompiledUnit. Those
+/// units are mechanism roots only: their durable facts own lifecycle policy,
+/// while this cache records the exact target/vtable/direct-method state needed
+/// for later drift checks and candidates staged over the recovered image.
+unsafe extern "C" fn rust_codegen_adopt_composed_generation(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen adoptComposedGeneration: received invalid arguments")
+    });
+    if values.len() != 1 {
+        abort("RustCodegen adoptComposedGeneration: expects one generation");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen composed generation adoption requires image recovery");
+        return api.nilObj;
+    }
+    let generation = values[0];
+    if generation.is_null()
+        || generation == api.nilObj
+        || unsafe { durable_current_generation(api) } != generation
+        || !unsafe { durable_generation_is_canonical(api, generation) }
+    {
+        note_error(b"RustCodegen composed generation is not the durable current generation");
+        return api.nilObj;
+    }
+    let store = runtime.store as Oop;
+    let source_map = unsafe {
+        send(
+            api,
+            store,
+            CURRENT_VALUE_SELECTOR,
+            &[generation, intern(api, b"sourceMap\0")],
+        )
+    };
+    let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
+        note_error(b"RustCodegen composed generation source map is malformed");
+        return api.nilObj;
+    };
+    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let Some(entry_count) = (unsafe { vector_length(api, source_map, vector_vt) }) else {
+        note_error(b"RustCodegen composed generation source map is malformed");
+        return api.nilObj;
+    };
+    if entry_count != modules.len() {
+        note_error(b"RustCodegen composed generation source map disagrees with its modules");
+        return api.nilObj;
+    }
+    let Some(expected_digest) = (unsafe { durable_generation_base_digest(api, generation) }) else {
+        note_error(b"RustCodegen composed generation digest is unavailable");
+        return api.nilObj;
+    };
+    let mut units = BTreeSet::new();
+    let mut composed = Vec::with_capacity(entry_count);
+    for (index, module) in modules.into_iter().enumerate() {
+        let entry = unsafe { vector_item(api, source_map, index) };
+        let unit = unsafe { vector_item(api, entry, 2) };
+        if unit.is_null() || unit == api.nilObj || !units.insert(unit as usize) {
+            note_error(b"RustCodegen composed generation units are missing or duplicated");
+            return api.nilObj;
+        }
+        let name = unsafe { vector_item(api, entry, 0) };
+        let source = unsafe { vector_item(api, vector_item(api, entry, 1), 3) };
+        let mut operations = Vec::with_capacity(module.metadata.operations.len());
+        for operation in &module.metadata.operations {
+            let target = unsafe { global_by_name(api, runtime, &operation.target) };
+            if target.is_null() || target == api.nilObj {
+                // The portable stream also contains bootstrap/private targets
+                // that are not eligible for candidate management. They remain
+                // reproducible code, but are outside the transient lifecycle
+                // ledger by the same stable-owned-target rule used at staging.
+                continue;
+            }
+            let vtable = unsafe { (api.vtableOf)(target) };
+            if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
+                continue;
+            }
+            let selector = unsafe { intern_bytes(api, &operation.selector) };
+            let method =
+                unsafe { send(api, store, STORE_RAW_CURRENT_SELECTOR, &[vtable, selector]) };
+            let present = !method.is_null();
+            operations.push(CandidateOperationState {
+                target_name: operation.target.clone(),
+                selector: operation.selector.clone(),
+                install: operation.install,
+                target: target as usize,
+                vtable: vtable as usize,
+                prior_method: method as usize,
+                prior_present: present,
+                post_method: method as usize,
+                post_present: present,
+            });
+        }
+        composed.push(CandidateState {
+            unit: unit as usize,
+            name: name as usize,
+            source: source as usize,
+            author_path: Vec::new(),
+            checksum: [0; 64],
+            source_digest: sha256_hex(&module.source),
+            non_method_digest: module.metadata.non_method_digest,
+            method_digest: module.metadata.method_digest,
+            revision_digest: module.metadata.revision_digest,
+            manifest: Vec::new(),
+            artifact_selection: Vec::new(),
+            resumable_manifest: Vec::new(),
+            expected_predecessor_digest: expected_digest,
+            projected_authority: None,
+            projected_selection: Vec::new(),
+            requires: module.metadata.requires,
+            operations,
+            initializer_writes: Vec::new(),
+            handle: 0,
+            validate: 0,
+            prepare: 0,
+            activate: 0,
+            rollback: 0,
+            prepared: 0,
+            active: true,
+            installed_method_ever: false,
+            predecessor: 0,
+        });
+    }
+    let Ok(mut candidates) = CANDIDATES.lock() else {
+        note_error(b"RustCodegen candidate registry is unavailable");
+        return api.nilObj;
+    };
+    candidates.retain(|candidate| !units.contains(&candidate.unit));
+    candidates.extend(composed);
+    ACTIVE_GENERATION.store(generation as usize, Ordering::Release);
+    generation
+}
+
 unsafe extern "C" fn rust_codegen_begin_image_dispatch_recovery(
     _self_object: Oop,
     _pointer: *const Oop,
@@ -5960,6 +8797,11 @@ unsafe extern "C" fn rust_codegen_begin_image_dispatch_recovery(
     let previous = RUNTIME_PHASE.swap(PHASE_IMAGE_RECOVERY, Ordering::AcqRel);
     IMAGE_PREVIOUS_PHASE.store(previous, Ordering::Release);
     IMAGE_DISPATCH_RECOVERY.store(true, Ordering::Release);
+    if let Ok(mut mapped) = MAPPED_IMAGE_RESUMABLES.lock() {
+        *mapped = None;
+    } else {
+        abort("mapped image resumable registry is unavailable");
+    }
     if let Ok(mut candidates) = CANDIDATES.lock() {
         for candidate in candidates.iter_mut() {
             candidate.active = false;
@@ -5981,6 +8823,11 @@ unsafe extern "C" fn rust_codegen_end_image_dispatch_recovery(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     IMAGE_DISPATCH_RECOVERY.store(false, Ordering::Release);
+    if let Ok(mut mapped) = MAPPED_IMAGE_RESUMABLES.lock() {
+        *mapped = None;
+    } else {
+        abort("mapped image resumable registry is unavailable");
+    }
     let previous = IMAGE_PREVIOUS_PHASE.load(Ordering::Acquire);
     let _ = RUNTIME_PHASE.compare_exchange(
         PHASE_IMAGE_RECOVERY,
@@ -6024,6 +8871,7 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
         )
     };
     let operations = effective_candidate_operations(values[0] as usize);
+    let initializer_writes = effective_candidate_initializer_writes(values[0] as usize);
     let (prior, plan) = if let Some(raw_plan) = values.get(1).copied() {
         let Some((prior, plan)) =
             (unsafe { parse_publication_plan(api, values[0], name, raw_plan, b"rollback\0") })
@@ -6079,18 +8927,25 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
             return api.nilObj;
         }
     }
-    let token = {
-        let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
-        if vector.is_null() || vector == api.nilObj {
-            api.nilObj
-        } else {
-            unsafe { send0(api, vector, NEW_SELECTOR) }
-        }
-    };
-    if token.is_null() || token == api.nilObj {
-        note_error(b"RustCodegen prepared token allocation failed");
+    if !unsafe { candidate_initializer_writes_match_post(api, &initializer_writes) } {
+        let drifted = unsafe { intern(api, b"drifted\0") };
+        let _ = unsafe { assert_candidate_fact(api, runtime, values[0], b"state\0", drifted) };
+        let _ = unsafe {
+            assert_candidate_fact(
+                api,
+                runtime,
+                values[0],
+                b"rollbackAvailable\0",
+                api.falseObj,
+            )
+        };
+        note_error(b"RustCodegen candidate initializer projection drifted");
         return api.nilObj;
     }
+    let Some((token_value, token)) = issue_prepared_token(api) else {
+        note_error(b"RustCodegen prepared token allocation failed");
+        return api.nilObj;
+    };
     let Ok(mut prepared_states) = PREPARED.lock() else {
         note_error(b"RustCodegen prepared registry is unavailable");
         return api.nilObj;
@@ -6100,9 +8955,9 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
             .iter_mut()
             .find(|candidate| candidate.unit == values[0] as usize)
     {
-        candidate.prepared = token as usize;
+        candidate.prepared = token_value;
         prepared_states.push(PreparedState {
-            token: token as usize,
+            token: token_value,
             unit: values[0] as usize,
             rollback: true,
             prior,
@@ -6127,7 +8982,10 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let token = values[0] as usize;
+    let Some(token) = (unsafe { prepared_token_value(api, values[0]) }) else {
+        note_error(b"RustCodegen prepared token is invalid");
+        return api.nilObj;
+    };
     let (unit, rollback, prior, plan) = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
@@ -6176,7 +9034,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         note_error(b"RustCodegen publication rollback is stale");
         return api.nilObj;
     }
-    let operations = {
+    let (operations, initializer_writes) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
             return api.nilObj;
@@ -6189,7 +9047,10 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             note_error(b"RustCodegen prepared token is invalid");
             return api.nilObj;
         }
-        candidate.operations.clone()
+        (
+            candidate.operations.clone(),
+            candidate.initializer_writes.clone(),
+        )
     };
     MOP_MUTATION_IN_PROGRESS.store(true, Ordering::Release);
     for operation in operations.iter().rev() {
@@ -6222,6 +9083,9 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         }
     }
     MOP_MUTATION_IN_PROGRESS.store(false, Ordering::Release);
+    if !unsafe { restore_initializer_writes(api, &initializer_writes) } {
+        abort("candidate initializer rollback compensation failed");
+    }
     let rolled_back = unsafe { intern(api, b"rolledBack\0") };
     if prior != 0 {
         let active = unsafe { intern(api, b"active\0") };
@@ -6323,14 +9187,17 @@ unsafe extern "C" fn rust_codegen_discard_prepared(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    let token = values[0] as usize;
+    let Some(token) = (unsafe { prepared_token_value(api, values[0]) }) else {
+        note_error(b"RustCodegen prepared token is invalid");
+        return api.nilObj;
+    };
     let unit = {
         let Ok(prepared) = PREPARED.lock() else {
             note_error(b"RustCodegen prepared registry is unavailable");
             return api.nilObj;
         };
         let Some(state) = prepared.iter().find(|state| state.token == token) else {
-            note_error(b"RustCodegen prepared token is invalid");
+            note_error(b"RustCodegen prepared token is unknown during discard");
             return api.nilObj;
         };
         state.unit
@@ -6341,7 +9208,7 @@ unsafe extern "C" fn rust_codegen_discard_prepared(
             .find(|candidate| candidate.unit == unit)
     {
         if candidate.prepared != token {
-            note_error(b"RustCodegen prepared token is invalid");
+            note_error(b"RustCodegen candidate prepared token mismatches during discard");
             return api.nilObj;
         }
         candidate.prepared = 0;
@@ -6354,10 +9221,15 @@ unsafe extern "C" fn rust_codegen_discard_prepared(
     api.nilObj
 }
 
-unsafe extern "C" fn rust_codegen_load(
+unsafe extern "C" fn rust_codegen_load(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
+    unsafe { rust_codegen_load_impl(self_object, pointer, count, None) }
+}
+
+unsafe fn rust_codegen_load_impl(
     _self_object: Oop,
     pointer: *const Oop,
     count: usize,
+    resumable_expectation: Option<ResumableLoadExpectation<'_>>,
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen load: received invalid arguments"));
@@ -6448,6 +9320,92 @@ unsafe extern "C" fn rust_codegen_load(
                 b"RustCodegen artifact descriptor is incompatible",
             )
         };
+    };
+    let manifest_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1".as_ptr()) };
+    let manifest_size_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1_size".as_ptr()) };
+    if manifest_symbol.is_null() != manifest_size_symbol.is_null() {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact resumable manifest export is incomplete",
+            )
+        };
+    }
+    let exported_manifest = if manifest_symbol.is_null() {
+        None
+    } else {
+        let manifest_size = unsafe { ptr::read_unaligned(manifest_size_symbol.cast::<u64>()) };
+        let Ok(manifest_size) = usize::try_from(manifest_size) else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact resumable manifest length is invalid",
+                )
+            };
+        };
+        if manifest_size > resumable_manifest::MAX_MANIFEST_BYTES {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact resumable manifest is too large",
+                )
+            };
+        }
+        Some(unsafe { core::slice::from_raw_parts(manifest_symbol.cast::<u8>(), manifest_size) })
+    };
+    let resumable_manifest_shape = match (resumable_expectation, exported_manifest) {
+        (None, None) => None,
+        (None, Some(_)) => {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact resumable manifest was not expected",
+                )
+            };
+        }
+        (Some(_), None) => {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact resumable manifest is missing",
+                )
+            };
+        }
+        (Some(expected), Some(exported)) => {
+            if exported != expected.manifest {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen artifact resumable manifest mismatches",
+                    )
+                };
+            }
+            let Ok(manifest) = resumable_manifest::inspect(exported, expected.authority) else {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen artifact resumable manifest is invalid",
+                    )
+                };
+            };
+            Some((
+                manifest.entry_count(),
+                (0..manifest.entry_count()).any(|index| {
+                    manifest.entry(index).is_some_and(|entry| {
+                        entry.implementation_kind == SelectionImplementationKind::BlockBody
+                    })
+                }),
+            ))
+        }
     };
     let artifact_path = &path[..path.len() - 1];
     let artifact_path = Path::new(OsStr::from_bytes(artifact_path));
@@ -6545,17 +9503,231 @@ unsafe extern "C" fn rust_codegen_load(
         unsafe { dlclose(handle) };
         return api.trueObj;
     }
-    unsafe { init() };
-    if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
-        handles.push(handle as usize);
+
+    type BeginResumableUnit = unsafe extern "C" fn(*const u8, usize, *const u8, u64, u64) -> u32;
+    type CloseResumableUnit = unsafe extern "C" fn() -> u32;
+    type BeginArtifactContext = unsafe extern "C" fn(u64, u64) -> u32;
+    type EndArtifactContext = unsafe extern "C" fn() -> u32;
+    struct ResumableStage {
+        finish: CloseResumableUnit,
+        cancel: CloseResumableUnit,
+        artifact_end: Option<EndArtifactContext>,
+        code_generation_identity: u64,
     }
+
+    let resumable_stage = if let Some((entry_count, _)) = resumable_manifest_shape {
+        let expected = resumable_expectation.expect("entry count requires expectation");
+        let manifest = exported_manifest.expect("entry count requires manifest export");
+        let Some(begin_address) =
+            (unsafe { floor_symbol(api, b"birnam_id_begin_resumable_unit_v1\0") })
+        else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen resumable staging begin seam is unavailable",
+                )
+            };
+        };
+        let Some(finish_address) =
+            (unsafe { floor_symbol(api, b"birnam_id_finish_resumable_unit_v1\0") })
+        else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen resumable staging finish seam is unavailable",
+                )
+            };
+        };
+        let Some(cancel_address) =
+            (unsafe { floor_symbol(api, b"birnam_id_cancel_resumable_unit_v1\0") })
+        else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen resumable staging cancel seam is unavailable",
+                )
+            };
+        };
+        let code_generation_identity = handle as usize as u64;
+        let Some(code_generation_lease) = issue_code_generation_lease() else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen code-generation lease space is exhausted",
+                )
+            };
+        };
+        if code_generation_identity == 0 {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen code-generation identity is invalid",
+                )
+            };
+        }
+        let begin: BeginResumableUnit = unsafe { core::mem::transmute(begin_address) };
+        let finish: CloseResumableUnit = unsafe { core::mem::transmute(finish_address) };
+        let cancel: CloseResumableUnit = unsafe { core::mem::transmute(cancel_address) };
+        if unsafe {
+            begin(
+                manifest.as_ptr(),
+                manifest.len(),
+                expected.authority.as_ptr(),
+                code_generation_identity,
+                code_generation_lease,
+            )
+        } != 0
+        {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen resumable staged unit was rejected",
+                )
+            };
+        }
+        let artifact_end = if entry_count == 0 {
+            None
+        } else {
+            let begin_context_symbol =
+                unsafe { (api.dlsym)(handle, c"__birnam_resumable_context_begin_v1".as_ptr()) };
+            let end_context_symbol =
+                unsafe { (api.dlsym)(handle, c"__birnam_resumable_context_end_v1".as_ptr()) };
+            if begin_context_symbol.is_null() || end_context_symbol.is_null() {
+                if unsafe { cancel() } != 0 {
+                    abort("resumable staged unit compensation failed");
+                }
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen artifact resumable context exports are unavailable",
+                    )
+                };
+            }
+            let begin_context: BeginArtifactContext =
+                unsafe { core::mem::transmute(begin_context_symbol) };
+            let end_context: EndArtifactContext =
+                unsafe { core::mem::transmute(end_context_symbol) };
+            if unsafe { begin_context(code_generation_identity, code_generation_lease) } != 0 {
+                if unsafe { cancel() } != 0 {
+                    abort("resumable staged unit compensation failed");
+                }
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen artifact resumable context begin was rejected",
+                    )
+                };
+            }
+            Some(end_context)
+        };
+        Some(ResumableStage {
+            finish,
+            cancel,
+            artifact_end,
+            code_generation_identity,
+        })
+    } else {
+        None
+    };
+
+    unsafe { init() };
     let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+    let artifact_context_ok = resumable_stage
+        .as_ref()
+        .and_then(|stage| stage.artifact_end)
+        .is_none_or(|end| unsafe { end() } == 0);
     let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
     let is_error = !error_vt.is_null()
         && error_vt != api.nilObj
         && unsafe { (api.vtableOf)(result) } == error_vt;
-    if result == api.nilObj || is_error {
+    if let Some(stage) = resumable_stage {
+        if result == api.nilObj || is_error || !artifact_context_ok {
+            if unsafe { (stage.cancel)() } != 0 {
+                abort("resumable staged unit compensation failed");
+            }
+            if result == api.nilObj || is_error {
+                unsafe { dlclose(handle) };
+                return result;
+            }
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact resumable context end was rejected",
+                )
+            };
+        }
+        if unsafe { (stage.finish)() } != 0 {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen resumable staged unit did not commit",
+                )
+            };
+        }
+        let expected = resumable_expectation.expect("staged unit requires expectation");
+        let Some(matches_address) =
+            (unsafe { floor_symbol(api, b"birnam_id_stackless_resumable_manifest_matches_v1\0") })
+        else {
+            abort("committed resumable manifest agreement seam disappeared");
+        };
+        let matches: unsafe extern "C" fn(*const u8, usize, u64, *const u8, usize) -> u32 =
+            unsafe { core::mem::transmute(matches_address) };
+        if unsafe {
+            matches(
+                expected.authority.as_ptr(),
+                expected.authority.len(),
+                stage.code_generation_identity,
+                expected.manifest.as_ptr(),
+                expected.manifest.len(),
+            )
+        } != 1
+        {
+            abort("committed resumable manifest disagrees with the mapped artifact");
+        }
+        if IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire) {
+            let (_, has_block_entries) =
+                resumable_manifest_shape.expect("staged unit requires manifest shape");
+            let resolver = if has_block_entries {
+                let resolver =
+                    unsafe { (api.dlsym)(handle, c"__birnam_resolve_block_vtable_v1".as_ptr()) };
+                if resolver.is_null() {
+                    abort("committed block manifest lost its artifact resolver");
+                }
+                resolver as usize
+            } else {
+                0
+            };
+            let Ok(mut mapped) = MAPPED_IMAGE_RESUMABLES.lock() else {
+                abort("mapped image resumable registry is unavailable");
+            };
+            if mapped.is_some() {
+                abort("more than one image resumable unit was mapped in one recovery");
+            }
+            *mapped = Some(MappedImageResumables {
+                authority: expected.authority,
+                manifest: expected.manifest.to_vec(),
+                code_generation_identity: stage.code_generation_identity,
+                resolver,
+            });
+        }
+    } else if result == api.nilObj || is_error {
+        if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
+            handles.push(handle as usize);
+        }
         return result;
+    }
+    if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
+        handles.push(handle as usize);
     }
     if let Some(source) = artifact_source {
         if !unsafe {
@@ -7660,6 +10832,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_IMAGE_CODE_MANIFEST_SELECTOR),
+            rust_codegen_compile_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, REBUILD_IMAGE_CODE_SELECTOR),
+            rust_codegen_rebuild_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, PREFLIGHT_IMAGE_SELECTOR),
             rust_codegen_preflight_image,
         );
@@ -7770,6 +10952,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, ADOPT_COMPOSED_GENERATION_SELECTOR),
+            rust_codegen_adopt_composed_generation,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, BEGIN_IMAGE_RECOVERY_SELECTOR),
             rust_codegen_begin_image_dispatch_recovery,
         );
@@ -7840,8 +11027,18 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_OUTPUT_SELECTION_SELECTOR),
+            rust_codegen_compile_output_selection,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_CANDIDATE_SELECTOR),
             rust_codegen_compile_candidate,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_CANDIDATE_SELECTION_SELECTOR),
+            rust_codegen_compile_candidate_selection,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
@@ -7911,6 +11108,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         adapter_method!(b"compile:output:\0", rust_codegen_compile_output);
         adapter_method!(b"compile:output:from:\0", rust_codegen_compile_output);
         adapter_method!(b"compile:output:root:\0", rust_codegen_compile_output_root);
+        adapter_method!(
+            COMPILE_OUTPUT_SELECTION_SELECTOR,
+            rust_codegen_compile_output_selection
+        );
         adapter_method!(SOURCE_REVISION_SELECTOR, rust_codegen_source_revision);
         adapter_method!(MODULE_METADATA_SELECTOR, rust_codegen_module_metadata);
         adapter_method!(EMBEDDED_FILES_SELECTOR, rust_codegen_embedded_files);
@@ -7932,6 +11133,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         adapter_method!(MODULE_SOURCE_FOR_SELECTOR, rust_codegen_module_source_for);
         adapter_method!(COMPILE_CANDIDATE_SELECTOR, rust_codegen_compile_candidate);
+        adapter_method!(
+            COMPILE_CANDIDATE_SELECTION_SELECTOR,
+            rust_codegen_compile_candidate_selection
+        );
         adapter_method!(INSPECT_CANDIDATE_SELECTOR, rust_codegen_inspect_candidate);
         adapter_method!(MAP_CANDIDATE_SELECTOR, rust_codegen_map_candidate);
         adapter_method!(CANDIDATE_MAPPED_SELECTOR, rust_codegen_candidate_mapped);
@@ -7970,6 +11175,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             rust_codegen_reconcile_all_candidates
         );
         adapter_method!(
+            ADOPT_COMPOSED_GENERATION_SELECTOR,
+            rust_codegen_adopt_composed_generation
+        );
+        adapter_method!(
             MANAGED_METHOD_CHANGED_SELECTOR,
             rust_codegen_managed_method_changed
         );
@@ -7986,6 +11195,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             rust_codegen_end_image_dispatch_recovery
         );
         adapter_method!(COMPILE_IMAGE_CODE_SELECTOR, rust_codegen_compile_image_code);
+        adapter_method!(
+            COMPILE_IMAGE_CODE_MANIFEST_SELECTOR,
+            rust_codegen_compile_image_code
+        );
+        adapter_method!(REBUILD_IMAGE_CODE_SELECTOR, rust_codegen_rebuild_image_code);
         adapter_method!(GENERATION_SOURCES_SELECTOR, rust_codegen_generation_sources);
         adapter_method!(
             GENERATION_METHOD_SOURCES_SELECTOR,
@@ -8137,10 +11351,21 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 #[cfg(test)]
 mod tests {
     use super::{
-        IDENTITY, RevisionMetadata, RevisionOperation, artifact_source,
-        birnam_codegen_rust_identity, candidate_manifest_matches, inspect_manifest, selector_arity,
-        sha256_hex,
+        CompiledResumablePlan, GenerationModuleProjection, IDENTITY, ImplementationKey,
+        InventoryImplementationKind, InventoryRootKind, OwnedSelectionRequest, RevisionMetadata,
+        RevisionOperation, RootKind, SelectionDisposition, SelectionImplementationKind,
+        artifact_selection, artifact_selection_with_requests, artifact_source,
+        birnam_codegen_rust_identity, candidate_manifest, candidate_manifest_matches,
+        candidate_selection_matches, compile_resumable_plan, decode_hex_digest,
+        dispatch_generation_authority_with, empty_resumable_manifest,
+        image_artifact_selection_and_requests, inspect_artifact_selection,
+        inspect_generation_selection, inspect_manifest, rebase_image_resumable_plan,
+        resumable_indices, resumable_manifest, selector_arity, sha256_hex,
     };
+    use birnam_codegen::{
+        Block, BlockResumableEmission, Expr, NamedResumableEmission, Program, Statement,
+    };
+    use std::borrow::Cow;
     use std::ffi::CStr;
 
     #[test]
@@ -8179,11 +11404,151 @@ mod tests {
             &[],
             b"void* __ev(void* self, void** args, long n){}",
             true,
+            None,
+            None,
         );
         assert!(
             output
                 .windows(b"const unsigned char __birnam_artifact_descriptor[] = {".len())
                 .any(|window| window == b"const unsigned char __birnam_artifact_descriptor[] = {")
+        );
+    }
+
+    #[test]
+    fn image_artifact_exports_the_exact_authority_bound_manifest() {
+        let manifest = empty_resumable_manifest([0x42; 32]).unwrap();
+        let output = artifact_source(
+            b"7",
+            b"image-generation",
+            &sha256_hex(b"7"),
+            &sha256_hex(b"7"),
+            &[],
+            &[],
+            b"void* __ev(void* self, void** args, long n){}",
+            false,
+            None,
+            Some(&manifest),
+        );
+        assert!(
+            output
+                .windows(b"__birnam_resumable_manifest_v1[]".len())
+                .any(|window| window == b"__birnam_resumable_manifest_v1[]")
+        );
+        let size = format!(
+            "__birnam_resumable_manifest_v1_size = {}ULL",
+            manifest.len()
+        );
+        assert!(
+            output
+                .windows(size.len())
+                .any(|window| window == size.as_bytes())
+        );
+    }
+
+    #[test]
+    fn resumable_plan_composes_named_and_block_manifest_indices() {
+        let revision = [0x31; 32];
+        let metadata = RevisionMetadata {
+            name: b"candidate".to_vec(),
+            requires: Vec::new(),
+            operations: vec![RevisionOperation {
+                target: b"Integer".to_vec(),
+                selector: b"answer".to_vec(),
+                install: true,
+                source: b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]".to_vec(),
+            }],
+            non_method_digest: sha256_hex(b"non-method"),
+            initializer_residual_digest: sha256_hex(b"initializer-residual"),
+            method_digest: sha256_hex(b"method"),
+            revision_digest: *b"3131313131313131313131313131313131313131313131313131313131313131",
+            inventory: vec![
+                ImplementationKey {
+                    root_kind: InventoryRootKind::MethodOperation,
+                    root_index: 0,
+                    path: Vec::new(),
+                    implementation_kind: InventoryImplementationKind::NamedAdapter,
+                },
+                ImplementationKey {
+                    root_kind: InventoryRootKind::MethodOperation,
+                    root_index: 0,
+                    path: vec![0],
+                    implementation_kind: InventoryImplementationKind::BlockBody,
+                },
+            ],
+        };
+        let request = OwnedSelectionRequest {
+            source_revision: revision,
+            root_kind: RootKind::MethodOperation,
+            root_index: 0,
+            path: Vec::new(),
+            implementation_kind: SelectionImplementationKind::NamedAdapter,
+            disposition: SelectionDisposition::ResumableRequired,
+        };
+        let selection = artifact_selection_with_requests(&metadata, &[request.clone()]).unwrap();
+        let source = b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]";
+        let normalized = Program {
+            body: vec![Statement::Expr(Expr::Send {
+                receiver: Box::new(Expr::Global(b"Reflect")),
+                selector: Cow::Borrowed(b"defineMethod:on:as:"),
+                args: vec![
+                    Expr::Symbol(b"answer"),
+                    Expr::Global(b"Integer"),
+                    Expr::Block(Box::new(Block {
+                        params: vec![b"self"],
+                        body: vec![Statement::Expr(Expr::SmallInt(71))],
+                    })),
+                ],
+                source,
+            })],
+        };
+        let plan = compile_resumable_plan(
+            &metadata,
+            &[request.clone()],
+            &selection,
+            [0x52; 32],
+            b"candidate.birnam",
+            source,
+            &normalized,
+        )
+        .unwrap();
+        let manifest = resumable_manifest::inspect(&plan.manifest, [0x52; 32]).unwrap();
+        assert_eq!(manifest.entry_count(), 1);
+        assert_eq!(plan.named_emissions.len(), 1);
+        assert!(plan.block_emissions.is_empty());
+        assert_eq!(plan.named_emissions[0].operation_index, 0);
+        assert!(
+            plan.named_emissions[0]
+                .c_source
+                .windows(b"e.manifest_entry_index=0U".len())
+                .any(|window| window == b"e.manifest_entry_index=0U")
+        );
+
+        let block_request = OwnedSelectionRequest {
+            implementation_kind: SelectionImplementationKind::BlockBody,
+            path: vec![0],
+            ..request.clone()
+        };
+        let block_selection =
+            artifact_selection_with_requests(&metadata, &[block_request.clone()]).unwrap();
+        let block_plan = compile_resumable_plan(
+            &metadata,
+            &[block_request],
+            &block_selection,
+            [0x52; 32],
+            b"candidate.birnam",
+            source,
+            &normalized,
+        )
+        .unwrap();
+        assert!(block_plan.named_emissions.is_empty());
+        assert_eq!(block_plan.block_emissions.len(), 1);
+        assert_eq!(block_plan.block_emissions[0].key.path, vec![0]);
+        assert_eq!(block_plan.block_emissions[0].manifest_entry_index, 0);
+        assert!(
+            block_plan.block_emissions[0]
+                .c_source
+                .windows(b"e.manifest_entry_index=0U".len())
+                .any(|window| window == b"e.manifest_entry_index=0U")
         );
     }
 
@@ -8200,8 +11565,16 @@ mod tests {
                 source: b"operation".to_vec(),
             }],
             non_method_digest: *b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            initializer_residual_digest:
+                *b"1111111111111111111111111111111111111111111111111111111111111111",
             method_digest: *b"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
             revision_digest: *b"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            inventory: vec![ImplementationKey {
+                root_kind: InventoryRootKind::MethodOperation,
+                root_index: 0,
+                path: Vec::new(),
+                implementation_kind: InventoryImplementationKind::NamedAdapter,
+            }],
         };
         let mut manifest = b"v2|birnam-artifact-generation-v1|candidate|".to_vec();
         manifest.extend_from_slice(&sha256_hex(source));
@@ -8213,7 +11586,7 @@ mod tests {
         manifest.extend_from_slice(&metadata.revision_digest);
         manifest.extend_from_slice(b"|depA,depB|Target,answer:,I,1");
         let parsed = inspect_manifest(&manifest).unwrap();
-        assert!(candidate_manifest_matches(parsed, source, &metadata));
+        assert!(candidate_manifest_matches(parsed, source, &metadata, &[]));
 
         let mut malformed = manifest;
         let arity = malformed
@@ -8222,6 +11595,242 @@ mod tests {
             .unwrap();
         malformed[arity + b"Target,answer:,I,".len()] = b'2';
         let parsed = inspect_manifest(&malformed).unwrap();
-        assert!(!candidate_manifest_matches(parsed, source, &metadata));
+        assert!(!candidate_manifest_matches(parsed, source, &metadata, &[]));
+
+        let selection = artifact_selection(&metadata).unwrap();
+        let selection_digest = sha256_hex(&selection);
+        let manifest = candidate_manifest(&metadata, &sha256_hex(source), &selection_digest);
+        let parsed = inspect_manifest(&manifest).unwrap();
+        assert!(candidate_manifest_matches(
+            parsed, source, &metadata, &selection
+        ));
+        assert!(candidate_selection_matches(parsed, &selection, &selection));
+
+        let mut changed_selection = selection.clone();
+        let last = changed_selection.len() - 1;
+        changed_selection[last] ^= 1;
+        assert!(!candidate_selection_matches(
+            parsed,
+            &selection,
+            &changed_selection
+        ));
+    }
+
+    #[test]
+    fn owned_selection_requests_materialize_exactly_and_reject_duplicates_or_foreign_scope() {
+        let metadata = RevisionMetadata {
+            name: b"candidate".to_vec(),
+            requires: Vec::new(),
+            operations: vec![RevisionOperation {
+                target: b"Target".to_vec(),
+                selector: b"answer:".to_vec(),
+                install: true,
+                source: b"operation".to_vec(),
+            }],
+            non_method_digest: *b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            initializer_residual_digest:
+                *b"1111111111111111111111111111111111111111111111111111111111111111",
+            method_digest: *b"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            revision_digest: *b"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            inventory: vec![ImplementationKey {
+                root_kind: InventoryRootKind::MethodOperation,
+                root_index: 0,
+                path: Vec::new(),
+                implementation_kind: InventoryImplementationKind::NamedAdapter,
+            }],
+        };
+        let revision = decode_hex_digest(&metadata.revision_digest).unwrap();
+        let synchronous = OwnedSelectionRequest {
+            source_revision: revision,
+            root_kind: RootKind::MethodOperation,
+            root_index: 0,
+            path: Vec::new(),
+            implementation_kind: SelectionImplementationKind::NamedAdapter,
+            disposition: SelectionDisposition::Synchronous,
+        };
+        assert_eq!(
+            artifact_selection_with_requests(&metadata, std::slice::from_ref(&synchronous)),
+            artifact_selection(&metadata),
+            "an explicit synchronous row is byte-identical to the sparse default"
+        );
+
+        let resumable = OwnedSelectionRequest {
+            disposition: SelectionDisposition::ResumableRequired,
+            ..synchronous.clone()
+        };
+        let bytes = artifact_selection_with_requests(&metadata, &[resumable.clone()]).unwrap();
+        let selection = inspect_artifact_selection(&bytes).unwrap();
+        assert_eq!(
+            selection.rows().next().unwrap().unwrap().disposition,
+            SelectionDisposition::ResumableRequired
+        );
+        assert!(
+            artifact_selection_with_requests(&metadata, &[resumable.clone(), resumable.clone()])
+                .is_none()
+        );
+        assert!(
+            artifact_selection_with_requests(
+                &metadata,
+                &[OwnedSelectionRequest {
+                    source_revision: [0x44; 32],
+                    ..resumable
+                }],
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn resumable_symbol_and_manifest_indices_use_their_distinct_canonical_orders() {
+        let revision = [0x44; 32];
+        let requests = vec![
+            OwnedSelectionRequest {
+                source_revision: revision,
+                root_kind: RootKind::NonMethodProgram,
+                root_index: 0,
+                path: vec![0],
+                implementation_kind: SelectionImplementationKind::BlockBody,
+                disposition: SelectionDisposition::ResumableRequired,
+            },
+            OwnedSelectionRequest {
+                source_revision: revision,
+                root_kind: RootKind::MethodOperation,
+                root_index: 0,
+                path: Vec::new(),
+                implementation_kind: SelectionImplementationKind::NamedAdapter,
+                disposition: SelectionDisposition::ResumableRequired,
+            },
+            OwnedSelectionRequest {
+                source_revision: revision,
+                root_kind: RootKind::MethodOperation,
+                root_index: 0,
+                path: vec![0],
+                implementation_kind: SelectionImplementationKind::BlockBody,
+                disposition: SelectionDisposition::ResumableRequired,
+            },
+        ];
+        let indices = resumable_indices(&requests).unwrap();
+        assert_eq!(indices[&requests[0].key()], (0, 1));
+        assert_eq!(indices[&requests[1].key()], (1, 0));
+        assert_eq!(indices[&requests[2].key()], (2, 2));
+    }
+
+    #[test]
+    fn image_projection_preserves_the_complete_generation_policy_without_reselection() {
+        let generation =
+            include_bytes!("../../../abi/fixtures/stackless-s2/generation-selection-ab.bin");
+        let accepted = inspect_generation_selection(generation).unwrap();
+        let (artifact_bytes, requests) = image_artifact_selection_and_requests(generation).unwrap();
+        let artifact = inspect_artifact_selection(&artifact_bytes).unwrap();
+
+        assert_eq!(artifact.revision_count(), accepted.revision_count());
+        assert_eq!(artifact.row_count(), accepted.row_count());
+        for (artifact_row, accepted_row) in artifact.rows().zip(accepted.rows()) {
+            assert_eq!(artifact_row.unwrap(), accepted_row.unwrap());
+        }
+        let required = accepted
+            .rows()
+            .filter(|row| {
+                row.as_ref()
+                    .is_ok_and(|row| row.disposition == SelectionDisposition::ResumableRequired)
+            })
+            .count();
+        assert_eq!(requests.len(), required);
+        assert!(
+            requests
+                .iter()
+                .all(|request| { request.disposition == SelectionDisposition::ResumableRequired })
+        );
+    }
+
+    #[test]
+    fn image_plan_rebases_module_local_syntax_keys_without_changing_manifest_indices() {
+        let mut plan = CompiledResumablePlan {
+            manifest: Vec::new(),
+            entries: Vec::new(),
+            named_emissions: vec![NamedResumableEmission {
+                operation_index: 1,
+                symbol_index: 4,
+                c_source: Vec::new(),
+            }],
+            block_emissions: vec![
+                BlockResumableEmission {
+                    key: ImplementationKey {
+                        root_kind: InventoryRootKind::MethodOperation,
+                        root_index: 2,
+                        path: vec![0],
+                        implementation_kind: InventoryImplementationKind::BlockBody,
+                    },
+                    symbol_index: 5,
+                    manifest_entry_index: 5,
+                    selector: b"value".to_vec(),
+                    captures: Vec::new(),
+                    c_source: Vec::new(),
+                },
+                BlockResumableEmission {
+                    key: ImplementationKey {
+                        root_kind: InventoryRootKind::NonMethodProgram,
+                        root_index: 0,
+                        path: vec![3, 1],
+                        implementation_kind: InventoryImplementationKind::BlockBody,
+                    },
+                    symbol_index: 6,
+                    manifest_entry_index: 6,
+                    selector: b"value".to_vec(),
+                    captures: Vec::new(),
+                    c_source: Vec::new(),
+                },
+            ],
+        };
+
+        rebase_image_resumable_plan(&mut plan, 5, 7).unwrap();
+
+        assert_eq!(plan.named_emissions[0].operation_index, 6);
+        assert_eq!(plan.block_emissions[0].key.root_index, 7);
+        assert_eq!(plan.block_emissions[1].key.path, [10, 1]);
+        assert_eq!(plan.block_emissions[0].manifest_entry_index, 5);
+        assert_eq!(plan.block_emissions[1].manifest_entry_index, 6);
+    }
+
+    #[test]
+    fn dispatch_base_v2_reproduces_the_frozen_non_circular_trace() {
+        let revision_digest = *b"0b0261b15fce452514549a5369bb41624215eaa4e6469a3c370495bdffdaa8a1";
+        let module = GenerationModuleProjection {
+            name: b"trace".to_vec(),
+            revision: decode_hex_digest(&revision_digest).unwrap(),
+            source: b"run => self\nblock => [ self ]\n".to_vec(),
+            metadata: RevisionMetadata {
+                name: b"trace".to_vec(),
+                requires: Vec::new(),
+                operations: vec![RevisionOperation {
+                    target: b"Trace".to_vec(),
+                    selector: b"run".to_vec(),
+                    install: true,
+                    source: b"run => self".to_vec(),
+                }],
+                non_method_digest: [b'0'; 64],
+                initializer_residual_digest: [b'1'; 64],
+                method_digest: [b'0'; 64],
+                revision_digest,
+                inventory: Vec::new(),
+            },
+        };
+        let descriptor =
+            decode_hex_digest(b"d670335de8efd9c6db228e19a70affb3fe738e0864dee726dde273928a5171cf")
+                .unwrap();
+        let generation_selection = include_bytes!(
+            "../../../abi/fixtures/stackless-s2/generation-selection-construction-trace.bin"
+        );
+        let authority = dispatch_generation_authority_with(
+            &[module],
+            generation_selection,
+            |_module, index, _selection| (index == 0).then_some(descriptor),
+        )
+        .unwrap();
+        assert_eq!(
+            authority,
+            decode_hex_digest(b"7d1a817173f4b47139581aaf2996009012ae398f1e251a3bfe5e75498c5f823c")
+                .unwrap()
+        );
     }
 }

@@ -3,6 +3,7 @@
 
 use crate::abi::Oop;
 use crate::boundary;
+use crate::execution::{ExecutionError, StacklessTarget};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::runtime::{CanonicalObjects, DispatchGlobals, Runtime, with_active};
@@ -65,20 +66,26 @@ impl Runtime {
             boundary::fatal_invariant("IdApi.send args is null with nonzero count");
         }
         let _read = self.enter_dispatch_read();
+        let arguments = if count == 0 {
+            &[]
+        } else {
+            // SAFETY: send_abi requires count live Oops when count is nonzero.
+            unsafe { core::slice::from_raw_parts(args, count) }
+        };
 
-        // SAFETY: send_abi's active-runtime and live-object contract applies.
-        if let Some(method) = unsafe { self.bind_active(receiver, selector) } {
-            let callable = method.to_method();
-            // No Rust state reference or collection guard survives this call.
-            // SAFETY: forwarded ABI contract and dictionary-proven Method.
-            return unsafe { callable(receiver, args, count) };
+        let target = self
+            .resolve_stackless_target(receiver, selector)
+            .unwrap_or_else(|error| boundary::fatal_invariant(error.failure_kind().symbol()));
+        if !matches!(target, StacklessTarget::Unbound) {
+            // SAFETY: the resolved target and caller-owned argument buffer stay
+            // protected by this send's dispatch-read extent.
+            return unsafe {
+                self.invoke_resolved_send_target(target, receiver, args, count, arguments)
+            };
         }
 
         // SAFETY: send_abi requires an active owner-thread runtime.
         let globals = unsafe { self.globals_active() };
-        // SAFETY: send_abi's active-runtime and live-object contract applies.
-        let handler = unsafe { self.bind_active(receiver, globals.does_not_understand) }
-            .unwrap_or_else(|| boundary::fatal_invariant("doesNotUnderstand: is unbound"));
         let mut forwarded = [core::ptr::null_mut(); 1 + MAX_DNU_ARGS];
         forwarded[0] = selector;
         let forwarded_count = count.min(MAX_DNU_ARGS);
@@ -90,10 +97,52 @@ impl Runtime {
                 core::ptr::copy_nonoverlapping(args, forwarded[1..].as_mut_ptr(), forwarded_count)
             };
         }
-        let callable = handler.to_method();
-        // No Rust state reference or collection guard survives this call.
-        // SAFETY: stack buffer is live for the synchronous Method invocation.
-        unsafe { callable(receiver, forwarded.as_ptr(), 1 + forwarded_count) }
+        let handler = self
+            .resolve_stackless_target(receiver, globals.does_not_understand)
+            .unwrap_or_else(|error| boundary::fatal_invariant(error.failure_kind().symbol()));
+        if matches!(handler, StacklessTarget::Unbound) {
+            boundary::fatal_invariant("doesNotUnderstand: is unbound");
+        }
+        let forwarded_count = 1 + forwarded_count;
+        // SAFETY: the stack buffer remains live for the complete invocation.
+        unsafe {
+            self.invoke_resolved_send_target(
+                handler,
+                receiver,
+                forwarded.as_ptr(),
+                forwarded_count,
+                &forwarded[..forwarded_count],
+            )
+        }
+    }
+
+    unsafe fn invoke_resolved_send_target(
+        &self,
+        target: StacklessTarget,
+        receiver: Oop,
+        args: *const Oop,
+        count: usize,
+        arguments: &[Oop],
+    ) -> Oop {
+        match target {
+            StacklessTarget::Registered { entry } => self
+                .enter_acquired_resumable(entry, receiver, arguments)
+                .unwrap_or_else(|error| boundary::fatal_invariant(error.failure_kind().symbol())),
+            StacklessTarget::Synchronous(method) => {
+                // No Rust state reference or collection guard survives this
+                // call. The surrounding dispatch-read token protects the
+                // dictionary-proven Method for the invocation extent.
+                unsafe { method(receiver, args, count) }
+            }
+            StacklessTarget::Unbound => {
+                boundary::fatal_invariant("resolved send target is unbound")
+            }
+            StacklessTarget::Resumable { .. } => boundary::fatal_invariant(
+                ExecutionError::MissingImplementation
+                    .failure_kind()
+                    .symbol(),
+            ),
+        }
     }
 
     pub(crate) fn send_slice(&self, receiver: Oop, selector: Oop, args: &[Oop]) -> Oop {

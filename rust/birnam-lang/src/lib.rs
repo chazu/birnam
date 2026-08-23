@@ -353,11 +353,7 @@ unsafe fn build_grammar(api: &IdApi, peg: Oop) -> Oop {
                             api,
                             peg,
                             &[
-                                seq(
-                                    api,
-                                    peg,
-                                    &[literal(api, peg, b"=>"), spacing1],
-                                ),
+                                seq(api, peg, &[literal(api, peg, b"=>"), spacing1]),
                                 seq(
                                     api,
                                     peg,

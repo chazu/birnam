@@ -1,6 +1,6 @@
 # 60F — Resumable Compiler Lowering
 
-> **Status:** S2 pre-implementation decision record. The migration unit,
+> **Status:** S2 implemented decision record. The migration unit,
 > all-or-nothing eligibility rule, evaluation and lookup order, source-send
 > boundary, CFG/PC model, Oop liveness, descriptor-v2 root maps, deterministic
 > slot coloring, edge-transfer semantics, and call-staging rules were accepted
@@ -9,18 +9,31 @@
 > Design 49 migration-change projection were accepted 2026-08-14. The
 > pointer-free `ResumableManifest` artifact/image projection, lazy block-vtable
 > resolver, mapped-image verification sequence, and no-IdApi-growth boundary
-> were accepted 2026-08-14. The revision-scoped `ExecutionSelection` carrier,
+> were accepted 2026-08-14. The revision-scoped `ArtifactSelection` carrier,
 > relational materialization boundary, artifact/generation provenance, and
-> live/AOT replay rule were accepted 2026-08-14. All S2 pre-implementation
-> decisions in this record are closed.
+> live/AOT replay rule were accepted 2026-08-14. The identity-layer separation,
+> implementation-anchor root table, and artifact-slice versus generation-total
+> selection composition were accepted 2026-08-14. The final adversarial review
+> closes the resolver-key gate with artifact-local manifest indices. The
+> prepare/publish/abort ordering and staged-unit admission contract in
+> §§13.1 and 13.4 were accepted 2026-08-15. The shared private target-resolution
+> amendment of 60E was accepted the same day. The S1 substrate alignment and
+> [60I](60i-stackless-artifact-byte-grammar.md)'s exact durable bytes,
+> native-envelope layout, bounds, and fixture gate closed 2026-08-22.
+> S2 implementation began the same day and closed 2026-08-23 with the shared
+> GenerationProjection authority, capture-free projected initializer subset,
+> candidate AOT delivery, and mapped/fresh-rebuild image parity. The
+> retained fixed-stack depth miss activates S4; it does not reopen S2.
 >
 > This record lowers the accepted execution semantics of
 > [60A](60a-stackless-execution-semantics.md), the private Frame model of
 > [60B](60b-stackless-machine-and-frames.md), the Method-shaped StepMethod
 > contract of [60C](60c-stepmethod-calling-abi-options.md), and the registration
 > seam of [60E](60e-resumable-registration-and-entry.md) into a compiler
-> contract. It does not add suspension, scheduling, public continuation syntax,
-> static dispatch, or a new IdApi field.
+> contract. 60F owns semantic contents and cross-format agreement;
+> [60I](60i-stackless-artifact-byte-grammar.md) is the sole authority for their
+> physical bytes and native envelope. This record does not add suspension,
+> scheduling, public continuation syntax, static dispatch, or a new IdApi field.
 
 ## 1. Purpose and current seam
 
@@ -75,10 +88,10 @@ emit a valid versioned descriptor satisfying this contract.
 | Malleability | Lowering does not seal selectors, cache targets across sends, bypass metacircular lookup, or rewrite active Frames after installation. |
 | Reproducibility | Live and AOT compilation use the same lowering and descriptor serialization path. Stable input produces byte-identical canonical descriptor data. |
 | Fresh Oop handoff | A producer may carry a fresh Oop in a generated local only through a statically verified safepoint-free handoff into the immediately following IdApi send. The send ingress-roots receiver, selector, and arguments before lookup or allocation; a store establishes the descriptor root before that scoped ingress root ends. |
-| Named method closure | A named resumable entry retains the exact implementation object supplied to `defineMethod:on:as:`. Its StepMethod is an adapter that performs the ordinary late-bound `value:`-family send; the implementation block body is selected independently. |
+| Named method closure | A named resumable entry retains the exact implementation object supplied to `defineMethod:on:as:` in a dedicated Runtime-owned GC anchor. Frame construction copies it into the descriptor-declared implementation slot. Its StepMethod is an adapter that performs the ordinary late-bound `value:`-family send; the implementation block body is selected independently. |
 | Durable resumable identity | Each unit emits one canonical pointer-free `ResumableManifest`. Image v5 carries the same expected entry set plus tagged references to generated block vtables. Mapped boot compares the image, artifact, Runtime registry, and restored bindings before user entry. |
 | IdApi boundary | Durable resumable discovery and recovery use compiler artifacts, Runtime side tables, image records, and private host shims. They add no IdApi field, object/vtable slot, lookup rule, or Method ABI. |
-| Selection carrier | Relational or other orchestration materializes a revision-scoped canonical `ExecutionSelection` before compilation. The compiler performs no live relational query. Artifacts and DispatchGenerations retain the accepted total table and digest; image/AOT recovery replays them rather than choosing again. |
+| Selection carrier | Relational or other orchestration materializes a revision-scoped canonical `ArtifactSelection` before compilation. The compiler performs no live relational query. Artifacts retain the total table for their declared revision scope; DispatchGenerations retain the canonically recomposed `GenerationSelection`. Image/AOT recovery replays those bytes rather than choosing again. |
 
 ## 3. Migration unit and eligibility
 
@@ -100,7 +113,8 @@ ResumableRequired
 sparse request, but orchestration materializes it into an owned,
 revision-qualified value before the compiler runs. The compiler expands omitted
 implementations to `Synchronous`, validates every explicit key, and emits one
-total canonical `ExecutionSelection`. It never queries Store, the relational
+canonical `ArtifactSelection` total over its declared compilation scope. It
+never queries Store, the relational
 engine, an environment flag, the current target binding, or ambient migration
 state while lowering.
 
@@ -188,8 +202,10 @@ may remove the adapter only behind an explicit lookup guard and invalidation
 contract.
 
 Registration receives the live implementation Oop separately from immutable
-descriptor bytes and roots it for the entry generation. Active Frames pin the
-old entry, implementation object, and code generation; a replacement affects
+descriptor bytes and installs it in 60E's Runtime-owned implementation-anchor
+table before the entry can become visible. Frame construction copies that Oop
+into the descriptor-declared implementation slot before resolve protection
+ends. Active Frames root that slot and pin the old physical code generation; a replacement affects
 new sends without rewriting suspended execution. Image recovery must restore
 or recreate that object before registration and binding publication.
 
@@ -280,6 +296,10 @@ Return(value)
 Continue(successor_pc)
 Abort(reason)
 ```
+
+Lowering version 1 uses at most 64 non-terminator operations per basic block;
+an otherwise straight-line region is split with Continue. This is compiler-
+local identity input, not a Runtime ABI ceiling.
 
 S2-generated source sends always use Call or TailCall. Continue is available
 for a bounded non-send split introduced by the compiler, not as a way to hide
@@ -530,21 +550,25 @@ access memory-safe even though source-level debugger mutation remains deferred.
 
 60B's frozen publishers already have mutation semantics:
 
-- `continueAt:` validates and installs its next program counter before
-  returning ContinueAction;
+- `continueAt:` selects an exact target from the current PC's canonical
+  contiguous edge group, then validates and installs that next program counter
+  before returning ContinueAction;
 - `callSite:` validates its call-site descriptor and installs its continuation
   PC before returning CallAction; and
 - TailCall, Return, and Abort publishers validate the current Frame before
   returning their actions.
 
-Layout v2 preserves those semantics. A canonical publisher first requires that
-no other action transition is pending, validates the source PC and exact edge or
-terminal operation, and prepares the canonical scratch action and pending record
-without mutating the Frame. Failure through that preparation point leaves the
-Frame unchanged. Continue and Call then atomically record the pending transition
-and install the successor semantic PC as the frozen protocol requires, but do
-not change the root-state PC or reuse/clear predecessor slots. TailCall, Return,
-and Abort record terminal pending state without a successor PC.
+Layout v2 preserves those semantics. A Continue PC may own multiple successor
+edges, ordered contiguously by target PC; the requested next PC selects one
+exact edge, while a Call PC still owns exactly one continuation edge. A
+canonical publisher first requires that no other action transition is pending,
+validates the source PC and exact edge or terminal operation, and prepares the
+canonical scratch action and pending record without mutating the Frame. Failure
+through that preparation point leaves the Frame unchanged. Continue and Call
+then atomically record the pending transition and install the successor semantic
+PC as the frozen protocol requires, but do not change the root-state PC or
+reuse/clear predecessor slots. TailCall, Return, and Abort record terminal
+pending state without a successor PC.
 
 While pending:
 
@@ -662,10 +686,21 @@ description containing:
 - call-site table and call-window size;
 - PC root maps and edge-transfer plans;
 - source-map identity and contents;
-- implementation and code-generation identities;
+- portable implementation identity;
 - selector-determined language arity and driver argument count; and
 - the registration operation emitted before binding publication.
 
+The mapping/initializer context supplies the process-local physical
+CodeGeneration identity and lease only when executing the registration
+operation; neither is part of the artifact description or its canonical bytes.
+For the frozen no-argument initializer and Method-shaped entry point, 60I's
+artifact-private, owner-thread-quiescent Begin/End exports carry that pair across the
+complete initialization sequence. Generated Prepare operations read the active
+pair rather than accepting it as an extra function operand. End clears the pair
+and reports any registration failure accumulated by those operations; the
+loader commits the Runtime staged-unit transaction only after an accepted
+program result and accepted End, and otherwise invokes unconditional staged
+rollback.
 For a named-method adapter, the artifact initializer also supplies the live
 implementation-closure Oop. That process-local value is not part of canonical
 descriptor bytes and is never reconstructed from a native address.
@@ -681,48 +716,64 @@ produce semantically identical registration. §13.4's manifest is generated
 from these same accepted artifact descriptions; it is not a second lowering or
 an inference from installed native addresses.
 
-### 13.1 Physical registration envelope
+### 13.1 Registration-envelope semantic contents
 
 The accepted physical carrier has two parts: a small native registration
 envelope for process-local values and one pointer-free canonical descriptor
 blob. It crosses a dedicated host registration shim and does not change IdApi.
+The following list is the semantic field inventory; 60I owns the normative C
+declaration, offsets, alignment, nullability table, ABI assertions, and fixtures.
 
 The version-1 envelope is a sized C record containing, in order:
 
 - `u32 carrier_version` and `u32 struct_size`;
 - `u32 operation` (`Prepare` or `Abort`) and `u32 flags`;
+- `u32 manifest_entry_index` and a zero `u32` reserved field;
 - `u64 registration_token`, zero for `Prepare` and the returned token for
   `Abort`;
 - a borrowed `const u8 *descriptor_bytes` and `u64 descriptor_length`;
 - the entry-thunk and StepMethod function pointers;
 - an optional implementation-closure Oop, required for a named adapter and
   absent for a generic block-vtable entry;
-- an opaque process-local code-generation lease;
-- the stable implementation and code-generation identities; and
+- an opaque process-local physical CodeGeneration lease and identity;
+- the stable portable implementation identity; and
 - the 32-byte SHA-256 of the complete descriptor blob.
 
 The registration symbol is the only stackless-specific publication symbol.
-`Prepare` validates and stages an unpublished entry, returning an opaque
-initializer-local token. Successful direct-binding publication consumes that
-staged entry through the existing Runtime binding accounting. If installation
-is rejected, generated initialization calls the same symbol with `Abort` and
-the token. The token is never an Oop, descriptor field, durable value, or
-language-visible identity. Registration, Store publication, and abort preserve
+`Prepare` validates the index against the current unit's staged manifest context
+and stages an unpublished entry at that exact row, returning an opaque
+initializer-local token. No second entry may claim the row. Successful
+direct-binding publication consumes that staged entry through the existing
+Runtime binding accounting. If installation is rejected, generated
+initialization calls the same symbol with `Abort`, the token, and the same row
+index; a mismatch fails without removing another staged entry. The token and
+index are never Oops, descriptor fields, durable identities, or
+language-visible values. Registration, Store publication, and abort preserve
 60E's all-or-nothing ownership rules.
 
 The envelope and blob are borrowed only for the registration call. Before
 answering success, the Runtime validates and decodes the blob into owned
-immutable storage, roots the optional implementation object, and acquires its
-own generation lease. Failure transfers no ownership and publishes nothing.
+immutable storage, installs the optional implementation object in a dedicated
+anchor slot, and acquires its own physical-code lease. Failure transfers no
+ownership, retains no anchor, and publishes nothing. Candidate preparation does
+not yet know or encode its successor logical DispatchGeneration; publication
+associates the staged entry with that generation after its digest is computed.
 
-### 13.2 Canonical descriptor-v2 blob
+### 13.2 Canonical descriptor-v2 semantic contents
 
-The descriptor blob contains no Oop, function pointer, native address, `usize`,
-or borrowed pointer. It uses fixed-width little-endian integers, `u32` PC/slot/
-logical-value/section indices, `u64` identities and bitmap words, `u32::MAX` for
+The descriptor blob contains no logical DispatchGeneration identity, physical
+CodeGeneration identity, Oop, function pointer, native address, `usize`, or
+borrowed pointer. Its only implementation identity is portable and computable
+from already-known compilation inputs. It uses fixed-width little-endian
+integers, `u32` PC/slot/logical-value/section indices, `u64` identities and
+bitmap words, `u32::MAX` for
 an absent optional index, eight-byte-aligned sections, and zero canonical
 padding. Slot `n` is bit `n % 64` of root word `n / 64`; padding bits beyond the
 declared slot count are zero.
+
+Those common encoding constraints are collected by 60I. The exact header,
+directory, record, offset, bound, and fixture tables are deliberately not owned
+by this semantic section.
 
 Sections occur once in this canonical order:
 
@@ -754,6 +805,26 @@ artifacts carry only the distinguishable version-2 blob. Pre-S2 images whose
 runtime ABI hash lacks the registration carrier rebuild from source rather than
 being upgraded in place.
 
+Identity construction is acyclic and uses three distinct domains:
+
+1. the portable implementation identity is derived from §13.5's stable source
+   key and lowering-version inputs before descriptor serialization;
+2. the descriptor hash is computed from the canonical descriptor bytes;
+3. the logical DispatchGeneration base digest is computed from its source map,
+   portable operations, carrier tags and descriptor hashes, and complete
+   GenerationSelection digest;
+4. that already-computed base digest becomes §13.4's manifest-wide authority;
+   the later artifact checksum may cover the manifest but never feeds back into
+   the descriptor or DispatchGeneration digest; and
+5. mapping the finished artifact creates a process-local physical
+   `CodeGeneration` identity and lease outside every canonical byte sequence.
+
+The candidate's existing expected-predecessor projection supplies the complete
+logical context needed for step 3. A compiler entry point never substitutes a
+current mapping handle, allocation counter, or eventual artifact checksum for
+that projection. The same descriptor may consequently be carried by more than
+one logical DispatchGeneration without changing its bytes.
+
 ### 13.3 Design 49 execution disposition
 
 A synchronous/resumable switch is a managed executable change, not a source
@@ -778,7 +849,7 @@ digest encoding, not a compatibility extension. New generations use the domain
 digest, v2 writes one carrier byte (`0` removal, `1` synchronous install, `2`
 resumable install) followed by 32 zero bytes for removal/synchronous or the raw
 descriptor SHA-256 for resumable. After the ordered operation sequence it writes
-the raw 32-byte SHA-256 of §13.5's complete canonical `ExecutionSelection`.
+the raw 32-byte SHA-256 of §13.5's complete canonical `GenerationSelection`.
 This final digest is required even when the table is all-synchronous: it makes a
 block-only carrier change create a successor generation although blocks are not
 separate Design 49 method operations. SourceRevision hashing remains v1 and
@@ -787,7 +858,7 @@ unchanged. Pre-S2 records are rebuilt rather than accepted as v2.
 Changing a carrier tag, descriptor hash, or accepted selection-table digest
 creates a successor generation even when source, selector, and intended
 language behavior are unchanged. Rollback restores the predecessor operation,
-carrier, and total selection table. Active predecessor Frames keep their
+carrier, and GenerationSelection. Active predecessor Frames keep their
 generation pins; fresh sends perform normal lookup and reach the successor
 binding.
 
@@ -797,9 +868,10 @@ binding must name the generation-owned Method installed for that operation. A
 resumable binding must name a registered thunk whose entry has the same owner and
 descriptor hash. Raw code addresses remain local validation data and never enter
 durable identity, so relocation alone is not drift. The generation's accepted
-selection digest and bytes must also agree with the artifact export; a
-selection mismatch is provenance drift even if the current native addresses
-happen to match.
+selection slice for the artifact's declared revision scope must agree with the
+artifact export; §13.5 defines that projection. A slice or recomposed-total
+mismatch is provenance drift even if the current native addresses happen to
+match.
 
 `deriveImageMethodTargets` reconstructs these expected fingerprints from the
 saved generation provenance. After initialization and registration, it accepts
@@ -825,7 +897,8 @@ never the authority for native-code admission.
 The manifest header contains:
 
 - a domain/magic, schema version, total byte length, and required flags;
-- the existing image/code-generation authority digest;
+- the logical DispatchGeneration base digest computed by §13.2's acyclic order,
+  which is also the existing image/code-generation authority digest;
 - the entry count and canonical section offsets; and
 - zero reserved fields for fail-closed extension.
 
@@ -841,36 +914,45 @@ Each entry contains:
   while block identity remains unambiguous across composed revisions.
 
 The generation authority is manifest-wide rather than repeated per entry. The
-durable entry key is the tuple `(authority digest, implementation identity,
-descriptor SHA-256)`. It contains no Oop, native address, `usize`, Runtime
-handle, registration token, or generation lease. The manifest uses fixed-width
-little-endian integers, length-prefixed bytes, zero canonical padding, and rows
-sorted by kind, source binding key, and implementation identity. Duplicate
+durable entry key is the tuple `(authority digest, stable source binding key,
+descriptor SHA-256)`. The `u64` portable implementation identity remains useful
+for descriptors, source maps, and diagnostics, but collisions never select an
+entry or invalidate two otherwise distinct source keys. The durable key contains
+no Oop, native address, `usize`, Runtime handle, registration token, physical
+lease, or manifest index. Manifest rows sort by kind, source binding key, and
+implementation identity. Duplicate
 entry keys, duplicate source binding keys within a kind, noncanonical order,
 unknown required flags, malformed selector arity, or a descriptor hash not
 owned by the unit are invalid artifacts. Live and AOT compilation of the same
-accepted artifact input must emit byte-identical manifest bytes.
+accepted artifact input must emit byte-identical manifest bytes. 60I owns the
+exact row grammar, export symbols, length carrier, and resolver C signature.
 
-The unit exports the bytes and their fixed-width length as
-`__birnam_resumable_manifest_v1` and
-`__birnam_resumable_manifest_v1_size`. The first symbol names a static byte
-array, not a NUL-terminated string; the second is a native `u64` copied with
-`memcpy` and range-checked before the array is read. Only the pointed-to
-canonical manifest bytes use fixed little-endian encoding.
-Their contents are copied and validated before the artifact loader accepts the
-unit. A unit that contains block-body entries also exports the unit-local
-function
+The unit exports the exact canonical bytes and length through 60I's artifact
+ABI. Their contents are copied and validated before the artifact loader accepts
+the unit. More precisely, physical mapping makes the static exports available; the
+host copies and validates the manifest and opens a Runtime staged-unit context
+before it invokes the generated Birnam initializer. Native static constructors
+may not register or publish resumable entries. The staged context binds the
+exact manifest bytes and authority to the physical CodeGeneration, making an
+initializer's manifest index unambiguous. A unit that contains block-body
+entries also exports 60I's unit-local manifest-index resolver.
 
-```c
-void *__birnam_resolve_block_vtable_v1(uint64_t implementation_identity);
-```
+The resolver accepts an artifact-local index into that exact unit's canonical
+sorted manifest and returns that row's private vtable Oop. It bounds-checks the
+index and requires a `BlockBody` row whose staged registration has the same
+physical CodeGeneration, implementation identity, descriptor hash, kind, and
+arity. It is idempotent within the mapped generation: repeated normal
+evaluation, image header resolution, and direct Oop-field resolution answer the
+same vtable. It runs only with the owning Runtime entered. A null result, an
+out-of-range index, a named-adapter row, or a wrong-unit/code-generation context
+fails rather than falling back to an exported vtable name.
 
-The resolver accepts a manifest-owned block implementation identity and returns
-that literal's private vtable Oop. It is idempotent within the mapped generation:
-repeated normal evaluation, image header resolution, and direct Oop-field
-resolution answer the same vtable. It runs only with the owning Runtime entered.
-A null result, or an unknown, named-adapter, or wrong-generation identity, fails
-rather than falling back to an exported vtable name.
+Canonical manifest indices are assigned only after the complete manifest has
+been sorted. Generated block-literal code embeds its row index, and every
+registration envelope—named or block—carries its own index so post-initializer
+admission compares one exact row rather than searching by `u64` identity. The
+index is a private physical locator valid only with the exact artifact manifest;
+it is not a source identity, relation key, or stable cross-artifact name.
 
 Every manifest entry is registered unconditionally while the unit initializer
 runs, including a block literal that has never been evaluated. This registers
@@ -908,12 +990,12 @@ must also be byte-identical to the manifest exported by the captured artifact;
 a digest match alone is insufficient acceptance evidence. An image without a
 Code record contains no `Resumables` record.
 
-Image-v5 heap and fact fields add a tagged
-`ResumableBlockVtableRef(u32 manifest_entry_index)` alongside ordinary
-exported-name and heap references. A heap object's vtable locator is likewise
-tagged as either an exported vtable name or a resumable block-vtable manifest
-index. The index addresses the canonical sorted manifest carried by the same
-image; it is valid only when that row is a `BlockBody`. This supports both
+Image-v5 heap and fact fields add 60I's tagged resumable block-vtable manifest
+index alongside ordinary exported-name and heap references. A heap object's
+vtable locator is likewise tagged as either an exported vtable name or a
+resumable block-vtable manifest index. The index addresses the canonical sorted
+manifest carried by the same image; it is valid only when that row is a
+`BlockBody`. This supports both
 ordinary block instances and a durable Oop field or fact that directly names
 their private vtable, while repeated references preserve one resolver-returned
 Oop identity. The image never repeats a full entry key at each reference,
@@ -922,9 +1004,10 @@ parent, or publishes a generated name through IdApi.
 
 The image writer does not infer these references by examining Method addresses
 through IdApi. The Runtime supplies a read-only image catalog that maps each
-instantiated generated block vtable to its manifest entry key and reports the
-current generation-owned binding fingerprint. The collector resolves that key
-to its unique canonical row and writes the row index when encoding object
+instantiated generated block vtable to its owning artifact authority, canonical
+manifest index, durable entry key, and current generation-owned binding
+fingerprint. The collector verifies the key against that indexed row and writes
+the row index when encoding object
 headers and Oop fields. A foreign-generation, missing, retired,
 descriptor-mismatched, or drifted generated vtable makes mapped-image capture
 fail; it is never silently encoded as an ordinary parent-vtable object.
@@ -936,15 +1019,19 @@ composition feature, not an excuse to omit an owning unit from S2 output.
 Mapped-image recovery is ordered as follows:
 
 1. preflight image v5, Authority, Code, and the complete `Resumables` record;
-2. map the captured unit and run its initializer inside one rollback-capable
-   generation transaction;
-3. compare image and artifact manifest bytes, then compare that expected set
-   with the unit's prepared and published Runtime registrations;
-4. atomically commit the exact generation-manifest entry set;
-5. materialize heap objects, resolving every block-vtable tag through the
-   unit-local resolver and the Runtime catalog;
-6. replay durable facts and perform Design 49 binding reconciliation; and
-7. verify every named binding fingerprint and every referenced block-vtable
+2. map the captured unit without invoking its generated Birnam initializer,
+   copy and validate the artifact manifest, require byte identity with the
+   image manifest, and open the staged-unit context;
+3. run the generated initializer inside one rollback-capable generation
+   transaction;
+4. compare the expected manifest set with the unit's prepared and published
+   Runtime registrations;
+5. atomically commit the exact generation-manifest entry set;
+6. materialize heap objects, passing every checked block-vtable manifest index
+   directly to the unit-local resolver and verifying the result through the
+   Runtime catalog;
+7. replay durable facts and perform Design 49 binding reconciliation; and
+8. verify every named binding fingerprint and every referenced block-vtable
    binding before the image entry point, reactor, or other user execution.
 
 The registry comparison is exact only within the captured generation. Entries
@@ -964,14 +1051,22 @@ result as mapped recovery.
 
 #### 13.4.3 IdApi and malleability boundary
 
-The manifest, Runtime registry and block-vtable catalog, artifact resolver, and
-image codec are all above or beside the IdApi floor. This decision adds no IdApi
-field, stackless query, Method argument, object/vtable payload slot, exported
-language name, lookup exception, or selector restriction. Registration and
-entry use private host symbols in the already accepted `birnam_*` family; the
-resolver is a private artifact export consumed by the loader, not an IdApi or
+The Runtime registry, block-vtable catalog, protected target resolver, and
+Machine execution state are private mechanisms inside `birnam-id::Runtime`.
+Artifact selection, compiler manifests, the artifact resolver, and image codec
+remain above or beside that floor. This decision adds no public IdApi field,
+stackless query, Method argument, object/vtable payload slot, exported language
+name, lookup exception, or selector restriction. Registration and entry use
+private host symbols in the already accepted `birnam_*` family; the resolver is
+a private artifact export consumed by the loader, not an IdApi or
 Birnam-language export. The image codec receives the Runtime catalog explicitly
-rather than teaching IdApi to reflect on resumability.
+rather than teaching public IdApi to reflect on resumability.
+
+Ordinary `IdApi.send` and Machine Call/TailCall both use the Runtime's one
+private resolve-and-pin authority over the exact metacircular lookup result.
+This makes the execution substrate stackless-aware without moving lowering or
+selection policy below IdApi, and without changing lookup, inheritance, DNU, or
+late-binding semantics.
 
 Normal lookup and mutation remain authoritative. Managed replacement records a
 successor DispatchGeneration and updates Runtime binding/catalog references
@@ -983,7 +1078,7 @@ binding is a valid mapped-image snapshot. Active Frames and implementation
 objects retain their accepted generation pins, while fresh sends perform the
 same late-bound lookup as before.
 
-### 13.5 `ExecutionSelection` request and provenance carrier
+### 13.5 Selection request and provenance carriers
 
 Selection is explicit compilation policy above the ID layer. It is neither
 source syntax nor a property inferred from a selector, current binding,
@@ -1029,34 +1124,66 @@ block, or an unknown implementation kind rejects the request before lowering.
 
 #### 13.5.2 Materialization and canonical bytes
 
-The Birnam-facing request is an ordinary Vector of record-like values carrying
-the fields above and `#synchronous` or `#resumableRequired`. It is deliberately
-convenient relational input, not durable encoding. The compilation boundary
-validates it, copies it into Rust-owned storage, enumerates the complete
-normalized implementation inventory, fills every omitted row with
-`Synchronous`, and produces one total `ExecutionSelection v1`.
+> **Request shape accepted 2026-08-23.** The Birnam-facing request is an outer
+> Vector of exact seven-element row Vectors:
+>
+> ```text
+> [#implementationDisposition,
+>  revisionDigest,
+>  rootKind,
+>  rootIndex,
+>  lexicalBlockPath,
+>  implementationKind,
+>  disposition]
+> ```
+>
+> `revisionDigest` is a String containing exactly 64 lowercase hexadecimal
+> bytes. `rootKind` is exactly `#nonMethodProgram` or `#methodOperation`;
+> `implementationKind` is exactly `#namedAdapter` or `#blockBody`; and
+> `disposition` is exactly `#synchronous` or `#resumableRequired`. `rootIndex`
+> and every element of the lexical-block-path Vector are nonnegative SmallInts
+> bounded by `u32`. The path is bounded by 60I's `MAX_PATH_DEPTH`. No Map,
+> association-like object, alternate tag, uppercase digest, integer enum,
+> omitted field, or extra field is accepted. Duplicate stable implementation
+> keys reject the complete request even when their dispositions agree.
 
-Its pointer-free canonical encoding contains:
+The request is deliberately convenient relational input, not durable encoding.
+The compilation boundary validates the complete outer Vector, copies every
+digest, ordinal, enum, and disposition into compiler-owned storage before
+lowering, enumerates the complete normalized implementation inventory for the
+declared SourceRevision scope, fills every omitted row with `Synchronous`, and
+produces one total `ArtifactSelection v1` for that scope.
 
-- domain `birnam.execution-selection.v1\0`, schema version, total byte length,
-  required flags, and row count;
-- for each row, the canonical SourceRevision digest bytes,
-  root/implementation kinds,
-  `u32` root index, `u32` path length and path ordinals, and one disposition
-  byte (`0` synchronous, `1` resumable-required); and
-- zero reserved fields and zero canonical padding.
-
-Rows sort lexicographically by revision digest, root kind, root index, block
-path, and implementation kind. Fixed-width integers are little-endian. Unknown
-required flags, invalid enum values, nonzero reserved data, trailing bytes,
-noncanonical order, duplicate/missing inventory rows, or count/length overflow
-fail closed. The compiler hashes the exact bytes with SHA-256.
+60I owns its pointer-free canonical grammar, domain, headers, records, bounds,
+and fixtures. Semantically, rows sort lexicographically by revision digest,
+root kind, root index, block path, and implementation kind. Unknown required
+flags, invalid enum values, nonzero reserved data, trailing bytes, noncanonical
+order, duplicate/missing inventory rows, or count/length overflow fail closed.
+Every row must belong to one declared covered revision, and every
+eligible implementation in every covered revision must have exactly one row.
+The compiler hashes the exact bytes with SHA-256.
 
 The normalized inventory and request expansion are shared by live, candidate,
-direct AOT, and image compilation. Stable source plus the same sparse request
-must produce byte-identical total selection bytes. Changing a relational rule
-after materialization has no effect on that in-flight compilation; it can only
-request a successor compilation.
+candidate AOT, and image compilation. Stable source scope plus the same sparse
+request must produce byte-identical ArtifactSelection bytes. Changing a
+relational rule after materialization has no effect on that in-flight
+compilation; it can only request a successor compilation.
+
+A `GenerationSelection v1` is a different, domain-separated value whose exact
+domain and grammar belong to 60I. Its scope is the complete active
+DispatchGeneration source map; its rows are the canonical union of accepted
+artifact slices whose declared scopes partition the active SourceRevisions. It
+repeats the covered-revision inventory and row semantics above so completeness
+can be checked without consulting a mutable relation. Its SHA-256, not an
+artifact-slice hash, enters `dispatch-base.v2`.
+
+Canonical bytes are the authority at artifact, generation, and image
+boundaries. A Rust implementation may decode them into a sorted vector or build
+a temporary lookup index, but those native collection types, their iteration
+order, and their partitioning are non-authoritative caches. Composition is
+defined as a linear canonical merge of sorted rows; the GenerationSelection
+bytes depend only on the complete revision inventory and rows, never on how
+those rows happened to be bundled into code units.
 
 #### 13.5.3 Compiler and artifact surfaces
 
@@ -1073,22 +1200,39 @@ Codegen compile:output:selection:
 They add no IdApi field. Selection-bearing compilation requires indexable
 SourceRevision metadata; it does not guess identities for arbitrary unindexed
 source. `compileImageCode:` deliberately receives no caller-selected policy. It
-must read the exact accepted total table from the current DispatchGeneration
-and fail if that provenance is absent, malformed, or stale.
+must read the exact accepted GenerationSelection from the current
+DispatchGeneration, project the unchanged rows into the image compilation's
+complete ArtifactSelection scope, and fail if that provenance is absent,
+malformed, incomplete, or stale.
 
-Every S2 artifact exports its canonical total bytes and native length as
-`__birnam_execution_selection_v1` and
-`__birnam_execution_selection_v1_size`, using the same static-byte-array shape
-as §13.4's resumable manifest. Candidate manifest v3 commits the lowercase-hex
-selection SHA-256 in addition to its existing revision and operation metadata;
-the candidate envelope's complete artifact hash covers the exported bytes.
-Inspection copies and validates the export before reflecting any row.
+Every S2 artifact exports its canonical scope-total bytes and native length
+through 60I's artifact ABI. Candidate manifest v4 commits the lowercase-hex
+ArtifactSelection SHA-256 plus its exact covered-revision set in addition to its
+existing revision and operation metadata; the candidate envelope's complete
+artifact hash covers the exported bytes. Inspection copies and validates the
+export before reflecting any row.
+
+The exact v4 counted/length-framed grammar was accepted 2026-08-23:
+
+```text
+v4|runtime|N:name|source_digest|non_method_digest|method_digest|revision_digest|selection_sha256|R:<64-hex revision>*|D:<N:dependency>*|O:<N:target><N:selector><I|R><arity:>*
+```
+
+`selection_sha256` is exactly 64 lowercase hexadecimal bytes.
+`R`, `D`, and `O` are canonical colon-terminated decimal counts; each `N:`
+frames exactly `N` following bytes. Revisions are concatenated fixed-width
+lowercase-hex digests in strictly increasing order. Dependencies, targets, and
+selectors are nonempty framed byte strings, so legal selector separators such
+as `|`, `,`, and `;` are data rather than grammar. Operations end with `I` or
+`R` and a colon-terminated arity. No trailing byte is accepted. A reader may
+retain v2/v3 compatibility for older candidates, but neither version can be
+emitted by current S2 compilation or claim current activation provenance.
 
 For every `ResumableRequired` row, lowering must emit exactly one matching
 `ResumableManifest` entry. Every `Synchronous` row must emit none. Named rows
-must additionally agree with §13.3's DispatchGeneration carrier and descriptor
-hash. Block rows agree through their stable lexical identity and descriptor
-hash. A request/selection/manifest/registration mismatch rejects the artifact;
+must additionally agree with the candidate's projected DispatchGeneration
+carrier and descriptor hash. Block rows agree through their stable lexical
+identity and descriptor hash. A request/selection/manifest/registration mismatch rejects the artifact;
 the compiler never edits the accepted selection afterward to describe what it
 happened to emit.
 
@@ -1101,34 +1245,69 @@ materializer resolves human-facing target/selector descriptions to exact
 revision/root/path keys and applies the canonical ordering above before
 compilation.
 
-Each artifact export covers the SourceRevision inputs compiled into that unit.
-A candidate normally replaces one revision slice rather than recompiling the
-whole active generation. Activation therefore verifies the candidate slice,
-replaces every predecessor row owned by those revised SourceRevisions, carries
-forward unchanged revision slices, and canonically recomposes one total
-generation table. The composition uses the existing canonical generation source
-order, rejects duplicate revision ownership or implementation keys, and is the
-table whose SHA-256 enters §13.3's DispatchGeneration base digest. Candidate
-manifest v3 commits the candidate slice digest; the accepted generation records
-the recomposed total digest.
+Each ArtifactSelection export covers exactly the SourceRevision inputs compiled
+into that unit. A candidate normally replaces one revision slice rather than
+recompiling the whole active generation. Activation verifies the export against
+candidate manifest v4, removes every predecessor slice for exactly the declared
+covered revisions, carries all other predecessor slices forward byte-for-byte,
+and inserts the candidate slice unchanged. Duplicate revision ownership,
+overlapping scopes, missing active revisions, or duplicate implementation keys
+reject activation.
 
-Activation transactionally relates the SourceRevisions, candidate slice and
-total generation selection bytes/digests, candidate/artifact digest, successor
-DispatchGeneration, operation-carrier rows, and `ResumableManifest` digest. The
-generation retains the complete accepted total bytes, not only its digest, so
-image rebuild and AOT compilation can replay block dispositions. An image unit
-compiled from the complete active generation exports the same total table.
-Relational facts may expose the rows for queries and tooling, but native-code
-admission still requires byte agreement with the relevant artifact export and
-Runtime registrations; mutable facts alone cannot bless a carrier.
+The Runtime then performs the specified linear merge of those sorted slices and
+serializes one canonical GenerationSelection over the successor's complete
+source map. Its SHA-256 enters §13.3's DispatchGeneration base digest.
+Generation-total identity therefore depends on the complete rows, not on code
+unit partitioning. Candidate manifest v4 commits the ArtifactSelection slice
+digest and scope; the accepted generation records both its immutable slice set
+and the recomposed GenerationSelection bytes and digest.
+
+Activation transactionally relates the SourceRevisions, exact artifact slices,
+GenerationSelection bytes/digest, candidate/artifact digest, successor
+DispatchGeneration, operation-carrier rows, and `ResumableManifest` digest.
+Image v5 records the complete GenerationSelection. Each mapped backing code unit
+must still match its own ArtifactSelection slice. A monolithic image unit covers
+the complete active revision set, so its export has the same scope and rows as
+the GenerationSelection even though their domain-separated headers and hashes
+differ. Relational facts may expose the rows for queries and tooling, but
+native-code admission still requires exact canonical-byte agreement at the
+appropriate slice or generation boundary and agreement with Runtime
+registrations; mutable facts alone cannot bless a carrier.
 
 A carrier-only change leaves every SourceRevision unchanged and creates a
-successor DispatchGeneration through §13.3's selection digest. This includes a
-change affecting only a nested or module-owned block. Rollback restores the
-predecessor total table and operation carriers. Active Frames remain pinned to
+successor DispatchGeneration through §13.3's GenerationSelection digest. This
+includes a change affecting only a nested or module-owned block. Rollback
+restores the predecessor slice set, GenerationSelection, and operation
+carriers. Active Frames remain pinned to
 their accepted generation; fresh sends continue to use ordinary late-bound
 lookup. Nothing in selection seals a selector, changes method lookup, or gives
 the relational layer a process-local execution capability.
+
+#### 13.5.5 Projected initializer transaction and candidate AOT
+
+S2 admits one nonmethod initializer form into GenerationProjection: a
+capture-free top-level `let name := [block]`. The binding's block keeps its
+ordinary `NonMethodProgram/0/path/BlockBody` implementation key and may be
+selected independently. Every admitted binding is materialized once during
+activation, including an explicitly synchronous row, so a successor never
+inherits a closure from a predecessor revision by accident.
+
+The runtime journals the exact prior and post Store values for each affected
+Globals key. Activation failure restores the prior values; rollback first
+requires every current value to equal its recorded post value and then restores
+the exact predecessor, including absence. This is a VM-owned root transaction,
+not a general effect log. A projected binding with lexical captures, an
+arbitrary top-level send, object mutation, I/O, FFI, or module introduction is
+outside S2. Revision transition hashes all such residual nonmethod forms and
+requires that digest and the dependency vector to remain byte-identical.
+
+`Codegen compile:output:selection:` is source-to-candidate AOT delivery of this same
+predecessor-bound candidate envelope. It does not create an eager selected
+module-loader authority: the result must enter `CompiledUnit` open/map/activate.
+Image code projects the complete accepted GenerationSelection. A selected
+projected global is reconstructed exactly once by mapped code; `--rebuild`
+compiles and maps a fresh unit from the durable source map and selection rather
+than executing captured native bytes or serializing a duplicate closure fact.
 
 ## 14. Diagnostics and failure rules
 
@@ -1149,7 +1328,8 @@ The compiler reports at least these kinded failures before publication:
 - an artifact description, exported manifest, or image projection disagrees
   about an entry's kind, binding key, arity, or descriptor hash;
 - a selection row names the wrong revision, root, path, or implementation kind,
-  or the total selection inventory is incomplete or noncanonical; or
+  or the scope or complete generation selection inventory is incomplete or
+  noncanonical; or
 - request, artifact export, candidate manifest, generation composition,
   `ResumableManifest`, or Runtime registration disagree about a disposition.
 
@@ -1179,8 +1359,11 @@ Tests must prove:
 6. every source send increments a generated Call/TailCall probe, including a
    send whose current target is synchronous;
 7. inherited, DNU, and custom lookup behavior matches synchronous compilation;
-8. a named adapter retains its exact implementation object and performs a fresh
-   late-bound `value:`-family lookup on every invocation;
+8. a named adapter retains its exact implementation object through forced GC
+   after Prepare, publication, alias removal, and image re-registration, copies
+   it into the Frame implementation slot, and performs a fresh late-bound
+   `value:`-family lookup on every invocation; Abort and final quiescent teardown
+   release the anchor without affecting another alias;
 9. changing that implementation object's `value:` binding after method
    installation changes subsequent calls through the normal lookup rules;
 10. tail position is stable across synchronous-to-resumable redefinition; and
@@ -1226,8 +1409,11 @@ Tests must also satisfy 60E §14's S2 items:
 26. migrated-to-migrated Call, inheritance, and custom lookup push Frames
     directly with no thunk invocation;
 27. a resumable block executes through direct block-vtable registration;
-28. live and AOT registrations have identical descriptor, arity, implementation,
-    root-map, coloring, and transfer identities;
+28. live and AOT registrations have identical portable descriptor, arity,
+    implementation, root-map, coloring, and transfer identities; mapping those
+    bytes twice may produce different physical CodeGeneration identities, and
+    carrying the descriptor into a successor logical DispatchGeneration changes
+    neither descriptor bytes nor hash;
 29. the physical carrier rejects malformed sizes, offsets, hashes, masks,
     transfers, reserved bits, and ownership tokens before publication;
 30. synchronous-to-resumable and resumable-to-synchronous carrier-only changes
@@ -1241,7 +1427,10 @@ Tests must also satisfy 60E §14's S2 items:
 34. the reusable call window handles zero through maximum tested arity and never
     overlaps an active Call result;
 35. live and AOT output carry byte-identical canonical manifests whose named
-    and block rows agree with their descriptors and registrations;
+    and block rows agree with their indexed descriptors and registrations; two
+    block rows forced to share a `u64` implementation identity but having
+    distinct source keys remain valid and resolve to their separate vtables by
+    manifest index;
 36. unit initialization registers a never-evaluated block body without
     allocating its vtable, and first normal evaluation creates exactly one
     private vtable through the same idempotent resolver used by image recovery;
@@ -1267,11 +1456,12 @@ Tests must also satisfy 60E §14's S2 items:
 
 Tests must additionally prove:
 
-43. the existing compilation selectors materialize a total all-synchronous
-    selection and preserve the frozen IdApi layout and fingerprint;
+43. the existing compilation selectors materialize a scope-total
+    all-synchronous ArtifactSelection and preserve the frozen IdApi layout and
+    fingerprint;
 44. differently ordered relational query results for the same sparse request
-    produce byte-identical total selection bytes in live, candidate, and direct
-    AOT compilation;
+    produce byte-identical ArtifactSelection bytes for the same declared scope
+    in live, candidate, and candidate AOT compilation;
 45. changing relational facts after request materialization cannot affect an
     in-flight lowering, and a structural spy observes no Store or relational
     query from the compiler pass;
@@ -1283,18 +1473,20 @@ Tests must additionally prove:
 48. a named adapter, its implementation block, nested blocks, and a block owned
     by nonmethod module initialization can be selected independently by their
     stable keys;
-49. candidate manifest v3, the exported total selection slice,
+49. candidate manifest v4, the exported ArtifactSelection slice and scope,
     `ResumableManifest`, descriptors, and registrations agree exactly, and any
     one-sided disposition or digest edit rejects the candidate;
-50. candidate activation replaces only revised SourceRevision slices, carries
-    unchanged predecessor slices, rejects duplicate ownership, and recomposes a
-    deterministic total generation selection;
+50. candidate activation replaces only its declared SourceRevision slices,
+    carries unchanged predecessor slices byte-for-byte, rejects duplicate or
+    incomplete ownership, and recomposes a deterministic GenerationSelection
+    independent of code-unit partitioning and native collection iteration;
 51. a block-only selection change leaves SourceRevision unchanged, changes the
     DispatchGeneration digest, and rollback restores the exact predecessor
-    selection and carriers; and
+    slice set, GenerationSelection, and carriers; and
 52. `compileImageCode:` accepts no policy override and reproduces the current
-    generation's complete accepted selection, including block rows, while
-    mapped and rebuilt recovery agree.
+    generation's complete accepted selection rows, including block rows, while
+    image v5 carries GenerationSelection, each mapped unit agrees with its own
+    ArtifactSelection, and mapped and rebuilt recovery agree.
 
 The canonical repository gate, native-prefix smoke, cold-archive smoke,
 relocation smoke, frozen IdApi fixtures, and process-local image rejection tests
@@ -1304,8 +1496,11 @@ remain mandatory.
 
 The lowering semantics, eligibility matrix, liveness and physical layout,
 descriptor carrier, Design 49 projection, durable `ResumableManifest` image
-integration, and relationally materialized `ExecutionSelection` carrier are
-accepted. This record has no remaining pre-implementation decision.
+integration, and relationally materialized ArtifactSelection/GenerationSelection
+carriers, artifact-local manifest-index resolver, and prepare/publish/abort
+ordering are accepted. The S1 shared private resolve-and-pin alignment and
+60I's complete byte grammar both closed 2026-08-22. No design gate remains
+before S2 implementation begins.
 
 Arena trimming, actual code-mapping reclamation, concurrent mutation,
 suspension, Continuations, scheduling, debugger mutation, and an optimizing
@@ -1313,15 +1508,15 @@ direct-call tier remain owned by later records and do not block S2. An
 implementation must still satisfy §15's evidence; closing the design gate is
 not acceptance of code that has not yet been written.
 
-## 17. Implementation slices after acceptance
+## 17. Implementation slices after gate closure
 
-With §16 closed, S2 should land in dependency order:
+With §16 closed, S2 lands in dependency order:
 
 0. **S2.0 — Selection and provenance carrier.** Add stable implementation
-   inventory keys, relational request materialization, canonical total
-   selection bytes, candidate-manifest v3 and artifact exports,
-   DispatchGeneration composition/digest projection, and all-synchronous
-   compatibility defaults without changing IdApi.
+   inventory keys, relational request materialization, canonical
+   ArtifactSelection slices, candidate-manifest v4 and artifact exports,
+   partition-independent GenerationSelection composition/digest projection,
+   and all-synchronous compatibility defaults without changing IdApi.
 1. **S2.1 — Semantic order, logical IR, and oracle.** Make synchronous emission
    sequence receiver and arguments explicitly, then build deterministic
    CFG/value IDs, evaluation-order tests, reference liveness, and an uncolored
@@ -1347,3 +1542,173 @@ With §16 closed, S2 should land in dependency order:
 
 No slice may expose a resumable binding whose descriptor, registration,
 rooting, or image-recovery path is only partially safe.
+
+Implementation ledger, 2026-08-23:
+
+- S2.0 has the allocation-free canonical selection admission path, canonical
+  encoders, sparse request materialization, portable identity derivation, and
+  partition-independent generation composition. Candidate compilation now
+  emits manifest v4 and the exact canonical ArtifactSelection export; staging
+  recomputes the normalized inventory, and mapping checks the copied export,
+  digest, and covered-revision set before executing candidate-owned code.
+  Candidate ABI 4 also carries the exact expected-predecessor digest and the
+  byte-exact ArtifactSelection payload. Successor projection removes the
+  replaced revision slice, carries untouched slices forward, recomposes the
+  complete GenerationSelection, and binds its digest into `dispatch-base.v2`.
+  The approved seven-element Birnam request Vector is now admitted
+  by exact runtime type, tag, symbol, digest, integer, path, shape, and duplicate
+  checks and copied into owned Rust storage before lowering. The explicit
+  `compile:output:selection:` and
+  `compileCandidate:named:output:selection:` protocols materialize that request
+  against the complete inventory. Explicit synchronous, named, and candidate
+  `BlockBody` `ResumableRequired` rows publish their canonical provenance.
+  Selection-bearing candidate AOT now emits that same predecessor-bound candidate
+  envelope and must enter the same open/map/activate lifecycle, eliminating a
+  second eager-loader authority.
+- S2.1 has explicit synchronous operand sequencing plus deterministic logical
+  values, binding versions, dense PCs, Call/TailCall/Return/Continue lowering,
+  reference liveness, and an uncolored interpreter.
+- S2.2 has a bounded borrowed decoder for all fifteen descriptor-v2 sections,
+  stable-key identity checks, execution/source-map cross-validation against the
+  nine frozen descriptors, and a private Runtime layout-v2 root/edge substrate.
+  Pending edges retain predecessor roots; nonallocating commit uses
+  preallocated parallel-copy scratch, initializes Call results, clears dead
+  slots, and then advances root state. The production canonical serializer now
+  reproduces all nine frozen descriptors byte-identically and re-admits every
+  output; Runtime admission copies their execution metadata, including ordered
+  capture-entry slots, into owned v2 storage without retaining artifact
+  pointers. The compiler constructs all fifteen sections for capture-bearing
+  BlockBody implementations from the colored logical IR and admits the result
+  through that same serializer/parser path.
+- S2.3 has deterministic conservative interference coloring, fixed entry
+  locations, a disjoint reusable call-staging suffix, PC root maps, edge clear
+  plans, and a colored interpreter checked against the uncolored oracle. The
+  generated Method-shaped StepMethod uses only late-bound Machine microcode,
+  stages receiver, selector, and arguments in language order, and passes both
+  focused Rust tests and a C11 warnings-as-errors syntax check. Block-literal
+  inputs participate in liveness and root maps; generated StepMethods allocate
+  nested synchronous or selected closures and copy their canonical capture
+  vector while the source values remain Frame-rooted.
+- S2.4 has a pure named-adapter unit composer that takes an already-authorized
+  logical generation authority, assigns canonical manifest indices, compiles
+  descriptor/StepMethod/thunk/registration fragments, and hands exact
+  operation-indexed fragments to artifact emission. The emitter creates and
+  roots the implementation block first, calls Prepare with that live Oop,
+  installs only the selected unique thunk, and calls Abort if direct
+  publication rejects; the complete generated translation unit passes a C
+  warnings-as-errors syntax check. Public candidate compilation now projects
+  successor authority before emission, publishes and remaps exact manifest and
+  selection exports, then completes live validation, host-quiescent activation,
+  selected dispatch, rollback, and predecessor restoration. Publication uses
+  monotonic process-local SmallInt capability IDs; admission performs the full
+  plan check once, while commit rechecks exact active-generation identity and
+  numeric Store basis. Collection-induced finalizer mutations therefore stale a
+  prepared plan without changing dispatch; preparation suppresses direct removals
+  as well as installs, so its dry run remains inert.
+- S2.5 has the canonical ResumableManifest encoder/decoder, exact reproduction
+  of the four core frozen manifests, descriptor/selector/stable-key checks, and
+  exact ArtifactSelection agreement including forged-portable-ID rejection.
+  The exact 136-byte registration-envelope carrier, staged-unit manifest
+  context, physical generation identity and lease checks, owned descriptor
+  admission, named-implementation rooting, one-shot Prepare/Abort tokens,
+  incomplete-unit rollback, and first-binding publication token consumption
+  also exist. The runtime ABI fingerprint is migrated to v3 and hashes the
+  exact frozen registration tuple reconstructed from source-owned constants;
+  fixture-free cold archives therefore reproduce it without importing test
+  data. Codegen resolves the private registration symbol from the exact
+  selected `RTLD_LOCAL` floor without widening loader visibility or growing
+  `IdApi`. The artifact-private static Begin/End context is now emitted with
+  exact zero/nesting/failure rules and is serialized by owner-thread
+  quiescence; generated Prepare/Abort helpers
+  consume it without changing the frozen initializer or Method ABI. The exact-
+  floor loader now byte-checks an expected manifest, opens Runtime staging,
+  brackets the complete initializer/entry sequence, commits only after an
+  accepted program result and accepted context End, and otherwise uses an
+  unconditional loader-private cancel seam. It assigns the physical mapping
+  handle as the process-local generation identity and a nonzero monotonic
+  mapping lease; neither enters canonical bytes. A zero-entry manifest leaves no
+  committed Runtime unit, because such a unit
+  owns no registration, code anchor, or catalog row; this permits a disposed
+  methodless mapping's loader handle to be reused safely under a fresh lease.
+  Production named lowering now
+  composes resumable fragments into the unit, publishes the manifest and entry
+  thunks, and retains GenerationSelection. Successful staging retains the byte-exact committed
+  manifest and entry capabilities and invalidates every initializer-local Abort
+  token. The staged Runtime context journals every direct method mutation,
+  defers predecessor-entry retirement, and on failure restores overwritten
+  bindings, removes new bindings, returns prepared entries to the unpublished
+  state, and restores the pre-transaction block-catalog drift snapshot before
+  unregistering the incomplete unit. The Runtime records generated block-vtable bindings bidirectionally by
+  authority and canonical manifest index, roots the catalog, and makes
+  overwrite or alias drift fail closed. A deterministic unit-local
+  `__birnam_resolve_block_vtable_v1` C emitter creates each private vtable once,
+  installs only its registered thunk through ordinary `birnam_method`, and
+  rejects unknown indices. The candidate block composer now includes that
+  resolver, eagerly prepares every selected block row before literal
+  resolution, defers selected closure allocation during the dry preparation
+  pass, and emits capture-aware selected and synchronous nested construction.
+  Live candidate proofs cover a capture-bearing selected leaf, an all-selected
+  nested family, and a selected parent with synchronous children through
+  activation, ordinary dispatch, and exact rollback. Candidate materialization
+  now also admits capture-free top-level block bindings, derives candidate AOT
+  output through the same predecessor projection, and rolls Globals roots back
+  exactly while rejecting capture-bearing or effectful initializer changes.
+- S2.6 has a separate bounded image-v5 parser/writer that reproduces every
+  valid frozen image byte-for-byte, rejects the committed malformed images,
+  validates the Authority/Resumables/Code relationship, and checks every
+  tag-10 occurrence against a `BlockBody` manifest row before materialization.
+  Ordinary heap objects are decoded only through a runtime-supplied exported
+  layout. Production Rust Codegen now reads the durable current
+  GenerationSelection, projects every accepted row unchanged into the
+  monolithic image ArtifactSelection, assigns generation-global symbol and
+  manifest indices, rebases module-local operation and nonmethod-block keys,
+  and emits the corresponding named and BlockBody resumable fragments. The
+  compatibility `compileImageCode:` selector still accepts no policy input;
+  the writer uses `compileImageCode:manifest:` to capture the dylib and its
+  exact authority-bound manifest as one operation. The writer verifies those
+  manifest bytes against the current generation authority instead of
+  synthesizing an empty manifest, then places the same bytes in image v5.
+  A production lifecycle test activates a nonempty generation containing a
+  selected named adapter, its selected method-owned `BlockBody`, and a selected
+  projected nonmethod `BlockBody`, then exercises image-code capture. The
+  corresponding production acceptance run verifies all three indexed
+  StepMethod/thunk families, the unit-local block-vtable
+  resolver, exact exported manifest bytes, and total staged registration. Rust
+  Codegen preflight, code mapping, and fact replay consume v5. The
+  Runtime now exposes loader-private, exact-floor catalog queries for the
+  writer's vtable-to-index lookup, the loader's index-to-vtable verification,
+  and byte-exact committed-manifest agreement. These remain outside IdApi and
+  Runtime ABI v3 because generated code does not import them. The production
+  writer uses the reverse query for both tag-10 Oop fields and generated-vtable
+  heap locators and rejects missing, foreign-authority, or drifted catalog
+  entries. All-synchronous image-code artifacts now export the exact
+  authority-bound empty manifest; image preflight and mapping copy its native
+  length and bytes, require byte identity with the image record, and require a
+  resolver export whenever the admitted manifest contains a block row before
+  Birnam initialization can run. After staged commit the loader now rechecks
+  the exact committed manifest through the selected floor, retains the exact
+  artifact resolver for the recovery scope, resolves tag-10 heap locators and
+  fields only through that function, and requires the resulting vtable to agree
+  with the Runtime's authority/index catalog before allocation or fact replay.
+  Recovery clears that resolver scope at its explicit end. Design 47's image
+  lifecycle seam is now present: Image exposes a domain-separated composition
+  identity derived from the admitted code checksum, pure Birnam replaces saved
+  origin units with rollback-free `#composed` components before user entry, and
+  Codegen rebuilds the stable-owned-target binding ledger from live direct
+  dispatch. Source recovery recompiles and maps the accepted projection before
+  composition adoption; mapped recovery uses the captured projection. The
+  production smoke publishes a nonempty selected generation,
+  proves identical mapped/rebuilt behavior and composition identity, verifies
+  origin `#historical`/`#composedInto` facts and absent rollback capability,
+  resaves and reboots the composed image, then activates and rolls back a new
+  candidate AOT unit—including its projected global—over that recovered base.
+  The retained S2 release measurement probe
+  publishes Call/Return, ordinary-entry, fallback-thunk, microcode, Frame,
+  boundary-depth, native-stack-movement, and descriptor-size evidence against a
+  same-run `sends.compiled-unary` baseline; the 2026-08-23 run measured 1.170 x
+  S for Call/Return and 1.308 x S for ordinary entry, within their 4 x and 6 x
+  budgets. The separate fixed-2-MiB-stack depth probe reproducibly measured
+  3,557 synchronous levels versus 1,277 mixed resumable/synchronous-barrier
+  levels (`0.359 x`), intentionally failing the provisional `0.5 x` budget and
+  activating 60E's recorded S4 migration trigger. Arbitrary effectful
+  initializers remain intentionally outside the completed S2 projection.

@@ -13,9 +13,22 @@
 > fresh-Oop, retained-closure, and exact-eligibility amendments, were accepted
 > 2026-08-14. The durable `ResumableManifest`, image-v5 block-vtable recovery,
 > and no-IdApi-growth boundary were accepted 2026-08-14. The canonical
-> `ExecutionSelection` carrier, relational materialization boundary, and
-> live/AOT generation-provenance rule were accepted 2026-08-14. Design 60F's
-> S2 pre-implementation gate is closed.
+> `ArtifactSelection`/`GenerationSelection` carriers, relational
+> materialization boundary, live/AOT generation-provenance rule, separated
+> identity layers, and named-implementation GC anchors were accepted
+> 2026-08-14. The artifact-local manifest-index resolver was accepted the same
+> day. Design 60I owns the complete byte-grammar contract. 60F's
+> prepare/publish/abort ordering was accepted 2026-08-15. The shared private
+> target-resolution amendment was accepted the same day: ordinary `IdApi.send`
+> and Machine Call/TailCall use one
+> Runtime-owned resolve-and-pin authority, while thunks remain Method-shaped
+> carriers and direct-invocation fallbacks. The S1 substrate was aligned and
+> the 60I physical-format gate closed on 2026-08-22. S2.0-S2.6 are implemented
+> through selected named, method-owned `BlockBody`, and generation-projected
+> nonmethod-owned `BlockBody` recovery through live, candidate AOT, and image
+> paths. The expanded S2
+> initializer boundary was locked 2026-08-23: capture-free top-level block
+> bindings are VM-owned transactional projection; arbitrary effects are not.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -54,21 +67,42 @@ policy, the current image format, and the existing synchronous Method ABI.
 
 ## 2. Current Rust baseline
 
-The current implementation is deliberately synchronous:
+The production compiler now has candidate-selected named, method-owned block,
+and projected nonmethod-owned block paths plus nonempty image reproduction.
+Selection-bearing candidate AOT emits the same predecessor-bound candidate
+envelope and uses the same open/map/activate authority:
+
+| Term | Compilation scope | Delivery contract |
+|---|---|---|
+| Module AOT | One bootstrap or project module source | Produce an ordinary dylib for eager `Module load:` before G0. |
+| Candidate AOT | One successor SourceRevision | Produce a predecessor-bound candidate-v4 envelope; `CompiledUnit` must open, map, and activate it. “Source-to-candidate AOT” is the explicit long form. |
+| Image AOT | The complete accepted GenerationProjection | Produce the authority-bound image code unit; normal boot maps it and `--rebuild` recompiles it from durable source and selection. |
+
+“Direct AOT” is not a separate Birnam category or backend and is not used as a
+canonical term.
 
 - birnam-abi defines Method as an unsafe C function taking receiver, argument
   buffer, and argument count, and IdApi exposes method installation and send.
-- birnam-id performs lookup and immediately calls the resolved Method address.
-- birnam-codegen emits nested birnam_send calls and synchronous compound-literal
-  argument arrays.
+- birnam-id owns `RuntimeState.execution`, Machine capabilities, private Frame
+  arenas, descriptor/action validation, registered resumable entries,
+  generation pins, and execution-root enumeration.
+- its ordinary `send_abi` and Machine Call/TailCall use the same protected
+  three-way resolution. A resumable carrier enters directly without invoking
+  its installed thunk; raw Method invocation retains the thunk fallback.
+- birnam-codegen provides deterministic logical lowering, coloring,
+  capture-bearing block descriptors, nested selected/synchronous block
+  construction, StepMethod C, and resumable registration C.
 - birnam-prelude keeps callback-driving control state in Rust activations,
   including Boolean loops and integer iteration.
 - birnam-id collects through a hybrid native-stack scan plus registered root
-  providers and vtable trace hooks. It has no MachineState trace/finalization
-  integration yet.
+  providers and vtable trace hooks; S1 Machine frames participate through the
+  execution root provider.
 - birnam-host and birnam-codegen-runtime retain process-lifetime runtime and
-  generation authorities, but do not yet pin code specifically for suspended
-  language frames.
+  generation authorities. Descriptor-v2, canonical manifests, staged native
+  registration, GenerationSelection retention, nonempty manifest publication,
+  generated block-vtable resolution, and mapped/rebuilt/resaved image-v5
+  recovery are implemented. Recovered images publish a rollback-free composed
+  DispatchGeneration and accept a later live candidate with exact rollback.
 - birnam-isolate Frame values are transport records, not execution frames.
 
 The Rust floor is now the only production implementation. Historical benchmark
@@ -99,6 +133,10 @@ The implementation must preserve these invariants:
     and in-flight execution. Codegen and loaders may hold physical code
     resources, but cannot register, retire, or dispose them behind that
     Runtime's execution authority.
+14. Ordinary `IdApi.send` and Machine Call/TailCall classify the exact result of
+    ordinary metacircular lookup through one private Runtime resolve-and-pin
+    authority. Stacklessness is internal execution mechanism, not a second
+    public dispatch protocol.
 
 ### 3.1 Runtime ownership
 
@@ -108,6 +146,14 @@ arenas, ResumableEntry recognition, protected dispatch resolution, binding
 retirement, entry scopes, and Runtime-local generation pins. This is mechanism
 at the same floor as send, allocation, and tracing; it does not move scheduler,
 compiler, or language policy into the floor.
+
+That floor is stackless-aware without changing the public IdApi. Its one private
+resolve-and-pin operation performs ordinary metacircular lookup and classifies
+the selected Method carrier as a pinned resumable entry, a lifetime-protected
+synchronous Method, or unbound. `send_abi` and the Machine driver consume that
+same result differently, but neither repeats lookup or consults a shadow
+dispatch table. Entry thunks preserve the frozen Method carrier and direct-call
+compatibility; they are not the primary ordinary-send mechanism.
 
 The host or reactor is the **executor** of a Runtime, not its owner of semantic
 state. The first implementation gives one Runtime one owner thread and
@@ -200,10 +246,11 @@ Design 48.
 
 ### 60E — Resumable registration and the entry seam
 
-Decides what a vtable holds for a resumable implementation, how an ordinary send
-reaches one through an entry thunk, how the driver recognizes a resumable
-implementation without aliasing recycled code, and how an unmigrated caller
-crosses into resumable code without allocating a Machine per crossing. It makes
+Decides what a vtable holds for a resumable implementation, how ordinary send
+and Machine calls share one private resolve-and-pin classification, how entry
+thunks remain Method-compatible carriers and fallbacks, how recognition avoids
+aliasing recycled code, and how an unmigrated caller crosses into resumable code
+without allocating a Machine per crossing. It makes
 registration an emitted artifact operation so image boot re-registers rather
 than restoring installs without them, keeps the Machine microcode ordinarily
 late-bound, amends the 60C driver argument count, states what migration does and
@@ -229,11 +276,35 @@ pointer-free `ResumableManifest`, its required image-v5 projection, an
 idempotent lazy block-vtable resolver and Runtime image catalog, exact
 post-initializer/final-binding checks, and the boundary that none of these grow
 IdApi or change lookup. It then freezes a revision-qualified canonical
-`ExecutionSelection`: relational policy is materialized before compilation,
-artifacts and DispatchGenerations retain the accepted total table, and image/AOT
-compilation replays that provenance rather than choosing again. 60F has no
-remaining pre-implementation decision; its evidence gates still govern
+`ArtifactSelection`/`GenerationSelection`: relational policy is materialized
+before compilation, each artifact retains a scope-total immutable slice,
+DispatchGenerations retain the partition-independent recomposed total, and
+image/AOT compilation replays that provenance rather than choosing again.
+Canonical bytes are authoritative; private decoded Rust collections are only
+replaceable caches and do not define ordering or identity. The same amendment
+separates portable implementation, logical DispatchGeneration, and physical
+CodeGeneration identities and gives named implementation closures explicit
+Runtime-owned GC anchors. Block-vtable resolution uses an artifact-local
+canonical manifest index rather than a possibly colliding implementation
+identity. 60F's prepare/publish/abort ordering is accepted. 60I's complete
+byte-grammar gate closed 2026-08-22; 60F's evidence gates still govern
 acceptance of the implementation.
+
+### 60I — Stackless artifact byte grammar
+
+[60I](60i-stackless-artifact-byte-grammar.md) is the sole physical-format
+authority for the shared stable implementation key, ArtifactSelection,
+GenerationSelection, ResumableManifest, the native registration envelope,
+descriptor-v2 bytes, and image-v5 stackless records. It collects the already
+accepted pointer-free, fixed-width, canonical-ordering, manifest-index, and
+identity-layer constraints without taking ownership of language semantics,
+lowering, lookup, or lifetime.
+
+60I was opened 2026-08-15 and closed its pre-implementation gate 2026-08-22.
+Its exact headers, record layouts, section directory, limits, validation tables,
+golden fixtures, independent checker, malformed matrix, and non-circular
+construction trace now form the implementation contract. Decoded Rust
+collections remain replaceable caches.
 
 ### Future 60G — Lifetime and host integration
 
@@ -326,12 +397,14 @@ allocation to the owner-thread path.
 #### S1.3 — Registered ordinary send
 
 Add Runtime-local ResumableEntry recognition, the versioned registration shim,
-the semantic v1 registration carrier, the unique entry thunk, and resolve-and-
-pin classification. The carrier freezes its required fields, version/size
+the semantic v1 registration carrier, the unique entry thunk, and protected
+resolve-and-pin classification. The carrier freezes its required fields, version/size
 validation, lifetime transfer, and failure-before-publication rules while
-leaving descriptor blob encoding to 60F §16. An ordinary send from
-unmigrated code must enter the Machine, execute the registered hand-written
-StepMethod, and answer the same result as its synchronous predecessor. This
+leaving descriptor blob encoding to 60I. An ordinary send from
+unmigrated code must be classified inside `send_abi`, enter the Machine without
+invoking the thunk, execute the registered hand-written StepMethod, and answer
+the same result as its synchronous predecessor. Direct raw-Method invocation of
+the thunk must remain a separately tested compatibility fallback. This
 slice changes no source compiler lowering and exposes registration only to its
 test artifact while physical unloading remains disabled.
 
@@ -362,7 +435,8 @@ lowering remains S2. A slice may use test-only hand-written StepMethods, but it
 may not expose a partially safe registration or disposal path to ordinary
 artifacts.
 
-**S1 accepted 2026-08-06.** The integrated evidence includes one-million
+**S1 accepted 2026-08-06, before the 2026-08-15 shared-resolution amendment.**
+The integrated evidence includes one-million
 Continue and mutual-TailCall runs, synchronous and registered-entry adapters,
 forced collection, nested and suppressed entry scopes, late-bound microcode
 mutation, independent Runtime registration, direct-binding retirement and pin
@@ -373,7 +447,9 @@ leaf invocation at `0.795 x S`, with one microcode send per hand-written step;
 60E records the same-run raw measurements. The 456-case Birnam suite and the
 workspace/native-prefix/cold-archive/relocation verification gates passed.
 This acceptance does not claim S2 compiler lowering, S3 Continuations, or the
-actual reclamation owned by Future 60G.
+actual reclamation owned by Future 60G. Before S2 begins, S1.3 must be amended
+so ordinary `send_abi` and Machine resolution use the shared private authority,
+with regression evidence for both direct entry and the fallback thunk.
 
 ### S2 — Minimal resumable compiler path
 
@@ -392,6 +468,20 @@ Add the explicitly defined host/test suspension operation, continuation
 lifecycle, forced-GC coverage, continuation pin transfer, extension of the S1
 disposition gate to Continuation holders, and image rejection.
 
+**S3 accepted 2026-08-23.** The Runtime now owns checked, owner-affine
+Continuation capabilities and delimited detached Frame segments. Host/test
+suspension resumes with one supplied Oop; capture transfers Frame roots and
+physical generation pins without reacquiring them; restoration writes the
+supplied answer into the saved result slot and consumes the Continuation in the
+same Rust-owned commit. Acceptance probes cover suspended lifecycle, one-shot
+rejection, entry-barrier refusal with the outer Frame intact, precise detached
+Frame root tracing, direct active-Frame/Continuation pin counts across capture,
+restore, completion, and idempotent finalization. The Runtime also installs all
+eight canonical StepAction layouts and reflective fields, and image preflight
+classifies Continuation and every S3 action as process-local.
+No scheduler, public continuation syntax, multi-shot copy, thread migration, or
+durable Continuation format was introduced.
+
 ### S4 — Callback-driving control primitives
 
 Migrate Boolean branches, while loops, integer iteration, and the collection
@@ -409,8 +499,9 @@ S0 acceptance records the following implementation gate as complete:
 
 - the exact StepAction Oop layouts, reflective protocol, and ownership rules;
 - the exact StepMethod calling contract accepted in 60C;
-- the resumable registration record, the entry-thunk contract, the driver
-  resolve-and-pin, binding-retirement, and address-reuse ordering rules, and the
+- the resumable registration record, the entry-thunk compatibility contract,
+  shared private resolve-and-pin authority, binding-retirement, and
+  address-reuse ordering rules, and the
   artifact/image registration surface from 60E;
 - the Machine Oop capability and private-Frame accessor boundary for generated
   native code;
@@ -448,3 +539,43 @@ The S3 suspension proof adds:
 Future 60G owns proof that a formerly method-bearing mapping can actually be
 reclaimed without leaving a Runtime registry or reachable vtable naming its
 address range.
+
+## 8. Current completion boundary
+
+No architecture gate blocks S2 implementation. Both pre-implementation gates
+closed 2026-08-22:
+
+1. **Shared-resolution substrate alignment.** Ordinary `send_abi` and Machine
+   Call/TailCall now consume the same protected three-way classification.
+   Ordinary and Machine entry bypass the registered carrier thunk; direct raw
+   Method invocation remains the fallback. The complete active `birnam-id`
+   suite passed, and a three-process quick ReleaseSafe A/B measured
+   `sends.compiled-unary` at median 425 ns/op before alignment and 428 ns/op
+   after alignment, a 0.7% increase within the 10% threshold.
+2. **60I byte-grammar closure.** ArtifactSelection, GenerationSelection,
+   ResumableManifest, native-envelope, descriptor-v2, Runtime ABI v3, and
+   image-v5 bytes are frozen with an independent reader, malformed and
+   disagreement matrices, golden hashes, and a complete non-circular
+   candidate-to-image construction trace.
+
+The prepare/publish/abort order, artifact-local resolver key, public IdApi
+boundary, lowering semantics, per-PC root maps, slot coloring, selection
+carriers, implementation anchors, and image-recovery semantics are implemented
+and exercised by the canonical repository, release-prefix, cold-archive,
+relocation, and nonempty mapped/rebuilt image gates. S2 uses one
+GenerationProjection authority for live candidates, selection-bearing
+candidate AOT, mapped images, and source rebuild. Its initializer transaction admits only
+capture-free top-level block bindings, journals their exact Globals roots, and
+requires the residual effectful nonmethod program to remain unchanged.
+The S2 Call/Return and ordinary-entry timing budgets pass. The deliberately
+failing fixed-stack depth gate reaches only `0.359 x` the synchronous baseline,
+which activates the already-owned S4 control-primitive migration trigger rather
+than reopening the S2 Machine or artifact design.
+
+Later stages intentionally retain separate work: S4 migration of
+callback-driving control primitives; Future 60G
+actual mapped-code reclamation and concurrent-evolution read-side protection;
+and Future 60H rollout and compatibility policy. Thunk-pool sizing, arena trim,
+an optimizing direct-call tier, scheduler policy, debugger mutation,
+multi-shot/durable continuations, and shared-runtime parallelism remain deferred
+and do not block S2.

@@ -78,10 +78,7 @@ unsafe extern "C" fn validation_cstr(_value: *mut c_void) -> *const c_char {
 
 unsafe extern "C" fn validation_free_cstr(_value: *const c_char) {}
 
-unsafe extern "C" fn validation_make_string(
-    _value: *const c_char,
-    _length: i64,
-) -> *mut c_void {
+unsafe extern "C" fn validation_make_string(_value: *const c_char, _length: i64) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -147,7 +144,10 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
 
     let mut symbols: Vec<(&[u8], *const c_void)> = vec![
         (b"birnam_mkSmallInt", validation_pointer as *const c_void),
-        (b"birnam_smallIntValue", validation_small_int as *const c_void),
+        (
+            b"birnam_smallIntValue",
+            validation_small_int as *const c_void,
+        ),
         (b"birnam_mkFloat", validation_pointer as *const c_void),
         (b"birnam_floatValue", validation_float as *const c_void),
         (b"birnam_mkWord", validation_pointer as *const c_void),
@@ -161,7 +161,10 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
         (b"birnam_send", validation_send as *const c_void),
         (b"birnam_intern", validation_intern as *const c_void),
     ];
-    symbols.push((b"__vecFactory", ptr::addr_of!(VALIDATION_VEC_FACTORY).cast()));
+    symbols.push((
+        b"__vecFactory",
+        ptr::addr_of!(VALIDATION_VEC_FACTORY).cast(),
+    ));
     symbols.push((foreign_name, validation_foreign as *const c_void));
     let symbols_added = symbols
         .into_iter()
@@ -182,6 +185,52 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+#[repr(C)]
+struct DlInfo {
+    filename: *const c_char,
+    base: *mut c_void,
+    symbol_name: *const c_char,
+    symbol_address: *mut c_void,
+}
+
+#[cfg_attr(target_os = "linux", link(name = "dl"))]
+unsafe extern "C" {
+    fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
+}
+
+fn floor_registration(api: &IdApi) -> Option<unsafe extern "C" fn(*mut c_void) -> u32> {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let address = *ADDRESS.get_or_init(|| {
+        let mut info = DlInfo {
+            filename: ptr::null(),
+            base: ptr::null_mut(),
+            symbol_name: ptr::null(),
+            symbol_address: ptr::null_mut(),
+        };
+        if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
+            || info.filename.is_null()
+        {
+            return 0;
+        }
+        #[cfg(target_os = "macos")]
+        const RTLD_NOW_LOCAL: c_int = 2 | 4;
+        #[cfg(not(target_os = "macos"))]
+        const RTLD_NOW_LOCAL: c_int = 2;
+        let handle = unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) };
+        if handle.is_null() {
+            return 0;
+        }
+        unsafe { (api.dlsym)(handle, c"birnam_register_resumable_v1".as_ptr()) as usize }
+    });
+    if address == 0 {
+        None
+    } else {
+        Some(unsafe {
+            core::mem::transmute::<usize, unsafe extern "C" fn(*mut c_void) -> u32>(address)
+        })
+    }
+}
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -667,6 +716,19 @@ pub unsafe extern "C" fn rt_send(
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).send)(receiver, selector, args, count) }
+}
+
+/// Forward the private registration ABI into the exact selected floor while
+/// keeping that floor `RTLD_LOCAL`, like every other generated-C runtime shim.
+#[unsafe(export_name = "birnam_register_resumable_v1")]
+pub unsafe extern "C" fn rt_register_resumable_v1(envelope: *mut c_void) -> u32 {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let Some(register) = floor_registration(unsafe { api_ref(runtime) }) else {
+        return 1;
+    };
+    unsafe { register(envelope) }
 }
 
 #[unsafe(export_name = "birnam_intern")]

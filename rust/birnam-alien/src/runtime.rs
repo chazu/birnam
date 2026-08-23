@@ -127,14 +127,7 @@ unsafe fn store_entity(api: &IdApi, name: &[u8]) -> Option<(Oop, Oop)> {
 }
 
 unsafe fn find_alien_source(api: &IdApi, store: Oop, entity: Oop, source: &[u8]) -> bool {
-    let count = unsafe {
-        (api.send)(
-            store,
-            intern(api, b"attrCount:\0"),
-            [entity].as_ptr(),
-            1,
-        )
-    };
+    let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [entity].as_ptr(), 1) };
     if unsafe { (api.isSmallInt)(count) } == 0 {
         return false;
     }
@@ -170,14 +163,7 @@ unsafe fn record_alien_source(api: &IdApi, source: &[u8]) {
     if unsafe { find_alien_source(api, store, entity, source) } {
         return;
     }
-    let count = unsafe {
-        (api.send)(
-            store,
-            intern(api, b"attrCount:\0"),
-            [entity].as_ptr(),
-            1,
-        )
-    };
+    let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [entity].as_ptr(), 1) };
     if unsafe { (api.isSmallInt)(count) } == 0 {
         return;
     }
@@ -228,14 +214,7 @@ unsafe fn global_name(api: &IdApi, target: Oop) -> Option<Vec<u8>> {
         );
     }
     let (store, globals) = unsafe { store_entity(api, b"__globals__\0") }?;
-    let count = unsafe {
-        (api.send)(
-            store,
-            intern(api, b"attrCount:\0"),
-            [globals].as_ptr(),
-            1,
-        )
-    };
+    let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [globals].as_ptr(), 1) };
     if unsafe { (api.isSmallInt)(count) } == 0 {
         return None;
     }
@@ -283,7 +262,8 @@ unsafe fn record_alien_wrap(api: &IdApi, arguments: &[Oop]) {
     if function.contains(&b'"') || signature.contains(&b'"') {
         return;
     }
-    let mut source = Vec::with_capacity(function.len() + signature.len() + target.len() + selector.len() + 48);
+    let mut source =
+        Vec::with_capacity(function.len() + signature.len() + target.len() + selector.len() + 48);
     source.extend_from_slice(b"[Alien wrap: \"");
     source.extend_from_slice(&function);
     source.extend_from_slice(b"\" signature: \"");

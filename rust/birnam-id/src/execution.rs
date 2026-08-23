@@ -6,6 +6,8 @@
 //! Birnam Machine and StepAction objects without creating a second runtime.
 #![allow(dead_code)] // S1 test artifacts exercise carriers not emitted until S2/S3.
 
+use birnam_artifact::frame_descriptor as canonical_descriptor;
+use birnam_artifact::stackless_selection::SelectionSpec;
 use core::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -15,8 +17,10 @@ use crate::heap::Heap;
 use crate::raw::{AddressMap, MethodAddress};
 
 pub(crate) const FRAME_LAYOUT_VERSION_V1: usize = 1;
+pub(crate) const FRAME_LAYOUT_VERSION_V2: usize = 2;
 pub(crate) const REGISTRATION_SCHEMA_VERSION_V1: usize = 1;
 const MACHINE_CAPABILITY_KIND_V1: usize = 0x4d41_4348_0000_0001;
+const CONTINUATION_CAPABILITY_KIND_V1: usize = 0x434f_4e54_0000_0001;
 
 #[derive(Clone, Copy)]
 pub(crate) struct ExecutionObjects {
@@ -24,6 +28,8 @@ pub(crate) struct ExecutionObjects {
     pub(crate) machine_prototype: Oop,
     pub(crate) frame_view_vtable: Oop,
     pub(crate) frame_view_prototype: Oop,
+    pub(crate) continuation_vtable: Oop,
+    pub(crate) continuation_prototype: Oop,
     pub(crate) continue_action_vtable: Oop,
     pub(crate) continue_action_prototype: Oop,
     pub(crate) call_action_vtable: Oop,
@@ -32,10 +38,22 @@ pub(crate) struct ExecutionObjects {
     pub(crate) tail_call_action_prototype: Oop,
     pub(crate) return_action_vtable: Oop,
     pub(crate) return_action_prototype: Oop,
+    pub(crate) suspend_action_vtable: Oop,
+    pub(crate) suspend_action_prototype: Oop,
+    pub(crate) capture_action_vtable: Oop,
+    pub(crate) capture_action_prototype: Oop,
+    pub(crate) restore_action_vtable: Oop,
+    pub(crate) restore_action_prototype: Oop,
+    pub(crate) abort_action_vtable: Oop,
+    pub(crate) abort_action_prototype: Oop,
     pub(crate) continue_kind: Oop,
     pub(crate) call_kind: Oop,
     pub(crate) tail_call_kind: Oop,
     pub(crate) return_kind: Oop,
+    pub(crate) suspend_kind: Oop,
+    pub(crate) capture_kind: Oop,
+    pub(crate) restore_kind: Oop,
+    pub(crate) abort_kind: Oop,
     pub(crate) oop_slot_kind: Oop,
     pub(crate) raw_slot_kind: Oop,
     pub(crate) stale_frame_view_kind: Oop,
@@ -88,17 +106,81 @@ pub(crate) struct FrameDescriptorSpec {
     pub(crate) step_method: Method,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum EdgeTransitionKind {
+    Continue,
+    Call,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SlotCopy {
+    pub(crate) source: usize,
+    pub(crate) destination: usize,
+}
+
+pub(crate) struct FrameEdgeSpec {
+    pub(crate) kind: EdgeTransitionKind,
+    pub(crate) source_pc: usize,
+    pub(crate) target_pc: usize,
+    pub(crate) call_site_index: Option<usize>,
+    pub(crate) result_slot: Option<usize>,
+    pub(crate) copies: Vec<SlotCopy>,
+    pub(crate) clear_bitmap_words: Vec<u64>,
+}
+
+pub(crate) struct FrameDescriptorV2Spec {
+    pub(crate) identity: DescriptorIdentity,
+    pub(crate) program_counter_count: usize,
+    pub(crate) driver_argument_count: usize,
+    pub(crate) slot_count: usize,
+    pub(crate) entry_receiver_slot: usize,
+    pub(crate) entry_argument_start: usize,
+    pub(crate) entry_argument_count: usize,
+    pub(crate) entry_capture_slots: Vec<usize>,
+    pub(crate) implementation_slot: Option<usize>,
+    pub(crate) root_bitmap_words: Vec<u64>,
+    pub(crate) call_sites: Vec<CallSiteDescriptor>,
+    pub(crate) edges: Vec<FrameEdgeSpec>,
+    pub(crate) step_method: Method,
+}
+
+struct FrameEdge {
+    kind: EdgeTransitionKind,
+    source_pc: usize,
+    target_pc: usize,
+    call_site_index: Option<usize>,
+    result_slot: Option<usize>,
+    copies: Box<[SlotCopy]>,
+    clear_bitmap_words: Box<[u64]>,
+}
+
 pub(crate) struct FrameDescriptor {
     identity: DescriptorIdentity,
+    layout_version: usize,
     program_counter_count: usize,
     driver_argument_count: usize,
     slot_kinds: Box<[SlotKind]>,
     call_sites: Box<[CallSiteDescriptor]>,
+    root_bitmap_words: Box<[u64]>,
+    root_words_per_pc: usize,
+    edges: Box<[FrameEdge]>,
+    max_edge_copy_count: usize,
+    v2_entry_binding: Option<V2EntryBinding>,
+    entry_capture_slots: Box<[usize]>,
     step_method: Method,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct V2EntryBinding {
+    pub(crate) receiver_slot: usize,
+    pub(crate) argument_start: usize,
+    pub(crate) argument_count: usize,
+    pub(crate) implementation_slot: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DescriptorError {
+    InvalidCanonicalDescriptor,
     UnsupportedLayoutVersion,
     EmptyProgramCounterRange,
     InvalidDriverArgumentCount,
@@ -112,9 +194,144 @@ pub(crate) enum DescriptorError {
     MissingContinuation,
     UnexpectedContinuation,
     InvalidContinuation,
+    InvalidRootBitmap,
+    InvalidEdge,
+    InvalidCopyPlan,
+    InvalidClearBitmap,
 }
 
 impl FrameDescriptor {
+    #[cfg(test)]
+    pub(crate) fn owned_byte_size(&self) -> usize {
+        core::mem::size_of::<Self>()
+            + core::mem::size_of_val(self.slot_kinds.as_ref())
+            + core::mem::size_of_val(self.call_sites.as_ref())
+            + core::mem::size_of_val(self.root_bitmap_words.as_ref())
+            + core::mem::size_of_val(self.edges.as_ref())
+            + self
+                .edges
+                .iter()
+                .map(|edge| {
+                    core::mem::size_of_val(edge.copies.as_ref())
+                        + core::mem::size_of_val(edge.clear_bitmap_words.as_ref())
+                })
+                .sum::<usize>()
+            + core::mem::size_of_val(self.entry_capture_slots.as_ref())
+    }
+
+    /// Admit canonical descriptor-v2 bytes, copy only Runtime execution
+    /// metadata into owned storage, and retain no artifact pointer.
+    pub(crate) fn admit_v2(
+        bytes: &[u8],
+        authority: SelectionSpec<'_>,
+        code_generation_identity: u64,
+        step_method: Method,
+    ) -> Result<Arc<Self>, DescriptorError> {
+        let descriptor = canonical_descriptor::inspect(bytes, authority)
+            .map_err(|_| DescriptorError::InvalidCanonicalDescriptor)?;
+        let metadata = descriptor.metadata();
+        let words_per_pc = (metadata.slot_count as usize)
+            .checked_add(63)
+            .ok_or(DescriptorError::InvalidCanonicalDescriptor)?
+            / 64;
+        let mut root_bitmap_words =
+            Vec::with_capacity(metadata.program_counter_count as usize * words_per_pc);
+        for pc in 0..metadata.program_counter_count as usize {
+            for word in 0..words_per_pc {
+                root_bitmap_words.push(
+                    descriptor
+                        .root_word(pc, word)
+                        .ok_or(DescriptorError::InvalidCanonicalDescriptor)?,
+                );
+            }
+        }
+        let mut call_sites = Vec::with_capacity(descriptor.call_site_count());
+        for index in 0..descriptor.call_site_count() {
+            let call = descriptor
+                .call_site(index)
+                .ok_or(DescriptorError::InvalidCanonicalDescriptor)?;
+            call_sites.push(CallSiteDescriptor {
+                kind: match call.kind {
+                    canonical_descriptor::CallKind::Call => CallSiteKind::Call,
+                    canonical_descriptor::CallKind::TailCall => CallSiteKind::TailCall,
+                },
+                receiver_slot: call.receiver_slot as usize,
+                selector_slot: call.selector_slot as usize,
+                argument_start: call.argument_start as usize,
+                argument_count: call.argument_count as usize,
+                result_slot: call.result_slot.map(|slot| slot as usize),
+                continuation_pc: call.continuation_pc.map(|pc| pc as usize),
+            });
+        }
+        let mut entry_capture_slots = Vec::with_capacity(descriptor.capture_count());
+        for index in 0..descriptor.capture_count() {
+            entry_capture_slots.push(
+                descriptor
+                    .capture_slot(index)
+                    .ok_or(DescriptorError::InvalidCanonicalDescriptor)? as usize,
+            );
+        }
+        let mut edges = Vec::with_capacity(descriptor.edge_count());
+        for index in 0..descriptor.edge_count() {
+            let edge = descriptor
+                .edge(index)
+                .ok_or(DescriptorError::InvalidCanonicalDescriptor)?;
+            let first_copy = edge.first_copy_pair as usize;
+            let copy_end = first_copy
+                .checked_add(edge.copy_pair_count as usize)
+                .ok_or(DescriptorError::InvalidCanonicalDescriptor)?;
+            let mut copies = Vec::with_capacity(edge.copy_pair_count as usize);
+            for copy_index in first_copy..copy_end {
+                let copy = descriptor
+                    .copy_pair(copy_index)
+                    .ok_or(DescriptorError::InvalidCanonicalDescriptor)?;
+                copies.push(SlotCopy {
+                    source: copy.source_slot as usize,
+                    destination: copy.destination_slot as usize,
+                });
+            }
+            let mut clear_bitmap_words = Vec::with_capacity(words_per_pc);
+            for word in 0..words_per_pc {
+                clear_bitmap_words.push(
+                    descriptor
+                        .clear_word(index, word)
+                        .ok_or(DescriptorError::InvalidCanonicalDescriptor)?,
+                );
+            }
+            edges.push(FrameEdgeSpec {
+                kind: match edge.kind {
+                    canonical_descriptor::EdgeKind::Continue => EdgeTransitionKind::Continue,
+                    canonical_descriptor::EdgeKind::Call => EdgeTransitionKind::Call,
+                },
+                source_pc: edge.source_pc as usize,
+                target_pc: edge.target_pc as usize,
+                call_site_index: edge.call_site_index.map(|call| call as usize),
+                result_slot: edge.result_initialization_slot.map(|slot| slot as usize),
+                copies,
+                clear_bitmap_words,
+            });
+        }
+        Self::validate_v2(FrameDescriptorV2Spec {
+            identity: DescriptorIdentity {
+                implementation: metadata.portable_implementation_identity,
+                generation: code_generation_identity,
+                source_map: metadata.source_map_identity,
+            },
+            program_counter_count: metadata.program_counter_count as usize,
+            driver_argument_count: metadata.driver_argument_count as usize,
+            slot_count: metadata.slot_count as usize,
+            entry_receiver_slot: metadata.entry_receiver_slot as usize,
+            entry_argument_start: metadata.entry_argument_start as usize,
+            entry_argument_count: metadata.entry_argument_count as usize,
+            entry_capture_slots,
+            implementation_slot: metadata.implementation_slot.map(|slot| slot as usize),
+            root_bitmap_words,
+            call_sites,
+            edges,
+            step_method,
+        })
+    }
+
     pub(crate) fn validate(spec: FrameDescriptorSpec) -> Result<Arc<Self>, DescriptorError> {
         if spec.layout_version != FRAME_LAYOUT_VERSION_V1 {
             return Err(DescriptorError::UnsupportedLayoutVersion);
@@ -179,10 +396,199 @@ impl FrameDescriptor {
 
         Ok(Arc::new(Self {
             identity: spec.identity,
+            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: spec.program_counter_count,
             driver_argument_count: spec.driver_argument_count,
             slot_kinds: spec.slot_kinds.into_boxed_slice(),
             call_sites: spec.call_sites.into_boxed_slice(),
+            root_bitmap_words: Box::new([]),
+            root_words_per_pc: 0,
+            edges: Box::new([]),
+            max_edge_copy_count: 0,
+            v2_entry_binding: None,
+            entry_capture_slots: Box::new([]),
+            step_method: spec.step_method,
+        }))
+    }
+
+    pub(crate) fn validate_v2(spec: FrameDescriptorV2Spec) -> Result<Arc<Self>, DescriptorError> {
+        if spec.program_counter_count == 0 {
+            return Err(DescriptorError::EmptyProgramCounterRange);
+        }
+        if spec.driver_argument_count > 1 {
+            return Err(DescriptorError::InvalidDriverArgumentCount);
+        }
+        if spec.driver_argument_count == 0 && spec.program_counter_count != 1 {
+            return Err(DescriptorError::ZeroArgumentDescriptorHasMultipleEntries);
+        }
+        if spec.slot_count == 0 {
+            return Err(DescriptorError::InvalidRootBitmap);
+        }
+        let root_words_per_pc = spec
+            .slot_count
+            .checked_add(63)
+            .ok_or(DescriptorError::InvalidRootBitmap)?
+            / 64;
+        let root_word_count = spec
+            .program_counter_count
+            .checked_mul(root_words_per_pc)
+            .ok_or(DescriptorError::InvalidRootBitmap)?;
+        if spec.root_bitmap_words.len() != root_word_count {
+            return Err(DescriptorError::InvalidRootBitmap);
+        }
+        let remainder = spec.slot_count % 64;
+        if remainder != 0 {
+            let allowed = (1u64 << remainder) - 1;
+            if (0..spec.program_counter_count)
+                .any(|pc| spec.root_bitmap_words[(pc + 1) * root_words_per_pc - 1] & !allowed != 0)
+            {
+                return Err(DescriptorError::InvalidRootBitmap);
+            }
+        }
+
+        let slot_kinds = vec![SlotKind::Oop; spec.slot_count];
+        require_oop_slot(&slot_kinds, spec.entry_receiver_slot)
+            .map_err(|_| DescriptorError::InvalidReceiverSlot)?;
+        let entry_argument_end = spec
+            .entry_argument_start
+            .checked_add(spec.entry_argument_count)
+            .ok_or(DescriptorError::InvalidArgumentRange)?;
+        if entry_argument_end > spec.slot_count
+            || spec.entry_argument_count == 0 && spec.entry_argument_start > spec.slot_count
+            || spec
+                .implementation_slot
+                .is_some_and(|slot| slot >= spec.slot_count)
+        {
+            return Err(DescriptorError::InvalidArgumentRange);
+        }
+        let mut entry_slots = vec![spec.entry_receiver_slot];
+        entry_slots.extend(spec.entry_argument_start..entry_argument_end);
+        if let Some(slot) = spec.implementation_slot {
+            entry_slots.push(slot);
+        }
+        entry_slots.extend(spec.entry_capture_slots.iter().copied());
+        entry_slots.sort_unstable();
+        if entry_slots
+            .last()
+            .is_some_and(|slot| *slot >= spec.slot_count)
+            || entry_slots.windows(2).any(|slots| slots[0] == slots[1])
+        {
+            return Err(DescriptorError::InvalidArgumentRange);
+        }
+        for call_site in &spec.call_sites {
+            validate_call_site(call_site, &slot_kinds, spec.program_counter_count)?;
+        }
+
+        let mut edges = Vec::with_capacity(spec.edges.len());
+        let mut previous = None;
+        let mut max_edge_copy_count = 0;
+        for edge in spec.edges {
+            if edge.source_pc >= spec.program_counter_count
+                || edge.target_pc >= spec.program_counter_count
+                || previous.is_some_and(|order| order >= (edge.source_pc, edge.target_pc))
+                || edge.clear_bitmap_words.len() != root_words_per_pc
+            {
+                return Err(DescriptorError::InvalidEdge);
+            }
+            match edge.kind {
+                EdgeTransitionKind::Continue => {
+                    if edge.call_site_index.is_some() || edge.result_slot.is_some() {
+                        return Err(DescriptorError::InvalidEdge);
+                    }
+                }
+                EdgeTransitionKind::Call => {
+                    let call_site = edge
+                        .call_site_index
+                        .and_then(|index| spec.call_sites.get(index))
+                        .ok_or(DescriptorError::InvalidEdge)?;
+                    if call_site.kind != CallSiteKind::Call
+                        || call_site.continuation_pc != Some(edge.target_pc)
+                        || call_site.result_slot != edge.result_slot
+                    {
+                        return Err(DescriptorError::InvalidEdge);
+                    }
+                }
+            }
+            if remainder != 0
+                && edge.clear_bitmap_words[root_words_per_pc - 1] & !((1u64 << remainder) - 1) != 0
+            {
+                return Err(DescriptorError::InvalidClearBitmap);
+            }
+            let mut previous_copy = None;
+            let mut destinations = Vec::with_capacity(edge.copies.len());
+            for copy in &edge.copies {
+                if copy.source >= spec.slot_count
+                    || copy.destination >= spec.slot_count
+                    || copy.source == copy.destination
+                    || previous_copy.is_some_and(|order| order >= (copy.destination, copy.source))
+                    || destinations.contains(&copy.destination)
+                {
+                    return Err(DescriptorError::InvalidCopyPlan);
+                }
+                if bitmap_contains(&edge.clear_bitmap_words, copy.destination) {
+                    return Err(DescriptorError::InvalidClearBitmap);
+                }
+                previous_copy = Some((copy.destination, copy.source));
+                destinations.push(copy.destination);
+            }
+            if edge.result_slot.is_some_and(|slot| {
+                slot >= spec.slot_count || bitmap_contains(&edge.clear_bitmap_words, slot)
+            }) {
+                return Err(DescriptorError::InvalidClearBitmap);
+            }
+            for slot in 0..spec.slot_count {
+                let target_rooted = descriptor_bitmap_contains(
+                    &spec.root_bitmap_words,
+                    root_words_per_pc,
+                    edge.target_pc,
+                    slot,
+                );
+                let predecessor_rooted = descriptor_bitmap_contains(
+                    &spec.root_bitmap_words,
+                    root_words_per_pc,
+                    edge.source_pc,
+                    slot,
+                );
+                if target_rooted
+                    && !predecessor_rooted
+                    && !destinations.contains(&slot)
+                    && edge.result_slot != Some(slot)
+                    && !bitmap_contains(&edge.clear_bitmap_words, slot)
+                {
+                    return Err(DescriptorError::InvalidEdge);
+                }
+            }
+            max_edge_copy_count = max_edge_copy_count.max(edge.copies.len());
+            previous = Some((edge.source_pc, edge.target_pc));
+            edges.push(FrameEdge {
+                kind: edge.kind,
+                source_pc: edge.source_pc,
+                target_pc: edge.target_pc,
+                call_site_index: edge.call_site_index,
+                result_slot: edge.result_slot,
+                copies: edge.copies.into_boxed_slice(),
+                clear_bitmap_words: edge.clear_bitmap_words.into_boxed_slice(),
+            });
+        }
+
+        Ok(Arc::new(Self {
+            identity: spec.identity,
+            layout_version: FRAME_LAYOUT_VERSION_V2,
+            program_counter_count: spec.program_counter_count,
+            driver_argument_count: spec.driver_argument_count,
+            slot_kinds: slot_kinds.into_boxed_slice(),
+            call_sites: spec.call_sites.into_boxed_slice(),
+            root_bitmap_words: spec.root_bitmap_words.into_boxed_slice(),
+            root_words_per_pc,
+            edges: edges.into_boxed_slice(),
+            max_edge_copy_count,
+            v2_entry_binding: Some(V2EntryBinding {
+                receiver_slot: spec.entry_receiver_slot,
+                argument_start: spec.entry_argument_start,
+                argument_count: spec.entry_argument_count,
+                implementation_slot: spec.implementation_slot,
+            }),
+            entry_capture_slots: spec.entry_capture_slots.into_boxed_slice(),
             step_method: spec.step_method,
         }))
     }
@@ -205,6 +611,28 @@ impl FrameDescriptor {
 
     pub(crate) fn slot_kind(&self, index: usize) -> Option<SlotKind> {
         self.slot_kinds.get(index).copied()
+    }
+
+    fn traces_slot(&self, root_state_pc: usize, index: usize) -> bool {
+        match self.layout_version {
+            FRAME_LAYOUT_VERSION_V1 => self.slot_kind(index) == Some(SlotKind::Oop),
+            FRAME_LAYOUT_VERSION_V2 => descriptor_bitmap_contains(
+                &self.root_bitmap_words,
+                self.root_words_per_pc,
+                root_state_pc,
+                index,
+            ),
+            _ => false,
+        }
+    }
+
+    fn edge(&self, source_pc: usize, target_pc: usize) -> Option<(usize, &FrameEdge)> {
+        self.edges
+            .binary_search_by_key(&(source_pc, target_pc), |edge| {
+                (edge.source_pc, edge.target_pc)
+            })
+            .ok()
+            .map(|index| (index, &self.edges[index]))
     }
 
     pub(crate) fn call_site(&self, index: usize) -> Option<&CallSiteDescriptor> {
@@ -267,6 +695,14 @@ impl FrameDescriptor {
         self.step_method
     }
 
+    pub(crate) fn v2_entry_binding(&self) -> Option<V2EntryBinding> {
+        self.v2_entry_binding
+    }
+
+    pub(crate) fn entry_capture_slots(&self) -> &[usize] {
+        &self.entry_capture_slots
+    }
+
     fn accepts_program_counter(&self, pc: usize) -> bool {
         pc < self.program_counter_count
     }
@@ -277,6 +713,69 @@ fn require_oop_slot(slot_kinds: &[SlotKind], index: usize) -> Result<(), ()> {
         Some(SlotKind::Oop) => Ok(()),
         Some(SlotKind::Raw) | None => Err(()),
     }
+}
+
+fn validate_call_site(
+    call_site: &CallSiteDescriptor,
+    slot_kinds: &[SlotKind],
+    program_counter_count: usize,
+) -> Result<(), DescriptorError> {
+    require_oop_slot(slot_kinds, call_site.receiver_slot)
+        .map_err(|_| DescriptorError::InvalidReceiverSlot)?;
+    require_oop_slot(slot_kinds, call_site.selector_slot)
+        .map_err(|_| DescriptorError::InvalidSelectorSlot)?;
+    let argument_end = call_site
+        .argument_start
+        .checked_add(call_site.argument_count)
+        .ok_or(DescriptorError::InvalidArgumentRange)?;
+    if argument_end > slot_kinds.len() {
+        return Err(DescriptorError::InvalidArgumentRange);
+    }
+    if slot_kinds[call_site.argument_start..argument_end]
+        .iter()
+        .any(|kind| *kind != SlotKind::Oop)
+    {
+        return Err(DescriptorError::InvalidArgumentSlotKind);
+    }
+    match call_site.kind {
+        CallSiteKind::Call => {
+            let result = call_site
+                .result_slot
+                .ok_or(DescriptorError::InvalidResultSlot)?;
+            require_oop_slot(slot_kinds, result).map_err(|_| DescriptorError::InvalidResultSlot)?;
+            if (call_site.argument_start..argument_end).contains(&result) {
+                return Err(DescriptorError::ResultOverlapsArguments);
+            }
+            let continuation = call_site
+                .continuation_pc
+                .ok_or(DescriptorError::MissingContinuation)?;
+            if continuation >= program_counter_count {
+                return Err(DescriptorError::InvalidContinuation);
+            }
+        }
+        CallSiteKind::TailCall => {
+            if call_site.result_slot.is_some() {
+                return Err(DescriptorError::InvalidResultSlot);
+            }
+            if call_site.continuation_pc.is_some() {
+                return Err(DescriptorError::UnexpectedContinuation);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn bitmap_contains(words: &[u64], slot: usize) -> bool {
+    words
+        .get(slot / 64)
+        .is_some_and(|word| word & (1u64 << (slot % 64)) != 0)
+}
+
+fn descriptor_bitmap_contains(words: &[u64], words_per_pc: usize, pc: usize, slot: usize) -> bool {
+    pc.checked_mul(words_per_pc)
+        .and_then(|base| base.checked_add(slot / 64))
+        .and_then(|index| words.get(index))
+        .is_some_and(|word| word & (1u64 << (slot % 64)) != 0)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -349,9 +848,37 @@ struct ArenaSlot {
     live: bool,
     descriptor: Option<Arc<FrameDescriptor>>,
     program_counter: usize,
+    root_state_program_counter: usize,
+    pending_edge: Option<usize>,
     return_destination: Option<ReturnDestination>,
     resumable_entry: Option<ResumableEntryCapability>,
     words: Vec<usize>,
+    transfer_scratch: Vec<usize>,
+}
+
+struct DetachedFrame {
+    source_handle: FrameHandle,
+    descriptor: Arc<FrameDescriptor>,
+    program_counter: usize,
+    root_state_program_counter: usize,
+    pending_edge: Option<usize>,
+    return_destination: Option<ReturnDestination>,
+    resumable_entry: Option<ResumableEntryCapability>,
+    words: Vec<usize>,
+    transfer_scratch: Vec<usize>,
+}
+
+impl DetachedFrame {
+    fn trace_roots(&self, mut mark: impl FnMut(Oop)) {
+        for (index, word) in self.words.iter().enumerate() {
+            if self
+                .descriptor
+                .traces_slot(self.root_state_program_counter, index)
+            {
+                mark(core::ptr::with_exposed_provenance_mut(*word));
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -366,9 +893,12 @@ impl ArenaSlot {
             live: false,
             descriptor: None,
             program_counter: 0,
+            root_state_program_counter: 0,
+            pending_edge: None,
             return_destination: None,
             resumable_entry: None,
             words: Vec::new(),
+            transfer_scratch: Vec::new(),
         }
     }
 }
@@ -490,6 +1020,14 @@ impl FrameArena {
         slot.words.truncate(descriptor.slot_count());
         slot.descriptor = Some(descriptor);
         slot.program_counter = program_counter;
+        slot.root_state_program_counter = program_counter;
+        slot.pending_edge = None;
+        let scratch_count = slot
+            .descriptor
+            .as_deref()
+            .expect("a live arena slot always has a descriptor")
+            .max_edge_copy_count;
+        slot.transfer_scratch.resize(scratch_count, 0);
         slot.return_destination = return_destination;
         slot.resumable_entry = resumable_entry;
         slot.live = true;
@@ -522,6 +1060,8 @@ impl FrameArena {
         slot.live = false;
         slot.descriptor = None;
         slot.program_counter = 0;
+        slot.root_state_program_counter = 0;
+        slot.pending_edge = None;
         slot.return_destination = None;
         slot.resumable_entry = None;
         slot.generation = next_generation;
@@ -584,6 +1124,89 @@ impl FrameArena {
         })
     }
 
+    fn live_depth(&self) -> usize {
+        self.stack.len()
+    }
+
+    fn detach_from(&mut self, boundary_depth: usize) -> Result<Vec<DetachedFrame>, FrameError> {
+        if self.destroyed || boundary_depth > self.stack.len() {
+            return Err(FrameError::StaleHandle);
+        }
+        let mut detached = Vec::with_capacity(self.stack.len() - boundary_depth);
+        while self.stack.len() > boundary_depth {
+            let index = *self.stack.last().ok_or(FrameError::StaleHandle)?;
+            let slot = &mut self.slots[index];
+            let next_generation = slot
+                .generation
+                .checked_add(1)
+                .ok_or(FrameError::GenerationExhausted)?;
+            detached.push(DetachedFrame {
+                source_handle: FrameHandle {
+                    arena: self.identity,
+                    index,
+                    generation: slot.generation,
+                },
+                descriptor: slot
+                    .descriptor
+                    .take()
+                    .expect("a live arena slot always has a descriptor"),
+                program_counter: slot.program_counter,
+                root_state_program_counter: slot.root_state_program_counter,
+                pending_edge: slot.pending_edge.take(),
+                return_destination: slot.return_destination.take(),
+                resumable_entry: slot.resumable_entry.take(),
+                words: core::mem::take(&mut slot.words),
+                transfer_scratch: core::mem::take(&mut slot.transfer_scratch),
+            });
+            self.stack.pop();
+            slot.live = false;
+            slot.program_counter = 0;
+            slot.root_state_program_counter = 0;
+            slot.generation = next_generation;
+        }
+        detached.reverse();
+        Ok(detached)
+    }
+
+    fn install_segment(
+        &mut self,
+        boundary_depth: usize,
+        segment: Vec<DetachedFrame>,
+    ) -> Result<(), FrameError> {
+        if self.destroyed || self.stack.len() != boundary_depth || segment.is_empty() {
+            return Err(FrameError::StaleHandle);
+        }
+        for frame in &segment {
+            if frame.source_handle.arena != self.identity
+                || !frame
+                    .descriptor
+                    .accepts_program_counter(frame.program_counter)
+            {
+                return Err(FrameError::StaleHandle);
+            }
+        }
+        for frame in segment {
+            let index = self.stack.len();
+            if index == self.slots.len() {
+                self.slots.push(ArenaSlot::new());
+            }
+            let slot = &mut self.slots[index];
+            debug_assert!(!slot.live);
+            slot.descriptor = Some(frame.descriptor);
+            slot.program_counter = frame.program_counter;
+            slot.root_state_program_counter = frame.root_state_program_counter;
+            slot.pending_edge = frame.pending_edge;
+            slot.return_destination = frame.return_destination;
+            slot.resumable_entry = frame.resumable_entry;
+            slot.words = frame.words;
+            slot.transfer_scratch = frame.transfer_scratch;
+            slot.live = true;
+            self.stack.push(index);
+        }
+        self.high_water_live_frames = self.high_water_live_frames.max(self.stack.len());
+        Ok(())
+    }
+
     pub(crate) fn descriptor(&self, handle: FrameHandle) -> Result<&FrameDescriptor, FrameError> {
         let slot = self.require_live(handle)?;
         Ok(slot
@@ -618,11 +1241,97 @@ impl FrameArena {
             .descriptor
             .as_deref()
             .expect("a live arena slot always has a descriptor");
-        if !descriptor.accepts_program_counter(program_counter) {
+        if descriptor.layout_version != FRAME_LAYOUT_VERSION_V1
+            || !descriptor.accepts_program_counter(program_counter)
+        {
             return Err(FrameError::InvalidProgramCounter);
         }
-        self.require_live_mut(handle)?.program_counter = program_counter;
+        let slot = self.require_live_mut(handle)?;
+        slot.program_counter = program_counter;
+        slot.root_state_program_counter = program_counter;
         Ok(())
+    }
+
+    pub(crate) fn begin_v2_transition(
+        &mut self,
+        handle: FrameHandle,
+        kind: EdgeTransitionKind,
+        target_pc: usize,
+        call_site_index: Option<usize>,
+    ) -> Result<(), FrameError> {
+        let slot = self.require_live(handle)?;
+        let descriptor = slot
+            .descriptor
+            .as_deref()
+            .expect("a live arena slot always has a descriptor");
+        if descriptor.layout_version != FRAME_LAYOUT_VERSION_V2 || slot.pending_edge.is_some() {
+            return Err(FrameError::InvalidProgramCounter);
+        }
+        let (edge_index, edge) = descriptor
+            .edge(slot.program_counter, target_pc)
+            .ok_or(FrameError::InvalidProgramCounter)?;
+        if edge.kind != kind || edge.call_site_index != call_site_index {
+            return Err(FrameError::InvalidProgramCounter);
+        }
+        let slot = self.require_live_mut(handle)?;
+        slot.program_counter = target_pc;
+        slot.pending_edge = Some(edge_index);
+        Ok(())
+    }
+
+    pub(crate) fn commit_v2_transition(
+        &mut self,
+        handle: FrameHandle,
+        nil: Oop,
+        call_result: Option<Oop>,
+    ) -> Result<(), FrameError> {
+        let slot = self.require_live_mut(handle)?;
+        let descriptor = slot
+            .descriptor
+            .as_deref()
+            .expect("a live arena slot always has a descriptor");
+        let edge_index = slot.pending_edge.ok_or(FrameError::InvalidProgramCounter)?;
+        let edge = descriptor
+            .edges
+            .get(edge_index)
+            .ok_or(FrameError::InvalidProgramCounter)?;
+        match (edge.kind, edge.result_slot, call_result) {
+            (EdgeTransitionKind::Continue, None, None) => {}
+            (EdgeTransitionKind::Call, Some(_), Some(_)) => {}
+            _ => return Err(FrameError::InvalidSlot),
+        }
+        if edge.source_pc != slot.root_state_program_counter
+            || edge.target_pc != slot.program_counter
+            || slot.transfer_scratch.len() < edge.copies.len()
+        {
+            return Err(FrameError::InvalidProgramCounter);
+        }
+        for (scratch, copy) in slot.transfer_scratch.iter_mut().zip(edge.copies.iter()) {
+            *scratch = slot.words[copy.source];
+        }
+        for (scratch, copy) in slot.transfer_scratch.iter().zip(edge.copies.iter()) {
+            slot.words[copy.destination] = *scratch;
+        }
+        if let (Some(result_slot), Some(result)) = (edge.result_slot, call_result) {
+            slot.words[result_slot] = result.addr();
+        }
+        for (word_index, clear_word) in edge.clear_bitmap_words.iter().copied().enumerate() {
+            let base = word_index * 64;
+            let mut bits = clear_word;
+            while bits != 0 {
+                let bit = bits.trailing_zeros() as usize;
+                slot.words[base + bit] = nil.addr();
+                bits &= bits - 1;
+            }
+        }
+        slot.root_state_program_counter = edge.target_pc;
+        slot.pending_edge = None;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn root_state_program_counter(&self, handle: FrameHandle) -> Result<usize, FrameError> {
+        Ok(self.require_live(handle)?.root_state_program_counter)
     }
 
     pub(crate) fn read_oop(&self, handle: FrameHandle, index: usize) -> Result<Oop, FrameError> {
@@ -671,8 +1380,8 @@ impl FrameArena {
                 .descriptor
                 .as_deref()
                 .expect("a live arena slot always has a descriptor");
-            for (word, kind) in slot.words.iter().zip(descriptor.slot_kinds.iter()) {
-                if *kind == SlotKind::Oop {
+            for (index, word) in slot.words.iter().enumerate() {
+                if descriptor.traces_slot(slot.root_state_program_counter, index) {
                     mark(core::ptr::with_exposed_provenance_mut(*word));
                 }
             }
@@ -687,7 +1396,13 @@ impl FrameArena {
             };
         }
         let payload_bytes = self.slots.iter().fold(0usize, |total, slot| {
-            total.saturating_add(slot.words.capacity().saturating_mul(size_of::<usize>()))
+            total
+                .saturating_add(slot.words.capacity().saturating_mul(size_of::<usize>()))
+                .saturating_add(
+                    slot.transfer_scratch
+                        .capacity()
+                        .saturating_mul(size_of::<usize>()),
+                )
         });
         let bookkeeping_bytes = self
             .slots
@@ -714,6 +1429,7 @@ impl FrameArena {
             slot.descriptor = None;
             slot.resumable_entry = None;
             slot.words.clear();
+            slot.transfer_scratch.clear();
         }
         self.stack.clear();
         self.slots.clear();
@@ -769,6 +1485,31 @@ pub(crate) struct MachineCapability {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ContinuationCapability {
+    index: usize,
+    generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DelimiterHandle {
+    pub(crate) index: usize,
+    pub(crate) generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DelimiterKind {
+    Host,
+    EntryBarrier,
+}
+
+struct DelimiterRecord {
+    generation: u64,
+    live: bool,
+    kind: DelimiterKind,
+    frame_boundary: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ResumableEntryCapability {
     index: usize,
     generation: u64,
@@ -811,6 +1552,7 @@ pub(crate) struct SemanticRegistrationV1 {
     pub(crate) implementation_identity: u64,
     pub(crate) code_generation_identity: u64,
     pub(crate) generation_lease: RegistrationGenerationLease,
+    pub(crate) implementation_anchor: Option<Oop>,
 }
 
 impl SemanticRegistrationV1 {
@@ -833,6 +1575,7 @@ impl SemanticRegistrationV1 {
             implementation_identity: identity.implementation,
             code_generation_identity: identity.generation,
             generation_lease: RegistrationGenerationLease::new(identity.generation),
+            implementation_anchor: None,
         }
     }
 
@@ -841,6 +1584,11 @@ impl SemanticRegistrationV1 {
         generation_lease: RegistrationGenerationLease,
     ) -> Self {
         self.generation_lease = generation_lease;
+        self
+    }
+
+    pub(crate) fn with_implementation_anchor(mut self, implementation: Oop) -> Self {
+        self.implementation_anchor = Some(implementation);
         self
     }
 }
@@ -867,6 +1615,10 @@ pub(crate) enum MachineError {
     InvalidLifecycle,
     DriveEpochExhausted,
     RegistryGenerationExhausted,
+    MachineNotSuspended,
+    ContinuationConsumed,
+    ContinuationBarrier,
+    ContinuationWrongMachine,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -878,6 +1630,10 @@ pub(crate) enum ExecutionError {
     ActionWrongMachine,
     MissingImplementation,
     Registration(RegistrationError),
+    MachineNotSuspended,
+    ContinuationConsumed,
+    ContinuationBarrier,
+    ContinuationWrongMachine,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -893,6 +1649,11 @@ pub(crate) enum DriverFailureKind {
     ResumableEntryUnregistered,
     ResumableEntryRetired,
     ResumableEntryStaleGeneration,
+    MachineNotSuspended,
+    ContinuationConsumed,
+    ContinuationBarrier,
+    ContinuationWrongMachine,
+    ContinuationNotImageable,
 }
 
 impl DriverFailureKind {
@@ -909,6 +1670,11 @@ impl DriverFailureKind {
             Self::ResumableEntryUnregistered => "resumableEntryUnregistered",
             Self::ResumableEntryRetired => "resumableEntryRetired",
             Self::ResumableEntryStaleGeneration => "resumableEntryStaleGeneration",
+            Self::MachineNotSuspended => "machineNotSuspended",
+            Self::ContinuationConsumed => "continuationConsumed",
+            Self::ContinuationBarrier => "continuationBarrier",
+            Self::ContinuationWrongMachine => "continuationWrongMachine",
+            Self::ContinuationNotImageable => "continuationNotImageable",
         }
     }
 }
@@ -925,6 +1691,17 @@ impl ExecutionError {
                 | MachineError::DriveEpochExhausted
                 | MachineError::RegistryGenerationExhausted,
             ) => DriverFailureKind::CodeGenerationUnavailable,
+            Self::Machine(MachineError::MachineNotSuspended) | Self::MachineNotSuspended => {
+                DriverFailureKind::MachineNotSuspended
+            }
+            Self::Machine(MachineError::ContinuationConsumed) | Self::ContinuationConsumed => {
+                DriverFailureKind::ContinuationConsumed
+            }
+            Self::Machine(MachineError::ContinuationBarrier) | Self::ContinuationBarrier => {
+                DriverFailureKind::ContinuationBarrier
+            }
+            Self::Machine(MachineError::ContinuationWrongMachine)
+            | Self::ContinuationWrongMachine => DriverFailureKind::ContinuationWrongMachine,
             Self::Frame(FrameError::InvalidSlot | FrameError::WrongSlotKind) => {
                 DriverFailureKind::InvalidFrameSlot
             }
@@ -998,6 +1775,22 @@ pub(crate) enum DecodedAction {
     Return {
         value_slot: usize,
     },
+    Suspend {
+        result_slot: usize,
+        delimiter: DelimiterHandle,
+    },
+    Capture {
+        delimiter: DelimiterHandle,
+        result_slot: usize,
+    },
+    Restore {
+        continuation_slot: usize,
+        supplied_value_slot: usize,
+    },
+    Abort {
+        delimiter: Option<DelimiterHandle>,
+        reason_slot: usize,
+    },
 }
 
 pub(crate) enum StacklessTarget {
@@ -1037,6 +1830,13 @@ pub(crate) struct MachineState {
     call_action: Oop,
     tail_call_action: Oop,
     return_action: Oop,
+    suspend_action: Oop,
+    capture_action: Oop,
+    restore_action: Oop,
+    abort_action: Oop,
+    delimiters: Vec<DelimiterRecord>,
+    delimiter_stack: Vec<usize>,
+    suspended_result_slot: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1054,6 +1854,10 @@ impl MachineState {
         call_action: Oop,
         tail_call_action: Oop,
         return_action: Oop,
+        suspend_action: Oop,
+        capture_action: Oop,
+        restore_action: Oop,
+        abort_action: Oop,
     ) -> Self {
         Self {
             owner,
@@ -1068,6 +1872,13 @@ impl MachineState {
             call_action,
             tail_call_action,
             return_action,
+            suspend_action,
+            capture_action,
+            restore_action,
+            abort_action,
+            delimiters: Vec::new(),
+            delimiter_stack: Vec::new(),
+            suspended_result_slot: None,
         }
     }
 
@@ -1097,6 +1908,16 @@ impl MachineState {
         )
     }
 
+    #[cfg(test)]
+    pub(crate) fn s3_scratch_actions(&self) -> [Oop; 4] {
+        [
+            self.suspend_action,
+            self.capture_action,
+            self.restore_action,
+            self.abort_action,
+        ]
+    }
+
     pub(crate) fn begin_initial_drive(&mut self, owner: u64) -> Result<u64, MachineError> {
         self.require_owner(owner)?;
         if self.lifecycle != MachineLifecycle::New || self.drive_depth != 0 {
@@ -1105,6 +1926,7 @@ impl MachineState {
         self.advance_drive_epoch()?;
         self.drive_depth = 1;
         self.drive_boundaries.push(BoundaryDiagnostics::default());
+        self.push_delimiter(DelimiterKind::Host)?;
         self.lifecycle = MachineLifecycle::Running;
         Ok(self.drive_epoch)
     }
@@ -1117,6 +1939,7 @@ impl MachineState {
             .checked_add(1)
             .ok_or(MachineError::DriveEpochExhausted)?;
         self.drive_boundaries.push(BoundaryDiagnostics::default());
+        self.push_delimiter(DelimiterKind::EntryBarrier)?;
         Ok(self.drive_epoch)
     }
 
@@ -1128,6 +1951,7 @@ impl MachineState {
         {
             return Err(MachineError::InvalidLifecycle);
         }
+        self.pop_delimiter()?;
         self.finish_drive_epoch()?;
         self.drive_depth = 0;
         self.lifecycle = MachineLifecycle::Completed;
@@ -1139,6 +1963,7 @@ impl MachineState {
         if self.lifecycle != MachineLifecycle::Running || self.drive_depth <= 1 {
             return Err(MachineError::InvalidLifecycle);
         }
+        self.pop_delimiter()?;
         self.finish_drive_epoch()?;
         self.drive_depth -= 1;
         Ok(())
@@ -1201,6 +2026,149 @@ impl MachineState {
         Ok(())
     }
 
+    fn push_delimiter(&mut self, kind: DelimiterKind) -> Result<DelimiterHandle, MachineError> {
+        let index = self.delimiters.len();
+        self.delimiters.push(DelimiterRecord {
+            generation: 1,
+            live: true,
+            kind,
+            frame_boundary: self.arena.live_depth(),
+        });
+        self.delimiter_stack.push(index);
+        Ok(DelimiterHandle {
+            index,
+            generation: 1,
+        })
+    }
+
+    fn pop_delimiter(&mut self) -> Result<(), MachineError> {
+        let index = self
+            .delimiter_stack
+            .pop()
+            .ok_or(MachineError::InvalidLifecycle)?;
+        let delimiter = self
+            .delimiters
+            .get_mut(index)
+            .ok_or(MachineError::InvalidLifecycle)?;
+        delimiter.live = false;
+        delimiter.generation = delimiter
+            .generation
+            .checked_add(1)
+            .ok_or(MachineError::RegistryGenerationExhausted)?;
+        Ok(())
+    }
+
+    pub(crate) fn current_delimiter(&self) -> Result<DelimiterHandle, MachineError> {
+        let index = *self
+            .delimiter_stack
+            .last()
+            .ok_or(MachineError::InvalidLifecycle)?;
+        let record = self
+            .delimiters
+            .get(index)
+            .filter(|record| record.live)
+            .ok_or(MachineError::InvalidLifecycle)?;
+        Ok(DelimiterHandle {
+            index,
+            generation: record.generation,
+        })
+    }
+
+    fn validate_delimiter(
+        &self,
+        delimiter: DelimiterHandle,
+    ) -> Result<&DelimiterRecord, MachineError> {
+        let record = self
+            .delimiters
+            .get(delimiter.index)
+            .filter(|record| record.live && record.generation == delimiter.generation)
+            .ok_or(MachineError::ContinuationBarrier)?;
+        let position = self
+            .delimiter_stack
+            .iter()
+            .position(|index| *index == delimiter.index)
+            .ok_or(MachineError::ContinuationBarrier)?;
+        if self.delimiter_stack[position..]
+            .iter()
+            .any(|index| self.delimiters[*index].kind == DelimiterKind::EntryBarrier)
+        {
+            return Err(MachineError::ContinuationBarrier);
+        }
+        Ok(record)
+    }
+
+    fn suspend(
+        &mut self,
+        owner: u64,
+        delimiter: DelimiterHandle,
+        result_slot: usize,
+    ) -> Result<(), MachineError> {
+        self.require_driving(owner)?;
+        let _ = self.validate_delimiter(delimiter)?;
+        if self.drive_depth != 1 {
+            return Err(MachineError::ContinuationBarrier);
+        }
+        self.finish_drive_epoch()?;
+        self.drive_depth = 0;
+        self.lifecycle = MachineLifecycle::Suspended;
+        self.suspended_result_slot = Some(result_slot);
+        Ok(())
+    }
+
+    fn capture(
+        &mut self,
+        owner: u64,
+        delimiter: DelimiterHandle,
+        result_slot: usize,
+    ) -> Result<(usize, Vec<DetachedFrame>), ExecutionError> {
+        self.require_driving(owner)?;
+        let boundary_depth = self.validate_delimiter(delimiter)?.frame_boundary;
+        if self.drive_depth != 1 {
+            return Err(ExecutionError::ContinuationBarrier);
+        }
+        let frame = self.arena.current_handle().ok_or(FrameError::StaleHandle)?;
+        let _ = self.arena.read_oop(frame, result_slot)?;
+        let segment = self.arena.detach_from(boundary_depth)?;
+        if segment.is_empty() {
+            return Err(ExecutionError::ContinuationBarrier);
+        }
+        self.finish_drive_epoch()?;
+        self.drive_depth = 0;
+        self.lifecycle = MachineLifecycle::Suspended;
+        self.suspended_result_slot = None;
+        Ok((boundary_depth, segment))
+    }
+
+    fn begin_continuation_restore(&mut self, owner: u64) -> Result<(), MachineError> {
+        self.require_owner(owner)?;
+        if self.lifecycle != MachineLifecycle::Suspended || self.drive_depth != 0 {
+            return Err(MachineError::MachineNotSuspended);
+        }
+        self.advance_drive_epoch()?;
+        self.drive_depth = 1;
+        self.drive_boundaries.push(BoundaryDiagnostics::default());
+        self.lifecycle = MachineLifecycle::Running;
+        Ok(())
+    }
+
+    fn resume_suspended(&mut self, owner: u64, value: Oop) -> Result<(), ExecutionError> {
+        self.require_owner(owner)?;
+        if self.lifecycle != MachineLifecycle::Suspended || self.drive_depth != 0 {
+            return Err(ExecutionError::MachineNotSuspended);
+        }
+        let result_slot = self
+            .suspended_result_slot
+            .take()
+            .ok_or(ExecutionError::MachineNotSuspended)?;
+        let frame = self.arena.current_handle().ok_or(FrameError::StaleHandle)?;
+        self.arena.write_oop(frame, result_slot, value)?;
+        self.advance_drive_epoch()?;
+        self.drive_depth = 1;
+        self.drive_boundaries.push(BoundaryDiagnostics::default());
+        self.lifecycle = MachineLifecycle::Running;
+        Ok(())
+    }
+
     pub(crate) fn fail(&mut self, owner: u64) -> Result<(), MachineError> {
         self.require_owner(owner)?;
         if matches!(
@@ -1214,6 +2182,8 @@ impl MachineState {
         }
         self.drive_depth = 0;
         self.drive_boundaries.clear();
+        self.delimiter_stack.clear();
+        self.suspended_result_slot = None;
         self.lifecycle = MachineLifecycle::Failed;
         Ok(())
     }
@@ -1239,6 +2209,8 @@ impl MachineState {
         let entry_pins = self.arena.destroy();
         self.drive_depth = 0;
         self.drive_boundaries.clear();
+        self.delimiter_stack.clear();
+        self.suspended_result_slot = None;
         self.lifecycle = MachineLifecycle::Destroyed;
         entry_pins
     }
@@ -1260,6 +2232,17 @@ impl MachineState {
             // SAFETY: same callback lifetime as above.
             unsafe { mark(self.tail_call_action) };
         }
+        for action in [
+            self.suspend_action,
+            self.capture_action,
+            self.restore_action,
+            self.abort_action,
+        ] {
+            if !action.is_null() {
+                // SAFETY: same synchronous callback lifetime as above.
+                unsafe { mark(action) };
+            }
+        }
         self.arena.trace_roots(|root| {
             // SAFETY: FrameArena never retains the callback or root.
             unsafe { mark(root) }
@@ -1272,6 +2255,38 @@ struct MachineSlot {
     state: Option<MachineState>,
 }
 
+struct ContinuationState {
+    owner: u64,
+    machine: MachineCapability,
+    delimiter: DelimiterHandle,
+    boundary_depth: usize,
+    result_slot: usize,
+    segment: Option<Vec<DetachedFrame>>,
+    continuation: Oop,
+}
+
+impl ContinuationState {
+    fn trace_roots(&self, machine: Oop, mark: MarkFn) {
+        if self.segment.is_some() && !machine.is_null() {
+            // SAFETY: the GC supplies a synchronous callback for this hook.
+            unsafe { mark(machine) };
+        }
+        if let Some(segment) = &self.segment {
+            for frame in segment {
+                frame.trace_roots(|root| {
+                    // SAFETY: detached frames never retain the callback or root.
+                    unsafe { mark(root) }
+                });
+            }
+        }
+    }
+}
+
+struct ContinuationSlot {
+    generation: u64,
+    state: Option<ContinuationState>,
+}
+
 struct ResumableEntry {
     thunk: MethodAddress,
     descriptor: Arc<FrameDescriptor>,
@@ -1279,10 +2294,12 @@ struct ResumableEntry {
     receiver_slot: usize,
     argument_start: usize,
     implementation_identity: u64,
+    implementation_anchor: Option<Oop>,
     code_generation_identity: u64,
     lifecycle: ResumableEntryLifecycle,
     binding_references: usize,
     active_frame_pins: usize,
+    continuation_frame_pins: usize,
     acquired_entries: usize,
     explicit_generation_leases: usize,
     registration_generation_lease: Option<RegistrationGenerationLease>,
@@ -1303,6 +2320,7 @@ pub(crate) struct RegistrationDiagnostics {
     pub(crate) retired_entries: usize,
     pub(crate) direct_binding_references: usize,
     pub(crate) active_frame_pins: usize,
+    pub(crate) continuation_frame_pins: usize,
     pub(crate) acquired_entries: usize,
     pub(crate) explicit_generation_leases: usize,
     pub(crate) registration_generation_leases: usize,
@@ -1328,6 +2346,8 @@ pub(crate) struct ExecutionState {
     next_arena_identity: u64,
     machines: Vec<MachineSlot>,
     free_machine_slots: Vec<usize>,
+    continuations: Vec<ContinuationSlot>,
+    free_continuation_slots: Vec<usize>,
     resumable_entries: Vec<ResumableEntrySlot>,
     free_resumable_entry_slots: Vec<usize>,
     resumable_by_thunk: AddressMap<ResumableEntryCapability>,
@@ -1346,6 +2366,8 @@ impl ExecutionState {
             next_arena_identity: 1,
             machines: Vec::new(),
             free_machine_slots: Vec::new(),
+            continuations: Vec::new(),
+            free_continuation_slots: Vec::new(),
             resumable_entries: Vec::new(),
             free_resumable_entry_slots: Vec::new(),
             resumable_by_thunk: AddressMap::default(),
@@ -1361,6 +2383,10 @@ impl ExecutionState {
     pub(crate) fn create_machine(&mut self, owner: u64) -> Result<MachineCapability, MachineError> {
         self.create_machine_with_objects(
             owner,
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
             core::ptr::null_mut(),
             core::ptr::null_mut(),
             core::ptr::null_mut(),
@@ -1406,6 +2432,14 @@ impl ExecutionState {
         {
             return Err(RegistrationError::InvalidIdentity);
         }
+        if carrier
+            .descriptor
+            .v2_entry_binding()
+            .is_some_and(|binding| binding.implementation_slot.is_some())
+            != carrier.implementation_anchor.is_some()
+        {
+            return Err(RegistrationError::InvalidDescriptor);
+        }
         let thunk = MethodAddress::from_method(carrier.thunk);
         if thunk == MethodAddress::from_method(carrier.descriptor.step_method()) {
             return Err(RegistrationError::StepMethodInstalledAsThunk);
@@ -1436,10 +2470,12 @@ impl ExecutionState {
             receiver_slot: carrier.receiver_slot,
             argument_start: carrier.argument_start,
             implementation_identity: carrier.implementation_identity,
+            implementation_anchor: carrier.implementation_anchor,
             code_generation_identity: carrier.code_generation_identity,
             lifecycle: ResumableEntryLifecycle::Unpublished,
             binding_references: 0,
             active_frame_pins: 0,
+            continuation_frame_pins: 0,
             acquired_entries: 0,
             explicit_generation_leases: 0,
             registration_generation_lease: Some(carrier.generation_lease),
@@ -1473,6 +2509,7 @@ impl ExecutionState {
         if entry.lifecycle != ResumableEntryLifecycle::Unpublished
             || entry.binding_references != 0
             || entry.active_frame_pins != 0
+            || entry.continuation_frame_pins != 0
             || entry.acquired_entries != 0
             || entry.explicit_generation_leases != 0
         {
@@ -1545,6 +2582,7 @@ impl ExecutionState {
         capability: ResumableEntryCapability,
         receiver: Oop,
         arguments: &[Oop],
+        captures: &[Oop],
         nil: Oop,
     ) -> Result<MaterializedEntry, RegistrationError> {
         let slot = self
@@ -1561,7 +2599,14 @@ impl ExecutionState {
         if entry.acquired_entries == 0 {
             return Err(RegistrationError::StaleCapability);
         }
-        let mut initial_oops = Vec::with_capacity(1 + entry.declared_arity);
+        if captures.len() != entry.descriptor.entry_capture_slots().len() {
+            return Err(RegistrationError::InvalidDescriptor);
+        }
+        let mut initial_oops = Vec::with_capacity(
+            1 + entry.declared_arity
+                + captures.len()
+                + usize::from(entry.implementation_anchor.is_some()),
+        );
         initial_oops.push((entry.receiver_slot, receiver));
         for offset in 0..entry.declared_arity {
             initial_oops.push((
@@ -1569,10 +2614,50 @@ impl ExecutionState {
                 arguments.get(offset).copied().unwrap_or(nil),
             ));
         }
+        if let (Some(binding), Some(implementation)) = (
+            entry.descriptor.v2_entry_binding(),
+            entry.implementation_anchor,
+        ) {
+            initial_oops.push((
+                binding
+                    .implementation_slot
+                    .expect("anchor agreement checked at registration"),
+                implementation,
+            ));
+        }
+        initial_oops.extend(
+            entry
+                .descriptor
+                .entry_capture_slots()
+                .iter()
+                .copied()
+                .zip(captures.iter().copied()),
+        );
         Ok(MaterializedEntry {
             descriptor: entry.descriptor.clone(),
             initial_oops,
         })
+    }
+
+    pub(crate) fn acquired_entry_capture_count(
+        &self,
+        capability: ResumableEntryCapability,
+    ) -> Result<usize, RegistrationError> {
+        let slot = self
+            .resumable_entries
+            .get(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_ref()
+            .ok_or(RegistrationError::StaleCapability)?;
+        if entry.acquired_entries == 0 {
+            return Err(RegistrationError::StaleCapability);
+        }
+        Ok(entry.descriptor.entry_capture_slots().len())
     }
 
     pub(crate) fn transfer_acquired_entry_to_frame(
@@ -1756,6 +2841,81 @@ impl ExecutionState {
         Ok(())
     }
 
+    fn transfer_frame_pin_to_continuation(
+        &mut self,
+        capability: ResumableEntryCapability,
+    ) -> Result<(), RegistrationError> {
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        entry.active_frame_pins = entry
+            .active_frame_pins
+            .checked_sub(1)
+            .ok_or(RegistrationError::StaleCapability)?;
+        entry.continuation_frame_pins = entry
+            .continuation_frame_pins
+            .checked_add(1)
+            .ok_or(RegistrationError::BindingReferenceOverflow)?;
+        Ok(())
+    }
+
+    fn transfer_continuation_pin_to_frame(
+        &mut self,
+        capability: ResumableEntryCapability,
+    ) -> Result<(), RegistrationError> {
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        entry.continuation_frame_pins = entry
+            .continuation_frame_pins
+            .checked_sub(1)
+            .ok_or(RegistrationError::StaleCapability)?;
+        entry.active_frame_pins = entry
+            .active_frame_pins
+            .checked_add(1)
+            .ok_or(RegistrationError::BindingReferenceOverflow)?;
+        Ok(())
+    }
+
+    fn release_entry_continuation_pin(
+        &mut self,
+        capability: ResumableEntryCapability,
+    ) -> Result<(), RegistrationError> {
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        entry.continuation_frame_pins = entry
+            .continuation_frame_pins
+            .checked_sub(1)
+            .ok_or(RegistrationError::StaleCapability)?;
+        self.finish_entry_retirement(capability);
+        Ok(())
+    }
+
     pub(crate) fn note_direct_binding_added(
         &mut self,
         method: MethodAddress,
@@ -1821,15 +2981,130 @@ impl ExecutionState {
         if entry.binding_references == 0 {
             entry.lifecycle = if entry.acquired_entries != 0
                 || entry.active_frame_pins != 0
+                || entry.continuation_frame_pins != 0
                 || entry.explicit_generation_leases != 0
                 || self.dispatch_read_depth != 0
             {
                 ResumableEntryLifecycle::Retiring
             } else {
                 entry.registration_generation_lease = None;
+                entry.implementation_anchor = None;
                 ResumableEntryLifecycle::Retired
             };
         }
+        Ok(())
+    }
+
+    /// Remove one direct binding inside a staged unit transaction without
+    /// retiring the referenced entry. The transaction will either restore the
+    /// binding or explicitly settle retirement after commit.
+    pub(crate) fn note_staged_direct_binding_removed(
+        &mut self,
+        method: MethodAddress,
+    ) -> Result<(), RegistrationError> {
+        let Some(capability) = self
+            .resumable_by_thunk
+            .get(&method.as_oop().addr())
+            .copied()
+        else {
+            return Ok(());
+        };
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        if matches!(
+            entry.lifecycle,
+            ResumableEntryLifecycle::Retiring | ResumableEntryLifecycle::Retired
+        ) {
+            return Err(RegistrationError::EntryRetired);
+        }
+        entry.binding_references = entry
+            .binding_references
+            .checked_sub(1)
+            .ok_or(RegistrationError::EntryUnpublished)?;
+        Ok(())
+    }
+
+    /// Restore a staged unit's own zero-binding entry to its pre-publication
+    /// state so rollback can unregister it, or commit can retain it as an
+    /// eagerly registered but not-yet-instantiated block entry.
+    pub(crate) fn settle_staged_registration(
+        &mut self,
+        capability: ResumableEntryCapability,
+    ) -> Result<(), RegistrationError> {
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        if entry.binding_references == 0 {
+            if entry.active_frame_pins != 0
+                || entry.continuation_frame_pins != 0
+                || entry.acquired_entries != 0
+                || entry.explicit_generation_leases != 0
+            {
+                return Err(RegistrationError::EntryRetired);
+            }
+            entry.lifecycle = ResumableEntryLifecycle::Unpublished;
+        } else {
+            entry.lifecycle = ResumableEntryLifecycle::Live;
+        }
+        Ok(())
+    }
+
+    /// Complete retirement deferred while a staged transaction could still
+    /// restore the previous binding.
+    pub(crate) fn commit_staged_binding_removal(
+        &mut self,
+        method: MethodAddress,
+    ) -> Result<(), RegistrationError> {
+        let Some(capability) = self
+            .resumable_by_thunk
+            .get(&method.as_oop().addr())
+            .copied()
+        else {
+            return Ok(());
+        };
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        if entry.binding_references != 0 {
+            return Ok(());
+        }
+        entry.lifecycle = if entry.acquired_entries != 0
+            || entry.active_frame_pins != 0
+            || entry.continuation_frame_pins != 0
+            || entry.explicit_generation_leases != 0
+            || self.dispatch_read_depth != 0
+        {
+            ResumableEntryLifecycle::Retiring
+        } else {
+            entry.registration_generation_lease = None;
+            entry.implementation_anchor = None;
+            ResumableEntryLifecycle::Retired
+        };
         Ok(())
     }
 
@@ -1855,10 +3130,12 @@ impl ExecutionState {
                     && entry.binding_references == 0
                     && entry.acquired_entries == 0
                     && entry.active_frame_pins == 0
+                    && entry.continuation_frame_pins == 0
                     && entry.explicit_generation_leases == 0
                 {
                     entry.lifecycle = ResumableEntryLifecycle::Retired;
                     entry.registration_generation_lease = None;
+                    entry.implementation_anchor = None;
                 }
             }
         }
@@ -1882,10 +3159,12 @@ impl ExecutionState {
             && entry.binding_references == 0
             && entry.acquired_entries == 0
             && entry.active_frame_pins == 0
+            && entry.continuation_frame_pins == 0
             && entry.explicit_generation_leases == 0
         {
             entry.lifecycle = ResumableEntryLifecycle::Retired;
             entry.registration_generation_lease = None;
+            entry.implementation_anchor = None;
         }
     }
 
@@ -1901,6 +3180,9 @@ impl ExecutionState {
                 total.active_frame_pins = total
                     .active_frame_pins
                     .saturating_add(entry.active_frame_pins);
+                total.continuation_frame_pins = total
+                    .continuation_frame_pins
+                    .saturating_add(entry.continuation_frame_pins);
                 total.acquired_entries = total
                     .acquired_entries
                     .saturating_add(entry.acquired_entries);
@@ -1946,6 +3228,14 @@ impl ExecutionState {
         }
     }
 
+    pub(crate) fn registration_roots(&self) -> Vec<Oop> {
+        self.resumable_entries
+            .iter()
+            .filter_map(|slot| slot.entry.as_ref())
+            .filter_map(|entry| entry.implementation_anchor)
+            .collect()
+    }
+
     pub(crate) fn create_machine_with_objects(
         &mut self,
         owner: u64,
@@ -1954,6 +3244,10 @@ impl ExecutionState {
         call_action: Oop,
         tail_call_action: Oop,
         return_action: Oop,
+        suspend_action: Oop,
+        capture_action: Oop,
+        restore_action: Oop,
+        abort_action: Oop,
     ) -> Result<MachineCapability, MachineError> {
         self.require_owner(owner)?;
         let arena_identity = self.next_arena_identity;
@@ -1981,6 +3275,10 @@ impl ExecutionState {
             call_action,
             tail_call_action,
             return_action,
+            suspend_action,
+            capture_action,
+            restore_action,
+            abort_action,
         ));
         Ok(MachineCapability {
             index,
@@ -2064,6 +3362,248 @@ impl ExecutionState {
                 .map_err(|_| MachineError::StaleCapability)?;
         }
         Ok(())
+    }
+
+    pub(crate) fn capture_continuation(
+        &mut self,
+        heap: &mut Heap,
+        owner: u64,
+        machine: MachineCapability,
+        delimiter: DelimiterHandle,
+        result_slot: usize,
+        continuation: Oop,
+    ) -> Result<ContinuationCapability, ExecutionError> {
+        self.require_owner(owner)?;
+        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
+        if heap.vtable_of(continuation) != Some(objects.continuation_vtable)
+            || heap.payload_size(continuation) != Some(3 * size_of::<usize>())
+        {
+            return Err(ExecutionError::InvalidAction);
+        }
+        let (boundary_depth, segment) =
+            self.machine_mut(owner, machine)?
+                .capture(owner, delimiter, result_slot)?;
+        let entry_pins: Vec<_> = segment
+            .iter()
+            .filter_map(|frame| frame.resumable_entry)
+            .collect();
+        for entry in &entry_pins {
+            self.transfer_frame_pin_to_continuation(*entry)?;
+        }
+
+        let index = if let Some(index) = self.free_continuation_slots.pop() {
+            index
+        } else {
+            self.continuations.push(ContinuationSlot {
+                generation: 1,
+                state: None,
+            });
+            self.continuations.len() - 1
+        };
+        let slot = &mut self.continuations[index];
+        debug_assert!(slot.state.is_none());
+        let capability = ContinuationCapability {
+            index,
+            generation: slot.generation,
+        };
+        slot.state = Some(ContinuationState {
+            owner,
+            machine,
+            delimiter,
+            boundary_depth,
+            result_slot,
+            segment: Some(segment),
+            continuation,
+        });
+        if !heap.write_payload_word(continuation, 0, CONTINUATION_CAPABILITY_KIND_V1)
+            || !heap.write_payload_word(continuation, 1, capability.index)
+            || !usize::try_from(capability.generation)
+                .ok()
+                .is_some_and(|generation| heap.write_payload_word(continuation, 2, generation))
+        {
+            return Err(ExecutionError::InvalidAction);
+        }
+        Ok(capability)
+    }
+
+    pub(crate) fn continuation_capability_for_object(
+        &self,
+        heap: &Heap,
+        object: Oop,
+    ) -> Result<ContinuationCapability, ExecutionError> {
+        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
+        if heap.vtable_of(object) != Some(objects.continuation_vtable)
+            || heap.payload_size(object) != Some(3 * size_of::<usize>())
+            || heap.read_payload_word(object, 0) != Some(CONTINUATION_CAPABILITY_KIND_V1)
+        {
+            return Err(ExecutionError::ContinuationConsumed);
+        }
+        let capability = ContinuationCapability {
+            index: heap
+                .read_payload_word(object, 1)
+                .ok_or(ExecutionError::ContinuationConsumed)?,
+            generation: heap
+                .read_payload_word(object, 2)
+                .and_then(|word| u64::try_from(word).ok())
+                .ok_or(ExecutionError::ContinuationConsumed)?,
+        };
+        let slot = self
+            .continuations
+            .get(capability.index)
+            .ok_or(ExecutionError::ContinuationConsumed)?;
+        if slot.generation != capability.generation
+            || slot
+                .state
+                .as_ref()
+                .is_none_or(|state| state.continuation != object)
+        {
+            return Err(ExecutionError::ContinuationConsumed);
+        }
+        Ok(capability)
+    }
+
+    pub(crate) fn restore_continuation(
+        &mut self,
+        owner: u64,
+        machine: MachineCapability,
+        continuation: ContinuationCapability,
+        supplied_value: Oop,
+    ) -> Result<(), ExecutionError> {
+        self.require_owner(owner)?;
+        let (continuation_machine, delimiter, boundary_depth, result_slot, entries) = {
+            let slot = self
+                .continuations
+                .get(continuation.index)
+                .ok_or(ExecutionError::ContinuationConsumed)?;
+            if slot.generation != continuation.generation {
+                return Err(ExecutionError::ContinuationConsumed);
+            }
+            let state = slot
+                .state
+                .as_ref()
+                .ok_or(ExecutionError::ContinuationConsumed)?;
+            let segment = state
+                .segment
+                .as_ref()
+                .ok_or(ExecutionError::ContinuationConsumed)?;
+            (
+                state.machine,
+                state.delimiter,
+                state.boundary_depth,
+                state.result_slot,
+                segment
+                    .iter()
+                    .filter_map(|frame| frame.resumable_entry)
+                    .collect::<Vec<_>>(),
+            )
+        };
+        if continuation_machine != machine {
+            return Err(ExecutionError::ContinuationWrongMachine);
+        }
+        {
+            let machine_state = self.machine(owner, machine)?;
+            if machine_state.lifecycle != MachineLifecycle::Suspended
+                || machine_state.drive_depth != 0
+            {
+                return Err(ExecutionError::MachineNotSuspended);
+            }
+            let record = machine_state.validate_delimiter(delimiter)?;
+            if record.frame_boundary != boundary_depth
+                || machine_state.arena.live_depth() != boundary_depth
+            {
+                return Err(ExecutionError::ContinuationBarrier);
+            }
+        }
+        let segment = self.continuations[continuation.index]
+            .state
+            .as_mut()
+            .and_then(|state| state.segment.take())
+            .ok_or(ExecutionError::ContinuationConsumed)?;
+        {
+            let machine_state = self.machine_mut(owner, machine)?;
+            machine_state
+                .arena
+                .install_segment(boundary_depth, segment)?;
+            let frame = machine_state
+                .arena
+                .current_handle()
+                .ok_or(FrameError::StaleHandle)?;
+            machine_state
+                .arena
+                .write_oop(frame, result_slot, supplied_value)?;
+            machine_state.begin_continuation_restore(owner)?;
+        }
+        for entry in entries {
+            self.transfer_continuation_pin_to_frame(entry)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn resume_suspended_machine(
+        &mut self,
+        owner: u64,
+        machine: MachineCapability,
+        supplied_value: Oop,
+    ) -> Result<(), ExecutionError> {
+        self.machine_mut(owner, machine)?
+            .resume_suspended(owner, supplied_value)
+    }
+
+    pub(crate) fn trace_continuation_roots(&self, heap: &Heap, object: Oop, mark: MarkFn) {
+        let Ok(capability) = self.continuation_capability_for_object(heap, object) else {
+            return;
+        };
+        let Some(state) = self.continuations[capability.index].state.as_ref() else {
+            return;
+        };
+        let machine = self
+            .machine(self.owner, state.machine)
+            .map(|machine| machine.machine)
+            .unwrap_or(core::ptr::null_mut());
+        state.trace_roots(machine, mark);
+    }
+
+    pub(crate) unsafe fn finalize_detached_continuation(&mut self, object: Oop) {
+        if object.is_null() {
+            return;
+        }
+        let words = object.cast::<usize>();
+        // SAFETY: finalizer contract supplies three initialized payload words.
+        if unsafe { words.read() } != CONTINUATION_CAPABILITY_KIND_V1 {
+            return;
+        }
+        // SAFETY: words 1 and 2 are in the same detached allocation.
+        let index = unsafe { words.add(1).read() };
+        let Ok(generation) = u64::try_from(unsafe { words.add(2).read() }) else {
+            return;
+        };
+        let Some(slot) = self.continuations.get_mut(index) else {
+            return;
+        };
+        if slot.generation != generation {
+            return;
+        }
+        let Some(mut continuation) = slot.state.take() else {
+            return;
+        };
+        if continuation.continuation != object {
+            slot.state = Some(continuation);
+            return;
+        }
+        let next_generation = match slot.generation.checked_add(1) {
+            Some(generation) => generation,
+            None => return,
+        };
+        slot.generation = next_generation;
+        self.free_continuation_slots.push(index);
+        if let Some(segment) = continuation.segment.take() {
+            for entry in segment
+                .into_iter()
+                .filter_map(|frame| frame.resumable_entry)
+            {
+                let _ = self.release_entry_continuation_pin(entry);
+            }
+        }
     }
 
     pub(crate) fn destroy_machine_explicit(
@@ -2230,6 +3770,14 @@ impl ExecutionState {
         Ok(value)
     }
 
+    pub(crate) fn current_delimiter(
+        &self,
+        owner: u64,
+        capability: MachineCapability,
+    ) -> Result<DelimiterHandle, MachineError> {
+        self.machine(owner, capability)?.current_delimiter()
+    }
+
     pub(crate) fn copy_send_operands(
         &self,
         owner: u64,
@@ -2322,6 +3870,187 @@ impl ExecutionState {
             &[1, capability.index, generation, drive_epoch, value_slot],
         )?;
         Ok(machine.return_action)
+    }
+
+    pub(crate) fn publish_suspend(
+        &mut self,
+        heap: &mut Heap,
+        owner: u64,
+        capability: MachineCapability,
+        result_slot: usize,
+        delimiter: DelimiterHandle,
+        next_pc: usize,
+    ) -> Result<Oop, ExecutionError> {
+        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
+        let machine = self.machine_mut(owner, capability)?;
+        machine.require_driving(owner)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        let _ = machine.arena.read_oop(frame, result_slot)?;
+        let _ = machine.validate_delimiter(delimiter)?;
+        machine.arena.set_program_counter(frame, next_pc)?;
+        let generation = usize::try_from(capability.generation)
+            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
+        let delimiter_generation = usize::try_from(delimiter.generation)
+            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
+        let drive_epoch =
+            usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
+        initialize_action(
+            heap,
+            machine.suspend_action,
+            objects.suspend_action_vtable,
+            &[
+                1,
+                capability.index,
+                generation,
+                drive_epoch,
+                result_slot,
+                delimiter.index,
+                delimiter_generation,
+            ],
+        )?;
+        Ok(machine.suspend_action)
+    }
+
+    pub(crate) fn publish_capture(
+        &mut self,
+        heap: &mut Heap,
+        owner: u64,
+        capability: MachineCapability,
+        delimiter: DelimiterHandle,
+        result_slot: usize,
+        next_pc: usize,
+    ) -> Result<Oop, ExecutionError> {
+        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
+        let machine = self.machine_mut(owner, capability)?;
+        machine.require_driving(owner)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        let _ = machine.arena.read_oop(frame, result_slot)?;
+        let _ = machine.validate_delimiter(delimiter)?;
+        machine.arena.set_program_counter(frame, next_pc)?;
+        let generation = usize::try_from(capability.generation)
+            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
+        let delimiter_generation = usize::try_from(delimiter.generation)
+            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
+        let drive_epoch =
+            usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
+        initialize_action(
+            heap,
+            machine.capture_action,
+            objects.capture_action_vtable,
+            &[
+                1,
+                capability.index,
+                generation,
+                drive_epoch,
+                delimiter.index,
+                delimiter_generation,
+                result_slot,
+            ],
+        )?;
+        Ok(machine.capture_action)
+    }
+
+    pub(crate) fn publish_restore(
+        &mut self,
+        heap: &mut Heap,
+        owner: u64,
+        capability: MachineCapability,
+        continuation_slot: usize,
+        supplied_value_slot: usize,
+    ) -> Result<Oop, ExecutionError> {
+        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
+        let machine = self.machine_mut(owner, capability)?;
+        machine.require_driving(owner)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        let _ = machine.arena.read_oop(frame, continuation_slot)?;
+        let _ = machine.arena.read_oop(frame, supplied_value_slot)?;
+        let generation = usize::try_from(capability.generation)
+            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
+        let drive_epoch =
+            usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
+        initialize_action(
+            heap,
+            machine.restore_action,
+            objects.restore_action_vtable,
+            &[
+                1,
+                capability.index,
+                generation,
+                drive_epoch,
+                continuation_slot,
+                supplied_value_slot,
+            ],
+        )?;
+        Ok(machine.restore_action)
+    }
+
+    pub(crate) fn publish_abort(
+        &mut self,
+        heap: &mut Heap,
+        owner: u64,
+        capability: MachineCapability,
+        delimiter: Option<DelimiterHandle>,
+        reason_slot: usize,
+    ) -> Result<Oop, ExecutionError> {
+        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
+        let machine = self.machine_mut(owner, capability)?;
+        machine.require_driving(owner)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        let _ = machine.arena.read_oop(frame, reason_slot)?;
+        if let Some(delimiter) = delimiter {
+            let _ = machine.validate_delimiter(delimiter)?;
+        }
+        let generation = usize::try_from(capability.generation)
+            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
+        let drive_epoch =
+            usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
+        let (delimiter_index, delimiter_generation) = match delimiter {
+            Some(delimiter) => (
+                delimiter.index,
+                usize::try_from(delimiter.generation)
+                    .map_err(|_| MachineError::RegistryGenerationExhausted)?,
+            ),
+            None => (usize::MAX, 0),
+        };
+        initialize_action(
+            heap,
+            machine.abort_action,
+            objects.abort_action_vtable,
+            &[
+                1,
+                capability.index,
+                generation,
+                drive_epoch,
+                delimiter_index,
+                delimiter_generation,
+                reason_slot,
+            ],
+        )?;
+        Ok(machine.abort_action)
+    }
+
+    pub(crate) fn apply_suspend(
+        &mut self,
+        owner: u64,
+        capability: MachineCapability,
+        result_slot: usize,
+        delimiter: DelimiterHandle,
+    ) -> Result<(), ExecutionError> {
+        self.machine_mut(owner, capability)?
+            .suspend(owner, delimiter, result_slot)?;
+        Ok(())
     }
 
     pub(crate) fn publish_call_site(
@@ -2420,6 +4149,13 @@ impl ExecutionState {
             8
         } else if vtable == objects.return_action_vtable {
             5
+        } else if vtable == objects.suspend_action_vtable
+            || vtable == objects.capture_action_vtable
+            || vtable == objects.abort_action_vtable
+        {
+            7
+        } else if vtable == objects.restore_action_vtable {
+            6
         } else {
             return Err(ExecutionError::InvalidAction);
         };
@@ -2452,6 +4188,100 @@ impl ExecutionState {
                 .ok_or(FrameError::StaleHandle)?;
             let _ = machine.arena.read_oop(frame, value_slot)?;
             Ok(DecodedAction::Return { value_slot })
+        } else if vtable == objects.suspend_action_vtable {
+            let result_slot = heap
+                .read_payload_word(action, 4)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let delimiter = DelimiterHandle {
+                index: heap
+                    .read_payload_word(action, 5)
+                    .ok_or(ExecutionError::InvalidAction)?,
+                generation: heap
+                    .read_payload_word(action, 6)
+                    .and_then(|word| u64::try_from(word).ok())
+                    .ok_or(ExecutionError::InvalidAction)?,
+            };
+            let frame = machine
+                .arena
+                .current_handle()
+                .ok_or(FrameError::StaleHandle)?;
+            let _ = machine.arena.read_oop(frame, result_slot)?;
+            let _ = machine.validate_delimiter(delimiter)?;
+            Ok(DecodedAction::Suspend {
+                result_slot,
+                delimiter,
+            })
+        } else if vtable == objects.capture_action_vtable {
+            let delimiter = DelimiterHandle {
+                index: heap
+                    .read_payload_word(action, 4)
+                    .ok_or(ExecutionError::InvalidAction)?,
+                generation: heap
+                    .read_payload_word(action, 5)
+                    .and_then(|word| u64::try_from(word).ok())
+                    .ok_or(ExecutionError::InvalidAction)?,
+            };
+            let result_slot = heap
+                .read_payload_word(action, 6)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let frame = machine
+                .arena
+                .current_handle()
+                .ok_or(FrameError::StaleHandle)?;
+            let _ = machine.arena.read_oop(frame, result_slot)?;
+            let _ = machine.validate_delimiter(delimiter)?;
+            Ok(DecodedAction::Capture {
+                delimiter,
+                result_slot,
+            })
+        } else if vtable == objects.restore_action_vtable {
+            let continuation_slot = heap
+                .read_payload_word(action, 4)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let supplied_value_slot = heap
+                .read_payload_word(action, 5)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let frame = machine
+                .arena
+                .current_handle()
+                .ok_or(FrameError::StaleHandle)?;
+            let _ = machine.arena.read_oop(frame, continuation_slot)?;
+            let _ = machine.arena.read_oop(frame, supplied_value_slot)?;
+            Ok(DecodedAction::Restore {
+                continuation_slot,
+                supplied_value_slot,
+            })
+        } else if vtable == objects.abort_action_vtable {
+            let delimiter_index = heap
+                .read_payload_word(action, 4)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let delimiter_generation = heap
+                .read_payload_word(action, 5)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let delimiter = if delimiter_index == usize::MAX && delimiter_generation == 0 {
+                None
+            } else {
+                Some(DelimiterHandle {
+                    index: delimiter_index,
+                    generation: u64::try_from(delimiter_generation)
+                        .map_err(|_| ExecutionError::InvalidAction)?,
+                })
+            };
+            if let Some(delimiter) = delimiter {
+                let _ = machine.validate_delimiter(delimiter)?;
+            }
+            let reason_slot = heap
+                .read_payload_word(action, 6)
+                .ok_or(ExecutionError::InvalidAction)?;
+            let frame = machine
+                .arena
+                .current_handle()
+                .ok_or(FrameError::StaleHandle)?;
+            let _ = machine.arena.read_oop(frame, reason_slot)?;
+            Ok(DecodedAction::Abort {
+                delimiter,
+                reason_slot,
+            })
         } else {
             let receiver_slot = heap
                 .read_payload_word(action, 4)
@@ -2510,6 +4340,10 @@ impl ExecutionState {
             vtable if vtable == objects.call_action_vtable => Some(objects.call_kind),
             vtable if vtable == objects.tail_call_action_vtable => Some(objects.tail_call_kind),
             vtable if vtable == objects.return_action_vtable => Some(objects.return_kind),
+            vtable if vtable == objects.suspend_action_vtable => Some(objects.suspend_kind),
+            vtable if vtable == objects.capture_action_vtable => Some(objects.capture_kind),
+            vtable if vtable == objects.restore_action_vtable => Some(objects.restore_kind),
+            vtable if vtable == objects.abort_action_vtable => Some(objects.abort_kind),
             _ => None,
         }
     }
@@ -2521,6 +4355,10 @@ impl ExecutionState {
             vtable if vtable == objects.call_action_vtable => 9,
             vtable if vtable == objects.tail_call_action_vtable => 8,
             vtable if vtable == objects.return_action_vtable => 5,
+            vtable if vtable == objects.suspend_action_vtable => 7,
+            vtable if vtable == objects.capture_action_vtable => 7,
+            vtable if vtable == objects.restore_action_vtable => 6,
+            vtable if vtable == objects.abort_action_vtable => 7,
             _ => return None,
         };
         if heap.payload_size(action)? != expected_words * size_of::<usize>()
@@ -2971,6 +4809,10 @@ pub(crate) unsafe extern "C" fn machine_trace_hook(object: Oop, mark: MarkFn) {
     crate::runtime::with_active(|runtime| runtime.trace_stackless_machine(object, mark));
 }
 
+pub(crate) unsafe extern "C" fn continuation_trace_hook(object: Oop, mark: MarkFn) {
+    crate::runtime::with_active(|runtime| runtime.trace_stackless_continuation(object, mark));
+}
+
 pub(crate) unsafe extern "C" fn execution_root_provider(mark: MarkFn) {
     crate::runtime::with_active(|runtime| runtime.trace_stackless_scoped_roots(mark));
 }
@@ -2980,6 +4822,14 @@ pub(crate) unsafe extern "C" fn machine_finalizer(object: Oop) {
         // SAFETY: the heap invokes this finalizer while the detached Machine
         // payload is still live and reclaims it only after this call returns.
         unsafe { runtime.finalize_stackless_machine(object) }
+    });
+}
+
+pub(crate) unsafe extern "C" fn continuation_finalizer(object: Oop) {
+    crate::runtime::with_active(|runtime| {
+        // SAFETY: the heap invokes this finalizer while the detached
+        // Continuation payload remains live.
+        unsafe { runtime.finalize_stackless_continuation(object) }
     });
 }
 
@@ -3132,9 +4982,67 @@ pub(crate) unsafe extern "C" fn call_action_result_slot(
     action_word_method(action, count, 8)
 }
 
+pub(crate) unsafe extern "C" fn action_word_four(action: Oop, _: *const Oop, count: usize) -> Oop {
+    action_word_method(action, count, 4)
+}
+
+pub(crate) unsafe extern "C" fn action_word_five(action: Oop, _: *const Oop, count: usize) -> Oop {
+    action_word_method(action, count, 5)
+}
+
+pub(crate) unsafe extern "C" fn action_word_six(action: Oop, _: *const Oop, count: usize) -> Oop {
+    action_word_method(action, count, 6)
+}
+
+pub(crate) unsafe extern "C" fn abort_action_has_delimiter(
+    action: Oop,
+    _: *const Oop,
+    count: usize,
+) -> Oop {
+    crate::runtime::with_active(|runtime| {
+        if count != 0 {
+            return runtime.canonical().nil;
+        }
+        match runtime.stackless_action_word(action, 4) {
+            Some(usize::MAX) => runtime.canonical().false_object,
+            Some(_) => runtime.canonical().true_object,
+            None => runtime.canonical().nil,
+        }
+    })
+}
+
+pub(crate) unsafe extern "C" fn abort_action_delimiter_index(
+    action: Oop,
+    _: *const Oop,
+    count: usize,
+) -> Oop {
+    crate::runtime::with_active(|runtime| {
+        if count != 0 || runtime.stackless_action_word(action, 4) == Some(usize::MAX) {
+            return runtime.canonical().nil;
+        }
+        runtime.stackless_action_integer_word(action, 4)
+    })
+}
+
+pub(crate) unsafe extern "C" fn abort_action_delimiter_generation(
+    action: Oop,
+    _: *const Oop,
+    count: usize,
+) -> Oop {
+    crate::runtime::with_active(|runtime| {
+        if count != 0 || runtime.stackless_action_word(action, 4) == Some(usize::MAX) {
+            return runtime.canonical().nil;
+        }
+        runtime.stackless_action_integer_word(action, 5)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use birnam_artifact::stackless_selection::{
+        Disposition, ImplementationKind as CanonicalImplementationKind, RootKind,
+    };
     use core::ffi::c_void;
 
     unsafe extern "C" fn inert_step(_: Oop, _: *const Oop, _: usize) -> Oop {
@@ -3160,6 +5068,118 @@ mod tests {
             step_method: inert_step,
         })
         .expect("valid test descriptor")
+    }
+
+    fn descriptor_v2(
+        slot_count: usize,
+        roots: Vec<u64>,
+        call_sites: Vec<CallSiteDescriptor>,
+        edges: Vec<FrameEdgeSpec>,
+    ) -> Arc<FrameDescriptor> {
+        FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+            identity: DescriptorIdentity {
+                implementation: 17,
+                generation: 9,
+                source_map: 4,
+            },
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            slot_count,
+            entry_receiver_slot: 0,
+            entry_argument_start: 1,
+            entry_argument_count: 0,
+            entry_capture_slots: Vec::new(),
+            implementation_slot: None,
+            root_bitmap_words: roots,
+            call_sites,
+            edges,
+            step_method: inert_step,
+        })
+        .expect("valid v2 test descriptor")
+    }
+
+    #[test]
+    fn canonical_v2_bytes_admit_into_owned_runtime_metadata() {
+        let cases: [(&str, CanonicalImplementationKind, &[u32]); 9] = [
+            (
+                "frame-descriptor-minimal-return.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-source-map-block.bin",
+                CanonicalImplementationKind::BlockBody,
+                &[2, 1],
+            ),
+            (
+                "frame-descriptor-call.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-tail-call.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-branch-join.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-cyclic-copy.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-colored-reuse.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-construction-trace-named.bin",
+                CanonicalImplementationKind::NamedAdapter,
+                &[],
+            ),
+            (
+                "frame-descriptor-construction-trace-block.bin",
+                CanonicalImplementationKind::BlockBody,
+                &[0],
+            ),
+        ];
+        for (name, implementation_kind, path) in cases {
+            let bytes = std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../abi/fixtures/stackless-s2")
+                    .join(name),
+            )
+            .unwrap();
+            let source_file_directory = 64 + 8 * 32;
+            let source_file_offset = u64::from_le_bytes(
+                bytes[source_file_directory + 16..source_file_directory + 24]
+                    .try_into()
+                    .unwrap(),
+            ) as usize;
+            let source_revision = bytes[source_file_offset..source_file_offset + 32]
+                .try_into()
+                .unwrap();
+            let descriptor = FrameDescriptor::admit_v2(
+                &bytes,
+                SelectionSpec {
+                    source_revision,
+                    root_kind: RootKind::MethodOperation,
+                    root_index: 0,
+                    path,
+                    implementation_kind,
+                    disposition: Disposition::ResumableRequired,
+                },
+                91,
+                inert_step,
+            )
+            .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+            assert_eq!(descriptor.identity().generation, 91);
+            assert_eq!(descriptor.layout_version, FRAME_LAYOUT_VERSION_V2);
+        }
     }
 
     #[test]
@@ -3189,7 +5209,7 @@ mod tests {
         let runtime_source = include_str!("runtime.rs");
         let resolution = function_body(
             runtime_source,
-            "    fn resolve_stackless_target(",
+            "    pub(crate) fn resolve_stackless_target(",
             "    fn materialize_registered_target(",
         );
 
@@ -3355,6 +5375,138 @@ mod tests {
         arena.set_program_counter(frame, 1).unwrap();
         assert_eq!(arena.read_oop(frame, 0), Ok(replacement));
         assert_eq!(arena.program_counter(frame), Ok(1));
+    }
+
+    #[test]
+    fn v2_transition_keeps_predecessor_roots_until_copy_clear_commit() {
+        let nil = oop(0x1000);
+        let receiver = oop(0x2000);
+        let argument = oop(0x3000);
+        let carried = oop(0x4000);
+        let stale = oop(0x5000);
+        let descriptor = descriptor_v2(
+            4,
+            vec![0b0111, 0b1011],
+            Vec::new(),
+            vec![FrameEdgeSpec {
+                kind: EdgeTransitionKind::Continue,
+                source_pc: 0,
+                target_pc: 1,
+                call_site_index: None,
+                result_slot: None,
+                copies: vec![SlotCopy {
+                    source: 2,
+                    destination: 3,
+                }],
+                clear_bitmap_words: vec![0b0100],
+            }],
+        );
+        let mut arena = FrameArena::new(29);
+        let frame = arena
+            .push(
+                descriptor,
+                0,
+                nil,
+                &[(0, receiver), (1, argument), (2, carried), (3, stale)],
+            )
+            .unwrap();
+
+        arena
+            .begin_v2_transition(frame, EdgeTransitionKind::Continue, 1, None)
+            .unwrap();
+        assert_eq!(arena.program_counter(frame), Ok(1));
+        assert_eq!(arena.root_state_program_counter(frame), Ok(0));
+        let mut roots = Vec::new();
+        arena.trace_roots(|root| roots.push(root.addr()));
+        assert_eq!(roots, [receiver.addr(), argument.addr(), carried.addr()]);
+
+        arena.commit_v2_transition(frame, nil, None).unwrap();
+        assert_eq!(arena.root_state_program_counter(frame), Ok(1));
+        assert_eq!(arena.read_oop(frame, 2), Ok(nil));
+        assert_eq!(arena.read_oop(frame, 3), Ok(carried));
+        roots.clear();
+        arena.trace_roots(|root| roots.push(root.addr()));
+        assert_eq!(roots, [receiver.addr(), argument.addr(), carried.addr()]);
+    }
+
+    #[test]
+    fn v2_parallel_copy_cycles_and_call_results_use_preallocated_scratch() {
+        let nil = oop(0x1000);
+        let left = oop(0x2000);
+        let right = oop(0x3000);
+        let cyclic = descriptor_v2(
+            4,
+            vec![0b1111, 0b1111],
+            Vec::new(),
+            vec![FrameEdgeSpec {
+                kind: EdgeTransitionKind::Continue,
+                source_pc: 0,
+                target_pc: 1,
+                call_site_index: None,
+                result_slot: None,
+                copies: vec![
+                    SlotCopy {
+                        source: 3,
+                        destination: 2,
+                    },
+                    SlotCopy {
+                        source: 2,
+                        destination: 3,
+                    },
+                ],
+                clear_bitmap_words: vec![0],
+            }],
+        );
+        let mut arena = FrameArena::new(31);
+        let frame = arena
+            .push(cyclic, 0, nil, &[(2, left), (3, right)])
+            .unwrap();
+        let reserved = arena.diagnostics().reserved_bytes;
+        arena
+            .begin_v2_transition(frame, EdgeTransitionKind::Continue, 1, None)
+            .unwrap();
+        arena.commit_v2_transition(frame, nil, None).unwrap();
+        assert_eq!(arena.read_oop(frame, 2), Ok(right));
+        assert_eq!(arena.read_oop(frame, 3), Ok(left));
+        assert_eq!(arena.diagnostics().reserved_bytes, reserved);
+
+        let result = oop(0x6000);
+        let call_site = CallSiteDescriptor {
+            kind: CallSiteKind::Call,
+            receiver_slot: 0,
+            selector_slot: 1,
+            argument_start: 2,
+            argument_count: 1,
+            result_slot: Some(3),
+            continuation_pc: Some(1),
+        };
+        let call = descriptor_v2(
+            4,
+            vec![0b0111, 0b1000],
+            vec![call_site],
+            vec![FrameEdgeSpec {
+                kind: EdgeTransitionKind::Call,
+                source_pc: 0,
+                target_pc: 1,
+                call_site_index: Some(0),
+                result_slot: Some(3),
+                copies: Vec::new(),
+                clear_bitmap_words: vec![0b0111],
+            }],
+        );
+        let mut call_arena = FrameArena::new(37);
+        let call_frame = call_arena.push(call, 0, nil, &[]).unwrap();
+        call_arena
+            .begin_v2_transition(call_frame, EdgeTransitionKind::Call, 1, Some(0))
+            .unwrap();
+        assert_eq!(
+            call_arena.commit_v2_transition(call_frame, nil, None),
+            Err(FrameError::InvalidSlot)
+        );
+        call_arena
+            .commit_v2_transition(call_frame, nil, Some(result))
+            .unwrap();
+        assert_eq!(call_arena.read_oop(call_frame, 3), Ok(result));
     }
 
     #[test]

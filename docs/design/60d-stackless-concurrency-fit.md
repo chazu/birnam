@@ -134,11 +134,12 @@ inside one Rust operation are acceptable; ambient execution identity is not.
 
 There is exactly one scoped exception, and it is not in generated code. The
 entry seam of [60E §5.2](60e-resumable-registration-and-entry.md) has no Machine
-in hand by construction — an entry thunk may be reached by ordinary dispatch
-from an unmigrated caller or by a late-bound microcode send from a StepMethod —
-so the Runtime owns an entry-scope stack naming the Machine whose native
-activation is waiting. The driver pushes that scope around StepMethod and
-synchronous-Method invocation. Only the entry shim consults it, and the epoch
+in hand by construction—`send_abi` may classify a resumable target while
+serving an unmigrated caller or a late-bound microcode send from a StepMethod,
+and a directly invoked fallback thunk may do the same—so the Runtime owns an
+entry-scope stack naming the Machine whose native activation is waiting. The
+driver pushes that scope around StepMethod and synchronous-Method invocation.
+Only the Runtime entry helper consults it, and the epoch
 it validates against is the Machine's, not the stack's. Generated StepMethod
 code and Machine microcode still receive Machine explicitly and must never read
 it.
@@ -316,12 +317,12 @@ not itself prevent migration. Machine carries the ownership identity. A future
 design can change Machine ownership without changing the StepMethod carrier if
 the surrounding Runtime becomes capable of safe migration.
 
-The Runtime-qualified entry-thunk registry of 60E §4.1 does not add a migration
-restriction. Its logical resolve-and-pin operation protects ordinary lookup
-through classification and generation-pin acquisition; after a successful push
-the Frame owns that pin independently of dispatch. Work stealing would transfer
-the Machine and its acquired pins, not re-resolve active Frames by thunk
-address.
+The Runtime-qualified carrier registry of 60E §4.1 does not add a migration
+restriction. Its shared logical resolve-and-pin operation protects ordinary
+lookup through classification and generation-pin acquisition for both
+`send_abi` and Machine calls; after a successful push the Frame owns that pin
+independently of dispatch. Work stealing would transfer the Machine and its
+acquired pins, not re-resolve active Frames by carrier address.
 
 ### 8.1 Required follow-up before concurrent evolution
 
@@ -467,7 +468,8 @@ The first implementation must preserve all of the following:
 
 1. Machine identity, not TLS or a process global, selects current execution
    state. The Runtime entry-scope stack of §4 is the sole exception, is read
-   only by the entry shim, and is never read by generated code or microcode.
+   only by the Runtime resumable-entry helper serving `send_abi` or a fallback
+   thunk, and is never read by generated code or microcode.
 2. One Machine has at most one active driver invocation per barrier delimiter;
    stacked drives are legal, unbarriered recursive drives are not.
 3. Different Machines may alternate turns without sharing mutable execution

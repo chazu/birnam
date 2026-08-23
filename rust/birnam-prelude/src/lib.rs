@@ -128,12 +128,14 @@ unsafe fn numeric_binary(
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number") };
+        return unsafe {
+            numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number")
+        };
     };
     match (left, right) {
-        (Numeric::Integer(left), Numeric::Integer(right)) => {
-            unsafe { result(api, integer_operation(left as i128, right as i128)) }
-        }
+        (Numeric::Integer(left), Numeric::Integer(right)) => unsafe {
+            result(api, integer_operation(left as i128, right as i128))
+        },
         (Numeric::Integer(left), Numeric::Float(right)) => unsafe {
             (api.mkFloat)(float_operation(left as f64, right))
         },
@@ -147,15 +149,39 @@ unsafe fn numeric_binary(
 }
 
 unsafe extern "C" fn integer_add(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { numeric_binary(self_object, args, count, |left, right| left + right, |left, right| left + right) }
+    unsafe {
+        numeric_binary(
+            self_object,
+            args,
+            count,
+            |left, right| left + right,
+            |left, right| left + right,
+        )
+    }
 }
 
 unsafe extern "C" fn integer_sub(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { numeric_binary(self_object, args, count, |left, right| left - right, |left, right| left - right) }
+    unsafe {
+        numeric_binary(
+            self_object,
+            args,
+            count,
+            |left, right| left - right,
+            |left, right| left - right,
+        )
+    }
 }
 
 unsafe extern "C" fn integer_mul(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { numeric_binary(self_object, args, count, |left, right| left * right, |left, right| left * right) }
+    unsafe {
+        numeric_binary(
+            self_object,
+            args,
+            count,
+            |left, right| left * right,
+            |left, right| left * right,
+        )
+    }
 }
 
 unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -173,7 +199,9 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number") };
+        return unsafe {
+            numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number")
+        };
     };
     let zero_divide = match right {
         Numeric::Integer(value) => value == 0,
@@ -192,9 +220,7 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
         (Numeric::Float(left), Numeric::Integer(right)) => unsafe {
             (api.mkFloat)(left / right as f64)
         },
-        (Numeric::Float(left), Numeric::Float(right)) => unsafe {
-            (api.mkFloat)(left / right)
-        },
+        (Numeric::Float(left), Numeric::Float(right)) => unsafe { (api.mkFloat)(left / right) },
     }
 }
 
@@ -266,7 +292,11 @@ unsafe extern "C" fn integer_eq(self_object: Oop, args: *const Oop, count: usize
     let Some(right) = (unsafe { integer(api, right_object) }) else {
         return api.falseObj;
     };
-    if left == right { api.trueObj } else { api.falseObj }
+    if left == right {
+        api.trueObj
+    } else {
+        api.falseObj
+    }
 }
 
 unsafe extern "C" fn integer_lt(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -302,11 +332,7 @@ unsafe extern "C" fn integer_print_string(
     unsafe { (api.mkString)(text.as_ptr(), text.len()) }
 }
 
-unsafe extern "C" fn integer_as_float(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn integer_as_float(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -318,11 +344,7 @@ unsafe extern "C" fn integer_as_float(
     unsafe { (api.mkFloat)(value as f64) }
 }
 
-unsafe extern "C" fn integer_to_do(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 2 {
         return api.nilObj;
@@ -359,11 +381,7 @@ unsafe fn word_value(api: &IdApi, value: Oop) -> Option<u64> {
     Some(unsafe { (api.wordValue)(value) })
 }
 
-unsafe extern "C" fn word_print_string(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn word_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -389,14 +407,14 @@ unsafe extern "C" fn word_eq(self_object: Oop, args: *const Oop, count: usize) -
     let Some(right) = (unsafe { word_value(api, right_object) }) else {
         return api.falseObj;
     };
-    if left == right { api.trueObj } else { api.falseObj }
+    if left == right {
+        api.trueObj
+    } else {
+        api.falseObj
+    }
 }
 
-unsafe extern "C" fn word_as_integer(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn word_as_integer(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -410,11 +428,7 @@ unsafe extern "C" fn word_as_integer(
     unsafe { (api.mkSmallInt)(value as i64) }
 }
 
-unsafe extern "C" fn word_is_null(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn word_is_null(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -422,7 +436,11 @@ unsafe extern "C" fn word_is_null(
     let Some(value) = (unsafe { word_value(api, self_object) }) else {
         return api.nilObj;
     };
-    if value == 0 { api.trueObj } else { api.falseObj }
+    if value == 0 {
+        api.trueObj
+    } else {
+        api.falseObj
+    }
 }
 
 unsafe fn float_self(api: &IdApi, value: Oop) -> Option<f64> {
@@ -452,7 +470,9 @@ unsafe fn float_binary(
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, b"typeMismatch\0", b"Float arithmetic needs a number") };
+        return unsafe {
+            numeric_error(api, b"typeMismatch\0", b"Float arithmetic needs a number")
+        };
     };
     let right = match right {
         Numeric::Integer(value) => value as f64,
@@ -488,7 +508,9 @@ unsafe extern "C" fn float_div(self_object: Oop, args: *const Oop, count: usize)
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, b"typeMismatch\0", b"Float arithmetic needs a number") };
+        return unsafe {
+            numeric_error(api, b"typeMismatch\0", b"Float arithmetic needs a number")
+        };
     };
     let right = match right {
         Numeric::Integer(value) => value as f64,
@@ -526,7 +548,11 @@ unsafe fn float_compare(
         Numeric::Integer(value) => value as f64,
         Numeric::Float(value) => value,
     };
-    if predicate(left, right) { api.trueObj } else { api.falseObj }
+    if predicate(left, right) {
+        api.trueObj
+    } else {
+        api.falseObj
+    }
 }
 
 unsafe extern "C" fn float_eq(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -543,7 +569,11 @@ unsafe extern "C" fn float_eq(self_object: Oop, args: *const Oop, count: usize) 
     let Some(Numeric::Float(right)) = (unsafe { numeric(api, right_object) }) else {
         return api.falseObj;
     };
-    if left == right { api.trueObj } else { api.falseObj }
+    if left == right {
+        api.trueObj
+    } else {
+        api.falseObj
+    }
 }
 
 unsafe extern "C" fn float_lt(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -562,11 +592,7 @@ unsafe extern "C" fn float_ge(self_object: Oop, args: *const Oop, count: usize) 
     unsafe { float_compare(self_object, args, count, |left, right| left >= right) }
 }
 
-unsafe extern "C" fn float_negated(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn float_negated(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -590,11 +616,7 @@ unsafe fn float_to_integer(api: &IdApi, value: f64) -> Oop {
     unsafe { (api.mkSmallInt)(value as i64) }
 }
 
-unsafe extern "C" fn float_as_integer(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn float_as_integer(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -663,11 +685,7 @@ unsafe extern "C" fn float_sqrt(self_object: Oop, _args: *const Oop, count: usiz
     unsafe { (api.mkFloat)(value.sqrt()) }
 }
 
-unsafe extern "C" fn float_print_string(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn float_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -695,11 +713,7 @@ unsafe extern "C" fn object_print_string(
     unsafe { (api.mkString)(b"anObject".as_ptr(), b"anObject".len()) }
 }
 
-unsafe extern "C" fn object_as_string(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn object_as_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -707,11 +721,7 @@ unsafe extern "C" fn object_as_string(
     unsafe { send0(api, self_object, b"printString\0") }
 }
 
-unsafe extern "C" fn symbol_print_string(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn symbol_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
@@ -796,7 +806,11 @@ unsafe extern "C" fn boolean_and(self_object: Oop, args: *const Oop, count: usiz
     let Some(argument) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if self_object == api.trueObj { argument } else { api.falseObj }
+    if self_object == api.trueObj {
+        argument
+    } else {
+        api.falseObj
+    }
 }
 
 unsafe extern "C" fn boolean_or(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -807,14 +821,14 @@ unsafe extern "C" fn boolean_or(self_object: Oop, args: *const Oop, count: usize
     let Some(argument) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if self_object == api.trueObj { api.trueObj } else { argument }
+    if self_object == api.trueObj {
+        api.trueObj
+    } else {
+        argument
+    }
 }
 
-unsafe extern "C" fn boolean_and_block(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn boolean_and_block(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
         return api.nilObj;
@@ -829,11 +843,7 @@ unsafe extern "C" fn boolean_and_block(
     }
 }
 
-unsafe extern "C" fn boolean_or_block(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn boolean_or_block(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
         return api.nilObj;
@@ -928,11 +938,7 @@ unsafe extern "C" fn block_while_true(self_object: Oop, args: *const Oop, count:
     unsafe { block_loop(self_object, args, count, true) }
 }
 
-unsafe extern "C" fn block_while_false(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn block_while_false(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     unsafe { block_loop(self_object, args, count, false) }
 }
 
@@ -983,11 +989,7 @@ fn write_system_output(bytes: &[u8], newline: bool) {
     let _ = write_system_output_to(&mut stdout, bytes, newline);
 }
 
-fn write_system_output_to<W: Write>(
-    writer: &mut W,
-    bytes: &[u8],
-    newline: bool,
-) -> io::Result<()> {
+fn write_system_output_to<W: Write>(writer: &mut W, bytes: &[u8], newline: bool) -> io::Result<()> {
     writer.write_all(bytes)?;
     if newline {
         writer.write_all(b"\n")?;
@@ -999,11 +1001,7 @@ fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
     std::str::from_utf8(bytes).ok().map(Path::new)
 }
 
-unsafe extern "C" fn system_read_file(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn system_read_file(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     const MAX_FILE_BYTES: u64 = 1 << 30;
     let api = unsafe { api_ref() };
     if count != 1 {
@@ -1033,11 +1031,7 @@ unsafe extern "C" fn system_read_file(
     unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
 }
 
-unsafe extern "C" fn system_write_file(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn system_write_file(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 2 {
         return api.nilObj;
@@ -1060,11 +1054,7 @@ unsafe extern "C" fn system_write_file(
     self_object
 }
 
-unsafe extern "C" fn system_get_env(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn system_get_env(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         return api.nilObj;
@@ -1087,11 +1077,7 @@ unsafe extern "C" fn system_get_env(
     }
 }
 
-unsafe extern "C" fn system_load(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
     const MAX_SOURCE_BYTES: u64 = 1 << 30;
     let api = unsafe { api_ref() };
     if count != 1 {
@@ -1130,20 +1116,11 @@ unsafe extern "C" fn system_load(
     // Preserve the module-source staging protocol used by the native prelude:
     // inspect a declaration first, record it by declared identity, then run
     // the source-file-aware persisting evaluator.
-    let revision = unsafe {
-        send_args(
-            api,
-            codegen,
-            b"sourceRevisionOf:\0",
-            &[source_object],
-        )
-    };
+    let revision = unsafe { send_args(api, codegen, b"sourceRevisionOf:\0", &[source_object]) };
     let revision_is_error = unsafe { is_error(api, revision) };
     let mut declared_name = api.nilObj;
     if !revision_is_error && revision != api.nilObj {
-        let name = unsafe {
-            send_args(api, revision, b"at:\0", &[(api.mkSmallInt)(1)])
-        };
+        let name = unsafe { send_args(api, revision, b"at:\0", &[(api.mkSmallInt)(1)]) };
         declared_name = name;
         let recorded = unsafe {
             send_args(
@@ -1170,19 +1147,27 @@ unsafe extern "C" fn system_load(
         let last_error = unsafe { send0(api, codegen, b"lastError\0") };
         if last_error != api.nilObj {
             if let Some(bytes) = unsafe { string_bytes(api, last_error) } {
-                eprintln!("birnam: load {} failed:\n{}", path.display(), String::from_utf8_lossy(bytes));
+                eprintln!(
+                    "birnam: load {} failed:\n{}",
+                    path.display(),
+                    String::from_utf8_lossy(bytes)
+                );
             }
-            return unsafe { numeric_error(api, b"syntaxError\0", b"source file failed to compile") };
+            return unsafe {
+                numeric_error(api, b"syntaxError\0", b"source file failed to compile")
+            };
         }
         return result;
     }
     if unsafe { is_error(api, result) } {
         if let Some(rendered) = unsafe { printable_string(api, result) } {
-            eprintln!("birnam: load {}: {}", path.display(), String::from_utf8_lossy(rendered));
+            eprintln!(
+                "birnam: load {}: {}",
+                path.display(),
+                String::from_utf8_lossy(rendered)
+            );
         }
-    } else if declared_name != api.nilObj
-        && unsafe { (api.isExported)(c"Module".as_ptr()) } != 0
-    {
+    } else if declared_name != api.nilObj && unsafe { (api.isExported)(c"Module".as_ptr()) } != 0 {
         let module = unsafe { (api.import)(c"Module".as_ptr()) };
         if !module.is_null() {
             let _ = unsafe { send_args(api, module, b"markLoaded:\0", &[declared_name]) };
@@ -1191,11 +1176,7 @@ unsafe extern "C" fn system_load(
     result
 }
 
-unsafe extern "C" fn system_load_module(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn system_load_module(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     const RTLD_LAZY: i32 = 1;
     let api = unsafe { api_ref() };
     if count != 1 {
@@ -1281,11 +1262,7 @@ unsafe extern "C" fn system_auto_gc(self_object: Oop, args: *const Oop, count: u
     self_object
 }
 
-unsafe extern "C" fn system_precise_gc(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
+unsafe extern "C" fn system_precise_gc(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         return api.nilObj;
@@ -1300,12 +1277,7 @@ unsafe extern "C" fn system_precise_gc(
     self_object
 }
 
-unsafe fn system_output(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-    newline: bool,
-) -> Oop {
+unsafe fn system_output(self_object: Oop, args: *const Oop, count: usize, newline: bool) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
         return api.nilObj;
@@ -1343,7 +1315,12 @@ unsafe fn install_system_protocol(api: &IdApi) {
     let (system_vt, system_object) = if unsafe { (api.isExported)(c"System".as_ptr()) } != 0 {
         // SAFETY: an exported System family is process-owned and remains live
         // across reloads; extend its vtable instead of minting a duplicate.
-        unsafe { ((api.import)(c"SystemVt".as_ptr()), (api.import)(c"System".as_ptr())) }
+        unsafe {
+            (
+                (api.import)(c"SystemVt".as_ptr()),
+                (api.import)(c"System".as_ptr()),
+            )
+        }
     } else {
         let system_vt = unsafe { (api.proto)(api.object_vt) };
         let system_object = unsafe { (api.alloc)(system_vt, 0) };
@@ -1496,7 +1473,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     unsafe {
         (api.method)(api.object_vt, print_string, object_print_string);
         (api.method)(api.object_vt, as_string, object_as_string);
-        (api.method)(api.symbol_vt, symbol_print_string, self::symbol_print_string);
+        (api.method)(
+            api.symbol_vt,
+            symbol_print_string,
+            self::symbol_print_string,
+        );
     }
     unsafe { install_block_protocol(api) };
     unsafe { install_system_protocol(api) };
@@ -1519,9 +1500,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        birnam_prelude_rust_identity, write_system_output_to, RUST_PRELUDE_IDENTITY,
-    };
+    use super::{RUST_PRELUDE_IDENTITY, birnam_prelude_rust_identity, write_system_output_to};
     use std::ffi::CStr;
     use std::io::{self, Write};
 
@@ -1559,6 +1538,9 @@ mod tests {
         write_system_output_to(&mut output, b"birnam> ", false).expect("prompt write");
 
         assert_eq!(output.bytes, b"birnam> ");
-        assert!(output.flushed, "a prompt must be visible before stdin blocks");
+        assert!(
+            output.flushed,
+            "a prompt must be visible before stdin blocks"
+        );
     }
 }

@@ -10,3 +10,4 @@
 mod provider_source;
 
 pub use provider_source::codec::*;
+pub use provider_source::v5;

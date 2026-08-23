@@ -37,11 +37,18 @@ The next architecture choice is deliberately open. Initialization, image-native
 source editing, migration, reactors/pools, richer supervision, and structured
 operations remain later slices selected from actual product evidence.
 
-[Design 60](../design/60-stackless-native-execution.md) records a feasibility
-assessment for another possible substrate: explicit per-fiber frames and
-resumable native methods supporting trampolining and continuations. It recommends
-a narrow machine/ABI proof before any roadmap commitment and preserves the
-current distinction between durable image state and in-flight execution.
+[Design 60](../design/60-stackless-native-execution.md) records the implemented
+S1 machine substrate and S2 selected named/method-owned-block lowering and image
+recovery for explicit per-fiber frames and resumable native methods. It
+preserves the distinction between durable image state and in-flight execution;
+suspension and continuations remain later stages.
+Ordinary sends and Machine calls share one private Runtime resolve-and-pin
+authority; the public IdApi and metacircular lookup semantics remain unchanged.
+[Design 60I](../design/60i-stackless-artifact-byte-grammar.md) is the physical-
+format authority for the stackless artifact family; its exact byte tables,
+fixtures, and independent checker closed the S2 pre-implementation design gate
+on 2026-08-22. The S1 shared-resolution substrate is aligned, so S2 is ready to
+implement.
 
 [Design 61](../design/61-rust-libid-rewrite-plan.md) specifies a separate,
 behavior-preserving rewrite of `libbirnam_id.dylib` in Rust. It keeps the current

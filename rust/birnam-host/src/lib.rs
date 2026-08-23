@@ -713,8 +713,7 @@ pub unsafe fn load_image(
     let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
-    let status =
-        unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+    let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
     if status == api.nilObj {
         return Err(ImageError::LoadRejected);
     }
@@ -735,6 +734,9 @@ pub unsafe fn load_image(
             unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
             let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
             unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
+            if !unsafe { reconcile_image_composition(api, system) } {
+                return Err(ImageError::LoadRejected);
+            }
             let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
             unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
             let current_digest = unsafe {
@@ -777,8 +779,21 @@ pub unsafe fn load_image(
         if begun == api.nilObj || send_is_error(api, begun) {
             return Err(ImageError::LoadRejected);
         }
-        let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
-        let replayed = unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) };
+        // Rebuild the exact accepted GenerationProjection from recovered
+        // sources and selection. This regenerates selected carriers and
+        // projected globals without executing the image's captured dylib.
+        // Older/data-only providers may not expose this seam, so retain the
+        // synchronous replay fallback.
+        let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
+        let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
+        let rebuilt_generation =
+            !rebuilt.is_null() && rebuilt != api.nilObj && !send_is_error(api, rebuilt);
+        let replayed = if rebuilt_generation {
+            unsafe { (api.mkSmallInt)(1) }
+        } else {
+            let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
+            unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) }
+        };
         // A data-only image (and an explicit --rebuild of an image whose
         // journal contains no user methods) still needs the self-hosted
         // protocol layer. Reload the embedded stdlib in this zero-replay case
@@ -815,6 +830,9 @@ pub unsafe fn load_image(
         // before the REPL evaluates its first expression.
         let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
         unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
+        if !unsafe { reconcile_image_composition(api, system) } {
+            return Err(ImageError::LoadRejected);
+        }
         let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
         unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
         let current_digest = unsafe {
@@ -840,6 +858,24 @@ pub unsafe fn load_image(
         }
     }
     Ok(ImageLoadOutcome::SourceRecovery)
+}
+
+/// Reify Design 47's composed executable generation after image dispatch and
+/// portable facts are both live, but before the recovery transaction exposes a
+/// user entry point. Data-only images have no composition identity and need no
+/// lifecycle reconciliation.
+unsafe fn reconcile_image_composition(api: &IdApi, system: birnam_abi::Oop) -> bool {
+    let identity_selector = unsafe { (api.intern)(c"imageCompositionIdentity".as_ptr()) };
+    let identity = unsafe { (api.send)(system, identity_selector, std::ptr::null(), 0) };
+    if identity.is_null() || identity == api.nilObj {
+        return true;
+    }
+    let Some(compiled_unit) = (unsafe { global_named(api, "CompiledUnit") }) else {
+        return false;
+    };
+    let reconcile = unsafe { (api.intern)(c"reconcileImageComposition:".as_ptr()) };
+    let result = unsafe { (api.send)(compiled_unit, reconcile, [identity].as_ptr(), 1) };
+    !result.is_null() && result != api.nilObj && !send_is_error(api, result)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7255,8 +7291,8 @@ unsafe fn replay_worker_methods(api: &IdApi) -> bool {
     }
     let replay = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
     let replayed = unsafe { (api.send)(codegen, replay, std::ptr::null(), 0) };
-    let replayed_any = unsafe { (api.isSmallInt)(replayed) } != 0
-        && unsafe { (api.smallIntValue)(replayed) } > 0;
+    let replayed_any =
+        unsafe { (api.isSmallInt)(replayed) } != 0 && unsafe { (api.smallIntValue)(replayed) } > 0;
     let targets = unsafe { (api.intern)(c"deriveImageMethodTargets".as_ptr()) };
     unsafe { (api.send)(codegen, targets, std::ptr::null(), 0) };
     let aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
@@ -8011,11 +8047,7 @@ mod tests {
         }
     }
 
-    fn artifact_fixture_with_kind(
-        kind: &[u8],
-        identity: &[u8],
-        requires: &[&[u8]],
-    ) -> Vec<u8> {
+    fn artifact_fixture_with_kind(kind: &[u8], identity: &[u8], requires: &[&[u8]]) -> Vec<u8> {
         artifact_fixture_with_kind_and_native(kind, identity, requires, &[])
     }
 
@@ -8103,14 +8135,12 @@ mod tests {
 
     fn shared_kind(path: &Path) -> String {
         let bytes = std::fs::read(path).expect("shared fixture descriptor reads");
-        let descriptor = birnam_artifact::inspect(&bytes).expect("shared fixture descriptor parses");
+        let descriptor =
+            birnam_artifact::inspect(&bytes).expect("shared fixture descriptor parses");
         String::from_utf8_lossy(descriptor.kind).into_owned()
     }
 
-    fn record_shared_parity_row(
-        case: &str,
-        result: &Result<ArtifactPlan, ArtifactPreflightError>,
-    ) {
+    fn record_shared_parity_row(case: &str, result: &Result<ArtifactPlan, ArtifactPreflightError>) {
         let Some(output) = std::env::var_os("BIRNAM_PREFLIGHT_PARITY_OUTPUT") else {
             return;
         };
@@ -8539,7 +8569,10 @@ mod tests {
             .as_deref()
             .expect("observed checksum recorded");
         assert_ne!(actual, "stale-receipt");
-        assert_eq!(actual, String::from_utf8_lossy(&sha256_hex(b"current-bytes")));
+        assert_eq!(
+            actual,
+            String::from_utf8_lossy(&sha256_hex(b"current-bytes"))
+        );
         std::fs::remove_dir_all(root).expect("receipt fixture removes");
     }
 
@@ -9413,10 +9446,8 @@ mod tests {
 
     #[test]
     fn artifact_preflight_rejects_wrong_kind_before_dependency_walk() {
-        let root = std::env::temp_dir().join(format!(
-            "birnam-host-preflight-kind-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("birnam-host-preflight-kind-{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("fixture directory creates");
         let root_path = root.join("libbirnam_root.dylib");
         std::fs::write(

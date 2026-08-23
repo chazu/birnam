@@ -1,0 +1,63 @@
+{
+  "schema": "birnam.generation-selection-composition-cases.v1",
+  "revisions": {
+    "a": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "b": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+  },
+  "cases": [
+    {
+      "name": "one-slice-a",
+      "active": ["a"],
+      "slices": ["artifact-selection-mixed.bin"],
+      "expected": "generation-selection-a.bin"
+    },
+    {
+      "name": "one-slice-ab",
+      "active": ["a", "b"],
+      "slices": ["artifact-selection-ab-combined.bin"],
+      "expected": "generation-selection-ab.bin"
+    },
+    {
+      "name": "two-slice-ab",
+      "active": ["a", "b"],
+      "slices": [
+        "artifact-selection-mixed.bin",
+        "artifact-selection-b-synchronous.bin"
+      ],
+      "expected": "generation-selection-ab.bin"
+    },
+    {
+      "name": "two-slice-reversed",
+      "active": ["a", "b"],
+      "slices": [
+        "artifact-selection-b-synchronous.bin",
+        "artifact-selection-mixed.bin"
+      ],
+      "expected": "generation-selection-ab.bin"
+    },
+    {
+      "name": "empty-slice-neutral",
+      "active": ["a", "b"],
+      "slices": [
+        "artifact-selection-empty.bin",
+        "artifact-selection-ab-combined.bin"
+      ],
+      "expected": "generation-selection-ab.bin"
+    },
+    {
+      "name": "overlapping-slices",
+      "active": ["a", "b"],
+      "slices": [
+        "artifact-selection-ab-combined.bin",
+        "artifact-selection-mixed.bin"
+      ],
+      "reject": "scope partition"
+    },
+    {
+      "name": "missing-revision",
+      "active": ["a", "b"],
+      "slices": ["artifact-selection-mixed.bin"],
+      "reject": "scope partition"
+    }
+  ]
+}

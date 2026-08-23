@@ -9,6 +9,8 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+pub mod v5;
+
 /// Provider-free image framing and codec surface.
 ///
 /// The dynamic Image shell below is intentionally kept outside this module so
@@ -16,2160 +18,2537 @@
 /// provider initializer into their dylib.
 pub mod codec {
 
-pub const MAGIC: &[u8; 8] = b"BIRNAMIM";
-pub const FORMAT_VERSION: u32 = 4;
-pub const ENDIAN_TAG: u32 = 0x0102_0304;
-pub const HEADER_LEN: usize = 28;
-pub const RECORD_HEADER_LEN: usize = 12;
-pub const AUTHORITY_DIGEST_LEN: usize = 64;
-pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
-pub const FIELD_LENGTH_PREFIX: usize = 4;
+    pub const MAGIC: &[u8; 8] = b"BIRNAMIM";
+    pub const FORMAT_VERSION: u32 = 4;
+    pub const ENDIAN_TAG: u32 = 0x0102_0304;
+    pub const HEADER_LEN: usize = 28;
+    pub const RECORD_HEADER_LEN: usize = 12;
+    pub const AUTHORITY_DIGEST_LEN: usize = 64;
+    pub const CODE_PREFIX_LEN: usize = 8 + AUTHORITY_DIGEST_LEN;
+    pub const FIELD_LENGTH_PREFIX: usize = 4;
 
-#[cfg(any(feature = "module", test))]
-pub(crate) const IMAGE_ARCH_TAG: u32 = if cfg!(target_arch = "aarch64") {
-    1
-} else if cfg!(target_arch = "x86_64") {
-    2
-} else {
-    0
-};
-#[cfg(any(feature = "module", test))]
-const RUNTIME_ABI_VERSION: u32 = 2;
-#[cfg(any(feature = "module", test))]
-const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
-    b"birnam_send",
-    b"birnam_intern",
-    b"birnam_mkSmallInt",
-    b"birnam_smallIntValue",
-    b"birnam_mkFloat",
-    b"birnam_floatValue",
-    b"birnam_mkString",
-    b"birnam_nil",
-    b"birnam_true",
-    b"birnam_false",
-    b"birnam_objectVt",
-    b"birnam_proto",
-    b"birnam_method",
-    b"birnam_alloc",
-    b"birnam_cstr",
-    b"birnam_free_cstr",
-    b"birnam_layoutAllOops",
-    b"birnam_global",
-    b"birnam_candidate_validate_binding",
-];
+    pub const IMAGE_ARCH_TAG: u32 = if cfg!(target_arch = "aarch64") {
+        1
+    } else if cfg!(target_arch = "x86_64") {
+        2
+    } else {
+        0
+    };
+    const RUNTIME_ABI_VERSION: u32 = 3;
+    const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
+        b"birnam_send",
+        b"birnam_intern",
+        b"birnam_mkSmallInt",
+        b"birnam_smallIntValue",
+        b"birnam_mkFloat",
+        b"birnam_floatValue",
+        b"birnam_mkString",
+        b"birnam_nil",
+        b"birnam_true",
+        b"birnam_false",
+        b"birnam_objectVt",
+        b"birnam_proto",
+        b"birnam_method",
+        b"birnam_alloc",
+        b"birnam_cstr",
+        b"birnam_free_cstr",
+        b"birnam_layoutAllOops",
+        b"birnam_global",
+        b"birnam_candidate_validate_binding",
+    ];
+    const REGISTRATION_SHIM_NAME: &[u8] = b"birnam_register_resumable_v1";
+    const REGISTRATION_ABI_FIELDS_V1: &[(&[u8], u32, u32, u32, &[u8], &[u8])] = &[
+        (b"carrier_version", 0x00, 4, 4, b"u32", b"not-applicable"),
+        (b"struct_size", 0x04, 4, 4, b"u32", b"not-applicable"),
+        (b"operation", 0x08, 4, 4, b"u32", b"not-applicable"),
+        (b"flags", 0x0c, 4, 4, b"u32", b"not-applicable"),
+        (
+            b"manifest_entry_index",
+            0x10,
+            4,
+            4,
+            b"u32",
+            b"not-applicable",
+        ),
+        (b"reserved0", 0x14, 4, 4, b"u32", b"not-applicable"),
+        (b"registration_token", 0x18, 8, 8, b"u64", b"not-applicable"),
+        (
+            b"descriptor_bytes",
+            0x20,
+            8,
+            8,
+            b"pointer<const-u8>",
+            b"prepare-nonnull-abort-null",
+        ),
+        (b"descriptor_length", 0x28, 8, 8, b"u64", b"not-applicable"),
+        (
+            b"entry_thunk",
+            0x30,
+            8,
+            8,
+            b"function-pointer<BirnamMethodV1>",
+            b"prepare-nonnull-abort-null",
+        ),
+        (
+            b"step_method",
+            0x38,
+            8,
+            8,
+            b"function-pointer<BirnamStepMethodV1>",
+            b"prepare-nonnull-abort-null",
+        ),
+        (
+            b"implementation_oop",
+            0x40,
+            8,
+            8,
+            b"BirnamOopV1",
+            b"prepare-named-nonnull-block-null-abort-null",
+        ),
+        (
+            b"code_generation_identity",
+            0x48,
+            8,
+            8,
+            b"u64",
+            b"not-applicable",
+        ),
+        (
+            b"code_generation_lease",
+            0x50,
+            8,
+            8,
+            b"u64",
+            b"not-applicable",
+        ),
+        (
+            b"portable_implementation_identity",
+            0x58,
+            8,
+            8,
+            b"u64",
+            b"not-applicable",
+        ),
+        (b"language_arity", 0x60, 4, 4, b"u32", b"not-applicable"),
+        (
+            b"driver_argument_count",
+            0x64,
+            4,
+            4,
+            b"u32",
+            b"not-applicable",
+        ),
+        (
+            b"descriptor_sha256",
+            0x68,
+            32,
+            1,
+            b"bytes[32]",
+            b"not-applicable",
+        ),
+    ];
+    const REGISTRATION_ABI_CONSTANTS_V1: &[(&[u8], u32)] = &[
+        (b"BIRNAM_REGISTRATION_CARRIER_VERSION_V1", 1),
+        (b"BIRNAM_REGISTRATION_PREPARE_V1", 1),
+        (b"BIRNAM_REGISTRATION_ABORT_V1", 2),
+        (b"BIRNAM_REGISTRATION_OK_V1", 0),
+        (b"BIRNAM_REGISTRATION_REJECTED_V1", 1),
+    ];
 
-#[cfg(any(feature = "module", test))]
-pub(crate) fn runtime_abi_hash() -> u64 {
-    let mut hash = 0xcbf29ce484222325;
-    for name in RUNTIME_SHIM_NAMES {
-        for byte in *name {
+    pub(crate) fn hash_registration_abi_tuple_v1(mut hash: u64) -> (u64, usize) {
+        fn bytes(hash: &mut u64, count: &mut usize, value: &[u8]) {
+            for byte in value {
+                *hash ^= u64::from(*byte);
+                *hash = hash.wrapping_mul(0x100000001b3);
+            }
+            *count += value.len();
+        }
+
+        fn u32_le(hash: &mut u64, count: &mut usize, value: u32) {
+            bytes(hash, count, &value.to_le_bytes());
+        }
+
+        fn string(hash: &mut u64, count: &mut usize, value: &[u8]) {
+            u32_le(hash, count, value.len() as u32);
+            bytes(hash, count, value);
+        }
+
+        let mut count = 0;
+        bytes(&mut hash, &mut count, b"birnam.registration-envelope.v1\0");
+        string(
+            &mut hash,
+            &mut count,
+            b"aarch64-apple-darwin|Mach-O|little-endian",
+        );
+        string(&mut hash, &mut count, b"birnam_register_resumable_v1");
+        string(
+            &mut hash,
+            &mut count,
+            b"u32(BirnamResumableRegistrationV1 *)",
+        );
+        for value in [136, 8, REGISTRATION_ABI_FIELDS_V1.len() as u32] {
+            u32_le(&mut hash, &mut count, value);
+        }
+        for &(name, offset, width, alignment, abi_kind, nullability) in REGISTRATION_ABI_FIELDS_V1 {
+            string(&mut hash, &mut count, name);
+            for value in [offset, width, alignment] {
+                u32_le(&mut hash, &mut count, value);
+            }
+            string(&mut hash, &mut count, abi_kind);
+            string(&mut hash, &mut count, nullability);
+        }
+        u32_le(
+            &mut hash,
+            &mut count,
+            REGISTRATION_ABI_CONSTANTS_V1.len() as u32,
+        );
+        for &(name, value) in REGISTRATION_ABI_CONSTANTS_V1 {
+            string(&mut hash, &mut count, name);
+            u32_le(&mut hash, &mut count, value);
+        }
+        (hash, count)
+    }
+
+    pub fn runtime_abi_hash() -> u64 {
+        let mut hash = 0xcbf29ce484222325;
+        for name in RUNTIME_SHIM_NAMES {
+            for byte in *name {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+        }
+        for byte in REGISTRATION_SHIM_NAME {
             hash ^= u64::from(*byte);
             hash = hash.wrapping_mul(0x100000001b3);
         }
-    }
-    let mut version = RUNTIME_ABI_VERSION;
-    for _ in 0..4 {
-        hash ^= u64::from((version & 0xff) as u8);
-        hash = hash.wrapping_mul(0x100000001b3);
-        version >>= 8;
-    }
-    hash
-}
-
-#[cfg(any(feature = "module", test))]
-pub(crate) fn authority_digest_from_bytes(bytes: &[u8]) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
-    bytes.try_into().ok()
-}
-
-use std::fs;
-use std::io::{self, Write};
-use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Error {
-    Truncated,
-    MagicMismatch,
-    UnsupportedVersion,
-    EndianMismatch,
-    ArchitectureMismatch,
-    AbiMismatch,
-    InvalidRecordKind,
-    InvalidPayloadLength,
-    InvalidFieldTag,
-    LayoutMismatch,
-    MissingAuthority,
-    DuplicateAuthority,
-    CodeBeforeAuthority,
-    DuplicateCode,
-    AuthorityMismatch,
-    CodeChecksumMismatch,
-    RecordTooLarge,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Header {
-    pub architecture: u32,
-    pub abi_hash: u64,
-}
-
-impl Header {
-    pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() < HEADER_LEN {
-            return Err(Error::Truncated);
+        hash = hash_registration_abi_tuple_v1(hash).0;
+        let mut version = RUNTIME_ABI_VERSION;
+        for _ in 0..4 {
+            hash ^= u64::from((version & 0xff) as u8);
+            hash = hash.wrapping_mul(0x100000001b3);
+            version >>= 8;
         }
-        if &bytes[..MAGIC.len()] != MAGIC {
-            return Err(Error::MagicMismatch);
-        }
-        if read_u32(&bytes[8..12]) != FORMAT_VERSION {
-            return Err(Error::UnsupportedVersion);
-        }
-        if read_u32(&bytes[12..16]) != ENDIAN_TAG {
-            return Err(Error::EndianMismatch);
-        }
-        Ok(Self {
-            architecture: read_u32(&bytes[16..20]),
-            abi_hash: read_u64(&bytes[20..28]),
-        })
+        hash
     }
 
-    pub fn require(self, architecture: u32, abi_hash: u64) -> Result<Self, Error> {
-        if self.architecture != architecture {
-            return Err(Error::ArchitectureMismatch);
-        }
-        if self.abi_hash != abi_hash {
-            return Err(Error::AbiMismatch);
-        }
-        Ok(self)
+    #[cfg(any(feature = "module", test))]
+    pub(crate) fn authority_digest_from_bytes(bytes: &[u8]) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+        bytes.try_into().ok()
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum RecordKind {
-    Facts = 2,
-    Heap = 3,
-    Code = 4,
-    Authority = 5,
-}
+    use std::fs;
+    use std::io::{self, Write};
+    use std::path::Path;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
-impl RecordKind {
-    fn parse(raw: u32) -> Result<Self, Error> {
-        match raw {
-            2 => Ok(Self::Facts),
-            3 => Ok(Self::Heap),
-            4 => Ok(Self::Code),
-            5 => Ok(Self::Authority),
-            _ => Err(Error::InvalidRecordKind),
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Error {
+        Truncated,
+        MagicMismatch,
+        UnsupportedVersion,
+        EndianMismatch,
+        ArchitectureMismatch,
+        AbiMismatch,
+        InvalidRecordKind,
+        InvalidPayloadLength,
+        InvalidFieldTag,
+        LayoutMismatch,
+        MissingAuthority,
+        DuplicateAuthority,
+        CodeBeforeAuthority,
+        DuplicateCode,
+        AuthorityMismatch,
+        CodeChecksumMismatch,
+        RecordTooLarge,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Header {
+        pub architecture: u32,
+        pub abi_hash: u64,
+    }
+
+    impl Header {
+        pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
+            if bytes.len() < HEADER_LEN {
+                return Err(Error::Truncated);
+            }
+            if &bytes[..MAGIC.len()] != MAGIC {
+                return Err(Error::MagicMismatch);
+            }
+            if read_u32(&bytes[8..12]) != FORMAT_VERSION {
+                return Err(Error::UnsupportedVersion);
+            }
+            if read_u32(&bytes[12..16]) != ENDIAN_TAG {
+                return Err(Error::EndianMismatch);
+            }
+            Ok(Self {
+                architecture: read_u32(&bytes[16..20]),
+                abi_hash: read_u64(&bytes[20..28]),
+            })
+        }
+
+        pub fn require(self, architecture: u32, abi_hash: u64) -> Result<Self, Error> {
+            if self.architecture != architecture {
+                return Err(Error::ArchitectureMismatch);
+            }
+            if self.abi_hash != abi_hash {
+                return Err(Error::AbiMismatch);
+            }
+            Ok(self)
         }
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Record<'a> {
-    pub kind: RecordKind,
-    pub payload: &'a [u8],
-}
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u32)]
+    pub enum RecordKind {
+        Facts = 2,
+        Heap = 3,
+        Code = 4,
+        Authority = 5,
+    }
 
-/// A semantically preflighted v4 image. The records remain borrowed and can
-/// be iterated again after the authority/code relationship has been checked.
-#[derive(Debug, Clone, Copy)]
-pub struct Image<'a> {
-    pub header: Header,
-    pub authority: Authority<'a>,
-    code: Option<Code<'a>>,
-    records: Records<'a>,
-}
-
-impl<'a> Image<'a> {
-    pub fn parse(bytes: &'a [u8]) -> Result<Self, Error> {
-        let header = Header::parse(bytes)?;
-        let record_bytes = bytes.get(HEADER_LEN..).ok_or(Error::Truncated)?;
-        let mut records = Records::new(record_bytes);
-        let mut authority = None;
-        let mut code = None;
-        while let Some(record) = records.next_record()? {
-            match record.kind {
-                RecordKind::Authority => {
-                    if authority.is_some() {
-                        return Err(Error::DuplicateAuthority);
-                    }
-                    if code.is_some() {
-                        return Err(Error::CodeBeforeAuthority);
-                    }
-                    authority = Some(Authority::parse(record.payload)?);
-                }
-                RecordKind::Code => {
-                    let Some(authority_value) = authority else {
-                        return Err(Error::CodeBeforeAuthority);
-                    };
-                    if code.is_some() {
-                        return Err(Error::DuplicateCode);
-                    }
-                    let code_value = Code::parse(record.payload)?;
-                    if code_value.generation_digest != authority_value.digest {
-                        return Err(Error::AuthorityMismatch);
-                    }
-                    if !code_value.checksum_matches() {
-                        return Err(Error::CodeChecksumMismatch);
-                    }
-                    code = Some(code_value);
-                }
-                RecordKind::Facts | RecordKind::Heap => {}
+    impl RecordKind {
+        fn parse(raw: u32) -> Result<Self, Error> {
+            match raw {
+                2 => Ok(Self::Facts),
+                3 => Ok(Self::Heap),
+                4 => Ok(Self::Code),
+                5 => Ok(Self::Authority),
+                _ => Err(Error::InvalidRecordKind),
             }
         }
-        let authority = authority.ok_or(Error::MissingAuthority)?;
-        Ok(Self {
-            header,
-            authority,
-            code,
-            records: Records::new(record_bytes),
-        })
     }
 
-    /// Perform the complete read-only admission required before a higher
-    /// layer may consider loading this image. No runtime objects are resolved
-    /// or mutated; mapping, source rebuild, and Store replay remain outside
-    /// the codec boundary.
-    pub fn preflight(bytes: &'a [u8], architecture: u32, abi_hash: u64) -> Result<Self, Error> {
-        let image = Self::parse(bytes)?;
-        image.header.require(architecture, abi_hash)?;
-        image.validate_facts()?;
-        Ok(image)
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Record<'a> {
+        pub kind: RecordKind,
+        pub payload: &'a [u8],
     }
 
-    pub fn code(&self) -> Option<Code<'a>> {
-        self.code
+    /// A semantically preflighted v4 image. The records remain borrowed and can
+    /// be iterated again after the authority/code relationship has been checked.
+    #[derive(Debug, Clone, Copy)]
+    pub struct Image<'a> {
+        pub header: Header,
+        pub authority: Authority<'a>,
+        code: Option<Code<'a>>,
+        records: Records<'a>,
     }
 
-    pub fn records(&self) -> Records<'a> {
-        self.records
-    }
-
-    /// Validate every facts record's count and tagged-field framing without
-    /// resolving any symbol, export, or heap reference.
-    pub fn validate_facts(&self) -> Result<(), Error> {
-        let mut records = self.records();
-        while let Some(record) = records.next_record()? {
-            if record.kind != RecordKind::Facts {
-                continue;
+    impl<'a> Image<'a> {
+        pub fn parse(bytes: &'a [u8]) -> Result<Self, Error> {
+            let header = Header::parse(bytes)?;
+            let record_bytes = bytes.get(HEADER_LEN..).ok_or(Error::Truncated)?;
+            let mut records = Records::new(record_bytes);
+            let mut authority = None;
+            let mut code = None;
+            while let Some(record) = records.next_record()? {
+                match record.kind {
+                    RecordKind::Authority => {
+                        if authority.is_some() {
+                            return Err(Error::DuplicateAuthority);
+                        }
+                        if code.is_some() {
+                            return Err(Error::CodeBeforeAuthority);
+                        }
+                        authority = Some(Authority::parse(record.payload)?);
+                    }
+                    RecordKind::Code => {
+                        let Some(authority_value) = authority else {
+                            return Err(Error::CodeBeforeAuthority);
+                        };
+                        if code.is_some() {
+                            return Err(Error::DuplicateCode);
+                        }
+                        let code_value = Code::parse(record.payload)?;
+                        if code_value.generation_digest != authority_value.digest {
+                            return Err(Error::AuthorityMismatch);
+                        }
+                        if !code_value.checksum_matches() {
+                            return Err(Error::CodeChecksumMismatch);
+                        }
+                        code = Some(code_value);
+                    }
+                    RecordKind::Facts | RecordKind::Heap => {}
+                }
             }
-            let mut facts = Facts::parse(record.payload)?;
-            while facts.next_fact()?.is_some() {}
+            let authority = authority.ok_or(Error::MissingAuthority)?;
+            Ok(Self {
+                header,
+                authority,
+                code,
+                records: Records::new(record_bytes),
+            })
         }
-        Ok(())
-    }
-}
 
-/// The v4 authority record is exactly one borrowed 64-byte generation digest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Authority<'a> {
-    pub digest: &'a [u8; AUTHORITY_DIGEST_LEN],
-}
-
-impl<'a> Authority<'a> {
-    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
-        Ok(Self {
-            digest: payload
-                .try_into()
-                .map_err(|_| Error::InvalidPayloadLength)?,
-        })
-    }
-}
-
-/// The fixed prefix of a v4 code record, borrowed from the image bytes.
-///
-/// The checksum is the existing image integrity field; the generation digest
-/// binds the unit to the preceding authority record. Hash verification and
-/// dynamic loading remain higher-layer responsibilities.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Code<'a> {
-    pub checksum: u64,
-    pub generation_digest: &'a [u8; AUTHORITY_DIGEST_LEN],
-    pub unit: &'a [u8],
-}
-
-impl<'a> Code<'a> {
-    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
-        if payload.len() < CODE_PREFIX_LEN {
-            return Err(Error::InvalidPayloadLength);
+        /// Perform the complete read-only admission required before a higher
+        /// layer may consider loading this image. No runtime objects are resolved
+        /// or mutated; mapping, source rebuild, and Store replay remain outside
+        /// the codec boundary.
+        pub fn preflight(bytes: &'a [u8], architecture: u32, abi_hash: u64) -> Result<Self, Error> {
+            let image = Self::parse(bytes)?;
+            image.header.require(architecture, abi_hash)?;
+            image.validate_facts()?;
+            Ok(image)
         }
-        Ok(Self {
-            checksum: read_u64(&payload[..8]),
-            generation_digest: payload[8..CODE_PREFIX_LEN]
-                .try_into()
-                .map_err(|_| Error::InvalidPayloadLength)?,
-            unit: &payload[CODE_PREFIX_LEN..],
-        })
-    }
 
-    pub fn checksum_matches(self) -> bool {
-        wyhash(0, self.unit) == self.checksum
-    }
-}
+        pub fn code(&self) -> Option<Code<'a>> {
+            self.code
+        }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum FieldTag {
-    Nil = 0,
-    True = 1,
-    False = 2,
-    Integer = 3,
-    FloatBits = 4,
-    Symbol = 5,
-    String = 6,
-    HeapRef = 7,
-    NullOop = 8,
-    ExportRef = 9,
-}
+        pub fn records(&self) -> Records<'a> {
+            self.records
+        }
 
-impl FieldTag {
-    fn parse(raw: u8) -> Result<Self, Error> {
-        match raw {
-            0 => Ok(Self::Nil),
-            1 => Ok(Self::True),
-            2 => Ok(Self::False),
-            3 => Ok(Self::Integer),
-            4 => Ok(Self::FloatBits),
-            5 => Ok(Self::Symbol),
-            6 => Ok(Self::String),
-            7 => Ok(Self::HeapRef),
-            8 => Ok(Self::NullOop),
-            9 => Ok(Self::ExportRef),
-            _ => Err(Error::InvalidFieldTag),
+        /// Validate every facts record's count and tagged-field framing without
+        /// resolving any symbol, export, or heap reference.
+        pub fn validate_facts(&self) -> Result<(), Error> {
+            let mut records = self.records();
+            while let Some(record) = records.next_record()? {
+                if record.kind != RecordKind::Facts {
+                    continue;
+                }
+                let mut facts = Facts::parse(record.payload)?;
+                while facts.next_fact()?.is_some() {}
+            }
+            Ok(())
         }
     }
-}
 
-/// One borrowed v4 heap/fact field. Float values retain their serialized bits
-/// so NaN payloads and signed zero remain lossless until a runtime materializer
-/// deliberately chooses a representation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Field<'a> {
-    Nil,
-    True,
-    False,
-    Integer(i64),
-    FloatBits(u64),
-    Symbol(&'a [u8]),
-    String(&'a [u8]),
-    HeapRef(u32),
-    NullOop,
-    ExportRef(&'a [u8]),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Fields<'a> {
-    bytes: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> Fields<'a> {
-    pub fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, offset: 0 }
+    /// The v4 authority record is exactly one borrowed 64-byte generation digest.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Authority<'a> {
+        pub digest: &'a [u8; AUTHORITY_DIGEST_LEN],
     }
 
-    pub fn next_field(&mut self) -> Result<Option<Field<'a>>, Error> {
-        if self.offset == self.bytes.len() {
-            return Ok(None);
+    impl<'a> Authority<'a> {
+        pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+            Ok(Self {
+                digest: payload
+                    .try_into()
+                    .map_err(|_| Error::InvalidPayloadLength)?,
+            })
         }
-        let tag = FieldTag::parse(self.bytes[self.offset])?;
-        self.offset += 1;
-        let field = match tag {
-            FieldTag::Nil => Field::Nil,
-            FieldTag::True => Field::True,
-            FieldTag::False => Field::False,
-            FieldTag::NullOop => Field::NullOop,
-            FieldTag::Integer => Field::Integer(i64::from_le_bytes(self.take_fixed()?)),
-            FieldTag::FloatBits => Field::FloatBits(u64::from_le_bytes(self.take_fixed()?)),
-            FieldTag::HeapRef => Field::HeapRef(u32::from_le_bytes(self.take_fixed()?)),
-            FieldTag::Symbol => Field::Symbol(self.take_bytes()?),
-            FieldTag::String => Field::String(self.take_bytes()?),
-            FieldTag::ExportRef => Field::ExportRef(self.take_bytes()?),
-        };
-        Ok(Some(field))
     }
 
-    fn take_byte(&mut self) -> Result<u8, Error> {
-        let byte = *self
-            .bytes
-            .get(self.offset)
-            .ok_or(Error::InvalidPayloadLength)?;
-        self.offset += 1;
-        Ok(byte)
+    /// The fixed prefix of a v4 code record, borrowed from the image bytes.
+    ///
+    /// The checksum is the existing image integrity field; the generation digest
+    /// binds the unit to the preceding authority record. Hash verification and
+    /// dynamic loading remain higher-layer responsibilities.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Code<'a> {
+        pub checksum: u64,
+        pub generation_digest: &'a [u8; AUTHORITY_DIGEST_LEN],
+        pub unit: &'a [u8],
     }
 
-    fn is_exhausted(&self) -> bool {
-        self.offset == self.bytes.len()
-    }
-
-    pub fn consumed(&self) -> usize {
-        self.offset
-    }
-
-    fn take_fixed<const N: usize>(&mut self) -> Result<[u8; N], Error> {
-        let end = self.offset.checked_add(N).ok_or(Error::RecordTooLarge)?;
-        let bytes = self
-            .bytes
-            .get(self.offset..end)
-            .ok_or(Error::InvalidPayloadLength)?;
-        self.offset = end;
-        Ok(bytes.try_into().expect("fixed-width field slice"))
-    }
-
-    fn take_bytes(&mut self) -> Result<&'a [u8], Error> {
-        let len = u32::from_le_bytes(self.take_fixed()?) as usize;
-        let end = self.offset.checked_add(len).ok_or(Error::RecordTooLarge)?;
-        let bytes = self
-            .bytes
-            .get(self.offset..end)
-            .ok_or(Error::InvalidPayloadLength)?;
-        self.offset = end;
-        Ok(bytes)
-    }
-}
-
-/// One borrowed fact from a v4 facts record. The field values are intentionally
-/// left tagged; a loader decides how to resolve symbols, exports, and heap refs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fact<'a> {
-    pub op: u8,
-    pub tx: u64,
-    pub entity: Field<'a>,
-    pub attribute: Field<'a>,
-    pub value: Field<'a>,
-}
-
-/// Borrowed iterator over the v4 facts payload (`basis`, `count`, facts...).
-#[derive(Debug, Clone, Copy)]
-pub struct Facts<'a> {
-    pub basis: u64,
-    remaining: u32,
-    fields: Fields<'a>,
-}
-
-impl<'a> Facts<'a> {
-    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
-        if payload.len() < 12 {
-            return Err(Error::InvalidPayloadLength);
+    impl<'a> Code<'a> {
+        pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+            if payload.len() < CODE_PREFIX_LEN {
+                return Err(Error::InvalidPayloadLength);
+            }
+            Ok(Self {
+                checksum: read_u64(&payload[..8]),
+                generation_digest: payload[8..CODE_PREFIX_LEN]
+                    .try_into()
+                    .map_err(|_| Error::InvalidPayloadLength)?,
+                unit: &payload[CODE_PREFIX_LEN..],
+            })
         }
-        Ok(Self {
-            basis: read_u64(&payload[..8]),
-            remaining: read_u32(&payload[8..12]),
-            fields: Fields::new(&payload[12..]),
-        })
+
+        pub fn checksum_matches(self) -> bool {
+            wyhash(0, self.unit) == self.checksum
+        }
     }
 
-    pub fn next_fact(&mut self) -> Result<Option<Fact<'a>>, Error> {
-        if self.remaining == 0 {
-            if self.fields.is_exhausted() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u8)]
+    pub enum FieldTag {
+        Nil = 0,
+        True = 1,
+        False = 2,
+        Integer = 3,
+        FloatBits = 4,
+        Symbol = 5,
+        String = 6,
+        HeapRef = 7,
+        NullOop = 8,
+        ExportRef = 9,
+    }
+
+    impl FieldTag {
+        fn parse(raw: u8) -> Result<Self, Error> {
+            match raw {
+                0 => Ok(Self::Nil),
+                1 => Ok(Self::True),
+                2 => Ok(Self::False),
+                3 => Ok(Self::Integer),
+                4 => Ok(Self::FloatBits),
+                5 => Ok(Self::Symbol),
+                6 => Ok(Self::String),
+                7 => Ok(Self::HeapRef),
+                8 => Ok(Self::NullOop),
+                9 => Ok(Self::ExportRef),
+                _ => Err(Error::InvalidFieldTag),
+            }
+        }
+    }
+
+    /// One borrowed v4 heap/fact field. Float values retain their serialized bits
+    /// so NaN payloads and signed zero remain lossless until a runtime materializer
+    /// deliberately chooses a representation.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Field<'a> {
+        Nil,
+        True,
+        False,
+        Integer(i64),
+        FloatBits(u64),
+        Symbol(&'a [u8]),
+        String(&'a [u8]),
+        HeapRef(u32),
+        NullOop,
+        ExportRef(&'a [u8]),
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Fields<'a> {
+        bytes: &'a [u8],
+        offset: usize,
+    }
+
+    impl<'a> Fields<'a> {
+        pub fn new(bytes: &'a [u8]) -> Self {
+            Self { bytes, offset: 0 }
+        }
+
+        pub fn next_field(&mut self) -> Result<Option<Field<'a>>, Error> {
+            if self.offset == self.bytes.len() {
                 return Ok(None);
             }
-            return Err(Error::InvalidPayloadLength);
-        }
-        let op = self.fields.take_byte()?;
-        let tx = u64::from_le_bytes(self.fields.take_fixed()?);
-        let entity = self
-            .fields
-            .next_field()?
-            .ok_or(Error::InvalidPayloadLength)?;
-        let attribute = self
-            .fields
-            .next_field()?
-            .ok_or(Error::InvalidPayloadLength)?;
-        let value = self
-            .fields
-            .next_field()?
-            .ok_or(Error::InvalidPayloadLength)?;
-        self.remaining -= 1;
-        Ok(Some(Fact {
-            op,
-            tx,
-            entity,
-            attribute,
-            value,
-        }))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SlotKind {
-    Oop,
-    RawWord,
-    Code,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeapHeader<'a> {
-    pub vtable_name: &'a [u8],
-    pub word_count: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeapObject<'a> {
-    pub header: HeapHeader<'a>,
-    /// The encoded bytes for the object's non-code slots. Code slots are
-    /// deliberately absent from v4 payloads and are reconstructed by a later
-    /// mapped-unit/replay layer.
-    pub encoded_slots: &'a [u8],
-}
-
-/// Borrowed iterator over a v4 heap payload. The caller supplies the live
-/// vtable layout after peeking at each object's name; the codec only validates
-/// framing and slot widths and never resolves names or heap references.
-#[derive(Debug, Clone, Copy)]
-pub struct Heap<'a> {
-    bytes: &'a [u8],
-    offset: usize,
-    remaining: u32,
-}
-
-impl<'a> Heap<'a> {
-    pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
-        if payload.len() < 4 {
-            return Err(Error::InvalidPayloadLength);
-        }
-        Ok(Self {
-            bytes: payload,
-            offset: 4,
-            remaining: read_u32(&payload[..4]),
-        })
-    }
-
-    pub fn peek_header(&self) -> Result<Option<HeapHeader<'a>>, Error> {
-        self.header_at()
-            .map(|entry| entry.map(|(header, _)| header))
-    }
-
-    pub fn next_object(
-        &mut self,
-        layout: &[SlotKind],
-    ) -> Result<Option<HeapObject<'a>>, Error> {
-        let Some((header, body_start)) = self.header_at()? else {
-            return Ok(None);
-        };
-        if layout.len() != usize::try_from(header.word_count).unwrap_or(usize::MAX) {
-            return Err(Error::LayoutMismatch);
-        }
-        let mut cursor = body_start;
-        for slot in layout {
-            match slot {
-                SlotKind::Oop => {
-                    let mut fields = Fields::new(
-                        self.bytes
-                            .get(cursor..)
-                            .ok_or(Error::InvalidPayloadLength)?,
-                    );
-                    fields.next_field()?.ok_or(Error::InvalidPayloadLength)?;
-                    cursor = cursor
-                        .checked_add(fields.consumed())
-                        .ok_or(Error::RecordTooLarge)?;
-                }
-                SlotKind::RawWord => {
-                    cursor = cursor.checked_add(8).ok_or(Error::RecordTooLarge)?;
-                    if cursor > self.bytes.len() {
-                        return Err(Error::InvalidPayloadLength);
-                    }
-                }
-                SlotKind::Code => {}
-            }
-        }
-        let encoded_slots = self
-            .bytes
-            .get(body_start..cursor)
-            .ok_or(Error::InvalidPayloadLength)?;
-        self.offset = cursor;
-        self.remaining -= 1;
-        Ok(Some(HeapObject {
-            header,
-            encoded_slots,
-        }))
-    }
-
-    fn header_at(&self) -> Result<Option<(HeapHeader<'a>, usize)>, Error> {
-        if self.remaining == 0 {
-            return if self.offset == self.bytes.len() {
-                Ok(None)
-            } else {
-                Err(Error::InvalidPayloadLength)
+            let tag = FieldTag::parse(self.bytes[self.offset])?;
+            self.offset += 1;
+            let field = match tag {
+                FieldTag::Nil => Field::Nil,
+                FieldTag::True => Field::True,
+                FieldTag::False => Field::False,
+                FieldTag::NullOop => Field::NullOop,
+                FieldTag::Integer => Field::Integer(i64::from_le_bytes(self.take_fixed()?)),
+                FieldTag::FloatBits => Field::FloatBits(u64::from_le_bytes(self.take_fixed()?)),
+                FieldTag::HeapRef => Field::HeapRef(u32::from_le_bytes(self.take_fixed()?)),
+                FieldTag::Symbol => Field::Symbol(self.take_bytes()?),
+                FieldTag::String => Field::String(self.take_bytes()?),
+                FieldTag::ExportRef => Field::ExportRef(self.take_bytes()?),
             };
+            Ok(Some(field))
         }
-        let mut cursor = self.offset;
-        let name_len = read_u32_at(self.bytes, &mut cursor)? as usize;
-        let name_end = cursor.checked_add(name_len).ok_or(Error::RecordTooLarge)?;
-        let vtable_name = self
-            .bytes
-            .get(cursor..name_end)
-            .ok_or(Error::InvalidPayloadLength)?;
-        cursor = name_end;
-        let word_count = read_u32_at(self.bytes, &mut cursor)?;
-        Ok(Some((
-            HeapHeader {
-                vtable_name,
-                word_count,
-            },
-            cursor,
-        )))
-    }
-}
 
-#[derive(Debug, Clone, Copy)]
-pub struct Records<'a> {
-    bytes: &'a [u8],
-    offset: usize,
-}
+        fn take_byte(&mut self) -> Result<u8, Error> {
+            let byte = *self
+                .bytes
+                .get(self.offset)
+                .ok_or(Error::InvalidPayloadLength)?;
+            self.offset += 1;
+            Ok(byte)
+        }
 
-/// Errors raised while assembling a v4 image's framed records.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EncodeError {
-    MissingAuthority,
-    DuplicateAuthority,
-    CodeBeforeAuthority,
-    DuplicateCode,
-    AuthorityMismatch,
-    InvalidFields,
-    PayloadTooLarge,
-}
+        fn is_exhausted(&self) -> bool {
+            self.offset == self.bytes.len()
+        }
 
-/// Encoder for one or more length-delimited v4 field values.
-///
-/// The encoder only owns its output bytes. It does not resolve or retain any
-/// runtime object; callers supply the already-classified scalar, name, or
-/// relocation value.
-#[derive(Default)]
-pub struct FieldEncoder {
-    bytes: Vec<u8>,
-}
+        pub fn consumed(&self) -> usize {
+            self.offset
+        }
 
-impl FieldEncoder {
-    pub fn new() -> Self {
-        Self::default()
+        fn take_fixed<const N: usize>(&mut self) -> Result<[u8; N], Error> {
+            let end = self.offset.checked_add(N).ok_or(Error::RecordTooLarge)?;
+            let bytes = self
+                .bytes
+                .get(self.offset..end)
+                .ok_or(Error::InvalidPayloadLength)?;
+            self.offset = end;
+            Ok(bytes.try_into().expect("fixed-width field slice"))
+        }
+
+        fn take_bytes(&mut self) -> Result<&'a [u8], Error> {
+            let len = u32::from_le_bytes(self.take_fixed()?) as usize;
+            let end = self.offset.checked_add(len).ok_or(Error::RecordTooLarge)?;
+            let bytes = self
+                .bytes
+                .get(self.offset..end)
+                .ok_or(Error::InvalidPayloadLength)?;
+            self.offset = end;
+            Ok(bytes)
+        }
     }
 
-    pub fn nil(&mut self) {
-        self.bytes.push(FieldTag::Nil as u8);
+    /// One borrowed fact from a v4 facts record. The field values are intentionally
+    /// left tagged; a loader decides how to resolve symbols, exports, and heap refs.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Fact<'a> {
+        pub op: u8,
+        pub tx: u64,
+        pub entity: Field<'a>,
+        pub attribute: Field<'a>,
+        pub value: Field<'a>,
     }
 
-    pub fn true_value(&mut self) {
-        self.bytes.push(FieldTag::True as u8);
+    /// Borrowed iterator over the v4 facts payload (`basis`, `count`, facts...).
+    #[derive(Debug, Clone, Copy)]
+    pub struct Facts<'a> {
+        pub basis: u64,
+        remaining: u32,
+        fields: Fields<'a>,
     }
 
-    pub fn false_value(&mut self) {
-        self.bytes.push(FieldTag::False as u8);
+    impl<'a> Facts<'a> {
+        pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+            if payload.len() < 12 {
+                return Err(Error::InvalidPayloadLength);
+            }
+            Ok(Self {
+                basis: read_u64(&payload[..8]),
+                remaining: read_u32(&payload[8..12]),
+                fields: Fields::new(&payload[12..]),
+            })
+        }
+
+        pub fn next_fact(&mut self) -> Result<Option<Fact<'a>>, Error> {
+            if self.remaining == 0 {
+                if self.fields.is_exhausted() {
+                    return Ok(None);
+                }
+                return Err(Error::InvalidPayloadLength);
+            }
+            let op = self.fields.take_byte()?;
+            let tx = u64::from_le_bytes(self.fields.take_fixed()?);
+            let entity = self
+                .fields
+                .next_field()?
+                .ok_or(Error::InvalidPayloadLength)?;
+            let attribute = self
+                .fields
+                .next_field()?
+                .ok_or(Error::InvalidPayloadLength)?;
+            let value = self
+                .fields
+                .next_field()?
+                .ok_or(Error::InvalidPayloadLength)?;
+            self.remaining -= 1;
+            Ok(Some(Fact {
+                op,
+                tx,
+                entity,
+                attribute,
+                value,
+            }))
+        }
     }
 
-    pub fn integer(&mut self, value: i64) {
-        self.bytes.push(FieldTag::Integer as u8);
-        self.bytes.extend_from_slice(&value.to_le_bytes());
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SlotKind {
+        Oop,
+        RawWord,
+        Code,
     }
 
-    pub fn float_bits(&mut self, bits: u64) {
-        self.bytes.push(FieldTag::FloatBits as u8);
-        self.bytes.extend_from_slice(&bits.to_le_bytes());
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct HeapHeader<'a> {
+        pub vtable_name: &'a [u8],
+        pub word_count: u32,
     }
 
-    pub fn heap_ref(&mut self, id: u32) {
-        self.bytes.push(FieldTag::HeapRef as u8);
-        self.bytes.extend_from_slice(&id.to_le_bytes());
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct HeapObject<'a> {
+        pub header: HeapHeader<'a>,
+        /// The encoded bytes for the object's non-code slots. Code slots are
+        /// deliberately absent from v4 payloads and are reconstructed by a later
+        /// mapped-unit/replay layer.
+        pub encoded_slots: &'a [u8],
     }
 
-    pub fn null_oop(&mut self) {
-        self.bytes.push(FieldTag::NullOop as u8);
+    /// Borrowed iterator over a v4 heap payload. The caller supplies the live
+    /// vtable layout after peeking at each object's name; the codec only validates
+    /// framing and slot widths and never resolves names or heap references.
+    #[derive(Debug, Clone, Copy)]
+    pub struct Heap<'a> {
+        bytes: &'a [u8],
+        offset: usize,
+        remaining: u32,
     }
 
-    pub fn symbol(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
-        self.length_delimited(FieldTag::Symbol, bytes)
+    impl<'a> Heap<'a> {
+        pub fn parse(payload: &'a [u8]) -> Result<Self, Error> {
+            if payload.len() < 4 {
+                return Err(Error::InvalidPayloadLength);
+            }
+            Ok(Self {
+                bytes: payload,
+                offset: 4,
+                remaining: read_u32(&payload[..4]),
+            })
+        }
+
+        pub fn peek_header(&self) -> Result<Option<HeapHeader<'a>>, Error> {
+            self.header_at()
+                .map(|entry| entry.map(|(header, _)| header))
+        }
+
+        pub fn next_object(
+            &mut self,
+            layout: &[SlotKind],
+        ) -> Result<Option<HeapObject<'a>>, Error> {
+            let Some((header, body_start)) = self.header_at()? else {
+                return Ok(None);
+            };
+            if layout.len() != usize::try_from(header.word_count).unwrap_or(usize::MAX) {
+                return Err(Error::LayoutMismatch);
+            }
+            let mut cursor = body_start;
+            for slot in layout {
+                match slot {
+                    SlotKind::Oop => {
+                        let mut fields = Fields::new(
+                            self.bytes
+                                .get(cursor..)
+                                .ok_or(Error::InvalidPayloadLength)?,
+                        );
+                        fields.next_field()?.ok_or(Error::InvalidPayloadLength)?;
+                        cursor = cursor
+                            .checked_add(fields.consumed())
+                            .ok_or(Error::RecordTooLarge)?;
+                    }
+                    SlotKind::RawWord => {
+                        cursor = cursor.checked_add(8).ok_or(Error::RecordTooLarge)?;
+                        if cursor > self.bytes.len() {
+                            return Err(Error::InvalidPayloadLength);
+                        }
+                    }
+                    SlotKind::Code => {}
+                }
+            }
+            let encoded_slots = self
+                .bytes
+                .get(body_start..cursor)
+                .ok_or(Error::InvalidPayloadLength)?;
+            self.offset = cursor;
+            self.remaining -= 1;
+            Ok(Some(HeapObject {
+                header,
+                encoded_slots,
+            }))
+        }
+
+        fn header_at(&self) -> Result<Option<(HeapHeader<'a>, usize)>, Error> {
+            if self.remaining == 0 {
+                return if self.offset == self.bytes.len() {
+                    Ok(None)
+                } else {
+                    Err(Error::InvalidPayloadLength)
+                };
+            }
+            let mut cursor = self.offset;
+            let name_len = read_u32_at(self.bytes, &mut cursor)? as usize;
+            let name_end = cursor.checked_add(name_len).ok_or(Error::RecordTooLarge)?;
+            let vtable_name = self
+                .bytes
+                .get(cursor..name_end)
+                .ok_or(Error::InvalidPayloadLength)?;
+            cursor = name_end;
+            let word_count = read_u32_at(self.bytes, &mut cursor)?;
+            Ok(Some((
+                HeapHeader {
+                    vtable_name,
+                    word_count,
+                },
+                cursor,
+            )))
+        }
     }
 
-    pub fn string(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
-        self.length_delimited(FieldTag::String, bytes)
+    #[derive(Debug, Clone, Copy)]
+    pub struct Records<'a> {
+        bytes: &'a [u8],
+        offset: usize,
     }
 
-    pub fn export_ref(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
-        self.length_delimited(FieldTag::ExportRef, bytes)
+    /// Errors raised while assembling a v4 image's framed records.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EncodeError {
+        MissingAuthority,
+        DuplicateAuthority,
+        CodeBeforeAuthority,
+        DuplicateCode,
+        AuthorityMismatch,
+        InvalidFields,
+        PayloadTooLarge,
     }
 
-    pub fn finish(self) -> Vec<u8> {
-        self.bytes
+    /// Encoder for one or more length-delimited v4 field values.
+    ///
+    /// The encoder only owns its output bytes. It does not resolve or retain any
+    /// runtime object; callers supply the already-classified scalar, name, or
+    /// relocation value.
+    #[derive(Default)]
+    pub struct FieldEncoder {
+        bytes: Vec<u8>,
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes
+    impl FieldEncoder {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        pub fn nil(&mut self) {
+            self.bytes.push(FieldTag::Nil as u8);
+        }
+
+        pub fn true_value(&mut self) {
+            self.bytes.push(FieldTag::True as u8);
+        }
+
+        pub fn false_value(&mut self) {
+            self.bytes.push(FieldTag::False as u8);
+        }
+
+        pub fn integer(&mut self, value: i64) {
+            self.bytes.push(FieldTag::Integer as u8);
+            self.bytes.extend_from_slice(&value.to_le_bytes());
+        }
+
+        pub fn float_bits(&mut self, bits: u64) {
+            self.bytes.push(FieldTag::FloatBits as u8);
+            self.bytes.extend_from_slice(&bits.to_le_bytes());
+        }
+
+        pub fn heap_ref(&mut self, id: u32) {
+            self.bytes.push(FieldTag::HeapRef as u8);
+            self.bytes.extend_from_slice(&id.to_le_bytes());
+        }
+
+        pub fn null_oop(&mut self) {
+            self.bytes.push(FieldTag::NullOop as u8);
+        }
+
+        pub fn symbol(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+            self.length_delimited(FieldTag::Symbol, bytes)
+        }
+
+        pub fn string(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+            self.length_delimited(FieldTag::String, bytes)
+        }
+
+        pub fn export_ref(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+            self.length_delimited(FieldTag::ExportRef, bytes)
+        }
+
+        #[cfg(feature = "module")]
+        pub(crate) fn resumable_ref_v5(&mut self, index: u32) {
+            crate::v5::encode_resumable_ref(&mut self.bytes, index);
+        }
+
+        pub fn finish(self) -> Vec<u8> {
+            self.bytes
+        }
+
+        pub fn as_bytes(&self) -> &[u8] {
+            &self.bytes
+        }
+
+        fn length_delimited(&mut self, tag: FieldTag, bytes: &[u8]) -> Result<(), EncodeError> {
+            let length = u32::try_from(bytes.len()).map_err(|_| EncodeError::PayloadTooLarge)?;
+            self.bytes.push(tag as u8);
+            self.bytes.extend_from_slice(&length.to_le_bytes());
+            self.bytes.extend_from_slice(bytes);
+            Ok(())
+        }
     }
 
-    fn length_delimited(&mut self, tag: FieldTag, bytes: &[u8]) -> Result<(), EncodeError> {
-        let length = u32::try_from(bytes.len()).map_err(|_| EncodeError::PayloadTooLarge)?;
-        self.bytes.push(tag as u8);
-        self.bytes.extend_from_slice(&length.to_le_bytes());
-        self.bytes.extend_from_slice(bytes);
-        Ok(())
-    }
-}
-
-/// Builder for one v4 facts payload. Every fact is appended atomically as an
-/// operation, transaction id, and exactly three already-classified fields.
-pub struct FactsWriter {
-    bytes: Vec<u8>,
-    count: u32,
-}
-
-impl FactsWriter {
-    pub fn new(basis: u64) -> Self {
-        let mut bytes = Vec::with_capacity(12);
-        bytes.extend_from_slice(&basis.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        Self { bytes, count: 0 }
+    /// Builder for one v4 facts payload. Every fact is appended atomically as an
+    /// operation, transaction id, and exactly three already-classified fields.
+    pub struct FactsWriter {
+        bytes: Vec<u8>,
+        count: u32,
     }
 
-    pub fn fact(
-        &mut self,
-        op: u8,
-        tx: u64,
-        entity: Field<'_>,
-        attribute: Field<'_>,
-        value: Field<'_>,
-    ) -> Result<(), EncodeError> {
-        let mut fields = FieldEncoder::new();
-        append_field(&mut fields, entity)?;
-        append_field(&mut fields, attribute)?;
-        append_field(&mut fields, value)?;
-        self.fact_encoded(op, tx, fields.as_bytes())
-    }
+    impl FactsWriter {
+        pub fn new(basis: u64) -> Self {
+            let mut bytes = Vec::with_capacity(12);
+            bytes.extend_from_slice(&basis.to_le_bytes());
+            bytes.extend_from_slice(&0u32.to_le_bytes());
+            Self { bytes, count: 0 }
+        }
 
-    pub fn fact_encoded(
-        &mut self,
-        op: u8,
-        tx: u64,
-        encoded_fields: &[u8],
-    ) -> Result<(), EncodeError> {
-        let mut fields = Fields::new(encoded_fields);
-        for _ in 0..3 {
+        pub fn fact(
+            &mut self,
+            op: u8,
+            tx: u64,
+            entity: Field<'_>,
+            attribute: Field<'_>,
+            value: Field<'_>,
+        ) -> Result<(), EncodeError> {
+            let mut fields = FieldEncoder::new();
+            append_field(&mut fields, entity)?;
+            append_field(&mut fields, attribute)?;
+            append_field(&mut fields, value)?;
+            self.fact_encoded(op, tx, fields.as_bytes())
+        }
+
+        pub fn fact_encoded(
+            &mut self,
+            op: u8,
+            tx: u64,
+            encoded_fields: &[u8],
+        ) -> Result<(), EncodeError> {
+            let mut fields = Fields::new(encoded_fields);
+            for _ in 0..3 {
+                if fields
+                    .next_field()
+                    .map_err(|_| EncodeError::InvalidFields)?
+                    .is_none()
+                {
+                    return Err(EncodeError::InvalidFields);
+                }
+            }
             if fields
                 .next_field()
                 .map_err(|_| EncodeError::InvalidFields)?
-                .is_none()
+                .is_some()
             {
                 return Err(EncodeError::InvalidFields);
             }
+            let count = self
+                .count
+                .checked_add(1)
+                .ok_or(EncodeError::PayloadTooLarge)?;
+            self.bytes.push(op);
+            self.bytes.extend_from_slice(&tx.to_le_bytes());
+            self.bytes.extend_from_slice(encoded_fields);
+            self.count = count;
+            self.bytes[8..12].copy_from_slice(&count.to_le_bytes());
+            Ok(())
         }
-        if fields
-            .next_field()
-            .map_err(|_| EncodeError::InvalidFields)?
-            .is_some()
-        {
-            return Err(EncodeError::InvalidFields);
+
+        pub fn finish(self) -> Vec<u8> {
+            self.bytes
         }
-        let count = self
-            .count
-            .checked_add(1)
-            .ok_or(EncodeError::PayloadTooLarge)?;
-        self.bytes.push(op);
-        self.bytes.extend_from_slice(&tx.to_le_bytes());
-        self.bytes.extend_from_slice(encoded_fields);
-        self.count = count;
-        self.bytes[8..12].copy_from_slice(&count.to_le_bytes());
+    }
+
+    fn append_field(encoder: &mut FieldEncoder, field: Field<'_>) -> Result<(), EncodeError> {
+        match field {
+            Field::Nil => encoder.nil(),
+            Field::True => encoder.true_value(),
+            Field::False => encoder.false_value(),
+            Field::Integer(value) => encoder.integer(value),
+            Field::FloatBits(bits) => encoder.float_bits(bits),
+            Field::Symbol(bytes) => encoder.symbol(bytes)?,
+            Field::String(bytes) => encoder.string(bytes)?,
+            Field::HeapRef(id) => encoder.heap_ref(id),
+            Field::NullOop => encoder.null_oop(),
+            Field::ExportRef(bytes) => encoder.export_ref(bytes)?,
+        }
         Ok(())
     }
 
-    pub fn finish(self) -> Vec<u8> {
-        self.bytes
+    /// Checked, allocation-owning v4 framing writer.
+    ///
+    /// This type deliberately accepts already-encoded facts/heap/code payloads. It
+    /// does not inspect or mutate runtime objects, and it never publishes a file.
+    pub struct ImageWriter {
+        bytes: Vec<u8>,
+        authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
+        code_written: bool,
     }
-}
 
-fn append_field(encoder: &mut FieldEncoder, field: Field<'_>) -> Result<(), EncodeError> {
-    match field {
-        Field::Nil => encoder.nil(),
-        Field::True => encoder.true_value(),
-        Field::False => encoder.false_value(),
-        Field::Integer(value) => encoder.integer(value),
-        Field::FloatBits(bits) => encoder.float_bits(bits),
-        Field::Symbol(bytes) => encoder.symbol(bytes)?,
-        Field::String(bytes) => encoder.string(bytes)?,
-        Field::HeapRef(id) => encoder.heap_ref(id),
-        Field::NullOop => encoder.null_oop(),
-        Field::ExportRef(bytes) => encoder.export_ref(bytes)?,
-    }
-    Ok(())
-}
+    pub(crate) static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Checked, allocation-owning v4 framing writer.
-///
-/// This type deliberately accepts already-encoded facts/heap/code payloads. It
-/// does not inspect or mutate runtime objects, and it never publishes a file.
-pub struct ImageWriter {
-    bytes: Vec<u8>,
-    authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
-    code_written: bool,
-}
+    /// Publish complete image bytes through a same-directory temporary file and
+    /// rename. The destination is never opened for truncation; failed writes clean
+    /// up their temporary file and leave an existing destination untouched.
+    pub fn publish_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let file_name = path.file_name().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "image path has no file name")
+        })?;
+        let mut temporary_name = std::ffi::OsString::from(".");
+        temporary_name.push(file_name);
+        temporary_name.push(format!(
+            ".birnam-tmp-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let temporary_path = parent.join(temporary_name);
 
-pub(crate) static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// Publish complete image bytes through a same-directory temporary file and
-/// rename. The destination is never opened for truncation; failed writes clean
-/// up their temporary file and leave an existing destination untouched.
-pub fn publish_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path.file_name().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "image path has no file name")
-    })?;
-    let mut temporary_name = std::ffi::OsString::from(".");
-    temporary_name.push(file_name);
-    temporary_name.push(format!(
-        ".birnam-tmp-{}-{}",
-        std::process::id(),
-        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    let temporary_path = parent.join(temporary_name);
-
-    let result = (|| -> io::Result<()> {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary_path)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&temporary_path, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary_path);
-    }
-    result
-}
-
-impl ImageWriter {
-    pub fn new(architecture: u32, abi_hash: u64) -> Self {
-        let mut bytes = Vec::with_capacity(HEADER_LEN);
-        bytes.extend_from_slice(MAGIC);
-        bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-        bytes.extend_from_slice(&ENDIAN_TAG.to_le_bytes());
-        bytes.extend_from_slice(&architecture.to_le_bytes());
-        bytes.extend_from_slice(&abi_hash.to_le_bytes());
-        Self {
-            bytes,
-            authority: None,
-            code_written: false,
+        let result = (|| -> io::Result<()> {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary_path)?;
+            file.write_all(bytes)?;
+            file.sync_all()?;
+            drop(file);
+            fs::rename(&temporary_path, path)
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary_path);
         }
+        result
     }
 
-    pub fn facts(&mut self, payload: &[u8]) -> Result<(), EncodeError> {
-        self.record(RecordKind::Facts, payload)
-    }
-
-    pub fn heap(&mut self, payload: &[u8]) -> Result<(), EncodeError> {
-        self.record(RecordKind::Heap, payload)
-    }
-
-    pub fn authority(
-        &mut self,
-        digest: &[u8; AUTHORITY_DIGEST_LEN],
-    ) -> Result<(), EncodeError> {
-        if self.authority.is_some() {
-            return Err(EncodeError::DuplicateAuthority);
-        }
-        self.push_record(RecordKind::Authority, digest)?;
-        self.authority = Some(*digest);
-        Ok(())
-    }
-
-    pub fn code(
-        &mut self,
-        checksum: u64,
-        generation_digest: &[u8; AUTHORITY_DIGEST_LEN],
-        unit: &[u8],
-    ) -> Result<(), EncodeError> {
-        let Some(authority) = self.authority else {
-            return Err(EncodeError::CodeBeforeAuthority);
-        };
-        if self.code_written {
-            return Err(EncodeError::DuplicateCode);
-        }
-        if authority != *generation_digest {
-            return Err(EncodeError::AuthorityMismatch);
-        }
-        let payload_len = 8usize
-            .checked_add(AUTHORITY_DIGEST_LEN)
-            .and_then(|length| length.checked_add(unit.len()))
-            .ok_or(EncodeError::PayloadTooLarge)?;
-        let mut payload = Vec::with_capacity(payload_len);
-        payload.extend_from_slice(&checksum.to_le_bytes());
-        payload.extend_from_slice(generation_digest);
-        payload.extend_from_slice(unit);
-        self.push_record(RecordKind::Code, &payload)?;
-        self.code_written = true;
-        Ok(())
-    }
-
-    pub fn finish(self) -> Result<Vec<u8>, EncodeError> {
-        if self.authority.is_none() {
-            return Err(EncodeError::MissingAuthority);
-        }
-        Ok(self.bytes)
-    }
-
-    fn record(&mut self, kind: RecordKind, payload: &[u8]) -> Result<(), EncodeError> {
-        match kind {
-            RecordKind::Facts | RecordKind::Heap => self.push_record(kind, payload),
-            RecordKind::Code => Err(EncodeError::CodeBeforeAuthority),
-            RecordKind::Authority => Err(EncodeError::DuplicateAuthority),
-        }
-    }
-
-    fn push_record(&mut self, kind: RecordKind, payload: &[u8]) -> Result<(), EncodeError> {
-        let length = u64::try_from(payload.len()).map_err(|_| EncodeError::PayloadTooLarge)?;
-        self.bytes.extend_from_slice(&(kind as u32).to_le_bytes());
-        self.bytes.extend_from_slice(&length.to_le_bytes());
-        self.bytes.extend_from_slice(payload);
-        Ok(())
-    }
-}
-
-/// Compose a complete v4 image from already-preflighted payloads and explicit
-/// authority/code inputs. This pure seam owns framing only: callers remain
-/// responsible for deriving the generation digest, validating the code unit,
-/// and deciding whether the returned bytes may be published.
-pub fn compose_complete_image(
-    architecture: u32,
-    abi_hash: u64,
-    facts: &[u8],
-    heap: &[u8],
-    authority_digest: &[u8; AUTHORITY_DIGEST_LEN],
-    code_checksum: u64,
-    code_unit: &[u8],
-) -> Result<Vec<u8>, EncodeError> {
-    let mut writer = ImageWriter::new(architecture, abi_hash);
-    writer.authority(authority_digest)?;
-    writer.heap(heap)?;
-    writer.facts(facts)?;
-    writer.code(code_checksum, authority_digest, code_unit)?;
-    writer.finish()
-}
-
-impl<'a> Records<'a> {
-    pub fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, offset: 0 }
-    }
-
-    pub fn next_record(&mut self) -> Result<Option<Record<'a>>, Error> {
-        if self.offset == self.bytes.len() {
-            return Ok(None);
-        }
-        let end = self
-            .offset
-            .checked_add(RECORD_HEADER_LEN)
-            .ok_or(Error::RecordTooLarge)?;
-        if end > self.bytes.len() {
-            return Err(Error::Truncated);
-        }
-        let kind = RecordKind::parse(read_u32(&self.bytes[self.offset..self.offset + 4]))?;
-        let length = usize::try_from(read_u64(&self.bytes[self.offset + 4..end]))
-            .map_err(|_| Error::RecordTooLarge)?;
-        let payload_start = end;
-        let payload_end = payload_start
-            .checked_add(length)
-            .ok_or(Error::RecordTooLarge)?;
-        if payload_end > self.bytes.len() {
-            return Err(Error::Truncated);
-        }
-        self.offset = payload_end;
-        Ok(Some(Record {
-            kind,
-            payload: &self.bytes[payload_start..payload_end],
-        }))
-    }
-}
-
-fn read_u32(bytes: &[u8]) -> u32 {
-    u32::from_le_bytes(bytes.try_into().expect("fixed-width image field"))
-}
-
-fn read_u32_at(bytes: &[u8], offset: &mut usize) -> Result<u32, Error> {
-    let end = (*offset).checked_add(4).ok_or(Error::RecordTooLarge)?;
-    let value = bytes
-        .get(*offset..end)
-        .ok_or(Error::InvalidPayloadLength)
-        .map(read_u32)?;
-    *offset = end;
-    Ok(value)
-}
-
-fn read_u64(bytes: &[u8]) -> u64 {
-    u64::from_le_bytes(bytes.try_into().expect("fixed-width image field"))
-}
-
-const WYHASH_SECRET: [u64; 4] = [
-    0xa076_1d64_78bd_642f,
-    0xe703_7ed1_a0b4_28db,
-    0x8ebc_6af0_9c88_c6e3,
-    0x5899_65cc_7537_4cc3,
-];
-
-pub(crate) fn wyhash(seed: u64, input: &[u8]) -> u64 {
-    let mut state = [seed ^ mix(seed ^ WYHASH_SECRET[0], WYHASH_SECRET[1]); 3];
-    let (a, b) = if input.len() <= 16 {
-        let mut a = 0;
-        let mut b = 0;
-        small_key(input, &mut a, &mut b);
-        (a, b)
-    } else {
-        let mut offset = 0;
-        if input.len() >= 48 {
-            while offset + 48 < input.len() {
-                round(&mut state, &input[offset..offset + 48]);
-                offset += 48;
+    impl ImageWriter {
+        pub fn new(architecture: u32, abi_hash: u64) -> Self {
+            let mut bytes = Vec::with_capacity(HEADER_LEN);
+            bytes.extend_from_slice(MAGIC);
+            bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+            bytes.extend_from_slice(&ENDIAN_TAG.to_le_bytes());
+            bytes.extend_from_slice(&architecture.to_le_bytes());
+            bytes.extend_from_slice(&abi_hash.to_le_bytes());
+            Self {
+                bytes,
+                authority: None,
+                code_written: false,
             }
-            state[0] ^= state[1] ^ state[2];
         }
-        let remaining = &input[offset..];
-        let mut inner = 0;
-        while inner + 16 < remaining.len() {
-            state[0] = mix(
-                read_u64(&remaining[inner..inner + 8]) ^ WYHASH_SECRET[1],
-                read_u64(&remaining[inner + 8..inner + 16]) ^ state[0],
-            );
-            inner += 16;
+
+        pub fn facts(&mut self, payload: &[u8]) -> Result<(), EncodeError> {
+            self.record(RecordKind::Facts, payload)
         }
-        (
-            read_u64(&input[input.len() - 16..input.len() - 8]),
-            read_u64(&input[input.len() - 8..]),
+
+        pub fn heap(&mut self, payload: &[u8]) -> Result<(), EncodeError> {
+            self.record(RecordKind::Heap, payload)
+        }
+
+        pub fn authority(
+            &mut self,
+            digest: &[u8; AUTHORITY_DIGEST_LEN],
+        ) -> Result<(), EncodeError> {
+            if self.authority.is_some() {
+                return Err(EncodeError::DuplicateAuthority);
+            }
+            self.push_record(RecordKind::Authority, digest)?;
+            self.authority = Some(*digest);
+            Ok(())
+        }
+
+        pub fn code(
+            &mut self,
+            checksum: u64,
+            generation_digest: &[u8; AUTHORITY_DIGEST_LEN],
+            unit: &[u8],
+        ) -> Result<(), EncodeError> {
+            let Some(authority) = self.authority else {
+                return Err(EncodeError::CodeBeforeAuthority);
+            };
+            if self.code_written {
+                return Err(EncodeError::DuplicateCode);
+            }
+            if authority != *generation_digest {
+                return Err(EncodeError::AuthorityMismatch);
+            }
+            let payload_len = 8usize
+                .checked_add(AUTHORITY_DIGEST_LEN)
+                .and_then(|length| length.checked_add(unit.len()))
+                .ok_or(EncodeError::PayloadTooLarge)?;
+            let mut payload = Vec::with_capacity(payload_len);
+            payload.extend_from_slice(&checksum.to_le_bytes());
+            payload.extend_from_slice(generation_digest);
+            payload.extend_from_slice(unit);
+            self.push_record(RecordKind::Code, &payload)?;
+            self.code_written = true;
+            Ok(())
+        }
+
+        pub fn finish(self) -> Result<Vec<u8>, EncodeError> {
+            if self.authority.is_none() {
+                return Err(EncodeError::MissingAuthority);
+            }
+            Ok(self.bytes)
+        }
+
+        fn record(&mut self, kind: RecordKind, payload: &[u8]) -> Result<(), EncodeError> {
+            match kind {
+                RecordKind::Facts | RecordKind::Heap => self.push_record(kind, payload),
+                RecordKind::Code => Err(EncodeError::CodeBeforeAuthority),
+                RecordKind::Authority => Err(EncodeError::DuplicateAuthority),
+            }
+        }
+
+        fn push_record(&mut self, kind: RecordKind, payload: &[u8]) -> Result<(), EncodeError> {
+            let length = u64::try_from(payload.len()).map_err(|_| EncodeError::PayloadTooLarge)?;
+            self.bytes.extend_from_slice(&(kind as u32).to_le_bytes());
+            self.bytes.extend_from_slice(&length.to_le_bytes());
+            self.bytes.extend_from_slice(payload);
+            Ok(())
+        }
+    }
+
+    /// Compose a complete v4 image from already-preflighted payloads and explicit
+    /// authority/code inputs. This pure seam owns framing only: callers remain
+    /// responsible for deriving the generation digest, validating the code unit,
+    /// and deciding whether the returned bytes may be published.
+    pub fn compose_complete_image(
+        architecture: u32,
+        abi_hash: u64,
+        facts: &[u8],
+        heap: &[u8],
+        authority_digest: &[u8; AUTHORITY_DIGEST_LEN],
+        code_checksum: u64,
+        code_unit: &[u8],
+    ) -> Result<Vec<u8>, EncodeError> {
+        let mut writer = ImageWriter::new(architecture, abi_hash);
+        writer.authority(authority_digest)?;
+        writer.heap(heap)?;
+        writer.facts(facts)?;
+        writer.code(code_checksum, authority_digest, code_unit)?;
+        writer.finish()
+    }
+
+    impl<'a> Records<'a> {
+        pub fn new(bytes: &'a [u8]) -> Self {
+            Self { bytes, offset: 0 }
+        }
+
+        pub fn next_record(&mut self) -> Result<Option<Record<'a>>, Error> {
+            if self.offset == self.bytes.len() {
+                return Ok(None);
+            }
+            let end = self
+                .offset
+                .checked_add(RECORD_HEADER_LEN)
+                .ok_or(Error::RecordTooLarge)?;
+            if end > self.bytes.len() {
+                return Err(Error::Truncated);
+            }
+            let kind = RecordKind::parse(read_u32(&self.bytes[self.offset..self.offset + 4]))?;
+            let length = usize::try_from(read_u64(&self.bytes[self.offset + 4..end]))
+                .map_err(|_| Error::RecordTooLarge)?;
+            let payload_start = end;
+            let payload_end = payload_start
+                .checked_add(length)
+                .ok_or(Error::RecordTooLarge)?;
+            if payload_end > self.bytes.len() {
+                return Err(Error::Truncated);
+            }
+            self.offset = payload_end;
+            Ok(Some(Record {
+                kind,
+                payload: &self.bytes[payload_start..payload_end],
+            }))
+        }
+    }
+
+    fn read_u32(bytes: &[u8]) -> u32 {
+        u32::from_le_bytes(bytes.try_into().expect("fixed-width image field"))
+    }
+
+    fn read_u32_at(bytes: &[u8], offset: &mut usize) -> Result<u32, Error> {
+        let end = (*offset).checked_add(4).ok_or(Error::RecordTooLarge)?;
+        let value = bytes
+            .get(*offset..end)
+            .ok_or(Error::InvalidPayloadLength)
+            .map(read_u32)?;
+        *offset = end;
+        Ok(value)
+    }
+
+    fn read_u64(bytes: &[u8]) -> u64 {
+        u64::from_le_bytes(bytes.try_into().expect("fixed-width image field"))
+    }
+
+    const WYHASH_SECRET: [u64; 4] = [
+        0xa076_1d64_78bd_642f,
+        0xe703_7ed1_a0b4_28db,
+        0x8ebc_6af0_9c88_c6e3,
+        0x5899_65cc_7537_4cc3,
+    ];
+
+    pub(crate) fn wyhash(seed: u64, input: &[u8]) -> u64 {
+        let mut state = [seed ^ mix(seed ^ WYHASH_SECRET[0], WYHASH_SECRET[1]); 3];
+        let (a, b) = if input.len() <= 16 {
+            let mut a = 0;
+            let mut b = 0;
+            small_key(input, &mut a, &mut b);
+            (a, b)
+        } else {
+            let mut offset = 0;
+            if input.len() >= 48 {
+                while offset + 48 < input.len() {
+                    round(&mut state, &input[offset..offset + 48]);
+                    offset += 48;
+                }
+                state[0] ^= state[1] ^ state[2];
+            }
+            let remaining = &input[offset..];
+            let mut inner = 0;
+            while inner + 16 < remaining.len() {
+                state[0] = mix(
+                    read_u64(&remaining[inner..inner + 8]) ^ WYHASH_SECRET[1],
+                    read_u64(&remaining[inner + 8..inner + 16]) ^ state[0],
+                );
+                inner += 16;
+            }
+            (
+                read_u64(&input[input.len() - 16..input.len() - 8]),
+                read_u64(&input[input.len() - 8..]),
+            )
+        };
+        let mut a = a ^ WYHASH_SECRET[1];
+        let mut b = b ^ state[0];
+        let product = (a as u128).wrapping_mul(b as u128);
+        a = product as u64;
+        b = (product >> 64) as u64;
+        mix(
+            a ^ WYHASH_SECRET[0] ^ input.len() as u64,
+            b ^ WYHASH_SECRET[1],
         )
-    };
-    let mut a = a ^ WYHASH_SECRET[1];
-    let mut b = b ^ state[0];
-    let product = (a as u128).wrapping_mul(b as u128);
-    a = product as u64;
-    b = (product >> 64) as u64;
-    mix(
-        a ^ WYHASH_SECRET[0] ^ input.len() as u64,
-        b ^ WYHASH_SECRET[1],
-    )
-}
+    }
 
-fn small_key(input: &[u8], a: &mut u64, b: &mut u64) {
-    if input.len() >= 4 {
-        let end = input.len() - 4;
-        let quarter = (input.len() >> 3) << 2;
-        *a = (u64::from(read_u32(&input[..4])) << 32)
-            | u64::from(read_u32(&input[quarter..quarter + 4]));
-        *b = (u64::from(read_u32(&input[end..end + 4])) << 32)
-            | u64::from(read_u32(&input[end - quarter..end - quarter + 4]));
-    } else if !input.is_empty() {
-        *a = (u64::from(input[0]) << 16)
-            | (u64::from(input[input.len() >> 1]) << 8)
-            | u64::from(input[input.len() - 1]);
+    fn small_key(input: &[u8], a: &mut u64, b: &mut u64) {
+        if input.len() >= 4 {
+            let end = input.len() - 4;
+            let quarter = (input.len() >> 3) << 2;
+            *a = (u64::from(read_u32(&input[..4])) << 32)
+                | u64::from(read_u32(&input[quarter..quarter + 4]));
+            *b = (u64::from(read_u32(&input[end..end + 4])) << 32)
+                | u64::from(read_u32(&input[end - quarter..end - quarter + 4]));
+        } else if !input.is_empty() {
+            *a = (u64::from(input[0]) << 16)
+                | (u64::from(input[input.len() >> 1]) << 8)
+                | u64::from(input[input.len() - 1]);
+        }
+    }
+
+    fn round(state: &mut [u64; 3], input: &[u8]) {
+        for index in 0..3 {
+            state[index] = mix(
+                read_u64(&input[index * 16..index * 16 + 8]) ^ WYHASH_SECRET[index + 1],
+                read_u64(&input[index * 16 + 8..index * 16 + 16]) ^ state[index],
+            );
+        }
+    }
+
+    fn mix(left: u64, right: u64) -> u64 {
+        let product = (left as u128).wrapping_mul(right as u128);
+        product as u64 ^ (product >> 64) as u64
     }
 }
 
-fn round(state: &mut [u64; 3], input: &[u8]) {
-    for index in 0..3 {
-        state[index] = mix(
-            read_u64(&input[index * 16..index * 16 + 8]) ^ WYHASH_SECRET[index + 1],
-            read_u64(&input[index * 16 + 8..index * 16 + 16]) ^ state[index],
-        );
-    }
-}
-
-fn mix(left: u64, right: u64) -> u64 {
-    let product = (left as u128).wrapping_mul(right as u128);
-    product as u64 ^ (product >> 64) as u64
-}
-
-}
-
+#[cfg(any(feature = "module", test))]
+pub(crate) use codec::authority_digest_from_bytes;
 #[allow(unused_imports)]
 pub use codec::*;
-#[cfg(any(feature = "module", test))]
-pub(crate) use codec::{IMAGE_ARCH_TAG, authority_digest_from_bytes, runtime_abi_hash};
 
 #[cfg(feature = "module")]
 mod runtime {
-use super::*;
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
-use core::ptr;
-use std::collections::HashMap;
-use std::ffi::{CStr, OsStr};
-use std::fs;
-use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+    use super::*;
+    use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+    use core::ffi::{c_char, c_int, c_void};
+    use core::ptr;
+    use sha2::{Digest, Sha256};
+    use std::collections::HashMap;
+    use std::ffi::{CStr, OsStr};
+    use std::fs;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Mutex, OnceLock};
 
-const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r6-shell\0";
-const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
-const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
-const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
-const MAX_IMAGE_BYTES: u64 = 1 << 30;
-const RUST_CODEGEN_NAME: &[u8] = b"RustCodegen\0";
-const RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION: &[u8] = b"initializeCurrentGeneration\0";
-const RUST_CODEGEN_PREFLIGHT_IMAGE: &[u8] = b"preflightImage:\0";
-const RUST_CODEGEN_BEGIN_IMAGE_RECOVERY: &[u8] = b"beginImageDispatchRecovery\0";
-const RUST_CODEGEN_END_IMAGE_RECOVERY: &[u8] = b"endImageDispatchRecovery\0";
-const RUST_CODEGEN_REPLAY_IMAGE_FACTS: &[u8] = b"replayImageFacts:\0";
-const RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS: &[u8] = b"replayStaleImageFacts:\0";
-const RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS: &[u8] = b"deriveImageMethodTargets\0";
-const RUST_CODEGEN_MAP_IMAGE_CODE: &[u8] = b"mapImageCode:\0";
-const MACHINE_NAME: &[u8] = b"Machine\0";
-const FRAME_VIEW_NAME: &[u8] = b"FrameView\0";
-const CONTINUE_ACTION_NAME: &[u8] = b"ContinueAction\0";
-const CALL_ACTION_NAME: &[u8] = b"CallAction\0";
-const TAIL_CALL_ACTION_NAME: &[u8] = b"TailCallAction\0";
-const RETURN_ACTION_NAME: &[u8] = b"ReturnAction\0";
-const DISCARD_RECEIPT_NAME: &[u8] = b"DiscardReceipt\0";
+    const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r6-shell\0";
+    const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
+    const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
+    const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
+    const MAX_IMAGE_BYTES: u64 = 1 << 30;
+    const RUST_CODEGEN_NAME: &[u8] = b"RustCodegen\0";
+    const RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION: &[u8] = b"initializeCurrentGeneration\0";
+    const RUST_CODEGEN_PREFLIGHT_IMAGE: &[u8] = b"preflightImage:\0";
+    const RUST_CODEGEN_BEGIN_IMAGE_RECOVERY: &[u8] = b"beginImageDispatchRecovery\0";
+    const RUST_CODEGEN_END_IMAGE_RECOVERY: &[u8] = b"endImageDispatchRecovery\0";
+    const RUST_CODEGEN_REPLAY_IMAGE_FACTS: &[u8] = b"replayImageFacts:\0";
+    const RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS: &[u8] = b"replayStaleImageFacts:\0";
+    const RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS: &[u8] = b"deriveImageMethodTargets\0";
+    const RUST_CODEGEN_MAP_IMAGE_CODE: &[u8] = b"mapImageCode:\0";
+    const MACHINE_NAME: &[u8] = b"Machine\0";
+    const FRAME_VIEW_NAME: &[u8] = b"FrameView\0";
+    const CONTINUATION_NAME: &[u8] = b"Continuation\0";
+    const CONTINUE_ACTION_NAME: &[u8] = b"ContinueAction\0";
+    const CALL_ACTION_NAME: &[u8] = b"CallAction\0";
+    const TAIL_CALL_ACTION_NAME: &[u8] = b"TailCallAction\0";
+    const RETURN_ACTION_NAME: &[u8] = b"ReturnAction\0";
+    const SUSPEND_ACTION_NAME: &[u8] = b"SuspendAction\0";
+    const CAPTURE_ACTION_NAME: &[u8] = b"CaptureAction\0";
+    const RESTORE_ACTION_NAME: &[u8] = b"RestoreAction\0";
+    const ABORT_ACTION_NAME: &[u8] = b"AbortAction\0";
+    const DISCARD_RECEIPT_NAME: &[u8] = b"DiscardReceipt\0";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ProcessLocalKind {
-    Machine,
-    StepAction,
-    FrameView,
-    DiscardReceipt,
-}
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum ProcessLocalKind {
+        Machine,
+        StepAction,
+        FrameView,
+        Continuation,
+        DiscardReceipt,
+    }
 
-impl ProcessLocalKind {
-    fn symbol(self) -> &'static [u8] {
-        match self {
-            Self::Machine => b"machineNotImageable\0",
-            Self::StepAction => b"stepActionNotImageable\0",
-            Self::FrameView => b"frameViewNotImageable\0",
-            Self::DiscardReceipt => b"discardReceiptNotImageable\0",
+    impl ProcessLocalKind {
+        fn symbol(self) -> &'static [u8] {
+            match self {
+                Self::Machine => b"machineNotImageable\0",
+                Self::StepAction => b"stepActionNotImageable\0",
+                Self::FrameView => b"frameViewNotImageable\0",
+                Self::Continuation => b"continuationNotImageable\0",
+                Self::DiscardReceipt => b"discardReceiptNotImageable\0",
+            }
+        }
+
+        fn detail(self) -> &'static str {
+            match self {
+                Self::Machine => "Rust Image rejected process-local Machine",
+                Self::StepAction => "Rust Image rejected process-local StepAction",
+                Self::FrameView => "Rust Image rejected process-local FrameView",
+                Self::Continuation => "Rust Image rejected process-local Continuation",
+                Self::DiscardReceipt => "Rust Image rejected process-local DiscardReceipt",
+            }
         }
     }
 
-    fn detail(self) -> &'static str {
-        match self {
-            Self::Machine => "Rust Image rejected process-local Machine",
-            Self::StepAction => "Rust Image rejected process-local StepAction",
-            Self::FrameView => "Rust Image rejected process-local FrameView",
-            Self::DiscardReceipt => "Rust Image rejected process-local DiscardReceipt",
+    #[derive(Clone, Copy)]
+    struct Runtime {
+        api: usize,
+        report_obj: usize,
+        report: &'static Mutex<SaveReport>,
+    }
+
+    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    static CODE_CAPTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    struct FactCollection {
+        writer: FactsWriter,
+        heap: HeapPreflight,
+        kept: u32,
+        recovered: u32,
+        recoveries_needing_code: u32,
+        rejected: u32,
+    }
+
+    struct FactPreflight {
+        kept: u32,
+        recovered: u32,
+        recoveries_needing_code: u32,
+        rejected: u32,
+        facts_payload: Vec<u8>,
+        heap_payload: Option<Vec<u8>>,
+        heap_ok: bool,
+        recovered_slots: u32,
+        rejected_slots: u32,
+        writer_ok: bool,
+        process_local_rejection: Option<ProcessLocalKind>,
+    }
+
+    static FACT_COLLECTION: Mutex<Option<FactCollection>> = Mutex::new(None);
+    static IMAGE_COMPOSITION_IDENTITY: Mutex<Option<[u8; 64]>> = Mutex::new(None);
+
+    #[repr(C)]
+    struct DlInfo {
+        filename: *const c_char,
+        base: *mut c_void,
+        symbol_name: *const c_char,
+        symbol_address: *mut c_void,
+    }
+
+    #[cfg_attr(target_os = "linux", link(name = "dl"))]
+    unsafe extern "C" {
+        fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
+    }
+
+    unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
+        if name.last() != Some(&0) {
+            return None;
         }
+        static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
+        let handle = *FLOOR_HANDLE.get_or_init(|| {
+            let mut info = DlInfo {
+                filename: ptr::null(),
+                base: ptr::null_mut(),
+                symbol_name: ptr::null(),
+                symbol_address: ptr::null_mut(),
+            };
+            // The host loads the selected floor RTLD_LOCAL. Resolve private
+            // image seams from that exact image, never from global symbol order.
+            if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
+                || info.filename.is_null()
+            {
+                return 0;
+            }
+            #[cfg(target_os = "macos")]
+            const RTLD_NOW_LOCAL: c_int = 2 | 4;
+            #[cfg(not(target_os = "macos"))]
+            const RTLD_NOW_LOCAL: c_int = 2;
+            unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) as usize }
+        });
+        if handle == 0 {
+            return None;
+        }
+        let address = unsafe { (api.dlsym)(handle as *mut c_void, name.as_ptr().cast()) };
+        (!address.is_null()).then_some(address as usize)
     }
-}
 
-#[derive(Clone, Copy)]
-struct Runtime {
-    api: usize,
-    report_obj: usize,
-    report: &'static Mutex<SaveReport>,
-}
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static CODE_CAPTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-struct FactCollection {
-    writer: FactsWriter,
-    heap: HeapPreflight,
-    kept: u32,
-    recovered: u32,
-    recoveries_needing_code: u32,
-    rejected: u32,
-}
-
-struct FactPreflight {
-    kept: u32,
-    recovered: u32,
-    recoveries_needing_code: u32,
-    rejected: u32,
-    facts_payload: Vec<u8>,
-    heap_payload: Option<Vec<u8>>,
-    heap_ok: bool,
-    recovered_slots: u32,
-    rejected_slots: u32,
-    writer_ok: bool,
-    process_local_rejection: Option<ProcessLocalKind>,
-}
-
-static FACT_COLLECTION: Mutex<Option<FactCollection>> = Mutex::new(None);
-
-struct HeapPreflight {
-    objects: Vec<usize>,
-    relocations: HashMap<usize, u32>,
-    recovered_slots: u32,
-    rejected_slots: u32,
-    process_local_rejection: Option<ProcessLocalKind>,
-}
-
-unsafe fn runtime_oop_is_inline(api: &IdApi, object: Oop) -> bool {
-    if object.is_null()
-        || object == api.nilObj
-        || object == api.trueObj
-        || object == api.falseObj
-        || unsafe { (api.isSmallInt)(object) } != 0
-        || unsafe { (api.isFloat)(object) } != 0
-    {
-        return true;
+    struct HeapPreflight {
+        authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
+        objects: Vec<usize>,
+        relocations: HashMap<usize, u32>,
+        recovered_slots: u32,
+        rejected_slots: u32,
+        process_local_rejection: Option<ProcessLocalKind>,
     }
-    let vtable = unsafe { (api.vtableOf)(object) };
-    vtable == api.symbol_vt
-        || vtable == api.string_vt
-        || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
-}
 
-unsafe fn vtable_inherits_from(api: &IdApi, mut vtable: Oop, ancestor: Oop) -> bool {
-    let mut remaining = unsafe { (api.vtableCount)() }.saturating_add(1);
-    while !vtable.is_null() && remaining != 0 {
-        if vtable == ancestor {
+    unsafe fn runtime_oop_is_inline(api: &IdApi, object: Oop) -> bool {
+        if object.is_null()
+            || object == api.nilObj
+            || object == api.trueObj
+            || object == api.falseObj
+            || unsafe { (api.isSmallInt)(object) } != 0
+            || unsafe { (api.isFloat)(object) } != 0
+        {
             return true;
         }
-        vtable = unsafe { (api.vtableParent)(vtable) };
-        remaining -= 1;
-    }
-    false
-}
-
-unsafe fn belongs_to_exported_capability_family(
-    api: &IdApi,
-    object: Oop,
-    prototype_name: &[u8],
-) -> bool {
-    let prototype = unsafe { (api.import)(prototype_name.as_ptr().cast()) };
-    if prototype.is_null() || prototype == api.nilObj || object == prototype {
-        return false;
-    }
-    let family_vtable = unsafe { (api.vtableOf)(prototype) };
-    let object_vtable = unsafe { (api.vtableOf)(object) };
-    !family_vtable.is_null()
-        && !object_vtable.is_null()
-        && unsafe { vtable_inherits_from(api, object_vtable, family_vtable) }
-}
-
-unsafe fn process_local_kind(api: &IdApi, object: Oop) -> Option<ProcessLocalKind> {
-    if unsafe { belongs_to_exported_capability_family(api, object, MACHINE_NAME) } {
-        return Some(ProcessLocalKind::Machine);
-    }
-    if [
-        CONTINUE_ACTION_NAME,
-        CALL_ACTION_NAME,
-        TAIL_CALL_ACTION_NAME,
-        RETURN_ACTION_NAME,
-    ]
-    .into_iter()
-    .any(|name| unsafe { belongs_to_exported_capability_family(api, object, name) })
-    {
-        return Some(ProcessLocalKind::StepAction);
-    }
-    if unsafe { belongs_to_exported_capability_family(api, object, FRAME_VIEW_NAME) } {
-        return Some(ProcessLocalKind::FrameView);
-    }
-    if unsafe { belongs_to_exported_capability_family(api, object, DISCARD_RECEIPT_NAME) } {
-        return Some(ProcessLocalKind::DiscardReceipt);
-    }
-    None
-}
-
-impl HeapPreflight {
-    fn new() -> Self {
-        Self {
-            objects: Vec::new(),
-            relocations: HashMap::new(),
-            recovered_slots: 0,
-            rejected_slots: 0,
-            process_local_rejection: None,
-        }
-    }
-
-    unsafe fn intern(&mut self, api: &IdApi, object: Oop) -> Option<u32> {
-        if let Some(kind) = unsafe { process_local_kind(api, object) } {
-            self.process_local_rejection.get_or_insert(kind);
-            return None;
-        }
-        let key = object as usize;
-        if let Some(id) = self.relocations.get(&key) {
-            return Some(*id);
-        }
         let vtable = unsafe { (api.vtableOf)(object) };
-        if vtable.is_null() {
-            return None;
-        }
-        let has_exported_vtable =
-            unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.is_some();
-        let owned_parent = unsafe { (api.vtableOwner)(vtable) } == object;
-        let parent = unsafe { (api.vtableParent)(vtable) };
-        let has_exported_parent = owned_parent
-            && !parent.is_null()
-            && unsafe { c_string_bytes((api.exportedNameOf)(parent)) }.is_some();
-        if !has_exported_vtable && !has_exported_parent {
-            return None;
-        }
-        let payload_size = unsafe { (api.objectPayloadSize)(object) };
-        if !payload_size.is_multiple_of(core::mem::size_of::<usize>()) {
-            return None;
-        }
-        let words = payload_size / core::mem::size_of::<usize>();
-        for index in 0..words {
-            let kind = unsafe { (api.slotKind)(vtable, index) };
-            if kind != birnam_abi::SLOT_RAW
-                && kind != birnam_abi::SLOT_OOP
-                && kind != birnam_abi::SLOT_CODE
-            {
-                return None;
-            }
-        }
-        let id = u32::try_from(self.objects.len()).ok()?;
-        self.relocations.insert(key, id);
-        self.objects.push(key);
-        for index in 0..words {
-            if unsafe { (api.slotKind)(vtable, index) } != birnam_abi::SLOT_OOP {
-                continue;
-            }
-            let address =
-                (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
-            // SAFETY: the layout marks this initialized payload word as an Oop.
-            let child = unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
-            if unsafe { runtime_oop_is_inline(api, child) } {
-                continue;
-            }
-            unsafe { self.intern(api, child) }?;
-        }
-        Some(id)
+        vtable == api.symbol_vt
+            || vtable == api.string_vt
+            || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
     }
 
-    unsafe fn finish(&mut self, api: &IdApi) -> Option<Vec<u8>> {
-        let mut payload = Vec::new();
-        payload.extend_from_slice(&u32::try_from(self.objects.len()).ok()?.to_le_bytes());
-        for object_index in 0..self.objects.len() {
-            let object = self.objects[object_index] as Oop;
+    unsafe fn vtable_inherits_from(api: &IdApi, mut vtable: Oop, ancestor: Oop) -> bool {
+        let mut remaining = unsafe { (api.vtableCount)() }.saturating_add(1);
+        while !vtable.is_null() && remaining != 0 {
+            if vtable == ancestor {
+                return true;
+            }
+            vtable = unsafe { (api.vtableParent)(vtable) };
+            remaining -= 1;
+        }
+        false
+    }
+
+    unsafe fn belongs_to_exported_capability_family(
+        api: &IdApi,
+        object: Oop,
+        prototype_name: &[u8],
+    ) -> bool {
+        let prototype = unsafe { (api.import)(prototype_name.as_ptr().cast()) };
+        if prototype.is_null() || prototype == api.nilObj || object == prototype {
+            return false;
+        }
+        let family_vtable = unsafe { (api.vtableOf)(prototype) };
+        let object_vtable = unsafe { (api.vtableOf)(object) };
+        !family_vtable.is_null()
+            && !object_vtable.is_null()
+            && unsafe { vtable_inherits_from(api, object_vtable, family_vtable) }
+    }
+
+    unsafe fn process_local_kind(api: &IdApi, object: Oop) -> Option<ProcessLocalKind> {
+        if unsafe { belongs_to_exported_capability_family(api, object, MACHINE_NAME) } {
+            return Some(ProcessLocalKind::Machine);
+        }
+        if [
+            CONTINUE_ACTION_NAME,
+            CALL_ACTION_NAME,
+            TAIL_CALL_ACTION_NAME,
+            RETURN_ACTION_NAME,
+            SUSPEND_ACTION_NAME,
+            CAPTURE_ACTION_NAME,
+            RESTORE_ACTION_NAME,
+            ABORT_ACTION_NAME,
+        ]
+        .into_iter()
+        .any(|name| unsafe { belongs_to_exported_capability_family(api, object, name) })
+        {
+            return Some(ProcessLocalKind::StepAction);
+        }
+        if unsafe { belongs_to_exported_capability_family(api, object, FRAME_VIEW_NAME) } {
+            return Some(ProcessLocalKind::FrameView);
+        }
+        if unsafe { belongs_to_exported_capability_family(api, object, CONTINUATION_NAME) } {
+            return Some(ProcessLocalKind::Continuation);
+        }
+        if unsafe { belongs_to_exported_capability_family(api, object, DISCARD_RECEIPT_NAME) } {
+            return Some(ProcessLocalKind::DiscardReceipt);
+        }
+        None
+    }
+
+    impl HeapPreflight {
+        fn new(authority: Option<[u8; AUTHORITY_DIGEST_LEN]>) -> Self {
+            Self {
+                authority,
+                objects: Vec::new(),
+                relocations: HashMap::new(),
+                recovered_slots: 0,
+                rejected_slots: 0,
+                process_local_rejection: None,
+            }
+        }
+
+        unsafe fn intern(&mut self, api: &IdApi, object: Oop) -> Option<u32> {
             if let Some(kind) = unsafe { process_local_kind(api, object) } {
                 self.process_local_rejection.get_or_insert(kind);
                 return None;
             }
+            let key = object as usize;
+            if let Some(id) = self.relocations.get(&key) {
+                return Some(*id);
+            }
             let vtable = unsafe { (api.vtableOf)(object) };
-            let (vtable, name) =
-                if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(vtable)) } {
-                    (vtable, name)
-                } else {
-                    let parent = unsafe { (api.vtableParent)(vtable) };
-                    let name = unsafe { c_string_bytes((api.exportedNameOf)(parent)) }?;
-                    (parent, name)
-                };
+            if vtable.is_null() {
+                return None;
+            }
+            let has_exported_vtable =
+                unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.is_some();
+            let has_resumable_vtable =
+                unsafe { self.block_vtable_image_reference(api, vtable).is_some() };
+            let owned_parent = unsafe { (api.vtableOwner)(vtable) } == object;
+            let parent = unsafe { (api.vtableParent)(vtable) };
+            let has_exported_parent = owned_parent
+                && !parent.is_null()
+                && unsafe { c_string_bytes((api.exportedNameOf)(parent)) }.is_some();
+            if !has_exported_vtable && !has_resumable_vtable && !has_exported_parent {
+                return None;
+            }
             let payload_size = unsafe { (api.objectPayloadSize)(object) };
+            if !payload_size.is_multiple_of(core::mem::size_of::<usize>()) {
+                return None;
+            }
             let words = payload_size / core::mem::size_of::<usize>();
-            payload.extend_from_slice(&u32::try_from(name.len()).ok()?.to_le_bytes());
-            payload.extend_from_slice(name);
-            payload.extend_from_slice(&u32::try_from(words).ok()?.to_le_bytes());
             for index in 0..words {
                 let kind = unsafe { (api.slotKind)(vtable, index) };
-                if kind == birnam_abi::SLOT_CODE {
-                    self.recovered_slots = self.recovered_slots.saturating_add(1);
+                if kind != birnam_abi::SLOT_RAW
+                    && kind != birnam_abi::SLOT_OOP
+                    && kind != birnam_abi::SLOT_CODE
+                {
+                    return None;
+                }
+            }
+            let id = u32::try_from(self.objects.len()).ok()?;
+            self.relocations.insert(key, id);
+            self.objects.push(key);
+            for index in 0..words {
+                if unsafe { (api.slotKind)(vtable, index) } != birnam_abi::SLOT_OOP {
                     continue;
                 }
                 let address =
                     (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
-                if kind == birnam_abi::SLOT_OOP {
-                    // SAFETY: the preflight checked payload size and Oop layout.
-                    let child =
-                        unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
-                    let mut field = FieldEncoder::new();
-                    if !unsafe { encode_runtime_oop(api, &mut field, child, self) } {
-                        self.rejected_slots = self.rejected_slots.saturating_add(1);
-                        return None;
-                    }
-                    payload.extend_from_slice(field.as_bytes());
+                // SAFETY: the layout marks this initialized payload word as an Oop.
+                let child = unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
+                if unsafe { runtime_oop_is_inline(api, child) }
+                    || unsafe { self.block_vtable_image_reference(api, child).is_some() }
+                {
+                    continue;
+                }
+                unsafe { self.intern(api, child) }?;
+            }
+            Some(id)
+        }
+
+        unsafe fn finish(&mut self, api: &IdApi) -> Option<Vec<u8>> {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&u32::try_from(self.objects.len()).ok()?.to_le_bytes());
+            for object_index in 0..self.objects.len() {
+                let object = self.objects[object_index] as Oop;
+                if let Some(kind) = unsafe { process_local_kind(api, object) } {
+                    self.process_local_rejection.get_or_insert(kind);
+                    return None;
+                }
+                let vtable = unsafe { (api.vtableOf)(object) };
+                let layout_vtable = if unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }
+                    .is_some()
+                    || unsafe { self.block_vtable_image_reference(api, vtable).is_some() }
+                {
+                    vtable
                 } else {
-                    // SAFETY: the preflight checked payload size and raw layout.
-                    let word =
-                        unsafe { core::ptr::read_unaligned(address.cast::<usize>()) } as u64;
-                    payload.extend_from_slice(&word.to_le_bytes());
+                    let parent = unsafe { (api.vtableParent)(vtable) };
+                    unsafe { c_string_bytes((api.exportedNameOf)(parent)) }?;
+                    parent
+                };
+                let payload_size = unsafe { (api.objectPayloadSize)(object) };
+                let words = payload_size / core::mem::size_of::<usize>();
+                if let Some(index) = unsafe { self.block_vtable_image_reference(api, vtable) } {
+                    v5::encode_resumable_ref(&mut payload, index);
+                } else {
+                    let name = unsafe { c_string_bytes((api.exportedNameOf)(layout_vtable)) }?;
+                    v5::encode_export_locator(&mut payload, name).ok()?;
+                }
+                payload.extend_from_slice(&u32::try_from(words).ok()?.to_le_bytes());
+                for index in 0..words {
+                    let kind = unsafe { (api.slotKind)(layout_vtable, index) };
+                    if kind == birnam_abi::SLOT_CODE {
+                        self.recovered_slots = self.recovered_slots.saturating_add(1);
+                        continue;
+                    }
+                    let address =
+                        (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
+                    if kind == birnam_abi::SLOT_OOP {
+                        // SAFETY: the preflight checked payload size and Oop layout.
+                        let child =
+                            unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
+                        let mut field = FieldEncoder::new();
+                        if !unsafe { encode_runtime_oop(api, &mut field, child, self) } {
+                            self.rejected_slots = self.rejected_slots.saturating_add(1);
+                            return None;
+                        }
+                        payload.extend_from_slice(field.as_bytes());
+                    } else {
+                        // SAFETY: the preflight checked payload size and raw layout.
+                        let word =
+                            unsafe { core::ptr::read_unaligned(address.cast::<usize>()) } as u64;
+                        payload.extend_from_slice(&word.to_le_bytes());
+                    }
+                }
+            }
+            Some(payload)
+        }
+
+        unsafe fn block_vtable_image_reference(&self, api: &IdApi, vtable: Oop) -> Option<u32> {
+            let authority = self.authority.as_ref()?;
+            let raw_authority = v5::Authority::parse(authority).ok()?.raw;
+            let address = unsafe {
+                floor_symbol(
+                    api,
+                    b"birnam_id_stackless_block_vtable_image_reference_v1\0",
+                )
+            }?;
+            // SAFETY: the selected floor exports this exact loader-private v1
+            // signature. `floor_symbol` binds the image that owns this IdApi.
+            let query: unsafe extern "C" fn(*const u8, usize, Oop, *mut u32) -> u32 =
+                unsafe { core::mem::transmute(address) };
+            let mut index = 0;
+            (unsafe {
+                query(
+                    raw_authority.as_ptr(),
+                    raw_authority.len(),
+                    vtable,
+                    &mut index,
+                )
+            } == 1)
+                .then_some(index)
+        }
+    }
+
+    #[allow(dead_code)]
+    #[derive(Clone, Copy, Default)]
+    enum ReportStatus {
+        #[default]
+        Never,
+        Saved,
+        Rejected,
+        IoFailed,
+    }
+
+    #[derive(Clone, Copy)]
+    struct SaveReport {
+        status: ReportStatus,
+        saved_facts: u32,
+        recovered_facts: u32,
+        rejected_facts: u32,
+        recovered_slots: u32,
+        rejected_slots: u32,
+        code_units: u32,
+        detail: [u8; 256],
+        detail_len: usize,
+    }
+
+    impl Default for SaveReport {
+        fn default() -> Self {
+            Self {
+                status: ReportStatus::Never,
+                saved_facts: 0,
+                recovered_facts: 0,
+                rejected_facts: 0,
+                recovered_slots: 0,
+                rejected_slots: 0,
+                code_units: 0,
+                detail: [0; 256],
+                detail_len: 0,
+            }
+        }
+    }
+
+    static SAVE_REPORT: Mutex<SaveReport> = Mutex::new(SaveReport {
+        status: ReportStatus::Never,
+        saved_facts: 0,
+        recovered_facts: 0,
+        rejected_facts: 0,
+        recovered_slots: 0,
+        rejected_slots: 0,
+        code_units: 0,
+        detail: [0; 256],
+        detail_len: 0,
+    });
+
+    fn abort(message: &str) -> ! {
+        eprintln!("birnam Rust Image: {message}");
+        std::process::abort();
+    }
+
+    fn runtime() -> &'static Runtime {
+        RUNTIME
+            .get()
+            .unwrap_or_else(|| abort("module_init was not called"))
+    }
+
+    unsafe fn api_ref() -> &'static IdApi {
+        // SAFETY: module_init records the process-owned IdApi address and the host
+        // retains that table for the loaded floor's lifetime.
+        unsafe { &*(runtime().api as *const IdApi) }
+    }
+
+    unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
+        // SAFETY: all current selectors are static NUL-terminated byte strings.
+        unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
+    }
+
+    unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
+        // Keep the argument pointer non-null even for a zero-argument send. Native
+        // primitive methods use a non-null slice pointer in their native signature;
+        // passing an empty Rust slice preserves that contract across the C ABI.
+        let arguments: [Oop; 0] = [];
+        unsafe { (api.send)(receiver, intern(api, selector), arguments.as_ptr(), 0) }
+    }
+
+    unsafe fn send2(api: &IdApi, receiver: Oop, selector: &[u8], first: Oop, second: Oop) -> Oop {
+        let arguments = [first, second];
+        unsafe {
+            (api.send)(
+                receiver,
+                intern(api, selector),
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        }
+    }
+
+    unsafe fn process_local_error(api: &IdApi, kind: ProcessLocalKind) -> Oop {
+        let error = unsafe { (api.import)(c"Error".as_ptr()) };
+        if error.is_null() || error == api.nilObj {
+            return api.nilObj;
+        }
+        let arguments = [unsafe { intern(api, kind.symbol()) }];
+        unsafe {
+            (api.send)(
+                error,
+                intern(api, b"kind:\0"),
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        }
+    }
+
+    unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
+        if pointer.is_null() {
+            return None;
+        }
+        // SAFETY: IdApi returns process-owned NUL-terminated names that remain
+        // valid for the loaded floor's lifetime.
+        Some(unsafe { CStr::from_ptr(pointer) }.to_bytes())
+    }
+
+    unsafe fn symbol_bytes<'a>(api: &IdApi, object: Oop) -> Option<&'a [u8]> {
+        if object.is_null() || unsafe { (api.vtableOf)(object) } != api.symbol_vt {
+            return None;
+        }
+        unsafe { c_string_bytes((api.symbolName)(object)) }
+    }
+
+    unsafe fn has_global_recovery_source(api: &IdApi, store: Oop, attribute: Oop) -> bool {
+        let source_entity = unsafe { intern(api, b"__globalsrc__\0") };
+        (unsafe { send2(api, store, b"hasValue:attr:\0", source_entity, attribute) }) == api.trueObj
+    }
+
+    #[derive(Clone, Copy)]
+    enum DeferredFactClass {
+        Source,
+        Code,
+        Reject,
+    }
+
+    unsafe fn deferred_fact_class(
+        api: &IdApi,
+        store: Oop,
+        entity: Oop,
+        attribute: Oop,
+    ) -> DeferredFactClass {
+        let Some(entity_name) = (unsafe { symbol_bytes(api, entity) }) else {
+            return DeferredFactClass::Reject;
+        };
+        let Some(attribute_name) = (unsafe { symbol_bytes(api, attribute) }) else {
+            return DeferredFactClass::Reject;
+        };
+        if entity_name == b"__globals__" {
+            if attribute_name.starts_with(b"__") {
+                return DeferredFactClass::Code;
+            }
+            if unsafe { has_global_recovery_source(api, store, attribute) } {
+                return DeferredFactClass::Source;
+            }
+            return DeferredFactClass::Reject;
+        }
+        if unsafe { (api.vtableOf)(entity) } == api.vtable_vt {
+            return DeferredFactClass::Code;
+        }
+        DeferredFactClass::Reject
+    }
+
+    unsafe fn encode_runtime_oop(
+        api: &IdApi,
+        encoder: &mut FieldEncoder,
+        object: Oop,
+        heap: &mut HeapPreflight,
+    ) -> bool {
+        if object.is_null() {
+            encoder.null_oop();
+            return true;
+        }
+        if object == api.nilObj {
+            encoder.nil();
+            return true;
+        }
+        if object == api.trueObj {
+            encoder.true_value();
+            return true;
+        }
+        if object == api.falseObj {
+            encoder.false_value();
+            return true;
+        }
+        if unsafe { (api.isSmallInt)(object) } != 0 {
+            encoder.integer(unsafe { (api.smallIntValue)(object) });
+            return true;
+        }
+        if unsafe { (api.isFloat)(object) } != 0 {
+            encoder.float_bits(unsafe { (api.floatValue)(object).to_bits() });
+            return true;
+        }
+        if let Some(kind) = unsafe { process_local_kind(api, object) } {
+            heap.process_local_rejection.get_or_insert(kind);
+            return false;
+        }
+        if let Some(index) = unsafe { heap.block_vtable_image_reference(api, object) } {
+            encoder.resumable_ref_v5(index);
+            return true;
+        }
+        let vtable = unsafe { (api.vtableOf)(object) };
+        if vtable == api.symbol_vt {
+            let Some(bytes) = (unsafe { c_string_bytes((api.symbolName)(object)) }) else {
+                return false;
+            };
+            return encoder.symbol(bytes).is_ok();
+        }
+        if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
+            return encoder.export_ref(name).is_ok();
+        }
+        if vtable == api.string_vt {
+            let mut length = 0;
+            let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+            if bytes.is_null() && length != 0 {
+                return false;
+            }
+            // SAFETY: stringBytes supplies `length` readable bytes for a live String.
+            let bytes = if length == 0 {
+                &[]
+            } else {
+                unsafe { core::slice::from_raw_parts(bytes, length) }
+            };
+            return encoder.string(bytes).is_ok();
+        }
+        let Some(id) = (unsafe { heap.intern(api, object) }) else {
+            return false;
+        };
+        encoder.heap_ref(id);
+        true
+    }
+
+    fn record_fact_counts(
+        kept: u32,
+        recovered: u32,
+        rejected: u32,
+        recovered_slots: u32,
+        rejected_slots: u32,
+    ) {
+        let mut report = runtime()
+            .report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        report.saved_facts = kept;
+        report.recovered_facts = recovered;
+        report.rejected_facts = rejected;
+        report.recovered_slots = recovered_slots;
+        report.rejected_slots = rejected_slots;
+    }
+
+    fn preflight_writer_accepts(facts: &[u8], heap: &[u8]) -> bool {
+        let mut writer = ImageWriter::new(IMAGE_ARCH_TAG, runtime_abi_hash());
+        writer.facts(facts).is_ok() && writer.heap(heap).is_ok()
+    }
+
+    /// Select the image writer's generation authority explicitly.
+    ///
+    /// Mixed hosts retain the canonical `Codegen` owner. The Rust owner is only
+    /// admitted by an explicit test/selection environment value, and must expose
+    /// the durable-generation bootstrap plus capture selectors before it can be
+    /// used. An unknown explicit value fails closed instead of silently falling
+    /// back to another authority.
+    unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
+        let requested = std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY").ok();
+        if requested.as_deref() == Some("rust") {
+            let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+            if codegen.is_null()
+                || codegen == api.nilObj
+                || !unsafe {
+                    direct_method_present(api, codegen, RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION)
+                        && direct_method_present(api, codegen, b"currentGenerationDigest\0")
+                        && direct_method_present(api, codegen, b"compileImageCode:manifest:\0")
+                }
+            {
+                return None;
+            }
+            let initialized =
+                unsafe { send0(api, codegen, RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION) };
+            return (initialized != api.nilObj && !initialized.is_null()).then_some(codegen);
+        }
+        if requested.is_some() {
+            return None;
+        }
+        let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+        if codegen.is_null() || codegen == api.nilObj {
+            return None;
+        }
+        if rust_image_canonical_selected() {
+            // Match the native image driver's first-save behavior for script hosts:
+            // close the initial dispatch generation before asking Codegen for its
+            // digest. Explicit Rust Image fixtures do not set the canonical marker
+            // and therefore retain their diagnostic-only no-publication contract.
+            let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+            if !globals.is_null() && globals != api.nilObj {
+                let key = unsafe { intern(api, b"DispatchGeneration\0") };
+                let generations = [key];
+                let generations =
+                    unsafe { (api.send)(globals, intern(api, b"at:\0"), generations.as_ptr(), 1) };
+                if !generations.is_null() && generations != api.nilObj {
+                    let current = unsafe { send0(api, generations, b"current\0") };
+                    if current.is_null() || current == api.nilObj {
+                        let _ = unsafe { send0(api, generations, b"initializeCurrent\0") };
+                    }
                 }
             }
         }
-        Some(payload)
+        Some(codegen)
     }
-}
 
-#[allow(dead_code)]
-#[derive(Clone, Copy, Default)]
-enum ReportStatus {
-    #[default]
-    Never,
-    Saved,
-    Rejected,
-    IoFailed,
-}
+    fn rust_image_publication_selected() -> bool {
+        std::env::var("BIRNAM_RUST_IMAGE_PUBLICATION")
+            .ok()
+            .as_deref()
+            == Some("rust")
+    }
 
-#[derive(Clone, Copy)]
-struct SaveReport {
-    status: ReportStatus,
-    saved_facts: u32,
-    recovered_facts: u32,
-    rejected_facts: u32,
-    recovered_slots: u32,
-    rejected_slots: u32,
-    code_units: u32,
-    detail: [u8; 256],
-    detail_len: usize,
-}
+    fn rust_image_writer_authority_selected() -> bool {
+        std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY")
+            .ok()
+            .as_deref()
+            == Some("rust")
+    }
 
-impl Default for SaveReport {
-    fn default() -> Self {
-        Self {
-            status: ReportStatus::Never,
-            saved_facts: 0,
-            recovered_facts: 0,
-            rejected_facts: 0,
-            recovered_slots: 0,
-            rejected_slots: 0,
-            code_units: 0,
-            detail: [0; 256],
-            detail_len: 0,
+    fn rust_image_canonical_selected() -> bool {
+        std::env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
+    }
+
+    unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
+        let codegen = unsafe { writer_codegen_authority(api) }?;
+        let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
+        if digest.is_null()
+            || digest == api.nilObj
+            || unsafe { (api.vtableOf)(digest) } != api.string_vt
+        {
+            return None;
         }
-    }
-}
-
-static SAVE_REPORT: Mutex<SaveReport> = Mutex::new(SaveReport {
-    status: ReportStatus::Never,
-    saved_facts: 0,
-    recovered_facts: 0,
-    rejected_facts: 0,
-    recovered_slots: 0,
-    rejected_slots: 0,
-    code_units: 0,
-    detail: [0; 256],
-    detail_len: 0,
-});
-
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Rust Image: {message}");
-    std::process::abort();
-}
-
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
-}
-
-unsafe fn api_ref() -> &'static IdApi {
-    // SAFETY: module_init records the process-owned IdApi address and the host
-    // retains that table for the loaded floor's lifetime.
-    unsafe { &*(runtime().api as *const IdApi) }
-}
-
-unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
-    // SAFETY: all current selectors are static NUL-terminated byte strings.
-    unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
-    // Keep the argument pointer non-null even for a zero-argument send. Native
-    // primitive methods use a non-null slice pointer in their native signature;
-    // passing an empty Rust slice preserves that contract across the C ABI.
-    let arguments: [Oop; 0] = [];
-    unsafe { (api.send)(receiver, intern(api, selector), arguments.as_ptr(), 0) }
-}
-
-unsafe fn send2(api: &IdApi, receiver: Oop, selector: &[u8], first: Oop, second: Oop) -> Oop {
-    let arguments = [first, second];
-    unsafe {
-        (api.send)(
-            receiver,
-            intern(api, selector),
-            arguments.as_ptr(),
-            arguments.len(),
-        )
-    }
-}
-
-unsafe fn process_local_error(api: &IdApi, kind: ProcessLocalKind) -> Oop {
-    let error = unsafe { (api.import)(c"Error".as_ptr()) };
-    if error.is_null() || error == api.nilObj {
-        return api.nilObj;
-    }
-    let arguments = [unsafe { intern(api, kind.symbol()) }];
-    unsafe {
-        (api.send)(
-            error,
-            intern(api, b"kind:\0"),
-            arguments.as_ptr(),
-            arguments.len(),
-        )
-    }
-}
-
-unsafe fn c_string_bytes<'a>(pointer: *const c_char) -> Option<&'a [u8]> {
-    if pointer.is_null() {
-        return None;
-    }
-    // SAFETY: IdApi returns process-owned NUL-terminated names that remain
-    // valid for the loaded floor's lifetime.
-    Some(unsafe { CStr::from_ptr(pointer) }.to_bytes())
-}
-
-unsafe fn symbol_bytes<'a>(api: &IdApi, object: Oop) -> Option<&'a [u8]> {
-    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.symbol_vt {
-        return None;
-    }
-    unsafe { c_string_bytes((api.symbolName)(object)) }
-}
-
-unsafe fn has_global_recovery_source(api: &IdApi, store: Oop, attribute: Oop) -> bool {
-    let source_entity = unsafe { intern(api, b"__globalsrc__\0") };
-    (unsafe { send2(api, store, b"hasValue:attr:\0", source_entity, attribute) }) == api.trueObj
-}
-
-#[derive(Clone, Copy)]
-enum DeferredFactClass {
-    Source,
-    Code,
-    Reject,
-}
-
-unsafe fn deferred_fact_class(
-    api: &IdApi,
-    store: Oop,
-    entity: Oop,
-    attribute: Oop,
-) -> DeferredFactClass {
-    let Some(entity_name) = (unsafe { symbol_bytes(api, entity) }) else {
-        return DeferredFactClass::Reject;
-    };
-    let Some(attribute_name) = (unsafe { symbol_bytes(api, attribute) }) else {
-        return DeferredFactClass::Reject;
-    };
-    if entity_name == b"__globals__" {
-        if attribute_name.starts_with(b"__") {
-            return DeferredFactClass::Code;
-        }
-        if unsafe { has_global_recovery_source(api, store, attribute) } {
-            return DeferredFactClass::Source;
-        }
-        return DeferredFactClass::Reject;
-    }
-    if unsafe { (api.vtableOf)(entity) } == api.vtable_vt {
-        return DeferredFactClass::Code;
-    }
-    DeferredFactClass::Reject
-}
-
-unsafe fn encode_runtime_oop(
-    api: &IdApi,
-    encoder: &mut FieldEncoder,
-    object: Oop,
-    heap: &mut HeapPreflight,
-) -> bool {
-    if object.is_null() {
-        encoder.null_oop();
-        return true;
-    }
-    if object == api.nilObj {
-        encoder.nil();
-        return true;
-    }
-    if object == api.trueObj {
-        encoder.true_value();
-        return true;
-    }
-    if object == api.falseObj {
-        encoder.false_value();
-        return true;
-    }
-    if unsafe { (api.isSmallInt)(object) } != 0 {
-        encoder.integer(unsafe { (api.smallIntValue)(object) });
-        return true;
-    }
-    if unsafe { (api.isFloat)(object) } != 0 {
-        encoder.float_bits(unsafe { (api.floatValue)(object).to_bits() });
-        return true;
-    }
-    if let Some(kind) = unsafe { process_local_kind(api, object) } {
-        heap.process_local_rejection.get_or_insert(kind);
-        return false;
-    }
-    let vtable = unsafe { (api.vtableOf)(object) };
-    if vtable == api.symbol_vt {
-        let Some(bytes) = (unsafe { c_string_bytes((api.symbolName)(object)) }) else {
-            return false;
-        };
-        return encoder.symbol(bytes).is_ok();
-    }
-    if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
-        return encoder.export_ref(name).is_ok();
-    }
-    if vtable == api.string_vt {
         let mut length = 0;
-        let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+        let bytes = unsafe { (api.stringBytes)(digest, &mut length) };
         if bytes.is_null() && length != 0 {
-            return false;
+            return None;
         }
-        // SAFETY: stringBytes supplies `length` readable bytes for a live String.
         let bytes = if length == 0 {
             &[]
         } else {
+            // SAFETY: stringBytes supplies `length` readable bytes for this live String.
             unsafe { core::slice::from_raw_parts(bytes, length) }
         };
-        return encoder.string(bytes).is_ok();
+        authority_digest_from_bytes(bytes)
     }
-    let Some(id) = (unsafe { heap.intern(api, object) }) else {
-        return false;
-    };
-    encoder.heap_ref(id);
-    true
-}
 
-fn record_fact_counts(
-    kept: u32,
-    recovered: u32,
-    rejected: u32,
-    recovered_slots: u32,
-    rejected_slots: u32,
-) {
-    let mut report = runtime()
-        .report
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    report.saved_facts = kept;
-    report.recovered_facts = recovered;
-    report.rejected_facts = rejected;
-    report.recovered_slots = recovered_slots;
-    report.rejected_slots = rejected_slots;
-}
-
-fn preflight_writer_accepts(facts: &[u8], heap: &[u8]) -> bool {
-    let mut writer = ImageWriter::new(IMAGE_ARCH_TAG, runtime_abi_hash());
-    writer.facts(facts).is_ok() && writer.heap(heap).is_ok()
-}
-
-/// Select the image writer's generation authority explicitly.
-///
-/// Mixed hosts retain the canonical `Codegen` owner. The Rust owner is only
-/// admitted by an explicit test/selection environment value, and must expose
-/// the durable-generation bootstrap plus capture selectors before it can be
-/// used. An unknown explicit value fails closed instead of silently falling
-/// back to another authority.
-unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
-    let requested = std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY").ok();
-    if requested.as_deref() == Some("rust") {
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
-        if codegen.is_null()
-            || codegen == api.nilObj
-            || !unsafe {
-                direct_method_present(api, codegen, RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION)
-                    && direct_method_present(api, codegen, b"currentGenerationDigest\0")
-                    && direct_method_present(api, codegen, b"compileImageCode:\0")
-            }
-        {
+    /// Ask the existing Codegen authority for one compiled generation unit and
+    /// copy the resulting bytes before deleting the temporary file. This is a
+    /// capture-only seam: the Rust Image owner does not load, map, or publish the
+    /// unit, and Codegen remains responsible for generation binding and TCC.
+    unsafe fn capture_generation_code(
+        api: &IdApi,
+        digest: &[u8; AUTHORITY_DIGEST_LEN],
+    ) -> Option<(Vec<u8>, Vec<u8>)> {
+        let codegen = unsafe { writer_codegen_authority(api) }?;
+        let sequence = CODE_CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "birnam-rust-image-code-{}-{}.dylib",
+            std::process::id(),
+            sequence
+        ));
+        let manifest_path = std::env::temp_dir().join(format!(
+            "birnam-rust-image-manifest-{}-{}.bin",
+            std::process::id(),
+            sequence
+        ));
+        let path_text = path.to_str()?;
+        let manifest_path_text = manifest_path.to_str()?;
+        let path_oop = unsafe { (api.mkString)(path_text.as_ptr(), path_text.len()) };
+        let manifest_path_oop =
+            unsafe { (api.mkString)(manifest_path_text.as_ptr(), manifest_path_text.len()) };
+        if path_oop.is_null() || manifest_path_oop.is_null() {
             return None;
         }
-        let initialized =
-            unsafe { send0(api, codegen, RUST_CODEGEN_INITIALIZE_CURRENT_GENERATION) };
-        return (initialized != api.nilObj && !initialized.is_null()).then_some(codegen);
-    }
-    if requested.is_some() {
-        return None;
-    }
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
-    if codegen.is_null() || codegen == api.nilObj {
-        return None;
-    }
-    if rust_image_canonical_selected() {
-        // Match the native image driver's first-save behavior for script hosts:
-        // close the initial dispatch generation before asking Codegen for its
-        // digest. Explicit Rust Image fixtures do not set the canonical marker
-        // and therefore retain their diagnostic-only no-publication contract.
-        let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
-        if !globals.is_null() && globals != api.nilObj {
-            let key = unsafe { intern(api, b"DispatchGeneration\0") };
-            let generations = [key];
-            let generations =
-                unsafe { (api.send)(globals, intern(api, b"at:\0"), generations.as_ptr(), 1) };
-            if !generations.is_null() && generations != api.nilObj {
-                let current = unsafe { send0(api, generations, b"current\0") };
-                if current.is_null() || current == api.nilObj {
-                    let _ = unsafe { send0(api, generations, b"initializeCurrent\0") };
-                }
-            }
+        let arguments = [path_oop, manifest_path_oop];
+        let result = unsafe {
+            (api.send)(
+                codegen,
+                intern(api, b"compileImageCode:manifest:\0"),
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        };
+        if result.is_null() || result == api.nilObj {
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(&manifest_path);
+            return None;
         }
-    }
-    Some(codegen)
-}
-
-fn rust_image_publication_selected() -> bool {
-    std::env::var("BIRNAM_RUST_IMAGE_PUBLICATION")
-        .ok()
-        .as_deref()
-        == Some("rust")
-}
-
-fn rust_image_writer_authority_selected() -> bool {
-    std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY")
-        .ok()
-        .as_deref()
-        == Some("rust")
-}
-
-fn rust_image_canonical_selected() -> bool {
-    std::env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
-}
-
-unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
-    let codegen = unsafe { writer_codegen_authority(api) }?;
-    let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
-    if digest.is_null()
-        || digest == api.nilObj
-        || unsafe { (api.vtableOf)(digest) } != api.string_vt
-    {
-        return None;
-    }
-    let mut length = 0;
-    let bytes = unsafe { (api.stringBytes)(digest, &mut length) };
-    if bytes.is_null() && length != 0 {
-        return None;
-    }
-    let bytes = if length == 0 {
-        &[]
-    } else {
-        // SAFETY: stringBytes supplies `length` readable bytes for this live String.
-        unsafe { core::slice::from_raw_parts(bytes, length) }
-    };
-    authority_digest_from_bytes(bytes)
-}
-
-/// Ask the existing Codegen authority for one compiled generation unit and
-/// copy the resulting bytes before deleting the temporary file. This is a
-/// capture-only seam: the Rust Image owner does not load, map, or publish the
-/// unit, and Codegen remains responsible for generation binding and TCC.
-unsafe fn capture_generation_code(
-    api: &IdApi,
-    _digest: &[u8; AUTHORITY_DIGEST_LEN],
-) -> Option<Vec<u8>> {
-    let codegen = unsafe { writer_codegen_authority(api) }?;
-    let sequence = CODE_CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "birnam-rust-image-code-{}-{}.dylib",
-        std::process::id(),
-        sequence
-    ));
-    let path_text = path.to_str()?;
-    let path_oop = unsafe { (api.mkString)(path_text.as_ptr(), path_text.len()) };
-    if path_oop.is_null() {
-        return None;
-    }
-    let result = unsafe {
-        (api.send)(
-            codegen,
-            intern(api, b"compileImageCode:\0"),
-            &path_oop as *const Oop,
-            1,
-        )
-    };
-    if result.is_null() || result == api.nilObj {
+        let code = std::fs::read(&path).ok();
+        let manifest = std::fs::read(&manifest_path).ok();
         let _ = std::fs::remove_file(&path);
-        return None;
+        let _ = std::fs::remove_file(&manifest_path);
+        let code = code.filter(|bytes| !bytes.is_empty())?;
+        let manifest = manifest.filter(|bytes| !bytes.is_empty())?;
+        let authority = v5::Authority::parse(digest).ok()?.raw;
+        birnam_artifact::resumable_manifest::inspect(&manifest, authority).ok()?;
+        Some((code, manifest))
     }
-    let bytes = std::fs::read(&path).ok();
-    let _ = std::fs::remove_file(&path);
-    bytes.filter(|bytes| !bytes.is_empty())
-}
 
-#[cfg(test)]
-pub(crate) fn preflight_image_path(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return false;
-    };
-    if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
-        return false;
-    }
-    let Ok(bytes) = std::fs::read(path) else {
-        return false;
-    };
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_IMAGE_BYTES {
-        return false;
-    }
-    Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
-}
-
-#[derive(Clone, Copy, Default)]
-struct ImageFeatures {
-    has_facts: bool,
-    has_heap: bool,
-    has_code: bool,
-    authority_digest: Option<[u8; AUTHORITY_DIGEST_LEN]>,
-}
-
-fn inspect_image_path(path_bytes: &[u8]) -> Option<ImageFeatures> {
-    let path = Path::new(OsStr::from_bytes(path_bytes));
-    let metadata = fs::metadata(path).ok()?;
-    if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
-        return None;
-    }
-    let bytes = fs::read(path).ok()?;
-    if u64::try_from(bytes.len()).ok()? > MAX_IMAGE_BYTES {
-        return None;
-    }
-    let image = Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).ok()?;
-    let mut features = ImageFeatures::default();
-    features.authority_digest = Some(*image.authority.digest);
-    let mut records = image.records();
-    while let Some(record) = records.next_record().ok()? {
-        match record.kind {
-            RecordKind::Facts => features.has_facts = true,
-            RecordKind::Heap => features.has_heap = true,
-            RecordKind::Code => features.has_code = true,
-            RecordKind::Authority => {}
-        }
-    }
-    Some(features)
-}
-
-unsafe fn runtime_image_path_bytes(api: &IdApi, path: Oop) -> Option<Vec<u8>> {
-    if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
-        return None;
-    }
-    let mut length = 0;
-    let bytes = unsafe { (api.stringBytes)(path, &mut length) };
-    if bytes.is_null() && length != 0 {
-        return None;
-    }
-    let bytes = if length == 0 {
-        &[][..]
-    } else {
-        // SAFETY: stringBytes supplies `length` readable bytes for this live String.
-        unsafe { core::slice::from_raw_parts(bytes, length) }
-    };
-    Some(bytes.to_vec())
-}
-
-unsafe fn inspect_runtime_image(api: &IdApi, path: Oop) -> Option<ImageFeatures> {
-    let path_bytes = unsafe { runtime_image_path_bytes(api, path) }?;
-    inspect_image_path(&path_bytes)
-}
-
-unsafe fn preflight_runtime_image(api: &IdApi, path: Oop) -> bool {
-    unsafe { inspect_runtime_image(api, path) }.is_some()
-}
-
-unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: &[u8]) -> bool {
-    let vtable = unsafe { (api.vtableOf)(target) };
-    if vtable.is_null() {
-        return false;
-    }
-    let selector = unsafe { intern(api, selector) };
-    let mut index = 0usize;
-    loop {
-        let entry = unsafe { (api.vtableSelectorAt)(vtable, index) };
-        if entry.is_null() {
+    #[cfg(test)]
+    pub(crate) fn preflight_image_path(path: &Path) -> bool {
+        let Ok(metadata) = std::fs::metadata(path) else {
+            return false;
+        };
+        if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
             return false;
         }
-        if entry == selector {
-            return true;
+        let Ok(bytes) = std::fs::read(path) else {
+            return false;
+        };
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_IMAGE_BYTES {
+            return false;
         }
-        index = index.saturating_add(1);
+        Image::preflight(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
     }
-}
 
-unsafe fn rust_codegen_image_authority(api: &IdApi) -> Option<Oop> {
-    let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
-    if codegen.is_null() || codegen == api.nilObj {
-        return None;
+    #[derive(Clone, Copy, Default)]
+    struct ImageFeatures {
+        has_facts: bool,
+        has_heap: bool,
+        has_code: bool,
+        authority_digest: Option<[u8; AUTHORITY_DIGEST_LEN]>,
+        composition_identity: Option<[u8; 64]>,
     }
-    for selector in [
-        RUST_CODEGEN_PREFLIGHT_IMAGE,
-        RUST_CODEGEN_BEGIN_IMAGE_RECOVERY,
-        RUST_CODEGEN_END_IMAGE_RECOVERY,
-        RUST_CODEGEN_REPLAY_IMAGE_FACTS,
-        RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS,
-        RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS,
-        RUST_CODEGEN_MAP_IMAGE_CODE,
-    ] {
-        if !unsafe { direct_method_present(api, codegen, selector) } {
+
+    fn composition_identity(checksums: &[u64]) -> Option<[u8; 64]> {
+        let mut digest = Sha256::new();
+        digest.update(b"birnam.image-composition.v1\0");
+        digest.update(u32::try_from(checksums.len()).ok()?.to_le_bytes());
+        for checksum in checksums {
+            digest.update(checksum.to_le_bytes());
+        }
+        let raw: [u8; 32] = digest.finalize().into();
+        let mut spelling = [0; 64];
+        for (index, byte) in raw.into_iter().enumerate() {
+            spelling[index * 2] = b"0123456789abcdef"[(byte >> 4) as usize];
+            spelling[index * 2 + 1] = b"0123456789abcdef"[(byte & 0x0f) as usize];
+        }
+        Some(spelling)
+    }
+
+    unsafe fn image_v5_layout(api: &IdApi, name: &[u8], words: u32) -> Option<Vec<v5::SlotKind>> {
+        let mut terminated = Vec::with_capacity(name.len().checked_add(1)?);
+        terminated.extend_from_slice(name);
+        terminated.push(0);
+        let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
+        if vtable.is_null() || vtable == api.nilObj {
             return None;
         }
+        let words = usize::try_from(words).ok()?;
+        let mut layout = Vec::with_capacity(words);
+        for word in 0..words {
+            layout.push(match unsafe { (api.slotKind)(vtable, word) } {
+                birnam_abi::SLOT_OOP => v5::SlotKind::Oop,
+                birnam_abi::SLOT_RAW => v5::SlotKind::RawWord,
+                birnam_abi::SLOT_CODE => v5::SlotKind::Code,
+                _ => return None,
+            });
+        }
+        Some(layout)
     }
-    Some(codegen)
-}
 
-unsafe fn send_image_unary(api: &IdApi, receiver: Oop, selector: &[u8], argument: Oop) -> Oop {
-    let arguments = [argument];
-    unsafe {
-        (api.send)(
-            receiver,
-            intern(api, selector),
-            arguments.as_ptr(),
-            arguments.len(),
+    unsafe fn inspect_image_path(api: &IdApi, path_bytes: &[u8]) -> Option<ImageFeatures> {
+        let path = Path::new(OsStr::from_bytes(path_bytes));
+        let metadata = fs::metadata(path).ok()?;
+        if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
+            return None;
+        }
+        let bytes = fs::read(path).ok()?;
+        if u64::try_from(bytes.len()).ok()? > MAX_IMAGE_BYTES {
+            return None;
+        }
+        let image = v5::Image::preflight_with_layout(
+            &bytes,
+            IMAGE_ARCH_TAG,
+            runtime_abi_hash(),
+            |name, words| unsafe { image_v5_layout(api, name, words) },
         )
+        .ok()?;
+        let mut features = ImageFeatures::default();
+        features.authority_digest = Some(*image.authority.spelling);
+        features.composition_identity = image
+            .code()
+            .and_then(|code| composition_identity(&[code.checksum]));
+        let mut records = image.records();
+        while let Some(record) = records.next_record().ok()? {
+            match record.kind {
+                v5::RecordKind::Facts => features.has_facts = true,
+                v5::RecordKind::Heap => features.has_heap = true,
+                v5::RecordKind::Code => features.has_code = true,
+                v5::RecordKind::Authority | v5::RecordKind::Resumables => {}
+            }
+        }
+        Some(features)
     }
-}
 
-unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
-    let Some(features) = (unsafe { inspect_runtime_image(api, path) }) else {
-        return api.nilObj;
-    };
-    let Some(codegen) = (unsafe { rust_codegen_image_authority(api) }) else {
-        // A complete Rust Codegen provider is required for image recovery.
-        return api.falseObj;
-    };
-    if unsafe { send_image_unary(api, codegen, RUST_CODEGEN_PREFLIGHT_IMAGE, path) }
-        != api.trueObj
-    {
-        // A structurally valid image can carry a generation from an older
-        // authority. Rust Codegen rejects that authority for native mapping,
-        // but the image loader hands valid bytes to the source-recovery path
-        // than reporting malformed input. Other preflight failures remain
-        // fail-closed as LoadRejected.
-        if let Some(current) = unsafe { current_generation_digest(api) } {
-            if let Some(image_authority) = features.authority_digest {
-                if current != image_authority {
-                    if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) }
-                        != api.trueObj
-                    {
-                        return api.nilObj;
+    unsafe fn runtime_image_path_bytes(api: &IdApi, path: Oop) -> Option<Vec<u8>> {
+        if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
+            return None;
+        }
+        let mut length = 0;
+        let bytes = unsafe { (api.stringBytes)(path, &mut length) };
+        if bytes.is_null() && length != 0 {
+            return None;
+        }
+        let bytes = if length == 0 {
+            &[][..]
+        } else {
+            // SAFETY: stringBytes supplies `length` readable bytes for this live String.
+            unsafe { core::slice::from_raw_parts(bytes, length) }
+        };
+        Some(bytes.to_vec())
+    }
+
+    unsafe fn inspect_runtime_image(api: &IdApi, path: Oop) -> Option<ImageFeatures> {
+        let path_bytes = unsafe { runtime_image_path_bytes(api, path) }?;
+        unsafe { inspect_image_path(api, &path_bytes) }
+    }
+
+    unsafe fn preflight_runtime_image(api: &IdApi, path: Oop) -> bool {
+        unsafe { inspect_runtime_image(api, path) }.is_some()
+    }
+
+    unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: &[u8]) -> bool {
+        let vtable = unsafe { (api.vtableOf)(target) };
+        if vtable.is_null() {
+            return false;
+        }
+        let selector = unsafe { intern(api, selector) };
+        let mut index = 0usize;
+        loop {
+            let entry = unsafe { (api.vtableSelectorAt)(vtable, index) };
+            if entry.is_null() {
+                return false;
+            }
+            if entry == selector {
+                return true;
+            }
+            index = index.saturating_add(1);
+        }
+    }
+
+    unsafe fn rust_codegen_image_authority(api: &IdApi) -> Option<Oop> {
+        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        if codegen.is_null() || codegen == api.nilObj {
+            return None;
+        }
+        for selector in [
+            RUST_CODEGEN_PREFLIGHT_IMAGE,
+            RUST_CODEGEN_BEGIN_IMAGE_RECOVERY,
+            RUST_CODEGEN_END_IMAGE_RECOVERY,
+            RUST_CODEGEN_REPLAY_IMAGE_FACTS,
+            RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS,
+            RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS,
+            RUST_CODEGEN_MAP_IMAGE_CODE,
+        ] {
+            if !unsafe { direct_method_present(api, codegen, selector) } {
+                return None;
+            }
+        }
+        Some(codegen)
+    }
+
+    unsafe fn send_image_unary(api: &IdApi, receiver: Oop, selector: &[u8], argument: Oop) -> Oop {
+        let arguments = [argument];
+        unsafe {
+            (api.send)(
+                receiver,
+                intern(api, selector),
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        }
+    }
+
+    unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
+        if let Ok(mut identity) = IMAGE_COMPOSITION_IDENTITY.lock() {
+            *identity = None;
+        }
+        let Some(features) = (unsafe { inspect_runtime_image(api, path) }) else {
+            return api.nilObj;
+        };
+        let Some(codegen) = (unsafe { rust_codegen_image_authority(api) }) else {
+            // A complete Rust Codegen provider is required for image recovery.
+            return api.falseObj;
+        };
+        if unsafe { send_image_unary(api, codegen, RUST_CODEGEN_PREFLIGHT_IMAGE, path) }
+            != api.trueObj
+        {
+            // A structurally valid image can carry a generation from an older
+            // authority. Rust Codegen rejects that authority for native mapping,
+            // but the image loader hands valid bytes to the source-recovery path
+            // than reporting malformed input. Other preflight failures remain
+            // fail-closed as LoadRejected.
+            if let Some(current) = unsafe { current_generation_digest(api) } {
+                if let Some(image_authority) = features.authority_digest {
+                    if current != image_authority {
+                        if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) }
+                            != api.trueObj
+                        {
+                            return api.nilObj;
+                        }
+                        let replayed = unsafe {
+                            send_image_unary(
+                                api,
+                                codegen,
+                                RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS,
+                                path,
+                            )
+                        };
+                        let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
+                        if replayed == api.nilObj || ended != api.trueObj {
+                            return api.nilObj;
+                        }
+                        return api.falseObj;
                     }
-                    let replayed = unsafe {
-                        send_image_unary(
-                            api,
-                            codegen,
-                            RUST_CODEGEN_REPLAY_STALE_IMAGE_FACTS,
-                            path,
-                        )
-                    };
-                    let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
-                    if replayed == api.nilObj || ended != api.trueObj {
-                        return api.nilObj;
-                    }
-                    return api.falseObj;
                 }
             }
+            return api.nilObj;
         }
-        return api.nilObj;
-    }
-    if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) } != api.trueObj {
-        return api.nilObj;
-    }
+        if unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) } != api.trueObj {
+            return api.nilObj;
+        }
 
-    let outcome = (|| -> Result<Oop, ()> {
-        if features.has_facts || features.has_heap {
-            let replayed = unsafe {
-                send_image_unary(api, codegen, RUST_CODEGEN_REPLAY_IMAGE_FACTS, path)
-            };
-            if replayed == api.nilObj {
+        let outcome = (|| -> Result<Oop, ()> {
+            if features.has_facts || features.has_heap {
+                let replayed = unsafe {
+                    send_image_unary(api, codegen, RUST_CODEGEN_REPLAY_IMAGE_FACTS, path)
+                };
+                if replayed == api.nilObj {
+                    return Err(());
+                }
+            }
+            if rebuild || !features.has_code {
+                return Ok(api.falseObj);
+            }
+            let derived = unsafe { send0(api, codegen, RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS) };
+            if derived == api.nilObj {
                 return Err(());
             }
+            let mapped =
+                unsafe { send_image_unary(api, codegen, RUST_CODEGEN_MAP_IMAGE_CODE, path) };
+            if mapped == api.nilObj {
+                return Err(());
+            }
+            Ok(api.trueObj)
+        })();
+        let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
+        if ended != api.trueObj {
+            return api.nilObj;
         }
-        if rebuild || !features.has_code {
-            return Ok(api.falseObj);
-        }
-        let derived = unsafe { send0(api, codegen, RUST_CODEGEN_DERIVE_IMAGE_METHOD_TARGETS) };
-        if derived == api.nilObj {
-            return Err(());
-        }
-        let mapped =
-            unsafe { send_image_unary(api, codegen, RUST_CODEGEN_MAP_IMAGE_CODE, path) };
-        if mapped == api.nilObj {
-            return Err(());
-        }
-        Ok(api.trueObj)
-    })();
-    let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
-    if ended != api.trueObj {
-        return api.nilObj;
-    }
-    outcome.unwrap_or(api.nilObj)
-}
-
-unsafe fn collect_store_facts(api: &IdApi) -> FactPreflight {
-    let store = unsafe { (api.import)(c"Store".as_ptr()) };
-    if store.is_null() || store == api.nilObj {
-        return FactPreflight {
-            kept: 0,
-            recovered: 0,
-            recoveries_needing_code: 0,
-            rejected: 0,
-            facts_payload: Vec::new(),
-            heap_payload: Some(Vec::new()),
-            heap_ok: true,
-            recovered_slots: 0,
-            rejected_slots: 0,
-            writer_ok: false,
-            process_local_rejection: None,
+        let Ok(status) = outcome else {
+            return api.nilObj;
         };
-    }
-    let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
-    if collector_vt.is_null() {
-        return FactPreflight {
-            kept: 0,
-            recovered: 0,
-            recoveries_needing_code: 0,
-            rejected: 0,
-            facts_payload: Vec::new(),
-            heap_payload: None,
-            heap_ok: false,
-            recovered_slots: 0,
-            rejected_slots: 0,
-            writer_ok: false,
-            process_local_rejection: None,
-        };
-    }
-    let basis_object = unsafe { send0(api, store, b"basis\0") };
-    let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
-        unsafe { (api.smallIntValue)(basis_object) }.max(0) as u64
-    } else {
-        0
-    };
-    let collector = unsafe { (api.alloc)(collector_vt, 0) };
-    if collector.is_null() {
-        return FactPreflight {
-            kept: 0,
-            recovered: 0,
-            recoveries_needing_code: 0,
-            rejected: 0,
-            facts_payload: Vec::new(),
-            heap_payload: None,
-            heap_ok: false,
-            recovered_slots: 0,
-            rejected_slots: 0,
-            writer_ok: false,
-            process_local_rejection: None,
-        };
-    }
-    {
-        let mut collection = FACT_COLLECTION
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *collection = Some(FactCollection {
-            writer: FactsWriter::new(basis),
-            heap: HeapPreflight::new(),
-            kept: 0,
-            recovered: 0,
-            recoveries_needing_code: 0,
-            rejected: 0,
-        });
-    }
-    let arguments = [collector];
-    let _ = unsafe {
-        (api.send)(
-            store,
-            intern(api, b"imageFactsInto:\0"),
-            arguments.as_ptr(),
-            arguments.len(),
-        )
-    };
-    let collection = FACT_COLLECTION
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .take();
-    let Some(mut collection) = collection else {
-        return FactPreflight {
-            kept: 0,
-            recovered: 0,
-            recoveries_needing_code: 0,
-            rejected: 0,
-            facts_payload: Vec::new(),
-            heap_payload: None,
-            heap_ok: false,
-            recovered_slots: 0,
-            rejected_slots: 0,
-            writer_ok: false,
-            process_local_rejection: None,
-        };
-    };
-    let facts_payload = collection.writer.finish();
-    let heap_payload = unsafe { collection.heap.finish(api) };
-    let heap_ok = heap_payload.is_some();
-    let writer_ok = heap_payload
-        .as_deref()
-        .map(|heap| preflight_writer_accepts(&facts_payload, heap))
-        .unwrap_or(false);
-    FactPreflight {
-        kept: collection.kept,
-        recovered: collection.recovered,
-        recoveries_needing_code: collection.recoveries_needing_code,
-        rejected: collection.rejected,
-        facts_payload,
-        heap_payload,
-        heap_ok,
-        recovered_slots: collection.heap.recovered_slots,
-        rejected_slots: collection.heap.rejected_slots,
-        writer_ok,
-        process_local_rejection: collection.heap.process_local_rejection,
-    }
-}
-
-unsafe extern "C" fn system_save_image(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        reject_save("saveImage: expects one String path");
-        return api.nilObj;
-    }
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        reject_save("saveImage: received an invalid argument buffer");
-        return api.nilObj;
-    };
-    let path = arguments[0];
-if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
-    reject_save("saveImage: expects one String path");
-    return api.nilObj;
-}
-let preflight = unsafe { collect_store_facts(api) };
-if let Some(kind) = preflight.process_local_rejection {
-    reject_save(kind.detail());
-    record_fact_counts(
-        preflight.kept,
-        preflight.recovered,
-        preflight.rejected,
-        preflight.recovered_slots,
-        preflight.rejected_slots,
-    );
-    runtime()
-        .report
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .code_units = 0;
-    return unsafe { process_local_error(api, kind) };
-}
-// Mixed hosts keep publication fail-closed. An explicit Rust writer and
-    // publication selection may complete the codec-backed transaction below;
-    // without that pair this path only captures diagnostics and rejects.
-    let authority_digest = unsafe { current_generation_digest(api) };
-let captured_code = authority_digest
-    .as_ref()
-    .and_then(|digest| unsafe { capture_generation_code(api, digest) });
-    let authority_available = authority_digest.is_some();
-    let code_captured = captured_code.is_some();
-    let composed = match (
-        authority_digest.as_ref(),
-        captured_code.as_ref(),
-        preflight.heap_payload.as_deref(),
-    ) {
-        (Some(digest), Some(code), Some(heap))
-            if preflight.rejected == 0
-                && preflight.process_local_rejection.is_none()
-                && preflight.heap_ok
-                && preflight.writer_ok =>
+        if let Some(composition_identity) = features.composition_identity
+            && let Ok(mut identity) = IMAGE_COMPOSITION_IDENTITY.lock()
         {
-            compose_complete_image(
-                IMAGE_ARCH_TAG,
-                runtime_abi_hash(),
-                &preflight.facts_payload,
-                heap,
-                digest,
-                wyhash(0, code),
-                code,
-            )
-            .ok()
+            *identity = Some(composition_identity);
         }
-        _ => None,
-    };
-    let publication_requested = rust_image_publication_selected();
-    let canonical_publication = rust_image_canonical_selected() && !publication_requested;
-    let publication_authorized = if publication_requested {
-        rust_image_writer_authority_selected()
-    } else {
-        canonical_publication
-    };
-    let published = if publication_authorized {
-        composed.as_ref().is_some_and(|bytes| {
-            let path_bytes = unsafe { runtime_image_path_bytes(api, path) };
-            path_bytes.is_some_and(|path_bytes| {
-                publish_atomic(Path::new(OsStr::from_bytes(&path_bytes)), bytes).is_ok()
+        status
+    }
+
+    unsafe fn collect_store_facts(
+        api: &IdApi,
+        authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
+    ) -> FactPreflight {
+        let store = unsafe { (api.import)(c"Store".as_ptr()) };
+        if store.is_null() || store == api.nilObj {
+            return FactPreflight {
+                kept: 0,
+                recovered: 0,
+                recoveries_needing_code: 0,
+                rejected: 0,
+                facts_payload: Vec::new(),
+                heap_payload: Some(Vec::new()),
+                heap_ok: true,
+                recovered_slots: 0,
+                rejected_slots: 0,
+                writer_ok: false,
+                process_local_rejection: None,
+            };
+        }
+        let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
+        if collector_vt.is_null() {
+            return FactPreflight {
+                kept: 0,
+                recovered: 0,
+                recoveries_needing_code: 0,
+                rejected: 0,
+                facts_payload: Vec::new(),
+                heap_payload: None,
+                heap_ok: false,
+                recovered_slots: 0,
+                rejected_slots: 0,
+                writer_ok: false,
+                process_local_rejection: None,
+            };
+        }
+        let basis_object = unsafe { send0(api, store, b"basis\0") };
+        let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
+            unsafe { (api.smallIntValue)(basis_object) }.max(0) as u64
+        } else {
+            0
+        };
+        let collector = unsafe { (api.alloc)(collector_vt, 0) };
+        if collector.is_null() {
+            return FactPreflight {
+                kept: 0,
+                recovered: 0,
+                recoveries_needing_code: 0,
+                rejected: 0,
+                facts_payload: Vec::new(),
+                heap_payload: None,
+                heap_ok: false,
+                recovered_slots: 0,
+                rejected_slots: 0,
+                writer_ok: false,
+                process_local_rejection: None,
+            };
+        }
+        {
+            let mut collection = FACT_COLLECTION
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *collection = Some(FactCollection {
+                writer: FactsWriter::new(basis),
+                heap: HeapPreflight::new(authority),
+                kept: 0,
+                recovered: 0,
+                recoveries_needing_code: 0,
+                rejected: 0,
+            });
+        }
+        let arguments = [collector];
+        let _ = unsafe {
+            (api.send)(
+                store,
+                intern(api, b"imageFactsInto:\0"),
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        };
+        let collection = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        let Some(mut collection) = collection else {
+            return FactPreflight {
+                kept: 0,
+                recovered: 0,
+                recoveries_needing_code: 0,
+                rejected: 0,
+                facts_payload: Vec::new(),
+                heap_payload: None,
+                heap_ok: false,
+                recovered_slots: 0,
+                rejected_slots: 0,
+                writer_ok: false,
+                process_local_rejection: None,
+            };
+        };
+        let facts_payload = collection.writer.finish();
+        let heap_payload = unsafe { collection.heap.finish(api) };
+        let heap_ok = heap_payload.is_some();
+        let writer_ok = heap_payload
+            .as_deref()
+            .map(|heap| preflight_writer_accepts(&facts_payload, heap))
+            .unwrap_or(false);
+        FactPreflight {
+            kept: collection.kept,
+            recovered: collection.recovered,
+            recoveries_needing_code: collection.recoveries_needing_code,
+            rejected: collection.rejected,
+            facts_payload,
+            heap_payload,
+            heap_ok,
+            recovered_slots: collection.heap.recovered_slots,
+            rejected_slots: collection.heap.rejected_slots,
+            writer_ok,
+            process_local_rejection: collection.heap.process_local_rejection,
+        }
+    }
+
+    unsafe extern "C" fn system_save_image(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 1 {
+            reject_save("saveImage: expects one String path");
+            return api.nilObj;
+        }
+        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+            reject_save("saveImage: received an invalid argument buffer");
+            return api.nilObj;
+        };
+        let path = arguments[0];
+        if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
+            reject_save("saveImage: expects one String path");
+            return api.nilObj;
+        }
+        let authority_digest = unsafe { current_generation_digest(api) };
+        let preflight = unsafe { collect_store_facts(api, authority_digest) };
+        if let Some(kind) = preflight.process_local_rejection {
+            reject_save(kind.detail());
+            record_fact_counts(
+                preflight.kept,
+                preflight.recovered,
+                preflight.rejected,
+                preflight.recovered_slots,
+                preflight.rejected_slots,
+            );
+            runtime()
+                .report
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .code_units = 0;
+            return unsafe { process_local_error(api, kind) };
+        }
+        // Mixed hosts keep publication fail-closed. An explicit Rust writer and
+        // publication selection may complete the codec-backed transaction below;
+        // without that pair this path only captures diagnostics and rejects.
+        let captured_generation = authority_digest
+            .as_ref()
+            .and_then(|digest| unsafe { capture_generation_code(api, digest) });
+        let authority_available = authority_digest.is_some();
+        let code_captured = captured_generation.is_some();
+        let composed = match (
+            authority_digest.as_ref(),
+            captured_generation.as_ref(),
+            preflight.heap_payload.as_deref(),
+        ) {
+            (Some(digest), Some((code, manifest)), Some(heap))
+                if preflight.rejected == 0
+                    && preflight.process_local_rejection.is_none()
+                    && preflight.heap_ok
+                    && preflight.writer_ok =>
+            {
+                v5::compose_complete_image(
+                    IMAGE_ARCH_TAG,
+                    runtime_abi_hash(),
+                    &preflight.facts_payload,
+                    heap,
+                    digest,
+                    manifest,
+                    wyhash(0, code),
+                    code,
+                )
+                .ok()
+            }
+            _ => None,
+        };
+        let publication_requested = rust_image_publication_selected();
+        let canonical_publication = rust_image_canonical_selected() && !publication_requested;
+        let publication_authorized = if publication_requested {
+            rust_image_writer_authority_selected()
+        } else {
+            canonical_publication
+        };
+        let published = if publication_authorized {
+            composed.as_ref().is_some_and(|bytes| {
+                let path_bytes = unsafe { runtime_image_path_bytes(api, path) };
+                path_bytes.is_some_and(|path_bytes| {
+                    publish_atomic(Path::new(OsStr::from_bytes(&path_bytes)), bytes).is_ok()
+                })
             })
-        })
-    } else {
-        false
-    };
-    if published {
+        } else {
+            false
+        };
+        if published {
+            record_fact_counts(
+                preflight.kept,
+                preflight.recovered,
+                preflight.rejected,
+                preflight.recovered_slots,
+                preflight.rejected_slots,
+            );
+            let mut report = runtime()
+                .report
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            report.status = ReportStatus::Saved;
+            report.detail_len = 0;
+            report.code_units = u32::from(code_captured);
+            return self_object;
+        }
+        reject_save(if let Some(kind) = preflight.process_local_rejection {
+            kind.detail()
+        } else if !preflight.heap_ok {
+            "Rust Image heap preflight rejected unsupported layout"
+        } else if preflight.rejected != 0 {
+            "Rust Image fact preflight rejected unsupported values"
+        } else if !preflight.writer_ok {
+            "Rust Image writer rejected preflight payload"
+        } else if publication_requested && !publication_authorized {
+            "Rust Image publication requires explicit Rust writer authority"
+        } else if !authority_available {
+            "Rust Image generation authority is not available"
+        } else if preflight.recoveries_needing_code != 0 && !code_captured {
+            "Rust Image deferred facts require a compiled image unit"
+        } else if !code_captured {
+            "Rust Image code capture failed"
+        } else if composed.is_none() {
+            "Rust Image code record composition failed"
+        } else if publication_requested {
+            "Rust Image atomic publication failed"
+        } else {
+            "Rust Image code mapping/rebuild orchestration is not installed"
+        });
         record_fact_counts(
             preflight.kept,
             preflight.recovered,
@@ -2177,460 +2556,441 @@ let captured_code = authority_digest
             preflight.recovered_slots,
             preflight.rejected_slots,
         );
-        let mut report = runtime()
-            .report
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        report.status = ReportStatus::Saved;
-        report.detail_len = 0;
-        report.code_units = u32::from(code_captured);
-        return self_object;
+        {
+            let mut report = runtime()
+                .report
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            report.code_units = u32::from(code_captured);
+        }
+        if let Some(kind) = preflight.process_local_rejection {
+            unsafe { process_local_error(api, kind) }
+        } else {
+            api.nilObj
+        }
     }
-    reject_save(if let Some(kind) = preflight.process_local_rejection {
-        kind.detail()
-    } else if !preflight.heap_ok {
-        "Rust Image heap preflight rejected unsupported layout"
-    } else if preflight.rejected != 0 {
-        "Rust Image fact preflight rejected unsupported values"
-    } else if !preflight.writer_ok {
-        "Rust Image writer rejected preflight payload"
-    } else if publication_requested && !publication_authorized {
-        "Rust Image publication requires explicit Rust writer authority"
-    } else if !authority_available {
-        "Rust Image generation authority is not available"
-    } else if preflight.recoveries_needing_code != 0 && !code_captured {
-        "Rust Image deferred facts require a compiled image unit"
-    } else if !code_captured {
-        "Rust Image code capture failed"
-    } else if composed.is_none() {
-        "Rust Image code record composition failed"
-    } else if publication_requested {
-        "Rust Image atomic publication failed"
-    } else {
-        "Rust Image code mapping/rebuild orchestration is not installed"
-    });
-    record_fact_counts(
-        preflight.kept,
-        preflight.recovered,
-        preflight.rejected,
-        preflight.recovered_slots,
-        preflight.rejected_slots,
-    );
-    {
-        let mut report = runtime()
-            .report
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        report.code_units = u32::from(code_captured);
+
+    unsafe extern "C" fn system_load_image(
+        _self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+            return api.nilObj;
+        };
+        if count != 1 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
+            return api.nilObj;
+        }
+        unsafe { load_with_rust_codegen(api, arguments[0], false) }
     }
-    if let Some(kind) = preflight.process_local_rejection {
-        unsafe { process_local_error(api, kind) }
-    } else {
+
+    unsafe extern "C" fn system_load_image_rebuild(
+        _self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+            return api.nilObj;
+        };
+        if count != 2 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
+            return api.nilObj;
+        }
+        unsafe { load_with_rust_codegen(api, arguments[0], arguments[1] == api.trueObj) }
+    }
+
+    unsafe extern "C" fn system_image_save_report(
+        _self_object: Oop,
+        _args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        if count != 0 {
+            return unsafe { api_ref() }.nilObj;
+        }
+        runtime().report_obj as Oop
+    }
+
+    unsafe extern "C" fn system_image_composition_identity(
+        _self_object: Oop,
+        _args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 0 {
+            return api.nilObj;
+        }
+        let identity = IMAGE_COMPOSITION_IDENTITY
+            .lock()
+            .ok()
+            .and_then(|identity| *identity);
+        let Some(identity) = identity else {
+            return api.nilObj;
+        };
+        unsafe { (api.mkString)(identity.as_ptr(), identity.len()) }
+    }
+
+    unsafe extern "C" fn system_bake_exe(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
+            return api.nilObj;
+        }
         api.nilObj
     }
-}
 
-unsafe extern "C" fn system_load_image(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if count != 1 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
-        return api.nilObj;
+    unsafe extern "C" fn report_status(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 0 {
+            return api.nilObj;
+        }
+        let status = runtime()
+            .report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .status;
+        unsafe {
+            intern(
+                api,
+                match status {
+                    ReportStatus::Never => b"never\0",
+                    ReportStatus::Saved => b"saved\0",
+                    ReportStatus::Rejected => b"rejected\0",
+                    ReportStatus::IoFailed => b"ioFailed\0",
+                },
+            )
+        }
     }
-    unsafe { load_with_rust_codegen(api, arguments[0], false) }
-}
 
-unsafe extern "C" fn system_load_image_rebuild(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if count != 2 || !unsafe { preflight_runtime_image(api, arguments[0]) } {
-        return api.nilObj;
-    }
-    unsafe { load_with_rust_codegen(api, arguments[0], arguments[1] == api.trueObj) }
-}
-
-unsafe extern "C" fn system_image_save_report(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    if count != 0 {
-        return unsafe { api_ref() }.nilObj;
-    }
-    runtime().report_obj as Oop
-}
-
-unsafe extern "C" fn system_image_composition_identity(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    // This identity is intentionally distinct from the eventual composition
-    // digest; it proves the Rust shell was selected without claiming canonical
-    // default image authority or a stable composition digest.
-    unsafe { (api.mkString)(RUST_IMAGE_IDENTITY.as_ptr(), RUST_IMAGE_IDENTITY.len() - 1) }
-}
-
-unsafe extern "C" fn system_bake_exe(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { borrowed_oop_args(args, count) }.is_none() {
-        return api.nilObj;
-    }
-    api.nilObj
-}
-
-unsafe extern "C" fn report_status(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let status = runtime()
-        .report
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .status;
-    unsafe {
-        intern(
-            api,
-            match status {
-                ReportStatus::Never => b"never\0",
-                ReportStatus::Saved => b"saved\0",
-                ReportStatus::Rejected => b"rejected\0",
-                ReportStatus::IoFailed => b"ioFailed\0",
-            },
-        )
-    }
-}
-
-fn report_value(field: fn(&SaveReport) -> u32) -> u32 {
-    let report = runtime()
-        .report
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    field(&report)
-}
-
-unsafe fn report_count_value(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-    field: fn(&SaveReport) -> u32,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { (api.mkSmallInt)(i64::from(report_value(field))) }
-}
-
-unsafe extern "C" fn report_saved_facts(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { report_count_value(self_object, args, count, |report| report.saved_facts) }
-}
-
-unsafe extern "C" fn report_recovered_facts(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { report_count_value(self_object, args, count, |report| report.recovered_facts) }
-}
-
-unsafe extern "C" fn report_rejected_facts(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { report_count_value(self_object, args, count, |report| report.rejected_facts) }
-}
-
-unsafe extern "C" fn report_recovered_slots(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { report_count_value(self_object, args, count, |report| report.recovered_slots) }
-}
-
-unsafe extern "C" fn report_rejected_slots(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { report_count_value(self_object, args, count, |report| report.rejected_slots) }
-}
-
-unsafe extern "C" fn report_code_units(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { report_count_value(self_object, args, count, |report| report.code_units) }
-}
-
-unsafe extern "C" fn report_detail(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let (detail, detail_len) = {
+    fn report_value(field: fn(&SaveReport) -> u32) -> u32 {
         let report = runtime()
             .report
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        (report.detail, report.detail_len)
-    };
-    unsafe { (api.mkString)(detail.as_ptr(), detail_len) }
-}
+        field(&report)
+    }
 
-unsafe extern "C" fn collector_collect(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 5 {
-        if let Some(collection) = FACT_COLLECTION
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_mut()
-        {
-            collection.rejected = collection.rejected.saturating_add(1);
+    unsafe fn report_count_value(
+        _self_object: Oop,
+        _args: *const Oop,
+        count: usize,
+        field: fn(&SaveReport) -> u32,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 0 {
+            return api.nilObj;
         }
-        return api.nilObj;
+        unsafe { (api.mkSmallInt)(i64::from(report_value(field))) }
     }
-    let Some(arguments) = (unsafe { borrowed_oop_args(_args, count) }) else {
-        if let Some(collection) = FACT_COLLECTION
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_mut()
-        {
-            collection.rejected = collection.rejected.saturating_add(1);
-        }
-        return api.nilObj;
-    };
-    let tx_object = arguments[3];
-    let op_object = arguments[4];
-    if unsafe { (api.isSmallInt)(tx_object) } == 0
-        || unsafe { (api.isSmallInt)(op_object) } == 0
-    {
-        if let Some(collection) = FACT_COLLECTION
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_mut()
-        {
-            collection.rejected = collection.rejected.saturating_add(1);
-        }
-        return api.nilObj;
+
+    unsafe extern "C" fn report_saved_facts(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        unsafe { report_count_value(self_object, args, count, |report| report.saved_facts) }
     }
-    let tx = unsafe { (api.smallIntValue)(tx_object) };
-    let op = unsafe { (api.smallIntValue)(op_object) };
-    if tx < 0 || !(0..=1).contains(&op) {
-        if let Some(collection) = FACT_COLLECTION
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .as_mut()
-        {
-            collection.rejected = collection.rejected.saturating_add(1);
-        }
-        return api.nilObj;
+
+    unsafe extern "C" fn report_recovered_facts(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        unsafe { report_count_value(self_object, args, count, |report| report.recovered_facts) }
     }
-    let mut collection = FACT_COLLECTION
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let Some(collection) = collection.as_mut() else {
-        return api.nilObj;
-    };
-    let mut fields = FieldEncoder::new();
-    let encoded = unsafe {
-        encode_runtime_oop(api, &mut fields, arguments[0], &mut collection.heap)
-            && encode_runtime_oop(api, &mut fields, arguments[1], &mut collection.heap)
-            && encode_runtime_oop(api, &mut fields, arguments[2], &mut collection.heap)
-    };
-    let fact_written = encoded
-        && collection
-            .writer
-            .fact_encoded(op as u8, tx as u64, fields.as_bytes())
-            .is_ok();
-    if !fact_written {
-        if collection.heap.process_local_rejection.is_some() || encoded {
-            collection.rejected = collection.rejected.saturating_add(1);
-        } else {
-            let store = unsafe { (api.import)(c"Store".as_ptr()) };
-            match if store.is_null() || store == api.nilObj {
-                DeferredFactClass::Reject
+
+    unsafe extern "C" fn report_rejected_facts(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        unsafe { report_count_value(self_object, args, count, |report| report.rejected_facts) }
+    }
+
+    unsafe extern "C" fn report_recovered_slots(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        unsafe { report_count_value(self_object, args, count, |report| report.recovered_slots) }
+    }
+
+    unsafe extern "C" fn report_rejected_slots(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        unsafe { report_count_value(self_object, args, count, |report| report.rejected_slots) }
+    }
+
+    unsafe extern "C" fn report_code_units(
+        self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        unsafe { report_count_value(self_object, args, count, |report| report.code_units) }
+    }
+
+    unsafe extern "C" fn report_detail(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 0 {
+            return api.nilObj;
+        }
+        let (detail, detail_len) = {
+            let report = runtime()
+                .report
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (report.detail, report.detail_len)
+        };
+        unsafe { (api.mkString)(detail.as_ptr(), detail_len) }
+    }
+
+    unsafe extern "C" fn collector_collect(
+        _self_object: Oop,
+        _args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        if count != 5 {
+            if let Some(collection) = FACT_COLLECTION
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_mut()
+            {
+                collection.rejected = collection.rejected.saturating_add(1);
+            }
+            return api.nilObj;
+        }
+        let Some(arguments) = (unsafe { borrowed_oop_args(_args, count) }) else {
+            if let Some(collection) = FACT_COLLECTION
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_mut()
+            {
+                collection.rejected = collection.rejected.saturating_add(1);
+            }
+            return api.nilObj;
+        };
+        let tx_object = arguments[3];
+        let op_object = arguments[4];
+        if unsafe { (api.isSmallInt)(tx_object) } == 0
+            || unsafe { (api.isSmallInt)(op_object) } == 0
+        {
+            if let Some(collection) = FACT_COLLECTION
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_mut()
+            {
+                collection.rejected = collection.rejected.saturating_add(1);
+            }
+            return api.nilObj;
+        }
+        let tx = unsafe { (api.smallIntValue)(tx_object) };
+        let op = unsafe { (api.smallIntValue)(op_object) };
+        if tx < 0 || !(0..=1).contains(&op) {
+            if let Some(collection) = FACT_COLLECTION
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_mut()
+            {
+                collection.rejected = collection.rejected.saturating_add(1);
+            }
+            return api.nilObj;
+        }
+        let mut collection = FACT_COLLECTION
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(collection) = collection.as_mut() else {
+            return api.nilObj;
+        };
+        // A selected projected global is reconstructed by the generation's
+        // mapped or freshly rebuilt image unit. Serializing the closure object
+        // as a Store value would require its artifact-local vtable before code
+        // recovery has run and would duplicate the authoritative initializer.
+        let value_vtable = unsafe { (api.vtableOf)(arguments[2]) };
+        let projected_global = unsafe { symbol_bytes(api, arguments[0]) }.as_deref()
+            == Some(b"__globals__".as_slice())
+            && unsafe {
+                collection
+                    .heap
+                    .block_vtable_image_reference(api, value_vtable)
+                    .is_some()
+            };
+        if projected_global {
+            collection.recovered = collection.recovered.saturating_add(1);
+            return api.nilObj;
+        }
+        let mut fields = FieldEncoder::new();
+        let encoded = unsafe {
+            encode_runtime_oop(api, &mut fields, arguments[0], &mut collection.heap)
+                && encode_runtime_oop(api, &mut fields, arguments[1], &mut collection.heap)
+                && encode_runtime_oop(api, &mut fields, arguments[2], &mut collection.heap)
+        };
+        let fact_written = encoded
+            && collection
+                .writer
+                .fact_encoded(op as u8, tx as u64, fields.as_bytes())
+                .is_ok();
+        if !fact_written {
+            if collection.heap.process_local_rejection.is_some() || encoded {
+                collection.rejected = collection.rejected.saturating_add(1);
             } else {
-                unsafe { deferred_fact_class(api, store, arguments[0], arguments[1]) }
-            } {
-                DeferredFactClass::Source => {
-                    collection.recovered = collection.recovered.saturating_add(1);
-                }
-                DeferredFactClass::Code => {
-                    collection.recovered = collection.recovered.saturating_add(1);
-                    collection.recoveries_needing_code =
-                        collection.recoveries_needing_code.saturating_add(1);
-                }
-                DeferredFactClass::Reject => {
-                    collection.rejected = collection.rejected.saturating_add(1);
+                let store = unsafe { (api.import)(c"Store".as_ptr()) };
+                match if store.is_null() || store == api.nilObj {
+                    DeferredFactClass::Reject
+                } else {
+                    unsafe { deferred_fact_class(api, store, arguments[0], arguments[1]) }
+                } {
+                    DeferredFactClass::Source => {
+                        collection.recovered = collection.recovered.saturating_add(1);
+                    }
+                    DeferredFactClass::Code => {
+                        collection.recovered = collection.recovered.saturating_add(1);
+                        collection.recoveries_needing_code =
+                            collection.recoveries_needing_code.saturating_add(1);
+                    }
+                    DeferredFactClass::Reject => {
+                        collection.rejected = collection.rejected.saturating_add(1);
+                    }
                 }
             }
-        }
-    } else {
-        collection.kept = collection.kept.saturating_add(1);
-    }
-    api.nilObj
-}
-
-unsafe fn bring_up(api: *mut IdApi) {
-    if api.is_null() {
-        abort("module_init received a null IdApi");
-    }
-    let api_ref = unsafe { &*api };
-    let report_vt =
-        if unsafe { (api_ref.isExported)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
-            unsafe { (api_ref.import)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
         } else {
-            let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
-            unsafe { (api_ref.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
-            vt
+            collection.kept = collection.kept.saturating_add(1);
+        }
+        api.nilObj
+    }
+
+    unsafe fn bring_up(api: *mut IdApi) {
+        if api.is_null() {
+            abort("module_init received a null IdApi");
+        }
+        let api_ref = unsafe { &*api };
+        let report_vt =
+            if unsafe { (api_ref.isExported)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
+                unsafe { (api_ref.import)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
+            } else {
+                let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+                unsafe { (api_ref.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+                vt
+            };
+        let report_obj = if unsafe { (api_ref.isExported)(IMAGE_REPORT_NAME.as_ptr().cast()) } != 0
+        {
+            unsafe { (api_ref.import)(IMAGE_REPORT_NAME.as_ptr().cast()) }
+        } else {
+            let object = unsafe { (api_ref.alloc)(report_vt, 0) };
+            unsafe {
+                (api_ref.setOwner)(report_vt, object);
+                let _ = (api_ref.exportObj)(IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
+                let _ = (api_ref.exportObj)(IMAGE_REPORT_NAME.as_ptr().cast(), object);
+            }
+            object
         };
-    let report_obj = if unsafe { (api_ref.isExported)(IMAGE_REPORT_NAME.as_ptr().cast()) } != 0
-    {
-        unsafe { (api_ref.import)(IMAGE_REPORT_NAME.as_ptr().cast()) }
-    } else {
-        let object = unsafe { (api_ref.alloc)(report_vt, 0) };
+        let collector_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
         unsafe {
-            (api_ref.setOwner)(report_vt, object);
-            let _ = (api_ref.exportObj)(IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
-            let _ = (api_ref.exportObj)(IMAGE_REPORT_NAME.as_ptr().cast(), object);
+            (api_ref.method)(report_vt, intern(api_ref, b"status\0"), report_status);
+            (api_ref.method)(
+                report_vt,
+                intern(api_ref, b"savedFacts\0"),
+                report_saved_facts,
+            );
+            (api_ref.method)(
+                report_vt,
+                intern(api_ref, b"recoveredFacts\0"),
+                report_recovered_facts,
+            );
+            (api_ref.method)(
+                report_vt,
+                intern(api_ref, b"rejectedFacts\0"),
+                report_rejected_facts,
+            );
+            (api_ref.method)(
+                report_vt,
+                intern(api_ref, b"recoveredSlots\0"),
+                report_recovered_slots,
+            );
+            (api_ref.method)(
+                report_vt,
+                intern(api_ref, b"rejectedSlots\0"),
+                report_rejected_slots,
+            );
+            (api_ref.method)(
+                report_vt,
+                intern(api_ref, b"codeUnits\0"),
+                report_code_units,
+            );
+            (api_ref.method)(report_vt, intern(api_ref, b"detail\0"), report_detail);
+            (api_ref.method)(
+                collector_vt,
+                intern(api_ref, b"e:a:v:tx:op:\0"),
+                collector_collect,
+            );
+            let _ = (api_ref.exportObj)(COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
+            let system_vt = (api_ref.import)(c"SystemVt".as_ptr());
+            if !system_vt.is_null() {
+                (api_ref.method)(
+                    system_vt,
+                    intern(api_ref, b"saveImage:\0"),
+                    system_save_image,
+                );
+                (api_ref.method)(
+                    system_vt,
+                    intern(api_ref, b"imageSaveReport\0"),
+                    system_image_save_report,
+                );
+                (api_ref.method)(
+                    system_vt,
+                    intern(api_ref, b"loadImage:\0"),
+                    system_load_image,
+                );
+                (api_ref.method)(
+                    system_vt,
+                    intern(api_ref, b"loadImage:rebuild:\0"),
+                    system_load_image_rebuild,
+                );
+                (api_ref.method)(
+                    system_vt,
+                    intern(api_ref, b"imageCompositionIdentity\0"),
+                    system_image_composition_identity,
+                );
+                (api_ref.method)(system_vt, intern(api_ref, b"bakeExe:\0"), system_bake_exe);
+            }
         }
-        object
-    };
-    let collector_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
-    unsafe {
-        (api_ref.method)(report_vt, intern(api_ref, b"status\0"), report_status);
-        (api_ref.method)(
-            report_vt,
-            intern(api_ref, b"savedFacts\0"),
-            report_saved_facts,
-        );
-        (api_ref.method)(
-            report_vt,
-            intern(api_ref, b"recoveredFacts\0"),
-            report_recovered_facts,
-        );
-        (api_ref.method)(
-            report_vt,
-            intern(api_ref, b"rejectedFacts\0"),
-            report_rejected_facts,
-        );
-        (api_ref.method)(
-            report_vt,
-            intern(api_ref, b"recoveredSlots\0"),
-            report_recovered_slots,
-        );
-        (api_ref.method)(
-            report_vt,
-            intern(api_ref, b"rejectedSlots\0"),
-            report_rejected_slots,
-        );
-        (api_ref.method)(
-            report_vt,
-            intern(api_ref, b"codeUnits\0"),
-            report_code_units,
-        );
-        (api_ref.method)(report_vt, intern(api_ref, b"detail\0"), report_detail);
-        (api_ref.method)(
-            collector_vt,
-            intern(api_ref, b"e:a:v:tx:op:\0"),
-            collector_collect,
-        );
-        let _ = (api_ref.exportObj)(COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
-        let system_vt = (api_ref.import)(c"SystemVt".as_ptr());
-        if !system_vt.is_null() {
-            (api_ref.method)(
-                system_vt,
-                intern(api_ref, b"saveImage:\0"),
-                system_save_image,
-            );
-            (api_ref.method)(
-                system_vt,
-                intern(api_ref, b"imageSaveReport\0"),
-                system_image_save_report,
-            );
-            (api_ref.method)(
-                system_vt,
-                intern(api_ref, b"loadImage:\0"),
-                system_load_image,
-            );
-            (api_ref.method)(
-                system_vt,
-                intern(api_ref, b"loadImage:rebuild:\0"),
-                system_load_image_rebuild,
-            );
-            (api_ref.method)(
-                system_vt,
-                intern(api_ref, b"imageCompositionIdentity\0"),
-                system_image_composition_identity,
-            );
-            (api_ref.method)(system_vt, intern(api_ref, b"bakeExe:\0"), system_bake_exe);
+        let _ = RUNTIME.set(Runtime {
+            api: api as usize,
+            report_obj: report_obj as usize,
+            report: &SAVE_REPORT,
+        });
+    }
+
+    fn reject_save(detail: &str) {
+        let mut report = runtime()
+            .report
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *report = SaveReport {
+            status: ReportStatus::Rejected,
+            detail_len: detail.len().min(256),
+            ..SaveReport::default()
+        };
+        let detail_len = report.detail_len;
+        report.detail[..detail_len].copy_from_slice(&detail.as_bytes()[..detail_len]);
+    }
+
+    /// Identifies the first dynamic Rust Image orchestration shell.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn birnam_image_rust_identity() -> *const c_char {
+        RUST_IMAGE_IDENTITY.as_ptr().cast()
+    }
+
+    /// Initialize the Rust Image shell against the process floor.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
+        let _ = state;
+        if RUNTIME.get().is_none() {
+            unsafe { bring_up(api) };
         }
+        ptr::null_mut()
     }
-    let _ = RUNTIME.set(Runtime {
-        api: api as usize,
-        report_obj: report_obj as usize,
-        report: &SAVE_REPORT,
-    });
-}
-
-fn reject_save(detail: &str) {
-    let mut report = runtime()
-        .report
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    *report = SaveReport {
-        status: ReportStatus::Rejected,
-        detail_len: detail.len().min(256),
-        ..SaveReport::default()
-    };
-    let detail_len = report.detail_len;
-    report.detail[..detail_len].copy_from_slice(&detail.as_bytes()[..detail_len]);
-}
-
-/// Identifies the first dynamic Rust Image orchestration shell.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_image_rust_identity() -> *const c_char {
-    RUST_IMAGE_IDENTITY.as_ptr().cast()
-}
-
-/// Initialize the Rust Image shell against the process floor.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
-    let _ = state;
-    if RUNTIME.get().is_none() {
-        unsafe { bring_up(api) };
-    }
-    ptr::null_mut()
-}
-
 }
 
 #[cfg(test)]
@@ -2654,6 +3014,12 @@ mod tests {
         bytes.extend_from_slice(&(payload.len() as u64).to_le_bytes());
         bytes.extend_from_slice(payload);
         bytes
+    }
+
+    #[test]
+    fn runtime_abi_v3_matches_the_frozen_registration_tuple() {
+        assert_eq!(hash_registration_abi_tuple_v1(0).1, 1_539);
+        assert_eq!(runtime_abi_hash(), 0x6c3b_67f0_ef16_14b3);
     }
 
     fn supported_preflight_fixture() -> (Vec<u8>, Vec<u8>) {

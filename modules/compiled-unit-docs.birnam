@@ -8,6 +8,12 @@
 
 [Doc for: #state in: #compiledUnit says:
   "The unit's reconciled lifecycle state: #candidate, #active, #superseded, #drifted, #rolledBack, or #historical."];
+[Doc for: #kind in: #compiledUnit says:
+  "The executable origin kind: #candidateArtifact for a staged native unit or #composed for a rollback-free image-recovered component."];
+[Doc for: #composedInto in: #compiledUnit says:
+  "The current composed DispatchGeneration that retired this saved-origin unit as #historical, or nil before image recovery."];
+[Doc for: #compositionIdentity in: #compiledUnit says:
+  "The domain-separated checksum composition identity assigned during mapped or rebuilt image recovery."];
 [Doc for: #unitName in: #compiledUnit says:
   "The stable Symbol naming this candidate generation."];
 [Doc for: #generation in: #compiledUnit says:

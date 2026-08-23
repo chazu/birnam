@@ -4,7 +4,7 @@
 
 let s := [TestSuite named: "CompiledUnit" module: #compiledUnit];
 
-// The script harness has no host prompt boundary, so install the two fixture
+// The script harness has no host prompt boundary, so install the fixture
 // modules into the boot source stage and seal G0 explicitly before exercising
 // successor generations.
 let cuPolicyBaseline := "[Module named: #cuPolicy requires: #[]]; [Reflect defineMethod: #cuPolicyReplace on: Integer as: [:self | 11]]; [Reflect defineMethod: #cuPolicyRemove on: Integer as: [:self | 22]]";
@@ -12,12 +12,20 @@ let cuChainBaseline := "[Module named: #cuChain requires: #[]]; [Reflect defineM
 let cuGcBaseline := "[Module named: #cuGc requires: #[]]; [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 9]]";
 let cuDiscardMethodlessBaseline := "[Module named: #cuDiscardMethodless requires: #[]]; [Reflect defineMethod: #cuDiscardMethodless on: Integer as: [:self | 6]]";
 let cuDiscardPinnedBaseline := "[Module named: #cuDiscardPinned requires: #[]]; [Reflect defineMethod: #cuDiscardPinned on: Integer as: [:self | 5]]";
+let cuUnmappedBaseline := "[Module named: #cuUnmapped requires: #[]]; [Reflect defineMethod: #cuUnmapped on: Integer as: [:self | 4]]";
+let cuDefinitelyMissingBaseline := "[Module named: #cuDefinitelyMissing requires: #[]]";
+let cuMissingBaseline := "[Module named: #cuMissing requires: #[#cuDefinitelyMissing]]; [Reflect defineMethod: #cuDependencyGuard on: Integer as: [:self | 31]]";
+let stacklessImageBaseline := "[Module named: #stacklessImage requires: #[]]; [Reflect defineMethod: #stacklessImageProbe on: Integer as: [:self | [self + 1]]]";
 let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy requires: #[]]; [Reflect defineMethod: #liveReplace on: Integer as: [:self | 10]]; [Reflect defineMethod: #liveRemove on: Integer as: [:self | 20]]";
 [Codegen recordModuleSource: cuPolicyBaseline named: #cuPolicy];
 [Codegen recordModuleSource: cuChainBaseline named: #cuChain];
 [Codegen recordModuleSource: cuGcBaseline named: #cuGc];
 [Codegen recordModuleSource: cuDiscardMethodlessBaseline named: #cuDiscardMethodless];
 [Codegen recordModuleSource: cuDiscardPinnedBaseline named: #cuDiscardPinned];
+[Codegen recordModuleSource: cuUnmappedBaseline named: #cuUnmapped];
+[Codegen recordModuleSource: cuDefinitelyMissingBaseline named: #cuDefinitelyMissing];
+[Codegen recordModuleSource: cuMissingBaseline named: #cuMissing];
+[Codegen recordModuleSource: stacklessImageBaseline named: #stacklessImage];
 [Codegen recordModuleSource: livePolicyBaseline named: #livePolicy];
 [DispatchGeneration initializeCurrent];
 
@@ -35,7 +43,9 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
   [unit map];
   [t expect: [3 cuPolicyReplace] equals: 11 describes: "mapping remains inert"];
   [t expect: [[System readFile: path] isError] equals: false describes: "mapping preserves caller-owned artifacts"];
-  [[unit activate] fulfill];
+  let activated := [[unit activate] fulfill];
+  [t expect: activated equals: unit describes: "activation answers its unit"];
+  [t expect: [Codegen lastError] equals: nil describes: "activation leaves no native failure"];
   [t expect: [unit state] equals: #active describes: "activation publishes state"];
   [t expect: [CompiledUnit activeFor: #cuPolicy] equals: unit describes: "activation publishes the active generation"];
   let activatedEvent := [db currentValue: unit attr: #activationEvent];
@@ -56,8 +66,13 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
 [s test: "missing dependencies keep mapping and dispatch inert" do: [:t |
   [Reflect defineMethod: #cuDependencyGuard on: Integer as: [:self | 31]];
   let source := "[Module named: #cuMissing requires: #[#cuDefinitelyMissing]]; [Reflect defineMethod: #cuDependencyGuard on: Integer as: [:self | 310]]";
-  [CompiledUnit compile: source named: #cuMissing output: "/tmp/birnam-compiled-unit-missing.dylib"];
+  let compiled := [CompiledUnit compile: source named: #cuMissing output: "/tmp/birnam-compiled-unit-missing.dylib"];
+  [t expect: [compiled isError] equals: false describes: "authored but unloaded dependency permits artifact compilation"];
+  [t expect: [compiled isNil] equals: false describes: "dependency-bearing compilation does not mask a native failure"];
+  [t expect: [Codegen lastError] equals: nil describes: "dependency-bearing compilation leaves no native failure"];
   let unit := [CompiledUnit open: "/tmp/birnam-compiled-unit-missing.dylib"];
+  [t expect: [[unit requires] size] equals: 1 describes: "inspection retains the authored dependency vector"];
+  [t expect: [[unit requires] at: 0] equals: #cuDefinitelyMissing describes: "inspection retains the authored dependency identity"];
   [t expect: [[unit missingDependencies] size] equals: 1 describes: "inspection reports the unresolved dependency"];
   let mapped := [unit map];
   [t expect: [mapped isError] equals: true describes: "mapping rejects unresolved dependencies"];
@@ -65,7 +80,23 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
   [t expect: [3 cuDependencyGuard] equals: 31 describes: "dependency rejection leaves dispatch unchanged"];
   [t expect: [unit state] equals: #candidate describes: "dependency rejection leaves lifecycle unchanged"]]];
 
-[s test: "prepared generation plans remain rooted across collection" do: [:t |
+[s test: "unmapped preparation failures remain explicit Errors" do: [:t |
+  [Reflect defineMethod: #cuUnmapped on: Integer as: [:self | 4]];
+  let path := "/tmp/birnam-compiled-unit-unmapped.dylib";
+  let source := "[Module named: #cuUnmapped requires: #[]]; [Reflect defineMethod: #cuUnmapped on: Integer as: [:self | 44]]";
+  [CompiledUnit compile: source named: #cuUnmapped output: path];
+  let unit := [CompiledUnit open: path];
+  let validated := [unit validate];
+  [t expect: [validated isError] equals: true describes: "validation does not mask native nil preparation"];
+  [t expect: [validated kind] equals: #candidatePreparationFailed describes: "validation reports kinded preparation failure"];
+  let activated := [[unit activate] fulfill];
+  [t expect: [activated isError] equals: true describes: "activation does not mask native nil preparation"];
+  [t expect: [activated kind] equals: #candidatePreparationFailed describes: "activation reports kinded preparation failure"];
+  [t expect: [unit state] equals: #candidate describes: "failed preparation leaves lifecycle unchanged"];
+  [t expect: [3 cuUnmapped] equals: 4 describes: "failed preparation leaves dispatch unchanged"];
+  [unit discard]]];
+
+[s test: "collection-induced Store drift safely stales a prepared plan" do: [:t |
   [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 9]];
   let source := "[Module named: #cuGc requires: #[]]; [Reflect defineMethod: #cuGcRootProbe on: Integer as: [:self | 99]]";
   let path := "/tmp/birnam-compiled-unit-gc.dylib";
@@ -84,8 +115,10 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
   [t expect: [token isError] equals: false describes: "activation preparation succeeds"];
   [System gc];
   let committed := [Codegen commitPrepared: token];
-  [t expect: [committed isError] equals: false describes: "generation survives collection"];
-  [t expect: [3 cuGcRootProbe] equals: 99 describes: "rooted successor publishes dispatch"]]];
+  [t expect: [committed isNil] equals: true describes: "collection-induced Store drift rejects the prepared token"];
+  [t expect: [Codegen lastError] equals: "RustCodegen publication commit is stale" describes: "stale rejection preserves its native reason"];
+  [t expect: [unit state] equals: #candidate describes: "stale rejection leaves lifecycle unchanged"];
+  [t expect: [3 cuGcRootProbe] equals: 9 describes: "stale rejection leaves dispatch unchanged"]]];
 
 [s test: "logical discard reports disposed methodless mappings" do: [:t |
   [Reflect defineMethod: #cuDiscardMethodless on: Integer as: [:self | 6]];
@@ -185,4 +218,31 @@ let livePolicyBaseline := "// exact baseline comment\n[Module named: #livePolicy
   [t expect: [rejected isError] equals: true describes: "rollback rejects drift in an inherited untouched binding"];
   [t expect: [third state] equals: #drifted describes: "inherited drift marks the active successor"];
   [t expect: [3 cuInherited] equals: 700 describes: "rejected rollback does not clobber the ordinary edit"];
-  [t expect: [3 cuOverlay] equals: 80 describes: "rejected rollback performs no partial inverse"]]]
+  [t expect: [3 cuOverlay] equals: 80 describes: "rejected rollback performs no partial inverse"];
+  [Reflect defineMethod: #cuInherited on: Integer as: [:self | 70]];
+  [[third rollback] fulfill]]];
+
+[s test: "nonempty generation selection is reproduced into image code" do: [:t |
+  let source := "[Module named: #stacklessImage requires: #[]]; [Reflect defineMethod: #stacklessImageProbe on: Integer as: [:self | [self + 2]]]";
+  let revision := [Codegen sourceRevisionOf: source];
+  let digest := [revision at: 6];
+  let row := #[#implementationDisposition digest #methodOperation 0 #[] #namedAdapter #resumableRequired];
+  let selection := #[row];
+  let path := "/tmp/birnam-stackless-image-candidate.dylib";
+  let compiled := [CompiledUnit compile: source named: #stacklessImage output: path selection: selection];
+  [t expect: [compiled isError] equals: false describes: "selected candidate compiles"];
+  [t expect: [compiled isNil] equals: false describes: "selected compilation returns its path"];
+  [t expect: [Codegen lastError] equals: nil describes: "selected compilation leaves no native failure"];
+  let unit := [CompiledUnit open: path];
+  [t expect: [unit isError] equals: false describes: "selected candidate opens"];
+  let mapped := [unit map];
+  [t expect: [mapped isError] equals: false describes: "selected candidate maps"];
+  [t expect: [Codegen lastError] equals: nil describes: "selected mapping leaves no native failure"];
+  let activated := [[unit activate] fulfill];
+  [t expect: [activated isError] equals: false describes: "selected candidate activates"];
+  [t expect: [Codegen lastError] equals: nil describes: "selected activation leaves no native failure"];
+  [t expect: [40 stacklessImageProbe] equals: 42 describes: "selected dispatch runs before image-code capture"];
+  let imageCode := [Codegen compileImageCode: "/tmp/birnam-stackless-selected-image-code.dylib"
+    manifest: "/tmp/birnam-stackless-selected-image-manifest.bin"];
+  [t expect: [imageCode isNil] equals: false describes: "nonempty generation image code compiles"];
+  [t expect: [Codegen lastError] equals: nil describes: "nonempty image code capture leaves no native failure"]]]

@@ -117,6 +117,15 @@
 > Rust; `image.zig` remains a Zig higher rung, and the separately named Zig floor
 > is retained as the compatibility oracle used by the cross-floor image matrix.
 >
+> **Stackless image-v5 design boundary (2026-08-15; not implemented):**
+> [60F](60f-resumable-compiler-lowering.md) owns the semantic requirement for a
+> `Resumables` record, generation selection provenance, and tagged generated
+> block-vtable references. [60I](60i-stackless-artifact-byte-grammar.md) is the
+> sole authority for their exact v5 record tags, payload bytes, manifest-index
+> encoding, limits, and fixtures. The current implementation remains v4 until
+> those pre-implementation gates close and S2 lands; this note does not make v5
+> readable or writable today.
+>
 > Builds on the
 > [running system](../archive/work-breakdowns/36-the-running-system.md) (globals are cells, method source
 > is mirrored into the store) and the codegen/Tcc stack

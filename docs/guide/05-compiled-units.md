@@ -6,9 +6,11 @@ delta and a new whole-runtime `DispatchGeneration` together. Rollback asks the
 host to republish the exact predecessor.
 
 Every module has the same representation and is live-editable. The current
-candidate contract permits method-only successors: module identity, dependencies, and the
-derived non-method projection must stay equal. Top-level initializer/global/FFI
-changes and module introduction are deferred to the later migration phase.
+candidate contract permits declarative method changes and capture-free
+top-level block bindings such as `let handler := [| ...]`. Module identity,
+dependencies, and every residual nonmethod form must stay equal. Arbitrary
+initializer, object-graph, and FFI changes and module introduction remain
+deferred.
 
 ## Lifecycle
 
@@ -19,6 +21,9 @@ compile -> open -> map -> validate -> activation intent -> host safe point
 
 - `compile:named:output:` accepts a complete module document and writes a dylib
   plus its pointer-free `.candidate` envelope.
+- `Codegen compile:output:selection:` writes the same predecessor-bound
+  candidate envelope for candidate AOT delivery; open/map/activate it rather than
+  passing it to eager `Codegen load:`.
 - `open:` verifies the envelope, artifact checksum, platform, ABI, exact source,
   source revision, dependencies, and declarative method manifest without mapping.
 - `map` crosses the trusted-native boundary but remains inert.
@@ -54,10 +59,13 @@ guard, and prints the committed unit. A later top-level `[unit rollback]` follow
 the same path.
 
 The candidate declaration must match the existing module. Its dependency vector
-and non-method digest must equal the active revision. Declarative method additions,
-replacements, and removals may differ. Duplicate bindings, indirect targets,
-first-time target specialization, malformed declarations, stale bases, and changed
-top-level forms are rejected.
+and residual effectful initializer digest must equal the active revision.
+Declarative method additions, replacements, and removals may differ, as may a
+capture-free top-level block binding. Activation rebuilds every such binding
+exactly once and journals its Globals root for compensation, drift detection,
+and rollback. Duplicate bindings, captured projected blocks, indirect targets,
+first-time target specialization, malformed declarations, stale bases, and
+other changed top-level forms are rejected.
 
 ## One runtime-wide generation
 
@@ -77,8 +85,8 @@ restores only bindings touched by the successor.
 
 In L1a dependencies must already be present in G0. `prepareDependencies` remains
 useful during bootstrap, but ordinary AOT `Module load:` after G0 answers
-`#moduleIntroductionNotAvailable`. Later work adds checked initializer/migration
-semantics rather than hiding arbitrary effects inside activation.
+`#moduleIntroductionNotAvailable`. The projected block-binding subset does not
+broaden this into arbitrary initializer or migration semantics.
 
 ## Direct edits and drift
 
@@ -93,8 +101,10 @@ An image carries the exact generation source map, its digest, and one code unit
 built from every complete document once in dependency order followed by the
 ordered source-backed method operations recorded by direct scripts and REPL
 forms. Normal boot maps that unit only when its embedded authority matches;
-`--rebuild` evaluates the same documents, replays those method operations, and
-retains the same digest.
+`--rebuild` recompiles and maps the same accepted GenerationProjection from
+recovered source and selection, then retains the same digest. A selected
+projected global is reconstructed by that unit instead of being serialized as
+a duplicate closure fact.
 
 Candidate handles, native roots, and rollback pointers are process-local. The
 saved `DispatchGeneration` remains durable authority, and new post-boot candidates

@@ -12,5 +12,9 @@ module = []
 [lib]
 crate-type = ["rlib"]
 
+[dependencies]
+birnam-artifact = { path = "../birnam-artifact" }
+sha2.workspace = true
+
 [lints]
 workspace = true
