@@ -29,6 +29,14 @@
 > paths. The expanded S2
 > initializer boundary was locked 2026-08-23: capture-free top-level block
 > bindings are VM-owned transactional projection; arbitrary effects are not.
+> S4's whole-unit `#resumableRequired` compilation request and source-authored
+> callback-control unit were implemented the same day. Its selection-bearing
+> Module AOT is now part of G0 in mapped and forced-source boot, and covers
+> Boolean/Block control, Integer iteration, collection folds, and error-control
+> callbacks.
+> The S0-S4 delivery boundary closed 2026-08-24 after forced-GC collection
+> callback proof and mapped/rebuilt image successor activation plus exact
+> rollback. Future 60G/60H work remains separate.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -488,6 +496,47 @@ Migrate Boolean branches, while loops, integer iteration, and the collection
 callbacks required by real programs. Keep atomic leaves synchronous unless
 measurement justifies otherwise.
 
+**S4 callback-control slice implemented 2026-08-23.**
+Boolean branch choice remains ordinary object behavior rather than becoming a
+compiler-known conditional. `Boolean` continues to name the canonical true/base
+prototype. The canonical false singleton is additionally exported as `False`
+and owns a private vtable delegating to Boolean, so true and false may carry
+independently replaceable implementations of `ifTrue:`, `ifFalse:`, and
+`ifTrue:ifFalse:`. The Rust prelude now uses that ordinary lookup split and no
+longer inspects receiver identity inside those six branch callbacks.
+
+Selection authority is now explicit at unit granularity. Passing the symbol
+`#resumableRequired` at a selection-bearing compilation boundary
+enumerates that SourceRevision's complete normalized implementation inventory
+and requires every row to lower resumably. No source definition carries an
+annotation, and no row is inferred from module path, selector spelling,
+receiver identity, or eligibility. Exact row-vector requests remain available
+for S2 mixed-representation experiments; generated scope-total
+`ArtifactSelection v1` bytes remain the durable artifact authority.
+
+The foundational `stacklessControl` source unit defines the six Boolean branch
+methods, `Block>>whileTrue:` / `whileFalse:`, `Integer>>to:do:` /
+`timesRepeat:`, the Vector/Range/String/Map callback folds and derived
+Collection callbacks, and `Object>>on:do:` / `ensure:` using only ordinary
+methods, blocks, and sends. Production Module AOT boot proves ordinary
+late-bound branch dispatch, false-first termination, explicit non-Boolean and
+body-Error results, integer/collection callbacks, and 100,000 iterations
+without native recursion. Executing its descriptor-v2
+non-tail calls also connected the live driver to the accepted two-phase edge
+transition: predecessor roots remain authoritative until a synchronous or
+resumable callee returns, then copy/clear commits the successor PC state.
+
+`stacklessControl` is a selection-bearing Module AOT, not a predecessor-bound
+Candidate AOT. The stage-1 build registers the complete initial source
+inventory before lowering it, which binds its ResumableManifest to the final
+G0 authority. Boot loads every synchronous initial module first, recomposes
+that same inventory plus the artifact's exact ArtifactSelection slice, stages
+the resumable registrations, installs its ordinary methods, and retains both
+source and selection for `initialGenerationProjection`. `BIRNAM_FORCE_SOURCE`
+compiles the embedded unit to a temporary Module AOT and admits it through the
+same check. Later edits still use Candidate AOT and create successor
+generations; the foundational install has no predecessor or rollback phase.
+
 ### Later — Scheduling, inspection, multi-shot, durability
 
 Treat scheduling, cancellation, debugger inspection, multi-shot restoration, and
@@ -542,8 +591,8 @@ address range.
 
 ## 8. Current completion boundary
 
-No architecture gate blocks S2 implementation. Both pre-implementation gates
-closed 2026-08-22:
+The accepted S0-S4 stackless delivery boundary is complete. Both
+pre-implementation gates closed 2026-08-22:
 
 1. **Shared-resolution substrate alignment.** Ordinary `send_abi` and Machine
    Call/TailCall now consume the same protected three-way classification.
@@ -569,13 +618,25 @@ capture-free top-level block bindings, journals their exact Globals roots, and
 requires the residual effectful nonmethod program to remain unchanged.
 The S2 Call/Return and ordinary-entry timing budgets pass. The deliberately
 failing fixed-stack depth gate reaches only `0.359 x` the synchronous baseline,
-which activates the already-owned S4 control-primitive migration trigger rather
-than reopening the S2 Machine or artifact design.
+which activated the already-owned S4 control-primitive migration trigger rather
+than reopening the S2 Machine or artifact design. S4 is now implemented as the
+source-authored, whole-unit-selected `stacklessControl` Module AOT described in
+§7. Its production proof covers 100,000 callback-driven iterations, forced GC
+inside collection sort callbacks, and both mapped and forced-source G0 boot.
 
-Later stages intentionally retain separate work: S4 migration of
-callback-driving control primitives; Future 60G
-actual mapped-code reclamation and concurrent-evolution read-side protection;
-and Future 60H rollout and compatibility policy. Thunk-pool sizing, arena trim,
-an optimizing direct-call tier, scheduler policy, debugger mutation,
-multi-shot/durable continuations, and shared-runtime parallelism remain deferred
-and do not block S2.
+The image lifecycle proof saves selected G0, boots it from mapped code and from
+source rebuild, resaves it, activates a selected successor candidate, and rolls
+back to the exact predecessor behavior. Candidate activation acquires one
+process-local explicit generation lease for each distinct overwritten resumable
+thunk through a private selected-floor seam outside IdApi. Those leases keep
+predecessor entries and implementation anchors retiring-but-live until rollback
+restores their bindings; successful rollback releases them. Conservative
+physical mapping retention carries any still-owned rollback leases forward for
+Future 60G reclamation.
+
+Future 60G actual mapped-code reclamation and concurrent-evolution read-side
+protection, and Future 60H rollout and compatibility policy, intentionally
+remain separate. Thunk-pool sizing, arena trim, an optimizing direct-call tier,
+scheduler policy, debugger mutation, multi-shot/durable continuations, and
+shared-runtime parallelism remain deferred and do not reopen the completed
+S0-S4 delivery boundary.

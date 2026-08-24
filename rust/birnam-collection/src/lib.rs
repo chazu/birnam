@@ -9,15 +9,16 @@
 #![allow(clippy::missing_safety_doc)]
 
 use std::array;
+use std::cell::RefCell;
 use std::sync::Arc;
 
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{CStr, c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::alloc::{Layout, alloc, dealloc};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Once, OnceLock};
 
 const BITS: usize = 5;
 const WIDTH: usize = 1 << BITS;
@@ -287,6 +288,47 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static SORT_ROOTS_REGISTERED: Once = Once::new();
+thread_local! {
+    static SORT_ROOTS: RefCell<Vec<Oop>> = const { RefCell::new(Vec::new()) };
+}
+
+struct SortRootScope {
+    base: usize,
+}
+
+impl SortRootScope {
+    fn new(initial: &[Oop]) -> Self {
+        let base = SORT_ROOTS.with(|roots| {
+            let mut roots = roots.borrow_mut();
+            let base = roots.len();
+            roots.extend_from_slice(initial);
+            base
+        });
+        Self { base }
+    }
+
+    fn push(&self, value: Oop) {
+        SORT_ROOTS.with(|roots| roots.borrow_mut().push(value));
+    }
+}
+
+impl Drop for SortRootScope {
+    fn drop(&mut self) {
+        SORT_ROOTS.with(|roots| roots.borrow_mut().truncate(self.base));
+    }
+}
+
+unsafe extern "C" fn mark_sort_roots(mark: MarkFn) {
+    SORT_ROOTS.with(|roots| {
+        let roots = roots.borrow();
+        for &root in roots.iter() {
+            // SAFETY: the collector supplies a synchronous mark callback and
+            // this thread-local stack contains Oops copied from active sends.
+            unsafe { mark(root) };
+        }
+    });
+}
 static VECTOR_LAYOUT: [u8; 5] = [
     birnam_abi::SLOT_RAW,
     birnam_abi::SLOT_RAW,
@@ -705,9 +747,11 @@ unsafe extern "C" fn vector_sort_by(self_object: Oop, args: *const Oop, count: u
     if total < 2 {
         return self_object;
     }
+    let roots = SortRootScope::new(&[self_object, block]);
 
-    // Copy the elements and compute each key before sorting. No pointer into
-    // the live vector or Rust-owned buffer is held across a foreign send.
+    // Copy the elements and compute each key before sorting. Rust-owned Vec
+    // buffers are invisible to the floor collector, so the scoped provider
+    // keeps every copied element and callback result live across later sends.
     let mut elements = Vec::with_capacity(total);
     let mut keys = Vec::with_capacity(total);
     let value_selector = runtime().value1 as Oop;
@@ -720,6 +764,8 @@ unsafe extern "C" fn vector_sort_by(self_object: Oop, args: *const Oop, count: u
         }
         elements.push(value);
         keys.push(key);
+        roots.push(value);
+        roots.push(key);
     }
 
     // Stable insertion sort, matching the reference key comparator and
@@ -2527,6 +2573,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             value2: unsafe { intern(api, b"value:value:\0") } as usize,
             print_string: unsafe { intern(api, b"printString\0") } as usize,
         }
+    });
+    SORT_ROOTS_REGISTERED.call_once(|| unsafe {
+        (api.gcRegisterRootProvider)(mark_sort_roots);
     });
     unsafe {
         (api.setLayout)(runtime.node_vt as Oop, ptr::null(), 0, birnam_abi::SLOT_OOP);

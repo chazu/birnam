@@ -1,0 +1,208 @@
+// stackless-control.birnam — source-authored callback-driving control.
+//
+// This unit contains only ordinary methods, blocks, and sends. Production
+// compilation requires the whole unit to be resumable; no selector or source
+// definition carries an execution-representation annotation.
+
+[Module named: #stacklessControl requires: #[]];
+
+// Boolean is the canonical true/base prototype. False is the canonical false
+// singleton with a private vtable delegating to Boolean.
+[Reflect defineMethod: #ifTrue:ifFalse: on: Boolean as: [:self :whenTrue :whenFalse |
+  [whenTrue value]]];
+
+[Reflect defineMethod: #ifTrue: on: Boolean as: [:self :whenTrue |
+  [whenTrue value]]];
+
+[Reflect defineMethod: #ifFalse: on: Boolean as: [:self :whenFalse |
+  nil]];
+
+[Reflect defineMethod: #ifTrue:ifFalse: on: False as: [:self :whenTrue :whenFalse |
+  [whenFalse value]]];
+
+[Reflect defineMethod: #ifTrue: on: False as: [:self :whenTrue |
+  nil]];
+
+[Reflect defineMethod: #ifFalse: on: False as: [:self :whenFalse |
+  [whenFalse value]]];
+
+// The recursive sends are tail sends once every implementation in this unit is
+// selected. Atomic condition and body blocks may still be synchronous native
+// leaves; they return across one bounded entry barrier per invocation.
+[Reflect defineMethod: #whileTrue: on: Block as: [:conditionBlock :body |
+  let condition := [conditionBlock value];
+  [[condition isError]
+    ifTrue: [| condition]
+    ifFalse: [|
+      [[condition == true]
+        ifTrue: [|
+          let result := [body value];
+          [[result isError]
+            ifTrue: [| result]
+            ifFalse: [| [conditionBlock whileTrue: body]]]]
+        ifFalse: [|
+          [[condition == false]
+            ifTrue: [| nil]
+            ifFalse: [| [Error kind: #mustBeBoolean message: "while loop condition must answer true or false"]]]]]]]]];
+
+[Reflect defineMethod: #whileFalse: on: Block as: [:conditionBlock :body |
+  let condition := [conditionBlock value];
+  [[condition isError]
+    ifTrue: [| condition]
+    ifFalse: [|
+      [[condition == false]
+        ifTrue: [|
+          let result := [body value];
+          [[result isError]
+            ifTrue: [| result]
+            ifFalse: [| [conditionBlock whileFalse: body]]]]
+        ifFalse: [|
+          [[condition == true]
+            ifTrue: [| nil]
+            ifFalse: [| [Error kind: #mustBeBoolean message: "while loop condition must answer true or false"]]]]]]]]];
+
+// Integer iteration is tail-recursive inside the selected unit. The equality
+// exit avoids overflowing when both bounds are maxInt, and the explicit answer
+// argument preserves to:do:'s original receiver answer.
+[Reflect defineMethod: #to:do: on: Integer as: [:self :last :body |
+  [self stacklessTo: last do: body answer: self]]];
+
+[Reflect defineMethod: #stacklessTo:do:answer: on: Integer as: [:self :last :body :answer |
+  [[self > last]
+    ifTrue: [| answer]
+    ifFalse: [| [self stacklessToBody: last do: body answer: answer]]]]];
+
+[Reflect defineMethod: #stacklessToBody:do:answer: on: Integer as: [:self :last :body :answer |
+  let eachResult := [body value: self];
+  [[eachResult isError]
+    ifTrue: [| eachResult]
+    ifFalse: [| [self stacklessToContinue: last do: body answer: answer]]]]];
+
+[Reflect defineMethod: #stacklessToContinue:do:answer: on: Integer as: [:self :last :body :answer |
+  [[self = last]
+    ifTrue: [| answer]
+    ifFalse: [| [[self + 1] stacklessTo: last do: body answer: answer]]]]];
+
+[Reflect defineMethod: #timesRepeat: on: Integer as: [:self :body |
+  let result := [1 to: self do: [:ignored | [body value]]];
+  [[result isError] ifTrue: [| result] ifFalse: [| self]]]];
+
+// Indexable collection drivers. Callback results from do: are deliberately
+// ignored, matching the existing language contract; inject: threads every
+// result, including ordinary Error values, into the next callback.
+[Reflect defineMethod: #do: on: Vector as: [:self :body |
+  [self stacklessDo: body from: 0]]];
+
+[Reflect defineMethod: #stacklessDo:from: on: Vector as: [:self :body :index |
+  [[index >= [self size]]
+    ifTrue: [| self]
+    ifFalse: [|
+      [body value: [self at: index]];
+      [self stacklessDo: body from: [index + 1]]]]]];
+
+[Reflect defineMethod: #inject:into: on: Vector as: [:self :initial :body |
+  [self stacklessInject: initial into: body from: 0]]];
+
+[Reflect defineMethod: #stacklessInject:into:from: on: Vector as: [:self :accumulator :body :index |
+  [[index >= [self size]]
+    ifTrue: [| accumulator]
+    ifFalse: [|
+      let next := [body value: accumulator value: [self at: index]];
+      [self stacklessInject: next into: body from: [index + 1]]]]]];
+
+[Reflect defineMethod: #do: on: Range as: [:self :body |
+  [self stacklessDo: body from: 0]]];
+
+[Reflect defineMethod: #stacklessDo:from: on: Range as: [:self :body :index |
+  [[index >= [self size]]
+    ifTrue: [| self]
+    ifFalse: [|
+      [body value: [self at: index]];
+      [self stacklessDo: body from: [index + 1]]]]]];
+
+[Reflect defineMethod: #inject:into: on: Range as: [:self :initial :body |
+  [self stacklessInject: initial into: body from: 0]]];
+
+[Reflect defineMethod: #stacklessInject:into:from: on: Range as: [:self :accumulator :body :index |
+  [[index >= [self size]]
+    ifTrue: [| accumulator]
+    ifFalse: [|
+      let next := [body value: accumulator value: [self at: index]];
+      [self stacklessInject: next into: body from: [index + 1]]]]]];
+
+[Reflect defineMethod: #do: on: String as: [:self :body |
+  [self stacklessDo: body from: 0]]];
+
+[Reflect defineMethod: #stacklessDo:from: on: String as: [:self :body :index |
+  [[index >= [self size]]
+    ifTrue: [| self]
+    ifFalse: [|
+      [body value: [self at: index]];
+      [self stacklessDo: body from: [index + 1]]]]]];
+
+[Reflect defineMethod: #inject:into: on: String as: [:self :initial :body |
+  [self stacklessInject: initial into: body from: 0]]];
+
+[Reflect defineMethod: #stacklessInject:into:from: on: String as: [:self :accumulator :body :index |
+  [[index >= [self size]]
+    ifTrue: [| accumulator]
+    ifFalse: [|
+      let next := [body value: accumulator value: [self at: index]];
+      [self stacklessInject: next into: body from: [index + 1]]]]]];
+
+// Map iteration retains the native HAMT's deterministic values/keys projection
+// as an atomic leaf, but no native frame remains live while user code runs.
+[Reflect defineMethod: #do: on: MapVt as: [:self :body |
+  [[self values] do: body];
+  self]];
+
+[Reflect defineMethod: #inject:into: on: MapVt as: [:self :initial :body |
+  [[self values] inject: initial into: body]]];
+
+[Reflect defineMethod: #keysAndValuesDo: on: MapVt as: [:self :body |
+  [[self keys] do: [:key | [body value: key value: [self at: key]]]];
+  self]];
+
+// These derived Collection methods must share the selected unit with the fold
+// primitives so their nested callback blocks do not reintroduce one native
+// boundary per element.
+[Reflect defineMethod: #collect: on: Collection as: [:self :body |
+  [self inject: #[] into: [:result :each | [result add: [body value: each]]]]]];
+
+[Reflect defineMethod: #select: on: Collection as: [:self :body |
+  [self inject: #[] into: [:result :each |
+    [[body value: each] ifTrue: [| [result add: each]] ifFalse: [| result]]]]]];
+
+[Reflect defineMethod: #reject: on: Collection as: [:self :body |
+  [self inject: #[] into: [:result :each |
+    [[body value: each] ifTrue: [| result] ifFalse: [| [result add: each]]]]]]];
+
+[Reflect defineMethod: #count: on: Collection as: [:self :body |
+  [self inject: 0 into: [:count :each |
+    [[body value: each] ifTrue: [| [count + 1]] ifFalse: [| count]]]]]];
+
+[Reflect defineMethod: #detect: on: Collection as: [:self :body |
+  [self inject: nil into: [:found :each |
+    [[found notNil]
+      ifTrue: [| found]
+      ifFalse: [| [[body value: each] ifTrue: [| each] ifFalse: [| nil]]]]]]]];
+
+[Reflect defineMethod: #detect:ifNone: on: Collection as: [:self :body :none |
+  let found := [self detect: body];
+  [[found notNil] ifTrue: [| found] ifFalse: [| [none value]]]]];
+
+// Error-handling callbacks are control drivers too: protected, handler, and
+// cleanup blocks now run without a synchronous Object>>on:do:/ensure: frame.
+[Reflect defineMethod: #on:do: on: Object as: [:self :spec :handler |
+  let value := [self value];
+  [[value isError]
+    ifTrue: [|
+      [[value kindMatches: spec]
+        ifTrue: [| [handler value: value]]
+        ifFalse: [| value]]]
+    ifFalse: [| value]]]];
+
+[Reflect defineMethod: #ensure: on: Object as: [:self :cleanup |
+  let value := [self value];
+  [cleanup value];
+  value]];

@@ -22,7 +22,17 @@ pub(crate) const ABORT_V1: u32 = 2;
 pub(crate) const OK_V1: u32 = 0;
 #[allow(dead_code)] // Used by the exported shim once staged-unit context lands.
 pub(crate) const REJECTED_V1: u32 = 1;
+const NOT_RESUMABLE_V1: u32 = 2;
 const MAX_LANGUAGE_ARITY: u32 = 4096;
+
+/// Opaque process-local capability returned to the candidate repository while
+/// an overwritten resumable implementation remains a rollback target.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+pub(crate) struct BirnamStacklessGenerationLeaseV1 {
+    token_index: u64,
+    token_generation: u64,
+}
 
 #[repr(C)]
 pub(crate) struct BirnamResumableRegistrationV1 {
@@ -412,6 +422,88 @@ pub extern "C" fn birnam_id_finish_resumable_unit_v1() -> u32 {
 pub extern "C" fn birnam_id_cancel_resumable_unit_v1() -> u32 {
     crate::runtime::with_active_if_present(|runtime| {
         u32::from(!runtime.cancel_staged_resumable_unit())
+    })
+    .unwrap_or(REJECTED_V1)
+}
+
+/// Acquire a process-local generation lease when `method` names a registered
+/// resumable entry. Ordinary synchronous methods answer `NOT_RESUMABLE_V1` and
+/// require no lease. This candidate-repository seam remains outside IdApi and
+/// Runtime ABI v3.
+///
+/// # Safety
+///
+/// `lease` must be non-null, aligned, and exclusively writable for one complete
+/// carrier for this synchronous call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_try_acquire_stackless_generation_lease_v1(
+    method: Oop,
+    lease: *mut BirnamStacklessGenerationLeaseV1,
+) -> u32 {
+    if method.is_null() {
+        return REJECTED_V1;
+    }
+    let Some(lease) = (unsafe { lease.as_mut() }) else {
+        return REJECTED_V1;
+    };
+    *lease = BirnamStacklessGenerationLeaseV1::default();
+    crate::runtime::with_active_if_present(|runtime| {
+        // SAFETY: the non-null carrier came from a method dictionary entry.
+        let method = unsafe { crate::raw::MethodAddress::from_oop(method) }
+            .expect("non-null method carrier");
+        match runtime.try_acquire_stackless_generation_lease(method) {
+            Ok(Some(capability)) => {
+                let (index, generation) = capability.into_raw_parts();
+                let Ok(index) = u64::try_from(index) else {
+                    runtime
+                        .release_stackless_generation_lease(capability)
+                        .unwrap_or_else(|_| {
+                            crate::boundary::fatal_invariant("generation lease compensation failed")
+                        });
+                    return REJECTED_V1;
+                };
+                lease.token_index = index;
+                lease.token_generation = generation;
+                OK_V1
+            }
+            Ok(None) => NOT_RESUMABLE_V1,
+            Err(_) => REJECTED_V1,
+        }
+    })
+    .unwrap_or(REJECTED_V1)
+}
+
+/// Release one candidate-repository generation lease. Capabilities are
+/// one-shot and generation checked by the owning Runtime.
+///
+/// # Safety
+///
+/// `lease` must be non-null, aligned, and readable for one complete carrier for
+/// this synchronous call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_release_stackless_generation_lease_v1(
+    lease: *const BirnamStacklessGenerationLeaseV1,
+) -> u32 {
+    let Some(lease) = (unsafe { lease.as_ref() }) else {
+        return REJECTED_V1;
+    };
+    let Ok(index) = usize::try_from(lease.token_index) else {
+        return REJECTED_V1;
+    };
+    if lease.token_generation == 0 {
+        return REJECTED_V1;
+    }
+    crate::runtime::with_active_if_present(|runtime| {
+        u32::from(
+            runtime
+                .release_stackless_generation_lease(
+                    crate::execution::GenerationLeaseCapability::from_raw_parts(
+                        index,
+                        lease.token_generation,
+                    ),
+                )
+                .is_err(),
+        )
     })
     .unwrap_or(REJECTED_V1)
 }

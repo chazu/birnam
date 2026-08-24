@@ -716,6 +716,13 @@ void *__birnam_resolve_block_vtable_v1(uint32_t manifest_entry_index);
 
 The resolver is private artifact ABI, not an IdApi or language export.
 
+StepMethod, entry-thunk, Prepare, and Abort symbols have internal linkage in
+each unit. Their numeric suffix is manifest-local and therefore must not enter
+the process-wide dynamic symbol namespace, where a previously mapped artifact
+could interpose the same suffix. The exported private artifact ABI is limited
+to the manifest bytes and size, initializer-context brackets, unit initializer,
+and the block-vtable resolver when block entries exist.
+
 An artifact with at least one manifest entry also exports the exact
 initializer-context brackets:
 

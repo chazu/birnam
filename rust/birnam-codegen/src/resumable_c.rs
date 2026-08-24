@@ -34,14 +34,16 @@ pub enum BlockLiteralDisposition {
     },
 }
 
-/// Emit the unique ordinary Method carrier installed in a vtable.
+/// Emit the unique artifact-local ordinary Method carrier installed in a
+/// vtable. Internal linkage prevents a concurrently mapped unit's same
+/// manifest-local symbol index from interposing this carrier.
 ///
 /// Normal dispatch classifies this address and enters the registered
 /// resumable without invoking the carrier. A raw Method invocation falls back
 /// through ordinary `birnam_send`, where the same resolver classifies it.
 pub fn emit_entry_thunk(symbol_index: u32, selector: &[u8]) -> Vec<u8> {
     let mut output = Emitter::with_capacity(256);
-    output.push(b"void* __birnam_resumable_thunk_");
+    output.push(b"static void* __birnam_resumable_thunk_");
     decimal(&mut output, symbol_index);
     output.push(b"(void* receiver, void* const* args, unsigned long n){\nreturn birnam_send(receiver,birnam_intern(\"");
     output.push_c_string_body(selector);
@@ -73,7 +75,7 @@ pub fn emit_step_method_with_blocks<'a>(
     validate(program, layout, driver_argument_count, block_literals)?;
 
     let mut output = Emitter::with_capacity(4096);
-    output.push(b"void* __birnam_resumable_step_");
+    output.push(b"static void* __birnam_resumable_step_");
     decimal(&mut output, symbol_index);
     output.push(b"(void* machine, void* const* args, unsigned long n){\n");
     output.push(b"if(n!=");
@@ -534,7 +536,7 @@ mod tests {
         let source = String::from_utf8(emit_step_method(9, &program, &layout, 1).unwrap()).unwrap();
 
         assert!(source.starts_with(
-            "void* __birnam_resumable_step_9(void* machine, void* const* args, unsigned long n)"
+            "static void* __birnam_resumable_step_9(void* machine, void* const* args, unsigned long n)"
         ));
         assert!(source.contains("long pc=birnam_smallIntValue(args[0]);"));
         let first_stage = program.value_count;
@@ -571,7 +573,7 @@ mod tests {
     fn entry_thunk_reenters_through_the_same_late_bound_selector() {
         assert_eq!(
             String::from_utf8(emit_entry_thunk(12, b"value:value:")).unwrap(),
-            "void* __birnam_resumable_thunk_12(void* receiver, void* const* args, unsigned long n){\nreturn birnam_send(receiver,birnam_intern(\"value:value:\"),(void**)args,(long)n);\n}\n"
+            "static void* __birnam_resumable_thunk_12(void* receiver, void* const* args, unsigned long n){\nreturn birnam_send(receiver,birnam_intern(\"value:value:\"),(void**)args,(long)n);\n}\n"
         );
     }
 

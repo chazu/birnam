@@ -53,7 +53,7 @@ grep -Fxq '99' "$smoke_root/save.out"
 grep -Fxq '42' "$smoke_root/save.out"
 grep -Fxq 'false' "$smoke_root/save.out"
 grep -Fxq '0' "$smoke_root/save.out"
-nm -gj "$candidate" >"$smoke_root/candidate.symbols"
+nm -j "$candidate" >"$smoke_root/candidate.symbols"
 grep -Eq '__birnam_resumable_step_0$' "$smoke_root/candidate.symbols"
 grep -Eq '__birnam_resumable_step_1$' "$smoke_root/candidate.symbols"
 grep -Eq '__birnam_resumable_step_2$' "$smoke_root/candidate.symbols"
@@ -61,6 +61,11 @@ grep -Eq '__birnam_resumable_thunk_0$' "$smoke_root/candidate.symbols"
 grep -Eq '__birnam_resumable_thunk_1$' "$smoke_root/candidate.symbols"
 grep -Eq '__birnam_resumable_thunk_2$' "$smoke_root/candidate.symbols"
 grep -Eq '__birnam_resolve_block_vtable_v1$' "$smoke_root/candidate.symbols"
+nm -gj "$candidate" >"$smoke_root/candidate.exports"
+if grep -Eq '__birnam_resumable_(step|thunk)_[0-9]+$' "$smoke_root/candidate.exports"; then
+  echo "stackless image candidate leaked artifact-local resumable helpers" >&2
+  exit 1
+fi
 test -s "$image"
 
 cat >"$smoke_root/inspect.in" <<'EOF'

@@ -10,6 +10,14 @@
 
 let s := [TestSuite named: "Block" module: #block];
 
+[s test: "canonical false has independent inherited behavior" do: [:t |
+  [t expect: [Boolean == true] equals: true describes: "Boolean remains the canonical true prototype"];
+  [t expect: [False == false] equals: true describes: "False names the canonical false singleton"];
+  [Reflect defineMethod: #stacklessBranchProbe on: Boolean as: [:self | #trueBehavior]];
+  [Reflect defineMethod: #stacklessBranchProbe on: False as: [:self | #falseBehavior]];
+  [t expect: [true stacklessBranchProbe] equals: #trueBehavior describes: "true uses Boolean behavior"];
+  [t expect: [false stacklessBranchProbe] equals: #falseBehavior describes: "false overrides on its private vtable"]]];
+
 [s test: "whileTrue: drives a cell counter through 10k iterations, flat stack" do: [:t |
   let obj := [Object clone];
   let cell := [db cellFor: obj attr: #n];

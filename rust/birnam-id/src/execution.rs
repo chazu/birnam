@@ -1252,6 +1252,76 @@ impl FrameArena {
         Ok(())
     }
 
+    fn begin_continue_transition(
+        &mut self,
+        handle: FrameHandle,
+        target_pc: usize,
+    ) -> Result<(), FrameError> {
+        match self.descriptor(handle)?.layout_version {
+            FRAME_LAYOUT_VERSION_V1 => self.set_program_counter(handle, target_pc),
+            FRAME_LAYOUT_VERSION_V2 => {
+                self.begin_v2_transition(handle, EdgeTransitionKind::Continue, target_pc, None)
+            }
+            _ => Err(FrameError::InvalidProgramCounter),
+        }
+    }
+
+    fn begin_call_transition(
+        &mut self,
+        handle: FrameHandle,
+        target_pc: usize,
+        call_site_index: usize,
+    ) -> Result<(), FrameError> {
+        match self.descriptor(handle)?.layout_version {
+            FRAME_LAYOUT_VERSION_V1 => self.set_program_counter(handle, target_pc),
+            FRAME_LAYOUT_VERSION_V2 => self.begin_v2_transition(
+                handle,
+                EdgeTransitionKind::Call,
+                target_pc,
+                Some(call_site_index),
+            ),
+            _ => Err(FrameError::InvalidProgramCounter),
+        }
+    }
+
+    fn commit_continue_transition(
+        &mut self,
+        handle: FrameHandle,
+        nil: Oop,
+    ) -> Result<(), FrameError> {
+        match self.descriptor(handle)?.layout_version {
+            FRAME_LAYOUT_VERSION_V1 => Ok(()),
+            FRAME_LAYOUT_VERSION_V2 => self.commit_v2_transition(handle, nil, None),
+            _ => Err(FrameError::InvalidProgramCounter),
+        }
+    }
+
+    pub(crate) fn commit_call_transition(
+        &mut self,
+        handle: FrameHandle,
+        result_slot: usize,
+        nil: Oop,
+        result: Oop,
+    ) -> Result<(), FrameError> {
+        match self.descriptor(handle)?.layout_version {
+            FRAME_LAYOUT_VERSION_V1 => self.write_oop(handle, result_slot, result),
+            FRAME_LAYOUT_VERSION_V2 => {
+                let slot = self.require_live(handle)?;
+                let edge_index = slot.pending_edge.ok_or(FrameError::InvalidProgramCounter)?;
+                let edge = slot
+                    .descriptor
+                    .as_deref()
+                    .and_then(|descriptor| descriptor.edges.get(edge_index))
+                    .ok_or(FrameError::InvalidProgramCounter)?;
+                if edge.kind != EdgeTransitionKind::Call || edge.result_slot != Some(result_slot) {
+                    return Err(FrameError::InvalidSlot);
+                }
+                self.commit_v2_transition(handle, nil, Some(result))
+            }
+            _ => Err(FrameError::InvalidProgramCounter),
+        }
+    }
+
     pub(crate) fn begin_v2_transition(
         &mut self,
         handle: FrameHandle,
@@ -1539,6 +1609,16 @@ impl RegistrationGenerationLease {
 pub(crate) struct GenerationLeaseCapability {
     index: usize,
     generation: u64,
+}
+
+impl GenerationLeaseCapability {
+    pub(crate) fn into_raw_parts(self) -> (usize, u64) {
+        (self.index, self.generation)
+    }
+
+    pub(crate) fn from_raw_parts(index: usize, generation: u64) -> Self {
+        Self { index, generation }
+    }
 }
 
 pub(crate) struct SemanticRegistrationV1 {
@@ -2713,11 +2793,21 @@ impl ExecutionState {
         &mut self,
         method: MethodAddress,
     ) -> Result<GenerationLeaseCapability, RegistrationError> {
-        let entry_capability = self
+        self.try_acquire_explicit_generation_lease(method)?
+            .ok_or(RegistrationError::EntryRetired)
+    }
+
+    pub(crate) fn try_acquire_explicit_generation_lease(
+        &mut self,
+        method: MethodAddress,
+    ) -> Result<Option<GenerationLeaseCapability>, RegistrationError> {
+        let Some(entry_capability) = self
             .resumable_by_thunk
             .get(&method.as_oop().addr())
             .copied()
-            .ok_or(RegistrationError::EntryRetired)?;
+        else {
+            return Ok(None);
+        };
         let generation = {
             let slot = self
                 .resumable_entries
@@ -2766,7 +2856,7 @@ impl ExecutionState {
             .as_mut()
             .expect("validated entry remains installed")
             .explicit_generation_leases += 1;
-        Ok(capability)
+        Ok(Some(capability))
     }
 
     pub(crate) fn release_explicit_generation_lease(
@@ -2938,10 +3028,7 @@ impl ExecutionState {
             .entry
             .as_mut()
             .ok_or(RegistrationError::StaleCapability)?;
-        if matches!(
-            entry.lifecycle,
-            ResumableEntryLifecycle::Retiring | ResumableEntryLifecycle::Retired
-        ) {
+        if entry.lifecycle == ResumableEntryLifecycle::Retired {
             return Err(RegistrationError::EntryRetired);
         }
         entry.binding_references = entry
@@ -3770,6 +3857,42 @@ impl ExecutionState {
         Ok(value)
     }
 
+    pub(crate) fn commit_current_continue(
+        &mut self,
+        owner: u64,
+        capability: MachineCapability,
+        nil: Oop,
+    ) -> Result<(), ExecutionError> {
+        let machine = self.machine_mut(owner, capability)?;
+        machine.require_driving(owner)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        machine.arena.commit_continue_transition(frame, nil)?;
+        Ok(())
+    }
+
+    pub(crate) fn commit_current_call_result(
+        &mut self,
+        owner: u64,
+        capability: MachineCapability,
+        result_slot: usize,
+        nil: Oop,
+        result: Oop,
+    ) -> Result<(), ExecutionError> {
+        let machine = self.machine_mut(owner, capability)?;
+        machine.require_driving(owner)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        machine
+            .arena
+            .commit_call_transition(frame, result_slot, nil, result)?;
+        Ok(())
+    }
+
     pub(crate) fn current_delimiter(
         &self,
         owner: u64,
@@ -3840,7 +3963,7 @@ impl ExecutionState {
             objects.continue_action_vtable,
             &[1, capability.index, generation, drive_epoch],
         )?;
-        machine.arena.set_program_counter(frame, next_pc)?;
+        machine.arena.begin_continue_transition(frame, next_pc)?;
         Ok(machine.continue_action)
     }
 
@@ -4088,7 +4211,9 @@ impl ExecutionState {
                     .ok_or(FrameError::InvalidProgramCounter)?;
                 // Saving the continuation precedes action publication so a
                 // valid CallAction always names a waiting caller.
-                machine.arena.set_program_counter(frame, continuation_pc)?;
+                machine
+                    .arena
+                    .begin_call_transition(frame, continuation_pc, call_site_index)?;
                 initialize_action(
                     heap,
                     machine.call_action,
@@ -5049,6 +5174,10 @@ mod tests {
         core::ptr::null_mut()
     }
 
+    unsafe extern "C" fn inert_thunk(_: Oop, _: *const Oop, _: usize) -> Oop {
+        core::ptr::null_mut()
+    }
+
     fn oop(value: usize) -> Oop {
         core::ptr::with_exposed_provenance_mut(value)
     }
@@ -5411,16 +5540,14 @@ mod tests {
             )
             .unwrap();
 
-        arena
-            .begin_v2_transition(frame, EdgeTransitionKind::Continue, 1, None)
-            .unwrap();
+        arena.begin_continue_transition(frame, 1).unwrap();
         assert_eq!(arena.program_counter(frame), Ok(1));
         assert_eq!(arena.root_state_program_counter(frame), Ok(0));
         let mut roots = Vec::new();
         arena.trace_roots(|root| roots.push(root.addr()));
         assert_eq!(roots, [receiver.addr(), argument.addr(), carried.addr()]);
 
-        arena.commit_v2_transition(frame, nil, None).unwrap();
+        arena.commit_continue_transition(frame, nil).unwrap();
         assert_eq!(arena.root_state_program_counter(frame), Ok(1));
         assert_eq!(arena.read_oop(frame, 2), Ok(nil));
         assert_eq!(arena.read_oop(frame, 3), Ok(carried));
@@ -5496,15 +5623,13 @@ mod tests {
         );
         let mut call_arena = FrameArena::new(37);
         let call_frame = call_arena.push(call, 0, nil, &[]).unwrap();
-        call_arena
-            .begin_v2_transition(call_frame, EdgeTransitionKind::Call, 1, Some(0))
-            .unwrap();
+        call_arena.begin_call_transition(call_frame, 1, 0).unwrap();
         assert_eq!(
             call_arena.commit_v2_transition(call_frame, nil, None),
             Err(FrameError::InvalidSlot)
         );
         call_arena
-            .commit_v2_transition(call_frame, nil, Some(result))
+            .commit_call_transition(call_frame, 3, nil, result)
             .unwrap();
         assert_eq!(call_arena.read_oop(call_frame, 3), Ok(result));
     }
@@ -5562,6 +5687,41 @@ mod tests {
             execution.machine(owner + 1, second).map(|_| ()),
             Err(MachineError::WrongOwner)
         );
+    }
+
+    #[test]
+    fn rollback_binding_revives_a_generation_lease_pinned_retiring_entry() {
+        let owner = 73;
+        let mut execution = ExecutionState::new(owner);
+        let carrier =
+            SemanticRegistrationV1::new(inert_thunk, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1);
+        execution
+            .register_resumable(owner, carrier)
+            .expect("registration");
+        let method = MethodAddress::from_method(inert_thunk);
+        execution
+            .note_direct_binding_added(method)
+            .expect("initial publication");
+        let lease = execution
+            .acquire_explicit_generation_lease(method)
+            .expect("rollback generation lease");
+        execution
+            .note_staged_direct_binding_removed(method)
+            .expect("candidate overwrite");
+        execution
+            .commit_staged_binding_removal(method)
+            .expect("committed overwrite");
+
+        execution
+            .note_direct_binding_added(method)
+            .expect("rollback restores the pinned predecessor binding");
+        assert!(matches!(
+            execution.classify_resumable(method),
+            Ok(Some(StacklessTarget::Registered { .. }))
+        ));
+        execution
+            .release_explicit_generation_lease(lease)
+            .expect("restored live binding outlives the rollback lease");
     }
 
     #[test]

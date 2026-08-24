@@ -9,6 +9,7 @@
     "compile:output:from:",
     "compile:output:root:",
     "compile:output:selection:",
+    "compileInitialModule:output:selection:",
     "sourceRevisionOf:",
     "moduleMetadataOf:",
     "embeddedFilesOf:",
@@ -51,6 +52,7 @@
     "deriveImageMethodTargets",
     "lastError",
     "load:",
+    "loadInitialModule:",
     "loadHostCapability:"
   ],
   "reflect_selectors": [

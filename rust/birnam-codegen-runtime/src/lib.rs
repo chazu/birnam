@@ -98,6 +98,8 @@ const COMPILE_OUTPUT_FROM_SELECTOR: &[u8] = b"compile:output:from:\0";
 const COMPILE_OUTPUT_ROOT_SELECTOR: &[u8] = b"compile:output:root:\0";
 const COMPILE_CANDIDATE_SELECTOR: &[u8] = b"compileCandidate:named:output:\0";
 const COMPILE_OUTPUT_SELECTION_SELECTOR: &[u8] = b"compile:output:selection:\0";
+const COMPILE_INITIAL_MODULE_SELECTION_SELECTOR: &[u8] =
+    b"compileInitialModule:output:selection:\0";
 const COMPILE_CANDIDATE_SELECTION_SELECTOR: &[u8] = b"compileCandidate:named:output:selection:\0";
 const EMBEDDED_FILES_SELECTOR: &[u8] = b"embeddedFilesOf:\0";
 const MODULE_METADATA_SELECTOR: &[u8] = b"moduleMetadataOf:\0";
@@ -148,6 +150,7 @@ const END_QUIESCENCE_SELECTOR: &[u8] = b"endQuiescence\0";
 const RETAINED_GENERATION_COUNT_SELECTOR: &[u8] = b"retainedGenerationCount\0";
 const RETAINED_GENERATION_BYTES_SELECTOR: &[u8] = b"retainedGenerationBytes\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
+const LOAD_INITIAL_MODULE_SELECTOR: &[u8] = b"loadInitialModule:\0";
 const LOAD_HOST_CAPABILITY_SELECTOR: &[u8] = b"loadHostCapability:\0";
 const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
@@ -205,7 +208,14 @@ struct Runtime {
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static LAST_ERROR: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 static LIVE_UNITS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
-static MODULE_SOURCES: Mutex<Vec<(usize, usize)>> = Mutex::new(Vec::new());
+#[derive(Clone)]
+struct ModuleSourceEntry {
+    name: usize,
+    source: usize,
+    artifact_selection: Option<Vec<u8>>,
+}
+
+static MODULE_SOURCES: Mutex<Vec<ModuleSourceEntry>> = Mutex::new(Vec::new());
 static INITIAL_GENERATION_SEALED: Mutex<bool> = Mutex::new(false);
 static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
@@ -279,12 +289,21 @@ struct CandidateState {
     active: bool,
     installed_method_ever: bool,
     predecessor: usize,
+    rollback_leases: Vec<StacklessGenerationLeaseV1>,
 }
 
 struct RetainedGeneration {
     unit: usize,
     handle: usize,
     mapped_bytes: usize,
+    _rollback_leases: Vec<StacklessGenerationLeaseV1>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+struct StacklessGenerationLeaseV1 {
+    token_index: u64,
+    token_generation: u64,
 }
 
 #[derive(Clone)]
@@ -431,12 +450,12 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
     let Ok(sources) = MODULE_SOURCES.lock() else {
         return;
     };
-    for &(name, source) in sources.iter() {
+    for entry in sources.iter() {
         // SAFETY: each address was returned by IdApi.alloc and remains rooted
         // by this provider until process teardown.
         unsafe {
-            mark(name as Oop);
-            mark(source as Oop);
+            mark(entry.name as Oop);
+            mark(entry.source as Oop);
         }
     }
     if let Ok(candidates) = CANDIDATES.lock() {
@@ -761,7 +780,11 @@ pub unsafe extern "C" fn birnam_rust_codegen_record_module_source(
     let source = unsafe { (api.mkString)(source, length as usize) };
     let key = unsafe { (api.intern)(name) };
     if let Ok(mut modules) = MODULE_SOURCES.lock() {
-        modules.push((key as usize, source as usize));
+        modules.push(ModuleSourceEntry {
+            name: key as usize,
+            source: source as usize,
+            artifact_selection: None,
+        });
     }
 }
 
@@ -1419,6 +1442,12 @@ struct OwnedSelectionRequestKey {
     implementation_kind: SelectionImplementationKind,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ParsedSelectionRequests {
+    Exact(Vec<OwnedSelectionRequest>),
+    WholeUnitResumable,
+}
+
 impl OwnedSelectionRequest {
     fn key(&self) -> OwnedSelectionRequestKey {
         OwnedSelectionRequestKey {
@@ -1457,7 +1486,10 @@ fn smallint_u32(api: &IdApi, value: Oop) -> Option<u32> {
 unsafe fn parse_selection_requests(
     api: &IdApi,
     request: Oop,
-) -> Result<Vec<OwnedSelectionRequest>, SelectionRequestError> {
+) -> Result<ParsedSelectionRequests, SelectionRequestError> {
+    if unsafe { symbol_bytes(api, request) }.as_deref() == Some(b"resumableRequired") {
+        return Ok(ParsedSelectionRequests::WholeUnitResumable);
+    }
     let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
     if vector_vt.is_null() || vector_vt == api.nilObj {
         return Err(SelectionRequestError::Vector);
@@ -1545,7 +1577,43 @@ unsafe fn parse_selection_requests(
             disposition,
         });
     }
-    Ok(requests)
+    Ok(ParsedSelectionRequests::Exact(requests))
+}
+
+fn expand_selection_requests(
+    metadata: &RevisionMetadata,
+    requests: ParsedSelectionRequests,
+) -> Option<Vec<OwnedSelectionRequest>> {
+    match requests {
+        ParsedSelectionRequests::Exact(requests) => Some(requests),
+        ParsedSelectionRequests::WholeUnitResumable => {
+            let source_revision = decode_hex_digest(&metadata.revision_digest)?;
+            metadata
+                .inventory
+                .iter()
+                .map(|implementation| {
+                    Some(OwnedSelectionRequest {
+                        source_revision,
+                        root_kind: match implementation.root_kind {
+                            InventoryRootKind::NonMethodProgram => RootKind::NonMethodProgram,
+                            InventoryRootKind::MethodOperation => RootKind::MethodOperation,
+                        },
+                        root_index: implementation.root_index,
+                        path: implementation.path.clone(),
+                        implementation_kind: match implementation.implementation_kind {
+                            InventoryImplementationKind::NamedAdapter => {
+                                SelectionImplementationKind::NamedAdapter
+                            }
+                            InventoryImplementationKind::BlockBody => {
+                                SelectionImplementationKind::BlockBody
+                            }
+                        },
+                        disposition: SelectionDisposition::ResumableRequired,
+                    })
+                })
+                .collect()
+        }
+    }
 }
 
 fn artifact_selection(metadata: &RevisionMetadata) -> Option<Vec<u8>> {
@@ -3055,19 +3123,24 @@ unsafe extern "C" fn rust_codegen_record_module_source(
         return api.nilObj;
     }
     if let Ok(mut modules) = MODULE_SOURCES.lock() {
-        if let Some(&(_, existing_source)) = modules.iter().find(|&&(existing_name, _)| {
-            unsafe { symbol_bytes(api, existing_name as Oop) }
+        if let Some(existing) = modules.iter().find(|existing| {
+            unsafe { symbol_bytes(api, existing.name as Oop) }
                 .as_deref()
                 .is_some_and(|existing_name| existing_name == name.as_slice())
         }) {
-            let existing = existing_source as Oop;
-            if unsafe { string_bytes(api, existing) }.as_deref() == Some(source.as_slice()) {
+            if unsafe { string_bytes(api, existing.source as Oop) }.as_deref()
+                == Some(source.as_slice())
+            {
                 return values[0];
             }
             note_error(b"RustCodegen duplicate module source");
             return api.nilObj;
         }
-        modules.push((values[1] as usize, values[0] as usize));
+        modules.push(ModuleSourceEntry {
+            name: values[1] as usize,
+            source: values[0] as usize,
+            artifact_selection: None,
+        });
         return values[0];
     }
     note_error(b"RustCodegen module source registry is unavailable");
@@ -3092,12 +3165,12 @@ unsafe extern "C" fn rust_codegen_module_source_for(
     let Ok(modules) = MODULE_SOURCES.lock() else {
         return api.nilObj;
     };
-    for &(existing_name, source) in modules.iter() {
-        if unsafe { symbol_bytes(api, existing_name as Oop) }
+    for entry in modules.iter() {
+        if unsafe { symbol_bytes(api, entry.name as Oop) }
             .as_deref()
             .is_some_and(|existing| existing == name.as_slice())
         {
-            return source as Oop;
+            return entry.source as Oop;
         }
     }
     api.nilObj
@@ -3114,6 +3187,7 @@ unsafe fn register_artifact_source(
     identity: &[u8],
     expected_digest: &[u8],
     source: &[u8],
+    artifact_selection: Option<&[u8]>,
 ) -> bool {
     if sha256_hex(source).as_slice() != expected_digest {
         note_error(b"RustCodegen artifact source digest is incompatible");
@@ -3145,18 +3219,24 @@ unsafe fn register_artifact_source(
         note_error(b"RustCodegen module source registry is unavailable");
         return false;
     };
-    if let Some(&(_, existing_source)) = modules.iter().find(|&&(existing_name, _)| {
-        unsafe { symbol_bytes(api, existing_name as Oop) }
+    if let Some(existing) = modules.iter().find(|existing| {
+        unsafe { symbol_bytes(api, existing.name as Oop) }
             .as_deref()
             .is_some_and(|existing_name| existing_name == identity)
     }) {
-        if unsafe { string_bytes(api, existing_source as Oop) }.as_deref() == Some(source) {
+        if unsafe { string_bytes(api, existing.source as Oop) }.as_deref() == Some(source)
+            && existing.artifact_selection.as_deref() == artifact_selection
+        {
             return true;
         }
         note_error(b"RustCodegen duplicate module source");
         return false;
     }
-    modules.push((name as usize, source_object as usize));
+    modules.push(ModuleSourceEntry {
+        name: name as usize,
+        source: source_object as usize,
+        artifact_selection: artifact_selection.map(<[u8]>::to_vec),
+    });
     true
 }
 
@@ -3507,11 +3587,95 @@ fn generation_revisions(modules: &[GenerationModuleProjection]) -> Option<Vec<[u
     Some(revisions)
 }
 
+unsafe fn registered_generation_modules(api: &IdApi) -> Option<Vec<GenerationModuleProjection>> {
+    let entries = MODULE_SOURCES.lock().ok()?.clone();
+    let mut modules = entries
+        .into_iter()
+        .map(|entry| {
+            let name = unsafe { symbol_bytes(api, entry.name as Oop) }?;
+            let (source, metadata) = unsafe { parse_revision_metadata(api, entry.source as Oop) }?;
+            if metadata.name != name {
+                return None;
+            }
+            let revision = decode_hex_digest(&metadata.revision_digest)?;
+            Some(GenerationModuleProjection {
+                name,
+                revision,
+                source,
+                metadata,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    modules.sort_by(|left, right| left.name.cmp(&right.name));
+    if modules.windows(2).any(|pair| pair[0].name == pair[1].name) {
+        return None;
+    }
+    Some(modules)
+}
+
+unsafe fn initial_module_authority(
+    api: &IdApi,
+    identity: &[u8],
+    source: &[u8],
+    selection: &[u8],
+) -> Option<[u8; 32]> {
+    let entries = MODULE_SOURCES.lock().ok()?.clone();
+    let mut modules = Vec::with_capacity(entries.len().checked_add(1)?);
+    let mut overrides = Vec::new();
+    for entry in entries {
+        let name = unsafe { symbol_bytes(api, entry.name as Oop) }?;
+        if name == identity {
+            return None;
+        }
+        let (source, metadata) = unsafe { parse_revision_metadata(api, entry.source as Oop) }?;
+        let revision = decode_hex_digest(&metadata.revision_digest)?;
+        if let Some(selection) = entry.artifact_selection {
+            overrides.push((name.clone(), selection));
+        }
+        modules.push(GenerationModuleProjection {
+            name,
+            revision,
+            source,
+            metadata,
+        });
+    }
+    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let (source, metadata) = unsafe { parse_revision_metadata(api, source_object) }?;
+    if metadata.name != identity || !artifact_selection_matches_inventory(&metadata, selection) {
+        return None;
+    }
+    let revision = decode_hex_digest(&metadata.revision_digest)?;
+    modules.push(GenerationModuleProjection {
+        name: identity.to_vec(),
+        revision,
+        source,
+        metadata,
+    });
+    modules.sort_by(|left, right| left.name.cmp(&right.name));
+    overrides.push((identity.to_vec(), selection.to_vec()));
+    let generation_selection = generation_selection_with_overrides(&modules, &overrides)?;
+    dispatch_generation_authority(&modules, &generation_selection)
+}
+
 fn all_synchronous_generation_selection(modules: &[GenerationModuleProjection]) -> Option<Vec<u8>> {
+    generation_selection_with_overrides(modules, &[])
+}
+
+fn generation_selection_with_overrides(
+    modules: &[GenerationModuleProjection],
+    overrides: &[(Vec<u8>, Vec<u8>)],
+) -> Option<Vec<u8>> {
     let revisions = generation_revisions(modules)?;
     let slices = modules
         .iter()
-        .map(|module| artifact_selection(&module.metadata))
+        .map(|module| {
+            if let Some((_, selection)) = overrides.iter().find(|(name, _)| name == &module.name) {
+                artifact_selection_matches_inventory(&module.metadata, selection)
+                    .then(|| selection.clone())
+            } else {
+                artifact_selection(&module.metadata)
+            }
+        })
         .collect::<Option<Vec<_>>>()?;
     let inspected = slices
         .iter()
@@ -4069,15 +4233,16 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
     let mut modules = module_guard.clone();
     drop(module_guard);
     modules.sort_by(|left, right| {
-        let left_name = unsafe { symbol_bytes(api, left.0 as Oop) }.unwrap_or_default();
-        let right_name = unsafe { symbol_bytes(api, right.0 as Oop) }.unwrap_or_default();
+        let left_name = unsafe { symbol_bytes(api, left.name as Oop) }.unwrap_or_default();
+        let right_name = unsafe { symbol_bytes(api, right.name as Oop) }.unwrap_or_default();
         left_name.cmp(&right_name)
     });
 
     let mut entries = Vec::with_capacity(modules.len());
-    for (name, source) in modules {
-        let name = name as Oop;
-        let source = source as Oop;
+    let mut selection_overrides = Vec::new();
+    for entry in modules {
+        let name = entry.name as Oop;
+        let source = entry.source as Oop;
         let revision = unsafe {
             send(
                 api,
@@ -4091,13 +4256,21 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
             return api.nilObj;
         }
         entries.push(unsafe { make_vector(api, vector_proto, &[name, revision, api.nilObj]) });
+        if let Some(selection) = entry.artifact_selection {
+            let Some(name) = (unsafe { symbol_bytes(api, name) }) else {
+                note_error(b"RustCodegen module name is malformed");
+                return api.nilObj;
+            };
+            selection_overrides.push((name, selection));
+        }
     }
     let source_map = unsafe { make_vector(api, vector_proto, &entries) };
     let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
         note_error(b"RustCodegen generation source map is malformed");
         return api.nilObj;
     };
-    let Some(selection) = all_synchronous_generation_selection(&modules) else {
+    let Some(selection) = generation_selection_with_overrides(&modules, &selection_overrides)
+    else {
         note_error(b"RustCodegen generation selection is malformed");
         return api.nilObj;
     };
@@ -4264,7 +4437,7 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
 
 unsafe fn visit_generation_source(
     api: &IdApi,
-    modules: &[(usize, usize)],
+    modules: &[ModuleSourceEntry],
     names: &[Vec<u8>],
     index: usize,
     state: &mut [u8],
@@ -4277,7 +4450,7 @@ unsafe fn visit_generation_source(
         return false;
     }
     state[index] = 1;
-    let source = modules[index].1 as Oop;
+    let source = modules[index].source as Oop;
     let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) }) else {
         return false;
     };
@@ -4371,24 +4544,28 @@ unsafe fn ordered_generation_sources(api: &IdApi) -> Option<Vec<Oop>> {
     drop(module_guard);
     if let Some(durable_modules) = unsafe { durable_generation_sources(api) } {
         for (name, source) in durable_modules {
-            if let Some((_, existing_source)) = modules.iter_mut().find(|(existing, _)| {
-                (unsafe { symbol_bytes(api, *existing as Oop) })
+            if let Some(existing) = modules.iter_mut().find(|existing| {
+                (unsafe { symbol_bytes(api, existing.name as Oop) })
                     == (unsafe { symbol_bytes(api, name as Oop) })
             }) {
-                *existing_source = source;
+                existing.source = source;
             } else {
-                modules.push((name, source));
+                modules.push(ModuleSourceEntry {
+                    name,
+                    source,
+                    artifact_selection: None,
+                });
             }
         }
     }
     modules.sort_by(|left, right| {
-        let left_name = unsafe { symbol_bytes(api, left.0 as Oop) }.unwrap_or_default();
-        let right_name = unsafe { symbol_bytes(api, right.0 as Oop) }.unwrap_or_default();
+        let left_name = unsafe { symbol_bytes(api, left.name as Oop) }.unwrap_or_default();
+        let right_name = unsafe { symbol_bytes(api, right.name as Oop) }.unwrap_or_default();
         left_name.cmp(&right_name)
     });
     let names = modules
         .iter()
-        .map(|(name, _)| unsafe { symbol_bytes(api, *name as Oop) })
+        .map(|entry| unsafe { symbol_bytes(api, entry.name as Oop) })
         .collect::<Option<Vec<_>>>()?;
     let mut state = vec![0; modules.len()];
     let mut ordered = Vec::with_capacity(modules.len());
@@ -4836,7 +5013,7 @@ unsafe extern "C" fn rust_codegen_rebuild_image_code(
             self_object,
             &code_object,
             1,
-            Some(ResumableLoadExpectation {
+            ResumableLoadPolicy::Expected(ResumableLoadExpectation {
                 authority,
                 manifest: &manifest,
             }),
@@ -5022,6 +5199,13 @@ struct ResumableLoadExpectation<'a> {
     manifest: &'a [u8],
 }
 
+#[derive(Clone, Copy)]
+enum ResumableLoadPolicy<'a> {
+    None,
+    Expected(ResumableLoadExpectation<'a>),
+    InitialModule,
+}
+
 unsafe fn preflight_image_code_unit(
     api: &IdApi,
     unit: &[u8],
@@ -5042,7 +5226,7 @@ unsafe fn preflight_image_code_unit(
             runtime().rust_codegen as Oop,
             &path_object,
             1,
-            Some(ResumableLoadExpectation {
+            ResumableLoadPolicy::Expected(ResumableLoadExpectation {
                 authority: resumables.manifest.authority(),
                 manifest: resumables.manifest_bytes,
             }),
@@ -5114,7 +5298,7 @@ unsafe extern "C" fn rust_codegen_map_image_code(
             self_object,
             &staged_object,
             1,
-            Some(ResumableLoadExpectation {
+            ResumableLoadPolicy::Expected(ResumableLoadExpectation {
                 authority: resumables.manifest.authority(),
                 manifest: resumables.manifest_bytes,
             }),
@@ -6276,6 +6460,153 @@ unsafe extern "C" fn rust_codegen_compile_output_selection(
     unsafe { rust_codegen_compile_output_impl(pointer, count, false, false, true, None) }
 }
 
+/// Compile one eager Module AOT whose selected implementations belong to G0.
+/// The complete initial source inventory must already be registered, allowing
+/// the resumable manifest to bind to the same authority G0 will later publish.
+unsafe extern "C" fn rust_codegen_compile_initial_module_selection(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen compileInitialModule:output:selection: received invalid arguments")
+    });
+    if values.len() != 3 {
+        abort("RustCodegen compileInitialModule:output:selection: expects source/output/selection");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let parsed_requests = match unsafe { parse_selection_requests(api, values[2]) } {
+        Ok(requests) => requests,
+        Err(_) => {
+            note_error(b"RustCodegen initial module selection request is invalid");
+            return api.nilObj;
+        }
+    };
+    let Some((source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) })
+    else {
+        note_error(b"RustCodegen initial module source is not indexable");
+        return api.nilObj;
+    };
+    let Some(requests) = expand_selection_requests(&metadata, parsed_requests) else {
+        note_error(b"RustCodegen initial module selection could not be expanded");
+        return api.nilObj;
+    };
+    let Some(selection) = artifact_selection_with_requests(&metadata, &requests) else {
+        note_error(b"RustCodegen initial module selection mismatches its inventory");
+        return api.nilObj;
+    };
+    let Some(mut modules) = (unsafe { registered_generation_modules(api) }) else {
+        note_error(b"RustCodegen initial generation source inventory is malformed");
+        return api.nilObj;
+    };
+    let Some(revision) = decode_hex_digest(&metadata.revision_digest) else {
+        note_error(b"RustCodegen initial module revision is invalid");
+        return api.nilObj;
+    };
+    if let Some(existing) = modules.iter().find(|module| module.name == metadata.name) {
+        if existing.revision != revision {
+            note_error(b"RustCodegen initial module inventory revision mismatches");
+            return api.nilObj;
+        }
+    } else {
+        modules.push(GenerationModuleProjection {
+            name: metadata.name.clone(),
+            revision,
+            source: source_bytes.clone(),
+            metadata: metadata.clone(),
+        });
+        modules.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+    let Some(generation_selection) = generation_selection_with_overrides(
+        &modules,
+        &[(metadata.name.clone(), selection.clone())],
+    ) else {
+        note_error(b"RustCodegen initial generation selection is malformed");
+        return api.nilObj;
+    };
+    let Some(authority) = dispatch_generation_authority(&modules, &generation_selection) else {
+        note_error(b"RustCodegen initial generation authority is unavailable");
+        return api.nilObj;
+    };
+    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
+    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) } != cst_vt {
+        note_error(b"RustCodegen initial module source could not be parsed");
+        return api.nilObj;
+    }
+    let Some(tree) = (unsafe { cst_tree(api, cst, 0) }) else {
+        note_error(b"RustCodegen initial module CST is invalid");
+        return api.nilObj;
+    };
+    let Some(tree) = rewrite_embedded(tree, &source_bytes, b".") else {
+        note_error(b"RustCodegen initial module embedded source is unavailable");
+        return api.nilObj;
+    };
+    let Ok(normalized) = lower_program(&tree, &source_bytes) else {
+        note_error(b"RustCodegen initial module source could not be lowered");
+        return api.nilObj;
+    };
+    let projected_bindings = birnam_codegen::resumable::projected_block_bindings(&normalized);
+    let mut projected_statements = projected_bindings
+        .iter()
+        .filter(|binding| binding.captures.is_empty())
+        .map(|binding| binding.statement_index)
+        .collect::<Vec<_>>();
+    projected_statements.sort_unstable();
+    projected_statements.dedup();
+    let path = unsafe { string_bytes(api, values[1]) }.unwrap_or_default();
+    let plan = match compile_resumable_plan(
+        &metadata,
+        &requests,
+        &selection,
+        authority,
+        &path,
+        &source_bytes,
+        &normalized,
+    ) {
+        Ok(plan) => plan,
+        Err(error) => {
+            let message =
+                format!("RustCodegen initial module resumable lowering failed: {error:?}");
+            note_error(message.as_bytes());
+            return api.nilObj;
+        }
+    };
+    let source_digest = sha256_hex(&source_bytes);
+    let artifact_salt = u64::from_be_bytes(source_digest[..8].try_into().unwrap());
+    let Some(generated) = (unsafe {
+        emit_source(
+            api,
+            values[0],
+            true,
+            false,
+            None,
+            false,
+            Some(artifact_salt),
+            Some(plan.named_emissions),
+            Some(plan.block_emissions),
+            (!projected_statements.is_empty()).then_some(projected_statements.as_slice()),
+        )
+    }) else {
+        note_error(b"RustCodegen initial module source could not be emitted");
+        return api.nilObj;
+    };
+    unsafe {
+        write_emitted_artifact(
+            api,
+            values[0],
+            values[1],
+            generated,
+            false,
+            Some(&selection),
+            Some(&plan.manifest),
+        )
+    }
+}
+
 unsafe fn write_emitted_artifact(
     api: &IdApi,
     source_object: Oop,
@@ -6476,7 +6807,7 @@ unsafe fn rust_codegen_compile_candidate_impl(
         note_error(b"RustCodegen candidate output path is invalid");
         return api.nilObj;
     }
-    let requests = if selection_bearing {
+    let parsed_requests = if selection_bearing {
         match unsafe { parse_selection_requests(api, values[3]) } {
             Ok(requests) => requests,
             Err(_) => {
@@ -6485,7 +6816,7 @@ unsafe fn rust_codegen_compile_candidate_impl(
             }
         }
     } else {
-        Vec::new()
+        ParsedSelectionRequests::Exact(Vec::new())
     };
     let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
         note_error(b"RustCodegen candidate source is not indexable");
@@ -6499,6 +6830,10 @@ unsafe fn rust_codegen_compile_candidate_impl(
         note_error(b"RustCodegen candidate has no method delta");
         return api.nilObj;
     }
+    let Some(requests) = expand_selection_requests(&metadata, parsed_requests) else {
+        note_error(b"RustCodegen whole-unit selection could not be expanded");
+        return api.nilObj;
+    };
     let predecessor = unsafe { durable_current_generation(api) };
     if predecessor.is_null()
         || predecessor == api.nilObj
@@ -7150,6 +7485,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             active: false,
             installed_method_ever: false,
             predecessor: 0,
+            rollback_leases: Vec::new(),
         });
         return values[1];
     }
@@ -7171,6 +7507,90 @@ type BeginResumableUnitV1 = unsafe extern "C" fn(*const u8, usize, *const u8, u6
 type CloseResumableUnitV1 = unsafe extern "C" fn() -> u32;
 type BeginArtifactContextV1 = unsafe extern "C" fn(u64, u64) -> u32;
 type EndArtifactContextV1 = unsafe extern "C" fn() -> u32;
+type TryAcquireStacklessGenerationLeaseV1 =
+    unsafe extern "C" fn(Oop, *mut StacklessGenerationLeaseV1) -> u32;
+type ReleaseStacklessGenerationLeaseV1 =
+    unsafe extern "C" fn(*const StacklessGenerationLeaseV1) -> u32;
+
+struct PendingRollbackLeasesV1 {
+    release: ReleaseStacklessGenerationLeaseV1,
+    leases: Vec<StacklessGenerationLeaseV1>,
+}
+
+impl PendingRollbackLeasesV1 {
+    fn into_inner(mut self) -> Vec<StacklessGenerationLeaseV1> {
+        core::mem::take(&mut self.leases)
+    }
+}
+
+impl Drop for PendingRollbackLeasesV1 {
+    fn drop(&mut self) {
+        for lease in self.leases.drain(..).rev() {
+            // SAFETY: every carrier was issued by the same selected floor and
+            // has not been released or transferred into candidate state.
+            if unsafe { (self.release)(core::ptr::addr_of!(lease)) } != 0 {
+                abort("rollback generation lease compensation failed");
+            }
+        }
+    }
+}
+
+unsafe fn acquire_rollback_leases_v1(
+    api: &IdApi,
+    operations: &[CandidateOperationState],
+) -> Result<Option<PendingRollbackLeasesV1>, &'static [u8]> {
+    let methods = operations
+        .iter()
+        .filter(|operation| operation.prior_present)
+        .map(|operation| operation.prior_method)
+        .collect::<BTreeSet<_>>();
+    if methods.is_empty() {
+        return Ok(None);
+    }
+    let acquire_address = unsafe {
+        floor_symbol(
+            api,
+            b"birnam_id_try_acquire_stackless_generation_lease_v1\0",
+        )
+    }
+    .ok_or(b"RustCodegen rollback generation lease acquire seam is unavailable".as_slice())?;
+    let release_address =
+        unsafe { floor_symbol(api, b"birnam_id_release_stackless_generation_lease_v1\0") }.ok_or(
+            b"RustCodegen rollback generation lease release seam is unavailable".as_slice(),
+        )?;
+    let acquire: TryAcquireStacklessGenerationLeaseV1 =
+        unsafe { core::mem::transmute(acquire_address) };
+    let release: ReleaseStacklessGenerationLeaseV1 =
+        unsafe { core::mem::transmute(release_address) };
+    let mut pending = PendingRollbackLeasesV1 {
+        release,
+        leases: Vec::new(),
+    };
+    for method in methods {
+        let mut lease = StacklessGenerationLeaseV1::default();
+        match unsafe { acquire(method as Oop, core::ptr::addr_of_mut!(lease)) } {
+            0 if lease.token_generation != 0 => pending.leases.push(lease),
+            2 => {}
+            _ => return Err(b"RustCodegen rollback generation lease acquisition failed"),
+        }
+    }
+    Ok(Some(pending))
+}
+
+unsafe fn release_rollback_leases_v1(api: &IdApi, leases: &mut Vec<StacklessGenerationLeaseV1>) {
+    if leases.is_empty() {
+        return;
+    }
+    let address =
+        unsafe { floor_symbol(api, b"birnam_id_release_stackless_generation_lease_v1\0") }
+            .unwrap_or_else(|| abort("rollback generation lease release seam disappeared"));
+    let release: ReleaseStacklessGenerationLeaseV1 = unsafe { core::mem::transmute(address) };
+    for lease in leases.drain(..).rev() {
+        if unsafe { release(core::ptr::addr_of!(lease)) } != 0 {
+            abort("rollback generation lease release failed");
+        }
+    }
+}
 
 struct ActiveResumableStageV1 {
     finish: CloseResumableUnitV1,
@@ -8244,6 +8664,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         candidate_source,
         artifact_selection,
         expected_predecessor_digest,
+        rollback_operations,
     ) = {
         let Ok(candidates) = CANDIDATES.lock() else {
             note_error(b"RustCodegen candidate registry is unavailable");
@@ -8264,6 +8685,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             candidate.source as Oop,
             candidate.artifact_selection.clone(),
             candidate.expected_predecessor_digest,
+            candidate.operations.clone(),
         )
     };
     if handle.is_null() || resumable_manifest_bytes.is_empty() {
@@ -8310,6 +8732,13 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             return api.nilObj;
         };
         projected.authority
+    };
+    let rollback_leases = match unsafe { acquire_rollback_leases_v1(api, &rollback_operations) } {
+        Ok(leases) => leases,
+        Err(message) => {
+            note_error(message);
+            return api.nilObj;
+        }
     };
     let stage = match unsafe {
         begin_resumable_stage_v1(api, handle, &resumable_manifest_bytes, authority)
@@ -8457,6 +8886,9 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             candidates[index].initializer_writes = initializer_writes;
             candidates[index].installed_method_ever |= installed_method;
             candidates[index].predecessor = prior;
+            candidates[index].rollback_leases = rollback_leases
+                .map(PendingRollbackLeasesV1::into_inner)
+                .unwrap_or_default();
             if prior != 0
                 && let Some(previous) = candidates
                     .iter_mut()
@@ -8774,6 +9206,7 @@ unsafe extern "C" fn rust_codegen_adopt_composed_generation(
             active: true,
             installed_method_ever: false,
             predecessor: 0,
+            rollback_leases: Vec::new(),
         });
     }
     let Ok(mut candidates) = CANDIDATES.lock() else {
@@ -9152,6 +9585,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         }
         ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
     }
+    let mut rollback_leases = Vec::new();
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
             .iter()
@@ -9159,6 +9593,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
         if let Some(index) = index {
             candidates[index].active = false;
             candidates[index].prepared = 0;
+            rollback_leases = core::mem::take(&mut candidates[index].rollback_leases);
             if prior != 0
                 && let Some(previous) = candidates
                     .iter_mut()
@@ -9168,6 +9603,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared_rollback(
             }
         }
     }
+    unsafe { release_rollback_leases_v1(api, &mut rollback_leases) };
     if let Ok(mut prepared) = PREPARED.lock() {
         prepared.retain(|state| state.token != token);
     }
@@ -9222,14 +9658,29 @@ unsafe extern "C" fn rust_codegen_discard_prepared(
 }
 
 unsafe extern "C" fn rust_codegen_load(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    unsafe { rust_codegen_load_impl(self_object, pointer, count, None) }
+    unsafe { rust_codegen_load_impl(self_object, pointer, count, ResumableLoadPolicy::None) }
+}
+
+unsafe extern "C" fn rust_codegen_load_initial_module(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe {
+        rust_codegen_load_impl(
+            self_object,
+            pointer,
+            count,
+            ResumableLoadPolicy::InitialModule,
+        )
+    }
 }
 
 unsafe fn rust_codegen_load_impl(
     _self_object: Oop,
     pointer: *const Oop,
     count: usize,
-    resumable_expectation: Option<ResumableLoadExpectation<'_>>,
+    resumable_policy: ResumableLoadPolicy<'_>,
 ) -> Oop {
     let values = unsafe { borrowed_oop_args(pointer, count) }
         .unwrap_or_else(|| abort("RustCodegen load: received invalid arguments"));
@@ -9321,6 +9772,54 @@ unsafe fn rust_codegen_load_impl(
             )
         };
     };
+    let artifact_source = {
+        let source_symbol = unsafe { (api.dlsym)(handle, c"__birnam_artifact_source".as_ptr()) };
+        let source_len_symbol =
+            unsafe { (api.dlsym)(handle, c"__birnam_artifact_source_len".as_ptr()) };
+        if source_symbol.is_null() && source_len_symbol.is_null() {
+            None
+        } else if source_symbol.is_null() || source_len_symbol.is_null() {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen artifact source export is incomplete",
+                )
+            };
+        } else {
+            let source_len = unsafe { *(source_len_symbol.cast::<usize>()) };
+            Some(unsafe { core::slice::from_raw_parts(source_symbol.cast::<u8>(), source_len) })
+        }
+    };
+    let selection_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_artifact_selection_v1".as_ptr()) };
+    let selection_size_symbol =
+        unsafe { (api.dlsym)(handle, c"__birnam_artifact_selection_v1_size".as_ptr()) };
+    if selection_symbol.is_null() != selection_size_symbol.is_null() {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact selection export is incomplete",
+            )
+        };
+    }
+    let exported_selection = if selection_symbol.is_null() {
+        None
+    } else {
+        let size = unsafe { ptr::read_unaligned(selection_size_symbol.cast::<u64>()) };
+        let Ok(size) = usize::try_from(size) else {
+            return unsafe {
+                map_candidate_failure(api, handle, b"RustCodegen artifact selection is invalid")
+            };
+        };
+        if size > MAX_CANONICAL_VALUE_BYTES {
+            return unsafe {
+                map_candidate_failure(api, handle, b"RustCodegen artifact selection is too large")
+            };
+        }
+        Some(unsafe { core::slice::from_raw_parts(selection_symbol.cast::<u8>(), size) })
+    };
     let manifest_symbol =
         unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1".as_ptr()) };
     let manifest_size_symbol =
@@ -9358,7 +9857,56 @@ unsafe fn rust_codegen_load_impl(
         }
         Some(unsafe { core::slice::from_raw_parts(manifest_symbol.cast::<u8>(), manifest_size) })
     };
-    let resumable_manifest_shape = match (resumable_expectation, exported_manifest) {
+    let initial_expectation = if matches!(resumable_policy, ResumableLoadPolicy::InitialModule) {
+        let (Some(source), Some(selection)) = (artifact_source, exported_selection) else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen initial module source or selection is unavailable",
+                )
+            };
+        };
+        if sha256_hex(source).as_slice() != parsed_descriptor.source_digest {
+            return unsafe {
+                map_candidate_failure(api, handle, b"RustCodegen initial module source mismatches")
+            };
+        }
+        let Some(authority) = (unsafe {
+            initial_module_authority(api, parsed_descriptor.identity, source, selection)
+        }) else {
+            return unsafe {
+                map_candidate_failure(
+                    api,
+                    handle,
+                    b"RustCodegen initial module generation projection is invalid",
+                )
+            };
+        };
+        Some(authority)
+    } else {
+        None
+    };
+    let expected = match resumable_policy {
+        ResumableLoadPolicy::None => None,
+        ResumableLoadPolicy::Expected(expected) => Some(expected),
+        ResumableLoadPolicy::InitialModule => {
+            let Some(manifest) = exported_manifest else {
+                return unsafe {
+                    map_candidate_failure(
+                        api,
+                        handle,
+                        b"RustCodegen initial module resumable manifest is missing",
+                    )
+                };
+            };
+            Some(ResumableLoadExpectation {
+                authority: initial_expectation.expect("initial authority was projected"),
+                manifest,
+            })
+        }
+    };
+    let resumable_manifest_shape = match (expected, exported_manifest) {
         (None, None) => None,
         (None, Some(_)) => {
             return unsafe {
@@ -9470,25 +10018,6 @@ unsafe fn rust_codegen_load_impl(
     // and Method ABI entry point.
     let init: unsafe extern "C" fn() = unsafe { core::mem::transmute(init_symbol) };
     let entry: Method = unsafe { core::mem::transmute(entry_symbol) };
-    let artifact_source = {
-        let source_symbol = unsafe { (api.dlsym)(handle, c"__birnam_artifact_source".as_ptr()) };
-        let source_len_symbol =
-            unsafe { (api.dlsym)(handle, c"__birnam_artifact_source_len".as_ptr()) };
-        if source_symbol.is_null() && source_len_symbol.is_null() {
-            None
-        } else if source_symbol.is_null() || source_len_symbol.is_null() {
-            return unsafe {
-                map_candidate_failure(
-                    api,
-                    handle,
-                    b"RustCodegen artifact source export is incomplete",
-                )
-            };
-        } else {
-            let source_len = unsafe { *(source_len_symbol.cast::<usize>()) };
-            Some(unsafe { core::slice::from_raw_parts(source_symbol.cast::<u8>(), source_len) })
-        }
-    };
     if INITIAL_GENERATION_SEALED
         .lock()
         .ok()
@@ -9516,7 +10045,7 @@ unsafe fn rust_codegen_load_impl(
     }
 
     let resumable_stage = if let Some((entry_count, _)) = resumable_manifest_shape {
-        let expected = resumable_expectation.expect("entry count requires expectation");
+        let expected = expected.expect("entry count requires expectation");
         let manifest = exported_manifest.expect("entry count requires manifest export");
         let Some(begin_address) =
             (unsafe { floor_symbol(api, b"birnam_id_begin_resumable_unit_v1\0") })
@@ -9674,7 +10203,7 @@ unsafe fn rust_codegen_load_impl(
                 )
             };
         }
-        let expected = resumable_expectation.expect("staged unit requires expectation");
+        let expected = expected.expect("staged unit requires expectation");
         let Some(matches_address) =
             (unsafe { floor_symbol(api, b"birnam_id_stackless_resumable_manifest_matches_v1\0") })
         else {
@@ -9736,6 +10265,9 @@ unsafe fn rust_codegen_load_impl(
                 parsed_descriptor.identity,
                 parsed_descriptor.source_digest,
                 source,
+                matches!(resumable_policy, ResumableLoadPolicy::InitialModule)
+                    .then_some(exported_selection)
+                    .flatten(),
             )
         } {
             return api.nilObj;
@@ -9790,7 +10322,7 @@ fn candidate_mapped_bytes(candidate: &CandidateState) -> usize {
 }
 
 unsafe fn dispose_or_retain_candidate(
-    candidate: &CandidateState,
+    candidate: &mut CandidateState,
     mapped_bytes: usize,
 ) -> PhysicalDisposition {
     if candidate.handle == 0 {
@@ -9802,6 +10334,7 @@ unsafe fn dispose_or_retain_candidate(
                 unit: candidate.unit,
                 handle: candidate.handle,
                 mapped_bytes,
+                _rollback_leases: core::mem::take(&mut candidate.rollback_leases),
             });
         }
         return PhysicalDisposition::Retained(b"codeGenerationPinned\0");
@@ -9809,6 +10342,8 @@ unsafe fn dispose_or_retain_candidate(
     // SAFETY: this mapping never installed a method and is detached from the
     // candidate registry, so no vtable or lifecycle callback can reach it.
     if unsafe { dlclose(candidate.handle as *mut c_void) } == 0 {
+        let api = unsafe { api(runtime()) };
+        unsafe { release_rollback_leases_v1(api, &mut candidate.rollback_leases) };
         PhysicalDisposition::Disposed
     } else {
         if let Ok(mut retained) = RETAINED_GENERATIONS.lock() {
@@ -9816,6 +10351,7 @@ unsafe fn dispose_or_retain_candidate(
                 unit: candidate.unit,
                 handle: candidate.handle,
                 mapped_bytes,
+                _rollback_leases: core::mem::take(&mut candidate.rollback_leases),
             });
         }
         PhysicalDisposition::Retained(b"disposalFailed\0")
@@ -9978,7 +10514,7 @@ unsafe extern "C" fn rust_codegen_discard_candidate(
     }
     let api = unsafe { api(runtime()) };
     let unit = values[0] as usize;
-    let Some(candidate) = (|| {
+    let Some(mut candidate) = (|| {
         let mut candidates = CANDIDATES.lock().ok()?;
         let index = candidates
             .iter()
@@ -10032,7 +10568,7 @@ unsafe extern "C" fn rust_codegen_discard_candidate(
         note_error(b"RustCodegen candidate Store is unavailable");
         return api.nilObj;
     }
-    let disposition = unsafe { dispose_or_retain_candidate(&candidate, mapped_bytes) };
+    let disposition = unsafe { dispose_or_retain_candidate(&mut candidate, mapped_bytes) };
     unsafe { make_discard_receipt(api, values[0], disposition) }
 }
 
@@ -10048,7 +10584,7 @@ unsafe extern "C" fn rust_codegen_release_candidate(
     }
     let api = unsafe { api(runtime()) };
     let unit = values[0] as usize;
-    let Some(candidate) = (|| {
+    let Some(mut candidate) = (|| {
         let mut candidates = CANDIDATES.lock().ok()?;
         let index = candidates
             .iter()
@@ -10068,7 +10604,7 @@ unsafe extern "C" fn rust_codegen_release_candidate(
         return if unit == 0 { api.nilObj } else { values[0] };
     };
     let mapped_bytes = candidate_mapped_bytes(&candidate);
-    let _ = unsafe { dispose_or_retain_candidate(&candidate, mapped_bytes) };
+    let _ = unsafe { dispose_or_retain_candidate(&mut candidate, mapped_bytes) };
     let _ = unsafe {
         assert_candidate_fact(
             api,
@@ -11032,6 +11568,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_INITIAL_MODULE_SELECTION_SELECTOR),
+            rust_codegen_compile_initial_module_selection,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_CANDIDATE_SELECTOR),
             rust_codegen_compile_candidate,
         );
@@ -11044,6 +11585,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, LOAD_SELECTOR),
             rust_codegen_load,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, LOAD_INITIAL_MODULE_SELECTOR),
+            rust_codegen_load_initial_module,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
@@ -11111,6 +11657,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         adapter_method!(
             COMPILE_OUTPUT_SELECTION_SELECTOR,
             rust_codegen_compile_output_selection
+        );
+        adapter_method!(
+            COMPILE_INITIAL_MODULE_SELECTION_SELECTOR,
+            rust_codegen_compile_initial_module_selection
         );
         adapter_method!(SOURCE_REVISION_SELECTOR, rust_codegen_source_revision);
         adapter_method!(MODULE_METADATA_SELECTOR, rust_codegen_module_metadata);
@@ -11229,6 +11779,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             rust_codegen_retained_generation_bytes
         );
         adapter_method!(LOAD_SELECTOR, rust_codegen_load);
+        adapter_method!(
+            LOAD_INITIAL_MODULE_SELECTOR,
+            rust_codegen_load_initial_module
+        );
         adapter_method!(
             LOAD_HOST_CAPABILITY_SELECTOR,
             rust_codegen_load_host_capability
@@ -11352,15 +11906,16 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 mod tests {
     use super::{
         CompiledResumablePlan, GenerationModuleProjection, IDENTITY, ImplementationKey,
-        InventoryImplementationKind, InventoryRootKind, OwnedSelectionRequest, RevisionMetadata,
-        RevisionOperation, RootKind, SelectionDisposition, SelectionImplementationKind,
-        artifact_selection, artifact_selection_with_requests, artifact_source,
-        birnam_codegen_rust_identity, candidate_manifest, candidate_manifest_matches,
-        candidate_selection_matches, compile_resumable_plan, decode_hex_digest,
-        dispatch_generation_authority_with, empty_resumable_manifest,
-        image_artifact_selection_and_requests, inspect_artifact_selection,
-        inspect_generation_selection, inspect_manifest, rebase_image_resumable_plan,
-        resumable_indices, resumable_manifest, selector_arity, sha256_hex,
+        InventoryImplementationKind, InventoryRootKind, OwnedSelectionRequest,
+        ParsedSelectionRequests, RevisionMetadata, RevisionOperation, RootKind,
+        SelectionDisposition, SelectionImplementationKind, artifact_selection,
+        artifact_selection_with_requests, artifact_source, birnam_codegen_rust_identity,
+        candidate_manifest, candidate_manifest_matches, candidate_selection_matches,
+        compile_resumable_plan, decode_hex_digest, dispatch_generation_authority_with,
+        empty_resumable_manifest, expand_selection_requests, image_artifact_selection_and_requests,
+        inspect_artifact_selection, inspect_generation_selection, inspect_manifest,
+        rebase_image_resumable_plan, resumable_indices, resumable_manifest, selector_arity,
+        sha256_hex,
     };
     use birnam_codegen::{
         Block, BlockResumableEmission, Expr, NamedResumableEmission, Program, Statement,
@@ -11677,6 +12232,67 @@ mod tests {
                 }],
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn whole_unit_request_expands_to_exact_resumable_inventory_rows() {
+        let metadata = RevisionMetadata {
+            name: b"control".to_vec(),
+            requires: Vec::new(),
+            operations: vec![RevisionOperation {
+                target: b"Boolean".to_vec(),
+                selector: b"ifTrue:".to_vec(),
+                install: true,
+                source: b"operation".to_vec(),
+            }],
+            non_method_digest: sha256_hex(b"non-method"),
+            initializer_residual_digest: sha256_hex(b"initializer-residual"),
+            method_digest: sha256_hex(b"method"),
+            revision_digest: *b"3131313131313131313131313131313131313131313131313131313131313131",
+            inventory: vec![
+                ImplementationKey {
+                    root_kind: InventoryRootKind::MethodOperation,
+                    root_index: 0,
+                    path: Vec::new(),
+                    implementation_kind: InventoryImplementationKind::NamedAdapter,
+                },
+                ImplementationKey {
+                    root_kind: InventoryRootKind::MethodOperation,
+                    root_index: 0,
+                    path: vec![0],
+                    implementation_kind: InventoryImplementationKind::BlockBody,
+                },
+            ],
+        };
+
+        let requests =
+            expand_selection_requests(&metadata, ParsedSelectionRequests::WholeUnitResumable)
+                .unwrap();
+        assert_eq!(requests.len(), metadata.inventory.len());
+        assert!(requests.iter().all(|request| {
+            request.source_revision == [0x31; 32]
+                && request.disposition == SelectionDisposition::ResumableRequired
+        }));
+        assert_eq!(requests[0].root_kind, RootKind::MethodOperation);
+        assert_eq!(requests[0].root_index, 0);
+        assert!(requests[0].path.is_empty());
+        assert_eq!(
+            requests[0].implementation_kind,
+            SelectionImplementationKind::NamedAdapter
+        );
+        assert_eq!(requests[1].path, vec![0]);
+        assert_eq!(
+            requests[1].implementation_kind,
+            SelectionImplementationKind::BlockBody
+        );
+
+        let selection = artifact_selection_with_requests(&metadata, &requests).unwrap();
+        assert!(
+            inspect_artifact_selection(&selection)
+                .unwrap()
+                .rows()
+                .all(|row| row.unwrap().disposition == SelectionDisposition::ResumableRequired)
         );
     }
 

@@ -748,54 +748,88 @@ unsafe fn boolean_value(api: &IdApi, value: Oop) -> Option<bool> {
     }
 }
 
-unsafe extern "C" fn boolean_if_true_if_false(
+unsafe extern "C" fn boolean_true_if_true_if_false(
     self_object: Oop,
     args: *const Oop,
     count: usize,
 ) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 2 || unsafe { boolean_value(api, self_object) }.is_none() {
+    if count != 2 {
         return api.nilObj;
     }
     let Some(when_true) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
-    let branch = if self_object == api.trueObj {
-        when_true[0]
-    } else {
-        when_true[1]
+    let _ = self_object;
+    unsafe { send0(api, when_true[0], b"value\0") }
+}
+
+unsafe extern "C" fn boolean_false_if_true_if_false(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(when_true) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
     };
+    let _ = self_object;
+    unsafe { send0(api, when_true[1], b"value\0") }
+}
+
+unsafe extern "C" fn boolean_true_if_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(branch) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let _ = self_object;
     unsafe { send0(api, branch, b"value\0") }
 }
 
-unsafe extern "C" fn boolean_if_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+unsafe extern "C" fn boolean_false_if_true(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
+    if count != 1 {
         return api.nilObj;
     }
-    let Some(branch) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if self_object == api.trueObj {
-        unsafe { send0(api, branch, b"value\0") }
-    } else {
-        api.nilObj
-    }
+    api.nilObj
 }
 
-unsafe extern "C" fn boolean_if_false(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+unsafe extern "C" fn boolean_true_if_false(
+    _self_object: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
+    if count != 1 {
+        return api.nilObj;
+    }
+    api.nilObj
+}
+
+unsafe extern "C" fn boolean_false_if_false(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
         return api.nilObj;
     }
     let Some(branch) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if self_object == api.falseObj {
-        unsafe { send0(api, branch, b"value\0") }
-    } else {
-        api.nilObj
-    }
+    let _ = self_object;
+    unsafe { send0(api, branch, b"value\0") }
 }
 
 unsafe extern "C" fn boolean_and(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1451,10 +1485,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         unsafe { (api.method)(api.word_vt, symbol, *method) };
     }
     let boolean_vt = unsafe { (api.vtableOf)(api.trueObj) };
+    let false_vt = unsafe { (api.ensurePrivateVtable)(api.falseObj) };
+    if false_vt.is_null() || false_vt == boolean_vt {
+        abort("could not establish False's private Boolean behavior");
+    }
     let boolean_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"ifTrue:ifFalse:\0", boolean_if_true_if_false),
-        (b"ifTrue:\0", boolean_if_true),
-        (b"ifFalse:\0", boolean_if_false),
+        (b"ifTrue:ifFalse:\0", boolean_true_if_true_if_false),
+        (b"ifTrue:\0", boolean_true_if_true),
+        (b"ifFalse:\0", boolean_true_if_false),
         (b"&\0", boolean_and),
         (b"|\0", boolean_or),
         (b"and:\0", boolean_and_block),
@@ -1466,6 +1504,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let symbol = unsafe { intern(api, selector) };
         // SAFETY: both singleton booleans share this vtable for the process lifetime.
         unsafe { (api.method)(boolean_vt, symbol, *method) };
+    }
+    let false_methods: &[(&[u8], birnam_abi::Method)] = &[
+        (b"ifTrue:ifFalse:\0", boolean_false_if_true_if_false),
+        (b"ifTrue:\0", boolean_false_if_true),
+        (b"ifFalse:\0", boolean_false_if_false),
+    ];
+    for (selector, method) in false_methods {
+        let symbol = unsafe { intern(api, selector) };
+        // SAFETY: False owns a process-lifetime private vtable delegating to Boolean.
+        unsafe { (api.method)(false_vt, symbol, *method) };
     }
     let print_string = unsafe { intern(api, b"printString\0") };
     let as_string = unsafe { intern(api, b"asString\0") };

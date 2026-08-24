@@ -315,8 +315,15 @@ fn compile_module_command(args: &[OsString]) -> Result<(), String> {
         .map_err(|error| format!("--compile-module startup: {error:?}"))?;
     let mut anchor = 0usize;
     unsafe { runtime.prepare_execution(&mut anchor) };
-    unsafe { compile_module(&runtime, &options.source, &options.output) }
-        .map_err(|error| format!("--compile-module: {error:?}"))?;
+    unsafe {
+        compile_module(
+            &runtime,
+            &options.source,
+            &options.output,
+            options.initial_generation_resumable,
+        )
+    }
+    .map_err(|error| format!("--compile-module: {error:?}"))?;
     println!(
         "[stage1] compiled {} -> {}",
         options.source.display(),

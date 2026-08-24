@@ -24,6 +24,8 @@
 > GenerationProjection authority, capture-free projected initializer subset,
 > candidate AOT delivery, and mapped/fresh-rebuild image parity. The
 > retained fixed-stack depth miss activates S4; it does not reopen S2.
+> S4 closed 2026-08-24 with whole-unit selection, source-authored callback
+> control, forced-GC collection proof, and mapped/rebuilt image rollback.
 >
 > This record lowers the accepted execution semantics of
 > [60A](60a-stackless-execution-semantics.md), the private Frame model of
@@ -690,6 +692,11 @@ description containing:
 - selector-determined language arity and driver argument count; and
 - the registration operation emitted before binding publication.
 
+The StepMethod, entry thunk, Prepare, and Abort functions use artifact-local
+internal linkage. Their assigned numeric suffixes are physical indices within
+one unit, not process-global names; only the manifest, context brackets, unit
+initializer, and block resolver form the exported private artifact ABI.
+
 The mapping/initializer context supplies the process-local physical
 CodeGeneration identity and lease only when executing the registration
 operation; neither is part of the artifact description or its canonical bytes.
@@ -1124,8 +1131,10 @@ block, or an unknown implementation kind rejects the request before lowering.
 
 #### 13.5.2 Materialization and canonical bytes
 
-> **Request shape accepted 2026-08-23.** The Birnam-facing request is an outer
-> Vector of exact seven-element row Vectors:
+> **Request shapes accepted 2026-08-23.** A selection-bearing compilation
+> boundary accepts either the symbol `#resumableRequired`, meaning every row in
+> this SourceRevision's normalized implementation inventory is required to be
+> resumable, or an outer Vector of exact seven-element row Vectors:
 >
 > ```text
 > [#implementationDisposition,
@@ -1147,12 +1156,23 @@ block, or an unknown implementation kind rejects the request before lowering.
 > omitted field, or extra field is accepted. Duplicate stable implementation
 > keys reject the complete request even when their dispositions agree.
 
+The whole-unit symbol is compilation policy, not source metadata. The compiler
+first indexes and validates the SourceRevision, then expands the symbol to one
+`ResumableRequired` request for every inventory row using that exact revision
+digest, root kind/index, lexical block path, and implementation kind. A
+malformed inventory, an ineligible row, or any lowering failure rejects the
+whole compilation; the request never falls back to synchronous code. The exact
+row-vector form remains the sparse/mixed-representation interface used by S2
+experiments and relational orchestration.
+
 The request is deliberately convenient relational input, not durable encoding.
-The compilation boundary validates the complete outer Vector, copies every
-digest, ordinal, enum, and disposition into compiler-owned storage before
-lowering, enumerates the complete normalized implementation inventory for the
-declared SourceRevision scope, fills every omitted row with `Synchronous`, and
-produces one total `ArtifactSelection v1` for that scope.
+For an exact request, the compilation boundary validates the complete outer
+Vector, copies every digest, ordinal, enum, and disposition into compiler-owned
+storage before lowering, enumerates the complete normalized implementation
+inventory for the declared SourceRevision scope, and fills every omitted row
+with `Synchronous`. For a whole-unit request, it expands every inventory row as
+described above. Both forms produce one total `ArtifactSelection v1` for that
+scope.
 
 60I owns its pointer-free canonical grammar, domain, headers, records, bounds,
 and fixtures. Semantically, rows sort lexicographically by revision digest,
@@ -1562,9 +1582,12 @@ Implementation ledger, 2026-08-23:
   `compileCandidate:named:output:selection:` protocols materialize that request
   against the complete inventory. Explicit synchronous, named, and candidate
   `BlockBody` `ResumableRequired` rows publish their canonical provenance.
-  Selection-bearing candidate AOT now emits that same predecessor-bound candidate
-  envelope and must enter the same open/map/activate lifecycle, eliminating a
-  second eager-loader authority.
+  Selection-bearing Candidate AOT emits that same predecessor-bound candidate
+  envelope and enters the open/map/activate lifecycle. The distinct
+  `compileInitialModule:output:selection:` boundary is reserved for
+  foundational Module AOT: it derives authority from the complete registered
+  initial source inventory, emits the same canonical selection/manifest
+  carriers, and is admitted only by `loadInitialModule:` before G0 is sealed.
 - S2.1 has explicit synchronous operand sequencing plus deterministic logical
   values, binding versions, dense PCs, Call/TailCall/Return/Continue lowering,
   reference liveness, and an uncolored interpreter.
@@ -1712,3 +1735,22 @@ Implementation ledger, 2026-08-23:
   levels (`0.359 x`), intentionally failing the provisional `0.5 x` budget and
   activating 60E's recorded S4 migration trigger. Arbitrary effectful
   initializers remain intentionally outside the completed S2 projection.
+- S4 now has one explicit whole-unit selection request,
+  `#resumableRequired`, and a foundational `stacklessControl` Module AOT. The
+  build supplies the complete G0 source inventory; mapped boot recomposes it
+  with the artifact's exact selection slice before resumable staging, and
+  forced-source boot recompiles then performs the same admission. The retained
+  G0 projection therefore contains the selected rows rather than fabricating
+  an all-synchronous carrier. The unit replaces the callback-driving native
+  Boolean/Block, Integer iteration, Vector/Range/String/Map fold, derived
+  Collection, and `on:do:`/`ensure:` methods with ordinary selected methods.
+  Atomic arithmetic, indexing, HAMT projection, and other non-callback leaves
+  remain synchronous.
+  The production image lifecycle additionally proves selected G0 save,
+  mapped/source-rebuilt recovery, resave, successor Candidate AOT activation,
+  and exact rollback. Before an activation overwrites a resumable predecessor,
+  the code repository acquires one explicit Runtime generation lease per
+  distinct predecessor thunk through a private selected-floor seam outside
+  IdApi. Rollback restores the ordinary bindings before releasing those leases;
+  conservative retained mappings retain any capability whose rollback
+  obligation has not been consumed.

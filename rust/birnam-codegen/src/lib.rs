@@ -32,6 +32,7 @@ pub struct Emitter {
     named_resumables: Vec<NamedResumableEmission>,
     block_resumables: Vec<BlockResumableEmission>,
     block_keys: Vec<(usize, resumable::ImplementationKey)>,
+    artifact_operation_root: bool,
 }
 
 /// One precompiled named-adapter fragment selected for an exact portable
@@ -827,7 +828,7 @@ impl Emitter {
                 emitter.function_defs.extend_from_slice(&entry.c_source);
             }
             if !emitter.block_resumables.is_empty() {
-                let specs = emitter
+                let mut specs = emitter
                     .block_resumables
                     .iter()
                     .map(|entry| resumable_resolver_c::BlockVtableSpec {
@@ -836,6 +837,11 @@ impl Emitter {
                         selector: &entry.selector,
                     })
                     .collect::<Vec<_>>();
+                // A monolithic image unit orders implementation keys by their
+                // rebased source positions, while its manifest is ordered by
+                // the complete selection key (including source revision).
+                // The resolver ABI is indexed by the latter.
+                specs.sort_by_key(|entry| entry.manifest_entry_index);
                 let resolver = resumable_resolver_c::emit_block_vtable_resolver_v1(&specs)
                     .map_err(|_| EmitError::Unsupported)?;
                 emitter.function_defs.extend_from_slice(&resolver);
@@ -1027,7 +1033,7 @@ impl Emitter {
     }
 
     pub fn emit_expr(&mut self, expr: &Expr<'_>) -> Result<(), EmitError> {
-        self.emit_expr_at_depth(expr, 0)
+        self.emit_root_expr(expr, 0, true)
     }
 
     /// Emit a program body transactionally. The caller owns the surrounding
@@ -1115,9 +1121,9 @@ impl Emitter {
                 .collect::<Vec<_>>()
         });
         let body_result = if let Some(indices) = selected_indices.as_deref() {
-            self.emit_block_body_indices(&program.body, persist_top_level, indices)
+            self.emit_block_body_indices(&program.body, persist_top_level, true, indices)
         } else {
-            self.emit_block_body(&program.body, persist_top_level)
+            self.emit_block_body(&program.body, persist_top_level, true)
         };
         let body = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
@@ -1135,6 +1141,11 @@ impl Emitter {
         if depth >= MAX_EXPR_DEPTH {
             return Err(EmitError::DepthLimit);
         }
+        // Stable MethodOperation indices describe direct program statements.
+        // Consume this permission before descending so a reflective send in a
+        // method body, block, let value, receiver, or argument remains an
+        // ordinary runtime send and cannot shift later top-level selections.
+        let artifact_operation_root = std::mem::take(&mut self.artifact_operation_root);
         match expr {
             Expr::SmallInt(value) => self.emit_small_int(*value),
             Expr::SmallIntLiteral(literal) => self.emit_small_int_literal(literal),
@@ -1155,6 +1166,7 @@ impl Emitter {
                 source,
             } => {
                 if self.artifact_mode
+                    && artifact_operation_root
                     && matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
                     && ((selector.as_ref() == b"defineMethod:on:as:" && args.len() == 3)
                         || (selector.as_ref() == b"defineMethod:on:as:doc:" && args.len() == 4))
@@ -1169,6 +1181,7 @@ impl Emitter {
                         .emit_reflect_method_sourced(receiver, selector, args, source, depth);
                 }
                 if self.artifact_mode
+                    && artifact_operation_root
                     && matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
                     && selector.as_ref() == b"removeMethod:on:"
                     && args.len() == 2
@@ -1179,6 +1192,18 @@ impl Emitter {
             }
         }
         Ok(())
+    }
+
+    fn emit_root_expr(
+        &mut self,
+        expr: &Expr<'_>,
+        depth: usize,
+        artifact_operation_root: bool,
+    ) -> Result<(), EmitError> {
+        let saved = std::mem::replace(&mut self.artifact_operation_root, artifact_operation_root);
+        let result = self.emit_expr_at_depth(expr, depth);
+        self.artifact_operation_root = saved;
+        result
     }
 
     fn emit_reflect_method_sourced(
@@ -1466,7 +1491,7 @@ impl Emitter {
             self.bytes.extend_from_slice(index.to_string().as_bytes());
             self.bytes.extend_from_slice(b"];\n");
         }
-        let body_result = self.emit_block_body(&block.body, false);
+        let body_result = self.emit_block_body(&block.body, false, false);
         let body = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
         self.bound_names = saved_bound_names;
@@ -1568,15 +1593,17 @@ impl Emitter {
         &mut self,
         body: &[Statement<'_>],
         persist_top_level: bool,
+        artifact_operations: bool,
     ) -> Result<(), EmitError> {
         let indices = (0..body.len()).collect::<Vec<_>>();
-        self.emit_block_body_indices(body, persist_top_level, &indices)
+        self.emit_block_body_indices(body, persist_top_level, artifact_operations, &indices)
     }
 
     fn emit_block_body_indices(
         &mut self,
         body: &[Statement<'_>],
         persist_top_level: bool,
+        artifact_operations: bool,
         indices: &[usize],
     ) -> Result<(), EmitError> {
         if indices.is_empty() {
@@ -1591,7 +1618,7 @@ impl Emitter {
                     self.bytes.extend_from_slice(b"void* b_");
                     self.bytes.extend_from_slice(name);
                     self.bytes.extend_from_slice(b" = ");
-                    self.emit_expr_at_depth(value, 1)?;
+                    self.emit_root_expr(value, 1, false)?;
                     self.bytes.extend_from_slice(b";\n");
                     if persist_top_level {
                         self.bytes.extend_from_slice(b"birnam_global_set(\"");
@@ -1610,11 +1637,11 @@ impl Emitter {
                 Statement::Expr(expression) => {
                     if last {
                         self.bytes.extend_from_slice(b"return ");
-                        self.emit_expr_at_depth(expression, 1)?;
+                        self.emit_root_expr(expression, 1, artifact_operations)?;
                         self.bytes.extend_from_slice(b";\n");
                     } else {
                         self.bytes.extend_from_slice(b"(void)(");
-                        self.emit_expr_at_depth(expression, 1)?;
+                        self.emit_root_expr(expression, 1, artifact_operations)?;
                         self.bytes.extend_from_slice(b");\n");
                     }
                 }
@@ -1650,10 +1677,12 @@ mod tests {
     };
 
     use super::{
-        Block, CstNode, EmitError, Emitter, Expr, LowerError, NamedResumableEmission, OwnedCst,
-        Program, Statement, TranslationUnit, lower_expr, lower_literal, lower_program,
-        selector_arity,
+        Block, BlockResumableEmission, CstNode, EmitError, Emitter, Expr, LowerError,
+        NamedResumableEmission, OwnedCst, Program, Statement, TranslationUnit, lower_expr,
+        lower_literal, lower_program, selector_arity,
     };
+
+    use crate::resumable::{ImplementationKey, InventoryImplementationKind, InventoryRootKind};
 
     struct TestNode {
         rule: &'static [u8],
@@ -1909,6 +1938,77 @@ mod tests {
             .unwrap();
         let _ = fs::remove_file(path);
         assert!(status.success());
+    }
+
+    #[test]
+    fn selected_block_resolver_uses_manifest_order_across_source_revisions() {
+        let block = |root_index, symbol_index, manifest_entry_index| BlockResumableEmission {
+            key: ImplementationKey {
+                root_kind: InventoryRootKind::MethodOperation,
+                root_index,
+                path: vec![0],
+                implementation_kind: InventoryImplementationKind::BlockBody,
+            },
+            symbol_index,
+            manifest_entry_index,
+            selector: b"value".to_vec(),
+            captures: Vec::new(),
+            c_source: Vec::new(),
+        };
+        let emitter = Emitter::new_selected_resumable_candidate_artifact(
+            11,
+            Vec::new(),
+            vec![block(7, 3, 9), block(8, 4, 2)],
+        )
+        .unwrap();
+        let (functions, _) = emitter.finish_parts();
+        let functions = String::from_utf8(functions).unwrap();
+        let earlier = functions.find("case 2U:").unwrap();
+        let later = functions.find("case 9U:").unwrap();
+        assert!(earlier < later);
+    }
+
+    #[test]
+    fn nested_reflection_does_not_consume_a_top_level_operation_index() {
+        let define = |selector: &'static [u8], source: &'static [u8]| Expr::Send {
+            receiver: Box::new(Expr::Global(b"Reflect")),
+            selector: Cow::Borrowed(b"defineMethod:on:as:"),
+            args: vec![
+                Expr::Symbol(selector),
+                Expr::Global(b"Object"),
+                Expr::Block(Box::new(Block {
+                    params: vec![b"self"],
+                    body: vec![Statement::Expr(Expr::Nil)],
+                })),
+            ],
+            source,
+        };
+        let program = Program {
+            body: vec![
+                Statement::Let {
+                    name: b"dynamicInstaller",
+                    value: Expr::Block(Box::new(Block {
+                        params: Vec::new(),
+                        body: vec![Statement::Expr(define(b"nested", b"nested source"))],
+                    })),
+                },
+                Statement::Expr(define(b"topLevel", b"top-level source")),
+            ],
+        };
+        let mut emitter = Emitter::new_resumable_candidate_artifact(
+            11,
+            vec![NamedResumableEmission {
+                operation_index: 0,
+                symbol_index: 7,
+                c_source: Vec::new(),
+            }],
+        )
+        .unwrap();
+        emitter.emit_program(&program).unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains("birnam_intern(\"defineMethod:on:as:source:\")"));
+        assert!(output.contains("birnam_intern(\"topLevel\"), (void*)&__birnam_resumable_thunk_7"));
+        assert!(!output.contains("birnam_intern(\"nested\"), (void*)&__birnam_resumable_thunk_7"));
     }
 
     #[test]

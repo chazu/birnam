@@ -816,6 +816,7 @@ impl Runtime {
             (&b"Word"[..], canonical.word_prototype),
             (&b"String"[..], canonical.string_prototype),
             (&b"Boolean"[..], canonical.true_object),
+            (&b"False"[..], canonical.false_object),
             (&b"Vtable"[..], globals.vtable_vt),
             (&b"Symbol"[..], canonical.symbol_prototype),
             (&b"SymbolVt"[..], globals.symbol_vt),
@@ -2409,6 +2410,20 @@ impl Runtime {
         }
     }
 
+    pub(crate) fn try_acquire_stackless_generation_lease(
+        &self,
+        method: MethodAddress,
+    ) -> Result<Option<GenerationLeaseCapability>, crate::execution::RegistrationError> {
+        self.assert_owner();
+        // SAFETY: optional explicit lease acquisition is one owner-thread point
+        // mutation. A method outside the resumable registry needs no lease.
+        unsafe {
+            (&mut *self.state.get())
+                .execution
+                .try_acquire_explicit_generation_lease(method)
+        }
+    }
+
     pub(crate) fn release_stackless_generation_lease(
         &self,
         lease: GenerationLeaseCapability,
@@ -2648,6 +2663,7 @@ impl Runtime {
         capability: MachineCapability,
         result: Oop,
     ) -> Result<Option<Oop>, ExecutionError> {
+        let nil = self.canonical().nil;
         // SAFETY: return application is one allocation-free owner-thread state
         // transition and invokes no generated code while borrowed.
         unsafe {
@@ -2666,9 +2682,12 @@ impl Runtime {
                         .arena()
                         .current_handle()
                         .ok_or(crate::execution::FrameError::StaleHandle)?;
-                    machine
-                        .arena_mut()
-                        .write_oop(caller, destination.result_slot, result)?;
+                    machine.arena_mut().commit_call_transition(
+                        caller,
+                        destination.result_slot,
+                        nil,
+                        result,
+                    )?;
                     None
                 } else {
                     machine.complete_barrier_drive(owner)?;
@@ -2969,7 +2988,11 @@ impl Runtime {
                 }
             };
             match decoded {
-                DecodedAction::Continue => {}
+                DecodedAction::Continue => unsafe {
+                    (&mut *self.state.get())
+                        .execution
+                        .commit_current_continue(owner, capability, nil)?;
+                },
                 DecodedAction::Call {
                     receiver_slot,
                     selector_slot,
@@ -3061,12 +3084,15 @@ impl Runtime {
                                 &operands.arguments,
                             )?;
                             unsafe {
-                                (&mut *self.state.get()).execution.write_current_oop(
-                                    owner,
-                                    capability,
-                                    result_slot,
-                                    result,
-                                )?;
+                                (&mut *self.state.get())
+                                    .execution
+                                    .commit_current_call_result(
+                                        owner,
+                                        capability,
+                                        result_slot,
+                                        nil,
+                                        result,
+                                    )?;
                             }
                         }
                         StacklessTarget::Unbound => {
@@ -3078,12 +3104,15 @@ impl Runtime {
                                 &operands.arguments,
                             )?;
                             unsafe {
-                                (&mut *self.state.get()).execution.write_current_oop(
-                                    owner,
-                                    capability,
-                                    result_slot,
-                                    result,
-                                )?;
+                                (&mut *self.state.get())
+                                    .execution
+                                    .commit_current_call_result(
+                                        owner,
+                                        capability,
+                                        result_slot,
+                                        nil,
+                                        result,
+                                    )?;
                             }
                         }
                     }

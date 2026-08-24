@@ -116,7 +116,7 @@ pub fn emit_registration_v1(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error
     decimal(&mut output, spec.symbol_index);
     output.push(b"=0ULL;\n");
 
-    output.push(b"unsigned int __birnam_resumable_prepare_");
+    output.push(b"static unsigned int __birnam_resumable_prepare_");
     decimal(&mut output, spec.symbol_index);
     output.push(b"(void* implementation){\nif(__birnam_resumable_context_v1.generation_identity==0ULL||__birnam_resumable_context_v1.generation_lease==0ULL)return 1U;\n");
     if spec.implementation_kind == ImplementationKind::BlockBody {
@@ -151,7 +151,7 @@ pub fn emit_registration_v1(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error
         b"=e.registration_token;else __birnam_resumable_context_v1.failed=1U;return status;\n}\n",
     );
 
-    output.push(b"unsigned int __birnam_resumable_abort_");
+    output.push(b"static unsigned int __birnam_resumable_abort_");
     decimal(&mut output, spec.symbol_index);
     output.push(b"(void){\nif(__birnam_resumable_token_");
     decimal(&mut output, spec.symbol_index);

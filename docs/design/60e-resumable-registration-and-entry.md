@@ -855,6 +855,13 @@ direct binding must hold an explicit generation lease. Without that lease, an
 address returned after its final binding has retired is stale native behavior,
 not an implicit permanent root.
 
+The implemented candidate repository applies the same rule to rollback. Before
+activation can replace a resumable predecessor binding, it acquires one explicit
+lease for each distinct predecessor thunk through a process-local selected-floor
+seam outside IdApi. A successful rollback restores the binding before releasing
+the lease. Conservative physical retention keeps an unconsumed rollback lease
+with its retained mapping until Future 60G can prove complete reclamation.
+
 When the last binding and manifest reference retires, the entry moves to a
 retirement set; it is not immediately erased. Readers that began before
 retirement may still convert the address into a pin. Reclamation and

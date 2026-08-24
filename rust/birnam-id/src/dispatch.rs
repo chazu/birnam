@@ -1225,13 +1225,14 @@ mod tests {
         let runtime = &bootstrap.runtime;
         let globals = runtime.globals();
         let canonical = runtime.canonical();
-        let expected: [(&[u8], Oop); 14] = [
+        let expected: [(&[u8], Oop); 15] = [
             (b"Object", canonical.object_prototype),
             (b"Integer", canonical.integer_prototype),
             (b"Float", canonical.float_prototype),
             (b"Word", canonical.word_prototype),
             (b"String", canonical.string_prototype),
             (b"Boolean", canonical.true_object),
+            (b"False", canonical.false_object),
             (b"Vtable", globals.vtable_vt),
             (b"Symbol", canonical.symbol_prototype),
             (b"SymbolVt", globals.symbol_vt),

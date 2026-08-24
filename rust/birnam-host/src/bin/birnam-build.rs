@@ -27,33 +27,38 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id_image.dylib",
 ];
 
-const STAGE1_MODULES: &[(&str, &str)] = &[
-    ("src/id/modules.birnam", "modules"),
-    ("src/id/stdlib.birnam", "stdlib"),
-    ("src/id/compiled-unit.birnam", "compiledUnit"),
-    ("src/id/toml.birnam", "toml"),
-    ("src/id/config.birnam", "config"),
-    ("src/id/app-config.birnam", "appConfig"),
-    ("src/id/project-policy.birnam", "projectPolicy"),
-    ("src/id/isolate.birnam", "isolate"),
-    ("modules/html.birnam", "html"),
-    ("modules/file.birnam", "file"),
-    ("modules/json.birnam", "json"),
-    ("modules/socket.birnam", "socket"),
-    ("modules/time.birnam", "time"),
-    ("modules/doc.birnam", "doc"),
-    ("modules/nativedoc.birnam", "nativedoc"),
-    ("modules/lsp.birnam", "lsp"),
-    ("modules/repl.birnam", "repl"),
-    ("modules/cli.birnam", "cli"),
-    ("modules/http.birnam", "http"),
-    ("modules/log.birnam", "log"),
-    ("modules/markdown.birnam", "markdown"),
-    ("modules/os.birnam", "os"),
-    ("modules/process.birnam", "process"),
-    ("modules/random.birnam", "random"),
-    ("modules/test.birnam", "test"),
-    ("modules/compiled-unit-docs.birnam", "compiledUnitDocs"),
+const STAGE1_MODULES: &[(&str, &str, bool)] = &[
+    ("src/id/modules.birnam", "modules", false),
+    ("src/id/stdlib.birnam", "stdlib", false),
+    ("src/id/compiled-unit.birnam", "compiledUnit", false),
+    ("src/id/toml.birnam", "toml", false),
+    ("src/id/config.birnam", "config", false),
+    ("src/id/app-config.birnam", "appConfig", false),
+    ("src/id/project-policy.birnam", "projectPolicy", false),
+    ("src/id/isolate.birnam", "isolate", false),
+    ("src/id/stackless-control.birnam", "stacklessControl", true),
+    ("modules/html.birnam", "html", false),
+    ("modules/file.birnam", "file", false),
+    ("modules/json.birnam", "json", false),
+    ("modules/socket.birnam", "socket", false),
+    ("modules/time.birnam", "time", false),
+    ("modules/doc.birnam", "doc", false),
+    ("modules/nativedoc.birnam", "nativedoc", false),
+    ("modules/lsp.birnam", "lsp", false),
+    ("modules/repl.birnam", "repl", false),
+    ("modules/cli.birnam", "cli", false),
+    ("modules/http.birnam", "http", false),
+    ("modules/log.birnam", "log", false),
+    ("modules/markdown.birnam", "markdown", false),
+    ("modules/os.birnam", "os", false),
+    ("modules/process.birnam", "process", false),
+    ("modules/random.birnam", "random", false),
+    ("modules/test.birnam", "test", false),
+    (
+        "modules/compiled-unit-docs.birnam",
+        "compiledUnitDocs",
+        false,
+    ),
 ];
 
 fn usage() {
@@ -492,7 +497,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "md",
     )?;
 
-    for (source, name) in STAGE1_MODULES {
+    for (source, name, initial_generation_resumable) in STAGE1_MODULES {
         let source = root.join(source);
         let output = lib_dir.join(format!("libbirnam_{name}.dylib"));
         let mut compile = Command::new(&host_destination);
@@ -504,6 +509,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             .arg("--compile-module")
             .arg(&source)
             .arg(&output);
+        if *initial_generation_resumable {
+            compile.arg("--initial-generation-resumable");
+        }
         run_status(&mut compile, &format!("stage1 compile {name}"))?;
     }
 
@@ -523,7 +531,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         .chain(
             STAGE1_MODULES
                 .iter()
-                .map(|(_, name)| format!("lib/libbirnam_{name}.dylib")),
+                .map(|(_, name, _)| format!("lib/libbirnam_{name}.dylib")),
         )
         .collect::<Vec<_>>();
     for relative in &expected_libraries {
@@ -556,7 +564,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         },
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
-        "stage1_modules": STAGE1_MODULES.iter().map(|(_, name)| *name).collect::<Vec<_>>(),
+        "stage1_modules": STAGE1_MODULES.iter().map(|(_, name, _)| *name).collect::<Vec<_>>(),
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
         "staged_manifest": staged_manifest,

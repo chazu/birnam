@@ -14,7 +14,7 @@ use std::io::Write;
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
 use birnam_abi::{IdApi, IdInitFn};
 
@@ -170,6 +170,7 @@ pub struct RebuildOptions {
 pub struct CompileModuleOptions {
     pub source: PathBuf,
     pub output: PathBuf,
+    pub initial_generation_resumable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,7 +221,7 @@ pub enum CompileModuleError {
     Read { path: PathBuf, kind: io::ErrorKind },
     TooLarge { path: PathBuf, limit: usize },
     MissingCodegen,
-    CompilationRejected,
+    CompilationRejected(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -651,6 +652,7 @@ pub unsafe fn compile_module(
     runtime: &HostRuntime,
     source_path: &Path,
     output_path: &Path,
+    initial_generation_resumable: bool,
 ) -> Result<(), CompileModuleError> {
     let source = std::fs::read(source_path).map_err(|error| CompileModuleError::Read {
         path: source_path.to_path_buf(),
@@ -672,17 +674,63 @@ pub unsafe fn compile_module(
     let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
     let source_bytes = path_bytes(source_path);
     let source_path_value = unsafe { (api.mkString)(source_bytes.as_ptr(), source_bytes.len()) };
-    let selector = unsafe { (api.intern)(c"compile:output:from:".as_ptr()) };
-    let result = unsafe {
-        (api.send)(
-            codegen,
-            selector,
-            [source_value, output_value, source_path_value].as_ptr(),
-            3,
-        )
+    let result = if initial_generation_resumable {
+        let record_selector = unsafe { (api.intern)(c"recordModuleSource:named:".as_ptr()) };
+        for module in std::iter::once(&MODULE_MANAGER).chain(SELF_HOSTED_MODULES.iter()) {
+            if module.name == "stacklessControl" {
+                continue;
+            }
+            let name = CString::new(module.name).map_err(|_| {
+                CompileModuleError::CompilationRejected("invalid module name".to_owned())
+            })?;
+            let name = unsafe { (api.intern)(name.as_ptr()) };
+            let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+            let recorded =
+                unsafe { (api.send)(codegen, record_selector, [source, name].as_ptr(), 2) };
+            if recorded == api.nilObj || send_is_error(api, recorded) {
+                return Err(CompileModuleError::CompilationRejected(
+                    "initial generation source registration failed".to_owned(),
+                ));
+            }
+        }
+        let selection = unsafe { (api.intern)(c"resumableRequired".as_ptr()) };
+        let selector = unsafe { (api.intern)(c"compileInitialModule:output:selection:".as_ptr()) };
+        unsafe {
+            (api.send)(
+                codegen,
+                selector,
+                [source_value, output_value, selection].as_ptr(),
+                3,
+            )
+        }
+    } else {
+        let selector = unsafe { (api.intern)(c"compile:output:from:".as_ptr()) };
+        unsafe {
+            (api.send)(
+                codegen,
+                selector,
+                [source_value, output_value, source_path_value].as_ptr(),
+                3,
+            )
+        }
     };
     if result == api.nilObj || send_is_error(api, result) {
-        return Err(CompileModuleError::CompilationRejected);
+        let selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
+        let diagnostic = unsafe { (api.send)(codegen, selector, std::ptr::null(), 0) };
+        let diagnostic =
+            if diagnostic != api.nilObj && unsafe { (api.vtableOf)(diagnostic) } == api.string_vt {
+                let mut length = 0usize;
+                let bytes = unsafe { (api.stringBytes)(diagnostic, &mut length) };
+                if bytes.is_null() {
+                    "compilation rejected".to_owned()
+                } else {
+                    String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(bytes, length) })
+                        .into_owned()
+                }
+            } else {
+                "compilation rejected".to_owned()
+            };
+        return Err(CompileModuleError::CompilationRejected(diagnostic));
     }
     Ok(())
 }
@@ -1264,7 +1312,11 @@ pub fn parse_rebuild_args<T: AsRef<std::ffi::OsStr>>(
 pub fn parse_compile_module_args<T: AsRef<std::ffi::OsStr>>(
     args: &[T],
 ) -> Result<CompileModuleOptions, ToolingParseError> {
-    if args.len() != 2 {
+    if (args.len() != 2 && args.len() != 3)
+        || args.get(2).is_some_and(|value| {
+            value.as_ref() != std::ffi::OsStr::new("--initial-generation-resumable")
+        })
+    {
         return Err(ToolingParseError::Arity {
             command: "--compile-module",
             expected: 2,
@@ -1274,6 +1326,9 @@ pub fn parse_compile_module_args<T: AsRef<std::ffi::OsStr>>(
     Ok(CompileModuleOptions {
         source: PathBuf::from(args[0].as_ref()),
         output: PathBuf::from(args[1].as_ref()),
+        initial_generation_resumable: args.get(2).is_some_and(|value| {
+            value.as_ref() == std::ffi::OsStr::new("--initial-generation-resumable")
+        }),
     })
 }
 
@@ -1482,38 +1537,57 @@ pub const SCRIPT_MODULES: &[&str] = &[
 pub struct SelfHostedModule {
     pub name: &'static str,
     pub source: &'static [u8],
+    pub aot: ModuleAotPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleAotPolicy {
+    Synchronous,
+    InitialGenerationResumable,
 }
 
 pub const SELF_HOSTED_MODULES: &[SelfHostedModule] = &[
     SelfHostedModule {
         name: "stdlib",
         source: include_bytes!("../../../src/id/stdlib.birnam"),
+        aot: ModuleAotPolicy::Synchronous,
     },
     SelfHostedModule {
         name: "compiledUnit",
         source: include_bytes!("../../../src/id/compiled-unit.birnam"),
+        aot: ModuleAotPolicy::Synchronous,
     },
     SelfHostedModule {
         name: "toml",
         source: include_bytes!("../../../src/id/toml.birnam"),
+        aot: ModuleAotPolicy::Synchronous,
     },
     SelfHostedModule {
         name: "config",
         source: include_bytes!("../../../src/id/config.birnam"),
+        aot: ModuleAotPolicy::Synchronous,
     },
     SelfHostedModule {
         name: "appConfig",
         source: include_bytes!("../../../src/id/app-config.birnam"),
+        aot: ModuleAotPolicy::Synchronous,
     },
     SelfHostedModule {
         name: "isolate",
         source: include_bytes!("../../../src/id/isolate.birnam"),
+        aot: ModuleAotPolicy::Synchronous,
+    },
+    SelfHostedModule {
+        name: "stacklessControl",
+        source: include_bytes!("../../../src/id/stackless-control.birnam"),
+        aot: ModuleAotPolicy::InitialGenerationResumable,
     },
 ];
 
 pub const MODULE_MANAGER: SelfHostedModule = SelfHostedModule {
     name: "modules",
     source: include_bytes!("../../../src/id/modules.birnam"),
+    aot: ModuleAotPolicy::Synchronous,
 };
 
 /// Project policy is intentionally lazy: it participates in check/build/run
@@ -1521,6 +1595,7 @@ pub const MODULE_MANAGER: SelfHostedModule = SelfHostedModule {
 pub const PROJECT_POLICY_MODULE: SelfHostedModule = SelfHostedModule {
     name: "projectPolicy",
     source: include_bytes!("../../../src/id/project-policy.birnam"),
+    aot: ModuleAotPolicy::Synchronous,
 };
 
 const KERNEL_MODULES: &[&str] = &[
@@ -7194,19 +7269,62 @@ pub unsafe fn load_self_hosted(
     module: &SelfHostedModule,
     force_source: bool,
 ) -> Result<SelfHostedLoadOutcome, BootstrapSourceError> {
+    let selected = module.aot == ModuleAotPolicy::InitialGenerationResumable;
     if !force_source {
         let candidate = self_hosted_candidate_path(resources, module);
         if std::fs::metadata(&candidate).is_ok() {
             let candidate_bytes = path_bytes(&candidate);
             let candidate_string =
                 unsafe { (api.mkString)(candidate_bytes.as_ptr(), candidate_bytes.len()) };
-            let load_selector = unsafe { (api.intern)(c"load:".as_ptr()) };
+            let load_selector = if selected {
+                unsafe { (api.intern)(c"loadInitialModule:".as_ptr()) }
+            } else {
+                unsafe { (api.intern)(c"load:".as_ptr()) }
+            };
             let loaded =
                 unsafe { (api.send)(codegen, load_selector, [candidate_string].as_ptr(), 1) };
             if loaded != api.nilObj && !send_is_error(api, loaded) {
                 return Ok(SelfHostedLoadOutcome::Precompiled);
             }
         }
+    }
+    if selected {
+        static SOURCE_COMPILE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+        let sequence = SOURCE_COMPILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let output = env::temp_dir().join(format!(
+            "birnam-initial-module-{}-{sequence}.dylib",
+            std::process::id()
+        ));
+        struct RemoveCompiled(PathBuf);
+        impl Drop for RemoveCompiled {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _remove = RemoveCompiled(output.clone());
+        let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+        let output_bytes = path_bytes(&output);
+        let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+        let selection = unsafe { (api.intern)(c"resumableRequired".as_ptr()) };
+        let compile_selector =
+            unsafe { (api.intern)(c"compileInitialModule:output:selection:".as_ptr()) };
+        let compiled = unsafe {
+            (api.send)(
+                codegen,
+                compile_selector,
+                [source, output_value, selection].as_ptr(),
+                3,
+            )
+        };
+        if compiled == api.nilObj || send_is_error(api, compiled) {
+            return Err(BootstrapSourceError::EvaluationRejected);
+        }
+        let load_selector = unsafe { (api.intern)(c"loadInitialModule:".as_ptr()) };
+        let loaded = unsafe { (api.send)(codegen, load_selector, [output_value].as_ptr(), 1) };
+        if loaded == api.nilObj || send_is_error(api, loaded) {
+            return Err(BootstrapSourceError::EvaluationRejected);
+        }
+        return Ok(SelfHostedLoadOutcome::Source);
     }
     // SAFETY: forwarded to the documented source-recovery boundary.
     unsafe { record_and_eval_source(api, codegen, module)? };
@@ -7464,12 +7582,16 @@ pub unsafe fn bootstrap_self_hosted(
             };
         }
     }
-    let order = module_manager
+    let mut order = module_manager
         .zip((vector != api.nilObj).then_some(vector))
         .and_then(|(module_manager, vector)| unsafe {
             order_from_manager(api, module_manager, vector)
         })
         .unwrap_or_else(|| SELF_HOSTED_MODULES.iter().collect());
+    // G0-selected artifacts are authority-bound to the complete initial source
+    // inventory, so every synchronous source must be registered before one is
+    // admitted and staged.
+    order.sort_by_key(|module| module.aot == ModuleAotPolicy::InitialGenerationResumable);
 
     for module in order {
         let outcome = unsafe { load_self_hosted(api, codegen, resources, module, force_source) }
@@ -8709,7 +8831,8 @@ mod tests {
                 "toml",
                 "config",
                 "appConfig",
-                "isolate"
+                "isolate",
+                "stacklessControl"
             ]
         );
     }
@@ -9255,6 +9378,7 @@ mod tests {
             CompileModuleOptions {
                 source: PathBuf::from("module.birnam"),
                 output: PathBuf::from("module.dylib"),
+                initial_generation_resumable: false,
             }
         );
     }
