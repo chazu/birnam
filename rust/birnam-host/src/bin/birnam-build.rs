@@ -352,6 +352,18 @@ fn command_version(program: &str) -> String {
         .unwrap_or_else(|| "unavailable".to_owned())
 }
 
+fn command_stdout(program: &str, arguments: &[&str], directory: &Path) -> Option<String> {
+    let output = Command::new(program)
+        .args(arguments)
+        .current_dir(directory)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
 struct StagingGuard {
     stage: PathBuf,
     target: PathBuf,
@@ -553,10 +565,35 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     ];
     cargo_invocation.extend(cargo_profile.iter().map(|value| (*value).to_owned()));
 
+    let git_commit = command_stdout("git", &["rev-parse", "HEAD"], &root)
+        .unwrap_or_else(|| "unavailable".to_owned());
+    let git_clean = command_stdout(
+        "git",
+        &["status", "--porcelain=v1", "--untracked-files=all"],
+        &root,
+    )
+    .is_some_and(|status| status.is_empty());
     let receipt = serde_json::json!({
-        "schema": 2,
+        "schema": 3,
         "authority": "rust",
         "profile": options.profile,
+        "source_identity": {
+            "git_commit": git_commit,
+            "git_clean": git_clean,
+        },
+        "admission_contract": {
+            "target": "aarch64-macos",
+            "image_version": 7,
+            "candidate_envelope_abi": 4,
+            "candidate_manifest_version": 4,
+            "artifact_generation_abi": "birnam-artifact-generation-v1",
+            "id_api_descriptor_version": birnam_abi::ABI_DESCRIPTOR_V1.descriptor_version,
+            "id_api_schema_version": birnam_abi::ABI_DESCRIPTOR_V1.schema_version,
+            "id_api_fingerprint": hex::encode(birnam_abi::ABI_DESCRIPTOR_V1.fingerprint),
+            "runtime_abi_hash": "6c3b67f0ef1614b3",
+            "portable_code_api_versions": [1, 2, 3],
+            "portable_program_view_api_version": 1,
+        },
         "source_root": root,
         "source_manifest_sha256": source_digest,
         "source_manifest_files": source_before.len(),

@@ -48,7 +48,7 @@ CARGO_HOME="$tmp/cargo-home" cargo metadata \
   --format-version=1 \
   --manifest-path "$tmp/birnam/share/birnam/src/Cargo.toml" >"$tmp/cargo-metadata.json"
 test "$(jq -r '.workspace_root' "$tmp/cargo-metadata.json")" = "$tmp/birnam/share/birnam/src"
-test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-alien birnam-artifact birnam-artifact-codec birnam-codegen birnam-codegen-runtime birnam-collection birnam-error birnam-host birnam-id birnam-image birnam-image-codec birnam-isolate birnam-lang birnam-peg birnam-portable-code birnam-prelude birnam-relational birnam-store birnam-tcc"
+test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-alien birnam-artifact birnam-artifact-codec birnam-codegen birnam-codegen-runtime birnam-collection birnam-error birnam-host birnam-id birnam-image birnam-isolate birnam-lang birnam-peg birnam-portable-code birnam-prelude birnam-relational birnam-store birnam-tcc"
 
 find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$tmp/expected-guide"
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"

@@ -45,7 +45,6 @@ dependencies = [
  "birnam-artifact",
  "birnam-artifact-codec",
  "birnam-codegen",
- "birnam-image-codec",
 ]
 
 [[package]]
@@ -88,14 +87,6 @@ name = "birnam-image"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-artifact",
- "sha2",
-]
-
-[[package]]
-name = "birnam-image-codec"
-version = "0.0.0"
-dependencies = [
  "birnam-artifact",
  "sha2",
 ]

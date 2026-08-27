@@ -77,6 +77,7 @@ cat >"$smoke_root/inspect.in" <<'EOF'
 [[[DispatchGeneration current] predecessor] isNil]
 [[[DispatchGeneration current] deltaUnit] isNil]
 [[DispatchGeneration current] compositionIdentity]
+[[db currentValue: #stacklessImageSmokeAcceptance attr: #origin] isNil]
 [[db currentValue: #stacklessImageSmokeAcceptance attr: #origin] state]
 [[db currentValue: #stacklessImageSmokeAcceptance attr: #origin] rollbackAvailable]
 [[[db currentValue: #stacklessImageSmokeAcceptance attr: #origin] composedInto] == [DispatchGeneration current]]
@@ -91,14 +92,14 @@ import re
 import sys
 
 expected = ["99", "42", "#composed", "#active", "false", "true", "true"]
-tail = ["#historical", "false", "true"]
+tail = ["false", "nil", "false", "false"]
 identities = []
 for path in sys.argv[1:]:
     with open(path, encoding="utf-8") as handle:
         answers = re.findall(r"^birnam> (.*)$", handle.read(), re.MULTILINE)
     assert answers[:7] == expected, (path, answers)
     assert re.fullmatch(r"[0-9a-f]{64}", answers[7]), (path, answers)
-    assert answers[8:11] == tail, (path, answers)
+    assert answers[8:12] == tail, (path, answers)
     identities.append(answers[7])
 assert identities[0] == identities[1], identities
 PY
@@ -163,4 +164,4 @@ grep -Fxq 'birnam> #codeGenerationPinned' "$smoke_root/evolve.out"
 grep -Fxq 'birnam> 0' "$smoke_root/evolve.out"
 test ! -s "$smoke_root/evolve.err"
 
-echo "stackless-image-lifecycle-smoke: v7 generation-projected named+method-block+initializer-block recovery, image rollback, and physical successor reclamation passed"
+echo "stackless-image-lifecycle-smoke: v7 generation-projected named+method-block+initializer-block recovery, rooted-origin retirement, image rollback, and physical successor reclamation passed"

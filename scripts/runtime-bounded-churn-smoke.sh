@@ -8,6 +8,18 @@ cd "$(dirname "$0")/.."
 prefix=${1:?usage: runtime-bounded-churn-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
 test -x "$bin"
+input_image=${BIRNAM_CHURN_INPUT_IMAGE:-}
+output_image=${BIRNAM_CHURN_OUTPUT_IMAGE:-}
+recovery_mode=${BIRNAM_CHURN_RECOVERY_MODE:-mapped}
+evidence_json=${BIRNAM_CHURN_EVIDENCE_JSON:-}
+case $recovery_mode in
+  mapped|rebuild) ;;
+  *) printf 'unknown recovery mode: %s\n' "$recovery_mode" >&2; exit 2 ;;
+esac
+if [[ -n $input_image && ! -f $input_image ]]; then
+  printf 'input image does not exist: %s\n' "$input_image" >&2
+  exit 2
+fi
 
 method_cycles=${BIRNAM_CHURN_METHOD_CYCLES:-1667}
 items=${BIRNAM_CHURN_ITEMS:-5000}
@@ -157,7 +169,13 @@ EOF
 }
 
 write_churn_program "$smoke_root/initial.birnam" "$image" full
-"$bin" --repl <"$smoke_root/initial.birnam" >"$smoke_root/initial.out" 2>"$smoke_root/initial.err"
+if [[ -z $input_image ]]; then
+  "$bin" --repl <"$smoke_root/initial.birnam" >"$smoke_root/initial.out" 2>"$smoke_root/initial.err"
+elif [[ $recovery_mode == rebuild ]]; then
+  "$bin" --rebuild "$input_image" <"$smoke_root/initial.birnam" >"$smoke_root/initial.out" 2>"$smoke_root/initial.err"
+else
+  "$bin" "$input_image" <"$smoke_root/initial.birnam" >"$smoke_root/initial.out" 2>"$smoke_root/initial.err"
+fi
 test ! -s "$smoke_root/initial.err"
 test -s "$image"
 
@@ -170,7 +188,10 @@ printf '[db retainedFactBytes]\n:quit\n' \
   | "$bin" "$resaved" >"$smoke_root/resaved.out" 2>"$smoke_root/resaved.err"
 test ! -s "$smoke_root/resaved.err"
 
-python3 - "$smoke_root/initial.out" "$smoke_root/continued.out" "$smoke_root/resaved.out" <<'PY'
+python3 - "$smoke_root/initial.out" "$smoke_root/continued.out" "$smoke_root/resaved.out" \
+  "$evidence_json" "$image" "$resaved" "$recovery_mode" <<'PY'
+import json
+import os
 import re
 import sys
 
@@ -227,6 +248,24 @@ assert len(continued["CLEAN"]) == 1
 with open(sys.argv[3], encoding="utf-8") as handle:
     answers = re.findall(r"^birnam> ([0-9]+)$", handle.read(), re.MULTILINE)
 assert answers, sys.argv[3]
+
+if sys.argv[4]:
+    evidence = {
+        "schema": 1,
+        "recovery_mode": sys.argv[7],
+        "initial": initial,
+        "continued": continued,
+        "resaved_retained_fact_bytes": int(answers[-1]),
+        "image_bytes": os.path.getsize(sys.argv[5]),
+        "resaved_image_bytes": os.path.getsize(sys.argv[6]),
+    }
+    with open(sys.argv[4], "w", encoding="utf-8") as handle:
+        json.dump(evidence, handle, sort_keys=True, indent=2)
+        handle.write("\n")
 PY
+
+if [[ -n $output_image ]]; then
+  cp "$resaved" "$output_image"
+fi
 
 printf 'runtime-bounded-churn-smoke: method, Symbol, bounded-history, retained-control, and save/load/resave plateaus passed\n'

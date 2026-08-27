@@ -1133,6 +1133,22 @@ impl Emitter {
         self.emit_program_mode(program, true, Some(projected_statement_indices))
     }
 
+    /// Emit the executable part of an image generation. Method operations must
+    /// run to rebuild process-local dispatch, and projection-safe capture-free
+    /// block bindings must recreate their process-local Globals roots. Every
+    /// other initializer is suppressed so loading and resaving an image is
+    /// state-idempotent.
+    pub fn emit_image_recovery_program(&mut self, program: &Program<'_>) -> Result<(), EmitError> {
+        let mut projected = resumable::projected_block_bindings(program)
+            .into_iter()
+            .filter(|binding| binding.captures.is_empty())
+            .map(|binding| binding.statement_index)
+            .collect::<Vec<_>>();
+        projected.sort_unstable();
+        projected.dedup();
+        self.emit_program_mode(program, true, Some(&projected))
+    }
+
     fn emit_program_mode(
         &mut self,
         program: &Program<'_>,
@@ -2173,6 +2189,50 @@ mod tests {
             .unwrap();
         let output = String::from_utf8(emitter.finish()).unwrap();
         assert!(output.contains("birnam_global_set(\"projectedClosure\""));
+        assert!(output.contains("birnam_install_method"));
+        assert!(!output.contains("must not run"));
+        assert!(!output.contains("println:"));
+    }
+
+    #[test]
+    fn image_recovery_emits_methods_and_projected_roots_without_effectful_initializers() {
+        let initializer = Expr::Send {
+            receiver: Box::new(Expr::Global(b"System")),
+            selector: Cow::Borrowed(b"println:"),
+            args: vec![Expr::String(b"must not run")],
+            source: b"[System println: \"must not run\"]",
+        };
+        let method = Expr::Send {
+            receiver: Box::new(Expr::Global(b"Reflect")),
+            selector: Cow::Borrowed(b"defineMethod:on:as:"),
+            args: vec![
+                Expr::Symbol(b"answer"),
+                Expr::Global(b"Integer"),
+                Expr::Block(Box::new(Block {
+                    params: vec![b"self"],
+                    body: vec![Statement::Expr(Expr::SmallInt(71))],
+                })),
+            ],
+            source: b"[Reflect defineMethod: #answer on: Integer as: [:self | 71]]",
+        };
+        let projected = Statement::Let {
+            name: b"recoveredClosure",
+            value: Expr::Block(Box::new(Block {
+                params: vec![],
+                body: vec![Statement::Expr(Expr::SmallInt(73))],
+            })),
+        };
+        let program = Program {
+            body: vec![
+                Statement::Expr(initializer),
+                projected,
+                Statement::Expr(method),
+            ],
+        };
+        let mut emitter = Emitter::new_candidate_artifact(7);
+        emitter.emit_image_recovery_program(&program).unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains("birnam_global_set(\"recoveredClosure\""));
         assert!(output.contains("birnam_install_method"));
         assert!(!output.contains("must not run"));
         assert!(!output.contains("println:"));

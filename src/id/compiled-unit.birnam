@@ -119,6 +119,16 @@
           [Codegen sealInitialGeneration];
           generation]]]]]];
 
+// Retire one no-longer-current lifecycle carrier through ordinary Store
+// retractions. A current-only compaction drops the graph; an explicit history
+// window retains the exact retirement transitions by policy.
+[Reflect defineMethod: #retireDurableEntity: on: CompiledUnit as: [:self :entity |
+  [[| [[db attrCount: entity] > 0]] whileTrue: [|
+    let attribute := [db attrAt: entity index: 0];
+    let value := [db currentValue: entity attr: attribute];
+    [db retract: entity attr: attribute value: value]]];
+  entity]];
+
 // Image recovery has already restored dispatch before this policy method runs.
 // Mint one process-local composed component per source-map row, publish a fresh
 // rollback-free DispatchGeneration with the exact same source/selection
@@ -126,42 +136,52 @@
 // transient ledger. No candidate pointer snapshot crosses the image boundary.
 [Reflect defineMethod: #reconcileImageComposition: on: CompiledUnit as: [:self :identity |
   let origin := [DispatchGeneration current];
-  let components := [[origin sourceMap] inject: #[] into: [:rows :entry |
-    let name := [entry at: 0];
-    let revision := [entry at: 1];
-    let component := [self clone];
-    [db assert: component attr: #unitName value: name];
-    [db assert: component attr: #generation value: [self nextGenerationFor: name]];
-    [db assert: component attr: #kind value: #composed];
-    [db assert: component attr: #state value: #active];
-    [db assert: component attr: #rollbackAvailable value: false];
-    [db assert: component attr: #sourceRevision value: revision];
-    [db assert: component attr: #authoredSource value: [revision at: 3]];
-    [db assert: component attr: #revisionDigest value: [revision at: 6]];
-    [db assert: component attr: #requires value: [revision at: 2]];
-    [db assert: component attr: #provides value: #[]];
-    [db assert: component attr: #compositionIdentity value: identity];
-    [rows add: #[name revision component]]]];
-  let projection := #[#generationProjection components [origin baseDigest] [origin generationSelection]];
-  let composed := [DispatchGeneration fromProjection: projection predecessor: nil delta: nil];
-  [db assert: composed attr: #kind value: #composed];
-  [db assert: composed attr: #compositionIdentity value: identity];
-  let active := [db cellFor: #dispatch attr: #activeGeneration];
-  [active set: composed];
-  let adopted := [Codegen adoptComposedGeneration: composed];
-  [[adopted isNil]
-    ifTrue: [| [active set: origin]; [Error kind: #imageCompositionRejected]]
+  let existingIdentity := [db currentValue: origin attr: #compositionIdentity];
+  [[existingIdentity = identity]
+    ifTrue: [|
+      let adopted := [Codegen adoptComposedGeneration: origin];
+      [[adopted isNil]
+        ifTrue: [| [Error kind: #imageCompositionRejected]]
+        ifFalse: [| origin]]]
     ifFalse: [|
-      [[origin sourceMap] inject: nil into: [:ignored :entry |
-        let prior := [entry at: 2];
-        [[prior isNil]
-          ifTrue: [| nil]
-          ifFalse: [|
+      let components := [[origin sourceMap] inject: #[] into: [:rows :entry |
+        let name := [entry at: 0];
+        let revision := [entry at: 1];
+        let component := [self clone];
+        [db assert: component attr: #unitName value: name];
+        [db assert: component attr: #generation value: [self nextGenerationFor: name]];
+        [db assert: component attr: #kind value: #composed];
+        [db assert: component attr: #state value: #active];
+        [db assert: component attr: #rollbackAvailable value: false];
+        [db assert: component attr: #sourceRevision value: revision];
+        [db assert: component attr: #authoredSource value: [revision at: 3]];
+        [db assert: component attr: #revisionDigest value: [revision at: 6]];
+        [db assert: component attr: #requires value: [revision at: 2]];
+        [db assert: component attr: #provides value: #[]];
+        [db assert: component attr: #compositionIdentity value: identity];
+        [rows add: #[name revision component]]]];
+      let projection := #[#generationProjection components [origin baseDigest] [origin generationSelection]];
+      let composed := [DispatchGeneration fromProjection: projection predecessor: nil delta: nil];
+      [db assert: composed attr: #kind value: #composed];
+      [db assert: composed attr: #compositionIdentity value: identity];
+      let active := [db cellFor: #dispatch attr: #activeGeneration];
+      [active set: composed];
+      let adopted := [Codegen adoptComposedGeneration: composed];
+      [[adopted isNil]
+        ifTrue: [| [active set: origin]; [Error kind: #imageCompositionRejected]]
+        ifFalse: [|
+          [[origin sourceMap] inject: nil into: [:ignored :entry |
+            let prior := [entry at: 2];
+            [[prior isNil]
+              ifTrue: [| nil]
+              ifFalse: [|
             [db assert: prior attr: #state value: #historical];
             [db assert: prior attr: #rollbackAvailable value: false];
-            [db assert: prior attr: #composedInto value: composed]]]]];
+            [db assert: prior attr: #composedInto value: composed];
+            [self retireDurableEntity: prior]]]]];
       [db assert: origin attr: #composedInto value: composed];
-      composed]]]];
+      [self retireDurableEntity: origin];
+      composed]]]]]];
 
 [Reflect defineMethod: #state on: CompiledUnit as: [:self |
   let recorded := [db currentValue: self attr: #state];

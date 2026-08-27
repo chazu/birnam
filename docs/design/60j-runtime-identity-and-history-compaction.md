@@ -463,6 +463,19 @@ loaded it in a fresh process, continued with another 5,001 reflective
 operations plus Symbol and bounded-history churn, resaved, and booted the
 successor image.
 
+The production-age resave gate added by 60H exposed two cache-provenance gaps
+outside the original within-process churn fixture. Store image projection now
+uses the explicit `mirror` bit rather than inferring method mirrors from current
+vtable registration, and identity-equal image composition re-adopts its durable
+composed generation instead of minting a fresh semantic graph. Alternating
+mapped/rebuilt current-only resaves therefore plateau after the first composed
+image while retaining the same ordinary reconciliation send surface. Image
+durability policy is also relational: an attribute whose `#imageTransient`
+value is true remains ordinary live Store state but its carried values are not
+serialized. REPL marks `#cin`, `#cerr`, and `#cbuf` this way and teardown retracts
+the three process-local capability facts after freeing the buffer, so neither a
+live save nor a completed session can make its receiver durable.
+
 ## 9. Acceptance boundary
 
 The stackless runtime now satisfies the continuous self-hosted evolution gate:

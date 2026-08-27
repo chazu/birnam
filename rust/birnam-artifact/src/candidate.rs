@@ -38,8 +38,6 @@ pub struct Envelope<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManifestVersion {
-    V2,
-    V3,
     V4,
 }
 
@@ -75,89 +73,12 @@ fn segment<'a>(bytes: &'a [u8], cursor: &mut usize) -> Option<&'a [u8]> {
     Some(value)
 }
 
-fn token(bytes: &[u8]) -> bool {
-    !bytes.is_empty()
-        && bytes
-            .iter()
-            .all(|byte| *byte >= 0x21 && *byte != b'|' && *byte != b',' && *byte != b';')
-}
-
 /// Parse the candidate's pipe-delimited manifest without allocating.
 pub fn inspect_manifest(bytes: &[u8]) -> Result<Manifest<'_>, Error> {
-    if bytes.starts_with(b"v4|") {
-        return inspect_manifest_v4(bytes);
-    }
-    let mut cursor = 0;
-    let version = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let runtime = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let name = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let source_digest = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let non_method_digest = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let method_digest = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let revision_digest = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-    let (version, artifact_selection_digest, covered_revisions, dependencies) = match version {
-        b"v2" => (
-            ManifestVersion::V2,
-            None,
-            None,
-            segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?,
-        ),
-        b"v3" => {
-            let selection = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-            let revisions = segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?;
-            if !lowercase_digest(selection) || !revision_list(revisions) {
-                return Err(Error::ManifestDigestInvalid);
-            }
-            (
-                ManifestVersion::V3,
-                Some(selection),
-                Some(revisions),
-                segment(bytes, &mut cursor).ok_or(Error::ManifestInvalid)?,
-            )
-        }
-        _ => return Err(Error::ManifestInvalid),
-    };
-    let operations = bytes.get(cursor..).ok_or(Error::ManifestInvalid)?;
-    if runtime != crate::ABI || !token(name) {
+    if !bytes.starts_with(b"v4|") {
         return Err(Error::ManifestInvalid);
     }
-    for digest_value in [
-        source_digest,
-        non_method_digest,
-        method_digest,
-        revision_digest,
-    ] {
-        let valid = match version {
-            ManifestVersion::V2 => digest(digest_value),
-            ManifestVersion::V3 | ManifestVersion::V4 => lowercase_digest(digest_value),
-        };
-        if !valid {
-            return Err(Error::ManifestDigestInvalid);
-        }
-    }
-    if !list_tokens(dependencies, b',') || !operation_rows(operations) {
-        return Err(Error::ManifestInvalid);
-    }
-    let dependency_count = if dependencies.is_empty() {
-        0
-    } else {
-        dependencies.split(|byte| *byte == b',').count()
-    };
-    let operation_count = operations.split(|byte| *byte == b';').count();
-    Ok(Manifest {
-        version,
-        name,
-        source_digest,
-        non_method_digest,
-        method_digest,
-        revision_digest,
-        artifact_selection_digest,
-        covered_revisions,
-        dependencies,
-        operations,
-        dependency_count,
-        operation_count,
-    })
+    inspect_manifest_v4(bytes)
 }
 
 fn colon_decimal(bytes: &[u8], cursor: &mut usize) -> Option<u32> {
@@ -303,60 +224,6 @@ fn inspect_manifest_v4(bytes: &[u8]) -> Result<Manifest<'_>, Error> {
     })
 }
 
-fn list_tokens(bytes: &[u8], separator: u8) -> bool {
-    if bytes.is_empty() {
-        return true;
-    }
-    let mut start = 0;
-    for (index, byte) in bytes.iter().enumerate() {
-        if *byte == separator {
-            if !token(&bytes[start..index]) {
-                return false;
-            }
-            start = index + 1;
-        }
-    }
-    token(&bytes[start..])
-}
-
-fn operation_rows(bytes: &[u8]) -> bool {
-    if bytes.is_empty() {
-        return false;
-    }
-    let mut start = 0;
-    for (index, byte) in bytes.iter().enumerate() {
-        if *byte == b';' {
-            if parse_operation(&bytes[start..index]).is_none() {
-                return false;
-            }
-            start = index + 1;
-        }
-    }
-    parse_operation(&bytes[start..]).is_some()
-}
-
-fn parse_operation(bytes: &[u8]) -> Option<Operation<'_>> {
-    let mut fields = bytes.split(|byte| *byte == b',');
-    let target = fields.next()?;
-    let selector = fields.next()?;
-    let kind = fields.next()?;
-    let arity = decimal(fields.next()?)?;
-    if fields.next().is_some() || !token(target) || !token(selector) || kind.len() != 1 {
-        return None;
-    }
-    let install = match kind[0] {
-        b'I' => true,
-        b'R' => false,
-        _ => return None,
-    };
-    Some(Operation {
-        target,
-        selector,
-        install,
-        arity,
-    })
-}
-
 impl<'a> Manifest<'a> {
     pub fn operation_count(self) -> usize {
         self.operation_count
@@ -366,21 +233,12 @@ impl<'a> Manifest<'a> {
         if index >= self.operation_count {
             return None;
         }
-        match self.version {
-            ManifestVersion::V2 | ManifestVersion::V3 => self
-                .operations
-                .split(|byte| *byte == b';')
-                .nth(index)
-                .and_then(parse_operation),
-            ManifestVersion::V4 => {
-                let mut cursor = 0;
-                let mut operation = None;
-                for _ in 0..=index {
-                    operation = parse_v4_operation(self.operations, &mut cursor);
-                }
-                operation
-            }
+        let mut cursor = 0;
+        let mut operation = None;
+        for _ in 0..=index {
+            operation = parse_v4_operation(self.operations, &mut cursor);
         }
+        operation
     }
 
     pub fn dependency_count(self) -> usize {
@@ -391,46 +249,23 @@ impl<'a> Manifest<'a> {
         if index >= self.dependency_count {
             return None;
         }
-        match self.version {
-            ManifestVersion::V2 | ManifestVersion::V3 => {
-                self.dependencies.split(|byte| *byte == b',').nth(index)
-            }
-            ManifestVersion::V4 => {
-                let mut cursor = 0;
-                let mut dependency = None;
-                for _ in 0..=index {
-                    dependency = length_value(self.dependencies, &mut cursor);
-                }
-                dependency
-            }
+        let mut cursor = 0;
+        let mut dependency = None;
+        for _ in 0..=index {
+            dependency = length_value(self.dependencies, &mut cursor);
         }
+        dependency
     }
 
     pub fn covered_revision_count(self) -> usize {
-        match self.version {
-            ManifestVersion::V2 => 0,
-            ManifestVersion::V3 => self
-                .covered_revisions
-                .filter(|revisions| !revisions.is_empty())
-                .map(|revisions| revisions.split(|byte| *byte == b',').count())
-                .unwrap_or(0),
-            ManifestVersion::V4 => self
-                .covered_revisions
-                .map(|revisions| revisions.len() / 64)
-                .unwrap_or(0),
-        }
+        self.covered_revisions
+            .map(|revisions| revisions.len() / 64)
+            .unwrap_or(0)
     }
 
     pub fn covered_revision(self, index: usize) -> Option<&'a [u8]> {
         let revisions = self.covered_revisions?;
-        match self.version {
-            ManifestVersion::V2 => None,
-            ManifestVersion::V3 => revisions
-                .split(|byte| *byte == b',')
-                .filter(|revision| !revision.is_empty())
-                .nth(index),
-            ManifestVersion::V4 => revisions.chunks_exact(64).nth(index),
-        }
+        revisions.chunks_exact(64).nth(index)
     }
 }
 
@@ -471,20 +306,6 @@ fn lowercase_digest(bytes: &[u8]) -> bool {
         && bytes
             .iter()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
-}
-
-fn revision_list(bytes: &[u8]) -> bool {
-    if bytes.is_empty() {
-        return true;
-    }
-    let mut previous = None;
-    for revision in bytes.split(|byte| *byte == b',') {
-        if !lowercase_digest(revision) || previous.is_some_and(|value| value >= revision) {
-            return false;
-        }
-        previous = Some(revision);
-    }
-    true
 }
 
 /// Parse one complete candidate envelope without allocating or opening code.
@@ -579,12 +400,12 @@ mod tests {
         bytes.push(b'\n');
         bytes.extend_from_slice(b"candidate=4\nplatform=aarch64-macos\npredecessor=");
         bytes.extend_from_slice(digest);
-        bytes.extend_from_slice(b"\nmanifest=v2|birnam-artifact-generation-v1|candidate|");
-        for _ in 0..4 {
+        bytes.extend_from_slice(b"\nmanifest=v4|birnam-artifact-generation-v1|9:candidate|");
+        for _ in 0..5 {
             bytes.extend_from_slice(digest);
             bytes.push(b'|');
         }
-        bytes.extend_from_slice(b"|Target,selector,I,1\nselection=0\n\nsource=");
+        bytes.extend_from_slice(b"0:|0:|1:6:Target8:selectorI1:\nselection=0\n\nsource=");
         bytes.extend_from_slice(source.len().to_string().as_bytes());
         bytes.push(b'\n');
         bytes.extend_from_slice(source);
@@ -607,7 +428,7 @@ mod tests {
         assert!(
             envelope
                 .manifest
-                .starts_with(b"v2|birnam-artifact-generation-v1|candidate|")
+                .starts_with(b"v4|birnam-artifact-generation-v1|9:candidate|")
         );
         assert_eq!(envelope.source, b"module source");
     }
@@ -670,106 +491,9 @@ mod tests {
     }
 
     #[test]
-    fn manifest_is_borrowed_and_operations_are_structural() {
-        let digest = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let mut manifest = b"v2|birnam-artifact-generation-v1|candidate|".to_vec();
-        for index in 0..4 {
-            if index != 0 {
-                manifest.push(b'|');
-            }
-            manifest.extend_from_slice(digest);
-        }
-        manifest.extend_from_slice(b"|depA,depB|Target,selector:,I,2;Other,remove,R,1");
-        let parsed = inspect_manifest(&manifest).unwrap();
-        assert_eq!(parsed.version, ManifestVersion::V2);
-        assert_eq!(parsed.artifact_selection_digest, None);
-        assert_eq!(parsed.name, b"candidate");
-        assert_eq!(parsed.dependencies, b"depA,depB");
-        assert_eq!(parsed.operation_count(), 2);
-        assert_eq!(parsed.operation(0).unwrap().target, b"Target");
-        assert!(parsed.operation(0).unwrap().install);
-        assert_eq!(parsed.operation(0).unwrap().arity, 2);
-        assert!(!parsed.operation(1).unwrap().install);
-    }
-
-    #[test]
-    fn manifest_rejects_malformed_rows_and_digests() {
-        let valid = b"v2|birnam-artifact-generation-v1|candidate|0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef|0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef|0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef|0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef||Target,selector,I,1";
-        assert!(inspect_manifest(valid).is_ok());
-        let mut bad = valid.to_vec();
-        let offset = bad
-            .windows(b"Target,selector,I,1".len())
-            .position(|window| window == b"Target,selector,I,1")
-            .unwrap();
-        bad[offset + b"Target,selector,".len()] = b'X';
-        assert_eq!(inspect_manifest(&bad), Err(Error::ManifestInvalid));
-        let mut bad_digest = valid.to_vec();
-        let digest = bad_digest
-            .windows(64)
-            .position(|window| window.iter().all(u8::is_ascii_hexdigit))
-            .unwrap();
-        bad_digest[digest] = b'g';
-        assert_eq!(
-            inspect_manifest(&bad_digest),
-            Err(Error::ManifestDigestInvalid)
-        );
-    }
-
-    #[test]
-    fn manifest_v3_commits_canonical_selection_scope() {
-        let digest = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let revision_a = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdee";
-        let revision_b = b"1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let mut manifest = b"v3|birnam-artifact-generation-v1|candidate|".to_vec();
-        for _ in 0..4 {
-            manifest.extend_from_slice(digest);
-            manifest.push(b'|');
-        }
-        manifest.extend_from_slice(digest);
-        manifest.push(b'|');
-        manifest.extend_from_slice(revision_a);
-        manifest.push(b',');
-        manifest.extend_from_slice(revision_b);
-        manifest.extend_from_slice(b"|dep|Target,selector,I,1");
-        let parsed = inspect_manifest(&manifest).unwrap();
-        assert_eq!(parsed.version, ManifestVersion::V3);
-        assert_eq!(parsed.artifact_selection_digest, Some(digest.as_slice()));
-        assert_eq!(parsed.covered_revision_count(), 2);
-        assert_eq!(parsed.covered_revision(0), Some(revision_a.as_slice()));
-        assert_eq!(parsed.covered_revision(1), Some(revision_b.as_slice()));
-
-        let mut uppercase = manifest.clone();
-        let selection = uppercase
-            .windows(digest.len())
-            .rposition(|window| window == digest)
-            .unwrap();
-        uppercase[selection + 10] = b'A';
-        assert_eq!(
-            inspect_manifest(&uppercase),
-            Err(Error::ManifestDigestInvalid)
-        );
-
-        let mut uppercase_source = manifest.clone();
-        let source_digest = b"v3|birnam-artifact-generation-v1|candidate|".len();
-        uppercase_source[source_digest + 10] = b'A';
-        assert_eq!(
-            inspect_manifest(&uppercase_source),
-            Err(Error::ManifestDigestInvalid)
-        );
-
-        let mut unordered = b"v3|birnam-artifact-generation-v1|candidate|".to_vec();
-        for _ in 0..5 {
-            unordered.extend_from_slice(digest);
-            unordered.push(b'|');
-        }
-        unordered.extend_from_slice(revision_b);
-        unordered.push(b',');
-        unordered.extend_from_slice(revision_a);
-        unordered.extend_from_slice(b"||Target,selector,I,1");
-        assert_eq!(
-            inspect_manifest(&unordered),
-            Err(Error::ManifestDigestInvalid)
-        );
+    fn obsolete_manifest_versions_are_rejected_before_parsing() {
+        assert_eq!(inspect_manifest(b"v2|garbage"), Err(Error::ManifestInvalid));
+        assert_eq!(inspect_manifest(b"v3|garbage"), Err(Error::ManifestInvalid));
     }
 
     #[test]

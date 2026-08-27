@@ -10,7 +10,6 @@ members = [
     "rust/birnam-error",
     "rust/birnam-id",
     "rust/birnam-image",
-    "rust/birnam-image-codec",
     "rust/birnam-host",
     "rust/birnam-isolate",
     "rust/birnam-lang",

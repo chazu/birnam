@@ -38,8 +38,11 @@
 > The S0-S4 delivery boundary closed 2026-08-24 after forced-GC collection
 > callback proof and mapped/rebuilt image successor activation plus exact
 > rollback. The 60G lifetime/host-integration and 60J identity/history work,
-> including 60K portable CodeObjects and image-v7, closed 2026-08-27. Future
-> 60H release rollout remains separate. Design 60J was accepted
+> including 60K portable CodeObjects and image-v7, closed 2026-08-27. The 60H
+> exact-current cut, production gates, evidence driver, longevity reducer, and
+> immutable-promotion checks were implemented the same day; actual production
+> designation remains a release operation over one clean committed archive.
+> Design 60J was accepted
 > 2026-08-24 after the 60G ownership audit exposed permanent vtable, Symbol,
 > and retained-history growth. It requires one indefinitely evolving
 > process/image to remain bounded by live state plus explicit retention. Its
@@ -56,6 +59,7 @@
 > - [60d — Concurrency fit and boundaries](60d-stackless-concurrency-fit.md)
 > - [60e — Resumable registration and the entry seam](60e-resumable-registration-and-entry.md)
 > - [60f — Resumable compiler lowering](60f-resumable-compiler-lowering.md)
+> - [60h — Production acceptance and rollout](60h-stackless-production-acceptance-and-rollout.md)
 > - [60i — Stackless artifact byte grammar](60i-stackless-artifact-byte-grammar.md)
 > - [60j — Runtime identity and history compaction](60j-runtime-identity-and-history-compaction.md)
 > - [60k — Reified portable CodeObjects](60k-portable-codeobjects.md)
@@ -343,11 +347,13 @@ names its code. The lifecycle gates prove a live carrier survives repository
 eviction, retirement waits for the outer dispatch-read extent, and a formerly
 method-bearing successor reaches zero retained generations after quiescence.
 
-### Future 60H — Acceptance and rollout
+### Accepted 60H — Acceptance and rollout
 
-Will define the compatibility matrix, release gates, and rollout policy. The S1
-implementation slices and their local exit evidence are part of this record;
-they cannot be deferred until rollout planning.
+[60H](60h-stackless-production-acceptance-and-rollout.md) defines the exact-
+current compatibility matrix, immutable release evidence, blocking release
+gates, AFK longevity proof, and byte-identical promotion policy. It deliberately
+removes v4-v6 image readers and obsolete artifact readers rather than carrying
+backward-compatibility modes into the production runtime.
 
 ### Implemented 60J — Runtime identity and history compaction
 

@@ -10,7 +10,7 @@ use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
 use std::fmt;
 use std::io;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
@@ -233,6 +233,8 @@ pub enum ImageLoadOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageError {
     MissingSystem,
+    InvalidHeader,
+    VersionMismatch { expected: u32, observed: u32 },
     LoadRejected,
     UnexpectedStatus,
 }
@@ -736,9 +738,8 @@ pub unsafe fn compile_module(
 }
 
 /// Load an image through the Birnam `System` protocol. A true answer means
-/// compiled code was mapped; false means the runtime must use its recorded
-/// source recovery path, for which the existing `replayMethods` and
-/// `replayAliens` hooks are invoked after the image decoder returns.
+/// compiled code was mapped; false means the runtime rebuilt the image's exact
+/// portable programs and materialization selection.
 ///
 /// # Safety
 ///
@@ -749,6 +750,20 @@ pub unsafe fn load_image(
     path: &Path,
     rebuild: bool,
 ) -> Result<ImageLoadOutcome, ImageError> {
+    let mut fixed_header = [0u8; 12];
+    std::fs::File::open(path)
+        .and_then(|mut file| file.read_exact(&mut fixed_header))
+        .map_err(|_| ImageError::InvalidHeader)?;
+    if fixed_header[..8] != *b"BIRNAMIM" {
+        return Err(ImageError::InvalidHeader);
+    }
+    let observed = u32::from_le_bytes(fixed_header[8..12].try_into().expect("fixed image version"));
+    if observed != 7 {
+        return Err(ImageError::VersionMismatch {
+            expected: 7,
+            observed,
+        });
+    }
     let api_ptr = runtime.stack.api() as *const IdApi;
     // SAFETY: the retained floor table outlives this synchronous load and the
     // owner thread remains exclusive for the whole operation.
@@ -778,44 +793,22 @@ pub unsafe fn load_image(
             if begun == api.nilObj || send_is_error(api, begun) {
                 return Err(ImageError::LoadRejected);
             }
-            // Image-v7 Code carries portable application materializations,
-            // not a duplicate of the self-hosted protocol layer already
-            // available in the installation. Rebuild/replay that source layer
-            // inside the same recovery boundary while retaining the mapped
-            // portable generation. Legacy mapped images with a complete
-            // surface make this path a no-op.
+            // The v7 loader already admitted and published the exact portable
+            // generation. Recompile its recovered self-hosted sources into
+            // methods without introducing a new source generation.
             let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
             let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
-            let rebuilt_generation =
-                !rebuilt.is_null() && rebuilt != api.nilObj && !send_is_error(api, rebuilt);
-            let replayed = if rebuilt_generation {
-                unsafe { (api.mkSmallInt)(1) }
-            } else {
-                let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
-                unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) }
-            };
-            let replay_count = if unsafe { (api.isSmallInt)(replayed) } != 0 {
-                unsafe { (api.smallIntValue)(replayed) }
-            } else {
-                0
-            };
+            if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, rebuilt) {
+                return Err(ImageError::LoadRejected);
+            }
             let config_surface_missing = unsafe { global_named(api, "Config") }
                 .map(|config| unsafe {
                     let loads = (api.intern)(c"loads".as_ptr());
                     !receiver_has_selector(api, config, loads)
                 })
                 .unwrap_or(false);
-            if replay_count == 0 || config_surface_missing {
-                unsafe {
-                    bootstrap_self_hosted(
-                        api,
-                        codegen,
-                        &runtime.resources,
-                        runtime.policy.force_source,
-                        false,
-                    )
-                }
-                .map_err(|_| ImageError::LoadRejected)?;
+            if config_surface_missing {
+                return Err(ImageError::LoadRejected);
             }
             let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
             unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
@@ -866,48 +859,22 @@ pub unsafe fn load_image(
         if begun == api.nilObj || send_is_error(api, begun) {
             return Err(ImageError::LoadRejected);
         }
-        // Rebuild the exact accepted GenerationProjection from recovered
-        // sources and selection. This regenerates selected carriers and
-        // projected globals without executing the image's captured dylib.
-        // Older/data-only providers may not expose this seam, so retain the
-        // synchronous replay fallback.
+        // The v7 loader has already rebuilt the exact stored PortablePrograms
+        // and selection before returning false. Recompile the recovered
+        // self-hosted sources without bootstrapping a new durable generation.
         let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
         let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
-        let rebuilt_generation =
-            !rebuilt.is_null() && rebuilt != api.nilObj && !send_is_error(api, rebuilt);
-        let replayed = if rebuilt_generation {
-            unsafe { (api.mkSmallInt)(1) }
-        } else {
-            let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
-            unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) }
-        };
-        // A data-only image (and an explicit --rebuild of an image whose
-        // journal contains no user methods) still needs the self-hosted
-        // protocol layer. Reload the embedded stdlib in this zero-replay case
-        // through the Rust host bootstrap so Config/Module/REPL globals cannot remain as
-        // stale image objects without their method surface.
-        let replay_count = if unsafe { (api.isSmallInt)(replayed) } != 0 {
-            unsafe { (api.smallIntValue)(replayed) }
-        } else {
-            0
-        };
+        if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, rebuilt) {
+            return Err(ImageError::LoadRejected);
+        }
         let config_surface_missing = unsafe { global_named(api, "Config") }
             .map(|config| unsafe {
                 let loads = (api.intern)(c"loads".as_ptr());
                 !receiver_has_selector(api, config, loads)
             })
             .unwrap_or(false);
-        if replay_count == 0 || config_surface_missing {
-            unsafe {
-                bootstrap_self_hosted(
-                    api,
-                    codegen,
-                    &runtime.resources,
-                    runtime.policy.force_source,
-                    false,
-                )
-            }
-            .map_err(|_| ImageError::LoadRejected)?;
+        if config_surface_missing {
+            return Err(ImageError::LoadRejected);
         }
         let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
         unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
@@ -6772,14 +6739,6 @@ impl HostRuntime {
             return Err(WorkerStartupError::ReceiverNotFound);
         }
         let selector = unsafe { (api.intern)(selector_name.as_ptr()) };
-        if !unsafe { receiver_has_selector(api, receiver, selector) }
-            && unsafe { replay_worker_methods(api) }
-        {
-            receiver = unsafe { (api.send)(globals, at_selector, [receiver_symbol].as_ptr(), 1) };
-            if receiver == api.nilObj {
-                receiver = unsafe { (api.import)(receiver_name.as_ptr()) };
-            }
-        }
         if receiver == api.nilObj || !unsafe { receiver_has_selector(api, receiver, selector) } {
             return Err(WorkerStartupError::SelectorNotFound);
         }
@@ -7511,29 +7470,6 @@ unsafe fn receiver_has_selector(
 /// admitted but did not bind the target's selector in the live vtable. The
 /// recovery transaction mirrors the ordinary image source path and is closed
 /// before the worker driver is entered.
-unsafe fn replay_worker_methods(api: &IdApi) -> bool {
-    let Some(codegen) = (unsafe { global_named(api, "Codegen") }) else {
-        return false;
-    };
-    let begin = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
-    if unsafe { (api.send)(codegen, begin, std::ptr::null(), 0) } == api.nilObj {
-        return false;
-    }
-    let replay = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
-    let replayed = unsafe { (api.send)(codegen, replay, std::ptr::null(), 0) };
-    let replayed_any =
-        unsafe { (api.isSmallInt)(replayed) } != 0 && unsafe { (api.smallIntValue)(replayed) } > 0;
-    let targets = unsafe { (api.intern)(c"deriveImageMethodTargets".as_ptr()) };
-    unsafe { (api.send)(codegen, targets, std::ptr::null(), 0) };
-    let aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
-    unsafe { (api.send)(codegen, aliens, std::ptr::null(), 0) };
-    let derive = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
-    unsafe { (api.send)(codegen, derive, std::ptr::null(), 0) };
-    let end = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
-    let ended = unsafe { (api.send)(codegen, end, std::ptr::null(), 0) };
-    replayed_any && ended != api.nilObj
-}
-
 unsafe fn mark_module_loaded(api: &IdApi, module_manager: birnam_abi::Oop, name: &str) {
     let Some(name) = (unsafe { intern_name(api, name) }) else {
         return;

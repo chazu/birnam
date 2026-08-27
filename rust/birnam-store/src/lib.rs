@@ -788,14 +788,6 @@ fn is_type_vtable(api: &birnam_abi::IdApi, vtable: birnam_abi::Oop) -> bool {
     false
 }
 
-fn is_registered_type_vtable(api: &birnam_abi::IdApi, object: birnam_abi::Oop) -> bool {
-    let count = unsafe { (api.vtableCount)() };
-    (0..count).any(|index| {
-        let vtable = unsafe { (api.vtableAt)(index) };
-        vtable == object && is_type_vtable(api, vtable)
-    })
-}
-
 unsafe extern "C" fn backfill_mirror(
     self_object: birnam_abi::Oop,
     _args: *const birnam_abi::Oop,
@@ -857,6 +849,10 @@ unsafe extern "C" fn mirror_overwrite_hook(vtable: birnam_abi::Oop, selector: bi
     }
 }
 
+fn durable_image_fact(fact: &Fact, transient_attributes: &[birnam_abi::Oop]) -> bool {
+    !fact.mirror && !transient_attributes.contains(&fact.a)
+}
+
 unsafe extern "C" fn image_facts_into(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -867,12 +863,22 @@ unsafe extern "C" fn image_facts_into(
     // SAFETY: this selector has exactly one argument.
     let collector = unsafe { *args };
     let selector = unsafe { intern(api, b"e:a:v:tx:op:historied:\0") };
-    let facts = unsafe { state_mut(self_object) }.facts.clone();
+    let transient_marker = unsafe { intern(api, b"imageTransient\0") };
+    let state = unsafe { state_mut(self_object) };
+    let mut transient_attributes = Vec::new();
+    for fact in &state.facts {
+        if !transient_attributes.contains(&fact.a)
+            && current_value_raw(state, fact.a, transient_marker) == api.trueObj
+        {
+            transient_attributes.push(fact.a);
+        }
+    }
+    let facts = state.facts.clone();
     for fact in facts {
         // The MOP mirror is a rebuilt cache, not independently serialized. In
         // particular, method carriers may be stale raw code pointers and must
         // never reach the heap codec.
-        if is_registered_type_vtable(api, fact.e) {
+        if !durable_image_fact(&fact, &transient_attributes) {
             continue;
         }
         let arguments = [
@@ -887,7 +893,7 @@ unsafe extern "C" fn image_facts_into(
                 api.falseObj
             },
         ];
-        // SAFETY: the collector owns the image-v6 six-argument protocol.
+        // SAFETY: the collector owns the current six-argument image protocol.
         let _ = unsafe { (api.send)(collector, selector, arguments.as_ptr(), arguments.len()) };
     }
     self_object
@@ -907,35 +913,7 @@ unsafe extern "C" fn image_load_begin(
     self_object
 }
 
-unsafe extern "C" fn image_add_fact(
-    self_object: birnam_abi::Oop,
-    args: *const birnam_abi::Oop,
-    _count: usize,
-) -> birnam_abi::Oop {
-    let runtime = runtime();
-    // SAFETY: this selector has exactly five arguments.
-    let args = unsafe { core::slice::from_raw_parts(args, 5) };
-    let tx = unsafe { (api(runtime).smallIntValue)(args[3]) } as u64;
-    let op = match unsafe { (api(runtime).smallIntValue)(args[4]) } {
-        0 => Op::Assert,
-        1 => Op::Retract,
-        _ => abort("image fact op was not assert/retract"),
-    };
-    unsafe { state_mut(self_object) }.facts.push(Fact {
-        e: args[0],
-        a: args[1],
-        v: args[2],
-        tx,
-        op,
-        // image-v5 had no commit-time history bit. Loading it as historied is
-        // conservative: a later v6 save may retain more, never fabricate less.
-        historied: true,
-        mirror: false,
-    });
-    self_object
-}
-
-unsafe extern "C" fn image_add_fact_historied(
+unsafe extern "C" fn image_add_fact_current(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
     _count: usize,
@@ -967,22 +945,7 @@ unsafe extern "C" fn image_add_fact_historied(
     self_object
 }
 
-unsafe extern "C" fn image_load_end(
-    self_object: birnam_abi::Oop,
-    args: *const birnam_abi::Oop,
-    _count: usize,
-) -> birnam_abi::Oop {
-    let runtime = runtime();
-    // SAFETY: this selector has exactly two arguments.
-    let args = unsafe { core::slice::from_raw_parts(args, 2) };
-    let state = unsafe { state_mut(self_object) };
-    state.tx = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
-    state.raw = args[1] == unsafe { api(runtime) }.trueObj;
-    state.transitions_since_compaction = 0;
-    self_object
-}
-
-unsafe extern "C" fn image_load_end_v6(
+unsafe extern "C" fn image_load_end_current(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
     _count: usize,
@@ -994,13 +957,13 @@ unsafe extern "C" fn image_load_end_v6(
     let policy = unsafe { (api(runtime).smallIntValue)(args[3]) };
     let argument = unsafe { (api(runtime).smallIntValue)(args[4]) };
     if tx < 0 || oldest < 0 || oldest > tx || argument < 0 {
-        abort("image-v6 Store retention metadata was invalid");
+        abort("current image Store retention metadata was invalid");
     }
     let retention = match policy {
         0 if argument == 0 => RetentionPolicy::CurrentOnly,
         1 if argument <= tx => RetentionPolicy::KeepSince(argument as u64),
         2 => RetentionPolicy::KeepLast(argument as u64),
-        _ => abort("image-v6 Store retention policy was invalid"),
+        _ => abort("current image Store retention policy was invalid"),
     };
     let state = unsafe { state_mut(self_object) };
     state.tx = tx as u64;
@@ -2125,15 +2088,13 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"cardinality:\0", cardinality_method),
         (b"imageFactsInto:\0", image_facts_into),
         (b"imageLoadBegin\0", image_load_begin),
-        (b"imageAddFact:attr:value:tx:op:\0", image_add_fact),
         (
             b"imageAddFact:attr:value:tx:op:historied:\0",
-            image_add_fact_historied,
+            image_add_fact_current,
         ),
-        (b"imageLoadEnd:raw:\0", image_load_end),
         (
             b"imageLoadEnd:raw:oldest:policy:argument:\0",
-            image_load_end_v6,
+            image_load_end_current,
         ),
         (b"new\0", new_store),
         (b"cellFor:attr:\0", cell_for),
@@ -2483,6 +2444,26 @@ mod tests {
     #[test]
     fn fact_carries_commit_time_history_status() {
         assert!(core::mem::size_of::<Fact>() >= core::mem::size_of::<[usize; 3]>() + 10);
+    }
+
+    #[test]
+    fn method_dictionary_mirrors_are_explicitly_nondurable() {
+        let semantic = Fact {
+            e: oop(20),
+            a: oop(21),
+            v: oop(30),
+            tx: 0,
+            op: Op::Assert,
+            historied: false,
+            mirror: false,
+        };
+        let mirror = Fact {
+            mirror: true,
+            ..semantic
+        };
+        assert!(super::durable_image_fact(&semantic, &[]));
+        assert!(!super::durable_image_fact(&mirror, &[]));
+        assert!(!super::durable_image_fact(&semantic, &[oop(21)]));
     }
 
     #[test]

@@ -11,10 +11,10 @@ REPO = Path(__file__).resolve().parent.parent
 CODEC = REPO / "rust/birnam-artifact/src/lib.rs"
 PROJECTION = REPO / "rust/birnam-artifact/src/module.rs"
 ARTIFACT_CODEC = REPO / "rust/birnam-artifact-codec/src/lib.rs"
-IMAGE_CODEC = REPO / "rust/birnam-image-codec/src/lib.rs"
 IMAGE_PROVIDER = REPO / "rust/birnam-image/src/lib.rs"
+IMAGE_V7 = REPO / "rust/birnam-image/src/v7.rs"
 ARTIFACT_CODEC_MANIFEST = REPO / "rust/birnam-artifact-codec/Cargo.toml"
-IMAGE_CODEC_MANIFEST = REPO / "rust/birnam-image-codec/Cargo.toml"
+CODEGEN_RUNTIME_MANIFEST = REPO / "rust/birnam-codegen-runtime/Cargo.toml"
 HOST = REPO / "rust/birnam-host/src/lib.rs"
 POLICY = REPO / "src/id/modules.birnam"
 
@@ -39,10 +39,10 @@ def main() -> None:
     codec = read(CODEC)
     projection = read(PROJECTION)
     artifact_codec = read(ARTIFACT_CODEC)
-    image_codec = read(IMAGE_CODEC)
     image_provider = read(IMAGE_PROVIDER)
+    image_v7 = read(IMAGE_V7)
     artifact_codec_manifest = read(ARTIFACT_CODEC_MANIFEST)
-    image_codec_manifest = read(IMAGE_CODEC_MANIFEST)
+    codegen_runtime_manifest = read(CODEGEN_RUNTIME_MANIFEST)
     host = read(HOST)
     policy = read(POLICY)
 
@@ -56,19 +56,18 @@ def main() -> None:
     if re.search(r"(?m)^\s*(?:use|extern\s+crate)\s+birnam_abi", codec):
         fail("descriptor codec imports the IdApi ABI")
 
-    # The provider-free codec crates are the only format consumers allowed to
-    # be linked into Codegen or Image without pulling a dynamic initializer.
-    # Keep their Cargo feature and crate-type surfaces frozen, and reject any
-    # accidental provider/FFI export in the wrapper source.
-    for name, text, manifest, reexport in (
-        ("artifact codec", artifact_codec, artifact_codec_manifest, "pub use provider_source::*"),
-        ("image codec", image_codec, image_codec_manifest, "pub use provider_source::codec::*"),
-    ):
-        require(text, reexport, name)
-        if re.search(r"(?m)^\s*pub\s+unsafe\s+extern", text) or "module_init" in text:
-            fail(f"{name} contains a provider entrypoint")
-        if "default = []" not in manifest or 'crate-type = ["rlib"]' not in manifest:
-            fail(f"{name} Cargo surface is not provider-free")
+    # Artifact parsing remains provider-free because Codegen consumes it. The
+    # exact-current image-v7 codec is owned solely by Image; Codegen must not
+    # regain an image-format dependency or a second reader authority.
+    require(artifact_codec, "pub use provider_source::*", "artifact codec")
+    if re.search(r"(?m)^\s*pub\s+unsafe\s+extern", artifact_codec) or "module_init" in artifact_codec:
+        fail("artifact codec contains a provider entrypoint")
+    if "default = []" not in artifact_codec_manifest or 'crate-type = ["rlib"]' not in artifact_codec_manifest:
+        fail("artifact codec Cargo surface is not provider-free")
+    require(image_v7, "pub const FORMAT_VERSION: u32 = 7", "Image v7 codec")
+    require(image_v7, "pub fn structural_preflight", "Image v7 codec")
+    if "birnam-image" in codegen_runtime_manifest:
+        fail("Codegen runtime depends on the Image provider")
 
     # Image's dynamic provider remains the owner of its initializer and
     # identity; the codec wrapper above must not become that owner.

@@ -57,11 +57,15 @@ cleanup() {
 trap cleanup EXIT
 FAIL=0
 
-PREFIX="$TMP/prefix"
-mkdir -p "$PREFIX"
-
-echo "==> build (Rust release, isolated prefix)"
-scripts/rust-install.sh install --root "$PWD" --prefix "$PREFIX" --profile release
+if [ -n "${BENCH_PREFIX:-}" ]; then
+  PREFIX=$(cd "$BENCH_PREFIX" && pwd)
+  echo "==> use immutable packaged prefix $PREFIX"
+else
+  PREFIX="$TMP/prefix"
+  mkdir -p "$PREFIX"
+  echo "==> build (Rust release, isolated prefix)"
+  scripts/rust-install.sh install --root "$PWD" --prefix "$PREFIX" --profile release
+fi
 
 BIN="$PREFIX/bin/birnam"
 FLOOR_IDENTITY=rust-id-v1
@@ -285,7 +289,10 @@ STAMP_DATE=$(date -u +%FT%TZ)
 MACHINE=$(sysctl -n hw.model 2>/dev/null || echo unknown)
 QUICK_JSON=$([ -n "$QUICK" ] && echo true || echo false)
 
-if [ $MODE = release ]; then
+if [ -n "${BENCH_FINAL_OUT:-}" ]; then
+  OUT=$BENCH_FINAL_OUT
+  mkdir -p "$(dirname "$OUT")"
+elif [ $MODE = release ]; then
   mkdir -p bench/results
   OUT="bench/results/v${VERSION}-${FLOOR}-${SHA}-${FLOOR_DIGEST}.json"
 else

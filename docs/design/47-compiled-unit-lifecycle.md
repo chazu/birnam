@@ -618,14 +618,26 @@ under the existing durable-state contract.
 
 Raw rollback pointers, candidate roots, and dylib handles do not survive. Before any
 user entry point/REPL send, pure-Birnam CompiledUnit reconciliation reads the mapped
-composition identity, mints a reflected **composed executable generation**, relates
+composition identity. It re-adopts an already durable composed generation with that
+exact identity, or otherwise mints a reflected **composed executable generation**, relates
 each saved-origin generation with `#composedInto`, marks those origins historical,
 reserves `#active` for the composed unit that actually owns dispatch, and asks
 Codegen to rebuild the transient ledger for every managed pair from the live direct
 bindings. A rebuild similarly mints a recovered composition from the normalized
 operation identity and reconstructs the same ledger after replay.
 Entering image dispatch recovery first retires every pre-load transient active
-ledger, including in-process loads; only the newly composed owner becomes active.
+ledger, including in-process loads; only the exact composed owner becomes active.
+Identity-equal re-adoption rebuilds that process-local ledger without minting a
+second durable carrier, so repeated load/compact/resave cycles do not retain one
+composition graph per image lifetime.
+
+When the admitted code identity differs, successful reconciliation retires the
+superseded origin generation and its component units through ordinary Store
+retractions. Current-only compaction drops that graph; an explicit retained
+history window keeps the exact historical and retirement transitions. This is
+the root-aware migration boundary: only the newly composed source map remains a
+current semantic root, without hiding lifecycle mutation behind a private floor
+operation.
 
 This boot-time reconciliation happens before the image append checkpoint, so it is
 not journaled as a user mutation. Historical units always answer

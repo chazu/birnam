@@ -71,10 +71,31 @@ git tag -a "$tag" -m "birnam ${tag}"
 tarball="$(scripts/dist.sh)"
 echo "==> built ${tarball}"
 
+baseline=${BIRNAM_PERFORMANCE_BASELINE:-}
+[ -n "$baseline" ] && [ -f "$baseline" ] || {
+  echo "error: set BIRNAM_PERFORMANCE_BASELINE to the explicit prior-production Rust baseline" >&2
+  exit 1
+}
+evidence_dir="dist/${tag}-stackless-acceptance"
+scripts/stackless-release-acceptance.sh "$tarball" "$evidence_dir" "$baseline"
+python3 - "$evidence_dir/receipt.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    receipt = json.load(handle)
+assert receipt["result"] == "passed"
+assert receipt["promotable"] is True
+PY
+evidence_archive="${evidence_dir}.tar.gz"
+tar -C dist -czf "$evidence_archive" "$(basename "$evidence_dir")"
+archive_digest=$(shasum -a 256 "$tarball" | awk '{print $1}')
+receipt_digest=$(shasum -a 256 "$evidence_dir/receipt.json" | awk '{print $1}')
+echo "==> accepted immutable archive ${archive_digest}"
+
 git push origin HEAD
 git push origin "$tag"
 
-gh release create "$tag" "$tarball" \
+gh release create "$tag" "$tarball" "$evidence_archive" "$evidence_dir/receipt.json" \
   --title "birnam ${tag}" \
   --notes "$(cat <<NOTES
 ${notes_body}
@@ -90,6 +111,9 @@ birnam-${new}-*/bin/birnam                        # zero-config REPL
 
 Other platforms are not supported yet. They require target-specific libtcc and
 shared-library-loader ports before source or release builds can work.
+
+Archive SHA-256: ${archive_digest}
+Acceptance receipt SHA-256: ${receipt_digest}
 NOTES
 )"
 

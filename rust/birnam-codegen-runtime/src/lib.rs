@@ -52,11 +52,6 @@ use birnam_codegen::{
     BlockResumableEmission, CstNode, Emitter, LowerError, NamedResumableEmission, OwnedCst,
     Program, TranslationUnit, lower_program,
 };
-use birnam_image_codec::v5::{
-    Facts, Field, Fields, Heap, Image, RecordKind, SlotKind, VtableLocator,
-};
-use birnam_image_codec::v6;
-use birnam_image_codec::{IMAGE_ARCH_TAG, runtime_abi_hash};
 use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
 use core::ptr;
@@ -137,14 +132,8 @@ const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const COMPILE_IMAGE_CODE_MANIFEST_SELECTOR: &[u8] = b"compileImageCode:manifest:\0";
 const REBUILD_IMAGE_CODE_SELECTOR: &[u8] = b"rebuildImageCode\0";
-const PREFLIGHT_IMAGE_SELECTOR: &[u8] = b"preflightImage:\0";
-const MAP_IMAGE_CODE_SELECTOR: &[u8] = b"mapImageCode:\0";
-const REPLAY_IMAGE_FACTS_SELECTOR: &[u8] = b"replayImageFacts:\0";
-const REPLAY_STALE_IMAGE_FACTS_SELECTOR: &[u8] = b"replayStaleImageFacts:\0";
-const REPLAY_METHODS_SELECTOR: &[u8] = b"replayMethods\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
-const DERIVE_IMAGE_METHOD_TARGETS_SELECTOR: &[u8] = b"deriveImageMethodTargets\0";
 const INSPECT_CANDIDATE_SELECTOR: &[u8] = b"inspectCandidate:into:\0";
 const MAP_CANDIDATE_SELECTOR: &[u8] = b"mapCandidate:\0";
 const CANDIDATE_MAPPED_SELECTOR: &[u8] = b"candidateMapped:\0";
@@ -232,7 +221,6 @@ const ARTIFACT_ABI: &[u8] = b"birnam-artifact-generation-v1";
 const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
 const ARTIFACT_DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
 const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
-const MAX_IMAGE_PREFLIGHT_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -281,7 +269,6 @@ static MOP_MUTATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static CANDIDATE_PREPARING: AtomicBool = AtomicBool::new(false);
 static HOST_CAPABILITY_LOADING: AtomicBool = AtomicBool::new(false);
 static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
-static IMAGE_CODE_PREFLIGHT: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static NEXT_CODE_GENERATION_LEASE: AtomicU64 = AtomicU64::new(1);
 static NEXT_MATERIALIZATION_NAMESPACE: AtomicU64 = AtomicU64::new(1);
@@ -408,12 +395,7 @@ struct StacklessGenerationLeaseV1 {
 }
 
 #[derive(Clone)]
-struct MappedImageResumables {
-    authority: [u8; 32],
-    manifest: Vec<u8>,
-    code_generation_identity: u64,
-    resolver: usize,
-}
+struct MappedImageResumables;
 
 #[repr(C)]
 struct PortableMappedUnitPayload {
@@ -3537,12 +3519,7 @@ fn candidate_manifest_matches(
         return false;
     }
     match manifest.version {
-        CandidateManifestVersion::V2 => {
-            if !artifact_selection.is_empty() {
-                return false;
-            }
-        }
-        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+        CandidateManifestVersion::V4 => {
             if !artifact_selection_matches_inventory(metadata, artifact_selection) {
                 return false;
             }
@@ -3624,8 +3601,7 @@ fn candidate_selection_matches(
     exported: &[u8],
 ) -> bool {
     match manifest.version {
-        CandidateManifestVersion::V2 => expected.is_empty() && exported.is_empty(),
-        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+        CandidateManifestVersion::V4 => {
             let exported_digest = sha256_hex(exported);
             if expected != exported
                 || manifest.artifact_selection_digest != Some(exported_digest.as_slice())
@@ -4674,30 +4650,6 @@ unsafe fn image_generation_matches_durable(api: &IdApi) -> bool {
     active == durable && unsafe { durable_generation_is_canonical(api, durable) }
 }
 
-/// A portable image is authorized by the generation digest embedded in its
-/// authority record. Once Store has a durable active generation, stale images
-/// must fail before code mapping or fact mutation; data-only runtimes without
-/// that authority retain the lower-level format behavior.
-unsafe fn image_authority_matches_durable(api: &IdApi, authority: &[u8; 64]) -> bool {
-    let durable = unsafe { durable_current_generation(api) };
-    if durable.is_null() || durable == api.nilObj {
-        return true;
-    }
-    if !unsafe { durable_generation_is_canonical(api, durable) } {
-        return false;
-    }
-    let store = runtime().store as Oop;
-    let recorded = unsafe {
-        send(
-            api,
-            store,
-            CURRENT_VALUE_SELECTOR,
-            &[durable, intern(api, b"baseDigest\0")],
-        )
-    };
-    unsafe { string_bytes(api, recorded) }.is_some_and(|digest| digest == authority)
-}
-
 unsafe fn durable_generation_entry(api: &IdApi, generation: Oop, name: Oop) -> Option<Oop> {
     let store = runtime().store as Oop;
     let source_map = unsafe {
@@ -5501,17 +5453,11 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
     };
     let emissions_present = !named_resumables.is_empty() || !block_resumables.is_empty();
     let Some(emitted) = (unsafe {
-        emit_source(
+        emit_image_recovery_source(
             api,
             source_object,
-            true,
-            true,
-            None,
-            false,
-            None,
             emissions_present.then_some(named_resumables),
             emissions_present.then_some(block_resumables),
-            None,
         )
     }) else {
         note_error(b"RustCodegen could not lower selected image source");
@@ -5632,178 +5578,6 @@ unsafe extern "C" fn rust_codegen_rebuild_image_code(
     }
 }
 
-unsafe fn image_v5_layout(api: &IdApi, name: &[u8], words: u32) -> Option<Vec<SlotKind>> {
-    let mut terminated = Vec::with_capacity(name.len().checked_add(1)?);
-    terminated.extend_from_slice(name);
-    terminated.push(0);
-    let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
-    if vtable.is_null() || vtable == api.nilObj {
-        return None;
-    }
-    let words = usize::try_from(words).ok()?;
-    let mut layout = Vec::with_capacity(words);
-    for word in 0..words {
-        layout.push(match unsafe { (api.slotKind)(vtable, word) } {
-            birnam_abi::SLOT_OOP => SlotKind::Oop,
-            birnam_abi::SLOT_RAW => SlotKind::RawWord,
-            birnam_abi::SLOT_CODE => SlotKind::Code,
-            _ => return None,
-        });
-    }
-    Some(layout)
-}
-
-unsafe fn preflight_image_v5<'a>(api: &IdApi, bytes: &'a [u8]) -> Result<Image<'a>, ()> {
-    Image::preflight_with_layout(
-        bytes,
-        IMAGE_ARCH_TAG,
-        runtime_abi_hash(),
-        |name, words| unsafe { image_v5_layout(api, name, words) },
-    )
-    .map_err(|_| ())
-}
-
-/// Validate a portable v5 image without changing the live runtime.
-///
-/// This is deliberately a framing boundary: the pure image crate checks the
-/// header, record envelopes, single authority, and authority/code binding, but
-/// this method does not map code, materialize heap objects, swizzle references,
-/// or import Store facts. Those operations remain owned by the image loader
-/// until their N6.6 authority and recovery gates are complete.
-unsafe extern "C" fn rust_codegen_preflight_image(
-    _self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    let values = unsafe { borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("RustCodegen preflightImage: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen preflightImage: expects one image path");
-    }
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    clear_error();
-    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
-        note_error(b"RustCodegen image path was not a String");
-        return api.nilObj;
-    };
-    let path = Path::new(OsStr::from_bytes(&path_bytes));
-    let Ok(metadata) = fs::metadata(path) else {
-        note_error(b"RustCodegen image preflight could not stat the image");
-        return api.nilObj;
-    };
-    if metadata.len() > MAX_IMAGE_PREFLIGHT_BYTES {
-        note_error(b"RustCodegen image preflight image is too large");
-        return api.nilObj;
-    }
-    let Ok(bytes) = fs::read(path) else {
-        note_error(b"RustCodegen image preflight could not read the image");
-        return api.nilObj;
-    };
-    let Ok(image) = (unsafe { preflight_image_v5(api, &bytes) }) else {
-        note_error(b"RustCodegen image preflight framing is invalid");
-        return api.nilObj;
-    };
-    if !unsafe { image_authority_matches_durable(api, image.authority.spelling) } {
-        note_error(b"RustCodegen image preflight authority is stale");
-        return api.nilObj;
-    }
-    if let Some(code) = image.code()
-        && !unsafe {
-            preflight_image_code_unit(
-                api,
-                code.unit,
-                image
-                    .resumables()
-                    .expect("v5 Code preflight requires Resumables"),
-            )
-        }
-    {
-        note_error(b"RustCodegen image preflight code unit is invalid");
-        return api.nilObj;
-    }
-    api.trueObj
-}
-
-struct StagedImageCode {
-    path: Vec<u8>,
-}
-
-impl Drop for StagedImageCode {
-    fn drop(&mut self) {
-        let path = Path::new(OsStr::from_bytes(&self.path));
-        let _ = fs::remove_file(path);
-    }
-}
-
-fn stage_image_code(unit: &[u8]) -> Result<StagedImageCode, ()> {
-    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let mut path = std::env::temp_dir().into_os_string().into_vec();
-    if !path.ends_with(b"/") {
-        path.push(b'/');
-    }
-    path.extend_from_slice(b"birnam-image-code-");
-    path.extend_from_slice(std::process::id().to_string().as_bytes());
-    path.push(b'-');
-    path.extend_from_slice(sequence.to_string().as_bytes());
-    path.extend_from_slice(b".dylib");
-    let path_ref = Path::new(OsStr::from_bytes(&path));
-    let Ok(mut staged) = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path_ref)
-    else {
-        return Err(());
-    };
-    if staged.write_all(unit).is_err() {
-        let _ = fs::remove_file(path_ref);
-        return Err(());
-    }
-    drop(staged);
-    Ok(StagedImageCode { path })
-}
-
-unsafe fn staged_image_manifest_matches(
-    api: &IdApi,
-    staged: &StagedImageCode,
-    resumables: &birnam_image_codec::v5::Resumables<'_>,
-) -> bool {
-    let mut path = staged.path.clone();
-    path.push(0);
-    let handle = unsafe { (api.dlopen)(path.as_ptr().cast(), 9) };
-    if handle.is_null() {
-        return false;
-    }
-    let matches = (|| {
-        let manifest_symbol =
-            unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1".as_ptr()) };
-        let manifest_size_symbol =
-            unsafe { (api.dlsym)(handle, c"__birnam_resumable_manifest_v1_size".as_ptr()) };
-        if manifest_symbol.is_null() || manifest_size_symbol.is_null() {
-            return false;
-        }
-        let manifest_size = unsafe { ptr::read_unaligned(manifest_size_symbol.cast::<u64>()) };
-        let Ok(manifest_size) = usize::try_from(manifest_size) else {
-            return false;
-        };
-        if manifest_size > resumable_manifest::MAX_MANIFEST_BYTES
-            || manifest_size != resumables.manifest_bytes.len()
-        {
-            return false;
-        }
-        let manifest =
-            unsafe { core::slice::from_raw_parts(manifest_symbol.cast::<u8>(), manifest_size) };
-        if manifest != resumables.manifest_bytes {
-            return false;
-        }
-        !resumables.has_block_entries()
-            || !(unsafe { (api.dlsym)(handle, c"__birnam_resolve_block_vtable_v1".as_ptr()) })
-                .is_null()
-    })();
-    unsafe { dlclose(handle) };
-    matches
-}
-
 #[derive(Clone, Copy)]
 struct ResumableLoadExpectation<'a> {
     authority: [u8; 32],
@@ -5815,665 +5589,6 @@ enum ResumableLoadPolicy<'a> {
     None,
     Expected(ResumableLoadExpectation<'a>),
     InitialModule,
-}
-
-unsafe fn preflight_image_code_unit(
-    api: &IdApi,
-    unit: &[u8],
-    resumables: &birnam_image_codec::v5::Resumables<'_>,
-) -> bool {
-    let Ok(staged) = stage_image_code(unit) else {
-        return false;
-    };
-    if !unsafe { staged_image_manifest_matches(api, &staged, resumables) } {
-        return false;
-    }
-    let mut path = staged.path.clone();
-    path.push(0);
-    let path_object = unsafe { (api.mkString)(path.as_ptr(), path.len() - 1) };
-    IMAGE_CODE_PREFLIGHT.store(true, Ordering::Release);
-    let result = unsafe {
-        rust_codegen_load_impl(
-            runtime().rust_codegen as Oop,
-            &path_object,
-            1,
-            ResumableLoadPolicy::Expected(ResumableLoadExpectation {
-                authority: resumables.manifest.authority(),
-                manifest: resumables.manifest_bytes,
-            }),
-        )
-    };
-    IMAGE_CODE_PREFLIGHT.store(false, Ordering::Release);
-    result == api.trueObj
-}
-
-/// Stage the checksum-verified v5 code unit through the existing Rust artifact
-/// loader. This is deliberately an image-recovery-only handoff: it maps the
-/// captured dylib and runs its entry point, but does not materialize heap
-/// records or apply facts. Those operations remain owned by later recovery
-/// slices.
-unsafe extern "C" fn rust_codegen_map_image_code(
-    self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    let values = unsafe { borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("RustCodegen mapImageCode: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen mapImageCode: expects one image path");
-    }
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    clear_error();
-    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire) {
-        note_error(b"RustCodegen image code mapping requires image recovery");
-        return api.nilObj;
-    }
-    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
-        note_error(b"RustCodegen image path was not a String");
-        return api.nilObj;
-    };
-    let path = Path::new(OsStr::from_bytes(&path_bytes));
-    let Ok(bytes) = fs::read(path) else {
-        note_error(b"RustCodegen image code mapping could not read the image");
-        return api.nilObj;
-    };
-    let Ok(image) = (unsafe { preflight_image_v5(api, &bytes) }) else {
-        note_error(b"RustCodegen image code mapping framing is invalid");
-        return api.nilObj;
-    };
-    if !unsafe { image_authority_matches_durable(api, image.authority.spelling) } {
-        note_error(b"RustCodegen image code mapping authority is stale");
-        return api.nilObj;
-    }
-    let Some(code) = image.code() else {
-        note_error(b"RustCodegen image has no code unit");
-        return api.nilObj;
-    };
-
-    let Ok(staged) = stage_image_code(code.unit) else {
-        note_error(b"RustCodegen image code mapping could not stage the unit");
-        return api.nilObj;
-    };
-    let Some(resumables) = image.resumables() else {
-        note_error(b"RustCodegen image code mapping has no resumable manifest");
-        return api.nilObj;
-    };
-    if !unsafe { staged_image_manifest_matches(api, &staged, resumables) } {
-        note_error(b"RustCodegen image artifact manifest mismatches the image");
-        return api.nilObj;
-    }
-    let staged_object = unsafe { (api.mkString)(staged.path.as_ptr(), staged.path.len()) };
-    unsafe {
-        rust_codegen_load_impl(
-            self_object,
-            &staged_object,
-            1,
-            ResumableLoadPolicy::Expected(ResumableLoadExpectation {
-                authority: resumables.manifest.authority(),
-                manifest: resumables.manifest_bytes,
-            }),
-        )
-    }
-}
-
-unsafe fn resolve_image_block_vtable(api: &IdApi, manifest_entry_index: u32) -> Option<Oop> {
-    let mapped = MAPPED_IMAGE_RESUMABLES.lock().ok()?.clone()?;
-    if mapped.resolver == 0 {
-        return None;
-    }
-    let manifest = resumable_manifest::inspect(&mapped.manifest, mapped.authority).ok()?;
-    let entry = manifest.entry(manifest_entry_index as usize)?;
-    if entry.implementation_kind != SelectionImplementationKind::BlockBody {
-        return None;
-    }
-    let resolver: unsafe extern "C" fn(u32) -> Oop =
-        unsafe { core::mem::transmute(mapped.resolver) };
-    let vtable = unsafe { resolver(manifest_entry_index) };
-    if vtable.is_null() || vtable == api.nilObj {
-        return None;
-    }
-    let matches_address =
-        unsafe { floor_symbol(api, b"birnam_id_stackless_block_vtable_matches_v1\0") }?;
-    let matches: unsafe extern "C" fn(*const u8, usize, u32, Oop) -> u32 =
-        unsafe { core::mem::transmute(matches_address) };
-    if unsafe {
-        matches(
-            mapped.authority.as_ptr(),
-            mapped.authority.len(),
-            manifest_entry_index,
-            vtable,
-        )
-    } != 1
-    {
-        return None;
-    }
-    let manifest_matches_address =
-        unsafe { floor_symbol(api, b"birnam_id_stackless_resumable_manifest_matches_v1\0") }?;
-    let manifest_matches: unsafe extern "C" fn(*const u8, usize, u64, *const u8, usize) -> u32 =
-        unsafe { core::mem::transmute(manifest_matches_address) };
-    (unsafe {
-        manifest_matches(
-            mapped.authority.as_ptr(),
-            mapped.authority.len(),
-            mapped.code_generation_identity,
-            mapped.manifest.as_ptr(),
-            mapped.manifest.len(),
-        )
-    } == 1)
-        .then_some(vtable)
-}
-
-unsafe fn materialize_image_field_with_relocations(
-    api: &IdApi,
-    field: Field<'_>,
-    relocations: Option<&[Oop]>,
-) -> Result<Oop, ()> {
-    match field {
-        Field::Nil => Ok(api.nilObj),
-        Field::True => Ok(api.trueObj),
-        Field::False => Ok(api.falseObj),
-        Field::Integer(value) => Ok(unsafe { (api.mkSmallInt)(value) }),
-        Field::FloatBits(bits) => Ok(unsafe { (api.mkFloat)(f64::from_bits(bits)) }),
-        Field::Symbol(bytes) => Ok(unsafe { intern_bytes(api, bytes) }),
-        Field::String(bytes) => Ok(unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }),
-        Field::NullOop => Ok(ptr::null_mut()),
-        Field::ExportRef(bytes) => {
-            let mut terminated = Vec::with_capacity(bytes.len() + 1);
-            terminated.extend_from_slice(bytes);
-            terminated.push(0);
-            let value = unsafe { (api.import)(terminated.as_ptr().cast()) };
-            if value.is_null() { Err(()) } else { Ok(value) }
-        }
-        Field::HeapRef(index) => relocations
-            .and_then(|entries| entries.get(index as usize).copied())
-            .filter(|value| !value.is_null())
-            .ok_or(()),
-        Field::ResumableBlockVtableRef(index) => {
-            unsafe { resolve_image_block_vtable(api, index) }.ok_or(())
-        }
-    }
-}
-
-struct PendingHeapObject<'a> {
-    object: Oop,
-    layout: Vec<SlotKind>,
-    encoded_slots: &'a [u8],
-}
-
-unsafe fn materialize_image_heaps(api: &IdApi, image: &Image<'_>) -> Result<Vec<Oop>, ()> {
-    let mut relocations = Vec::new();
-    let mut pending = Vec::new();
-    let mut records = image.records();
-    loop {
-        let record = records.next_record().map_err(|_| ())?;
-        let Some(record) = record else { break };
-        if record.kind != RecordKind::Heap {
-            continue;
-        }
-        let mut heap = Heap::parse(record.payload).map_err(|_| ())?;
-        while let Some(header) = heap.peek_header().map_err(|_| ())? {
-            let word_count = usize::try_from(header.word_count).map_err(|_| ())?;
-            let payload_size = word_count.checked_mul(size_of::<usize>()).ok_or(())?;
-            let (vtable, layout, encoded_slots) = match header.vtable {
-                VtableLocator::Export(vtable_name) => {
-                    let mut terminated = Vec::with_capacity(vtable_name.len() + 1);
-                    terminated.extend_from_slice(vtable_name);
-                    terminated.push(0);
-                    let vtable = unsafe { (api.import)(terminated.as_ptr().cast()) };
-                    if vtable.is_null() || vtable == api.nilObj {
-                        return Err(());
-                    }
-                    let mut layout = Vec::with_capacity(word_count);
-                    for word in 0..word_count {
-                        let kind = match unsafe { (api.slotKind)(vtable, word) } {
-                            birnam_abi::SLOT_OOP => SlotKind::Oop,
-                            birnam_abi::SLOT_CODE => SlotKind::Code,
-                            _ => SlotKind::RawWord,
-                        };
-                        layout.push(kind);
-                    }
-                    let encoded_slots = heap
-                        .next_object(&layout)
-                        .map_err(|_| ())?
-                        .ok_or(())?
-                        .encoded_slots;
-                    (vtable, layout, encoded_slots)
-                }
-                VtableLocator::ResumableBlockVtableRef(index) => {
-                    let vtable = unsafe { resolve_image_block_vtable(api, index) }.ok_or(())?;
-                    let layout = vec![SlotKind::Oop; word_count];
-                    let encoded_slots = heap
-                        .next_resumable_object()
-                        .map_err(|_| ())?
-                        .ok_or(())?
-                        .encoded_slots;
-                    (vtable, layout, encoded_slots)
-                }
-            };
-            let object = unsafe { (api.alloc)(vtable, payload_size) };
-            if object.is_null() {
-                return Err(());
-            }
-            relocations.push(object);
-            pending.push(PendingHeapObject {
-                object,
-                layout,
-                encoded_slots,
-            });
-        }
-    }
-
-    for pending in pending {
-        let mut cursor = 0usize;
-        for (word, kind) in pending.layout.iter().copied().enumerate() {
-            match kind {
-                SlotKind::Oop => {
-                    let suffix = pending.encoded_slots.get(cursor..).ok_or(())?;
-                    let mut fields = Fields::new(suffix);
-                    let field = fields.next_field().map_err(|_| ())?.ok_or(())?;
-                    cursor = cursor.checked_add(fields.consumed()).ok_or(())?;
-                    let value = unsafe {
-                        materialize_image_field_with_relocations(api, field, Some(&relocations))?
-                    };
-                    unsafe {
-                        (pending.object as *mut usize)
-                            .add(word)
-                            .write(value as usize);
-                    }
-                }
-                SlotKind::RawWord => {
-                    let end = cursor.checked_add(size_of::<usize>()).ok_or(())?;
-                    let bytes = pending.encoded_slots.get(cursor..end).ok_or(())?;
-                    let raw = usize::from_le_bytes(bytes.try_into().map_err(|_| ())?);
-                    unsafe {
-                        (pending.object as *mut usize).add(word).write(raw);
-                    }
-                    cursor = end;
-                }
-                SlotKind::Code => unsafe {
-                    // Code slots are intentionally elided from ordinary v5 heap
-                    // payloads; mapped-unit recovery fills them later. Keep
-                    // the freshly allocated object deterministic and match
-                    // the loader's zeroed code-slot contract.
-                    (pending.object as *mut usize).add(word).write(0);
-                },
-            }
-        }
-        if cursor != pending.encoded_slots.len() {
-            return Err(());
-        }
-    }
-    Ok(relocations)
-}
-
-unsafe fn materialize_image_fact_fields(
-    api: &IdApi,
-    entity: Field<'_>,
-    attribute: Field<'_>,
-    value: Field<'_>,
-    relocations: &[Oop],
-) -> Result<(Oop, Oop, Oop), ()> {
-    Ok((
-        unsafe { materialize_image_field_with_relocations(api, entity, Some(relocations))? },
-        unsafe { materialize_image_field_with_relocations(api, attribute, Some(relocations))? },
-        unsafe { materialize_image_field_with_relocations(api, value, Some(relocations))? },
-    ))
-}
-
-/// Replay v5 facts through the Rust Store image ABI after all heap objects and
-/// field values have been decoded successfully. Heap allocation and swizzling
-/// happen before Store mutation so malformed relocation data cannot masquerade
-/// as successful recovery or leave a partial fact load behind.
-unsafe extern "C" fn rust_codegen_replay_image_facts(
-    _self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { rust_codegen_replay_image_facts_impl(pointer, count, false) }
-}
-
-/// Replay facts from a structurally valid image whose generation belongs to a
-/// previous authority. This entry point is intentionally separate from the
-/// ordinary replay selector: only the Rust Image loader may use it, after it
-/// has admitted the image framing and selected source recovery for a stale
-/// generation. The caller must already be inside the image-recovery phase.
-unsafe extern "C" fn rust_codegen_replay_stale_image_facts(
-    _self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    unsafe { rust_codegen_replay_image_facts_impl(pointer, count, true) }
-}
-
-unsafe fn rust_codegen_replay_image_facts_impl(
-    pointer: *const Oop,
-    count: usize,
-    allow_stale_authority: bool,
-) -> Oop {
-    let values = unsafe { borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("RustCodegen replayImageFacts: received invalid arguments"));
-    if values.len() != 1 {
-        abort("RustCodegen replayImageFacts: expects one image path");
-    }
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    clear_error();
-    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
-    {
-        note_error(b"RustCodegen image facts replay requires image recovery");
-        return api.nilObj;
-    }
-    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
-        note_error(b"RustCodegen image path was not a String");
-        return api.nilObj;
-    };
-    let path = Path::new(OsStr::from_bytes(&path_bytes));
-    let Ok(bytes) = fs::read(path) else {
-        note_error(b"RustCodegen image facts could not read the image");
-        return api.nilObj;
-    };
-    let Ok(image) = (unsafe { preflight_image_v5(api, &bytes) }) else {
-        note_error(b"RustCodegen image facts framing is invalid");
-        return api.nilObj;
-    };
-    if !allow_stale_authority
-        && !unsafe { image_authority_matches_durable(api, image.authority.spelling) }
-    {
-        note_error(b"RustCodegen image facts authority is stale");
-        return api.nilObj;
-    }
-
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
-        fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
-        }
-    }
-    let _auto_gc = AutoGc(api);
-    let relocations = match unsafe { materialize_image_heaps(api, &image) } {
-        Ok(relocations) => relocations,
-        Err(_) => {
-            note_error(b"RustCodegen image heap materialization failed");
-            return api.nilObj;
-        }
-    };
-
-    let mut pending = Vec::new();
-    let mut has_facts = false;
-    let mut max_basis = 0i64;
-    let mut retention_metadata = None;
-    let mut records = image.records();
-    loop {
-        let record = match records.next_record() {
-            Ok(Some(record)) => record,
-            Ok(None) => break,
-            Err(_) => {
-                note_error(b"RustCodegen image facts framing is invalid");
-                return api.nilObj;
-            }
-        };
-        if record.kind != RecordKind::Facts {
-            continue;
-        }
-        has_facts = true;
-        if image.header.format_version == v6::FORMAT_VERSION {
-            let Ok(mut facts) = v6::Facts::parse(record.payload) else {
-                note_error(b"RustCodegen image-v6 facts framing is invalid");
-                return api.nilObj;
-            };
-            let metadata = (
-                facts.oldest_retained_basis,
-                facts.retention.code(),
-                facts.retention.argument(),
-            );
-            if retention_metadata
-                .replace(metadata)
-                .is_some_and(|old| old != metadata)
-            {
-                note_error(b"RustCodegen image-v6 retention metadata disagrees");
-                return api.nilObj;
-            }
-            max_basis = max_basis.max(i64::from_le_bytes(facts.basis.to_le_bytes()));
-            loop {
-                let Ok(next) = facts.next_fact() else {
-                    note_error(b"RustCodegen image-v6 facts framing is invalid");
-                    return api.nilObj;
-                };
-                let Some(fact) = next else { break };
-                let Ok((entity, attribute, value)) = (unsafe {
-                    materialize_image_fact_fields(
-                        api,
-                        fact.entity,
-                        fact.attribute,
-                        fact.value,
-                        &relocations,
-                    )
-                }) else {
-                    note_error(b"RustCodegen image facts require materialized heap references");
-                    return api.nilObj;
-                };
-                pending.push((
-                    entity,
-                    attribute,
-                    value,
-                    fact.transaction,
-                    fact.operation,
-                    fact.historied,
-                ));
-            }
-        } else {
-            let Ok(mut facts) = Facts::parse(record.payload) else {
-                note_error(b"RustCodegen image-v5 facts framing is invalid");
-                return api.nilObj;
-            };
-            max_basis = max_basis.max(i64::from_le_bytes(facts.basis().to_le_bytes()));
-            loop {
-                let Ok(next) = facts.next_fact() else {
-                    note_error(b"RustCodegen image-v5 facts framing is invalid");
-                    return api.nilObj;
-                };
-                let Some(fact) = next else { break };
-                if fact.operation > 1 {
-                    note_error(b"RustCodegen image facts operation is invalid");
-                    return api.nilObj;
-                }
-                let Ok((entity, attribute, value)) = (unsafe {
-                    materialize_image_fact_fields(
-                        api,
-                        fact.entity,
-                        fact.attribute,
-                        fact.value,
-                        &relocations,
-                    )
-                }) else {
-                    note_error(b"RustCodegen image facts require materialized heap references");
-                    return api.nilObj;
-                };
-                // v5 had no history-status field. Conservative migration marks
-                // every loaded transition historied.
-                pending.push((
-                    entity,
-                    attribute,
-                    value,
-                    fact.transaction,
-                    fact.operation,
-                    true,
-                ));
-            }
-        }
-    }
-    // Heap-only images are valid framing inputs, but they have no Store
-    // timeline to replace. Match the loader's `facts_began` guard and
-    // leave the existing Store untouched rather than clearing it through an
-    // empty image-load transaction.
-    if !has_facts {
-        return unsafe { (api.mkSmallInt)(0) };
-    }
-    let store = runtime.store as Oop;
-    if store.is_null() || store == api.nilObj {
-        note_error(b"RustCodegen image facts Store is unavailable");
-        return api.nilObj;
-    }
-    let fact_bytes_limit = unsafe { send0(api, store, b"factBytesLimit\0") };
-    let fact_record_bytes = unsafe { send0(api, store, b"factRecordBytes\0") };
-    if unsafe { (api.isSmallInt)(fact_bytes_limit) } == 0
-        || unsafe { (api.isSmallInt)(fact_record_bytes) } == 0
-        || unsafe { (api.smallIntValue)(fact_bytes_limit) } <= 0
-        || unsafe { (api.smallIntValue)(fact_record_bytes) } <= 0
-        || pending
-            .len()
-            .saturating_mul(unsafe { (api.smallIntValue)(fact_record_bytes) as usize })
-            > unsafe { (api.smallIntValue)(fact_bytes_limit) as usize }
-    {
-        note_error(b"RustCodegen image facts exceed the configured Store ceiling");
-        return api.nilObj;
-    }
-    if unsafe { send0(api, store, b"imageLoadBegin\0") } == api.nilObj {
-        note_error(b"RustCodegen image facts Store load could not begin");
-        return api.nilObj;
-    }
-    for (entity, attribute, value, tx, op, historied) in pending.iter().copied() {
-        let arguments = [
-            entity,
-            attribute,
-            value,
-            unsafe { (api.mkSmallInt)(i64::from_le_bytes(tx.to_le_bytes())) },
-            unsafe { (api.mkSmallInt)(i64::from(op)) },
-            if historied { api.trueObj } else { api.falseObj },
-        ];
-        let selector = if image.header.format_version == v6::FORMAT_VERSION {
-            b"imageAddFact:attr:value:tx:op:historied:\0".as_slice()
-        } else {
-            b"imageAddFact:attr:value:tx:op:\0".as_slice()
-        };
-        let arguments = if image.header.format_version == v6::FORMAT_VERSION {
-            &arguments[..]
-        } else {
-            &arguments[..5]
-        };
-        if unsafe { send(api, store, selector, arguments) } == api.nilObj {
-            note_error(b"RustCodegen image facts Store append failed");
-            return api.nilObj;
-        }
-    }
-    let end_result = if let Some((oldest, policy, argument)) = retention_metadata {
-        let end_arguments = [
-            unsafe { (api.mkSmallInt)(max_basis) },
-            api.falseObj,
-            unsafe { (api.mkSmallInt)(oldest as i64) },
-            unsafe { (api.mkSmallInt)(i64::from(policy)) },
-            unsafe { (api.mkSmallInt)(argument as i64) },
-        ];
-        unsafe {
-            send(
-                api,
-                store,
-                b"imageLoadEnd:raw:oldest:policy:argument:\0",
-                &end_arguments,
-            )
-        }
-    } else {
-        let end_arguments = [unsafe { (api.mkSmallInt)(max_basis) }, api.falseObj];
-        unsafe { send(api, store, b"imageLoadEnd:raw:\0", &end_arguments) }
-    };
-    if end_result == api.nilObj {
-        note_error(b"RustCodegen image facts Store load could not finish");
-        return api.nilObj;
-    }
-    let methodops_entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
-    if pending
-        .iter()
-        .any(|(entity, _, _, _, _, _)| *entity == methodops_entity)
-    {
-        METHOD_OP_PRESENT.store(true, Ordering::Release);
-    }
-    let _ = unsafe { send0(api, store, b"backfillMirror\0") };
-    // Relational rules are canonical Store facts, but the query engine keeps a
-    // derived in-memory cache. Rebuild it after image facts replace the store,
-    // matching the authoritative image loader's recovery boundary.
-    if unsafe { (api.isExported)(c"db".as_ptr().cast()) } != 0 {
-        let _ = unsafe { send0(api, store, b"rebuildRules\0") };
-    }
-    unsafe { (api.mkSmallInt)(pending.len() as i64) }
-}
-
-unsafe extern "C" fn rust_codegen_replay_methods(
-    self_object: Oop,
-    _pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    if count != 0 {
-        abort("RustCodegen replayMethods: expects no arguments");
-    }
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    clear_error();
-    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
-    {
-        note_error(b"RustCodegen method replay requires image recovery");
-        return api.nilObj;
-    }
-    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
-        note_error(b"RustCodegen image method source ordering failed");
-        return api.nilObj;
-    };
-    // Preflight every indexed operation before executing the first one. This
-    // prevents a malformed later source from leaving an earlier method replay
-    // applied to the live dispatch dictionary.
-    let mut replay_sources = Vec::new();
-    for source in sources {
-        let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
-        else {
-            note_error(b"RustCodegen image method source is not indexable");
-            return api.nilObj;
-        };
-        replay_sources.extend(
-            metadata
-                .operations
-                .into_iter()
-                .map(|operation| operation.source),
-        );
-    }
-    let method_operations = unsafe { ordered_method_operation_sources(api) };
-    replay_sources.extend(method_operations.into_iter().filter_map(|operation| {
-        unsafe { string_bytes(api, operation.source) }.map(|source| source.to_vec())
-    }));
-    // Compile every operation through the pure emitter before evaluating the
-    // first one. This closes the gap between metadata parsing and execution:
-    // a later generated-C failure cannot leave an earlier method mutation
-    // applied to the live dispatch dictionary.
-    for source in &replay_sources {
-        clear_error();
-        let operation_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
-        // Call the Rust implementation directly during recovery. The image
-        // may carry a stale Codegen vtable whose `emit:` dispatch would route
-        // back into an obsolete floor implementation (or recurse forever);
-        // replay is owned by this Rust Codegen authority.
-        let emitted = unsafe { rust_codegen_emit(self_object, [operation_source].as_ptr(), 1) };
-        if emitted == api.nilObj || LAST_ERROR.lock().ok().is_some_and(|error| error.is_some()) {
-            note_error(b"RustCodegen image method replay preflight failed");
-            return api.nilObj;
-        }
-    }
-    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
-    let mut replayed = 0usize;
-    for source in replay_sources {
-        clear_error();
-        let operation_source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
-        let result = unsafe { rust_codegen_eval(self_object, [operation_source].as_ptr(), 1) };
-        if result == api.nilObj
-            || (!error_vt.is_null() && unsafe { (api.vtableOf)(result) } == error_vt)
-        {
-            note_error(b"RustCodegen image method replay failed");
-            return api.nilObj;
-        }
-        replayed += 1;
-    }
-    unsafe { (api.mkSmallInt)(replayed as i64) }
 }
 
 unsafe extern "C" fn rust_codegen_replay_aliens(
@@ -6580,49 +5695,6 @@ unsafe fn derive_named_global(api: &IdApi, self_object: Oop, name: Oop) -> bool 
     clear_error();
     let result = unsafe { send(api, self_object, EVAL_PERSISTING_SELECTOR, &[program]) };
     result != api.nilObj && LAST_ERROR.lock().ok().is_none_or(|error| error.is_none())
-}
-
-unsafe extern "C" fn rust_codegen_derive_image_method_targets(
-    self_object: Oop,
-    _pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    if count != 0 {
-        abort("RustCodegen deriveImageMethodTargets: expects no arguments");
-    }
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    clear_error();
-    if !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
-    {
-        note_error(b"RustCodegen image method-target derivation requires image recovery");
-        return api.nilObj;
-    }
-    let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
-        note_error(b"RustCodegen image method-target source ordering failed");
-        return api.nilObj;
-    };
-    let mut names = Vec::<Vec<u8>>::new();
-    let mut derived = 0usize;
-    for source in sources {
-        let Some((_source_bytes, metadata)) = (unsafe { parse_revision_metadata(api, source) })
-        else {
-            note_error(b"RustCodegen image method-target source is not indexable");
-            return api.nilObj;
-        };
-        for operation in metadata.operations {
-            if names.contains(&operation.target) {
-                continue;
-            }
-            names.push(operation.target.clone());
-            let name = unsafe { intern_bytes(api, &operation.target) };
-            if unsafe { derive_named_global(api, self_object, name) } {
-                derived += 1;
-            }
-        }
-    }
-    unsafe { (api.mkSmallInt)(derived as i64) }
 }
 
 unsafe extern "C" fn rust_codegen_derive_image_globals(
@@ -6753,6 +5825,49 @@ unsafe fn emit_source(
     let baked_globals = emitter.baked_globals().to_vec();
     let (function_defs, body) = emitter.finish_parts();
     let mut unit = TranslationUnit::new(artifact);
+    for name in &baked_globals {
+        unit.add_baked_global(name);
+    }
+    unit.push_function(&function_defs);
+    unit.push_body(&body);
+    Some(EmittedSource {
+        bytes: unit.finish(),
+        baked_globals,
+    })
+}
+
+unsafe fn emit_image_recovery_source(
+    api: &IdApi,
+    source_object: Oop,
+    named_resumables: Option<Vec<NamedResumableEmission>>,
+    block_resumables: Option<Vec<BlockResumableEmission>>,
+) -> Option<EmittedSource> {
+    let source = unsafe { string_bytes(api, source_object) }?;
+    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
+    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
+        unsafe { note_syntax_error(api, lang, source_object) };
+        return None;
+    }
+    let tree = unsafe { cst_tree(api, cst, 0) }?;
+    let tree = rewrite_embedded(tree, &source, b".")?;
+    let program = lower_program(&tree, &source).ok()?;
+    let digest = sha256_hex(&source);
+    let salt = u64::from_be_bytes(digest[..8].try_into().ok()?);
+    let mut emitter = Emitter::new_selected_resumable_candidate_artifact(
+        salt,
+        named_resumables.unwrap_or_default(),
+        block_resumables.unwrap_or_default(),
+    )
+    .ok()?;
+    if emitter.emit_image_recovery_program(&program).is_err() {
+        note_error(b"RustCodegen could not emit the image recovery projection");
+        return None;
+    }
+    let baked_globals = emitter.baked_globals().to_vec();
+    let (function_defs, body) = emitter.finish_parts();
+    let mut unit = TranslationUnit::new(true);
     for name in &baked_globals {
         unit.add_baked_global(name);
     }
@@ -10322,12 +9437,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         note_error(b"RustCodegen candidate metadata mismatches source");
         return api.nilObj;
     }
-    let artifact_selection = match manifest.version {
-        CandidateManifestVersion::V2 => envelope.artifact_selection.to_vec(),
-        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
-            envelope.artifact_selection.to_vec()
-        }
-    };
+    let artifact_selection = envelope.artifact_selection.to_vec();
     let Ok(expected_predecessor_digest) =
         <[u8; 64]>::try_from(envelope.expected_predecessor_digest)
     else {
@@ -11104,18 +10214,7 @@ unsafe extern "C" fn rust_codegen_map_candidate(
         };
     };
     match parsed_manifest.version {
-        CandidateManifestVersion::V2 => {
-            if !candidate_selection_matches(parsed_manifest, &artifact_selection, &[]) {
-                return unsafe {
-                    map_candidate_failure(
-                        api,
-                        handle,
-                        b"RustCodegen candidate selection mismatches",
-                    )
-                };
-            }
-        }
-        CandidateManifestVersion::V3 | CandidateManifestVersion::V4 => {
+        CandidateManifestVersion::V4 => {
             let selection_symbol =
                 unsafe { (api.dlsym)(handle, c"__birnam_artifact_selection_v1".as_ptr()) };
             let selection_size_symbol =
@@ -13066,15 +12165,9 @@ unsafe fn rust_codegen_load_impl(
         .is_some_and(|sealed| *sealed)
         && !HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
         && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        && !IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire)
     {
         return unsafe { error_value(api, b"moduleIntroductionNotAvailable") };
     }
-    if IMAGE_CODE_PREFLIGHT.load(Ordering::Acquire) {
-        unsafe { dlclose(handle) };
-        return api.trueObj;
-    }
-
     type BeginResumableUnit = unsafe extern "C" fn(*const u8, usize, *const u8, u64, u64) -> u32;
     type CloseResumableUnit = unsafe extern "C" fn() -> u32;
     type BeginArtifactContext = unsafe extern "C" fn(u64, u64) -> u32;
@@ -13284,12 +12377,8 @@ unsafe fn rust_codegen_load_impl(
             if mapped.is_some() {
                 abort("more than one image resumable unit was mapped in one recovery");
             }
-            *mapped = Some(MappedImageResumables {
-                authority: expected.authority,
-                manifest: expected.manifest.to_vec(),
-                code_generation_identity: stage.code_generation_identity,
-                resolver,
-            });
+            let _ = resolver;
+            *mapped = Some(MappedImageResumables);
         }
     } else if result == api.nilObj || is_error {
         if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
@@ -13300,7 +12389,13 @@ unsafe fn rust_codegen_load_impl(
     if let Ok(mut handles) = LIVE_ARTIFACT_HANDLES.lock() {
         handles.push(handle as usize);
     }
-    if let Some(source) = artifact_source {
+    if let Some(source) = artifact_source
+        && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+    {
+        // Current image-v7 recovery has already restored this exact source
+        // projection into Store. The mapped/rebuilt unit must materialize its
+        // methods, but re-registering the source would create a fresh durable
+        // generation identity on every image lifetime.
         if !unsafe {
             register_artifact_source(
                 api,
@@ -14592,31 +13687,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
-            intern(api, PREFLIGHT_IMAGE_SELECTOR),
-            rust_codegen_preflight_image,
-        );
-        (api.method)(
-            runtime.rust_codegen_vt as Oop,
-            intern(api, MAP_IMAGE_CODE_SELECTOR),
-            rust_codegen_map_image_code,
-        );
-        (api.method)(
-            runtime.rust_codegen_vt as Oop,
-            intern(api, REPLAY_IMAGE_FACTS_SELECTOR),
-            rust_codegen_replay_image_facts,
-        );
-        (api.method)(
-            runtime.rust_codegen_vt as Oop,
-            intern(api, REPLAY_STALE_IMAGE_FACTS_SELECTOR),
-            rust_codegen_replay_stale_image_facts,
-        );
-        (api.method)(
-            runtime.rust_codegen_vt as Oop,
-            intern(api, REPLAY_METHODS_SELECTOR),
-            rust_codegen_replay_methods,
-        );
-        (api.method)(
-            runtime.rust_codegen_vt as Oop,
             intern(api, REPLAY_ALIENS_SELECTOR),
             rust_codegen_replay_aliens,
         );
@@ -14624,11 +13694,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, DERIVE_IMAGE_GLOBALS_SELECTOR),
             rust_codegen_derive_image_globals,
-        );
-        (api.method)(
-            runtime.rust_codegen_vt as Oop,
-            intern(api, DERIVE_IMAGE_METHOD_TARGETS_SELECTOR),
-            rust_codegen_derive_image_method_targets,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
@@ -15105,15 +14170,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             CURRENT_GENERATION_DIGEST_SELECTOR,
             rust_codegen_current_generation_digest
         );
-        adapter_method!(REPLAY_METHODS_SELECTOR, rust_codegen_replay_methods);
         adapter_method!(REPLAY_ALIENS_SELECTOR, rust_codegen_replay_aliens);
         adapter_method!(
             DERIVE_IMAGE_GLOBALS_SELECTOR,
             rust_codegen_derive_image_globals
-        );
-        adapter_method!(
-            DERIVE_IMAGE_METHOD_TARGETS_SELECTOR,
-            rust_codegen_derive_image_method_targets
         );
         adapter_method!(b"lastError\0", rust_codegen_last_error);
         adapter_method!(
@@ -15727,27 +14787,6 @@ mod tests {
                 implementation_kind: InventoryImplementationKind::NamedAdapter,
             }],
         };
-        let mut manifest = b"v2|birnam-artifact-generation-v1|candidate|".to_vec();
-        manifest.extend_from_slice(&sha256_hex(source));
-        manifest.push(b'|');
-        manifest.extend_from_slice(&metadata.non_method_digest);
-        manifest.push(b'|');
-        manifest.extend_from_slice(&metadata.method_digest);
-        manifest.push(b'|');
-        manifest.extend_from_slice(&metadata.revision_digest);
-        manifest.extend_from_slice(b"|depA,depB|Target,answer:,I,1");
-        let parsed = inspect_manifest(&manifest).unwrap();
-        assert!(candidate_manifest_matches(parsed, source, &metadata, &[]));
-
-        let mut malformed = manifest;
-        let arity = malformed
-            .windows(b"Target,answer:,I,1".len())
-            .position(|window| window == b"Target,answer:,I,1")
-            .unwrap();
-        malformed[arity + b"Target,answer:,I,".len()] = b'2';
-        let parsed = inspect_manifest(&malformed).unwrap();
-        assert!(!candidate_manifest_matches(parsed, source, &metadata, &[]));
-
         let selection = artifact_selection(&metadata).unwrap();
         let selection_digest = sha256_hex(&selection);
         let manifest = candidate_manifest(&metadata, &sha256_hex(source), &selection_digest);

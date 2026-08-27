@@ -27,6 +27,10 @@
 
 [Module named: #repl requires: #[#config]];
 [Globals at: #Repl put: [Object clone]];
+[db assert: #imageTransient attr: #cardinality value: #one];
+[db assert: #cin attr: #imageTransient value: true];
+[db assert: #cerr attr: #imageTransient value: true];
+[db assert: #cbuf attr: #imageTransient value: true];
 [Reflect docModule: #repl is: "The REPL — bracket-aware form reader, eval-print loop, console session, and the --listen network server."];
 
 // Brackets balanced? Rides the native `bracketDepth` scanner (per-byte work is
@@ -362,9 +366,15 @@
 
 [Reflect defineMethod: #consoleDone on: Repl as: [:self |
   [System println: ""];
-  [[[db cellFor: self attr: #cbuf] value] free];
+  let input := [db currentValue: self attr: #cin];
+  let error := [db currentValue: self attr: #cerr];
+  let buffer := [db currentValue: self attr: #cbuf];
+  [buffer free];
+  [db retract: self attr: #cin value: input];
+  [db retract: self attr: #cerr value: error];
+  [db retract: self attr: #cbuf value: buffer];
   self] doc:
-  "Session teardown: prints a final newline and frees the stdin read buffer."];
+  "Session teardown: prints a final newline, frees the stdin read buffer, and retires the process-local stdio capability facts."];
 
 // The whole session: bring-up, the read-eval-print loop, teardown. The loop is
 // a native whileTrue: (stack-flat), so it lives here and not in a separate driver

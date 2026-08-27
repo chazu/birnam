@@ -6,6 +6,8 @@ use birnam_artifact::{
 };
 use sha2::{Digest, Sha256};
 
+pub const FORMAT_VERSION: u32 = 7;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     CanonicalValue,
@@ -142,7 +144,7 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
     }
     let mut output = Vec::with_capacity(total);
     output.extend_from_slice(b"BIRNAMIM");
-    output.extend_from_slice(&7u32.to_le_bytes());
+    output.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
     output.extend_from_slice(&0x0102_0304u32.to_le_bytes());
     output.extend_from_slice(&spec.architecture.to_le_bytes());
     output.extend_from_slice(&spec.runtime_abi.to_le_bytes());
@@ -159,7 +161,7 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
     }
     if let Some(unit) = spec.code {
         let mut payload = Vec::with_capacity(72 + unit.len());
-        payload.extend_from_slice(&super::codec::wyhash(0, unit).to_le_bytes());
+        payload.extend_from_slice(&super::support::wyhash(0, unit).to_le_bytes());
         payload.extend_from_slice(&authority_spelling);
         payload.extend_from_slice(unit);
         push_record(&mut output, 4, &payload)?;
@@ -177,7 +179,7 @@ pub fn structural_preflight(
     if bytes.len() < 28
         || bytes.len() > 1 << 30
         || bytes.get(..8) != Some(b"BIRNAMIM")
-        || read_u32(bytes, 8) != Some(7)
+        || read_u32(bytes, 8) != Some(FORMAT_VERSION)
         || read_u32(bytes, 12) != Some(0x0102_0304)
         || read_u32(bytes, 16) != Some(architecture)
         || read_u64(bytes, 20) != Some(runtime_abi)
@@ -238,7 +240,8 @@ pub fn structural_preflight(
     if let Some(payload) = code {
         if payload.len() < 73
             || payload.get(8..72) != Some(authority_spelling)
-            || super::codec::wyhash(0, &payload[72..]) != read_u64(payload, 0).ok_or(Error::Code)?
+            || super::support::wyhash(0, &payload[72..])
+                != read_u64(payload, 0).ok_or(Error::Code)?
         {
             return Err(Error::Code);
         }
@@ -747,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn v6_retention_facts_admit_portable_block_vtable_references() {
+    fn retained_facts_admit_portable_block_vtable_references() {
         let programs = include_bytes!(concat!(
             "../../../abi/fixtures/portable-code-v1/",
             "inventory-nested-closure.bin"
@@ -937,6 +940,23 @@ mod tests {
                     .is_ok()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn obsolete_image_versions_reject_at_the_fixed_header() {
+        let fixture = include_bytes!(concat!(
+            "../../../abi/fixtures/portable-code-v1/",
+            "image-empty-stripped.bin"
+        ));
+        assert!(super::decode(fixture, 1, 0x6c3b_67f0_ef16_14b3).is_ok());
+        for version in [4u32, 5, 6] {
+            let mut obsolete = fixture.to_vec();
+            obsolete[8..12].copy_from_slice(&version.to_le_bytes());
+            assert_eq!(
+                super::decode(&obsolete, 1, 0x6c3b_67f0_ef16_14b3).map(|_| ()),
+                Err(super::Error::Header)
+            );
         }
     }
 

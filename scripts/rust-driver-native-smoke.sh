@@ -40,10 +40,13 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     receipt = json.load(handle)
-assert receipt["schema"] == 2
+assert receipt["schema"] == 3
 assert receipt["authority"] == "rust"
 assert len(receipt["source_manifest_sha256"]) == 64
 assert len(receipt["staged_manifest_sha256"]) == 64
+assert receipt["admission_contract"]["image_version"] == 7
+assert receipt["admission_contract"]["candidate_manifest_version"] == 4
+assert len(receipt["admission_contract"]["id_api_fingerprint"]) == 64
 assert receipt["publication"]["method"] == "atomic-sibling-rename"
 assert receipt["publication"]["durability"] == "fsync-staged-files-and-directories-before-and-after-rename"
 assert len(receipt["dynamic_libraries"]) == 15
