@@ -19,12 +19,14 @@ let src := "let base := 40; let add := [:y | [base + y]]; let v := #[[add value:
 let path := [Codegen compile: src output: "/tmp/birnam_aot_example.dylib"];
 [System println: ["compiled to: " , path]];
 
-// Load the artifact back (dlopen → fix-up hook → run its entry) — in this
-// process here, but a fresh `birnam` run loads it identically.
-let answer := [Codegen load: path];
-[System println: ["loaded and ran: " , [answer printString]]];
-
 // A bad program compiles to nil, and a missing artifact loads to nil — both
-// are values, not crashes.
+// are values, not crashes. These intentional failures leave the native Codegen
+// diagnostic populated, so exercise them before the final successful load.
 [System println: ["bad source compiles to nil: " , [[[Codegen compile: "let :=" output: "/tmp/never.dylib"] isNil] printString]]];
-[System println: ["missing artifact loads to nil: " , [[[Codegen load: "/tmp/birnam_absent.dylib"] isNil] printString]]]
+[System println: ["missing artifact loads to nil: " , [[[Codegen load: "/tmp/birnam_absent.dylib"] isNil] printString]]];
+
+// Load the artifact back (dlopen → fix-up hook → run its entry) — in this
+// process here, but a fresh `birnam` run loads it identically. Performing the
+// successful operation last also clears the intentional diagnostic above.
+let answer := [Codegen load: path];
+[System println: ["loaded and ran: " , [answer printString]]]

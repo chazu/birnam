@@ -10,7 +10,7 @@ use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
 use std::fmt;
 use std::io;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
@@ -239,6 +239,14 @@ pub enum ImageError {
     UnexpectedStatus,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageEntryError {
+    MissingDispatchGeneration,
+    GenerationRejected,
+    Phase(PhaseHookError),
+    EvaluationRejected,
+}
+
 pub const MAX_SCRIPT_BYTES: usize = 16 << 20;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -383,6 +391,36 @@ pub fn baked_image(bytes: &[u8]) -> Option<&[u8]> {
         return None;
     }
     Some(&bytes[length_start - image_len..length_start])
+}
+
+/// Recover only the embedded image from a baked executable without reading the
+/// runtime prefix into memory. A file without a valid trailer answers `None`.
+pub fn read_baked_image(path: &Path) -> io::Result<Option<Vec<u8>>> {
+    let mut file = std::fs::File::open(path)?;
+    let file_len = file.metadata()?.len();
+    if file_len < BAKE_TRAILER_LEN as u64 {
+        return Ok(None);
+    }
+    file.seek(SeekFrom::End(-(BAKE_TRAILER_LEN as i64)))?;
+    let mut trailer = [0u8; BAKE_TRAILER_LEN];
+    file.read_exact(&mut trailer)?;
+    if &trailer[8..] != BAKE_MAGIC {
+        return Ok(None);
+    }
+    let image_len = u64::from_le_bytes(trailer[..8].try_into().expect("bake image length"));
+    let prefix_len = file_len
+        .checked_sub(BAKE_TRAILER_LEN as u64)
+        .and_then(|length| length.checked_sub(image_len));
+    let Some(prefix_len) = prefix_len else {
+        return Ok(None);
+    };
+    if image_len == 0 || image_len > usize::MAX as u64 {
+        return Ok(None);
+    }
+    file.seek(SeekFrom::Start(prefix_len))?;
+    let mut image = vec![0u8; image_len as usize];
+    file.read_exact(&mut image)?;
+    Ok(Some(image))
 }
 
 fn artifact_path_from_bytes(bytes: &[u8]) -> Option<&Path> {
@@ -737,6 +775,24 @@ pub unsafe fn compile_module(
     Ok(())
 }
 
+fn validate_image_header(fixed_header: &[u8]) -> Result<(), ImageError> {
+    if fixed_header.len() < 12 || fixed_header[..8] != *b"BIRNAMIM" {
+        return Err(ImageError::InvalidHeader);
+    }
+    let observed = u32::from_le_bytes(
+        fixed_header[8..12]
+            .try_into()
+            .expect("validated fixed image version"),
+    );
+    if observed != 8 {
+        return Err(ImageError::VersionMismatch {
+            expected: 8,
+            observed,
+        });
+    }
+    Ok(())
+}
+
 /// Load an image through the Birnam `System` protocol. A true answer means
 /// compiled code was mapped; false means the runtime rebuilt the image's exact
 /// portable programs and materialization selection.
@@ -754,16 +810,7 @@ pub unsafe fn load_image(
     std::fs::File::open(path)
         .and_then(|mut file| file.read_exact(&mut fixed_header))
         .map_err(|_| ImageError::InvalidHeader)?;
-    if fixed_header[..8] != *b"BIRNAMIM" {
-        return Err(ImageError::InvalidHeader);
-    }
-    let observed = u32::from_le_bytes(fixed_header[8..12].try_into().expect("fixed image version"));
-    if observed != 8 {
-        return Err(ImageError::VersionMismatch {
-            expected: 8,
-            observed,
-        });
-    }
+    validate_image_header(&fixed_header)?;
     let api_ptr = runtime.stack.api() as *const IdApi;
     // SAFETY: the retained floor table outlives this synchronous load and the
     // owner thread remains exclusive for the whole operation.
@@ -777,6 +824,43 @@ pub unsafe fn load_image(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
+    unsafe { finish_image_load(api, system, status) }
+}
+
+/// Load complete image bytes through the ordinary Birnam `System` send surface.
+/// This is the baked-executable path; it avoids temporary files and keeps the
+/// image module authoritative for decoding, mapping, and recovery.
+///
+/// # Safety
+///
+/// The runtime must remain on the selected floor's owner thread, and the
+/// caller must establish a valid GC stack bottom for the synchronous sends.
+pub unsafe fn load_image_bytes(
+    runtime: &mut HostRuntime,
+    bytes: &[u8],
+    rebuild: bool,
+) -> Result<ImageLoadOutcome, ImageError> {
+    validate_image_header(bytes)?;
+    let api_ptr = runtime.stack.api() as *const IdApi;
+    // SAFETY: the retained floor table outlives this synchronous load and the
+    // owner thread remains exclusive for the whole operation.
+    let api = unsafe { &*api_ptr };
+    let system = unsafe { (api.import)(c"System".as_ptr()) };
+    if system == api.nilObj {
+        return Err(ImageError::MissingSystem);
+    }
+    let image_value = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+    let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
+    let selector = unsafe { (api.intern)(c"loadImageBytes:rebuild:".as_ptr()) };
+    let status = unsafe { (api.send)(system, selector, [image_value, rebuild_value].as_ptr(), 2) };
+    unsafe { finish_image_load(api, system, status) }
+}
+
+unsafe fn finish_image_load(
+    api: &IdApi,
+    system: birnam_abi::Oop,
+    status: birnam_abi::Oop,
+) -> Result<ImageLoadOutcome, ImageError> {
     if status == api.nilObj {
         return Err(ImageError::LoadRejected);
     }
@@ -6438,6 +6522,41 @@ impl HostRuntime {
         unsafe { self.start_repl_mode(false) }
     }
 
+    /// Run the conventional global `main` block after image recovery. Absence
+    /// answers `false` so the caller can open a REPL; presence enters the
+    /// running phase and sends `value` through ordinary dispatch.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have prepared a live GC anchor and remain on the floor
+    /// owner thread for generation publication, phase transition, and dispatch.
+    pub unsafe fn run_image_main(&self) -> Result<bool, ImageEntryError> {
+        let api = self.stack.api();
+        let Some(main) = (unsafe { global_named(api, "main") }) else {
+            return Ok(false);
+        };
+        let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
+            return Err(ImageEntryError::MissingDispatchGeneration);
+        };
+        let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
+        let generation =
+            unsafe { (api.send)(generations, initialize_selector, std::ptr::null(), 0) };
+        if send_is_error(api, generation) {
+            return Err(ImageEntryError::GenerationRejected);
+        }
+        let phases =
+            resolve_phase_hooks(&self.stack, &self.resources).map_err(ImageEntryError::Phase)?;
+        if !phases.enter_running() {
+            return Err(ImageEntryError::Phase(PhaseHookError::InvalidPhase));
+        }
+        let value_selector = unsafe { (api.intern)(c"value".as_ptr()) };
+        let result = unsafe { (api.send)(main, value_selector, std::ptr::null(), 0) };
+        if result.is_null() || send_is_error(api, result) {
+            return Err(ImageEntryError::EvaluationRejected);
+        }
+        Ok(true)
+    }
+
     /// Start a REPL after image recovery. The image's Module manager may be a
     /// restored application object, so ordinary `Module load:` is deliberately
     /// not called here; the host-capability path is the process-local recovery
@@ -9593,6 +9712,22 @@ mod tests {
         assert!(baked_image(&corrupt).is_none());
         corrupt[magic_start..].copy_from_slice(b"NOTBAKED");
         assert!(baked_image(&corrupt).is_none());
+    }
+
+    #[test]
+    fn baked_image_file_reader_skips_the_runtime_prefix() {
+        let path =
+            std::env::temp_dir().join(format!("birnam-host-baked-reader-{}", std::process::id()));
+        let image = b"BIRNAMIM\x08\0\0\0payload";
+        let baked = bake_executable(&vec![b'r'; 1 << 20], image).expect("fixture bakes");
+        std::fs::write(&path, baked).expect("fixture writes");
+        assert_eq!(
+            read_baked_image(&path).expect("fixture reads"),
+            Some(image.to_vec())
+        );
+        std::fs::write(&path, b"plain runtime").expect("plain fixture writes");
+        assert_eq!(read_baked_image(&path).expect("plain fixture reads"), None);
+        std::fs::remove_file(path).expect("fixture removes");
     }
 
     #[test]

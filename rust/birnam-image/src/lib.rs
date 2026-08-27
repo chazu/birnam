@@ -2251,6 +2251,12 @@ mod runtime {
         Some(bytes.to_vec())
     }
 
+    fn preflight_runtime_image_bytes(bytes: &[u8]) -> bool {
+        u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_IMAGE_BYTES
+            && bytes.get(8..12) == Some(&v8::FORMAT_VERSION.to_le_bytes())
+            && v8::decode(bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
+    }
+
     unsafe fn preflight_runtime_image(api: &IdApi, path: Oop) -> bool {
         let Some(path) = (unsafe { runtime_image_path_bytes(api, path) }) else {
             return false;
@@ -2265,12 +2271,7 @@ mod runtime {
         let Ok(bytes) = fs::read(image_path) else {
             return false;
         };
-        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_IMAGE_BYTES
-            || bytes.get(8..12) != Some(&v8::FORMAT_VERSION.to_le_bytes())
-        {
-            return false;
-        }
-        v8::decode(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
+        preflight_runtime_image_bytes(&bytes)
     }
 
     unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: &[u8]) -> bool {
@@ -2292,20 +2293,14 @@ mod runtime {
         }
     }
 
-    unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
+    unsafe fn load_with_rust_codegen_bytes(api: &IdApi, image_bytes: &[u8], rebuild: bool) -> Oop {
         if let Ok(mut identity) = IMAGE_COMPOSITION_IDENTITY.lock() {
             *identity = None;
         }
-        let Some(path_bytes) = (unsafe { runtime_image_path_bytes(api, path) }) else {
-            return api.nilObj;
-        };
-        let Ok(image_bytes) = fs::read(Path::new(OsStr::from_bytes(&path_bytes))) else {
-            return api.nilObj;
-        };
-        if image_bytes.get(8..12) != Some(&v8::FORMAT_VERSION.to_le_bytes()) {
+        if !preflight_runtime_image_bytes(image_bytes) {
             return api.nilObj;
         }
-        let Ok(decoded) = v8::decode(&image_bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
+        let Ok(decoded) = v8::decode(image_bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
             return api.nilObj;
         };
         let composition = decoded
@@ -2321,7 +2316,7 @@ mod runtime {
         {
             return api.nilObj;
         }
-        let loaded = unsafe { load_v8(api, &image_bytes, rebuild) };
+        let loaded = unsafe { load_v8(api, image_bytes, rebuild) };
         let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
         if (loaded != api.trueObj && loaded != api.falseObj) || ended != api.trueObj {
             return api.nilObj;
@@ -2330,6 +2325,16 @@ mod runtime {
             *identity = composition;
         }
         loaded
+    }
+
+    unsafe fn load_with_rust_codegen(api: &IdApi, path: Oop, rebuild: bool) -> Oop {
+        let Some(path_bytes) = (unsafe { runtime_image_path_bytes(api, path) }) else {
+            return api.nilObj;
+        };
+        let Ok(image_bytes) = fs::read(Path::new(OsStr::from_bytes(&path_bytes))) else {
+            return api.nilObj;
+        };
+        unsafe { load_with_rust_codegen_bytes(api, &image_bytes, rebuild) }
     }
 
     unsafe fn collect_store_facts(
@@ -2736,6 +2741,27 @@ mod runtime {
         unsafe { load_with_rust_codegen(api, arguments[0], arguments[1] == api.trueObj) }
     }
 
+    unsafe extern "C" fn system_load_image_bytes_rebuild(
+        _self_object: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let api = unsafe { api_ref() };
+        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+            return api.nilObj;
+        };
+        if count != 2 {
+            return api.nilObj;
+        }
+        let Some(image_bytes) = (unsafe { runtime_image_path_bytes(api, arguments[0]) }) else {
+            return api.nilObj;
+        };
+        if !preflight_runtime_image_bytes(&image_bytes) {
+            return api.nilObj;
+        }
+        unsafe { load_with_rust_codegen_bytes(api, &image_bytes, arguments[1] == api.trueObj) }
+    }
+
     unsafe extern "C" fn system_image_save_report(
         _self_object: Oop,
         _args: *const Oop,
@@ -3089,6 +3115,11 @@ mod runtime {
                     system_vt,
                     intern(api_ref, b"loadImage:rebuild:\0"),
                     system_load_image_rebuild,
+                );
+                (api_ref.method)(
+                    system_vt,
+                    intern(api_ref, b"loadImageBytes:rebuild:\0"),
+                    system_load_image_bytes_rebuild,
                 );
                 (api_ref.method)(
                     system_vt,

@@ -116,4 +116,40 @@ printf '[[Globals at: #PortableV8Target] answer: 42]\n:quit\n' \
 test ! -s "$smoke_root/resaved.err"
 grep -Fxq 'birnam> 44' "$smoke_root/resaved.out"
 
-printf 'portable-image-v8-smoke: boxed identity, nested source-less meaning, CodeBinding recovery, ordinary/rebuild boot, and resave passed\n'
+app_image="$smoke_root/app.image"
+cat >"$smoke_root/app.birnam" <<EOF
+let banner := "portable image-v8 app";
+let main := [|
+  [System println: banner];
+  [System println: "main entry ran"]
+];
+[System saveImage: "$app_image"]
+EOF
+"$bin" "$smoke_root/app.birnam" >"$smoke_root/app-save.out" 2>"$smoke_root/app-save.err"
+test ! -s "$smoke_root/app-save.err"
+test -s "$app_image"
+
+for mode in ordinary rebuild; do
+  arguments=()
+  if [[ $mode == rebuild ]]; then
+    arguments+=(--rebuild)
+  fi
+  "$bin" "${arguments[@]}" "$app_image" \
+    >"$smoke_root/app-$mode.out" 2>"$smoke_root/app-$mode.err"
+  test ! -s "$smoke_root/app-$mode.err"
+  grep -Fxq 'portable image-v8 app' "$smoke_root/app-$mode.out"
+  grep -Fxq 'main entry ran' "$smoke_root/app-$mode.out"
+  ! grep -q 'interactive image' "$smoke_root/app-$mode.out"
+done
+
+baked_app="$smoke_root/baked-app"
+"$bin" --bake "$app_image" "$baked_app"
+test -x "$baked_app"
+BIRNAM_LIB_DIR="$prefix/lib" "$baked_app" \
+  >"$smoke_root/app-baked.out" 2>"$smoke_root/app-baked.err"
+test ! -s "$smoke_root/app-baked.err"
+grep -Fxq 'portable image-v8 app' "$smoke_root/app-baked.out"
+grep -Fxq 'main entry ran' "$smoke_root/app-baked.out"
+! grep -q 'interactive image' "$smoke_root/app-baked.out"
+
+printf 'portable-image-v8-smoke: boxed identity, nested source-less meaning, CodeBinding recovery, ordinary/rebuild entry, baked entry, and resave passed\n'

@@ -7,12 +7,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
     CommandKind, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy,
-    WorkerStartupError, bake_executable, baked_image, classify_command, compile_module,
-    eval_script, host_target_identity, load_image, parse_bake_args, parse_build_args,
+    WorkerStartupError, bake_executable, classify_command, compile_module, eval_script,
+    host_target_identity, load_image, load_image_bytes, parse_bake_args, parse_build_args,
     parse_check_args, parse_compile_module_args, parse_install_args,
     parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
-    parse_worker_args, preflight_artifact, resolve, start, start_from_environment,
+    parse_worker_args, preflight_artifact, read_baked_image, resolve, start,
+    start_from_environment,
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 const VERSION: &str = include_str!("../../../../VERSION");
 const USAGE: &str = "birnam — Rust host\n\n\
@@ -458,6 +462,28 @@ fn worker_command(args: &[OsString]) -> Result<(), String> {
 
 fn run(args: Vec<OsString>) -> Result<(), String> {
     let command = classify_command(&args).map_err(|error| format!("command: {error:?}"))?;
+    if args.is_empty() && command == CommandKind::Repl {
+        let executable = env::current_exe().map_err(|error| format!("current exe: {error}"))?;
+        if let Some(image) =
+            read_baked_image(&executable).map_err(|error| format!("baked image: {error}"))?
+        {
+            let mut runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            let _ = unsafe { load_image_bytes(&mut runtime, &image, false) }
+                .map_err(|error| format!("image: {error:?}"))?;
+            if unsafe { runtime.run_image_main() }
+                .map_err(|error| format!("image main: {error:?}"))?
+            {
+                return Ok(());
+            }
+            let mut session = unsafe { runtime.start_repl_after_image() }
+                .map_err(|error| format!("repl: {error:?}"))?;
+            return unsafe { runtime.run_repl(&mut session) }
+                .map_err(|error| format!("repl: {error:?}"));
+        }
+    }
     match command {
         CommandKind::Help => {
             print!("{USAGE}");
@@ -473,12 +499,21 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             let runtime_path =
                 env::current_exe().map_err(|error| format!("current exe: {error}"))?;
             let runtime =
-                fs::read(runtime_path).map_err(|error| format!("read runtime: {error}"))?;
+                fs::read(&runtime_path).map_err(|error| format!("read runtime: {error}"))?;
             let image = fs::read(&options.image).map_err(|error| format!("read image: {error}"))?;
             let baked =
                 bake_executable(&runtime, &image).map_err(|error| format!("bake: {error:?}"))?;
             fs::write(&options.executable, baked)
                 .map_err(|error| format!("write executable: {error}"))?;
+            #[cfg(unix)]
+            {
+                let mode = fs::metadata(&runtime_path)
+                    .map_err(|error| format!("runtime permissions: {error}"))?
+                    .permissions()
+                    .mode();
+                fs::set_permissions(&options.executable, fs::Permissions::from_mode(mode))
+                    .map_err(|error| format!("executable permissions: {error}"))?;
+            }
             Ok(())
         }
         CommandKind::Rebuild => {
@@ -490,6 +525,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             let _ = unsafe { load_image(&mut runtime, &options.image, true) }
                 .map_err(|error| format!("image: {error:?}"))?;
+            if unsafe { runtime.run_image_main() }
+                .map_err(|error| format!("image main: {error:?}"))?
+            {
+                return Ok(());
+            }
             let mut session = unsafe { runtime.start_repl_after_image() }
                 .map_err(|error| format!("repl: {error:?}"))?;
             unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
@@ -510,6 +550,11 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             let _ = unsafe { load_image(&mut runtime, &path, false) }
                 .map_err(|error| format!("image: {error:?}"))?;
+            if unsafe { runtime.run_image_main() }
+                .map_err(|error| format!("image main: {error:?}"))?
+            {
+                return Ok(());
+            }
             let mut session = unsafe { runtime.start_repl_after_image() }
                 .map_err(|error| format!("repl: {error:?}"))?;
             unsafe { runtime.run_repl(&mut session) }.map_err(|error| format!("repl: {error:?}"))
@@ -573,9 +618,6 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
 
 fn main() -> ExitCode {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
-    // Keep the trailer helper linked and checked in this executable's image
-    // path without probing the filesystem during pure help/version exits.
-    let _ = baked_image as fn(&[u8]) -> Option<&[u8]>;
     match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
