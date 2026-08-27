@@ -778,6 +778,45 @@ pub unsafe fn load_image(
             if begun == api.nilObj || send_is_error(api, begun) {
                 return Err(ImageError::LoadRejected);
             }
+            // Image-v7 Code carries portable application materializations,
+            // not a duplicate of the self-hosted protocol layer already
+            // available in the installation. Rebuild/replay that source layer
+            // inside the same recovery boundary while retaining the mapped
+            // portable generation. Legacy mapped images with a complete
+            // surface make this path a no-op.
+            let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
+            let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
+            let rebuilt_generation =
+                !rebuilt.is_null() && rebuilt != api.nilObj && !send_is_error(api, rebuilt);
+            let replayed = if rebuilt_generation {
+                unsafe { (api.mkSmallInt)(1) }
+            } else {
+                let replay_methods = unsafe { (api.intern)(c"replayMethods".as_ptr()) };
+                unsafe { (api.send)(codegen, replay_methods, std::ptr::null(), 0) }
+            };
+            let replay_count = if unsafe { (api.isSmallInt)(replayed) } != 0 {
+                unsafe { (api.smallIntValue)(replayed) }
+            } else {
+                0
+            };
+            let config_surface_missing = unsafe { global_named(api, "Config") }
+                .map(|config| unsafe {
+                    let loads = (api.intern)(c"loads".as_ptr());
+                    !receiver_has_selector(api, config, loads)
+                })
+                .unwrap_or(false);
+            if replay_count == 0 || config_surface_missing {
+                unsafe {
+                    bootstrap_self_hosted(
+                        api,
+                        codegen,
+                        &runtime.resources,
+                        runtime.policy.force_source,
+                        false,
+                    )
+                }
+                .map_err(|_| ImageError::LoadRejected)?;
+            }
             let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
             unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
             let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
@@ -1508,8 +1547,80 @@ pub struct LoadedFloor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleError {
     EmbeddedNul,
-    OpenFailed { path: PathBuf },
-    MissingModuleInit { path: PathBuf },
+    OpenFailed {
+        path: PathBuf,
+    },
+    MissingModuleInit {
+        path: PathBuf,
+    },
+    MissingSymbolCompactionControl {
+        path: PathBuf,
+    },
+    MissingSymbolCompatibilityLimit {
+        path: PathBuf,
+        variable: &'static str,
+    },
+    InvalidSymbolCompatibilityLimit {
+        path: PathBuf,
+        variable: &'static str,
+    },
+    SymbolCompatibilityLimitRejected {
+        path: PathBuf,
+    },
+    MissingStoreCompensationApi {
+        path: PathBuf,
+    },
+    MissingCodegenCompensationConfig {
+        path: PathBuf,
+    },
+    StoreCompensationConfigRejected {
+        path: PathBuf,
+    },
+}
+
+const SYMBOL_COUNT_LIMIT_ENV: &str = "BIRNAM_SYMBOL_LIMIT";
+const SYMBOL_NAME_BYTES_LIMIT_ENV: &str = "BIRNAM_SYMBOL_BYTES_LIMIT";
+
+type SymbolCompactionControl = unsafe extern "C" fn(c_int, usize, usize) -> c_int;
+type SymbolBorrowDeclaration = unsafe extern "C" fn() -> c_int;
+type StoreCompensationApiGetter = unsafe extern "C" fn() -> *const std::ffi::c_void;
+type CodegenCompensationConfigure =
+    unsafe extern "C" fn(*const std::ffi::c_void) -> std::ffi::c_int;
+
+fn parse_positive_limit(value: &OsStr) -> Option<usize> {
+    value
+        .to_str()?
+        .parse::<usize>()
+        .ok()
+        .filter(|limit| *limit != 0)
+}
+
+fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleError> {
+    let count = env::var_os(SYMBOL_COUNT_LIMIT_ENV).ok_or_else(|| {
+        ModuleError::MissingSymbolCompatibilityLimit {
+            path: path.to_path_buf(),
+            variable: SYMBOL_COUNT_LIMIT_ENV,
+        }
+    })?;
+    let bytes = env::var_os(SYMBOL_NAME_BYTES_LIMIT_ENV).ok_or_else(|| {
+        ModuleError::MissingSymbolCompatibilityLimit {
+            path: path.to_path_buf(),
+            variable: SYMBOL_NAME_BYTES_LIMIT_ENV,
+        }
+    })?;
+    let count = parse_positive_limit(&count).ok_or_else(|| {
+        ModuleError::InvalidSymbolCompatibilityLimit {
+            path: path.to_path_buf(),
+            variable: SYMBOL_COUNT_LIMIT_ENV,
+        }
+    })?;
+    let bytes = parse_positive_limit(&bytes).ok_or_else(|| {
+        ModuleError::InvalidSymbolCompatibilityLimit {
+            path: path.to_path_buf(),
+            variable: SYMBOL_NAME_BYTES_LIMIT_ENV,
+        }
+    })?;
+    Ok((count, bytes))
 }
 
 /// The native module order is part of the host contract: Store precedes
@@ -1524,6 +1635,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_id_prelude",
     "libbirnam_id_collection",
     "libbirnam_id_error",
+    "libbirnam_portable_code",
     "libbirnam_id_isolate",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
@@ -7613,13 +7725,27 @@ pub unsafe fn bootstrap_self_hosted(
 pub struct LoadedStack {
     pub floor: LoadedFloor,
     modules: Vec<NonNull<std::ffi::c_void>>,
+    symbol_compaction_control: Option<SymbolCompactionControl>,
+    all_modules_borrow_safe: bool,
 }
 
 impl LoadedStack {
     pub fn new(floor: LoadedFloor) -> Self {
+        let control = unsafe {
+            (floor.api().dlsym)(
+                floor.handle().as_ptr(),
+                c"birnam_id_symbol_compaction_configure_v1".as_ptr().cast(),
+            )
+        };
+        let symbol_compaction_control = NonNull::new(control).map(|control| {
+            // SAFETY: the private floor symbol has this versioned frozen shape.
+            unsafe { std::mem::transmute(control.as_ptr()) }
+        });
         Self {
             floor,
             modules: Vec::new(),
+            symbol_compaction_control,
+            all_modules_borrow_safe: true,
         }
     }
 
@@ -7654,6 +7780,36 @@ impl LoadedStack {
                 path: path.to_path_buf(),
             });
         };
+        let declaration = unsafe {
+            (self.floor.api().dlsym)(handle.as_ptr(), c"birnam_symbol_borrow_v1".as_ptr().cast())
+        };
+        let borrow_safe = NonNull::new(declaration).is_some_and(|declaration| {
+            // SAFETY: a module opting into the versioned marker promises this
+            // exact no-argument declaration signature.
+            let declaration: SymbolBorrowDeclaration =
+                unsafe { std::mem::transmute(declaration.as_ptr()) };
+            unsafe { declaration() == 1 }
+        });
+        let Some(control) = self.symbol_compaction_control else {
+            return Err(ModuleError::MissingSymbolCompactionControl {
+                path: path.to_path_buf(),
+            });
+        };
+        if borrow_safe && self.all_modules_borrow_safe {
+            if unsafe { control(1, 0, 0) } != 1 {
+                return Err(ModuleError::SymbolCompatibilityLimitRejected {
+                    path: path.to_path_buf(),
+                });
+            }
+        } else if !borrow_safe {
+            let (count_limit, name_byte_limit) = symbol_compatibility_limits(path)?;
+            if unsafe { control(0, count_limit, name_byte_limit) } != 1 {
+                return Err(ModuleError::SymbolCompatibilityLimitRejected {
+                    path: path.to_path_buf(),
+                });
+            }
+            self.all_modules_borrow_safe = false;
+        }
         // SAFETY: module_init is the frozen higher-rung ABI and the floor table
         // remains live for the module's initialization call.
         let init: birnam_abi::ModuleInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
@@ -7676,6 +7832,7 @@ impl LoadedStack {
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
+        let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {
             let path = if *name == "libbirnam_id_tcc" {
                 tcc_override
@@ -7686,6 +7843,45 @@ impl LoadedStack {
                 resources.lib_dir.join(format!("{name}.dylib"))
             };
             let handle = self.load_module_handle(&path)?;
+            if *name == "libbirnam_store" {
+                let getter = unsafe {
+                    (self.floor.api().dlsym)(
+                        handle.as_ptr(),
+                        c"birnam_store_compensation_api_v1".as_ptr().cast(),
+                    )
+                };
+                let Some(getter) = NonNull::new(getter) else {
+                    return Err(ModuleError::MissingStoreCompensationApi { path });
+                };
+                let getter: StoreCompensationApiGetter =
+                    unsafe { std::mem::transmute(getter.as_ptr()) };
+                let table = unsafe { getter() };
+                let Some(table) = NonNull::new(table.cast_mut()) else {
+                    return Err(ModuleError::MissingStoreCompensationApi { path });
+                };
+                store_compensation_api = Some(table);
+            }
+            if *name == "libbirnam_id_codegen" {
+                let Some(table) = store_compensation_api else {
+                    return Err(ModuleError::MissingStoreCompensationApi { path });
+                };
+                let configure = unsafe {
+                    (self.floor.api().dlsym)(
+                        handle.as_ptr(),
+                        c"birnam_codegen_store_compensation_configure_v1"
+                            .as_ptr()
+                            .cast(),
+                    )
+                };
+                let Some(configure) = NonNull::new(configure) else {
+                    return Err(ModuleError::MissingCodegenCompensationConfig { path });
+                };
+                let configure: CodegenCompensationConfigure =
+                    unsafe { std::mem::transmute(configure.as_ptr()) };
+                if unsafe { configure(table.as_ptr()) } != 1 {
+                    return Err(ModuleError::StoreCompensationConfigRejected { path });
+                }
+            }
             if *name == "libbirnam_id_image"
                 && path.file_name().and_then(|file| file.to_str())
                     == Some("libbirnam_id_image.dylib")
@@ -8156,6 +8352,15 @@ fn normalize_absolute(path: &Path) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compatibility_symbol_limits_require_positive_machine_word_values() {
+        assert_eq!(parse_positive_limit(OsStr::new("1")), Some(1));
+        assert_eq!(parse_positive_limit(OsStr::new("1048576")), Some(1_048_576));
+        assert_eq!(parse_positive_limit(OsStr::new("0")), None);
+        assert_eq!(parse_positive_limit(OsStr::new("-1")), None);
+        assert_eq!(parse_positive_limit(OsStr::new("unbounded")), None);
+    }
 
     fn artifact_field(value: &[u8], output: &mut Vec<u8>) {
         output.extend_from_slice(&(value.len() as u32).to_le_bytes());

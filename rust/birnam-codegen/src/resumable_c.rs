@@ -17,10 +17,25 @@ pub enum Error {
     QuantityOverflow,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct BlockLiteralSpec<'a> {
     pub block: &'a Block<'a>,
     pub disposition: BlockLiteralDisposition,
+    pub portable_program: Vec<u8>,
+}
+
+/// One nested literal keyed by its canonical Node occurrence in the enclosing
+/// PortableProgram. This is compiler-local selection data, not a durable
+/// PortableProgram or ArtifactSelection field.
+#[derive(Clone, Debug)]
+pub struct PortableBlockLiteralSpec {
+    pub node_index: u32,
+    pub disposition: BlockLiteralDisposition,
+    pub portable_program: Vec<u8>,
+    /// Materialized source-less units store their TCC Unit in every Block
+    /// carrier. Source-authored image/JIT units remain generation-owned and
+    /// therefore use the legacy carrier without this extra owner.
+    pub retain_materialization_owner: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,7 +87,50 @@ pub fn emit_step_method_with_blocks<'a>(
     driver_argument_count: u32,
     block_literals: &[BlockLiteralSpec<'a>],
 ) -> Result<Vec<u8>, Error> {
-    validate(program, layout, driver_argument_count, block_literals)?;
+    emit_step_method_with_literal_specs(
+        symbol_index,
+        program,
+        layout,
+        driver_argument_count,
+        block_literals,
+        &[],
+    )
+}
+
+/// Emit one StepMethod whose nested Blocks are identified by canonical
+/// PortableProgram Node occurrence rather than semantic-byte equality.
+pub fn emit_step_method_with_portable_blocks(
+    symbol_index: u32,
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    driver_argument_count: u32,
+    block_literals: &[PortableBlockLiteralSpec],
+) -> Result<Vec<u8>, Error> {
+    emit_step_method_with_literal_specs(
+        symbol_index,
+        program,
+        layout,
+        driver_argument_count,
+        &[],
+        block_literals,
+    )
+}
+
+fn emit_step_method_with_literal_specs<'a>(
+    symbol_index: u32,
+    program: &LogicalProgram<'a>,
+    layout: &PhysicalLayout,
+    driver_argument_count: u32,
+    source_block_literals: &[BlockLiteralSpec<'a>],
+    portable_block_literals: &[PortableBlockLiteralSpec],
+) -> Result<Vec<u8>, Error> {
+    validate(
+        program,
+        layout,
+        driver_argument_count,
+        source_block_literals,
+        portable_block_literals,
+    )?;
 
     let mut output = Emitter::with_capacity(4096);
     output.push(b"static void* __birnam_resumable_step_");
@@ -116,16 +174,42 @@ pub fn emit_step_method_with_blocks<'a>(
                     emit_store_suffix(&mut output, operation.result.0);
                 }
                 OperationKind::BlockLiteral { block, captures } => {
-                    let spec = block_literals
+                    let spec = source_block_literals
                         .iter()
                         .find(|spec| core::ptr::eq(spec.block, *block))
                         .ok_or(Error::Unsupported)?;
                     emit_block_literal(
                         &mut output,
+                        symbol_index,
                         layout,
                         operation.result,
                         captures,
                         spec.disposition,
+                        &spec.portable_program,
+                        false,
+                    )?;
+                }
+                OperationKind::PortableBlockLiteral {
+                    node_index,
+                    program,
+                    captures,
+                } => {
+                    let mut matching = portable_block_literals
+                        .iter()
+                        .filter(|spec| spec.node_index == *node_index);
+                    let spec = matching.next().ok_or(Error::Unsupported)?;
+                    if matching.next().is_some() || spec.portable_program.as_slice() != *program {
+                        return Err(Error::InvalidProgram);
+                    }
+                    emit_block_literal(
+                        &mut output,
+                        symbol_index,
+                        layout,
+                        operation.result,
+                        captures,
+                        spec.disposition,
+                        program,
+                        spec.retain_materialization_owner,
                     )?;
                 }
                 OperationKind::Bind { source, .. } => {
@@ -195,7 +279,8 @@ fn validate(
     program: &LogicalProgram<'_>,
     layout: &PhysicalLayout,
     driver_argument_count: u32,
-    block_literals: &[BlockLiteralSpec<'_>],
+    source_block_literals: &[BlockLiteralSpec<'_>],
+    portable_block_literals: &[PortableBlockLiteralSpec],
 ) -> Result<(), Error> {
     if program.blocks.is_empty()
         || program.blocks.len() != layout.pc_value_locations.len()
@@ -252,13 +337,38 @@ fn validate(
                     block,
                     ref captures,
                 } => {
-                    if block_literals
+                    let mut matching = source_block_literals
                         .iter()
-                        .filter(|spec| core::ptr::eq(spec.block, block))
-                        .count()
-                        != 1
-                    {
+                        .filter(|spec| core::ptr::eq(spec.block, block));
+                    let Some(spec) = matching.next() else {
                         return Err(Error::Unsupported);
+                    };
+                    if matching.next().is_some()
+                        || birnam_artifact::portable_program::inspect(&spec.portable_program)
+                            .is_err()
+                    {
+                        return Err(Error::InvalidProgram);
+                    }
+                    for capture in captures {
+                        value_slot(layout, *capture)?;
+                    }
+                }
+                OperationKind::PortableBlockLiteral {
+                    node_index,
+                    program,
+                    ref captures,
+                } => {
+                    let mut matching = portable_block_literals
+                        .iter()
+                        .filter(|spec| spec.node_index == node_index);
+                    let Some(spec) = matching.next() else {
+                        return Err(Error::Unsupported);
+                    };
+                    if birnam_artifact::portable_program::inspect(program).is_err()
+                        || spec.portable_program.as_slice() != program
+                        || matching.next().is_some()
+                    {
+                        return Err(Error::InvalidProgram);
                     }
                     for capture in captures {
                         value_slot(layout, *capture)?;
@@ -321,10 +431,13 @@ fn validate(
 
 fn emit_block_literal(
     output: &mut Emitter,
+    symbol_index: u32,
     layout: &PhysicalLayout,
     result: ValueId,
     captures: &[ValueId],
     disposition: BlockLiteralDisposition,
+    portable_program: &[u8],
+    retain_materialization_owner: bool,
 ) -> Result<(), Error> {
     let destination = value_slot(layout, result)?;
     emit_store_prefix(output, result.0, destination);
@@ -343,9 +456,18 @@ fn emit_block_literal(
             function_index,
             language_arity,
         } => {
+            let cache_index =
+                (1_u64 << 63) | (u64::from(symbol_index) << 32) | u64::from(function_index);
             output.push(b"({extern void* __blk");
             decimal(output, function_index);
-            output.push(b"(void*,void**,long);static void* v=0;if(!v){v=birnam_proto(birnam_blockVt());if(v){birnam_method(v,birnam_intern(\"");
+            output.push(b"(void*,void**,long);void* v=birnam_vtable_cache_get(__birnam_code_generation_identity,");
+            output.push(cache_index.to_string().as_bytes());
+            output
+                .push(b"ULL);if(!v){v=birnam_vtable_cache_set(__birnam_code_generation_identity,");
+            output.push(cache_index.to_string().as_bytes());
+            output.push(
+                b"ULL,birnam_proto(birnam_blockVt()));if(v){birnam_method(v,birnam_intern(\"",
+            );
             if language_arity == 0 {
                 output.push(b"value");
             } else {
@@ -358,28 +480,91 @@ fn emit_block_literal(
             output.push(b");birnam_layoutAllOops(v);}}v;})");
         }
     }
+    let code_cache_index = (1_u64 << 60) | (u64::from(symbol_index) << 32) | u64::from(result.0);
     output.push(b";if(!__birnam_block_vt_");
     decimal(output, result.0);
-    output.push(b")return birnam_nil();void* __birnam_block_oop_");
+    output.push(b")return birnam_nil();static const unsigned char __birnam_block_program_");
     decimal(output, result.0);
-    output.push(b"=birnam_alloc(__birnam_block_vt_");
+    output.push(b"[]={");
+    for (index, byte) in portable_program.iter().enumerate() {
+        if index != 0 {
+            output.push(b",");
+        }
+        output.push(byte.to_string().as_bytes());
+    }
+    output.push(b"};void* __birnam_block_code_");
     decimal(output, result.0);
-    output.push(b",");
-    output.push(captures.len().to_string().as_bytes());
-    output.push(b"L*sizeof(void*));if(!__birnam_block_oop_");
+    output.push(b"=birnam_vtable_cache_get(__birnam_code_generation_identity,");
+    output.push(code_cache_index.to_string().as_bytes());
+    output.push(b"ULL);if(!__birnam_block_code_");
     decimal(output, result.0);
-    output.push(b"||__birnam_block_oop_");
+    output.push(b"){__birnam_block_code_");
     decimal(output, result.0);
-    output.push(b"==birnam_nil())return birnam_nil();");
-    for (index, capture) in captures.iter().enumerate() {
-        output.push(b"((void**)__birnam_block_oop_");
+    output.push(b"=birnam_portable_code_admit_v1(__birnam_block_program_");
+    decimal(output, result.0);
+    output.push(b",sizeof(__birnam_block_program_");
+    decimal(output, result.0);
+    output.push(b"));if(!__birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b")return birnam_nil();if(birnam_is_error(__birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b"))return __birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b";__birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b"=birnam_vtable_cache_set(__birnam_code_generation_identity,");
+    output.push(code_cache_index.to_string().as_bytes());
+    output.push(b"ULL,__birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b");if(!__birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b")return birnam_nil();}");
+    if !captures.is_empty() {
+        output.push(b"void* __birnam_block_captures_");
         decimal(output, result.0);
-        output.push(b")[");
+        output.push(b"[");
+        output.push(captures.len().to_string().as_bytes());
+        output.push(b"];");
+    }
+    for (index, capture) in captures.iter().enumerate() {
+        output.push(b"__birnam_block_captures_");
+        decimal(output, result.0);
+        output.push(b"[");
         output.push(index.to_string().as_bytes());
         output.push(b"]=");
         emit_get(output, value_slot(layout, *capture)?);
         output.push(b";");
     }
+    output.push(b"void* __birnam_block_oop_");
+    decimal(output, result.0);
+    if retain_materialization_owner {
+        output.push(b"=birnam_portable_materialized_block_new_v2(__birnam_block_vt_");
+    } else {
+        output.push(b"=birnam_portable_block_new_v1(__birnam_block_vt_");
+    }
+    decimal(output, result.0);
+    output.push(b",__birnam_block_code_");
+    decimal(output, result.0);
+    output.push(b",");
+    if captures.is_empty() {
+        output.push(b"(void**)0");
+    } else {
+        output.push(b"__birnam_block_captures_");
+        decimal(output, result.0);
+    }
+    output.push(b",");
+    output.push(captures.len().to_string().as_bytes());
+    output.push(b"UL");
+    if retain_materialization_owner {
+        output.push(b",__birnam_materialization_owner");
+    }
+    output.push(b");if(!__birnam_block_oop_");
+    decimal(output, result.0);
+    output.push(b")return birnam_nil();if(birnam_is_error(__birnam_block_oop_");
+    decimal(output, result.0);
+    output.push(b"))return __birnam_block_oop_");
+    decimal(output, result.0);
+    output.push(b";");
     output.push(b"__birnam_block_oop_");
     decimal(output, result.0);
     output.push(b";})");
@@ -418,6 +603,7 @@ fn emit_literal(output: &mut Emitter, literal: &Literal<'_>) {
         Literal::SmallInt(value) => output.emit_small_int(*value),
         Literal::SmallIntSource(source) => output.emit_small_int_literal(source),
         Literal::Float(source) => output.emit_float(source),
+        Literal::FloatBits(bits) => output.emit_float_bits(*bits),
         Literal::String(bytes) => output.emit_string(bytes),
         Literal::StringSource(source) => output.emit_string_literal(source),
         Literal::Symbol(name) => output.emit_symbol(name),
@@ -607,14 +793,25 @@ mod tests {
                     disposition: BlockLiteralDisposition::Resumable {
                         manifest_entry_index: 7,
                     },
+                    portable_program: crate::portable::encode_block(
+                        match &block.body[0] {
+                            Statement::Expr(Expr::Block(block)) => block,
+                            _ => unreachable!(),
+                        },
+                        &[b"self".to_vec()],
+                    )
+                    .unwrap(),
                 }],
             )
             .unwrap(),
         )
         .unwrap();
         assert!(emitted.contains("__birnam_resolve_block_vtable_v1(7U)"));
-        assert!(emitted.contains("birnam_alloc(__birnam_block_vt_"));
-        assert!(emitted.contains("((void**)__birnam_block_oop_"));
+        assert!(emitted.contains("birnam_portable_code_admit_v1"));
+        assert!(emitted.contains("birnam_portable_block_new_v1"));
+        assert!(emitted.contains("[0]=birnam_send(machine"));
+        assert!(!emitted.contains(")[0]=birnam_send(machine"));
+        assert!(!emitted.contains("birnam_alloc(__birnam_block_vt_"));
         assert!(emitted.contains("birnam_intern(\"oopAt:\")"));
     }
 }

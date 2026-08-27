@@ -266,6 +266,18 @@ unsafe extern "C" fn finalize_cst(object: Oop) {
 }
 
 unsafe extern "C" fn cst_scratch_roots(mark: birnam_abi::MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.pattern_vt,
+            runtime.peg_vt,
+            runtime.peg,
+            runtime.grammar_vt,
+            runtime.cst_vt,
+        ] {
+            // SAFETY: these are the PEG module's process-owned cached Oops.
+            unsafe { mark(value as Oop) };
+        }
+    }
     let roots = CST_SCRATCH
         .lock()
         .unwrap_or_else(|_| abort("CST scratch root lock poisoned"))
@@ -1206,6 +1218,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_peg_rust_identity() -> *const c_char {
     RUST_PEG_IDENTITY.as_ptr().cast()
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 /// Initialize the matcher and transient CST against the process-owned IdApi.

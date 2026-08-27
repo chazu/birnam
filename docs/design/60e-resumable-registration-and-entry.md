@@ -15,6 +15,9 @@
 > correctness, structural-fast-path, and replicated performance gates passed
 > 2026-08-22. S3 entry-barrier enforcement and Frame-to-Continuation pin
 > transfer were implemented and accepted 2026-08-23.
+> The 60G/60J lifetime closure completed 2026-08-27: dynamic vtables and
+> Symbols are weak identities, formerly method-bearing generations reclaim
+> after complete holder quiescence, and fixed-live-set evolution plateaus.
 > This record closes the registration seam that
 > [60A](60a-stackless-execution-semantics.md) §5 and
 > [60C](60c-stepmethod-calling-abi-options.md) §4.2 both depend on and both
@@ -759,15 +762,23 @@ the safe direction — leaked mapped code rather than misdispatch into freed cod
 direction is *contained, not closed*. Closing it needs one of: a collectable
 vtable registry, re-homing block vtables onto a surviving trampoline at unload,
 or an explicit unload-time sweep that rebinds affected selectors. That work
-belongs to the lifetime record (Future 60G), and the recognition path of §4.1
-must not be read as depending on it.
+was assigned to the lifetime record (60G), and the recognition path of §4.1 did
+not depend on it. The selected collectable-registry implementation has since
+closed that gate.
+
+> **60J decision, 2026-08-24:** the collectable-registry option is selected.
+> Post-bootstrap vtables are collectable; the registry and block catalog are
+> weak indexes; live object headers and retained Store facts are semantic roots.
+> `vtableCount`/`vtableAt` enumerate the current live set in survivor creation
+> order, not all identities ever created. This J1 prerequisite is now used by
+> 60G code reclamation and 60J bounded-process compaction.
 
 **Staging.** The gate ships with recognition in S1. Since reachable vtables are
 not yet computable, S1 retains every generation that installed a method; a
 generation that installed none may still answer `Disposed` once its ordinary
 mapping leases drain. The conservative rule is stated in terms of reachability
 so that making the registry collectable later narrows it rather than rewriting
-it. S3 adds Continuations to the holder accounting. Future 60G may answer
+it. S3 adds Continuations to the holder accounting. Implemented 60G may answer
 `Disposed` for a formerly method-bearing generation only after it closes the
 vtable-reachability problem and every Runtime has released its leases.
 
@@ -785,9 +796,8 @@ expand IdApi or become durable image state.
 
 S1 also exposes retained-generation count and retained mapped bytes. These are
 required telemetry, not proof of pin correctness. Conservative retention is a
-known leak per evolution cycle, and continuous self-hosted compilation is not a
-production-ready mode until Future 60G closes reclamation or accepts and enforces
-a bound.
+known leak per evolution cycle at the S1 checkpoint. Implemented 60G now closes
+reclamation, and 60J enforces and proves the bounded-process equation.
 
 **Evidence.** Because the refusal is unconditional in practice, disposal
 behavior cannot serve as evidence that generation pinning works — a stubbed pin
@@ -860,7 +870,7 @@ activation can replace a resumable predecessor binding, it acquires one explicit
 lease for each distinct predecessor thunk through a process-local selected-floor
 seam outside IdApi. A successful rollback restores the binding before releasing
 the lease. Conservative physical retention keeps an unconsumed rollback lease
-with its retained mapping until Future 60G can prove complete reclamation.
+with its retained mapping until 60G's complete-reclamation gate passes.
 
 When the last binding and manifest reference retires, the entry moves to a
 retirement set; it is not immediately erased. Readers that began before
@@ -1238,8 +1248,8 @@ Frozen:
   `logical = Discarded` and `physical = Disposed | Retained(reason)`,
   conservatively retains every method-bearing generation, and exposes retained-
   generation count and bytes;
-- S3 adds Continuations to the S1 holder accounting, while Future 60G owns
-  actual reclamation of formerly method-bearing mappings;
+- S3 adds Continuations to the S1 holder accounting, while implemented 60G
+  owns actual reclamation of formerly method-bearing mappings;
 - lookup through classification and pin acquisition is one logical protected
   `resolve-and-pin` operation; it returns a pinned ResumableEntry, a lifetime-
   protected synchronous Method, or unbound, never a bare address whose code may

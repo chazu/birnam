@@ -6,6 +6,8 @@
 use std::collections::BTreeSet;
 
 use birnam_artifact::frame_descriptor::{self, Sections};
+use birnam_artifact::materialization_selection::{Row, SubjectKind};
+use birnam_artifact::portable_resumable_manifest;
 use birnam_artifact::stackless_selection::{
     ImplementationKind, SelectionSpec, portable_implementation_identity, source_map_identity,
 };
@@ -38,6 +40,12 @@ struct ValueRecord {
     binding: u32,
 }
 
+#[derive(Clone, Copy)]
+enum DescriptorProfile<'a> {
+    Legacy(SelectionSpec<'a>),
+    Portable(Row<'a>),
+}
+
 /// Construct and semantically admit canonical descriptor-v2 bytes.
 ///
 /// The source map currently uses one exact whole-file span for definitions and
@@ -51,6 +59,42 @@ pub fn compile_descriptor_v2(
     source: &[u8],
     driver_argument_count: u32,
 ) -> Result<Vec<u8>, Error> {
+    compile_descriptor_profile_v2(
+        program,
+        layout,
+        DescriptorProfile::Legacy(authority),
+        diagnostic_path,
+        source,
+        driver_argument_count,
+    )
+}
+
+/// Construct the source-independent portable admission profile of the same
+/// FrameDescriptor-v2 execution layout.
+pub fn compile_portable_descriptor_v2(
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    row: Row<'_>,
+    driver_argument_count: u32,
+) -> Result<Vec<u8>, Error> {
+    compile_descriptor_profile_v2(
+        program,
+        layout,
+        DescriptorProfile::Portable(row),
+        b"",
+        b"",
+        driver_argument_count,
+    )
+}
+
+fn compile_descriptor_profile_v2(
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    profile: DescriptorProfile<'_>,
+    diagnostic_path: &[u8],
+    source: &[u8],
+    driver_argument_count: u32,
+) -> Result<Vec<u8>, Error> {
     if program.blocks.is_empty()
         || program.blocks.len() != layout.pc_value_locations.len()
         || program.value_count as usize != layout.value_slots.len()
@@ -60,22 +104,38 @@ pub fn compile_descriptor_v2(
     {
         return Err(Error::InvalidProgram);
     }
-    match authority.implementation_kind {
+    let (implementation_kind, portable, source_map, source_digest) = match profile {
+        DescriptorProfile::Legacy(authority) => (
+            authority.implementation_kind,
+            portable_implementation_identity(authority, LOWERING_VERSION_V1)
+                .map_err(|_| Error::InvalidProgram)?,
+            source_map_identity(authority, LOWERING_VERSION_V1)
+                .map_err(|_| Error::InvalidProgram)?,
+            authority.source_revision,
+        ),
+        DescriptorProfile::Portable(row) => (
+            match row.kind {
+                SubjectKind::NamedAdapter => ImplementationKind::NamedAdapter,
+                SubjectKind::BlockBody => ImplementationKind::BlockBody,
+            },
+            portable_resumable_manifest::portable_implementation_identity(row, LOWERING_VERSION_V1)
+                .map_err(|_| Error::InvalidProgram)?,
+            0,
+            [0; 32],
+        ),
+    };
+    match implementation_kind {
         ImplementationKind::NamedAdapter if layout.implementation_slot.is_some() => {}
         ImplementationKind::BlockBody if layout.implementation_slot.is_none() => {}
         _ => return Err(Error::InvalidProgram),
     }
     validate_colored_program(program, layout)?;
-    let portable = portable_implementation_identity(authority, LOWERING_VERSION_V1)
-        .map_err(|_| Error::InvalidProgram)?;
-    let source_map =
-        source_map_identity(authority, LOWERING_VERSION_V1).map_err(|_| Error::InvalidProgram)?;
 
     let mut metadata = Vec::with_capacity(64);
     push_u64(&mut metadata, portable);
     push_u64(&mut metadata, source_map);
     push_u32(&mut metadata, LOWERING_VERSION_V1);
-    push_u32(&mut metadata, authority.implementation_kind as u32);
+    push_u32(&mut metadata, implementation_kind as u32);
     push_u32(&mut metadata, layout.slot_count);
     push_u32(
         &mut metadata,
@@ -324,10 +384,12 @@ pub fn compile_descriptor_v2(
                     kind: 5,
                     binding: binding_indices[binding.0 as usize].unwrap(),
                 },
-                OperationKind::BlockLiteral { .. } => ValueRecord {
-                    kind: 8,
-                    binding: ABSENT,
-                },
+                OperationKind::BlockLiteral { .. } | OperationKind::PortableBlockLiteral { .. } => {
+                    ValueRecord {
+                        kind: 8,
+                        binding: ABSENT,
+                    }
+                }
                 OperationKind::Literal(_) => ValueRecord {
                     kind: 9,
                     binding: ABSENT,
@@ -424,7 +486,7 @@ pub fn compile_descriptor_v2(
         push_u64(&mut roots, *word);
     }
     let mut source_files = Vec::with_capacity(48);
-    source_files.extend_from_slice(&authority.source_revision);
+    source_files.extend_from_slice(&source_digest);
     push_u64(
         &mut source_files,
         u64::try_from(source.len()).map_err(|_| Error::QuantityOverflow)?,
@@ -451,26 +513,27 @@ pub fn compile_descriptor_v2(
         push_u32(&mut capture_slots, *slot);
     }
 
-    frame_descriptor::materialize(
-        authority,
-        Sections {
-            metadata: &metadata,
-            entry_capture_slots: &capture_slots,
-            program_counters: &pc_records,
-            root_bitmap_words: &roots,
-            call_sites: &calls,
-            edges: &edges,
-            copy_pairs: &copies,
-            clear_bitmap_words: &clears,
-            source_files: &source_files,
-            source_spans: &source_spans,
-            lexical_bindings: &bindings,
-            logical_values: &logical_values,
-            logical_uses: &logical_uses,
-            pc_value_locations: &locations,
-            source_bytes: &source_bytes,
-        },
-    )
+    let sections = Sections {
+        metadata: &metadata,
+        entry_capture_slots: &capture_slots,
+        program_counters: &pc_records,
+        root_bitmap_words: &roots,
+        call_sites: &calls,
+        edges: &edges,
+        copy_pairs: &copies,
+        clear_bitmap_words: &clears,
+        source_files: &source_files,
+        source_spans: &source_spans,
+        lexical_bindings: &bindings,
+        logical_values: &logical_values,
+        logical_uses: &logical_uses,
+        pc_value_locations: &locations,
+        source_bytes: &source_bytes,
+    };
+    match profile {
+        DescriptorProfile::Legacy(authority) => frame_descriptor::materialize(authority, sections),
+        DescriptorProfile::Portable(row) => frame_descriptor::materialize_portable(row, sections),
+    }
     .map_err(Error::from)
 }
 

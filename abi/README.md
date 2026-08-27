@@ -23,6 +23,6 @@ length-prefixed target, type, field, and constant descriptors. It is evidence
 against unnoticed drift, not a runtime ABI-version field.
 
 The Cargo workspace and `scripts/rust-install.sh` are the sole build authority.
-The installed prefix contains the Rust host, the fourteen Rust native dylibs,
+The installed prefix contains the Rust host, the fifteen Rust native dylibs,
 and the authored Birnam bootstrap modules; no alternate implementation or
 compatibility build graph is required.

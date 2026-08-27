@@ -12,6 +12,85 @@ pub const SLOT_CODE: u8 = 2;
 pub const SLOT_UNKNOWN: u8 = 0xff;
 
 pub type Oop = *mut c_void;
+
+/// Private versioned capability published by the Portable Code native rung.
+///
+/// This is not an IdApi field and does not change the frozen IdApi v1 layout.
+/// Codegen imports the capability object by name, validates this exact raw
+/// payload, and binds thin shims into generated units.
+pub type PortableCodeAdmitProgramV1 = unsafe extern "C" fn(bytes: *const u8, length: usize) -> Oop;
+pub type PortableCodeNewBlockV1 = unsafe extern "C" fn(
+    block_vtable: Oop,
+    code_object: Oop,
+    captures: *const Oop,
+    capture_count: usize,
+) -> Oop;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct PortableCodeApiV1 {
+    pub abi_version: u64,
+    pub struct_size: u64,
+    pub admit_program: PortableCodeAdmitProgramV1,
+    pub new_block: PortableCodeNewBlockV1,
+}
+
+pub const PORTABLE_CODE_API_V1_VERSION: u64 = 1;
+
+/// K3 construction seam for a Block whose private vtable must retain both its
+/// portable meaning and one process-local native materialization owner.
+pub type PortableCodeNewMaterializedBlockV2 = unsafe extern "C" fn(
+    block_vtable: Oop,
+    code_object: Oop,
+    captures: *const Oop,
+    capture_count: usize,
+    materialization_owner: Oop,
+) -> Oop;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct PortableCodeApiV2 {
+    pub abi_version: u64,
+    pub struct_size: u64,
+    pub new_materialized_block: PortableCodeNewMaterializedBlockV2,
+}
+
+pub const PORTABLE_CODE_API_V2_VERSION: u64 = 2;
+
+/// Private, allocation-free CodeObject-to-canonical-bytes view used only by
+/// explicit compiler/image-loader materialization safe points.
+///
+/// The function returns the exact nonzero byte length for a valid immutable
+/// CodeObject. It writes the complete program only when `destination` is
+/// non-null and `capacity` is sufficient; size queries and undersized buffers
+/// perform no write. Zero rejects the receiver.
+pub type PortableProgramCopyV1 =
+    unsafe extern "C" fn(code_object: Oop, destination: *mut u8, capacity: usize) -> usize;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct PortableProgramViewApiV1 {
+    pub abi_version: u64,
+    pub struct_size: u64,
+    pub copy_program: PortableProgramCopyV1,
+}
+
+pub const PORTABLE_PROGRAM_VIEW_API_V1_VERSION: u64 = 1;
+
+/// K5 image-loader construction seam. Durable provenance remains an ordinary
+/// Oop distinct from canonical PortableProgram meaning.
+pub type PortableCodeAdmitProgramWithProvenanceV3 =
+    unsafe extern "C" fn(bytes: *const u8, length: usize, provenance: Oop) -> Oop;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct PortableCodeApiV3 {
+    pub abi_version: u64,
+    pub struct_size: u64,
+    pub admit_program_with_provenance: PortableCodeAdmitProgramWithProvenanceV3,
+}
+
+pub const PORTABLE_CODE_API_V3_VERSION: u64 = 3;
 pub type Method = unsafe extern "C" fn(Oop, *const Oop, usize) -> Oop;
 pub type MarkFn = unsafe extern "C" fn(Oop);
 pub type RootProvider = unsafe extern "C" fn(MarkFn);

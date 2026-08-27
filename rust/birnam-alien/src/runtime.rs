@@ -324,6 +324,14 @@ fn callbacks() -> &'static Mutex<Vec<CallbackEntry>> {
 }
 
 unsafe extern "C" fn callback_roots(mark: MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        // SAFETY: the Alien family and singleton are cached by this loaded
+        // module and are semantic roots for its dispatch surface.
+        unsafe {
+            mark(runtime.alien_vt as Oop);
+            mark(runtime.alien_obj as Oop);
+        }
+    }
     let live = callbacks()
         .lock()
         .unwrap_or_else(|_| abort("Alien callback registry was poisoned"));
@@ -1095,6 +1103,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_alien_rust_identity() -> *const c_char {
     RUST_ALIEN_IDENTITY.as_ptr().cast()
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 /// Initialize the Rust Alien object family and its dynamic-library protocol.

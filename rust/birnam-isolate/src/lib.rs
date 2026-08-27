@@ -5,7 +5,7 @@
 //! reconstructed through the frozen `IdApi`; only opaque process handles and
 //! owned wire buffers survive between host calls.
 
-use birnam_abi::{IdApi, Oop};
+use birnam_abi::{IdApi, MarkFn, Oop};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fs::File;
@@ -673,8 +673,8 @@ impl<'a> OopEncoder<'a> {
             if pointer.is_null() {
                 return Err(CodecError::InvalidRecord);
             }
-            // SAFETY: symbolName returns the interned NUL-terminated symbol
-            // text for a live symbol object.
+            // SAFETY: value remains an active encoder root while this borrowed
+            // name is synchronously copied into the Rust-owned output buffer.
             let bytes = unsafe { CStr::from_ptr(pointer) }.to_bytes();
             if std::str::from_utf8(bytes).is_err() {
                 return Err(CodecError::InvalidUtf8);
@@ -1076,6 +1076,20 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
+
+unsafe extern "C" fn mark_runtime_roots(mark: MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.isolate_vt,
+            runtime.isolate_obj,
+            runtime.handle_vt,
+            runtime.failure_vt,
+        ] {
+            unsafe { mark(value as Oop) };
+        }
+    }
+}
 
 #[repr(C)]
 struct Handle {
@@ -1876,6 +1890,13 @@ unsafe extern "C" fn failure_request_id(self_oop: Oop, _: *const Oop, _: usize) 
 /// Register the Rust Isolate family shape without claiming host lifecycle
 /// parity. The worker ABI can be exercised independently; this bridge keeps
 /// family names/layouts and structured pending failures explicit until process
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
+}
+
+/// Initialize the process-global isolate service until owner-thread and
 /// registry/timeout ownership is ported.
 ///
 /// # Safety
@@ -1922,6 +1943,9 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
     let isolate_vt = runtime.isolate_vt as Oop;
     let handle_vt = runtime.handle_vt as Oop;
     let failure_vt = runtime.failure_vt as Oop;
+    ROOT_REGISTERED.get_or_init(|| unsafe {
+        (api_ref.gcRegisterRootProvider)(mark_runtime_roots);
+    });
     unsafe {
         (api_ref.setLayout)(isolate_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api_ref.setLayout)(handle_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);

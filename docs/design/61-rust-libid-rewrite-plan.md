@@ -1,5 +1,21 @@
 # 61 — Rust libid Floor Rewrite Plan
 
+> **Post-parity lifetime amendment (2026-08-24):**
+> [Design 60J](60j-runtime-identity-and-history-compaction.md) supersedes this
+> completed rewrite's process-lifetime permanence for dynamically created
+> vtables and Symbols. Canonical bootstrap identities remain permanent; dynamic
+> identity indexes become weak and compactable. The IdApi v1 layout and
+> fingerprint remain frozen, while `vtableCount`/`vtableAt` change from
+> all-ever-created enumeration to current-live survivor order. Historical
+> execution records below remain accurate descriptions of the parity milestone.
+
+> **Post-stackless image compatibility amendment (2026-08-25):** Current
+> runtimes admit image v5 and later; they do not retain a v4 reader. The frozen
+> native IdApi client and module remain mandatory ABI evidence. The committed
+> `pre-rewrite.image` remains checksum-pinned historical provenance, not a
+> current boot-compatibility gate. References below to booting that image record
+> the completed 2026-07-23 parity milestone and are not a continuing contract.
+
 > **Status:** R0 through R7 are complete as of 2026-07-23. The Rust floor is the
 > verified default, the post-cutover R8 observation checkpoint is complete as
 > of 2026-07-27, and the Zig oracle remains deliberately retained for a later,

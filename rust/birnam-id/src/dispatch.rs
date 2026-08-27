@@ -809,7 +809,7 @@ mod tests {
                 symbol
             );
             assert_eq!(runtime.checked_vtable_of(symbol), globals.symbol_vt);
-            assert_eq!(runtime.permanence_of(symbol), Some(Permanence::Permanent));
+            assert_eq!(runtime.permanence_of(symbol), Some(Permanence::Collectable));
         }
         assert!(
             runtime
@@ -1015,7 +1015,6 @@ mod tests {
             canonical.true_object,
             canonical.false_object,
             canonical.object_prototype,
-            canonical.symbol_prototype,
         ] {
             assert_eq!(runtime.permanence_of(object), Some(Permanence::Permanent));
         }
@@ -1024,6 +1023,7 @@ mod tests {
             canonical.float_prototype,
             canonical.word_prototype,
             canonical.string_prototype,
+            canonical.symbol_prototype,
         ] {
             assert_eq!(runtime.permanence_of(object), Some(Permanence::Collectable));
         }
@@ -1054,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn floor_mark_roots_cover_exports_without_tracing_permanent_vtable_owners() {
+    fn floor_mark_roots_cover_exports_without_rooting_weak_dynamic_vtables() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
         let globals = runtime.globals();
@@ -1068,6 +1068,10 @@ mod tests {
         let private_owner = runtime.allocate_instance(globals.object_vt, 0);
         let private_vtable = runtime.ensure_private_vtable(private_owner);
         assert_eq!(runtime.vtable_owner(private_vtable), private_owner);
+        assert_eq!(
+            runtime.permanence_of(private_vtable),
+            Some(Permanence::Collectable)
+        );
 
         runtime.gc_mark_floor_roots_for_test();
 
@@ -1078,8 +1082,8 @@ mod tests {
         assert_eq!(runtime.is_marked_for_test(private_vtable), Some(false));
         assert_eq!(
             runtime.is_marked_for_test(runtime.intern(b"GcRoot").unwrap()),
-            Some(false),
-            "interned Symbols are permanent rather than mark-bearing"
+            Some(true),
+            "the export authority roots its name Symbol"
         );
     }
 

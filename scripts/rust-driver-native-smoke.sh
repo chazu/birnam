@@ -13,7 +13,7 @@ scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile relea
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 41
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 42
 
 run_root="$prefix_parent/run"
 mkdir -p "$run_root"
@@ -29,6 +29,9 @@ mkdir -p "$prefix_parent/home"
 grep -Fxq 'FizzBuzz' "$prefix_parent/fizzbuzz-clean-env.out"
 
 scripts/stackless-image-lifecycle-smoke.sh "$prefix"
+scripts/portable-resumable-lifecycle-smoke.sh "$prefix"
+scripts/portable-code-binding-lifecycle-smoke.sh "$prefix"
+scripts/portable-image-v7-smoke.sh "$prefix"
 scripts/stackless-control-smoke.sh "$prefix"
 
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
@@ -43,7 +46,7 @@ assert len(receipt["source_manifest_sha256"]) == 64
 assert len(receipt["staged_manifest_sha256"]) == 64
 assert receipt["publication"]["method"] == "atomic-sibling-rename"
 assert receipt["publication"]["durability"] == "fsync-staged-files-and-directories-before-and-after-rename"
-assert len(receipt["dynamic_libraries"]) == 14
+assert len(receipt["dynamic_libraries"]) == 15
 assert len(receipt["stage1_modules"]) == 27
 PY
 

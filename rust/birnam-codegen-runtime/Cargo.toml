@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
+birnam-artifact = { path = "../birnam-artifact", default-features = false }
 birnam-artifact-codec = { path = "../birnam-artifact-codec" }
 birnam-codegen = { path = "../birnam-codegen" }
 birnam-image-codec = { path = "../birnam-image-codec" }

@@ -12,6 +12,7 @@ use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
 use core::ptr::{self, NonNull};
 use std::ffi::{CStr, CString};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.2-state\0";
@@ -23,6 +24,7 @@ const TCC_OUTPUT_MEMORY: c_int = 1;
 const TCC_OUTPUT_EXE: c_int = 2;
 const TCC_OUTPUT_OBJ: c_int = 3;
 const TCC_OUTPUT_DLL: c_int = 4;
+static LIVE_UNIT_STATES: AtomicUsize = AtomicUsize::new(0);
 
 #[repr(C)]
 struct TccState {
@@ -185,6 +187,15 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
+
+unsafe extern "C" fn mark_runtime_roots(mark: birnam_abi::MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [runtime.tcc_vt, runtime.tcc, runtime.unit_vt] {
+            unsafe { mark(value as Oop) };
+        }
+    }
+}
 
 #[repr(C)]
 struct DlInfo {
@@ -199,9 +210,12 @@ unsafe extern "C" {
     fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
 }
 
-fn floor_registration(api: &IdApi) -> Option<unsafe extern "C" fn(*mut c_void) -> u32> {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let address = *ADDRESS.get_or_init(|| {
+fn floor_registration(
+    api: &IdApi,
+    symbol: &'static CStr,
+    address: &'static OnceLock<usize>,
+) -> Option<unsafe extern "C" fn(*mut c_void) -> u32> {
+    let address = *address.get_or_init(|| {
         let mut info = DlInfo {
             filename: ptr::null(),
             base: ptr::null_mut(),
@@ -221,7 +235,7 @@ fn floor_registration(api: &IdApi) -> Option<unsafe extern "C" fn(*mut c_void) -
         if handle.is_null() {
             return 0;
         }
-        unsafe { (api.dlsym)(handle, c"birnam_register_resumable_v1".as_ptr()) as usize }
+        unsafe { (api.dlsym)(handle, symbol.as_ptr()) as usize }
     });
     if address == 0 {
         None
@@ -229,6 +243,40 @@ fn floor_registration(api: &IdApi) -> Option<unsafe extern "C" fn(*mut c_void) -
         Some(unsafe {
             core::mem::transmute::<usize, unsafe extern "C" fn(*mut c_void) -> u32>(address)
         })
+    }
+}
+
+fn floor_retirement(
+    api: &IdApi,
+    symbol: &'static CStr,
+    address: &'static OnceLock<usize>,
+) -> Option<unsafe extern "C" fn(u64) -> u32> {
+    let address = *address.get_or_init(|| {
+        let mut info = DlInfo {
+            filename: ptr::null(),
+            base: ptr::null_mut(),
+            symbol_name: ptr::null(),
+            symbol_address: ptr::null_mut(),
+        };
+        if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
+            || info.filename.is_null()
+        {
+            return 0;
+        }
+        #[cfg(target_os = "macos")]
+        const RTLD_NOW_LOCAL: c_int = 2 | 4;
+        #[cfg(not(target_os = "macos"))]
+        const RTLD_NOW_LOCAL: c_int = 2;
+        let handle = unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) };
+        if handle.is_null() {
+            return 0;
+        }
+        unsafe { (api.dlsym)(handle, symbol.as_ptr()) as usize }
+    });
+    if address == 0 {
+        None
+    } else {
+        Some(unsafe { core::mem::transmute::<usize, unsafe extern "C" fn(u64) -> u32>(address) })
     }
 }
 
@@ -247,6 +295,7 @@ enum UnitPhase {
 struct UnitPayload {
     state: *mut TccState,
     phase: UnitPhase,
+    code_generation_identity: u64,
 }
 
 fn abort(message: &str) -> ! {
@@ -308,6 +357,7 @@ unsafe fn release_payload(payload: *mut UnitPayload) {
     if !state.is_null() {
         // SAFETY: state came from tcc_new and has not previously been deleted.
         unsafe { tcc_delete(state) };
+        LIVE_UNIT_STATES.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -343,10 +393,24 @@ unsafe fn new_unit(api: &IdApi, runtime: &Runtime) -> Oop {
             UnitPayload {
                 state,
                 phase: UnitPhase::Created,
+                code_generation_identity: 0,
             },
         );
     }
+    LIVE_UNIT_STATES.fetch_add(1, Ordering::AcqRel);
     object
+}
+
+unsafe extern "C" fn m_live_unit_count(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let value = LIVE_UNIT_STATES.load(Ordering::Acquire);
+    unsafe { (api.mkSmallInt)(value as i64) }
 }
 
 unsafe fn fail_unit(api: &IdApi, object: Oop) -> Oop {
@@ -593,8 +657,56 @@ unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize)
 
 unsafe extern "C" fn unit_finalize(object: Oop) {
     if let Some(payload) = unsafe { unit_payload(object) } {
+        let generation = unsafe { (*payload).code_generation_identity };
+        unsafe { (*payload).code_generation_identity = 0 };
+        if generation != 0 {
+            static ADDRESS: OnceLock<usize> = OnceLock::new();
+            let runtime = RUNTIME
+                .get()
+                .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+            let Some(retire) = floor_retirement(
+                unsafe { api_ref(runtime) },
+                c"birnam_id_retire_stackless_code_generation_v1",
+                &ADDRESS,
+            ) else {
+                abort("portable TCC generation retirement seam is unavailable");
+            };
+            if unsafe { retire(generation) } != 1 {
+                abort("portable TCC generation remained live at finalization");
+            }
+        }
         unsafe { release_payload(payload) };
     }
+}
+
+unsafe extern "C" fn m_own_code_generation(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    let Some(identity) = (unsafe { arg(args, count, 0) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.isSmallInt)(identity) } == 0 {
+        return api.nilObj;
+    }
+    let identity = unsafe { (api.smallIntValue)(identity) };
+    if identity <= 0 {
+        return api.nilObj;
+    }
+    let Some(payload) = (unsafe { unit_payload(self_object) }) else {
+        return api.nilObj;
+    };
+    let phase = unsafe { (*payload).phase };
+    if phase != UnitPhase::Relocated || unsafe { (*payload).code_generation_identity } != 0 {
+        return api.nilObj;
+    }
+    unsafe { (*payload).code_generation_identity = identity as u64 };
+    self_object
 }
 
 unsafe extern "C" fn m_disposable(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
@@ -722,10 +834,32 @@ pub unsafe extern "C" fn rt_send(
 /// keeping that floor `RTLD_LOCAL`, like every other generated-C runtime shim.
 #[unsafe(export_name = "birnam_register_resumable_v1")]
 pub unsafe extern "C" fn rt_register_resumable_v1(envelope: *mut c_void) -> u32 {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let Some(register) = floor_registration(unsafe { api_ref(runtime) }) else {
+    let Some(register) = floor_registration(
+        unsafe { api_ref(runtime) },
+        c"birnam_register_resumable_v1",
+        &ADDRESS,
+    ) else {
+        return 1;
+    };
+    unsafe { register(envelope) }
+}
+
+/// Append-only registration-v2 forwarding for portable Block capture layout.
+#[unsafe(export_name = "birnam_register_resumable_v2")]
+pub unsafe extern "C" fn rt_register_resumable_v2(envelope: *mut c_void) -> u32 {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let Some(register) = floor_registration(
+        unsafe { api_ref(runtime) },
+        c"birnam_register_resumable_v2",
+        &ADDRESS,
+    ) else {
         return 1;
     };
     unsafe { register(envelope) }
@@ -1093,6 +1227,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         }
     });
     let api = unsafe { api_ref(&runtime) };
+    ROOT_REGISTERED.get_or_init(|| unsafe {
+        (api.gcRegisterRootProvider)(mark_runtime_roots);
+    });
     let unit_vt = runtime.unit_vt as Oop;
     // SAFETY: the raw UnitPayload contains only libtcc state and an enum byte.
     unsafe { (api.setLayout)(unit_vt, ptr::null(), 0, SLOT_RAW) };
@@ -1101,6 +1238,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b"compile:\0", m_compile),
         (b"compile:output:as:\0", m_compile_output),
         (b"new\0", m_new),
+        (b"liveUnitCount\0", m_live_unit_count),
     ];
     let unit_methods: &[(&[u8], Method)] = &[
         (b"compile:\0", m_compile_into_method),
@@ -1110,6 +1248,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b"bindRuntime\0", m_bind_runtime),
         (b"addSymbol:value:\0", m_add_symbol),
         (b"relocate\0", m_relocate),
+        (b"ownCodeGeneration:\0", m_own_code_generation),
         (b"disposable\0", m_disposable),
         (b"install:as:on:\0", m_install),
         (b"symbol:\0", m_symbol),
@@ -1139,6 +1278,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_tcc_rust_identity() -> *const c_char {
     RUST_TCC_IDENTITY.as_ptr().cast()
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 /// Initialize the TCC rung against the process-owned IdApi.

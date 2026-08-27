@@ -1,5 +1,5 @@
-// Source used once to freeze pre-rewrite.image. Ordinary compatibility tests
-// boot the committed image; they do not regenerate it.
+// Source used once to freeze pre-rewrite.image. The v4 image is archived
+// checksum evidence; current runtimes do not rebuild or admit it.
 
 [Globals at: #IdApiV1Scalar put: 41];
 [Globals at: #IdApiV1Text put: "frozen-idapi-v1"];

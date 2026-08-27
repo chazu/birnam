@@ -7,6 +7,7 @@
 #![allow(dead_code)] // S1 test artifacts exercise carriers not emitted until S2/S3.
 
 use birnam_artifact::frame_descriptor as canonical_descriptor;
+use birnam_artifact::materialization_selection::Row as PortableRow;
 use birnam_artifact::stackless_selection::SelectionSpec;
 use core::marker::PhantomData;
 use std::rc::Rc;
@@ -64,6 +65,53 @@ pub(crate) struct ExecutionObjects {
     pub(crate) call_site: Oop,
     pub(crate) tail_call_site: Oop,
     pub(crate) return_at: Oop,
+}
+
+impl ExecutionObjects {
+    pub(crate) fn roots(self) -> Vec<Oop> {
+        vec![
+            self.machine_vtable,
+            self.machine_prototype,
+            self.frame_view_vtable,
+            self.frame_view_prototype,
+            self.continuation_vtable,
+            self.continuation_prototype,
+            self.continue_action_vtable,
+            self.continue_action_prototype,
+            self.call_action_vtable,
+            self.call_action_prototype,
+            self.tail_call_action_vtable,
+            self.tail_call_action_prototype,
+            self.return_action_vtable,
+            self.return_action_prototype,
+            self.suspend_action_vtable,
+            self.suspend_action_prototype,
+            self.capture_action_vtable,
+            self.capture_action_prototype,
+            self.restore_action_vtable,
+            self.restore_action_prototype,
+            self.abort_action_vtable,
+            self.abort_action_prototype,
+            self.continue_kind,
+            self.call_kind,
+            self.tail_call_kind,
+            self.return_kind,
+            self.suspend_kind,
+            self.capture_kind,
+            self.restore_kind,
+            self.abort_kind,
+            self.oop_slot_kind,
+            self.raw_slot_kind,
+            self.stale_frame_view_kind,
+            self.invalid_frame_slot_kind,
+            self.oop_at,
+            self.oop_at_put,
+            self.continue_at,
+            self.call_site,
+            self.tail_call_site,
+            self.return_at,
+        ]
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -229,6 +277,26 @@ impl FrameDescriptor {
     ) -> Result<Arc<Self>, DescriptorError> {
         let descriptor = canonical_descriptor::inspect(bytes, authority)
             .map_err(|_| DescriptorError::InvalidCanonicalDescriptor)?;
+        Self::admit_canonical_v2(descriptor, code_generation_identity, step_method)
+    }
+
+    /// Admit the source-independent portable profile of descriptor-v2 bytes.
+    pub(crate) fn admit_portable_v2(
+        bytes: &[u8],
+        row: PortableRow<'_>,
+        code_generation_identity: u64,
+        step_method: Method,
+    ) -> Result<Arc<Self>, DescriptorError> {
+        let descriptor = canonical_descriptor::inspect_portable(bytes, row)
+            .map_err(|_| DescriptorError::InvalidCanonicalDescriptor)?;
+        Self::admit_canonical_v2(descriptor, code_generation_identity, step_method)
+    }
+
+    fn admit_canonical_v2(
+        descriptor: canonical_descriptor::FrameDescriptor<'_>,
+        code_generation_identity: u64,
+        step_method: Method,
+    ) -> Result<Arc<Self>, DescriptorError> {
         let metadata = descriptor.metadata();
         let words_per_pc = (metadata.slot_count as usize)
             .checked_add(63)
@@ -1633,6 +1701,7 @@ pub(crate) struct SemanticRegistrationV1 {
     pub(crate) code_generation_identity: u64,
     pub(crate) generation_lease: RegistrationGenerationLease,
     pub(crate) implementation_anchor: Option<Oop>,
+    pub(crate) receiver_capture_offset_words: usize,
 }
 
 impl SemanticRegistrationV1 {
@@ -1656,6 +1725,7 @@ impl SemanticRegistrationV1 {
             code_generation_identity: identity.generation,
             generation_lease: RegistrationGenerationLease::new(identity.generation),
             implementation_anchor: None,
+            receiver_capture_offset_words: 0,
         }
     }
 
@@ -1669,6 +1739,11 @@ impl SemanticRegistrationV1 {
 
     pub(crate) fn with_implementation_anchor(mut self, implementation: Oop) -> Self {
         self.implementation_anchor = Some(implementation);
+        self
+    }
+
+    pub(crate) fn with_receiver_capture_offset_words(mut self, offset: usize) -> Self {
+        self.receiver_capture_offset_words = offset;
         self
     }
 }
@@ -2375,6 +2450,7 @@ struct ResumableEntry {
     argument_start: usize,
     implementation_identity: u64,
     implementation_anchor: Option<Oop>,
+    receiver_capture_offset_words: usize,
     code_generation_identity: u64,
     lifecycle: ResumableEntryLifecycle,
     binding_references: usize,
@@ -2517,6 +2593,8 @@ impl ExecutionState {
             .v2_entry_binding()
             .is_some_and(|binding| binding.implementation_slot.is_some())
             != carrier.implementation_anchor.is_some()
+            || carrier.receiver_capture_offset_words > 1
+            || carrier.implementation_anchor.is_some() && carrier.receiver_capture_offset_words != 0
         {
             return Err(RegistrationError::InvalidDescriptor);
         }
@@ -2551,6 +2629,7 @@ impl ExecutionState {
             argument_start: carrier.argument_start,
             implementation_identity: carrier.implementation_identity,
             implementation_anchor: carrier.implementation_anchor,
+            receiver_capture_offset_words: carrier.receiver_capture_offset_words,
             code_generation_identity: carrier.code_generation_identity,
             lifecycle: ResumableEntryLifecycle::Unpublished,
             binding_references: 0,
@@ -2603,6 +2682,63 @@ impl ExecutionState {
         slot.generation = next_generation;
         self.free_resumable_entry_slots.push(capability.index);
         Ok(())
+    }
+
+    /// Remove every quiescent entry owned by one code generation. This is the
+    /// final Runtime-side release: direct bindings must already be gone and no
+    /// reader, Frame, Continuation, acquisition, or explicit lease may remain.
+    pub(crate) fn unregister_code_generation(
+        &mut self,
+        code_generation_identity: u64,
+    ) -> Result<bool, RegistrationError> {
+        if code_generation_identity == 0 || self.dispatch_read_depth != 0 {
+            return Ok(false);
+        }
+        let indices = self
+            .resumable_entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| {
+                slot.entry
+                    .as_ref()
+                    .is_some_and(|entry| entry.code_generation_identity == code_generation_identity)
+                    .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        if indices.is_empty() {
+            return Ok(false);
+        }
+        for index in &indices {
+            let slot = &self.resumable_entries[*index];
+            let entry = slot
+                .entry
+                .as_ref()
+                .ok_or(RegistrationError::StaleCapability)?;
+            if entry.binding_references != 0
+                || entry.active_frame_pins != 0
+                || entry.continuation_frame_pins != 0
+                || entry.acquired_entries != 0
+                || entry.explicit_generation_leases != 0
+                || !matches!(
+                    entry.lifecycle,
+                    ResumableEntryLifecycle::Unpublished | ResumableEntryLifecycle::Retired
+                )
+                || slot.generation == u64::MAX
+            {
+                return Ok(false);
+            }
+        }
+        for index in indices {
+            let slot = &mut self.resumable_entries[index];
+            let entry = slot
+                .entry
+                .take()
+                .expect("validated generation entry remains installed");
+            self.resumable_by_thunk.remove(&entry.thunk.as_oop().addr());
+            slot.generation += 1;
+            self.free_resumable_entry_slots.push(index);
+        }
+        Ok(true)
     }
 
     pub(crate) fn classify_resumable(
@@ -2719,10 +2855,10 @@ impl ExecutionState {
         })
     }
 
-    pub(crate) fn acquired_entry_capture_count(
+    pub(crate) fn acquired_entry_capture_layout(
         &self,
         capability: ResumableEntryCapability,
-    ) -> Result<usize, RegistrationError> {
+    ) -> Result<(usize, usize), RegistrationError> {
         let slot = self
             .resumable_entries
             .get(capability.index)
@@ -2737,7 +2873,10 @@ impl ExecutionState {
         if entry.acquired_entries == 0 {
             return Err(RegistrationError::StaleCapability);
         }
-        Ok(entry.descriptor.entry_capture_slots().len())
+        Ok((
+            entry.receiver_capture_offset_words,
+            entry.descriptor.entry_capture_slots().len(),
+        ))
     }
 
     pub(crate) fn transfer_acquired_entry_to_frame(
@@ -3315,10 +3454,49 @@ impl ExecutionState {
         }
     }
 
-    pub(crate) fn registration_roots(&self) -> Vec<Oop> {
+    pub(crate) fn can_suppress_registration_roots(&self, code_generation_identity: u64) -> bool {
+        if code_generation_identity == 0 || self.dispatch_read_depth != 0 {
+            return false;
+        }
+        let mut found = false;
+        for entry in self
+            .resumable_entries
+            .iter()
+            .filter_map(|slot| slot.entry.as_ref())
+            .filter(|entry| entry.code_generation_identity == code_generation_identity)
+        {
+            found = true;
+            if entry.active_frame_pins != 0
+                || entry.continuation_frame_pins != 0
+                || entry.acquired_entries != 0
+                || entry.explicit_generation_leases != 0
+            {
+                return false;
+            }
+        }
+        found
+    }
+
+    pub(crate) fn has_dispatch_readers(&self) -> bool {
+        self.dispatch_read_depth != 0
+    }
+
+    pub(crate) fn has_code_generation(&self, code_generation_identity: u64) -> bool {
+        self.resumable_entries.iter().any(|slot| {
+            slot.entry
+                .as_ref()
+                .is_some_and(|entry| entry.code_generation_identity == code_generation_identity)
+        })
+    }
+
+    pub(crate) fn registration_roots_excluding_generation(
+        &self,
+        code_generation_identity: Option<u64>,
+    ) -> Vec<Oop> {
         self.resumable_entries
             .iter()
             .filter_map(|slot| slot.entry.as_ref())
+            .filter(|entry| Some(entry.code_generation_identity) != code_generation_identity)
             .filter_map(|entry| entry.implementation_anchor)
             .collect()
     }

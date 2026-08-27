@@ -1509,8 +1509,9 @@ Tests must additionally prove:
     ArtifactSelection, and mapped and rebuilt recovery agree.
 
 The canonical repository gate, native-prefix smoke, cold-archive smoke,
-relocation smoke, frozen IdApi fixtures, and process-local image rejection tests
-remain mandatory.
+relocation smoke, frozen native IdApi ABI fixtures, and process-local image
+rejection tests remain mandatory. Archived v4 image boot is not a current
+compatibility requirement.
 
 ## 16. S2 pre-implementation decision gate
 

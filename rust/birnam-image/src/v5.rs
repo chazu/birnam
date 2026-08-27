@@ -52,6 +52,7 @@ pub enum Error {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
+    pub format_version: u32,
     pub architecture: u32,
     pub runtime_abi: u64,
 }
@@ -64,13 +65,15 @@ impl Header {
         if bytes.get(..8) != Some(MAGIC) {
             return Err(Error::Magic);
         }
-        if u32_at(bytes, 8)? != FORMAT_VERSION {
+        let format_version = u32_at(bytes, 8)?;
+        if !matches!(format_version, FORMAT_VERSION | super::v6::FORMAT_VERSION) {
             return Err(Error::Version);
         }
         if u32_at(bytes, 12)? != ENDIAN_TAG {
             return Err(Error::Endian);
         }
         Ok(Self {
+            format_version,
             architecture: u32_at(bytes, 16)?,
             runtime_abi: u64_at(bytes, 20)?,
         })
@@ -373,10 +376,19 @@ impl<'a> Image<'a> {
         while let Some(record) = records.next_record()? {
             match record.kind {
                 RecordKind::Facts => {
-                    let mut facts = Facts::parse(record.payload)?;
-                    while let Some(fact) = facts.next_fact()? {
-                        for field in [fact.entity, fact.attribute, fact.value] {
-                            self.validate_field(field, &mut summary)?;
+                    if self.header.format_version == super::v6::FORMAT_VERSION {
+                        let mut facts = super::v6::Facts::parse(record.payload)?;
+                        while let Some(fact) = facts.next_fact()? {
+                            for field in [fact.entity, fact.attribute, fact.value] {
+                                self.validate_field(field, &mut summary)?;
+                            }
+                        }
+                    } else {
+                        let mut facts = Facts::parse(record.payload)?;
+                        while let Some(fact) = facts.next_fact()? {
+                            for field in [fact.entity, fact.attribute, fact.value] {
+                                self.validate_field(field, &mut summary)?;
+                            }
                         }
                     }
                 }
@@ -829,9 +841,13 @@ pub struct ImageWriter {
 
 impl ImageWriter {
     pub fn new(architecture: u32, runtime_abi: u64) -> Self {
+        Self::new_version(architecture, runtime_abi, FORMAT_VERSION)
+    }
+
+    pub(crate) fn new_version(architecture: u32, runtime_abi: u64, version: u32) -> Self {
         let mut bytes = Vec::with_capacity(HEADER_LEN);
         bytes.extend_from_slice(MAGIC);
-        bytes.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&version.to_le_bytes());
         bytes.extend_from_slice(&ENDIAN_TAG.to_le_bytes());
         bytes.extend_from_slice(&architecture.to_le_bytes());
         bytes.extend_from_slice(&runtime_abi.to_le_bytes());
@@ -960,7 +976,31 @@ pub fn compose_complete_image(
     code_checksum: u64,
     code_unit: &[u8],
 ) -> Result<Vec<u8>, EncodeError> {
-    let mut writer = ImageWriter::new(architecture, runtime_abi);
+    compose_complete_image_version(
+        architecture,
+        runtime_abi,
+        FORMAT_VERSION,
+        facts,
+        heap,
+        authority,
+        manifest,
+        code_checksum,
+        code_unit,
+    )
+}
+
+pub(crate) fn compose_complete_image_version(
+    architecture: u32,
+    runtime_abi: u64,
+    format_version: u32,
+    facts: &[u8],
+    heap: &[u8],
+    authority: &[u8; AUTHORITY_BYTES],
+    manifest: &[u8],
+    code_checksum: u64,
+    code_unit: &[u8],
+) -> Result<Vec<u8>, EncodeError> {
+    let mut writer = ImageWriter::new_version(architecture, runtime_abi, format_version);
     writer.authority(authority)?;
     writer.resumables(manifest)?;
     if !heap.is_empty() {

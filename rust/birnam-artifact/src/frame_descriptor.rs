@@ -6,6 +6,10 @@
 use crate::stackless_selection::{
     ImplementationKind, SelectionSpec, portable_implementation_identity, source_map_identity,
 };
+use crate::{
+    materialization_selection::{Disposition as PortableDisposition, Row, SubjectKind},
+    portable_resumable_manifest,
+};
 
 pub const DOMAIN: [u8; 32] = *b"birnam.frame-descriptor.v2\0\0\0\0\0\0";
 pub const MAX_DESCRIPTOR_BYTES: usize = 16 * 1024 * 1024;
@@ -206,6 +210,19 @@ pub struct FrameDescriptor<'a> {
 /// Serialize one canonical FrameDescriptor v2 and reject any section set that
 /// would not be admitted byte-for-byte by the production decoder.
 pub fn materialize(authority: SelectionSpec<'_>, sections: Sections<'_>) -> Result<Vec<u8>, Error> {
+    let output = materialize_sections(sections)?;
+    inspect(&output, authority)?;
+    Ok(output)
+}
+
+/// Serialize the portable admission profile of FrameDescriptor layout v2.
+pub fn materialize_portable(row: Row<'_>, sections: Sections<'_>) -> Result<Vec<u8>, Error> {
+    let output = materialize_sections(sections)?;
+    inspect_portable(&output, row)?;
+    Ok(output)
+}
+
+fn materialize_sections(sections: Sections<'_>) -> Result<Vec<u8>, Error> {
     let sections = sections.as_array();
     let mut cursor = DATA_OFFSET;
     let mut fixed_records = 0usize;
@@ -264,7 +281,6 @@ pub fn materialize(authority: SelectionSpec<'_>, sections: Sections<'_>) -> Resu
     if output.len() != total {
         return Err(Error::Arithmetic);
     }
-    inspect(&output, authority)?;
     Ok(output)
 }
 
@@ -387,6 +403,58 @@ pub fn inspect<'a>(
     bytes: &'a [u8],
     authority: SelectionSpec<'_>,
 ) -> Result<FrameDescriptor<'a>, Error> {
+    let descriptor = inspect_structure(bytes)?;
+    validate_identity(descriptor.metadata, authority)?;
+    validate_source_map(
+        descriptor.metadata,
+        authority.source_revision,
+        &descriptor.sections,
+        &descriptor.selector_offsets,
+    )?;
+    Ok(descriptor)
+}
+
+/// Admit the source-independent portable profile of FrameDescriptor layout
+/// v2 against one already-admitted 60L materialization row.
+pub fn inspect_portable<'a>(bytes: &'a [u8], row: Row<'_>) -> Result<FrameDescriptor<'a>, Error> {
+    if row.disposition != PortableDisposition::Resumable {
+        return Err(Error::Identity);
+    }
+    let descriptor = inspect_structure(bytes)?;
+    let expected_kind = match row.kind {
+        SubjectKind::NamedAdapter => ImplementationKind::NamedAdapter,
+        SubjectKind::BlockBody => ImplementationKind::BlockBody,
+    };
+    let metadata = descriptor.metadata;
+    if metadata.lowering_version == 0
+        || metadata.implementation_kind != expected_kind
+        || metadata.portable_implementation_identity
+            != portable_resumable_manifest::portable_implementation_identity(
+                row,
+                metadata.lowering_version,
+            )
+            .map_err(|_| Error::Identity)?
+        || metadata.source_map_identity != 0
+    {
+        return Err(Error::Identity);
+    }
+    validate_source_map(
+        metadata,
+        [0; 32],
+        &descriptor.sections,
+        &descriptor.selector_offsets,
+    )?;
+    if descriptor.sections[8].count != 1
+        || descriptor.sections[9].count != 1
+        || descriptor.sections[8].bytes.iter().any(|byte| *byte != 0)
+        || descriptor.sections[9].bytes.iter().any(|byte| *byte != 0)
+    {
+        return Err(Error::SourceMap);
+    }
+    Ok(descriptor)
+}
+
+fn inspect_structure<'a>(bytes: &'a [u8]) -> Result<FrameDescriptor<'a>, Error> {
     if bytes.len() > MAX_DESCRIPTOR_BYTES {
         return Err(Error::TooLarge);
     }
@@ -459,7 +527,6 @@ pub fn inspect<'a>(
         return Err(Error::Directory);
     }
     let metadata = decode_metadata(sections[0].bytes)?;
-    validate_identity(metadata, authority)?;
     let words = (metadata.slot_count as usize)
         .checked_add(63)
         .ok_or(Error::Arithmetic)?
@@ -468,12 +535,6 @@ pub fn inspect<'a>(
     validate_roots(metadata, sections[3], words)?;
     validate_entry_roots(metadata, sections[1], sections[3], words)?;
     let selector_offsets = validate_control_flow(metadata, &sections, words)?;
-    validate_source_map(
-        metadata,
-        authority.source_revision,
-        &sections,
-        &selector_offsets,
-    )?;
     Ok(FrameDescriptor {
         bytes,
         metadata,

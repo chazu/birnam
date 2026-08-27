@@ -108,6 +108,19 @@ unsafe extern "C" fn mark_probe_root(mark: MarkFn) {
 
 unsafe extern "C" fn mark_relational_roots(mark: MarkFn) {
     unsafe { mark_probe_root(mark) };
+    for root in [
+        ENTITY_VT.get(),
+        LOGICVAR_VT.get(),
+        LOGICVAR_FACTORY_VT.get(),
+        LOGICVAR_FACTORY.get(),
+        REL_COLLECTOR_VT.get(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        // SAFETY: these are the relational module's process-owned cached Oops.
+        unsafe { mark(*root as Oop) };
+    }
     let Some(cache) = LOGICVARS.get() else {
         return;
     };
@@ -2313,6 +2326,12 @@ pub unsafe extern "C" fn birnam_relational_rust_project_rule_store_live(
             written,
         )
     }
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 /// Initialize the explicit Rust Relational probe against the process IdApi.

@@ -7,7 +7,8 @@
 > accepted 2026-08-06, together with the code-disposition staging and S1-slicing
 > amendments and the frozen S1 Machine-microcode protocol. S1.1-S1.5 were
 > implemented and accepted against the repository gates on 2026-08-06; source
-> compiler lowering remains S2. The lowering, liveness, root-map, slot-coloring,
+> compiler lowering was subsequently implemented through S2. The lowering,
+> liveness, root-map, slot-coloring,
 > and edge-transfer portions of 60F were accepted 2026-08-07; 60F's physical
 > carrier and Design 49 migration-event decisions, together with the review's
 > fresh-Oop, retained-closure, and exact-eligibility amendments, were accepted
@@ -36,7 +37,14 @@
 > callbacks.
 > The S0-S4 delivery boundary closed 2026-08-24 after forced-GC collection
 > callback proof and mapped/rebuilt image successor activation plus exact
-> rollback. Future 60G/60H work remains separate.
+> rollback. The 60G lifetime/host-integration and 60J identity/history work,
+> including 60K portable CodeObjects and image-v7, closed 2026-08-27. Future
+> 60H release rollout remains separate. Design 60J was accepted
+> 2026-08-24 after the 60G ownership audit exposed permanent vtable, Symbol,
+> and retained-history growth. It requires one indefinitely evolving
+> process/image to remain bounded by live state plus explicit retention. Its
+> weak-vtable J1 slice enabled 60G reclamation; the complete 60J bounded-churn
+> proof now supplies the indefinite-process prerequisite for 60H rollout.
 > This record describes the Rust-only path from synchronous native execution to
 > explicit language frames. It is not itself an implementation commitment.
 >
@@ -48,9 +56,15 @@
 > - [60d — Concurrency fit and boundaries](60d-stackless-concurrency-fit.md)
 > - [60e — Resumable registration and the entry seam](60e-resumable-registration-and-entry.md)
 > - [60f — Resumable compiler lowering](60f-resumable-compiler-lowering.md)
+> - [60i — Stackless artifact byte grammar](60i-stackless-artifact-byte-grammar.md)
+> - [60j — Runtime identity and history compaction](60j-runtime-identity-and-history-compaction.md)
+> - [60k — Reified portable CodeObjects](60k-portable-codeobjects.md)
+> - [60ka — Portable CodeObjects adversarial review](60ka-portable-codeobjects-adversarial-review.md)
+> - [60l — PortableProgram v1 and image-v7 byte grammar](60l-portable-program-and-image-v7-byte-grammar.md)
+> - [60la — PortableProgram/image-v7 adversarial review](60la-portable-program-and-image-v7-adversarial-review.md)
 >
-> Future records will cover code-generation lifetime, host integration, and the
-> acceptance matrix.
+> A future 60H record will cover the release acceptance matrix and rollout
+> policy.
 
 ## 1. Scope
 
@@ -314,22 +328,49 @@ golden fixtures, independent checker, malformed matrix, and non-circular
 construction trace now form the implementation contract. Decoded Rust
 collections remain replaceable caches.
 
-### Future 60G — Lifetime and host integration
+### Implemented 60G — Lifetime and host integration
 
-Will complete TCC/AOT lifetime and live replacement above S1's minimal
-registration/Frame pins: binding retirement, continuation pin transfer, actual
-reclamation of method-bearing mappings, image rejection, and recovery behavior.
-Before concurrent evolution it must also supply 60D §8.1's read-side epochs,
-process-shared mapping lifetime, retirement diagnostics, and contention
-evidence. Continuous self-hosted compilation is not production-ready until this
-record either closes reclamation or establishes an accepted bound on retained
-code.
+The implementation completes TCC/AOT lifetime and live replacement above S1's
+minimal registration/Frame pins: binding retirement, continuation pin transfer,
+actual reclamation of method-bearing mappings, image rejection, and recovery
+behavior. The owner-thread Runtime uses the shared resolve-and-pin read guard;
+independent Runtimes share mappings through explicit leases. Shared-Runtime
+parallelism and its contention evidence remain deferred by 60D.
+
+60G consumes 60J's J1 weak-vtable contract. It reclaims a mapped generation
+only after the ordinary generation holders drain and no currently live vtable
+names its code. The lifecycle gates prove a live carrier survives repository
+eviction, retirement waits for the outer dispatch-read extent, and a formerly
+method-bearing successor reaches zero retained generations after quiescence.
 
 ### Future 60H — Acceptance and rollout
 
 Will define the compatibility matrix, release gates, and rollout policy. The S1
 implementation slices and their local exit evidence are part of this record;
 they cannot be deferred until rollout planning.
+
+### Implemented 60J — Runtime identity and history compaction
+
+[60J](60j-runtime-identity-and-history-compaction.md) makes continuous
+self-hosted evolution space-safe. Runtime indexes are weak, Store retention is
+explicit and compactable, image save is a compaction boundary, and acceptance
+measures a fixed live set until retained bytes plateau. J1-J5 and their
+save/load/continued-churn proof completed 2026-08-27.
+
+### Implemented 60K — Reified portable CodeObjects
+
+[60K](60k-portable-codeobjects.md) addresses the final J5 growth boundary by
+making a Block's portable executable meaning an ordinary immutable object and
+making native materializations disposable process state. It preserves
+dictionary dispatch and Store-arbitrated mutation, moves Block payloads to
+`[CodeObject, captures...]`, and requires image-v7 for source-independent Block
+and CodeBinding recovery. [60KA](60ka-portable-codeobjects-adversarial-review.md)
+records the incorporated adversarial corrections. The semantic design was
+accepted 2026-08-25. [60L](60l-portable-program-and-image-v7-byte-grammar.md)
+and its [60LA adversarial review](60la-portable-program-and-image-v7-adversarial-review.md)
+freeze the physical grammar. Their stored goldens, generated boundaries,
+malformed matrix, and independent reader closed K0 on 2026-08-25. K1-K6
+completed 2026-08-27.
 
 ## 6. Delivery sequence
 
@@ -454,8 +495,8 @@ probe measured Continue at `0.155 x S` and synchronous resolve/classify plus
 leaf invocation at `0.795 x S`, with one microcode send per hand-written step;
 60E records the same-run raw measurements. The 456-case Birnam suite and the
 workspace/native-prefix/cold-archive/relocation verification gates passed.
-This acceptance does not claim S2 compiler lowering, S3 Continuations, or the
-actual reclamation owned by Future 60G. Before S2 begins, S1.3 must be amended
+This S1 acceptance did not claim S2 compiler lowering, S3 Continuations, or the
+actual reclamation later implemented by 60G. Before S2 began, S1.3 was amended
 so ordinary `send_abi` and Machine resolution use the shared private authority,
 with regression evidence for both direct entry and the fallback thunk.
 
@@ -585,9 +626,14 @@ The S3 suspension proof adds:
 11. directly observed Continuation pin transfer while the S1 disposition gate
     continues to retain the mapping.
 
-Future 60G owns proof that a formerly method-bearing mapping can actually be
-reclaimed without leaving a Runtime registry or reachable vtable naming its
-address range.
+60G owns proof that a formerly method-bearing mapping can actually be reclaimed
+without leaving a Runtime registry or reachable vtable naming its address
+range. That proof now withdraws generation-owned capture/vtable caches and the
+block-vtable catalog, collects their carriers, retires the Runtime generation,
+and observes the ordinary-send discard receipt conservatively report
+`#retained`, followed by zero retained generations after the outer read guard
+drops and the next quiescent repository reap physically unloads the selected
+successor.
 
 ## 8. Current completion boundary
 
@@ -632,11 +678,13 @@ thunk through a private selected-floor seam outside IdApi. Those leases keep
 predecessor entries and implementation anchors retiring-but-live until rollback
 restores their bindings; successful rollback releases them. Conservative
 physical mapping retention carries any still-owned rollback leases forward for
-Future 60G reclamation.
+later reclamation.
 
-Future 60G actual mapped-code reclamation and concurrent-evolution read-side
-protection, and Future 60H rollout and compatibility policy, intentionally
-remain separate. Thunk-pool sizing, arena trim, an optimizing direct-call tier,
-scheduler policy, debugger mutation, multi-shot/durable continuations, and
-shared-runtime parallelism remain deferred and do not reopen the completed
-S0-S4 delivery boundary.
+Concurrent-evolution read-side protection, 60G mapped-code reclamation, and 60J
+complete identity/history compaction are now implemented. Future 60H rollout
+and release compatibility policy remain separate from the completed stackless
+runtime implementation.
+Thunk-pool sizing, arena trim, an optimizing direct-call tier, scheduler policy,
+debugger mutation, multi-shot/durable continuations, and shared-runtime
+parallelism remain deferred and do not reopen the completed S0-S4 delivery
+boundary.

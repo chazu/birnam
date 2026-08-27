@@ -229,7 +229,8 @@ unsafe extern "C" fn api_string_bytes(object: Oop, out_length: *mut usize) -> *c
 unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
     if let Some(name) = with_active_if_present(|active| {
         // SAFETY: with_active_if_present proves a surrounding owner-checked
-        // Runtime::enter; Symbol names are permanent runtime-owned bytes.
+        // Runtime::enter. The caller owns the obligation to keep `symbol`
+        // rooted for the returned pointer's complete use.
         unsafe { active.symbol_name_active(symbol) }
     }) {
         return name;
@@ -433,6 +434,30 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     }
     let _ = Box::into_raw(bootstrap);
     Box::into_raw(api)
+}
+
+pub(crate) fn configure_symbol_compaction(
+    enabled: bool,
+    compatibility_count_limit: usize,
+    compatibility_name_byte_limit: usize,
+) -> bool {
+    runtime().configure_symbol_compaction(
+        enabled,
+        compatibility_count_limit,
+        compatibility_name_byte_limit,
+    )
+}
+
+pub(crate) fn live_symbol_count() -> usize {
+    runtime().symbol_count()
+}
+
+pub(crate) fn live_symbol_name_bytes() -> usize {
+    runtime().symbol_owned_name_bytes()
+}
+
+pub(crate) fn live_heap_bytes() -> usize {
+    runtime().gc_live_bytes()
 }
 
 #[cfg(test)]

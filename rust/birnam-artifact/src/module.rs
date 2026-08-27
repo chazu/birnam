@@ -44,7 +44,24 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static LAST_FAILURE: AtomicUsize = AtomicUsize::new(0);
+
+unsafe extern "C" fn mark_runtime_roots(mark: abi::MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.artifact_vt,
+            runtime.artifact_obj,
+            runtime.descriptor_vt,
+        ] {
+            unsafe { mark(value as abi::Oop) };
+        }
+    }
+    let failure = LAST_FAILURE.load(Ordering::Acquire);
+    if failure != 0 {
+        unsafe { mark(failure as abi::Oop) };
+    }
+}
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam artifact inspector: {message}");
@@ -695,6 +712,9 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi) {
     });
     register_methods(state);
     let api = api(state);
+    ROOT_REGISTERED.get_or_init(|| unsafe {
+        (api.gcRegisterRootProvider)(mark_runtime_roots);
+    });
     if LAST_FAILURE.load(Ordering::Acquire) == 0 {
         LAST_FAILURE.store(oop_address(api.nilObj), Ordering::Release);
     }
@@ -710,6 +730,12 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi) {
             );
         }
     }
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 #[unsafe(no_mangle)]

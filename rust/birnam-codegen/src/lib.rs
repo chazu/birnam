@@ -6,6 +6,8 @@
 
 use std::borrow::Cow;
 
+pub mod portable;
+pub mod portable_c;
 pub mod resumable;
 pub mod resumable_block;
 pub mod resumable_c;
@@ -26,7 +28,6 @@ pub struct Emitter {
     next_block: usize,
     next_send: usize,
     artifact_mode: bool,
-    artifact_salt: u64,
     artifact_method_counter: usize,
     artifact_operation_counter: u32,
     named_resumables: Vec<NamedResumableEmission>,
@@ -53,6 +54,12 @@ pub struct BlockResumableEmission {
     pub selector: Vec<u8>,
     pub captures: Vec<Vec<u8>>,
     pub c_source: Vec<u8>,
+}
+
+#[derive(Clone, Copy)]
+enum BlockCaptureValue<'a> {
+    SourceBinding(&'a [u8]),
+    PortableBinding(u32),
 }
 
 /// The pure expression subset consumed by the first Rust emission seam.
@@ -628,6 +635,45 @@ fn block_has_let(block: &Block<'_>, name: &[u8]) -> bool {
     )
 }
 
+fn collect_portable_node_sources<'a>(expression: &'a Expr<'a>, output: &mut Vec<&'a Expr<'a>>) {
+    match expression {
+        Expr::Block(_) => output.push(expression),
+        Expr::Send { receiver, args, .. } => {
+            collect_portable_node_sources(receiver, output);
+            for argument in args {
+                collect_portable_node_sources(argument, output);
+            }
+            output.push(expression);
+        }
+        _ => output.push(expression),
+    }
+}
+
+fn sourced_reflect_selector<'a>(
+    expression: &'a Expr<'a>,
+    portable_selector: &[u8],
+) -> Option<(&'static [u8], &'a [u8])> {
+    let Expr::Send {
+        receiver,
+        selector,
+        args,
+        source,
+    } = expression
+    else {
+        return None;
+    };
+    if !matches!(receiver.as_ref(), Expr::Global(name) if *name == b"Reflect")
+        || selector.as_ref() != portable_selector
+    {
+        return None;
+    }
+    match (portable_selector, args.len()) {
+        (b"defineMethod:on:as:", 3) => Some((b"defineMethod:on:as:source:", source)),
+        (b"defineMethod:on:as:doc:", 4) => Some((b"defineMethod:on:as:doc:source:", source)),
+        _ => None,
+    }
+}
+
 fn selector_arity(selector: &[u8]) -> usize {
     let colons = selector.iter().filter(|byte| **byte == b':').count();
     if colons != 0 {
@@ -658,6 +704,13 @@ extern void* birnam_install_method(void* vt, void* sel, void* method, const char
 extern void* birnam_remove_method(void* target, void* sel, const char* src, long n);
 extern void* birnam_candidate_root_get(unsigned long long salt, long index);
 extern void* birnam_candidate_root_set(unsigned long long salt, long index, void* value);
+extern void* birnam_vtable_cache_get(unsigned long long generation, unsigned long long index);
+extern void* birnam_vtable_cache_set(unsigned long long generation, unsigned long long index, void* value);
+extern void* birnam_portable_code_admit_v1(const unsigned char* bytes, unsigned long length);
+extern void* birnam_portable_block_new_v1(void* vt, void* code_object, void** captures, unsigned long capture_count);
+extern void* birnam_portable_materialized_block_new_v2(void* vt, void* code_object, void** captures, unsigned long capture_count, void* materialization_owner);
+extern long birnam_is_error(void* value);
+unsigned long long __birnam_code_generation_identity;
 extern long birnam_candidate_preparing(void);
 extern void* birnam_proto(void* parent);
 extern void* birnam_blockVt(void);
@@ -748,10 +801,9 @@ impl Emitter {
     /// lowered to precompiled trampolines and rooted block captures; the
     /// runtime candidate wrapper later rewrites the frozen shim names to
     /// the selected Rust-owned namespace when required.
-    pub fn new_candidate_artifact(salt: u64) -> Self {
+    pub fn new_candidate_artifact(_salt: u64) -> Self {
         Self {
             artifact_mode: true,
-            artifact_salt: salt,
             ..Self::default()
         }
     }
@@ -770,7 +822,7 @@ impl Emitter {
     /// resumable fragments. Every fragment is emitted once, while block
     /// registrations run eagerly at activation before literal resolution.
     pub fn new_selected_resumable_candidate_artifact(
-        salt: u64,
+        _salt: u64,
         mut named_resumables: Vec<NamedResumableEmission>,
         mut block_resumables: Vec<BlockResumableEmission>,
     ) -> Result<Self, EmitError> {
@@ -807,7 +859,6 @@ impl Emitter {
         }
         let mut emitter = Self {
             artifact_mode: true,
-            artifact_salt: salt,
             named_resumables,
             block_resumables,
             ..Self::default()
@@ -815,7 +866,7 @@ impl Emitter {
         if !emitter.named_resumables.is_empty() || !emitter.block_resumables.is_empty() {
             emitter
                 .function_defs
-                .extend_from_slice(resumable_registration_c::registration_prelude_v1());
+                .extend_from_slice(resumable_registration_c::registration_prelude_v2());
             if !emitter.block_resumables.is_empty() {
                 emitter.function_defs.extend_from_slice(
                     b"void* __birnam_resolve_block_vtable_v1(unsigned int manifest_entry_index);\n",
@@ -919,6 +970,15 @@ impl Emitter {
         self.bytes.extend_from_slice(b"birnam_mkFloat(");
         self.bytes.extend_from_slice(literal);
         self.bytes.extend_from_slice(b")");
+    }
+
+    pub fn emit_float_bits(&mut self, bits: u64) {
+        self.bytes
+            .extend_from_slice(b"({union{unsigned long long u;double d;}__birnam_float_bits={0x");
+        self.bytes
+            .extend_from_slice(format!("{bits:016x}").as_bytes());
+        self.bytes
+            .extend_from_slice(b"ULL};birnam_mkFloat(__birnam_float_bits.d);})");
     }
 
     pub fn emit_string_literal(&mut self, source: &[u8]) {
@@ -1341,8 +1401,7 @@ impl Emitter {
                 b";i++) a[i+1]=args[i]; return birnam_send(birnam_candidate_root_get(",
             );
             self.function_defs
-                .extend_from_slice(self.artifact_salt.to_string().as_bytes());
-            self.function_defs.extend_from_slice(b"ULL,");
+                .extend_from_slice(b"__birnam_code_generation_identity,");
             self.function_defs
                 .extend_from_slice(method_number.to_string().as_bytes());
             self.function_defs
@@ -1362,15 +1421,13 @@ impl Emitter {
         self.bytes
             .extend_from_slice(b"); void* _blk = birnam_candidate_root_get(");
         self.bytes
-            .extend_from_slice(self.artifact_salt.to_string().as_bytes());
-        self.bytes.extend_from_slice(b"ULL,");
+            .extend_from_slice(b"__birnam_code_generation_identity,");
         self.bytes
             .extend_from_slice(method_number.to_string().as_bytes());
         self.bytes
             .extend_from_slice(b"L); if(_blk == birnam_nil()){ _blk = birnam_candidate_root_set(");
         self.bytes
-            .extend_from_slice(self.artifact_salt.to_string().as_bytes());
-        self.bytes.extend_from_slice(b"ULL,");
+            .extend_from_slice(b"__birnam_code_generation_identity,");
         self.bytes
             .extend_from_slice(method_number.to_string().as_bytes());
         self.bytes.extend_from_slice(b"L, ");
@@ -1447,10 +1504,44 @@ impl Emitter {
 
     fn emit_block(&mut self, block: &Block<'_>) -> Result<(), EmitError> {
         let captures = resumable::lexical_capture_names(block, &self.bound_names);
+        let portable_program =
+            portable::encode_block(block, &self.bound_names).map_err(|error| {
+                if error == portable::Error::DepthLimit {
+                    EmitError::DepthLimit
+                } else {
+                    EmitError::Unsupported
+                }
+            })?;
+        let capture_values = captures
+            .iter()
+            .map(|name| BlockCaptureValue::SourceBinding(name.as_slice()))
+            .collect::<Vec<_>>();
+        self.emit_portable_block(block, &portable_program, &capture_values)
+    }
+
+    fn emit_portable_block<'a>(
+        &mut self,
+        source_block: &'a Block<'a>,
+        portable_program: &[u8],
+        capture_values: &[BlockCaptureValue<'_>],
+    ) -> Result<(), EmitError> {
+        let program = birnam_artifact::portable_program::inspect(portable_program)
+            .map_err(|_| EmitError::Unsupported)?;
+        if capture_values.len() != program.capture_count as usize {
+            return Err(EmitError::Unsupported);
+        }
+        let capture_names = (0..program.capture_count)
+            .map(|index| {
+                program
+                    .binding((program.parameter_count + index) as usize)
+                    .map(|binding| binding.name.to_vec())
+                    .ok_or(EmitError::Unsupported)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let key = self
             .block_keys
             .iter()
-            .find(|(pointer, _)| *pointer == block as *const Block<'_> as usize)
+            .find(|(pointer, _)| *pointer == source_block as *const Block<'_> as usize)
             .map(|(_, key)| key);
         let selected = key.and_then(|key| {
             self.block_resumables
@@ -1460,41 +1551,24 @@ impl Emitter {
         });
         if selected
             .as_ref()
-            .is_some_and(|entry| entry.captures != captures)
+            .is_some_and(|entry| entry.captures != capture_names)
         {
             return Err(EmitError::Unsupported);
         }
 
         let number = self.next_block;
         self.next_block += 1;
+        let number_u64 = u64::try_from(number).map_err(|_| EmitError::Unsupported)?;
+        if number_u64 >= 1_u64 << 61 {
+            return Err(EmitError::Unsupported);
+        }
+        let code_object_cache_key = (1_u64 << 61) | number_u64;
         let saved_function_defs_len = self.function_defs.len();
         let saved_bytes = std::mem::take(&mut self.bytes);
-        let saved_bound_names = std::mem::take(&mut self.bound_names);
-        self.bound_names = block
-            .params
-            .iter()
-            .map(|name| name.to_vec())
-            .chain(captures.iter().cloned())
-            .collect();
         self.bytes = Vec::new();
-        for (index, name) in block.params.iter().enumerate() {
-            self.bytes.extend_from_slice(b"void* b_");
-            self.bytes.extend_from_slice(name);
-            self.bytes.extend_from_slice(b" = args[");
-            self.bytes.extend_from_slice(index.to_string().as_bytes());
-            self.bytes.extend_from_slice(b"];\n");
-        }
-        for (index, name) in captures.iter().enumerate() {
-            self.bytes.extend_from_slice(b"void* b_");
-            self.bytes.extend_from_slice(name);
-            self.bytes.extend_from_slice(b" = ((void**)self)[");
-            self.bytes.extend_from_slice(index.to_string().as_bytes());
-            self.bytes.extend_from_slice(b"];\n");
-        }
-        let body_result = self.emit_block_body(&block.body, false, false);
+        let body_result = self.emit_portable_block_body(source_block, portable_program);
         let body = std::mem::take(&mut self.bytes);
         self.bytes = saved_bytes;
-        self.bound_names = saved_bound_names;
         if let Err(error) = body_result {
             self.function_defs.truncate(saved_function_defs_len);
             return Err(error);
@@ -1524,20 +1598,26 @@ impl Emitter {
             self.bytes.extend_from_slice(number.to_string().as_bytes());
             self.bytes.extend_from_slice(b")return birnam_nil();}");
         } else {
-            self.bytes.extend_from_slice(b"static void* __vt");
+            self.bytes.extend_from_slice(b"void* __vt");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
-            self.bytes.extend_from_slice(b" = 0; if(!__vt");
+            self.bytes
+                .extend_from_slice(b"=birnam_vtable_cache_get(__birnam_code_generation_identity,");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"ULL);if(!__vt");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
             self.bytes.extend_from_slice(b"){ __vt");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
             self.bytes
-                .extend_from_slice(b" = birnam_proto(birnam_blockVt()); birnam_method(__vt");
+                .extend_from_slice(b"=birnam_vtable_cache_set(__birnam_code_generation_identity,");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+            self.bytes
+                .extend_from_slice(b"ULL,birnam_proto(birnam_blockVt()));birnam_method(__vt");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
             self.bytes.extend_from_slice(b", birnam_intern(\"");
-            if block.params.is_empty() {
+            if program.parameter_count == 0 {
                 self.bytes.extend_from_slice(b"value");
             } else {
-                for _ in &block.params {
+                for _ in 0..program.parameter_count {
                     self.bytes.extend_from_slice(b"value:");
                 }
             }
@@ -1550,42 +1630,273 @@ impl Emitter {
         }
         self.bytes.extend_from_slice(b" void* __o");
         self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b" = ");
-        if selected.is_some() {
-            self.bytes.extend_from_slice(b"__vt");
-            self.bytes.extend_from_slice(number.to_string().as_bytes());
-            self.bytes.extend_from_slice(b"?");
-        }
-        self.bytes.extend_from_slice(b"birnam_alloc(__vt");
+        self.bytes.extend_from_slice(b"=birnam_nil();if(__vt");
         self.bytes.extend_from_slice(number.to_string().as_bytes());
-        self.bytes.extend_from_slice(b", ");
         self.bytes
-            .extend_from_slice(captures.len().to_string().as_bytes());
-        self.bytes.extend_from_slice(b"*sizeof(void*))");
-        if selected.is_some() {
-            self.bytes.extend_from_slice(b":birnam_nil()");
+            .extend_from_slice(b"){static const unsigned char __pp");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"[]={");
+        for (index, byte) in portable_program.iter().enumerate() {
+            if index != 0 {
+                self.bytes.extend_from_slice(b",");
+            }
+            self.bytes.extend_from_slice(byte.to_string().as_bytes());
         }
-        self.bytes.extend_from_slice(b";\n");
-        if selected.is_some() && !captures.is_empty() {
-            self.bytes.extend_from_slice(b"if(__vt");
+        self.bytes.extend_from_slice(b"};void* __co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b"=birnam_vtable_cache_get(__birnam_code_generation_identity,");
+        self.bytes
+            .extend_from_slice(code_object_cache_key.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"ULL);if(!__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"){__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b"=birnam_portable_code_admit_v1(__pp");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b",sizeof(__pp");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"));if(!__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b")return birnam_nil();if(birnam_is_error(__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"))return __co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b";__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b"=birnam_vtable_cache_set(__birnam_code_generation_identity,");
+        self.bytes
+            .extend_from_slice(code_object_cache_key.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"ULL,__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b");if(!__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b")return birnam_nil();}");
+        if !capture_values.is_empty() {
+            self.bytes.extend_from_slice(b"void* __captures");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
-            self.bytes.extend_from_slice(b"){");
-        }
-        for (index, name) in captures.iter().enumerate() {
-            self.bytes.extend_from_slice(b"((void**)__o");
-            self.bytes.extend_from_slice(number.to_string().as_bytes());
-            self.bytes.extend_from_slice(b")[");
-            self.bytes.extend_from_slice(index.to_string().as_bytes());
-            self.bytes.extend_from_slice(b"] = b_");
-            self.bytes.extend_from_slice(name);
-            self.bytes.extend_from_slice(b";\n");
-        }
-        if selected.is_some() && !captures.is_empty() {
-            self.bytes.extend_from_slice(b"}");
+            self.bytes.extend_from_slice(b"[");
+            self.bytes
+                .extend_from_slice(capture_values.len().to_string().as_bytes());
+            self.bytes.extend_from_slice(b"];");
+            for (index, value) in capture_values.iter().enumerate() {
+                self.bytes.extend_from_slice(b"__captures");
+                self.bytes.extend_from_slice(number.to_string().as_bytes());
+                self.bytes.extend_from_slice(b"[");
+                self.bytes.extend_from_slice(index.to_string().as_bytes());
+                self.bytes.extend_from_slice(b"]=");
+                self.emit_block_capture_value(*value);
+                self.bytes.extend_from_slice(b";");
+            }
         }
         self.bytes.extend_from_slice(b"__o");
         self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b"=birnam_portable_block_new_v1(__vt");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b",__co");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b",");
+        if capture_values.is_empty() {
+            self.bytes.extend_from_slice(b"(void**)0");
+        } else {
+            self.bytes.extend_from_slice(b"__captures");
+            self.bytes.extend_from_slice(number.to_string().as_bytes());
+        }
+        self.bytes.extend_from_slice(b",");
+        self.bytes
+            .extend_from_slice(capture_values.len().to_string().as_bytes());
+        self.bytes.extend_from_slice(b"UL);if(!__o");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes
+            .extend_from_slice(b")return birnam_nil();if(birnam_is_error(__o");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b"))return __o");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
+        self.bytes.extend_from_slice(b";}");
+        self.bytes.extend_from_slice(b"__o");
+        self.bytes.extend_from_slice(number.to_string().as_bytes());
         self.bytes.extend_from_slice(b"; })");
+        Ok(())
+    }
+
+    fn emit_block_capture_value(&mut self, value: BlockCaptureValue<'_>) {
+        match value {
+            BlockCaptureValue::SourceBinding(name) => {
+                self.bytes.extend_from_slice(b"b_");
+                self.bytes.extend_from_slice(name);
+            }
+            BlockCaptureValue::PortableBinding(index) => {
+                self.bytes.extend_from_slice(b"__b");
+                self.bytes.extend_from_slice(index.to_string().as_bytes());
+            }
+        }
+    }
+
+    fn emit_portable_block_body<'a>(
+        &mut self,
+        source_block: &'a Block<'a>,
+        portable_program: &[u8],
+    ) -> Result<(), EmitError> {
+        use birnam_artifact::portable_program::{NodeKind, StatementKind};
+
+        let program = birnam_artifact::portable_program::inspect(portable_program)
+            .map_err(|_| EmitError::Unsupported)?;
+        for index in 0..program.parameter_count {
+            self.bytes.extend_from_slice(b"void* __b");
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"=args[");
+            self.bytes.extend_from_slice(index.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"];\n");
+        }
+        for capture in 0..program.capture_count {
+            let binding = program
+                .parameter_count
+                .checked_add(capture)
+                .ok_or(EmitError::Unsupported)?;
+            self.bytes.extend_from_slice(b"void* __b");
+            self.bytes.extend_from_slice(binding.to_string().as_bytes());
+            self.bytes.extend_from_slice(b"=((void**)self)[");
+            self.bytes
+                .extend_from_slice((capture + 1).to_string().as_bytes());
+            self.bytes.extend_from_slice(b"];\n");
+        }
+
+        let mut source_nodes = Vec::new();
+        for statement in &source_block.body {
+            let expression = match statement {
+                Statement::Let { value, .. } | Statement::Expr(value) => value,
+            };
+            collect_portable_node_sources(expression, &mut source_nodes);
+        }
+        if source_nodes.len() != program.node_count as usize {
+            return Err(EmitError::Unsupported);
+        }
+
+        let mut next_node = 0u32;
+        let mut result_node = None;
+        for statement_index in 0..program.statement_count as usize {
+            let statement = program
+                .statement(statement_index)
+                .ok_or(EmitError::Unsupported)?;
+            while next_node <= statement.root_node {
+                let node = program
+                    .node(next_node as usize)
+                    .ok_or(EmitError::Unsupported)?;
+                self.bytes.extend_from_slice(b"void* __n");
+                self.bytes
+                    .extend_from_slice(next_node.to_string().as_bytes());
+                self.bytes.extend_from_slice(b"=");
+                match node.semantic_kind().ok_or(EmitError::Unsupported)? {
+                    NodeKind::Integer => self.emit_small_int(node.payload as i64),
+                    NodeKind::FloatBits => self.emit_float_bits(node.payload),
+                    NodeKind::String => self.emit_string(node.data),
+                    NodeKind::Symbol => self.emit_symbol(node.data),
+                    NodeKind::Nil => self.emit_nil(),
+                    NodeKind::True => self.emit_true(),
+                    NodeKind::False => self.emit_false(),
+                    NodeKind::LexicalRead => {
+                        self.bytes.extend_from_slice(b"__b");
+                        self.bytes
+                            .extend_from_slice(node.auxiliary_0.to_string().as_bytes());
+                    }
+                    NodeKind::GlobalRead => self.emit_global(node.data),
+                    NodeKind::Send => {
+                        let source = *source_nodes
+                            .get(next_node as usize)
+                            .ok_or(EmitError::Unsupported)?;
+                        let receiver = program
+                            .node_operand(next_node as usize, 0)
+                            .ok_or(EmitError::Unsupported)?;
+                        self.bytes.extend_from_slice(b"birnam_send(__n");
+                        self.bytes
+                            .extend_from_slice(receiver.to_string().as_bytes());
+                        self.bytes.extend_from_slice(b",birnam_intern(\"");
+                        let sourced = sourced_reflect_selector(source, node.data);
+                        self.push_c_string_body(
+                            sourced.map(|(selector, _)| selector).unwrap_or(node.data),
+                        );
+                        self.bytes.extend_from_slice(b"\"),");
+                        let extra_source = sourced.map(|(_, source)| source);
+                        if node.operand_count == 1 && extra_source.is_none() {
+                            self.bytes.extend_from_slice(b"(void**)0");
+                        } else {
+                            self.bytes.extend_from_slice(b"(void*[]){");
+                            for operand_index in 1..node.operand_count as usize {
+                                if operand_index != 1 {
+                                    self.bytes.extend_from_slice(b",");
+                                }
+                                let operand = program
+                                    .node_operand(next_node as usize, operand_index)
+                                    .ok_or(EmitError::Unsupported)?;
+                                self.bytes.extend_from_slice(b"__n");
+                                self.bytes.extend_from_slice(operand.to_string().as_bytes());
+                            }
+                            if let Some(source) = extra_source {
+                                if node.operand_count != 1 {
+                                    self.bytes.extend_from_slice(b",");
+                                }
+                                self.emit_string(source);
+                            }
+                            self.bytes.extend_from_slice(b"}");
+                        }
+                        self.bytes.extend_from_slice(b",");
+                        self.bytes.extend_from_slice(
+                            node.operand_count
+                                .checked_sub(1)
+                                .and_then(|count| {
+                                    count.checked_add(u32::from(extra_source.is_some()))
+                                })
+                                .ok_or(EmitError::Unsupported)?
+                                .to_string()
+                                .as_bytes(),
+                        );
+                        self.bytes.extend_from_slice(b"L)");
+                    }
+                    NodeKind::BlockLiteral => {
+                        let source = match source_nodes.get(next_node as usize) {
+                            Some(Expr::Block(block)) => block.as_ref(),
+                            _ => return Err(EmitError::Unsupported),
+                        };
+                        let captures = (0..node.operand_count as usize)
+                            .map(|operand_index| {
+                                program
+                                    .node_operand(next_node as usize, operand_index)
+                                    .map(BlockCaptureValue::PortableBinding)
+                                    .ok_or(EmitError::Unsupported)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        self.emit_portable_block(source, node.data, &captures)?;
+                    }
+                }
+                self.bytes.extend_from_slice(b";\n");
+                next_node = next_node.checked_add(1).ok_or(EmitError::Unsupported)?;
+            }
+            if statement.kind == StatementKind::Let {
+                let binding = statement.binding_index.ok_or(EmitError::Unsupported)?;
+                self.bytes.extend_from_slice(b"void* __b");
+                self.bytes.extend_from_slice(binding.to_string().as_bytes());
+                self.bytes.extend_from_slice(b"=__n");
+                self.bytes
+                    .extend_from_slice(statement.root_node.to_string().as_bytes());
+                self.bytes.extend_from_slice(b";\n");
+            }
+            result_node = Some(statement.root_node);
+        }
+        if next_node != program.node_count {
+            return Err(EmitError::Unsupported);
+        }
+        self.bytes.extend_from_slice(b"return ");
+        if let Some(result) = result_node {
+            self.bytes.extend_from_slice(b"__n");
+            self.bytes.extend_from_slice(result.to_string().as_bytes());
+        } else {
+            self.emit_nil();
+        }
+        self.bytes.extend_from_slice(b";\n");
         Ok(())
     }
 
@@ -1621,11 +1932,22 @@ impl Emitter {
                     self.emit_root_expr(value, 1, false)?;
                     self.bytes.extend_from_slice(b";\n");
                     if persist_top_level {
-                        self.bytes.extend_from_slice(b"birnam_global_set(\"");
+                        self.bytes
+                            .extend_from_slice(b"void* __birnam_global_set_result_");
+                        self.bytes.extend_from_slice(index.to_string().as_bytes());
+                        self.bytes.extend_from_slice(b" = birnam_global_set(\"");
                         self.push_c_string_body(name);
                         self.bytes.extend_from_slice(b"\", b_");
                         self.bytes.extend_from_slice(name);
-                        self.bytes.extend_from_slice(b");\n");
+                        self.bytes
+                            .extend_from_slice(b");\nif(__birnam_global_set_result_");
+                        self.bytes.extend_from_slice(index.to_string().as_bytes());
+                        self.bytes.extend_from_slice(b" != b_");
+                        self.bytes.extend_from_slice(name);
+                        self.bytes
+                            .extend_from_slice(b") return __birnam_global_set_result_");
+                        self.bytes.extend_from_slice(index.to_string().as_bytes());
+                        self.bytes.extend_from_slice(b";\n");
                     }
                     self.bound_names.push(name.to_vec());
                     if last {
@@ -1805,7 +2127,7 @@ mod tests {
         emitter.emit_expr(&expression).unwrap();
         let output = String::from_utf8(emitter.finish()).unwrap();
         assert!(output.contains("__amtramp0"));
-        assert!(output.contains("birnam_candidate_root_get(7ULL,0L)"));
+        assert!(output.contains("birnam_candidate_root_get(__birnam_code_generation_identity,0L)"));
         assert!(output.contains("birnam_install_method"));
         assert!(output.contains("birnam_intern(\"answer\")"));
     }
@@ -1969,6 +2291,46 @@ mod tests {
     }
 
     #[test]
+    fn synchronous_portable_lowering_obeys_mixed_nested_block_selection() {
+        let nested = || {
+            Expr::Block(Box::new(Block {
+                params: Vec::new(),
+                body: vec![Statement::Expr(Expr::SmallInt(7))],
+            }))
+        };
+        let program = Program {
+            body: vec![Statement::Let {
+                name: b"outer",
+                value: Expr::Block(Box::new(Block {
+                    params: Vec::new(),
+                    body: vec![Statement::Expr(nested()), Statement::Expr(nested())],
+                })),
+            }],
+        };
+        let selected = BlockResumableEmission {
+            key: ImplementationKey {
+                root_kind: InventoryRootKind::NonMethodProgram,
+                root_index: 0,
+                path: vec![0, 0],
+                implementation_kind: InventoryImplementationKind::BlockBody,
+            },
+            symbol_index: 7,
+            manifest_entry_index: 3,
+            selector: b"value".to_vec(),
+            captures: Vec::new(),
+            c_source: Vec::new(),
+        };
+        let mut emitter =
+            Emitter::new_selected_resumable_candidate_artifact(11, Vec::new(), vec![selected])
+                .unwrap();
+        emitter.emit_program(&program).unwrap();
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.contains("__birnam_resolve_block_vtable_v1(3U)"));
+        assert!(output.contains("(void*)&__blk2"));
+        assert!(output.contains("void* __n0=MKV(7L);"));
+    }
+
+    #[test]
     fn nested_reflection_does_not_consume_a_top_level_operation_index() {
         let define = |selector: &'static [u8], source: &'static [u8]| Expr::Send {
             receiver: Box::new(Expr::Global(b"Reflect")),
@@ -2039,7 +2401,7 @@ mod tests {
         emitter.emit_expr(&expression).unwrap();
         let output = String::from_utf8(emitter.finish()).unwrap();
         assert!(output.contains(
-            "return birnam_send(birnam_candidate_root_get(7ULL,0L), birnam_intern(\"value:value:\"), a, 2);"
+            "return birnam_send(birnam_candidate_root_get(__birnam_code_generation_identity,0L), birnam_intern(\"value:value:\"), a, 2);"
         ));
         assert!(output.contains("for(i=0;i<1;i++) a[i+1]=args[i];"));
     }
@@ -2523,10 +2885,13 @@ mod tests {
 
         let mut emitter = Emitter::new();
         emitter.emit_expr(&lowered).unwrap();
-        assert_eq!(
-            String::from_utf8(emitter.finish()).unwrap(),
-            "void* __blk0(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nvoid* b_x = args[0];\nvoid* b_y = b_x;\nreturn b_y;\n}\n({ static void* __vt0 = 0; if(!__vt0){ __vt0 = birnam_proto(birnam_blockVt()); birnam_method(__vt0, birnam_intern(\"value:\"), (void*)&__blk0); birnam_layoutAllOops(__vt0); } void* __o0 = birnam_alloc(__vt0, 0*sizeof(void*));\n__o0; })"
-        );
+        let output = String::from_utf8(emitter.finish()).unwrap();
+        assert!(output.starts_with(
+            "void* __blk0(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nvoid* __b0=args[0];\nvoid* __n0=__b0;\nvoid* __b1=__n0;\nvoid* __n1=__b1;\nreturn __n1;\n}"
+        ));
+        assert!(output.contains("birnam_portable_code_admit_v1(__pp0,sizeof(__pp0))"));
+        assert!(output.contains("birnam_portable_block_new_v1(__vt0,__co0,(void**)0,0UL)"));
+        assert!(!output.contains("birnam_alloc(__vt0"));
 
         let nested = Expr::Block(Box::new(Block {
             params: vec![b"x"],
@@ -2539,8 +2904,9 @@ mod tests {
         emitter.emit_expr(&nested).unwrap();
         let output = String::from_utf8(emitter.finish()).unwrap();
         assert!(output.contains("void* __blk1(void* self, void** args, long n)"));
-        assert!(output.contains("void* b_x = ((void**)self)[0];"));
-        assert!(output.contains("((void**)__o1)[0] = b_x;"));
+        assert!(output.contains("void* __b0=((void**)self)[1];"));
+        assert!(output.contains("__captures1[0]=__b0;"));
+        assert!(output.contains("birnam_portable_block_new_v1(__vt1,__co1,__captures1,1UL)"));
     }
 
     #[test]
@@ -2599,7 +2965,7 @@ mod tests {
         emitter.emit_program_persisting(&lowered).unwrap();
         assert_eq!(
             emitter.finish(),
-            b"void* b_x = MKV(1L);\nbirnam_global_set(\"x\", b_x);\nreturn b_x;\n"
+            b"void* b_x = MKV(1L);\nvoid* __birnam_global_set_result_0 = birnam_global_set(\"x\", b_x);\nif(__birnam_global_set_result_0 != b_x) return __birnam_global_set_result_0;\nreturn b_x;\n"
         );
     }
 

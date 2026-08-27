@@ -66,6 +66,42 @@ pub extern "C" fn id_init() -> *mut core::ffi::c_void {
     public_api::initialize_once().cast()
 }
 
+/// Private host/floor admission seam for Design 60J Symbol compaction.
+///
+/// This is deliberately outside frozen IdApi v1. `enabled != 0` admits weak
+/// Symbol sweeping. Compatibility mode requires nonzero identity-count and
+/// owned-name-byte ceilings and is rejected when the current interner already
+/// exceeds either ceiling.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_symbol_compaction_configure_v1(
+    enabled: core::ffi::c_int,
+    compatibility_count_limit: usize,
+    compatibility_name_byte_limit: usize,
+) -> core::ffi::c_int {
+    core::ffi::c_int::from(public_api::configure_symbol_compaction(
+        enabled != 0,
+        compatibility_count_limit,
+        compatibility_name_byte_limit,
+    ))
+}
+
+/// Private read-only diagnostics used by bounded-process acceptance. These
+/// counters do not extend frozen `IdApi` and carry no mutation authority.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_live_symbol_count_v1() -> usize {
+    public_api::live_symbol_count()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_live_symbol_name_bytes_v1() -> usize {
+    public_api::live_symbol_name_bytes()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_live_heap_bytes_v1() -> usize {
+    public_api::live_heap_bytes()
+}
+
 /// Test-only proof that a Rust panic cannot unwind across the C ABI.
 #[cfg(feature = "ffi-test-hooks")]
 #[unsafe(no_mangle)]

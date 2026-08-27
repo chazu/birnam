@@ -1,0 +1,316 @@
+// portable-code-test.birnam — ordinary-object acceptance for the native
+// Portable Code rung. Loading registers the suite; run through run-tests.
+
+[[Globals includes: #TestSuite] ifTrue: [| nil] ifFalse: [| [System load: "modules/test.birnam"]]];
+
+let s := [TestSuite named: "Portable Code" module: #portableCode];
+
+[s test: "constructs and inspects a complete program through ordinary sends" do: [:t |
+  let node := [CodeNode integer: 73];
+  let statement := [CodeStatement expression: node];
+  let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+  [t expect: [program format] equals: #portableProgramV1 describes: "program format is canonical v1"];
+  [t expect: [program arity] equals: 1 describes: "arity derives from parameter bindings"];
+  [t expect: [[program parameterAt: 0] name] equals: "argument" describes: "parameter binding remains inspectable"];
+  [t expect: [[[program statementAt: 0] expression] integer] equals: 73 describes: "statement node remains inspectable"]]];
+
+[s test: "CodeObject derives digest, program, provenance, and Vector capture schema" do: [:t |
+  let program := [CodeProgram parameters: #[] captures: #["first" "second"] statements: #[]];
+  let object := [CodeObject fromProgram: program provenance: "source bytes"];
+  [t expect: [object format] equals: #portableProgramV1 describes: "CodeObject exposes the admitted format"];
+  [t expect: [object program] equals: program describes: "CodeObject retains the admitted program"];
+  [t expect: [object arity] equals: 0 describes: "CodeObject arity is derived"];
+  [t expect: [[object digest] size] equals: 32 describes: "digest is exact SHA-256 bytes"];
+  let schema := [object captureSchema];
+  [t expect: [schema size] equals: 2 describes: "capture schema is a Vector"];
+  [t expect: [[schema at: 0] name] equals: "first" describes: "capture schema preserves order"];
+  let stripped := [object withoutSourceProvenance];
+  [t expect: [stripped sourceProvenance] equals: nil describes: "provenance can be stripped"];
+  [t expect: [stripped digest] equals: [object digest] describes: "provenance is nonsemantic"];
+  let successorProgram := [CodeProgram parameters: #["argument"] captures: #[] statements: #[]];
+  let successor := [object withProgram: successorProgram];
+  [t expect: [successor program] equals: successorProgram describes: "withProgram: replaces portable meaning"];
+  [t expect: [successor sourceProvenance] equals: "source bytes" describes: "withProgram: retains provenance"];
+  let sourceLess := [CodeObject fromProgram: program];
+  [t expect: [sourceLess sourceProvenance] equals: nil describes: "fromProgram: creates an explicitly source-less object"]]];
+
+[s test: "constructor failures are kinded Errors after rung activation" do: [:t |
+  let wrongType := [CodeNode integer: "not an Integer"];
+  [t expect: [wrongType isError] equals: true describes: "wrong family answers Error"];
+  [t expect: [wrongType kind] equals: #typeMismatch describes: "wrong family is #typeMismatch"];
+  let read := [CodeNode lexicalReadAt: 0];
+  let statement := [CodeStatement expression: read];
+  let badScope := [CodeProgram parameters: #[] captures: #[] statements: #[statement]];
+  [t expect: [badScope isError] equals: true describes: "bad scope answers Error"];
+  [t expect: [badScope kind] equals: #invalidPortableProgram describes: "bad scope has the portable-program kind"]]];
+
+[s test: "all PortableProgram v1 node forms remain ordinarily inspectable" do: [:t |
+  let integer := [CodeNode integer: -9];
+  let float := [CodeNode floatBits: "12345678"];
+  let string := [CodeNode string: "bytes"];
+  let symbol := [CodeNode symbol: #symbolValue];
+  let nilNode := [CodeNode nilLiteral];
+  let trueNode := [CodeNode trueLiteral];
+  let falseNode := [CodeNode falseLiteral];
+  let lexical := [CodeNode lexicalReadAt: 0];
+  let global := [CodeNode globalRead: #GlobalValue];
+  let send := [CodeNode send: #+ operands: #[integer integer]];
+  let nested := [CodeProgram parameters: #[] captures: #["held"] statements: #[]];
+  let block := [CodeNode block: nested captureBindings: #[0]];
+  [t expect: [integer kind] equals: #integer describes: "Integer node"];
+  [t expect: [[float floatBits] size] equals: 8 describes: "Float node preserves eight bytes"];
+  [t expect: [string string] equals: "bytes" describes: "String node"];
+  [t expect: [symbol symbol] equals: #symbolValue describes: "Symbol node"];
+  [t expect: [nilNode kind] equals: #nil describes: "nil node"];
+  [t expect: [trueNode kind] equals: #true describes: "true node"];
+  [t expect: [falseNode kind] equals: #false describes: "false node"];
+  [t expect: [lexical bindingIndex] equals: 0 describes: "lexical read node"];
+  [t expect: [global global] equals: #GlobalValue describes: "global read node"];
+  [t expect: [send operandCount] equals: 2 describes: "send node"];
+  [t expect: [block program] equals: nested describes: "Block node retains its nested program"];
+  [t expect: [block captureBindingAt: 0] equals: 0 describes: "Block node retains its capture edge"]]];
+
+[s test: "tree depth limit is exact and resource failures are kinded" do: [:t |
+  let chain := [[CodeNode nilLiteral] asCell];
+  [4095 timesRepeat: [|
+    [chain set: [CodeNode send: #clone operands: #[[chain value]]]]]];
+  let acceptedStatement := [CodeStatement expression: [chain value]];
+  let accepted := [CodeProgram parameters: #[] captures: #[] statements: #[acceptedStatement]];
+  [t expect: [accepted isError] equals: false describes: "depth 4096 is admitted"];
+  [chain set: [CodeNode send: #clone operands: #[[chain value]]]];
+  let rejectedStatement := [CodeStatement expression: [chain value]];
+  let rejected := [CodeProgram parameters: #[] captures: #[] statements: #[rejectedStatement]];
+  [t expect: [rejected isError] equals: true describes: "depth 4097 is rejected"];
+  [t expect: [rejected kind] equals: #portableProgramLimit describes: "depth failure has the resource kind"]]];
+
+[s test: "GC keeps semantic owners and collects throwaway decoded views" do: [:t |
+  let node := [CodeNode integer: 5];
+  let statement := [CodeStatement expression: node];
+  let program := [CodeProgram parameters: #["argument"] captures: #["held"] statements: #[statement]];
+  let object := [CodeObject fromProgram: program];
+  [System gc];
+  [t expect: [object program] equals: program describes: "CodeObject traces its program"];
+  [t expect: [[object captureSchema] size] equals: 1 describes: "program remains decodable after GC"];
+  let before := [System liveObjects];
+  [2000 timesRepeat: [|
+    [program parameterAt: 0];
+    [program statementAt: 0];
+    [object captureSchema];
+    [object digest]]];
+  [System gc];
+  let after := [System liveObjects];
+  [t assert: [after < [before + 64]] describes: "decoded views and derived values do not become hidden roots"]]];
+
+[s test: "compiler Blocks reify shared portable meaning ahead of captures" do: [:t |
+  let constant := [| 42];
+  [t expect: [constant captureCount] equals: 0 describes: "a capture-free Block has no captures"];
+  [t expect: [[constant codeObject] format] equals: #portableProgramV1 describes: "a compiler Block exposes its CodeObject"];
+  [t expect: [constant value] equals: 42 describes: "a capture-free portable Block remains callable"];
+
+  let factory := [:held | [| held]];
+  let first := [factory value: 11];
+  let second := [factory value: 29];
+  [t assert: [[first codeObject] == [second codeObject]] describes: "instances of one body share immutable CodeObject meaning"];
+  [t expect: [first captureCount] equals: 1 describes: "capture count excludes the CodeObject word"];
+  [t expect: [first captureAt: 0] equals: 11 describes: "the first capture follows the CodeObject"];
+  [t expect: [second captureAt: 0] equals: 29 describes: "instances retain distinct captures"];
+  [t expect: [first value] equals: 11 describes: "the first captured Block remains callable"];
+  [t expect: [second value] equals: 29 describes: "the second captured Block remains callable"];
+  [System gc];
+  [t assert: [[first codeObject] == [second codeObject]] describes: "shared CodeObject ownership survives GC"];
+  [t expect: [second value] equals: 29 describes: "captured invocation survives GC"]]];
+
+[s test: "source-less CodeObjects materialize directly from portable meaning" do: [:t |
+  let read := [CodeNode lexicalReadAt: 0];
+  let statement := [CodeStatement expression: read];
+  let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+  let object := [CodeObject fromProgram: program];
+  let block := [Codegen materializeSynchronous: object captures: #[]];
+  let sourced := [:argument | argument];
+  [t expect: [object sourceProvenance] equals: nil describes: "materialization needs no source provenance"];
+  [t expect: [[sourced codeObject] digest] equals: [object digest] describes: "sourced and source-less compilation share exact portable meaning"];
+  [t assert: [[block codeObject] == object] describes: "the materialized Block exposes the supplied CodeObject"];
+  [t expect: [block value: 91] equals: 91 describes: "a source-less parameter binding executes"];
+  [t expect: [sourced value: 91] equals: [block value: 91] describes: "sourced and source-less synchronous Blocks execute identically"];
+
+  let captureRead := [CodeNode lexicalReadAt: 0];
+  let captureStatement := [CodeStatement expression: captureRead];
+  let captureProgram := [CodeProgram parameters: #[] captures: #["held"] statements: #[captureStatement]];
+  let captureObject := [CodeObject fromProgram: captureProgram];
+  let captured := [Codegen materializeSynchronous: captureObject captures: #[37]];
+  [t expect: [captured captureAt: 0] equals: 37 describes: "the supplied capture is visible through Block protocol"];
+  [t expect: [captured value] equals: 37 describes: "a source-less capture binding executes"]]];
+
+[s test: "source-less CodeObjects materialize through the resumable runtime" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let read := [CodeNode lexicalReadAt: 0];
+  let statement := [CodeStatement expression: read];
+  let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+  let object := [CodeObject fromProgram: program];
+  let block := [Codegen materializeResumable: object captures: #[]];
+  let sourced := [:argument | argument];
+  [t assert: [[block codeObject] == object] describes: "the resumable Block retains the supplied CodeObject"];
+  [t expect: [block value: 91] equals: 91 describes: "source-less resumable parameter binding executes"];
+  [t expect: [block value: 91] equals: [sourced value: 91] describes: "synchronous and resumable meaning agrees"];
+
+  let captureRead := [CodeNode lexicalReadAt: 0];
+  let captureStatement := [CodeStatement expression: captureRead];
+  let captureProgram := [CodeProgram parameters: #[] captures: #["held"] statements: #[captureStatement]];
+  let captureObject := [CodeObject fromProgram: captureProgram];
+  let captured := [Codegen materializeResumable: captureObject captures: #[37]];
+  [t expect: [captured captureAt: 0] equals: 37 describes: "the resumable carrier exposes its capture"];
+  [t expect: [captured value] equals: 37 describes: "a source-less resumable capture executes"]]];
+
+[s test: "synchronous and resumable repositories cache distinct native dispositions" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let before := [Codegen materializationCount];
+  let read := [CodeNode lexicalReadAt: 0];
+  let statement := [CodeStatement expression: read];
+  let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+  let firstObject := [CodeObject fromProgram: program];
+  let secondObject := [CodeObject fromProgram: program];
+  let synchronous := [Codegen materializeSynchronous: firstObject captures: #[]];
+  let firstResumable := [Codegen materializeResumable: firstObject captures: #[]];
+  let secondResumable := [Codegen materializeResumable: secondObject captures: #[]];
+  [t expect: [Codegen materializationCount] equals: [before + 2] describes: "one semantic program has one cache row per disposition"];
+  [t expect: [synchronous value: 11] equals: 11 describes: "the synchronous row remains callable"];
+  [t expect: [firstResumable value: 23] equals: 23 describes: "the first resumable row remains callable"];
+  [t expect: [secondResumable value: 47] equals: 47 describes: "equal resumable bytes reuse native identity"];
+  [t assert: [[firstResumable codeObject] == firstObject] describes: "cache reuse preserves the first CodeObject identity"];
+  [t assert: [[secondResumable codeObject] == secondObject] describes: "cache reuse preserves the second CodeObject identity"]]];
+
+[s test: "evicted resumable Blocks retain code until the last carrier dies" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let beforeUnits := [Tcc liveUnitCount];
+  let duringUnits := [[|
+    let read := [CodeNode lexicalReadAt: 0];
+    let statement := [CodeStatement expression: read];
+    let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+    let object := [CodeObject fromProgram: program];
+    let block := [Codegen materializeResumable: object captures: #[]];
+    [t expect: [block value: 23] equals: 23 describes: "the new resumable Block executes"];
+    [t expect: [Codegen evictMaterializations] equals: 1 describes: "the repository drops its resumable root"];
+    [System gc];
+    [t expect: [block value: 47] equals: 47 describes: "the live carrier keeps resumable code mapped"];
+    [Tcc liveUnitCount]] value];
+  [t expect: duringUnits equals: [beforeUnits + 1] describes: "the live carrier owns one resumable TCC unit"];
+  [System gc];
+  [t expect: [Tcc liveUnitCount] equals: [beforeUnits + 1] describes: "the enclosing ordinary send defers physical retirement until its read guard drops"]]];
+
+[s test: "nested source-less resumable Blocks retain the shared unit independently" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let beforeUnits := [Tcc liveUnitCount];
+  let nestedUnits := [[|
+    let nestedRead := [CodeNode lexicalReadAt: 0];
+    let nestedStatement := [CodeStatement expression: nestedRead];
+    let nestedProgram := [CodeProgram parameters: #[] captures: #["held"] statements: #[nestedStatement]];
+    let nestedNode := [CodeNode block: nestedProgram captureBindings: #[0]];
+    let outerStatement := [CodeStatement expression: nestedNode];
+    let outerProgram := [CodeProgram parameters: #["held"] captures: #[] statements: #[outerStatement]];
+    let outerObject := [CodeObject fromProgram: outerProgram];
+    let outer := [Codegen materializeResumable: outerObject captures: #[]];
+    [Codegen evictMaterializations];
+    [System gc];
+    let nested := [outer value: 52];
+    [t expect: [nested value] equals: 52 describes: "an evicted live outer carrier can realize its nested resumable row"];
+    [t expect: [nested value] equals: 52 describes: "the nested Block owns the unit after its outer and repository roots disappear"];
+    [Tcc liveUnitCount]] value];
+  [t expect: nestedUnits equals: [beforeUnits + 1] describes: "all transitive resumable rows share one materialized unit"];
+  [System gc];
+  [t expect: [Tcc liveUnitCount] equals: [beforeUnits + 1] describes: "nested retirement also waits for the enclosing ordinary-send reader"]]];
+
+[s test: "Reflect publishes current CodeBindings for arbitrary callable implementations" do: [:t |
+  let before := [Codegen currentCodeBindingCount];
+  // Route through an ordinary receiver so this deliberately local callable
+  // does not enter the legacy v6 source-replay journal. K5 persists the current
+  // CodeBinding itself in v7; this case tests live binding semantics only.
+  let reflection := Reflect;
+  let implementation := [Object clone];
+  let target := [Object clone];
+  [reflection defineMethod: #value:value: on: implementation as: [:callable :receiver :value | [value + 5]]];
+  [reflection defineMethod: #answer: on: target as: implementation];
+  [t expect: [target answer: 37] equals: 42 describes: "the NamedAdapter late-sends to a non-Block callable implementation"];
+  let descriptor := [[reflection allMethodsOf: target] at: 0];
+  [t assert: [[descriptor at: #method] == implementation] describes: "reflection exposes the semantic implementation object rather than a raw Method"];
+  [t expect: [Codegen currentCodeBindingCount] equals: [before + 2] describes: "each current target-selector association has one CodeBinding"];
+  [reflection removeMethod: #answer: on: target];
+  [reflection removeMethod: #value:value: on: implementation];
+  [t expect: [Codegen currentCodeBindingCount] equals: before describes: "removal withdraws the current CodeBinding mirrors"]]];
+
+[s test: "self-replacement and self-removal preserve the active NamedAdapter" do: [:t |
+  let before := [Codegen currentCodeBindingCount];
+  let reflection := Reflect;
+  let target := [Object clone];
+  [reflection defineMethod: #replaceSelf on: target as: [:self |
+    [reflection defineMethod: #replaceSelf on: target as: [:next | 2]];
+    1]];
+  [t expect: [target replaceSelf] equals: 1 describes: "the old invocation completes after replacing its own binding"];
+  [t expect: [target replaceSelf] equals: 2 describes: "later sends observe the successor binding"];
+  [t expect: [Codegen currentCodeBindingCount] equals: [before + 1] describes: "replacement retains only one current semantic binding"];
+  [reflection defineMethod: #removeSelf on: target as: [:self |
+    [reflection removeMethod: #removeSelf on: target];
+    7]];
+  [t expect: [target removeSelf] equals: 7 describes: "the old invocation completes after removing its own binding"];
+  [t assert: [[target removeSelf] isError] describes: "later sends observe method removal"];
+  [reflection removeMethod: #replaceSelf on: target];
+  [t expect: [Codegen currentCodeBindingCount] equals: before describes: "self-mutated bindings leave no current semantic roots"]]];
+
+[s test: "materialization cache shares native identity but not CodeObject identity" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let before := [Codegen materializationCount];
+  let read := [CodeNode lexicalReadAt: 0];
+  let statement := [CodeStatement expression: read];
+  let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+  let firstObject := [CodeObject fromProgram: program];
+  let secondObject := [CodeObject fromProgram: program];
+  let first := [Codegen materializeSynchronous: firstObject captures: #[]];
+  let second := [Codegen materializeSynchronous: secondObject captures: #[]];
+  [t expect: [Codegen materializationCount] equals: [before + 1] describes: "equal portable bytes compile once"];
+  [t assert: [[first codeObject] == firstObject] describes: "the first Block retains its requested CodeObject"];
+  [t assert: [[second codeObject] == secondObject] describes: "the shared vtable does not replace CodeObject identity"];
+  [t expect: [first value: 12] equals: 12 describes: "the first cache client executes"];
+  [t expect: [second value: 34] equals: 34 describes: "the second cache client executes"];
+  [first value: 56];
+  [second value: 78];
+  [t expect: [Codegen materializationCount] equals: [before + 1] describes: "ordinary sends never trigger compilation"]]];
+
+[s test: "eviction drops repository roots while live Blocks retain native code" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let beforeUnits := [Tcc liveUnitCount];
+  let duringUnits := [[|
+    let read := [CodeNode lexicalReadAt: 0];
+    let statement := [CodeStatement expression: read];
+    let program := [CodeProgram parameters: #["argument"] captures: #[] statements: #[statement]];
+    let object := [CodeObject fromProgram: program];
+    let block := [Codegen materializeSynchronous: object captures: #[]];
+    [t expect: [block value: 23] equals: 23 describes: "the newly materialized Block executes"];
+    [t expect: [Codegen evictMaterializations] equals: 1 describes: "the repository releases its materialization root"];
+    [System gc];
+    [t expect: [block value: 47] equals: 47 describes: "a live Block keeps its evicted unit callable"];
+    [Tcc liveUnitCount]] value];
+  [t expect: duringUnits equals: [beforeUnits + 1] describes: "the live Block owns exactly one materialization unit"];
+  [System gc];
+  [t expect: [Tcc liveUnitCount] equals: beforeUnits describes: "the unit is reclaimed after the last Block becomes unreachable"]]];
+
+[s test: "nested source-less Blocks carry captures and retain their shared unit" do: [:t |
+  [Codegen evictMaterializations];
+  [System gc];
+  let nestedRead := [CodeNode lexicalReadAt: 0];
+  let nestedStatement := [CodeStatement expression: nestedRead];
+  let nestedProgram := [CodeProgram parameters: #[] captures: #["held"] statements: #[nestedStatement]];
+  let nestedNode := [CodeNode block: nestedProgram captureBindings: #[0]];
+  let outerStatement := [CodeStatement expression: nestedNode];
+  let outerProgram := [CodeProgram parameters: #["held"] captures: #[] statements: #[outerStatement]];
+  let outerObject := [CodeObject fromProgram: outerProgram];
+  let outer := [Codegen materializeSynchronous: outerObject captures: #[]];
+  let nested := [outer value: 52];
+  [t expect: [nested value] equals: 52 describes: "nested capture edges use canonical binding indices"];
+  [Codegen evictMaterializations];
+  [System gc];
+  [t expect: [nested value] equals: 52 describes: "the nested Block keeps the shared native unit after eviction"]]];

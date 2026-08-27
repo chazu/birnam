@@ -41,7 +41,7 @@ let unit := [CompiledUnit open: "$candidate"];
 [unit map];
 [[unit activate] fulfill];
 [db assert: #stacklessImageSmokeAcceptance attr: #origin value: unit];
-[System println: [stacklessProjectedClosure value]];
+[System println: [[Globals at: #stacklessProjectedClosure] value]];
 [System println: [40 stacklessImageSmokeProbe]];
 let saved := [System saveImage: "$image"];
 [System println: [[saved isNil] printString]];
@@ -132,12 +132,21 @@ let nextImplementationRow := #[#implementationDisposition nextDigest #methodOper
 [Codegen compile: nextSource output: nextPath selection: #[nextInitializerRow nextAdapterRow nextImplementationRow]]
 let next := [CompiledUnit open: nextPath]
 [next map]
+[700 + [db reservedCompensationFactCount]]
 [next activate]
+[700 + [db reservedCompensationFactCount]]
 [stacklessProjectedClosure value]
 [40 stacklessImageSmokeProbe]
 [next rollback]
+[700 + [db reservedCompensationFactCount]]
 [stacklessProjectedClosure value]
 [40 stacklessImageSmokeProbe]
+let discard := [next discard]
+[discard logical]
+[discard physical]
+[discard reason]
+[RustCodegen beginQuiescence]
+[Codegen retainedGenerationCount]
 :quit
 EOF
 
@@ -146,6 +155,12 @@ grep -Fxq 'birnam> 101' "$smoke_root/evolve.out"
 grep -Fxq 'birnam> 43' "$smoke_root/evolve.out"
 grep -Fxq 'birnam> 99' "$smoke_root/evolve.out"
 grep -Fxq 'birnam> 42' "$smoke_root/evolve.out"
+test "$(grep -Fxc 'birnam> 700' "$smoke_root/evolve.out")" -eq 2
+grep -Fxq 'birnam> 702' "$smoke_root/evolve.out"
+grep -Fxq 'birnam> #discarded' "$smoke_root/evolve.out"
+grep -Fxq 'birnam> #retained' "$smoke_root/evolve.out"
+grep -Fxq 'birnam> #codeGenerationPinned' "$smoke_root/evolve.out"
+grep -Fxq 'birnam> 0' "$smoke_root/evolve.out"
 test ! -s "$smoke_root/evolve.err"
 
-echo "stackless-image-lifecycle-smoke: generation-projected named+method-block+initializer-block live, candidate AOT, and image rollback passed"
+echo "stackless-image-lifecycle-smoke: v7 generation-projected named+method-block+initializer-block recovery, image rollback, and physical successor reclamation passed"

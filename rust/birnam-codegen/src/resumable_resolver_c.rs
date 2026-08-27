@@ -46,9 +46,14 @@ pub fn emit_block_vtable_resolver_v1(entries: &[BlockVtableSpec<'_>]) -> Result<
     let mut output = Emitter::with_capacity(entries.len().saturating_mul(512));
     output.push(b"void* __birnam_resolve_block_vtable_v1(unsigned int manifest_entry_index){\nswitch(manifest_entry_index){\n");
     for entry in entries {
+        let cache_index = (1_u64 << 62) | u64::from(entry.manifest_entry_index);
         output.push(b"case ");
         output.push(entry.manifest_entry_index.to_string().as_bytes());
-        output.push(b"U:{static void* v=0;if(!v){v=birnam_proto(birnam_blockVt());if(!v)return (void*)0;birnam_method(v,birnam_intern(\"");
+        output.push(b"U:{void* v=birnam_vtable_cache_get(__birnam_code_generation_identity,");
+        output.push(cache_index.to_string().as_bytes());
+        output.push(b"ULL);if(!v){v=birnam_vtable_cache_set(__birnam_code_generation_identity,");
+        output.push(cache_index.to_string().as_bytes());
+        output.push(b"ULL,birnam_proto(birnam_blockVt()));if(!v)return (void*)0;birnam_method(v,birnam_intern(\"");
         output.push_c_string_body(entry.selector);
         output.push(b"\"),(void*)&__birnam_resumable_thunk_");
         output.push(entry.symbol_index.to_string().as_bytes());
@@ -141,6 +146,9 @@ extern void* birnam_blockVt(void);
 extern void birnam_method(void*,void*,void*);
 extern void* birnam_intern(char const*);
 extern void birnam_layoutAllOops(void*);
+extern void* birnam_vtable_cache_get(unsigned long long,unsigned long long);
+extern void* birnam_vtable_cache_set(unsigned long long,unsigned long long,void*);
+unsigned long long __birnam_code_generation_identity;
 extern void* __birnam_resumable_thunk_3(void*,void* const*,unsigned long);
 "#
         .to_vec();

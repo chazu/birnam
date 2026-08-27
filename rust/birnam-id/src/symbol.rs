@@ -1,4 +1,4 @@
-//! Permanent Symbol objects and byte-oriented interning.
+//! Weakly canonicalized Symbol objects and byte-oriented interning.
 #![allow(dead_code)] // R2.3 precedes bootstrap/export wiring.
 
 use core::ffi::c_char;
@@ -43,6 +43,7 @@ pub(crate) struct EmbeddedNul;
 pub(crate) struct Symbols {
     ordered: Vec<SymbolRecord>,
     by_address: AddressMap<usize>,
+    owned_name_bytes: usize,
 }
 
 impl Symbols {
@@ -50,6 +51,7 @@ impl Symbols {
         Self {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
+            owned_name_bytes: 0,
         }
     }
 
@@ -72,7 +74,7 @@ impl Symbols {
         let mut owned_name = owned_name.into_boxed_slice();
         let name_pointer = owned_name.as_mut_ptr().cast::<c_char>();
 
-        let object = heap.allocate(size_of::<RawSymbol>(), Permanence::Permanent);
+        let object = heap.allocate(size_of::<RawSymbol>(), Permanence::Collectable);
         boundary::require_invariant(
             heap.set_vtable(object, symbol_vtable),
             "new Symbol block was not registered",
@@ -92,6 +94,10 @@ impl Symbols {
             object,
             nul_terminated_bytes: owned_name,
         });
+        self.owned_name_bytes = self
+            .owned_name_bytes
+            .checked_add(bytes.len().saturating_add(1))
+            .unwrap_or_else(|| boundary::fatal_invariant("Symbol name byte counter overflow"));
         let previous = self.by_address.insert(object.addr(), index);
         boundary::require_invariant(previous.is_none(), "duplicate Symbol object address");
         Ok(object)
@@ -99,6 +105,14 @@ impl Symbols {
 
     pub(crate) fn count(&self) -> usize {
         self.ordered.len()
+    }
+
+    pub(crate) fn owned_name_bytes(&self) -> usize {
+        self.owned_name_bytes
+    }
+
+    pub(crate) fn contains_bytes(&self, bytes: &[u8]) -> bool {
+        self.ordered.iter().any(|record| record.bytes() == bytes)
     }
 
     pub(crate) fn at(&self, index: usize) -> Oop {
@@ -119,6 +133,28 @@ impl Symbols {
         };
         self.ordered[*index].c_name()
     }
+
+    /// Drop weak interner records for collectable Symbols that did not survive
+    /// marking. Name bytes are reclaimed here before the Heap detaches their
+    /// RawSymbol payloads.
+    pub(crate) fn remove_dead_collectable(&mut self, heap: &Heap) -> usize {
+        let before = self.ordered.len();
+        self.ordered.retain(|record| {
+            heap.permanence_of(record.object) != Some(Permanence::Collectable)
+                || heap.is_marked(record.object) != Some(false)
+        });
+        self.by_address.clear();
+        for (index, record) in self.ordered.iter().enumerate() {
+            let previous = self.by_address.insert(record.object.addr(), index);
+            boundary::require_invariant(previous.is_none(), "duplicate live Symbol address");
+        }
+        self.owned_name_bytes = self
+            .ordered
+            .iter()
+            .map(|record| record.nul_terminated_bytes.len())
+            .sum();
+        before.saturating_sub(self.ordered.len())
+    }
 }
 
 #[cfg(test)]
@@ -137,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn repeated_equal_bytes_return_one_permanent_identity() {
+    fn repeated_equal_bytes_return_one_live_collectable_identity() {
         let (mut heap, symbol_vtable) = symbol_harness();
         let mut symbols = Symbols::new();
         let first = symbols.intern(&mut heap, symbol_vtable, b"lookup").unwrap();
@@ -146,7 +182,7 @@ mod tests {
         assert_eq!(symbols.count(), 1);
         assert_eq!(symbols.at(0), first);
         assert!(symbols.at(1).is_null());
-        assert_eq!(heap.permanence_of(first), Some(Permanence::Permanent));
+        assert_eq!(heap.permanence_of(first), Some(Permanence::Collectable));
         assert_eq!(Vtables::checked_vtable_of(&heap, first), symbol_vtable);
     }
 
@@ -179,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn enumeration_order_and_c_name_pointers_survive_unrelated_growth() {
+    fn enumeration_order_and_rooted_c_name_pointers_survive_unrelated_growth() {
         let (mut heap, symbol_vtable) = symbol_harness();
         let mut symbols = Symbols::new();
         let anchor = symbols
@@ -208,6 +244,36 @@ mod tests {
             unsafe { CStr::from_ptr(anchor_pointer) }.to_bytes(),
             b"anchor:"
         );
+    }
+
+    #[test]
+    fn sweep_removes_dead_identity_and_reinterning_creates_a_fresh_oop() {
+        use crate::gc::Marker;
+
+        let (mut heap, symbol_vtable) = symbol_harness();
+        let mut symbols = Symbols::new();
+        let rooted = symbols.intern(&mut heap, symbol_vtable, b"rooted").unwrap();
+        let first_dead = symbols
+            .intern(&mut heap, symbol_vtable, b"ephemeral")
+            .unwrap();
+        assert_eq!(symbols.owned_name_bytes(), b"rooted\0ephemeral\0".len());
+
+        heap.clear_marks();
+        let mut marker = Marker::new();
+        marker.mark_oop(&mut heap, rooted);
+        marker.drain_conservative(&mut heap);
+        assert_eq!(symbols.remove_dead_collectable(&heap), 1);
+        assert_eq!(symbols.count(), 1);
+        assert_eq!(symbols.owned_name_bytes(), b"rooted\0".len());
+        assert_eq!(symbols.at(0), rooted);
+        assert_eq!(symbols.bytes_of(first_dead), None);
+        assert!(symbols.c_name_of(first_dead).is_null());
+
+        let second = symbols
+            .intern(&mut heap, symbol_vtable, b"ephemeral")
+            .unwrap();
+        assert_ne!(second, first_dead);
+        assert_eq!(symbols.bytes_of(second), Some(&b"ephemeral"[..]));
     }
 
     #[test]

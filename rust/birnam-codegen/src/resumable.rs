@@ -8,6 +8,8 @@
 
 use std::collections::BTreeSet;
 
+use birnam_artifact::portable_program::{self, NodeKind, StatementKind};
+
 use crate::{Block, Expr, Program, Statement};
 
 /// A conservative compiler-local bound. It is not part of the runtime ABI;
@@ -443,6 +445,15 @@ pub enum OperationKind<'a> {
         block: &'a Block<'a>,
         captures: Vec<ValueId>,
     },
+    /// A nested implementation named directly by admitted canonical semantic
+    /// bytes. This is the production representation for PortableProgram
+    /// lowering; `node_index` is the canonical occurrence identity within the
+    /// enclosing PortableProgram and never reconstructs a source-shaped Block.
+    PortableBlockLiteral {
+        node_index: u32,
+        program: &'a [u8],
+        captures: Vec<ValueId>,
+    },
     Bind {
         binding: BindingId,
         name: &'a [u8],
@@ -455,6 +466,7 @@ pub enum Literal<'a> {
     SmallInt(i64),
     SmallIntSource(&'a [u8]),
     Float(&'a [u8]),
+    FloatBits(u64),
     String(&'a [u8]),
     StringSource(&'a [u8]),
     Symbol(&'a [u8]),
@@ -490,6 +502,7 @@ pub enum LowerError {
     DepthLimit,
     QuantityOverflow,
     InvalidCapture,
+    InvalidProgram,
 }
 
 const MAX_EXPR_DEPTH: usize = 4096;
@@ -652,6 +665,240 @@ impl<'a> Lowerer<'a> {
         }
         Ok(result.expect("non-empty statements have a result"))
     }
+}
+
+struct PortableLowerer<'a> {
+    linear: Vec<Linear<'a>>,
+    bindings: Vec<Option<ValueId>>,
+    next_node: u32,
+    next_value: u32,
+    next_binding: u32,
+    next_call_site: u32,
+}
+
+impl<'a> PortableLowerer<'a> {
+    fn value(&mut self) -> Result<ValueId, LowerError> {
+        let value = ValueId(self.next_value);
+        self.next_value = self
+            .next_value
+            .checked_add(1)
+            .ok_or(LowerError::QuantityOverflow)?;
+        Ok(value)
+    }
+
+    fn binding(&mut self, expected: u32) -> Result<BindingId, LowerError> {
+        if self.next_binding != expected {
+            return Err(LowerError::InvalidProgram);
+        }
+        self.next_binding = self
+            .next_binding
+            .checked_add(1)
+            .ok_or(LowerError::QuantityOverflow)?;
+        Ok(BindingId(expected))
+    }
+
+    fn call_site(&mut self) -> Result<CallSiteId, LowerError> {
+        let call_site = CallSiteId(self.next_call_site);
+        self.next_call_site = self
+            .next_call_site
+            .checked_add(1)
+            .ok_or(LowerError::QuantityOverflow)?;
+        Ok(call_site)
+    }
+
+    fn operation(&mut self, kind: OperationKind<'a>) -> Result<ValueId, LowerError> {
+        let result = self.value()?;
+        self.linear
+            .push(Linear::Operation(Operation { result, kind }));
+        Ok(result)
+    }
+
+    fn bound_value(&self, index: u32) -> Result<ValueId, LowerError> {
+        self.bindings
+            .get(index as usize)
+            .copied()
+            .flatten()
+            .ok_or(LowerError::InvalidProgram)
+    }
+
+    fn expression(
+        &mut self,
+        program: &portable_program::Program<'a>,
+        index: u32,
+        depth: usize,
+    ) -> Result<ValueId, LowerError> {
+        if depth >= MAX_EXPR_DEPTH {
+            return Err(LowerError::DepthLimit);
+        }
+        let node = program
+            .node(index as usize)
+            .ok_or(LowerError::InvalidProgram)?;
+        let kind = node.semantic_kind().ok_or(LowerError::InvalidProgram)?;
+
+        let result = match kind {
+            NodeKind::Integer => self.operation(OperationKind::Literal(Literal::SmallInt(
+                node.payload as i64,
+            )))?,
+            NodeKind::FloatBits => {
+                self.operation(OperationKind::Literal(Literal::FloatBits(node.payload)))?
+            }
+            NodeKind::String => {
+                self.operation(OperationKind::Literal(Literal::String(node.data)))?
+            }
+            NodeKind::Symbol => {
+                self.operation(OperationKind::Literal(Literal::Symbol(node.data)))?
+            }
+            NodeKind::Nil => self.operation(OperationKind::Literal(Literal::Nil))?,
+            NodeKind::True => self.operation(OperationKind::Literal(Literal::True))?,
+            NodeKind::False => self.operation(OperationKind::Literal(Literal::False))?,
+            NodeKind::LexicalRead => self.bound_value(node.auxiliary_0)?,
+            NodeKind::GlobalRead => self.operation(OperationKind::GlobalLookup(node.data))?,
+            NodeKind::Send => {
+                let receiver_index = program
+                    .node_operand(index as usize, 0)
+                    .ok_or(LowerError::InvalidProgram)?;
+                let receiver = self.expression(program, receiver_index, depth + 1)?;
+                let mut arguments =
+                    Vec::with_capacity(node.operand_count.saturating_sub(1) as usize);
+                for operand_index in 1..node.operand_count as usize {
+                    let child = program
+                        .node_operand(index as usize, operand_index)
+                        .ok_or(LowerError::InvalidProgram)?;
+                    arguments.push(self.expression(program, child, depth + 1)?);
+                }
+                let result = self.value()?;
+                let call_site = self.call_site()?;
+                self.linear.push(Linear::Send {
+                    call_site,
+                    receiver,
+                    selector: node.data,
+                    arguments,
+                    result,
+                    source: b"",
+                });
+                result
+            }
+            NodeKind::BlockLiteral => {
+                let mut captures = Vec::with_capacity(node.operand_count as usize);
+                for operand_index in 0..node.operand_count as usize {
+                    let binding = program
+                        .node_operand(index as usize, operand_index)
+                        .ok_or(LowerError::InvalidProgram)?;
+                    captures.push(self.bound_value(binding)?);
+                }
+                self.operation(OperationKind::PortableBlockLiteral {
+                    node_index: index,
+                    program: node.data,
+                    captures,
+                })?
+            }
+        };
+
+        if index != self.next_node {
+            return Err(LowerError::InvalidProgram);
+        }
+        self.next_node = self
+            .next_node
+            .checked_add(1)
+            .ok_or(LowerError::QuantityOverflow)?;
+        Ok(result)
+    }
+}
+
+/// Lower one admitted PortableProgram directly into deterministic, uncolored
+/// CFG form. Lexical identity, float bits, and nested capture operands are
+/// consumed from the canonical program and are never rediscovered from names.
+pub fn lower_portable_block(bytes: &[u8]) -> Result<LogicalProgram<'_>, LowerError> {
+    let program = portable_program::inspect(bytes).map_err(|_| LowerError::InvalidProgram)?;
+    let mut lowerer = PortableLowerer {
+        linear: Vec::new(),
+        bindings: vec![None; program.binding_count as usize],
+        next_node: 0,
+        next_value: 0,
+        next_binding: 0,
+        next_call_site: 0,
+    };
+    lowerer.operation(OperationKind::EntryReceiver)?;
+
+    for index in 0..program.parameter_count {
+        let binding_value = program
+            .binding(index as usize)
+            .ok_or(LowerError::InvalidProgram)?;
+        let binding = lowerer.binding(index)?;
+        let value = lowerer.operation(OperationKind::EntryArgument {
+            index,
+            binding,
+            name: binding_value.name,
+        })?;
+        lowerer.bindings[index as usize] = Some(value);
+    }
+    for capture_index in 0..program.capture_count {
+        let binding_index = program
+            .parameter_count
+            .checked_add(capture_index)
+            .ok_or(LowerError::QuantityOverflow)?;
+        let binding_value = program
+            .binding(binding_index as usize)
+            .ok_or(LowerError::InvalidProgram)?;
+        let binding = lowerer.binding(binding_index)?;
+        let value = lowerer.operation(OperationKind::EntryCapture {
+            index: capture_index,
+            binding,
+            name: binding_value.name,
+        })?;
+        lowerer.bindings[binding_index as usize] = Some(value);
+    }
+
+    let result = if program.statement_count == 0 {
+        lowerer.operation(OperationKind::Literal(Literal::Nil))?
+    } else {
+        let mut result = None;
+        for statement_index in 0..program.statement_count as usize {
+            let statement = program
+                .statement(statement_index)
+                .ok_or(LowerError::InvalidProgram)?;
+            let source = lowerer.expression(&program, statement.root_node, 0)?;
+            result = Some(match statement.kind {
+                StatementKind::Expression => source,
+                StatementKind::Let => {
+                    let binding_index =
+                        statement.binding_index.ok_or(LowerError::InvalidProgram)?;
+                    let binding_value = program
+                        .binding(binding_index as usize)
+                        .ok_or(LowerError::InvalidProgram)?;
+                    let binding = lowerer.binding(binding_index)?;
+                    let value = lowerer.operation(OperationKind::Bind {
+                        binding,
+                        name: binding_value.name,
+                        source,
+                    })?;
+                    let slot = lowerer
+                        .bindings
+                        .get_mut(binding_index as usize)
+                        .ok_or(LowerError::InvalidProgram)?;
+                    if slot.replace(value).is_some() {
+                        return Err(LowerError::InvalidProgram);
+                    }
+                    value
+                }
+            });
+        }
+        result.ok_or(LowerError::InvalidProgram)?
+    };
+
+    if lowerer.next_node != program.node_count || lowerer.next_binding != program.binding_count {
+        return Err(LowerError::InvalidProgram);
+    }
+    let blocks = assemble_blocks(lowerer.linear, result)?;
+    Ok(LogicalProgram {
+        entry: ProgramCounter(0),
+        argument_count: program.parameter_count,
+        capture_count: program.capture_count,
+        value_count: lowerer.next_value,
+        binding_count: lowerer.next_binding,
+        call_site_count: lowerer.next_call_site,
+        blocks,
+    })
 }
 
 /// Lower one implementation body into deterministic, uncolored CFG form.
@@ -921,7 +1168,8 @@ pub fn reference_liveness(program: &LogicalProgram<'_>) -> Vec<BlockLiveness> {
                     OperationKind::Bind { source, .. } => {
                         needed.insert(*source);
                     }
-                    OperationKind::BlockLiteral { captures, .. } => {
+                    OperationKind::BlockLiteral { captures, .. }
+                    | OperationKind::PortableBlockLiteral { captures, .. } => {
                         needed.extend(captures.iter().copied());
                     }
                     _ => {}
@@ -1336,6 +1584,7 @@ pub trait Oracle<'a, V> {
     fn literal(&mut self, literal: &Literal<'a>) -> Result<V, Self::Error>;
     fn global(&mut self, name: &'a [u8]) -> Result<V, Self::Error>;
     fn block(&mut self, block: &'a Block<'a>, captures: Vec<V>) -> Result<V, Self::Error>;
+    fn portable_block(&mut self, program: &'a [u8], captures: Vec<V>) -> Result<V, Self::Error>;
     fn send(
         &mut self,
         receiver: V,
@@ -1409,6 +1658,17 @@ pub fn interpret_with_captures<'a, V: Clone, O: Oracle<'a, V>>(
                         .collect::<Result<Vec<_>, _>>()?;
                     oracle
                         .block(block, captures)
+                        .map_err(InterpretError::Oracle)?
+                }
+                OperationKind::PortableBlockLiteral {
+                    program, captures, ..
+                } => {
+                    let captures = captures
+                        .iter()
+                        .map(|capture| value(&values, *capture).cloned())
+                        .collect::<Result<Vec<_>, _>>()?;
+                    oracle
+                        .portable_block(program, captures)
                         .map_err(InterpretError::Oracle)?
                 }
                 OperationKind::Bind { source, .. } => value(&values, *source)?.clone(),
@@ -1518,6 +1778,17 @@ pub fn interpret_colored_with_captures<'a, V: Clone, O: Oracle<'a, V>>(
                         .collect::<Result<Vec<_>, _>>()?;
                     oracle
                         .block(block, captures)
+                        .map_err(InterpretError::Oracle)?
+                }
+                OperationKind::PortableBlockLiteral {
+                    program, captures, ..
+                } => {
+                    let captures = captures
+                        .iter()
+                        .map(|capture| colored_value(&slots, layout, *capture).cloned())
+                        .collect::<Result<Vec<_>, _>>()?;
+                    oracle
+                        .portable_block(program, captures)
                         .map_err(InterpretError::Oracle)?
                 }
                 OperationKind::Bind { source, .. } => {
@@ -1678,6 +1949,10 @@ fn set_value<V, E>(
 mod tests {
     use std::borrow::Cow;
 
+    use birnam_artifact::portable_program::{
+        LetSpec, NodeSpec, ProgramSpec, StatementSpec, encode,
+    };
+
     use super::*;
 
     fn send<'a>(receiver: Expr<'a>, selector: &'a [u8], args: Vec<Expr<'a>>) -> Expr<'a> {
@@ -1700,6 +1975,53 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn portable_lowering_uses_binding_identity_instead_of_repeated_names() {
+        let bytes = encode(ProgramSpec {
+            parameters: &[b"x"],
+            captures: &[],
+            lets: &[LetSpec {
+                name: b"x",
+                defining_statement: 0,
+            }],
+            statements: &[
+                StatementSpec::Let {
+                    root_node: 0,
+                    let_index: 0,
+                },
+                StatementSpec::Expression { root_node: 1 },
+            ],
+            nodes: &[NodeSpec::Integer(9), NodeSpec::LexicalRead(0)],
+        })
+        .unwrap();
+
+        let program = lower_portable_block(&bytes).unwrap();
+        assert_eq!(program.binding_count, 2);
+        assert!(matches!(
+            program.blocks.last().unwrap().terminator,
+            Terminator::Return(ValueId(1))
+        ));
+    }
+
+    #[test]
+    fn portable_lowering_preserves_float_bits() {
+        let bits = 0x7ff8_0000_0000_1234;
+        let bytes = encode(ProgramSpec {
+            parameters: &[],
+            captures: &[],
+            lets: &[],
+            statements: &[StatementSpec::Expression { root_node: 0 }],
+            nodes: &[NodeSpec::FloatBits(bits)],
+        })
+        .unwrap();
+
+        let program = lower_portable_block(&bytes).unwrap();
+        assert!(matches!(
+            program.blocks[0].operations[1].kind,
+            OperationKind::Literal(Literal::FloatBits(actual)) if actual == bits
+        ));
     }
 
     #[test]
@@ -1912,6 +2234,16 @@ mod tests {
         ) -> Result<String, Self::Error> {
             self.events.push(format!("block:{}", captures.join(",")));
             Ok("block".into())
+        }
+
+        fn portable_block(
+            &mut self,
+            _program: &'a [u8],
+            captures: Vec<String>,
+        ) -> Result<String, Self::Error> {
+            self.events
+                .push(format!("portable-block:{}", captures.join(",")));
+            Ok("portable-block".into())
         }
 
         fn send(

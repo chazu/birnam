@@ -4,6 +4,10 @@ use birnam_artifact::stackless_selection::{
     Disposition, ImplementationKind, SelectionSpec, portable_implementation_identity,
     source_map_identity,
 };
+use birnam_artifact::{
+    materialization_selection::{Disposition as PortableDisposition, Row, SubjectKind},
+    portable_resumable_manifest,
+};
 
 use crate::resumable::{LayoutError, LowerError, color_slots, lower_named_adapter};
 use crate::resumable_c;
@@ -71,7 +75,7 @@ pub fn compile_named_adapter_v1(
         &resumable_c::emit_step_method(symbol_index, &program, &layout, 0).map_err(Error::C)?,
     );
     c_source.extend_from_slice(
-        &resumable_registration_c::emit_registration_v1(RegistrationSpec {
+        &resumable_registration_c::emit_registration_v2(RegistrationSpec {
             symbol_index,
             manifest_entry_index,
             implementation_kind: ImplementationKind::NamedAdapter,
@@ -90,6 +94,66 @@ pub fn compile_named_adapter_v1(
         implementation_selector,
         portable_implementation_identity,
         source_map_identity,
+        language_arity,
+    })
+}
+
+/// Compile one source-independent 60L NamedAdapter row. The retained live
+/// implementation Oop is supplied only to the generated Prepare operation;
+/// it is not baked into canonical bytes or native code.
+pub fn compile_portable_materialization_named_v1(
+    row: Row<'_>,
+    symbol_index: u32,
+    manifest_entry_index: u32,
+) -> Result<CompiledNamedResumableV1, Error> {
+    if row.kind != SubjectKind::NamedAdapter
+        || row.disposition != PortableDisposition::Resumable
+        || row.capture_count != 0
+    {
+        return Err(Error::InvalidSelection);
+    }
+    let language_arity = selector_arity(row.selector)?;
+    if language_arity != row.language_arity {
+        return Err(Error::InvalidSelection);
+    }
+    let implementation_selector = implementation_selector(language_arity)?;
+    let program =
+        lower_named_adapter(language_arity, &implementation_selector).map_err(Error::Logical)?;
+    let layout = color_slots(&program).map_err(Error::Layout)?;
+    let descriptor =
+        resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 0)
+            .map_err(Error::Descriptor)?;
+    let portable_implementation_identity =
+        portable_resumable_manifest::portable_implementation_identity(
+            row,
+            resumable_descriptor::LOWERING_VERSION_V1,
+        )
+        .map_err(|_| Error::InvalidSelection)?;
+
+    let mut c_source = resumable_c::emit_entry_thunk(symbol_index, row.selector);
+    c_source.extend_from_slice(
+        &resumable_c::emit_step_method(symbol_index, &program, &layout, 0).map_err(Error::C)?,
+    );
+    c_source.extend_from_slice(
+        &resumable_registration_c::emit_registration_v2(RegistrationSpec {
+            symbol_index,
+            manifest_entry_index,
+            implementation_kind: ImplementationKind::NamedAdapter,
+            descriptor: &descriptor,
+            portable_implementation_identity,
+            language_arity,
+            driver_argument_count: 0,
+        })
+        .map_err(Error::Registration)?,
+    );
+
+    Ok(CompiledNamedResumableV1 {
+        descriptor,
+        c_source,
+        selector: row.selector.to_vec(),
+        implementation_selector,
+        portable_implementation_identity,
+        source_map_identity: 0,
         language_arity,
     })
 }
@@ -163,5 +227,41 @@ mod tests {
         assert!(c.contains("birnam_intern(\"value:value:value:\")"));
         assert!(c.contains("e.implementation_oop=implementation"));
         assert!(c.contains("e.manifest_entry_index=2U"));
+    }
+
+    #[test]
+    fn portable_named_adapter_uses_binding_row_authority_without_source() {
+        use birnam_artifact::{
+            code_binding_inventory::{self, BindingSpec, Field},
+            materialization_selection, portable_inventory,
+        };
+
+        let programs = portable_inventory::encode_closure(&[]).unwrap();
+        let bindings = code_binding_inventory::encode(&[BindingSpec {
+            target: Field::HeapRef(0),
+            selector: b"at:put:",
+            implementation: Field::HeapRef(1),
+            provenance: Field::Nil,
+        }])
+        .unwrap();
+        let selection_bytes = materialization_selection::encode(
+            &programs,
+            &bindings,
+            &[materialization_selection::Disposition::Resumable],
+            &[],
+        )
+        .unwrap();
+        let selection =
+            materialization_selection::inspect(&selection_bytes, &programs, &bindings).unwrap();
+        let row = selection.row(0).unwrap();
+        let compiled = compile_portable_materialization_named_v1(row, 3, 0).unwrap();
+        assert_eq!(compiled.source_map_identity, 0);
+        assert_eq!(compiled.implementation_selector, b"value:value:value:");
+        assert!(
+            birnam_artifact::frame_descriptor::inspect_portable(&compiled.descriptor, row).is_ok()
+        );
+        let source = String::from_utf8(compiled.c_source).unwrap();
+        assert!(source.contains("__birnam_resumable_prepare_3(void* implementation)"));
+        assert!(source.contains("e.implementation_oop=implementation"));
     }
 }

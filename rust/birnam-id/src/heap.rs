@@ -187,6 +187,12 @@ impl Heap {
         self.blocks.len()
     }
 
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        self.blocks.values().fold(0usize, |total, block| {
+            total.saturating_add(block.total_size)
+        })
+    }
+
     pub(crate) fn bytes_since_collection(&self) -> usize {
         self.bytes_since_collection
     }
@@ -226,6 +232,21 @@ impl Heap {
         self.blocks
             .get(&object.addr())
             .map(|block| block.permanence)
+    }
+
+    /// Vtable headers of permanent objects are strong floor edges even though
+    /// permanent payloads do not participate in the mark worklist.
+    pub(crate) fn permanent_vtables(&self) -> Vec<Oop> {
+        self.blocks
+            .values()
+            .filter(|block| block.permanence == Permanence::Permanent)
+            .map(|block| {
+                // SAFETY: every registered block owns one initialized vtable
+                // header immediately before its payload.
+                unsafe { vtable_slot_from_payload(block.payload).read() }
+            })
+            .filter(|vtable| !vtable.is_null())
+            .collect()
     }
 
     pub(crate) fn is_marked(&self, object: Oop) -> Option<bool> {

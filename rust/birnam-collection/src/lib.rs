@@ -320,6 +320,29 @@ impl Drop for SortRootScope {
 }
 
 unsafe extern "C" fn mark_sort_roots(mark: MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.collection_vt,
+            runtime.vector_vt,
+            runtime.vector_proto,
+            runtime.node_vt,
+            runtime.range_vt,
+            runtime.range_proto,
+            runtime.map_vt,
+            runtime.map_proto,
+            runtime.map_node_vt,
+            runtime.string_builder_vt,
+            runtime.string_builder_proto,
+            runtime.value,
+            runtime.value1,
+            runtime.value2,
+            runtime.print_string,
+        ] {
+            // SAFETY: these are the collection module's process-owned cached
+            // Oops and remain live while its methods can execute.
+            unsafe { mark(value as Oop) };
+        }
+    }
     SORT_ROOTS.with(|roots| {
         let roots = roots.borrow();
         for &root in roots.iter() {
@@ -2835,6 +2858,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_collection_rust_identity() -> *const c_char {
     RUST_COLLECTION_IDENTITY.as_ptr().cast()
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 /// Initialize the Rust Collection vector protocol against the process floor.

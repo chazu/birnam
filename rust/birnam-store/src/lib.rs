@@ -20,6 +20,8 @@ const STORE_VT_NAME: &[u8] = b"StoreVt\0";
 const CELL_VT_NAME: &[u8] = b"CellVt\0";
 const GLOBALS_VT_NAME: &[u8] = b"GlobalsVt\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
+const DEFAULT_COMPACTION_TRANSITIONS: u64 = 4096;
+const DEFAULT_FACT_BYTES_LIMIT: usize = 64 * 1024 * 1024;
 
 static METHOD_OBSERVER: AtomicUsize = AtomicUsize::new(0);
 static METHOD_AUTHORIZER: AtomicUsize = AtomicUsize::new(0);
@@ -42,13 +44,43 @@ struct Fact {
     v: birnam_abi::Oop,
     tx: u64,
     op: Op,
+    historied: bool,
+    mirror: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RetentionPolicy {
+    CurrentOnly,
+    KeepSince(u64),
+    KeepLast(u64),
 }
 
 #[repr(C)]
 struct StoreState {
     facts: Vec<Fact>,
+    compensation_reservations: Vec<CompensationReservation>,
     raw: bool,
     tx: u64,
+    oldest_retained_basis: u64,
+    retention: RetentionPolicy,
+    transitions_since_compaction: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CompensationReservation {
+    owner: usize,
+    facts: usize,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct StoreCompensationApiV1 {
+    abi_version: u32,
+    byte_size: usize,
+    reserve: unsafe extern "C" fn(usize, usize) -> core::ffi::c_int,
+    consume: unsafe extern "C" fn(usize, usize) -> core::ffi::c_int,
+    release: unsafe extern "C" fn(usize) -> usize,
+    reserved: unsafe extern "C" fn(usize) -> usize,
 }
 
 #[repr(C)]
@@ -62,8 +94,12 @@ impl StoreState {
     fn new() -> Self {
         Self {
             facts: Vec::new(),
+            compensation_reservations: Vec::new(),
             raw: true,
             tx: 0,
+            oldest_retained_basis: 0,
+            retention: RetentionPolicy::CurrentOnly,
+            transitions_since_compaction: 0,
         }
     }
 }
@@ -82,6 +118,9 @@ struct Runtime {
     history: usize,
     primitive: usize,
     globals_entity: usize,
+    true_value: usize,
+    compaction_transitions: u64,
+    fact_bytes_limit: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -89,6 +128,18 @@ static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Store: {message}");
     std::process::abort();
+}
+
+fn positive_config(name: &str, default: usize) -> usize {
+    match std::env::var(name) {
+        Ok(value) => value
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or_else(|| abort(&format!("{name} must be a positive integer"))),
+        Err(std::env::VarError::NotPresent) => default,
+        Err(std::env::VarError::NotUnicode(_)) => abort(&format!("{name} was not valid UTF-8")),
+    }
 }
 
 fn runtime() -> &'static Runtime {
@@ -151,6 +202,26 @@ fn mop_error(runtime: &Runtime, kind: &[u8]) -> birnam_abi::Oop {
 }
 
 unsafe extern "C" fn mark_mop_roots(mark: birnam_abi::MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.store_vt,
+            runtime.store,
+            runtime.cell_vt,
+            runtime.globals_vt,
+            runtime.globals,
+            runtime.cardinality,
+            runtime.one,
+            runtime.many,
+            runtime.history,
+            runtime.primitive,
+            runtime.globals_entity,
+            runtime.true_value,
+        ] {
+            // SAFETY: these are process-owned Oops cached by the live Store
+            // module; none is merely an unreported native pointer.
+            unsafe { mark(value as birnam_abi::Oop) };
+        }
+    }
     let observer = METHOD_OBSERVER.load(Ordering::Acquire);
     if observer != 0 {
         // SAFETY: the observer is an Oop registered through the live IdApi and
@@ -234,16 +305,35 @@ unsafe extern "C" fn notify_method_observer(
     };
 }
 
-unsafe fn append_fact(
+fn next_tx(state: &mut StoreState) -> u64 {
+    let tx = state.tx;
+    state.tx = state
+        .tx
+        .checked_add(1)
+        .filter(|next| *next <= i64::MAX as u64)
+        .unwrap_or_else(|| abort("Store durable basis exhausted SmallInt range"));
+    state.transitions_since_compaction = state.transitions_since_compaction.saturating_add(1);
+    tx
+}
+
+fn append_fact(
     state: &mut StoreState,
     e: birnam_abi::Oop,
     a: birnam_abi::Oop,
     v: birnam_abi::Oop,
     op: Op,
+    historied: bool,
 ) {
-    let tx = state.tx;
-    state.tx = state.tx.saturating_add(1);
-    state.facts.push(Fact { e, a, v, tx, op });
+    let tx = next_tx(state);
+    state.facts.push(Fact {
+        e,
+        a,
+        v,
+        tx,
+        op,
+        historied,
+        mirror: false,
+    });
 }
 
 fn current_value_raw_as_of(
@@ -311,6 +401,7 @@ unsafe fn seed(runtime: &Runtime, store: birnam_abi::Oop) {
             as_oop(runtime.cardinality),
             as_oop(runtime.one),
             Op::Assert,
+            false,
         );
         append_fact(
             state,
@@ -318,6 +409,7 @@ unsafe fn seed(runtime: &Runtime, store: birnam_abi::Oop) {
             as_oop(runtime.cardinality),
             as_oop(runtime.one),
             Op::Assert,
+            false,
         );
         append_fact(
             state,
@@ -325,9 +417,11 @@ unsafe fn seed(runtime: &Runtime, store: birnam_abi::Oop) {
             as_oop(runtime.cardinality),
             as_oop(runtime.one),
             Op::Assert,
+            false,
         );
     }
     state.raw = false;
+    state.transitions_since_compaction = 0;
 }
 
 unsafe fn fresh_store(runtime: &Runtime) -> birnam_abi::Oop {
@@ -393,7 +487,11 @@ unsafe extern "C" fn raw_assert(
     // SAFETY: IdApi Method calls carry the declared non-null argument buffer
     // for this three-argument selector.
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
-    unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
+    let runtime = runtime();
+    if prepare_semantic_mutation(runtime, state, true).is_err() {
+        return mop_error(runtime, b"historyResourceLimit\0");
+    }
+    append_fact(state, args[0], args[1], args[2], Op::Assert, true);
     self_object
 }
 
@@ -416,24 +514,45 @@ unsafe extern "C" fn assert_fact(
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
     let state = unsafe { state_mut(self_object) };
     if state.raw {
-        unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
+        if prepare_semantic_mutation(runtime, state, true).is_err() {
+            return mop_error(runtime, b"historyResourceLimit\0");
+        }
+        append_fact(state, args[0], args[1], args[2], Op::Assert, true);
         return self_object;
     }
     let is_many = cardinality(runtime, state, args[1]) == runtime.many;
+    let historied = is_schema_fact(runtime, args[1]) || history_enabled(runtime, state, args[1]);
     if is_many {
         if is_member(state, args[0], args[1], args[2]) {
             return self_object;
         }
-        unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
+        if historied {
+            if prepare_semantic_mutation(runtime, state, true).is_err() {
+                return mop_error(runtime, b"historyResourceLimit\0");
+            }
+            append_fact(state, args[0], args[1], args[2], Op::Assert, true);
+        } else {
+            if record_projection_many(runtime, state, args[0], args[1], args[2], Op::Assert)
+                .is_err()
+            {
+                return mop_error(runtime, b"historyResourceLimit\0");
+            }
+        }
     } else {
         let old = current_value_raw(state, args[0], args[1]);
         if same(old, args[2]) {
             return self_object;
         }
-        if history_enabled(runtime, state, args[1]) {
-            unsafe { append_fact(state, args[0], args[1], args[2], Op::Assert) };
+        if historied {
+            if prepare_semantic_mutation(runtime, state, true).is_err() {
+                return mop_error(runtime, b"historyResourceLimit\0");
+            }
+            append_fact(state, args[0], args[1], args[2], Op::Assert, true);
         } else {
-            replace_one(state, args[0], args[1], args[2]);
+            if record_projection_one(runtime, state, args[0], args[1], args[2], Op::Assert).is_err()
+            {
+                return mop_error(runtime, b"historyResourceLimit\0");
+            }
         }
     }
     self_object
@@ -441,6 +560,10 @@ unsafe extern "C" fn assert_fact(
 
 fn history_enabled(runtime: &Runtime, state: &StoreState, attribute: birnam_abi::Oop) -> bool {
     current_value_raw(state, attribute, as_oop(runtime.history)) == unsafe { api(runtime) }.trueObj
+}
+
+fn is_schema_fact(runtime: &Runtime, attribute: birnam_abi::Oop) -> bool {
+    attribute == as_oop(runtime.cardinality) || attribute == as_oop(runtime.history)
 }
 
 fn is_member(
@@ -457,25 +580,93 @@ fn is_member(
         .is_some_and(|fact| fact.op == Op::Assert)
 }
 
-fn replace_one(state: &mut StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop, v: birnam_abi::Oop) {
-    if let Some(fact) = state
+fn record_projection_one(
+    runtime: &Runtime,
+    state: &mut StoreState,
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+    v: birnam_abi::Oop,
+    op: Op,
+) -> Result<(), CompactError> {
+    prepare_semantic_mutation(runtime, state, false)?;
+    if let Some(index) = state
         .facts
-        .iter_mut()
+        .iter()
+        .enumerate()
         .rev()
-        .find(|fact| same(fact.e, e) && same(fact.a, a))
+        .find_map(|(index, fact)| (same(fact.e, e) && same(fact.a, a)).then_some(index))
     {
-        fact.v = v;
-        fact.op = Op::Assert;
-        fact.tx = state.tx;
-        state.tx = state.tx.saturating_add(1);
-    } else {
-        unsafe { append_fact(state, e, a, v, Op::Assert) };
+        if !state.facts[index].historied {
+            let tx = next_tx(state);
+            let fact = &mut state.facts[index];
+            fact.v = v;
+            fact.op = op;
+            fact.tx = tx;
+            return Ok(());
+        }
     }
+    prepare_semantic_mutation(runtime, state, true)?;
+    append_fact(state, e, a, v, op, false);
+    Ok(())
 }
 
-fn remove_live(state: &mut StoreState, e: birnam_abi::Oop, a: birnam_abi::Oop, v: birnam_abi::Oop) {
-    state.facts.retain(|fact| {
-        !(same(fact.e, e) && same(fact.a, a) && same(fact.v, v) && fact.op == Op::Assert)
+fn record_projection_many(
+    runtime: &Runtime,
+    state: &mut StoreState,
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+    v: birnam_abi::Oop,
+    op: Op,
+) -> Result<(), CompactError> {
+    prepare_semantic_mutation(runtime, state, false)?;
+    if let Some(index) = state
+        .facts
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, fact)| {
+            (same(fact.e, e) && same(fact.a, a) && same(fact.v, v)).then_some(index)
+        })
+    {
+        if !state.facts[index].historied {
+            let tx = next_tx(state);
+            let fact = &mut state.facts[index];
+            fact.op = op;
+            fact.tx = tx;
+            return Ok(());
+        }
+    }
+    prepare_semantic_mutation(runtime, state, true)?;
+    append_fact(state, e, a, v, op, false);
+    Ok(())
+}
+
+fn remove_mirror_facts(
+    state: &mut StoreState,
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+    v: birnam_abi::Oop,
+) {
+    state
+        .facts
+        .retain(|fact| !(same(fact.e, e) && same(fact.a, a) && same(fact.v, v)));
+}
+
+fn append_mirror_fact(
+    state: &mut StoreState,
+    e: birnam_abi::Oop,
+    a: birnam_abi::Oop,
+    v: birnam_abi::Oop,
+) {
+    let tx = next_tx(state);
+    state.facts.push(Fact {
+        e,
+        a,
+        v,
+        tx,
+        op: Op::Assert,
+        historied: false,
+        mirror: true,
     });
 }
 
@@ -491,10 +682,19 @@ unsafe extern "C" fn retract(
     if !is_member(state, args[0], args[1], args[2]) {
         return self_object;
     }
-    if history_enabled(runtime, state, args[1]) {
-        unsafe { append_fact(state, args[0], args[1], args[2], Op::Retract) };
+    if is_schema_fact(runtime, args[1]) || history_enabled(runtime, state, args[1]) {
+        if prepare_semantic_mutation(runtime, state, true).is_err() {
+            return mop_error(runtime, b"historyResourceLimit\0");
+        }
+        append_fact(state, args[0], args[1], args[2], Op::Retract, true);
+    } else if cardinality(runtime, state, args[1]) == runtime.many {
+        if record_projection_many(runtime, state, args[0], args[1], args[2], Op::Retract).is_err() {
+            return mop_error(runtime, b"historyResourceLimit\0");
+        }
     } else {
-        remove_live(state, args[0], args[1], args[2]);
+        if record_projection_one(runtime, state, args[0], args[1], args[2], Op::Retract).is_err() {
+            return mop_error(runtime, b"historyResourceLimit\0");
+        }
     }
     self_object
 }
@@ -513,8 +713,7 @@ unsafe extern "C" fn tracked_add_method(
     let (selector, vtable, method_carrier) = (args[0], args[1], args[2]);
     let old = current_value_raw(unsafe { state_mut(self_object) }, vtable, selector);
     if !old.is_null() {
-        let retract_args = [vtable, selector, old];
-        unsafe { retract(self_object, retract_args.as_ptr(), retract_args.len()) };
+        remove_mirror_facts(unsafe { state_mut(self_object) }, vtable, selector, old);
     }
     let api = unsafe { api(runtime) };
     // SAFETY: the tracked MOP ABI carries the C Method address in an Oop-sized
@@ -523,8 +722,12 @@ unsafe extern "C" fn tracked_add_method(
     unsafe { (api.method)(vtable, selector, method) };
     // The derived mirror is committed only after the authoritative dictionary
     // write has succeeded. This preserves retract -> dict -> assert ordering.
-    let mirror_args = [vtable, selector, method_carrier];
-    unsafe { assert_fact(self_object, mirror_args.as_ptr(), mirror_args.len()) };
+    append_mirror_fact(
+        unsafe { state_mut(self_object) },
+        vtable,
+        selector,
+        method_carrier,
+    );
     unsafe { notify_method_observer(runtime, selector, vtable) };
     self_object
 }
@@ -564,8 +767,7 @@ unsafe extern "C" fn tracked_remove_method(
     }
     let old = current_value_raw(unsafe { state_mut(self_object) }, vtable, selector);
     if !old.is_null() {
-        let retract_args = [vtable, selector, old];
-        unsafe { retract(self_object, retract_args.as_ptr(), retract_args.len()) };
+        remove_mirror_facts(unsafe { state_mut(self_object) }, vtable, selector, old);
     }
     let remove_selector = unsafe { intern(api, b"removeMethod:\0") };
     let remove_args = [selector];
@@ -623,15 +825,19 @@ unsafe extern "C" fn backfill_mirror(
     let state = unsafe { state_mut(self_object) };
     for (vtable, selector) in pairs {
         if current_value_raw(state, vtable, selector).is_null() {
-            unsafe {
-                append_fact(
-                    state,
-                    vtable,
-                    selector,
-                    as_oop(runtime.primitive),
-                    Op::Assert,
-                )
-            };
+            // The MOP mirror is a rebuilt cache, not a durable Store
+            // transition. Rebuilding it after image load must not advance the
+            // durable basis or move a retention window merely because native
+            // method dictionaries were re-enumerated.
+            state.facts.push(Fact {
+                e: vtable,
+                a: selector,
+                v: as_oop(runtime.primitive),
+                tx: state.tx.saturating_sub(1),
+                op: Op::Assert,
+                historied: false,
+                mirror: true,
+            });
         }
     }
     self_object
@@ -647,7 +853,7 @@ unsafe extern "C" fn mirror_overwrite_hook(vtable: birnam_abi::Oop, selector: bi
     let state = unsafe { state_mut(store as birnam_abi::Oop) };
     let old = current_value_raw(state, vtable, selector);
     if !old.is_null() {
-        remove_live(state, vtable, selector, old);
+        remove_mirror_facts(state, vtable, selector, old);
     }
 }
 
@@ -660,7 +866,7 @@ unsafe extern "C" fn image_facts_into(
     let api = unsafe { api(runtime) };
     // SAFETY: this selector has exactly one argument.
     let collector = unsafe { *args };
-    let selector = unsafe { intern(api, b"e:a:v:tx:op:\0") };
+    let selector = unsafe { intern(api, b"e:a:v:tx:op:historied:\0") };
     let facts = unsafe { state_mut(self_object) }.facts.clone();
     for fact in facts {
         // The MOP mirror is a rebuilt cache, not independently serialized. In
@@ -675,8 +881,13 @@ unsafe extern "C" fn image_facts_into(
             fact.v,
             unsafe { (api.mkSmallInt)(fact.tx as i64) },
             unsafe { (api.mkSmallInt)(fact.op as u8 as i64) },
+            if fact.historied {
+                api.trueObj
+            } else {
+                api.falseObj
+            },
         ];
-        // SAFETY: the collector owns the frozen five-argument image protocol.
+        // SAFETY: the collector owns the image-v6 six-argument protocol.
         let _ = unsafe { (api.send)(collector, selector, arguments.as_ptr(), arguments.len()) };
     }
     self_object
@@ -687,7 +898,12 @@ unsafe extern "C" fn image_load_begin(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    unsafe { state_mut(self_object) }.facts.clear();
+    let state = unsafe { state_mut(self_object) };
+    state.facts.clear();
+    state.compensation_reservations.clear();
+    state.oldest_retained_basis = 0;
+    state.retention = RetentionPolicy::CurrentOnly;
+    state.transitions_since_compaction = 0;
     self_object
 }
 
@@ -711,6 +927,42 @@ unsafe extern "C" fn image_add_fact(
         v: args[2],
         tx,
         op,
+        // image-v5 had no commit-time history bit. Loading it as historied is
+        // conservative: a later v6 save may retain more, never fabricate less.
+        historied: true,
+        mirror: false,
+    });
+    self_object
+}
+
+unsafe extern "C" fn image_add_fact_historied(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let args = unsafe { core::slice::from_raw_parts(args, 6) };
+    let tx = unsafe { (api(runtime).smallIntValue)(args[3]) } as u64;
+    let op = match unsafe { (api(runtime).smallIntValue)(args[4]) } {
+        0 => Op::Assert,
+        1 => Op::Retract,
+        _ => abort("image fact op was not assert/retract"),
+    };
+    let historied = if args[5] == unsafe { api(runtime) }.trueObj {
+        true
+    } else if args[5] == unsafe { api(runtime) }.falseObj {
+        false
+    } else {
+        abort("image fact historied bit was not Boolean");
+    };
+    unsafe { state_mut(self_object) }.facts.push(Fact {
+        e: args[0],
+        a: args[1],
+        v: args[2],
+        tx,
+        op,
+        historied,
+        mirror: false,
     });
     self_object
 }
@@ -726,6 +978,36 @@ unsafe extern "C" fn image_load_end(
     let state = unsafe { state_mut(self_object) };
     state.tx = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
     state.raw = args[1] == unsafe { api(runtime) }.trueObj;
+    state.transitions_since_compaction = 0;
+    self_object
+}
+
+unsafe extern "C" fn image_load_end_v6(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let args = unsafe { core::slice::from_raw_parts(args, 5) };
+    let tx = unsafe { (api(runtime).smallIntValue)(args[0]) };
+    let oldest = unsafe { (api(runtime).smallIntValue)(args[2]) };
+    let policy = unsafe { (api(runtime).smallIntValue)(args[3]) };
+    let argument = unsafe { (api(runtime).smallIntValue)(args[4]) };
+    if tx < 0 || oldest < 0 || oldest > tx || argument < 0 {
+        abort("image-v6 Store retention metadata was invalid");
+    }
+    let retention = match policy {
+        0 if argument == 0 => RetentionPolicy::CurrentOnly,
+        1 if argument <= tx => RetentionPolicy::KeepSince(argument as u64),
+        2 => RetentionPolicy::KeepLast(argument as u64),
+        _ => abort("image-v6 Store retention policy was invalid"),
+    };
+    let state = unsafe { state_mut(self_object) };
+    state.tx = tx as u64;
+    state.raw = args[1] == unsafe { api(runtime) }.trueObj;
+    state.oldest_retained_basis = oldest as u64;
+    state.retention = retention;
+    state.transitions_since_compaction = 0;
     self_object
 }
 
@@ -888,6 +1170,163 @@ unsafe extern "C" fn basis(
     unsafe { (api(runtime).mkSmallInt)(tx as i64) }
 }
 
+unsafe extern "C" fn oldest_retained_basis(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let basis = unsafe { state_mut(self_object) }.oldest_retained_basis;
+    unsafe { (api(runtime).mkSmallInt)(basis as i64) }
+}
+
+unsafe extern "C" fn retained_fact_count(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let count = unsafe { state_mut(self_object) }.facts.len();
+    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+}
+
+unsafe extern "C" fn retained_fact_bytes(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let bytes = semantic_fact_count(unsafe { state_mut(self_object) }) * size_of::<Fact>();
+    unsafe { (api(runtime).mkSmallInt)(bytes as i64) }
+}
+
+unsafe extern "C" fn reserved_compensation_fact_count_method(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let count = reserved_compensation_fact_count(unsafe { state_mut(self_object) });
+    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+}
+
+unsafe extern "C" fn reserved_compensation_fact_bytes(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let bytes = reserved_compensation_fact_count(unsafe { state_mut(self_object) })
+        .saturating_mul(size_of::<Fact>());
+    unsafe { (api(runtime).mkSmallInt)(bytes as i64) }
+}
+
+unsafe extern "C" fn fact_bytes_limit(
+    _self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    unsafe { (api(runtime).mkSmallInt)(runtime.fact_bytes_limit as i64) }
+}
+
+unsafe extern "C" fn fact_record_bytes(
+    _self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    unsafe { (api(runtime).mkSmallInt)(size_of::<Fact>() as i64) }
+}
+
+unsafe extern "C" fn retention_policy_code(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let code = match unsafe { state_mut(self_object) }.retention {
+        RetentionPolicy::CurrentOnly => 0,
+        RetentionPolicy::KeepSince(_) => 1,
+        RetentionPolicy::KeepLast(_) => 2,
+    };
+    unsafe { (api(runtime).mkSmallInt)(code) }
+}
+
+unsafe extern "C" fn retention_policy_argument(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let argument = match unsafe { state_mut(self_object) }.retention {
+        RetentionPolicy::CurrentOnly => 0,
+        RetentionPolicy::KeepSince(value) | RetentionPolicy::KeepLast(value) => value,
+    };
+    unsafe { (api(runtime).mkSmallInt)(argument as i64) }
+}
+
+unsafe extern "C" fn retain_current_only(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    unsafe { state_mut(self_object) }.retention = RetentionPolicy::CurrentOnly;
+    self_object
+}
+
+unsafe extern "C" fn retain_since(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let candidate = unsafe { (api(runtime).smallIntValue)(*args) };
+    let state = unsafe { state_mut(self_object) };
+    if candidate < 0
+        || (candidate as u64) > state.tx
+        || (candidate as u64) < state.oldest_retained_basis
+    {
+        return history_not_retained_error(runtime);
+    }
+    state.retention = RetentionPolicy::KeepSince(candidate as u64);
+    self_object
+}
+
+unsafe extern "C" fn retain_last(
+    self_object: birnam_abi::Oop,
+    args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let count = unsafe { (api(runtime).smallIntValue)(*args) };
+    if count < 0 {
+        return history_not_retained_error(runtime);
+    }
+    unsafe { state_mut(self_object) }.retention = RetentionPolicy::KeepLast(count as u64);
+    self_object
+}
+
+unsafe extern "C" fn compact(
+    self_object: birnam_abi::Oop,
+    _args: *const birnam_abi::Oop,
+    _count: usize,
+) -> birnam_abi::Oop {
+    let runtime = runtime();
+    let result = compact_state(
+        unsafe { state_mut(self_object) },
+        as_oop(runtime.cardinality),
+        as_oop(runtime.history),
+        as_oop(runtime.true_value),
+        as_oop(runtime.one),
+        as_oop(runtime.many),
+    );
+    match result {
+        Ok(_) => self_object,
+        Err(CompactError::Allocation) => mop_error(runtime, b"historyCompactionResourceLimit\0"),
+    }
+}
+
 fn history_not_retained_error(runtime: &Runtime) -> birnam_abi::Oop {
     let api = unsafe { api(runtime) };
     let error = unsafe { import(api, b"Error\0") };
@@ -901,6 +1340,43 @@ fn history_not_retained_error(runtime: &Runtime) -> birnam_abi::Oop {
     unsafe { (api.send)(error, selector, arguments.as_ptr(), arguments.len()) }
 }
 
+fn relation_history_available(
+    state: &StoreState,
+    entity: birnam_abi::Oop,
+    attribute: birnam_abi::Oop,
+    basis: u64,
+    history_attribute: birnam_abi::Oop,
+    true_value: birnam_abi::Oop,
+) -> bool {
+    if basis < state.oldest_retained_basis {
+        return false;
+    }
+    if basis >= state.tx {
+        return true;
+    }
+    for (index, fact) in state.facts.iter().enumerate() {
+        if fact.historied
+            || !same(fact.e, entity)
+            || !same(fact.a, attribute)
+            || fact.tx < state.oldest_retained_basis
+        {
+            continue;
+        }
+        let recovery = state.facts.iter().skip(index + 1).find(|later| {
+            (later.historied && same(later.e, entity) && same(later.a, attribute))
+                || (later.historied
+                    && same(later.e, attribute)
+                    && same(later.a, history_attribute)
+                    && same(later.v, true_value)
+                    && later.op == Op::Assert)
+        });
+        if recovery.is_none_or(|later| basis <= later.tx) {
+            return false;
+        }
+    }
+    true
+}
+
 unsafe extern "C" fn value_of_as_of(
     self_object: birnam_abi::Oop,
     args: *const birnam_abi::Oop,
@@ -911,6 +1387,16 @@ unsafe extern "C" fn value_of_as_of(
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
     let basis = unsafe { (api(runtime).smallIntValue)(args[2]) } as u64;
     let state = unsafe { state_mut(self_object) };
+    if !relation_history_available(
+        state,
+        args[0],
+        args[1],
+        basis,
+        as_oop(runtime.history),
+        unsafe { api(runtime) }.trueObj,
+    ) {
+        return history_not_retained_error(runtime);
+    }
     let value = current_value_raw_as_of(state, args[0], args[1], Some(basis));
     if !value.is_null() {
         return value;
@@ -953,6 +1439,297 @@ fn cardinality_as_of(
     } else {
         value
     }
+}
+
+fn cardinality_as_of_values(
+    state: &StoreState,
+    attribute: birnam_abi::Oop,
+    hi: Option<u64>,
+    cardinality_attribute: birnam_abi::Oop,
+    one: birnam_abi::Oop,
+) -> birnam_abi::Oop {
+    let value = current_value_raw_as_of(state, attribute, cardinality_attribute, hi);
+    if value.is_null() { one } else { value }
+}
+
+fn same_stream(a: &Fact, b: &Fact, many: bool) -> bool {
+    same(a.e, b.e) && same(a.a, b.a) && (!many || same(a.v, b.v))
+}
+
+fn latest_stream_index(state: &StoreState, candidate: usize, hi: Option<u64>, many: bool) -> bool {
+    let fact = &state.facts[candidate];
+    !state
+        .facts
+        .iter()
+        .enumerate()
+        .skip(candidate + 1)
+        .any(|(_, later)| visible(later, hi) && same_stream(fact, later, many))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CompactError {
+    Allocation,
+}
+
+fn requested_retention_floor(state: &StoreState) -> u64 {
+    let requested = match state.retention {
+        RetentionPolicy::CurrentOnly => state.tx,
+        RetentionPolicy::KeepSince(basis) => basis.min(state.tx),
+        RetentionPolicy::KeepLast(count) => state.tx.saturating_sub(count),
+    };
+    requested.max(state.oldest_retained_basis)
+}
+
+fn compact_state(
+    state: &mut StoreState,
+    cardinality_attribute: birnam_abi::Oop,
+    history_attribute: birnam_abi::Oop,
+    true_value: birnam_abi::Oop,
+    one: birnam_abi::Oop,
+    many_value: birnam_abi::Oop,
+) -> Result<usize, CompactError> {
+    let floor = requested_retention_floor(state);
+    let mut keep = Vec::new();
+    keep.try_reserve_exact(state.facts.len())
+        .map_err(|_| CompactError::Allocation)?;
+    keep.resize(state.facts.len(), false);
+
+    // Retained history is prospective: only transitions committed while the
+    // relation was historied belong to the exact suffix.
+    for (index, fact) in state.facts.iter().enumerate() {
+        if fact.mirror || (fact.historied && fact.tx >= floor) {
+            keep[index] = true;
+        }
+    }
+
+    // A history-disabled interval remains an explicit unavailable interval.
+    // Preserve its final projection until a retained history-enable boundary
+    // or later historied transition makes that projection an exact baseline.
+    for (index, fact) in state.facts.iter().enumerate() {
+        if fact.historied || fact.tx < floor {
+            continue;
+        }
+        let has_retained_recovery = state.facts.iter().enumerate().any(|(later_index, later)| {
+            later_index > index
+                && keep[later_index]
+                && (same(later.e, fact.e) && same(later.a, fact.a)
+                    || (same(later.e, fact.a)
+                        && same(later.a, history_attribute)
+                        && same(later.v, true_value)
+                        && later.op == Op::Assert))
+        });
+        if has_retained_recovery {
+            keep[index] = true;
+        }
+    }
+
+    // Seed the first retained basis with the state immediately before it.
+    // An absent stream needs no tombstone because no older assertion survives.
+    for (index, fact) in state.facts.iter().enumerate() {
+        if fact.tx >= floor || fact.op != Op::Assert {
+            continue;
+        }
+        let cardinality =
+            cardinality_as_of_values(state, fact.a, Some(floor), cardinality_attribute, one);
+        let is_many = cardinality == many_value;
+        if latest_stream_index(state, index, Some(floor), is_many) {
+            keep[index] = true;
+        }
+    }
+
+    // Preserve the current projection. A tombstone is only necessary when it
+    // shadows an assertion retained by the two passes above.
+    for (index, fact) in state.facts.iter().enumerate() {
+        let cardinality = cardinality_as_of_values(state, fact.a, None, cardinality_attribute, one);
+        let is_many = cardinality == many_value;
+        if !latest_stream_index(state, index, None, is_many) {
+            continue;
+        }
+        if fact.op == Op::Assert
+            || state.facts.iter().enumerate().any(|(prior_index, prior)| {
+                prior_index < index
+                    && keep[prior_index]
+                    && prior.op == Op::Assert
+                    && same_stream(fact, prior, is_many)
+            })
+        {
+            keep[index] = true;
+        }
+    }
+
+    let retained = keep.iter().filter(|selected| **selected).count();
+    let mut replacement = Vec::new();
+    replacement
+        .try_reserve_exact(retained)
+        .map_err(|_| CompactError::Allocation)?;
+    replacement.extend(
+        state
+            .facts
+            .iter()
+            .zip(keep)
+            .filter_map(|(fact, selected)| selected.then_some(*fact)),
+    );
+
+    let dropped = state.facts.len() - replacement.len();
+    state.facts = replacement;
+    state.oldest_retained_basis = floor;
+    state.transitions_since_compaction = 0;
+    Ok(dropped)
+}
+
+fn semantic_fact_count(state: &StoreState) -> usize {
+    state.facts.iter().filter(|fact| !fact.mirror).count()
+}
+
+fn reserved_compensation_fact_count(state: &StoreState) -> usize {
+    state
+        .compensation_reservations
+        .iter()
+        .fold(0usize, |total, reservation| {
+            total.saturating_add(reservation.facts)
+        })
+}
+
+fn prepare_fact_capacity(
+    runtime: &Runtime,
+    state: &mut StoreState,
+    additional_reserved: usize,
+    pending_appends: usize,
+) -> Result<(), CompactError> {
+    let max_facts = runtime.fact_bytes_limit / size_of::<Fact>();
+    let requested = semantic_fact_count(state)
+        .saturating_add(reserved_compensation_fact_count(state))
+        .saturating_add(additional_reserved)
+        .saturating_add(pending_appends);
+    let at_growth_gate = state.transitions_since_compaction >= runtime.compaction_transitions;
+    if at_growth_gate || requested > max_facts {
+        compact_state(
+            state,
+            as_oop(runtime.cardinality),
+            as_oop(runtime.history),
+            as_oop(runtime.true_value),
+            as_oop(runtime.one),
+            as_oop(runtime.many),
+        )?;
+    }
+    let requested = semantic_fact_count(state)
+        .saturating_add(reserved_compensation_fact_count(state))
+        .saturating_add(additional_reserved)
+        .saturating_add(pending_appends);
+    (requested <= max_facts)
+        .then_some(())
+        .ok_or(CompactError::Allocation)
+}
+
+fn prepare_semantic_mutation(
+    runtime: &Runtime,
+    state: &mut StoreState,
+    needs_append: bool,
+) -> Result<(), CompactError> {
+    prepare_fact_capacity(runtime, state, 0, usize::from(needs_append))
+}
+
+fn reserve_compensation_in(
+    runtime: &Runtime,
+    state: &mut StoreState,
+    owner: usize,
+    facts: usize,
+) -> Result<(), CompactError> {
+    if owner == 0 || facts == 0 {
+        return Err(CompactError::Allocation);
+    }
+    // A reservation is made immediately before its candidate-owned write. In
+    // addition to the compensation records, retain capacity for that forward
+    // transition itself.
+    prepare_fact_capacity(runtime, state, facts, 1)?;
+    if let Some(reservation) = state
+        .compensation_reservations
+        .iter_mut()
+        .find(|reservation| reservation.owner == owner)
+    {
+        let Some(total) = reservation.facts.checked_add(facts) else {
+            return Err(CompactError::Allocation);
+        };
+        reservation.facts = total;
+    } else {
+        state
+            .compensation_reservations
+            .try_reserve(1)
+            .map_err(|_| CompactError::Allocation)?;
+        state
+            .compensation_reservations
+            .push(CompensationReservation { owner, facts });
+    }
+    Ok(())
+}
+
+fn consume_compensation_in(state: &mut StoreState, owner: usize, facts: usize) -> bool {
+    if owner == 0 || facts == 0 {
+        return false;
+    }
+    let Some(index) = state
+        .compensation_reservations
+        .iter()
+        .position(|reservation| reservation.owner == owner)
+    else {
+        return false;
+    };
+    if state.compensation_reservations[index].facts < facts {
+        return false;
+    }
+    state.compensation_reservations[index].facts -= facts;
+    if state.compensation_reservations[index].facts == 0 {
+        state.compensation_reservations.swap_remove(index);
+    }
+    true
+}
+
+unsafe extern "C" fn reserve_compensation(owner: usize, facts: usize) -> core::ffi::c_int {
+    let runtime = runtime();
+    let state = unsafe { state_mut(as_oop(runtime.store)) };
+    i32::from(reserve_compensation_in(runtime, state, owner, facts).is_ok())
+}
+
+unsafe extern "C" fn consume_compensation(owner: usize, facts: usize) -> core::ffi::c_int {
+    let state = unsafe { state_mut(as_oop(runtime().store)) };
+    i32::from(consume_compensation_in(state, owner, facts))
+}
+
+unsafe extern "C" fn release_compensation(owner: usize) -> usize {
+    let state = unsafe { state_mut(as_oop(runtime().store)) };
+    let Some(index) = state
+        .compensation_reservations
+        .iter()
+        .position(|reservation| reservation.owner == owner)
+    else {
+        return 0;
+    };
+    state.compensation_reservations.swap_remove(index).facts
+}
+
+unsafe extern "C" fn reserved_compensation(owner: usize) -> usize {
+    unsafe { state_mut(as_oop(runtime().store)) }
+        .compensation_reservations
+        .iter()
+        .find(|reservation| reservation.owner == owner)
+        .map_or(0, |reservation| reservation.facts)
+}
+
+static STORE_COMPENSATION_API_V1: StoreCompensationApiV1 = StoreCompensationApiV1 {
+    abi_version: 1,
+    byte_size: size_of::<StoreCompensationApiV1>(),
+    reserve: reserve_compensation,
+    consume: consume_compensation,
+    release: release_compensation,
+    reserved: reserved_compensation,
+};
+
+/// Private host-mediated Store/Codegen resource-reservation seam. This table
+/// is deliberately outside `IdApi`: source sends remain malleable while the
+/// retained-history ceiling and rollback guarantee stay runtime invariants.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_store_compensation_api_v1() -> *const c_void {
+    (&raw const STORE_COMPENSATION_API_V1).cast()
 }
 
 fn collect_live_triples(
@@ -1047,7 +1824,11 @@ unsafe extern "C" fn live_triples_as_of_do(
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
     let hi = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
-    let triples = collect_live_triples(runtime, unsafe { state_mut(self_object) }, None, Some(hi));
+    let state = unsafe { state_mut(self_object) };
+    if hi < state.oldest_retained_basis {
+        return history_not_retained_error(runtime);
+    }
+    let triples = collect_live_triples(runtime, state, None, Some(hi));
     unsafe { emit_live_triples(runtime, args[1], triples) };
     self_object
 }
@@ -1061,7 +1842,11 @@ unsafe extern "C" fn live_triples_since_do(
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
     let lo = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
-    let triples = collect_live_triples(runtime, unsafe { state_mut(self_object) }, Some(lo), None);
+    let state = unsafe { state_mut(self_object) };
+    if lo < state.oldest_retained_basis {
+        return history_not_retained_error(runtime);
+    }
+    let triples = collect_live_triples(runtime, state, Some(lo), None);
     unsafe { emit_live_triples(runtime, args[1], triples) };
     self_object
 }
@@ -1076,12 +1861,11 @@ unsafe extern "C" fn live_triples_between_and_do(
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
     let lo = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
     let hi = unsafe { (api(runtime).smallIntValue)(args[1]) } as u64;
-    let triples = collect_live_triples(
-        runtime,
-        unsafe { state_mut(self_object) },
-        Some(lo),
-        Some(hi),
-    );
+    let state = unsafe { state_mut(self_object) };
+    if lo < state.oldest_retained_basis || hi < state.oldest_retained_basis {
+        return history_not_retained_error(runtime);
+    }
+    let triples = collect_live_triples(runtime, state, Some(lo), Some(hi));
     unsafe { emit_live_triples(runtime, args[2], triples) };
     self_object
 }
@@ -1178,8 +1962,8 @@ unsafe extern "C" fn cell_set(
     let selector = unsafe { intern(api, b"assert:attr:value:\0") };
     let arguments = [entity, attribute, value];
     // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
-    unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
-    self_object
+    let result = unsafe { (api.send)(store, selector, arguments.as_ptr(), arguments.len()) };
+    if result == store { self_object } else { result }
 }
 
 unsafe extern "C" fn cell_history(
@@ -1260,7 +2044,7 @@ unsafe extern "C" fn globals_at_put(
     let selector = unsafe { intern(api, b"assert:attr:value:\0") };
     let arguments = [as_oop(runtime.globals_entity), args[0], args[1]];
     // SAFETY: selector and argument buffer match the frozen IdApi send ABI.
-    unsafe {
+    let result = unsafe {
         (api.send)(
             as_oop(runtime.store),
             selector,
@@ -1268,7 +2052,11 @@ unsafe extern "C" fn globals_at_put(
             arguments.len(),
         )
     };
-    args[1]
+    if result == as_oop(runtime.store) {
+        args[1]
+    } else {
+        result
+    }
 }
 
 unsafe extern "C" fn globals_includes(
@@ -1310,6 +2098,25 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"history:attr:\0", history),
         (b"retract:attr:value:\0", retract),
         (b"basis\0", basis),
+        (b"oldestRetainedBasis\0", oldest_retained_basis),
+        (b"retainedFactCount\0", retained_fact_count),
+        (b"retainedFactBytes\0", retained_fact_bytes),
+        (
+            b"reservedCompensationFactCount\0",
+            reserved_compensation_fact_count_method,
+        ),
+        (
+            b"reservedCompensationFactBytes\0",
+            reserved_compensation_fact_bytes,
+        ),
+        (b"factBytesLimit\0", fact_bytes_limit),
+        (b"factRecordBytes\0", fact_record_bytes),
+        (b"retentionPolicyCode\0", retention_policy_code),
+        (b"retentionPolicyArgument\0", retention_policy_argument),
+        (b"retainCurrentOnly\0", retain_current_only),
+        (b"retainSince:\0", retain_since),
+        (b"retainLast:\0", retain_last),
+        (b"compact\0", compact),
         (b"valueOf:attr:asOf:\0", value_of_as_of),
         (b"liveTriplesDo:\0", live_triples_do),
         (b"liveTriplesAsOf:do:\0", live_triples_as_of_do),
@@ -1319,7 +2126,15 @@ unsafe fn register_methods(runtime: &Runtime) {
         (b"imageFactsInto:\0", image_facts_into),
         (b"imageLoadBegin\0", image_load_begin),
         (b"imageAddFact:attr:value:tx:op:\0", image_add_fact),
+        (
+            b"imageAddFact:attr:value:tx:op:historied:\0",
+            image_add_fact_historied,
+        ),
         (b"imageLoadEnd:raw:\0", image_load_end),
+        (
+            b"imageLoadEnd:raw:oldest:policy:argument:\0",
+            image_load_end_v6,
+        ),
         (b"new\0", new_store),
         (b"cellFor:attr:\0", cell_for),
         (b"addMethod:on:with:\0", tracked_add_method),
@@ -1420,6 +2235,15 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let history = unsafe { intern(api, b"history\0") };
         let primitive = unsafe { intern(api, b"primitive\0") };
         let globals_entity = unsafe { intern(api, b"__globals__\0") };
+        let compaction_transitions = positive_config(
+            "BIRNAM_STORE_COMPACTION_TRANSITIONS",
+            DEFAULT_COMPACTION_TRANSITIONS as usize,
+        ) as u64;
+        let fact_bytes_limit =
+            positive_config("BIRNAM_STORE_FACT_BYTES_LIMIT", DEFAULT_FACT_BYTES_LIMIT);
+        if fact_bytes_limit < size_of::<Fact>() * 4 {
+            abort("BIRNAM_STORE_FACT_BYTES_LIMIT is too small for bootstrap state");
+        }
         Runtime {
             api: api_pointer as usize,
             store_vt: oop_address(store_vt),
@@ -1433,6 +2257,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             history: oop_address(history),
             primitive: oop_address(primitive),
             globals_entity: oop_address(globals_entity),
+            true_value: oop_address(api.trueObj),
+            compaction_transitions,
+            fact_bytes_limit,
         }
     });
     unsafe {
@@ -1469,6 +2296,12 @@ pub extern "C" fn birnam_store_rust_identity() -> *const c_char {
     RUST_STORE_IDENTITY.as_ptr().cast()
 }
 
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
+}
+
 /// Initialize the Rust Store module against the one process-owned IdApi table.
 ///
 /// # Safety
@@ -1486,8 +2319,57 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 #[cfg(test)]
 mod tests {
-    use super::{RUST_STORE_IDENTITY, birnam_store_rust_identity};
+    use super::{
+        Fact, Op, RUST_STORE_IDENTITY, RetentionPolicy, Runtime, StoreState, append_fact,
+        birnam_store_rust_identity, compact_state, consume_compensation_in,
+        current_value_raw_as_of, prepare_semantic_mutation, record_projection_one,
+        relation_history_available, reserve_compensation_in, reserved_compensation_fact_count,
+    };
+    use birnam_abi::Oop;
+    use core::ptr;
     use std::ffi::CStr;
+
+    fn oop(value: usize) -> Oop {
+        value as Oop
+    }
+
+    const CARDINALITY: usize = 10;
+    const HISTORY: usize = 11;
+    const ONE: usize = 12;
+    const MANY: usize = 13;
+    const TRUE: usize = 14;
+
+    fn compact(state: &mut StoreState) -> usize {
+        compact_state(
+            state,
+            oop(CARDINALITY),
+            oop(HISTORY),
+            oop(TRUE),
+            oop(ONE),
+            oop(MANY),
+        )
+        .unwrap()
+    }
+
+    fn test_runtime(compaction_transitions: u64, fact_bytes_limit: usize) -> Runtime {
+        Runtime {
+            api: 0,
+            store_vt: 0,
+            store: 0,
+            cell_vt: 0,
+            globals_vt: 0,
+            globals: 0,
+            cardinality: CARDINALITY,
+            one: ONE,
+            many: MANY,
+            history: HISTORY,
+            primitive: 0,
+            globals_entity: 0,
+            true_value: TRUE,
+            compaction_transitions,
+            fact_bytes_limit,
+        }
+    }
 
     #[test]
     fn core_identity_is_a_terminated_static_string() {
@@ -1495,5 +2377,184 @@ mod tests {
         // static for the process lifetime.
         let identity = unsafe { CStr::from_ptr(birnam_store_rust_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), RUST_STORE_IDENTITY);
+    }
+
+    #[test]
+    fn nonhistoried_projection_shadows_but_does_not_destroy_predecessor() {
+        let mut state = StoreState::new();
+        let runtime = test_runtime(u64::MAX, usize::MAX);
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, true);
+        record_projection_one(&runtime, &mut state, oop(20), oop(21), oop(31), Op::Assert).unwrap();
+        record_projection_one(&runtime, &mut state, oop(20), oop(21), oop(32), Op::Assert).unwrap();
+
+        assert_eq!(state.facts.len(), 2);
+        assert!(state.facts[0].historied);
+        assert!(!state.facts[1].historied);
+        assert_eq!(state.facts[1].v, oop(32));
+        assert_eq!(state.facts[1].tx, 2);
+        assert_eq!(
+            current_value_raw_as_of(&state, oop(20), oop(21), None),
+            oop(32)
+        );
+    }
+
+    #[test]
+    fn current_only_compaction_keeps_only_current_asserted_projection() {
+        let mut state = StoreState::new();
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, true);
+        append_fact(&mut state, oop(20), oop(21), oop(31), Op::Assert, true);
+        append_fact(&mut state, oop(22), oop(21), oop(32), Op::Assert, true);
+        append_fact(&mut state, oop(22), oop(21), oop(32), Op::Retract, true);
+
+        assert_eq!(compact(&mut state), 3);
+        assert_eq!(state.oldest_retained_basis, 4);
+        assert_eq!(state.facts.len(), 1);
+        assert_eq!(state.facts[0].v, oop(31));
+        assert_eq!(
+            current_value_raw_as_of(&state, oop(22), oop(21), None),
+            ptr::null_mut()
+        );
+    }
+
+    #[test]
+    fn keep_since_preserves_baseline_and_exact_historied_suffix() {
+        let mut state = StoreState::new();
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, true);
+        append_fact(&mut state, oop(20), oop(21), oop(31), Op::Assert, true);
+        append_fact(&mut state, oop(20), oop(21), oop(31), Op::Retract, true);
+        append_fact(&mut state, oop(20), oop(21), oop(32), Op::Assert, true);
+        state.retention = RetentionPolicy::KeepSince(2);
+
+        assert_eq!(compact(&mut state), 1);
+        assert_eq!(state.oldest_retained_basis, 2);
+        assert_eq!(
+            state.facts.iter().map(|fact| fact.tx).collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
+        assert_eq!(
+            current_value_raw_as_of(&state, oop(20), oop(21), Some(2)),
+            oop(31)
+        );
+        assert_eq!(
+            current_value_raw_as_of(&state, oop(20), oop(21), Some(3)),
+            ptr::null_mut()
+        );
+        assert_eq!(
+            current_value_raw_as_of(&state, oop(20), oop(21), Some(4)),
+            oop(32)
+        );
+    }
+
+    #[test]
+    fn prospective_history_keeps_an_unavailable_gap_until_reenabled() {
+        let mut state = StoreState::new();
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, true);
+        append_fact(&mut state, oop(20), oop(21), oop(31), Op::Assert, false);
+        append_fact(
+            &mut state,
+            oop(21),
+            oop(HISTORY),
+            oop(TRUE),
+            Op::Assert,
+            true,
+        );
+        append_fact(&mut state, oop(20), oop(21), oop(32), Op::Assert, true);
+        state.retention = RetentionPolicy::KeepSince(0);
+
+        assert_eq!(compact(&mut state), 0);
+        assert!(!relation_history_available(
+            &state,
+            oop(20),
+            oop(21),
+            2,
+            oop(HISTORY),
+            oop(TRUE)
+        ));
+        assert!(relation_history_available(
+            &state,
+            oop(20),
+            oop(21),
+            3,
+            oop(HISTORY),
+            oop(TRUE)
+        ));
+    }
+
+    #[test]
+    fn fact_carries_commit_time_history_status() {
+        assert!(core::mem::size_of::<Fact>() >= core::mem::size_of::<[usize; 3]>() + 10);
+    }
+
+    #[test]
+    fn growth_gate_keeps_current_only_history_at_a_plateau() {
+        let mut state = StoreState::new();
+        let runtime = test_runtime(8, core::mem::size_of::<Fact>() * 32);
+        for value in 0..10_000usize {
+            prepare_semantic_mutation(&runtime, &mut state, true).unwrap();
+            append_fact(
+                &mut state,
+                oop(20),
+                oop(21),
+                oop(100 + value),
+                Op::Assert,
+                true,
+            );
+        }
+        // One baseline plus at most one trigger window of transitions.
+        assert!(
+            state.facts.len() <= 9,
+            "retained {} facts",
+            state.facts.len()
+        );
+        assert!(state.oldest_retained_basis >= 9_992);
+        assert_eq!(
+            current_value_raw_as_of(&state, oop(20), oop(21), None),
+            oop(10_099)
+        );
+    }
+
+    #[test]
+    fn fixed_retention_floor_rejects_before_crossing_fact_ceiling() {
+        let mut state = StoreState::new();
+        let runtime = test_runtime(u64::MAX, core::mem::size_of::<Fact>() * 4);
+        state.retention = RetentionPolicy::KeepSince(0);
+        for value in 0..4usize {
+            prepare_semantic_mutation(&runtime, &mut state, true).unwrap();
+            append_fact(
+                &mut state,
+                oop(20),
+                oop(21),
+                oop(100 + value),
+                Op::Assert,
+                true,
+            );
+        }
+        let basis = state.tx;
+        assert!(prepare_semantic_mutation(&runtime, &mut state, true).is_err());
+        assert_eq!(state.tx, basis);
+        assert_eq!(state.facts.len(), 4);
+    }
+
+    #[test]
+    fn compensation_reservation_charges_rollback_and_forward_capacity() {
+        let mut state = StoreState::new();
+        let runtime = test_runtime(u64::MAX, core::mem::size_of::<Fact>() * 4);
+        state.retention = RetentionPolicy::KeepSince(0);
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, true);
+
+        reserve_compensation_in(&runtime, &mut state, 7, 2).unwrap();
+        assert_eq!(reserved_compensation_fact_count(&state), 2);
+        prepare_semantic_mutation(&runtime, &mut state, true).unwrap();
+        append_fact(&mut state, oop(20), oop(21), oop(31), Op::Assert, true);
+
+        // Two retained facts plus two rollback slots exhaust the four-fact
+        // ceiling. A second candidate-owned forward write cannot begin.
+        assert!(reserve_compensation_in(&runtime, &mut state, 7, 2).is_err());
+        assert_eq!(reserved_compensation_fact_count(&state), 2);
+
+        assert!(consume_compensation_in(&mut state, 7, 1));
+        prepare_semantic_mutation(&runtime, &mut state, true).unwrap();
+        append_fact(&mut state, oop(20), oop(21), oop(30), Op::Assert, true);
+        assert_eq!(reserved_compensation_fact_count(&state), 1);
     }
 }

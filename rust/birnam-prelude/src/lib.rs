@@ -730,7 +730,8 @@ unsafe extern "C" fn symbol_print_string(self_object: Oop, _args: *const Oop, co
     if name.is_null() {
         return api.nilObj;
     }
-    // SAFETY: symbolName returns a process-owned NUL-terminated symbol name.
+    // SAFETY: self_object remains rooted for this active send; copy its
+    // borrowed name before mkString can allocate or collect.
     let name = unsafe { CStr::from_ptr(name) }.to_bytes();
     let mut rendered = Vec::with_capacity(name.len().saturating_add(1));
     rendered.push(b'#');
@@ -1535,6 +1536,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_prelude_rust_identity() -> *const c_char {
     RUST_PRELUDE_IDENTITY.as_ptr().cast()
+}
+
+/// This module copies or synchronously consumes every borrowed Symbol name.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 /// Initialize the Rust prelude against the selected floor's IdApi.

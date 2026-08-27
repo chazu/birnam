@@ -6,9 +6,14 @@
 //! any Birnam value.
 
 pub mod candidate;
+pub mod code_binding_inventory;
 pub mod frame_descriptor;
+pub mod materialization_selection;
 #[cfg(feature = "module")]
 mod module;
+pub mod portable_inventory;
+pub mod portable_program;
+pub mod portable_resumable_manifest;
 pub mod resumable_manifest;
 pub mod stackless_selection;
 

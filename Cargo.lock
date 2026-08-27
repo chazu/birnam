@@ -42,6 +42,7 @@ name = "birnam-codegen-runtime"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+ "birnam-artifact",
  "birnam-artifact-codec",
  "birnam-codegen",
  "birnam-image-codec",
@@ -118,6 +119,15 @@ name = "birnam-peg"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+]
+
+[[package]]
+name = "birnam-portable-code"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-artifact",
+ "sha2",
 ]
 
 [[package]]

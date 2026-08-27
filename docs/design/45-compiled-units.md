@@ -7,6 +7,12 @@
 > refines [40 — The Image](40-the-image.md), [42 — Object Canonical](42-object-canonical-relational-derived.md),
 > and [43 — Modules](43-modules-and-config.md).
 
+> **Image-format amendment (2026-08-25):** The v4 sections below describe the
+> former single-generation authority contract. Current runtimes admit v5 and
+> later and deliberately provide no v4 compatibility reader. The authority
+> ordering remains current; v4 wire-format and boot-compatibility claims are
+> historical.
+
 ## The authority order
 
 Birnam is simultaneously live and native. Those are not competing modes:

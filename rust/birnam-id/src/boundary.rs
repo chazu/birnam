@@ -11,6 +11,15 @@ pub(crate) fn fatal_invariant(message: &str) -> ! {
     std::process::abort()
 }
 
+/// Terminate after crossing an explicitly configured compatibility ceiling.
+/// The frozen IdApi intern operation has no recoverable error carrier, so a
+/// deterministic resource diagnostic is safer than returning an invalid Oop.
+#[cold]
+pub(crate) fn fatal_resource_limit(message: &str) -> ! {
+    eprintln!("birnam-id resource limit exceeded: {message}");
+    std::process::abort()
+}
+
 /// Enforce an exported-boundary invariant without creating an unwind path.
 pub(crate) fn require_invariant(condition: bool, message: &str) {
     if !condition {

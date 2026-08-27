@@ -47,11 +47,11 @@ struct VtableRecord {
     logical_capacity: usize,
     keys: Vec<Oop>,
     values: Vec<Oop>,
+    weak_keys: Vec<bool>,
     parent: Oop,
     owner: Oop,
     trace_hook: Option<TraceHook>,
-    layout_kinds: *const u8,
-    layout_n: usize,
+    layout_kinds: Box<[u8]>,
     layout_rest: u8,
     layout_set: bool,
 }
@@ -75,8 +75,12 @@ impl VtableRecord {
         };
         raw.parent = self.parent;
         raw.trace_hook = self.trace_hook;
-        raw.layout_kinds = self.layout_kinds;
-        raw.layout_n = self.layout_n;
+        raw.layout_kinds = if self.layout_kinds.is_empty() {
+            core::ptr::null()
+        } else {
+            self.layout_kinds.as_ptr()
+        };
+        raw.layout_n = self.layout_kinds.len();
         raw.layout_rest = self.layout_rest;
         raw.layout_set = u8::from(self.layout_set);
         raw.owner = self.owner;
@@ -92,6 +96,8 @@ impl VtableRecord {
         };
         self.keys.reserve_exact(next_capacity - self.keys.len());
         self.values.reserve_exact(next_capacity - self.values.len());
+        self.weak_keys
+            .reserve_exact(next_capacity - self.weak_keys.len());
         self.logical_capacity = next_capacity;
     }
 }
@@ -117,11 +123,30 @@ impl Vtables {
     }
 
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
+        self.create_with_permanence(heap, parent, metavtable, Permanence::Permanent)
+    }
+
+    pub(crate) fn create_collectable(
+        &mut self,
+        heap: &mut Heap,
+        parent: Oop,
+        metavtable: Oop,
+    ) -> Oop {
+        self.create_with_permanence(heap, parent, metavtable, Permanence::Collectable)
+    }
+
+    fn create_with_permanence(
+        &mut self,
+        heap: &mut Heap,
+        parent: Oop,
+        metavtable: Oop,
+        permanence: Permanence,
+    ) -> Oop {
         boundary::require_invariant(
             parent.is_null() || self.is_registered(parent),
             "vtable parent is not registered",
         );
-        let object = heap.allocate(size_of::<RawVtable>(), Permanence::Permanent);
+        let object = heap.allocate(size_of::<RawVtable>(), permanence);
         boundary::require_invariant(
             heap.set_vtable(object, metavtable),
             "new vtable block was not registered",
@@ -153,11 +178,11 @@ impl Vtables {
                 logical_capacity: 0,
                 keys: Vec::new(),
                 values: Vec::new(),
+                weak_keys: Vec::new(),
                 parent,
                 owner: core::ptr::null_mut(),
                 trace_hook: None,
-                layout_kinds: core::ptr::null(),
-                layout_n: 0,
+                layout_kinds: Box::new([]),
                 layout_rest: 0,
                 layout_set: false,
             },
@@ -169,6 +194,118 @@ impl Vtables {
 
     pub(crate) fn is_registered(&self, candidate: Oop) -> bool {
         !candidate.is_null() && self.by_address.contains_key(&candidate.addr())
+    }
+
+    pub(crate) fn is_registered_address(&self, address: usize) -> bool {
+        self.by_address.contains_key(&address)
+    }
+
+    pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {
+        let Some(record) = self.by_address.get(&vtable.addr()) else {
+            return Vec::new();
+        };
+        let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));
+        if !record.parent.is_null() {
+            edges.push(record.parent);
+        }
+        if !record.owner.is_null() {
+            edges.push(record.owner);
+        }
+        edges.extend(
+            record
+                .keys
+                .iter()
+                .copied()
+                .zip(record.weak_keys.iter().copied())
+                .filter_map(|(key, weak)| (!weak && !key.is_null()).then_some(key)),
+        );
+        edges
+    }
+
+    pub(crate) fn permanent_strong_edges(&self, heap: &Heap) -> Vec<Oop> {
+        self.ordered
+            .iter()
+            .copied()
+            .filter(|vtable| heap.permanence_of(*vtable) == Some(Permanence::Permanent))
+            .flat_map(|vtable| self.strong_edges(vtable))
+            .collect()
+    }
+
+    pub(crate) fn has_permanent_binding(&self, heap: &Heap, methods: &[MethodAddress]) -> bool {
+        self.ordered.iter().copied().any(|vtable| {
+            heap.permanence_of(vtable) == Some(Permanence::Permanent)
+                && self
+                    .record(vtable)
+                    .values
+                    .iter()
+                    .filter_map(|value| unsafe { MethodAddress::from_oop(*value) })
+                    .any(|method| methods.contains(&method))
+        })
+    }
+
+    pub(crate) fn dead_collectable_bindings(&self, heap: &Heap) -> Vec<(Oop, Vec<MethodAddress>)> {
+        self.ordered
+            .iter()
+            .copied()
+            .filter(|vtable| {
+                heap.permanence_of(*vtable) == Some(Permanence::Collectable)
+                    && heap.is_marked(*vtable) == Some(false)
+            })
+            .map(|vtable| {
+                let methods = self
+                    .record(vtable)
+                    .values
+                    .iter()
+                    .filter_map(|value| unsafe { MethodAddress::from_oop(*value) })
+                    .collect();
+                (vtable, methods)
+            })
+            .collect()
+    }
+
+    pub(crate) fn remove_dead_collectable(&mut self, heap: &Heap) -> Vec<Oop> {
+        let dead = self
+            .ordered
+            .iter()
+            .copied()
+            .filter(|vtable| {
+                heap.permanence_of(*vtable) == Some(Permanence::Collectable)
+                    && heap.is_marked(*vtable) == Some(false)
+            })
+            .collect::<Vec<_>>();
+        for vtable in &dead {
+            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| {
+                boundary::fatal_invariant("dead vtable registry record disappeared")
+            });
+        }
+        self.ordered.retain(|vtable| !dead.contains(vtable));
+        dead
+    }
+
+    /// Remove weak dictionary entries whose collectable key did not survive
+    /// the mark phase. This must run before either the Symbol registry or Heap
+    /// detaches the corresponding storage.
+    pub(crate) fn remove_dead_weak_bindings(&mut self, heap: &Heap) -> usize {
+        let mut removed = 0usize;
+        for record in self.by_address.values_mut() {
+            let mut index = 0usize;
+            while index < record.keys.len() {
+                let key = record.keys[index];
+                let dead = record.weak_keys[index]
+                    && heap.permanence_of(key) == Some(Permanence::Collectable)
+                    && heap.is_marked(key) == Some(false);
+                if dead {
+                    record.keys.remove(index);
+                    record.values.remove(index);
+                    record.weak_keys.remove(index);
+                    removed = removed.saturating_add(1);
+                } else {
+                    index += 1;
+                }
+            }
+            record.sync_raw_view();
+        }
+        removed
     }
 
     fn record(&self, vtable: Oop) -> &VtableRecord {
@@ -249,9 +386,18 @@ impl Vtables {
             count == 0 || !kinds.is_null(),
             "setLayout kinds is null with nonzero count",
         );
+        let owned = if count == 0 {
+            Box::new([])
+        } else {
+            // SAFETY: the caller supplies `count` readable bytes for this
+            // synchronous setter. The Runtime copies them before returning so
+            // the vtable never borrows storage from a reclaimable mapping.
+            unsafe { core::slice::from_raw_parts(kinds, count) }
+                .to_vec()
+                .into_boxed_slice()
+        };
         let record = self.record_mut(vtable);
-        record.layout_kinds = kinds;
-        record.layout_n = count;
+        record.layout_kinds = owned;
         record.layout_rest = rest;
         record.layout_set = true;
         record.sync_raw_view();
@@ -262,12 +408,10 @@ impl Vtables {
         if !record.layout_set {
             return SLOT_UNKNOWN;
         }
-        if word >= record.layout_n {
+        if word >= record.layout_kinds.len() {
             return record.layout_rest;
         }
-        // SAFETY: set_layout requires a non-null borrowed static array whenever
-        // layout_n is nonzero; the IdApi contract keeps it live with the vtable.
-        unsafe { record.layout_kinds.add(word).read() }
+        record.layout_kinds[word]
     }
 
     pub(crate) fn has_layout(&self, vtable: Oop) -> bool {
@@ -335,6 +479,7 @@ impl Vtables {
         }
         record.keys.push(selector);
         record.values.push(method.as_oop());
+        record.weak_keys.push(false);
         record.sync_raw_view();
         AddMethod::Added
     }
@@ -342,10 +487,11 @@ impl Vtables {
     /// Synchronize an opaque key/value pair used by the floor's internal symbol
     /// and export dictionaries. These registered vtables are observable through
     /// MOP enumeration but are never dispatch families.
-    pub(crate) fn add_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
+    pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
         let record = self.record_mut(vtable);
         if let Some(index) = record.keys.iter().position(|candidate| *candidate == key) {
             record.values[index] = value;
+            record.weak_keys[index] = true;
             record.sync_raw_view();
             return;
         }
@@ -354,6 +500,7 @@ impl Vtables {
         }
         record.keys.push(key);
         record.values.push(value);
+        record.weak_keys.push(true);
         record.sync_raw_view();
     }
 
@@ -365,6 +512,7 @@ impl Vtables {
             .position(|candidate| *candidate == selector)?;
         record.keys.remove(index);
         let removed = record.values.remove(index);
+        record.weak_keys.remove(index);
         record.sync_raw_view();
         // SAFETY: remove_method is used only for direct method dictionaries.
         unsafe { MethodAddress::from_oop(removed) }
@@ -479,6 +627,29 @@ mod tests {
     }
 
     #[test]
+    fn weak_opaque_keys_are_visible_but_neither_traced_nor_retained_after_marking() {
+        let (mut heap, mut vtables, _meta, parent, child) = new_hierarchy();
+        let weak_key = heap.allocate(0, Permanence::Collectable);
+        let strong_key = heap.allocate(0, Permanence::Collectable);
+        assert!(heap.set_vtable(weak_key, parent));
+        assert!(heap.set_vtable(strong_key, parent));
+
+        vtables.add_weak_opaque_binding(parent, weak_key, core::ptr::null_mut());
+        assert_eq!(
+            vtables.add_method(child, strong_key, answer_1),
+            AddMethod::Added
+        );
+        assert_eq!(vtables.selector_at(parent, 0), weak_key);
+        assert!(!vtables.strong_edges(parent).contains(&weak_key));
+        assert!(vtables.strong_edges(child).contains(&strong_key));
+
+        heap.clear_marks();
+        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 1);
+        assert!(vtables.selector_at(parent, 0).is_null());
+        assert_eq!(vtables.selector_at(child, 0), strong_key);
+    }
+
+    #[test]
     fn deep_delegation_and_large_dictionary_preserve_lookup_and_order() {
         let (mut heap, mut vtables, meta, root, _child) = new_hierarchy();
         let count = if cfg!(miri) { 128 } else { 4096 };
@@ -568,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn trace_hook_and_borrowed_layout_metadata_replace_in_place() {
+    fn trace_hook_and_runtime_owned_layout_metadata_replace_in_place() {
         let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
         static FIRST: [u8; 3] = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW, 9];
         static SECOND: [u8; 1] = [crate::abi::SLOT_CODE];
@@ -576,6 +747,10 @@ mod tests {
         assert_eq!(vtables.slot_kind(parent, 0), SLOT_UNKNOWN);
         vtables.set_trace_hook(parent, trace_hook);
         vtables.set_layout(parent, FIRST.as_ptr(), FIRST.len(), crate::abi::SLOT_RAW);
+        // SAFETY: the registered record and its raw view remain live in this
+        // vtable harness.
+        let first_pointer = unsafe { vtables.record(parent).raw.as_ref().layout_kinds };
+        assert_ne!(first_pointer, FIRST.as_ptr());
         assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_OOP);
         assert!(vtables.trace_hook(child).is_some());
         assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_RAW);
@@ -583,6 +758,10 @@ mod tests {
         assert_eq!(vtables.slot_kind(parent, 3), crate::abi::SLOT_RAW);
 
         vtables.set_layout(parent, SECOND.as_ptr(), SECOND.len(), crate::abi::SLOT_OOP);
+        // SAFETY: the registered record and its replacement raw view remain
+        // live in this vtable harness.
+        let second_pointer = unsafe { vtables.record(parent).raw.as_ref().layout_kinds };
+        assert_ne!(second_pointer, SECOND.as_ptr());
         assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_CODE);
         assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_OOP);
         assert_eq!(vtables.slot_kind(child, 0), SLOT_UNKNOWN);

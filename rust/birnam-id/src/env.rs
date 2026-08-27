@@ -45,10 +45,14 @@ impl Environment {
             .map_or(core::ptr::null_mut(), |entry| entry.name)
     }
 
-    /// Snapshot values that the process export namespace keeps live. Export
-    /// names are interned permanent Symbols and are rooted by the interner.
-    pub(crate) fn root_values(&self) -> Vec<Oop> {
-        self.ordered.iter().map(|entry| entry.value).collect()
+    /// Snapshot both halves of the process export authority. Names remain live
+    /// because import and reverse lookup depend on their Symbol identity;
+    /// values remain live because the namespace publishes them.
+    pub(crate) fn roots(&self) -> Vec<Oop> {
+        self.ordered
+            .iter()
+            .flat_map(|entry| [entry.name, entry.value])
+            .collect()
     }
 
     #[cfg(test)]

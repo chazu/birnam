@@ -1,0 +1,3 @@
+# length sha256 name recipe
+33554832 625d4b6a280a4fbd4843f33fc8327435c4b303c9d22c075daba4c1c7b5e37d25 program-max-bytes-section.bin two-16MiB-strings,total-bytes-section=32MiB
+20972144 cf19e42057b5f41c4df5aff50eeb10dead2f67a1d4362bd2a4b2715a5c076c2f program-max-individual-lengths.bin name=1MiB,string=16MiB,symbol=1MiB,global=1MiB,selector=1MiB

@@ -4,7 +4,15 @@
 //! It materializes the Rust PEG CST, lowers it through the pure Codegen core,
 //! and returns deterministic generated C without invoking TCC.
 
-use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
+use birnam_abi::{
+    IdApi, MarkFn, Method, Oop, PORTABLE_CODE_API_V1_VERSION, PORTABLE_CODE_API_V2_VERSION,
+    PORTABLE_PROGRAM_VIEW_API_V1_VERSION, PortableCodeApiV1, PortableCodeApiV2,
+    PortableProgramViewApiV1, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
+};
+use birnam_artifact::{
+    code_binding_inventory, materialization_selection, portable_inventory,
+    portable_resumable_manifest,
+};
 use birnam_artifact_codec::candidate::{
     CANDIDATE_ABI, CANDIDATE_MAGIC, CANDIDATE_PLATFORM, Manifest as CandidateManifest,
     ManifestVersion as CandidateManifestVersion, Operation as CandidateOperation,
@@ -23,13 +31,23 @@ use birnam_codegen::artifact_stackless_selection::{
     Disposition as CodegenDisposition, ImplementationKind as CodegenImplementationKind,
     RootKind as CodegenRootKind, SelectionSpec as CodegenSelectionSpec,
 };
+use birnam_codegen::portable_c::compile_synchronous_block_v1;
 use birnam_codegen::resumable::{
     ImplementationKey, InventoryImplementationKind, InventoryRootKind, implementation_inventory,
     resolve_block_implementation,
 };
-use birnam_codegen::resumable_block::compile_block_with_literals_v1;
-use birnam_codegen::resumable_c::{BlockLiteralDisposition, BlockLiteralSpec};
-use birnam_codegen::resumable_named::compile_named_adapter_v1;
+use birnam_codegen::resumable_block::{
+    compile_block_with_literals_v1, compile_portable_materialization_block_v1,
+};
+use birnam_codegen::resumable_c::{
+    BlockLiteralDisposition, BlockLiteralSpec, PortableBlockLiteralSpec,
+};
+use birnam_codegen::resumable_descriptor;
+use birnam_codegen::resumable_named::{
+    compile_named_adapter_v1, compile_portable_materialization_named_v1,
+};
+use birnam_codegen::resumable_registration_c;
+use birnam_codegen::resumable_resolver_c;
 use birnam_codegen::{
     BlockResumableEmission, CstNode, Emitter, LowerError, NamedResumableEmission, OwnedCst,
     Program, TranslationUnit, lower_program,
@@ -37,12 +55,13 @@ use birnam_codegen::{
 use birnam_image_codec::v5::{
     Facts, Field, Fields, Heap, Image, RecordKind, SlotKind, VtableLocator,
 };
+use birnam_image_codec::v6;
 use birnam_image_codec::{IMAGE_ARCH_TAG, runtime_abi_hash};
 use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{CStr, OsStr, OsString};
+use std::ffi::{CStr, CString, OsStr, OsString};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -71,6 +90,7 @@ const CANONICAL_REFLECT_NAME: &[u8] = b"Reflect\0";
 const CANONICAL_COLLECTOR_VT_NAME: &[u8] = b"ReflectFactCollectorVt\0";
 const DISCARD_RECEIPT_NAME: &[u8] = b"DiscardReceipt\0";
 const DISCARD_RECEIPT_VT_NAME: &[u8] = b"DiscardReceiptVt\0";
+const PORTABLE_MAPPED_UNIT_VT_NAME: &[u8] = b"_BirnamPortableMappedUnitVt\0";
 const LANG_NAME: &[u8] = b"Lang\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const GLOBALS_NAME: &[u8] = b"Globals\0";
@@ -149,6 +169,32 @@ const BEGIN_QUIESCENCE_SELECTOR: &[u8] = b"beginQuiescence\0";
 const END_QUIESCENCE_SELECTOR: &[u8] = b"endQuiescence\0";
 const RETAINED_GENERATION_COUNT_SELECTOR: &[u8] = b"retainedGenerationCount\0";
 const RETAINED_GENERATION_BYTES_SELECTOR: &[u8] = b"retainedGenerationBytes\0";
+const LIVE_VTABLE_COUNT_SELECTOR: &[u8] = b"liveVtableCount\0";
+const LIVE_SYMBOL_COUNT_SELECTOR: &[u8] = b"liveSymbolCount\0";
+const LIVE_SYMBOL_NAME_BYTES_SELECTOR: &[u8] = b"liveSymbolNameBytes\0";
+const LIVE_HEAP_BYTES_SELECTOR: &[u8] = b"liveHeapBytes\0";
+const MATERIALIZE_SYNCHRONOUS_SELECTOR: &[u8] = b"materializeSynchronous:captures:\0";
+const MATERIALIZE_RESUMABLE_SELECTOR: &[u8] = b"materializeResumable:captures:\0";
+const MATERIALIZATION_COUNT_SELECTOR: &[u8] = b"materializationCount\0";
+const EVICT_MATERIALIZATIONS_SELECTOR: &[u8] = b"evictMaterializations\0";
+const CURRENT_CODE_BINDING_COUNT_SELECTOR: &[u8] = b"currentCodeBindingCount\0";
+const RETIRING_CODE_BINDING_COUNT_SELECTOR: &[u8] = b"retiringCodeBindingCount\0";
+const CODE_BINDING_GENERATED_BYTES_SELECTOR: &[u8] = b"codeBindingGeneratedBytes\0";
+const REAP_CODE_BINDINGS_SELECTOR: &[u8] = b"reapCodeBindings\0";
+const PORTABLE_IMAGE_BINDINGS_SELECTOR: &[u8] = b"portableImageBindings\0";
+const COMPILE_PORTABLE_IMAGE_CODE_SELECTOR: &[u8] =
+    b"compilePortableImageCode:bindings:selection:\0";
+const BEGIN_PORTABLE_IMAGE_REBUILD_SELECTOR: &[u8] =
+    b"beginPortableImageRebuild:bindings:selection:\0";
+const BEGIN_PORTABLE_IMAGE_MAPPED_SELECTOR: &[u8] =
+    b"beginPortableImageMapped:programs:bindings:selection:\0";
+const PORTABLE_IMAGE_BLOCK_VTABLE_SELECTOR: &[u8] = b"portableImageBlockVtable:\0";
+const PREPARE_PORTABLE_IMAGE_BINDING_SELECTOR: &[u8] =
+    b"preparePortableImageBinding:implementation:\0";
+const FINISH_PORTABLE_IMAGE_UNIT_SELECTOR: &[u8] = b"finishPortableImageUnit\0";
+const CANCEL_PORTABLE_IMAGE_UNIT_SELECTOR: &[u8] = b"cancelPortableImageUnit\0";
+const INSTALL_PORTABLE_IMAGE_BINDING_SELECTOR: &[u8] =
+    b"installPortableImageBinding:on:as:source:\0";
 const LOAD_SELECTOR: &[u8] = b"load:\0";
 const LOAD_INITIAL_MODULE_SELECTOR: &[u8] = b"loadInitialModule:\0";
 const LOAD_HOST_CAPABILITY_SELECTOR: &[u8] = b"loadHostCapability:\0";
@@ -156,6 +202,7 @@ const TCC_COMPILE_OUTPUT_SELECTOR: &[u8] = b"compile:output:as:\0";
 const BIND_RUNTIME_SELECTOR: &[u8] = b"bindRuntime\0";
 const RELOCATE_SELECTOR: &[u8] = b"relocate\0";
 const DISPOSABLE_SELECTOR: &[u8] = b"disposable\0";
+const OWN_CODE_GENERATION_SELECTOR: &[u8] = b"ownCodeGeneration:\0";
 const SYMBOL_SELECTOR: &[u8] = b"symbol:\0";
 const ADD_SYMBOL_SELECTOR: &[u8] = b"addSymbol:value:\0";
 const GLOBAL_AT_SELECTOR: &[u8] = b"at:\0";
@@ -186,7 +233,6 @@ const ARTIFACT_TARGET: &[u8] = b"aarch64-macos";
 const ARTIFACT_DESCRIPTOR_MAGIC: &[u8] = b"BIRNAM-ARTIFACT-DESCRIPTOR-V1";
 const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IMAGE_PREFLIGHT_BYTES: u64 = 512 * 1024 * 1024;
-const REFLECT_METHOD_COUNTER_START: usize = 0;
 
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -200,6 +246,7 @@ struct Runtime {
     adapter_collector_vt: usize,
     discard_receipt_vt: usize,
     discard_receipt: usize,
+    portable_mapped_unit_vt: usize,
     tcc: usize,
     globals: usize,
     store: usize,
@@ -221,6 +268,10 @@ static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static CANDIDATE_ROOTS: Mutex<Vec<CandidateRoot>> = Mutex::new(Vec::new());
+static VTABLE_CACHE_ROOTS: Mutex<Vec<VtableCacheRoot>> = Mutex::new(Vec::new());
+static MATERIALIZATIONS: Mutex<Vec<MaterializationEntry>> = Mutex::new(Vec::new());
+static CODE_BINDINGS: Mutex<Vec<CodeBindingEntry>> = Mutex::new(Vec::new());
+static PORTABLE_IMAGE_STAGE: Mutex<Option<PortableImageStage>> = Mutex::new(None);
 static INITIALIZER_TRANSACTION: Mutex<Option<InitializerTransaction>> = Mutex::new(None);
 static RETAINED_GENERATIONS: Mutex<Vec<RetainedGeneration>> = Mutex::new(Vec::new());
 static MAPPED_IMAGE_RESUMABLES: Mutex<Option<MappedImageResumables>> = Mutex::new(None);
@@ -233,13 +284,60 @@ static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_PREFLIGHT: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static NEXT_CODE_GENERATION_LEASE: AtomicU64 = AtomicU64::new(1);
+static NEXT_MATERIALIZATION_NAMESPACE: AtomicU64 = AtomicU64::new(1);
+static NEXT_MATERIALIZATION_AGE: AtomicU64 = AtomicU64::new(1);
 static NEXT_PREPARED_TOKEN: AtomicU64 = AtomicU64::new(1);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
-static REFLECT_METHOD_COUNTER: AtomicUsize = AtomicUsize::new(REFLECT_METHOD_COUNTER_START);
-static METHOD_OP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static METHOD_OP_PRESENT: AtomicBool = AtomicBool::new(false);
+
+const MAX_MATERIALIZATION_CACHE_ENTRIES: usize = 64;
+const MAX_MATERIALIZATION_CACHE_PROGRAM_BYTES: usize = 64 << 20;
+const MAX_MATERIALIZATION_C_SOURCE_BYTES: usize = 128 << 20;
+const MAX_CURRENT_CODE_BINDINGS: usize = 262_144;
+
+struct MaterializationEntry {
+    disposition: MaterializationDisposition,
+    digest: [u8; 32],
+    program: Vec<u8>,
+    vtable: usize,
+    unit: usize,
+    generated_bytes: usize,
+    age: u64,
+    ready: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MaterializationDisposition {
+    Synchronous,
+    Resumable,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CodeBindingLifecycle {
+    Staging,
+    Current,
+    Retiring,
+}
+
+/// Process-local carrier for the current semantic method association and its
+/// physical NamedAdapter. Durable image-v7 meaning excludes `unit`,
+/// `generation`, `method`, and `lifecycle`; those fields only keep native code
+/// attributed until resolve-and-pin quiescence permits retirement.
+struct CodeBindingEntry {
+    target: usize,
+    vtable: usize,
+    selector: usize,
+    implementation: usize,
+    provenance: usize,
+    unit: usize,
+    generation: u64,
+    method: usize,
+    authority: [u8; 32],
+    generated_bytes: usize,
+    lifecycle: CodeBindingLifecycle,
+}
 
 fn canonical_exports_requested() -> bool {
     // The canonical dynamic name is the production Rust Codegen path after
@@ -288,6 +386,7 @@ struct CandidateState {
     prepared: usize,
     active: bool,
     installed_method_ever: bool,
+    all_installed_methods_resumable: bool,
     predecessor: usize,
     rollback_leases: Vec<StacklessGenerationLeaseV1>,
 }
@@ -296,7 +395,9 @@ struct RetainedGeneration {
     unit: usize,
     handle: usize,
     mapped_bytes: usize,
-    _rollback_leases: Vec<StacklessGenerationLeaseV1>,
+    runtime_retirement_eligible: bool,
+    runtime_retired: bool,
+    rollback_leases: Vec<StacklessGenerationLeaseV1>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -312,6 +413,38 @@ struct MappedImageResumables {
     manifest: Vec<u8>,
     code_generation_identity: u64,
     resolver: usize,
+}
+
+#[repr(C)]
+struct PortableMappedUnitPayload {
+    handle: usize,
+    code_generation_identity: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PortableImageCarrierKind {
+    Rebuilt,
+    Mapped,
+}
+
+struct PortableImageStage {
+    carrier_kind: PortableImageCarrierKind,
+    owner: usize,
+    handle: usize,
+    generation: u64,
+    authority: [u8; 32],
+    bindings: Vec<u8>,
+    binding_count: u32,
+    program_count: u32,
+    generated_bytes: usize,
+    finish: usize,
+    cancel: usize,
+    end_context: usize,
+    prepare_binding: usize,
+    binding_entry_address: usize,
+    committed: bool,
+    prepared_bindings: u32,
+    installed_bindings: u32,
 }
 
 #[repr(C)]
@@ -332,8 +465,15 @@ struct PreparedState {
 
 #[derive(Clone, Copy)]
 struct CandidateRoot {
-    salt: u64,
+    generation: u64,
     index: isize,
+    value: usize,
+}
+
+#[derive(Clone, Copy)]
+struct VtableCacheRoot {
+    generation: u64,
+    index: u64,
     value: usize,
 }
 
@@ -361,6 +501,7 @@ struct CandidateOperationState {
 
 #[derive(Clone)]
 struct CandidateGlobalMutation {
+    owner: usize,
     name: Vec<u8>,
     key: usize,
     prior: usize,
@@ -370,6 +511,40 @@ struct CandidateGlobalMutation {
 struct InitializerTransaction {
     unit: usize,
     writes: Vec<CandidateGlobalMutation>,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct StoreCompensationApiV1 {
+    abi_version: u32,
+    byte_size: usize,
+    reserve: unsafe extern "C" fn(usize, usize) -> c_int,
+    consume: unsafe extern "C" fn(usize, usize) -> c_int,
+    release: unsafe extern "C" fn(usize) -> usize,
+    reserved: unsafe extern "C" fn(usize) -> usize,
+}
+
+static STORE_COMPENSATION_API: OnceLock<StoreCompensationApiV1> = OnceLock::new();
+
+#[unsafe(no_mangle)]
+/// Configure the private Store compensation seam selected by the host.
+///
+/// This versioned table is intentionally independent of frozen `IdApi` and is
+/// never projected into source or image state.
+pub unsafe extern "C" fn birnam_codegen_store_compensation_configure_v1(
+    table: *const c_void,
+) -> c_int {
+    let Some(table) = (unsafe { table.cast::<StoreCompensationApiV1>().as_ref() }) else {
+        return 0;
+    };
+    if table.abi_version != 1 || table.byte_size != size_of::<StoreCompensationApiV1>() {
+        return 0;
+    }
+    match STORE_COMPENSATION_API.set(*table) {
+        Ok(()) => 1,
+        Err(_) if STORE_COMPENSATION_API.get().is_some() => 1,
+        Err(_) => 0,
+    }
 }
 
 fn abort(message: &str) -> ! {
@@ -440,12 +615,77 @@ unsafe fn note_syntax_error(api: &IdApi, lang: Oop, source_object: Oop) {
 }
 
 unsafe extern "C" fn mark_live_units(mark: MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.rust_codegen_vt,
+            runtime.rust_codegen,
+            runtime.adapter_codegen_vt,
+            runtime.adapter_codegen,
+            runtime.adapter_reflect_vt,
+            runtime.adapter_reflect,
+            runtime.adapter_collector_vt,
+            runtime.discard_receipt_vt,
+            runtime.discard_receipt,
+            runtime.portable_mapped_unit_vt,
+            runtime.tcc,
+            runtime.globals,
+            runtime.store,
+        ] {
+            // SAFETY: Runtime fields are process-owned Oops cached by this
+            // module and remain semantically live while the module is loaded.
+            unsafe { mark(value as Oop) };
+        }
+    }
     if let Ok(units) = LIVE_UNITS.lock() {
         for &unit in units.iter() {
             // SAFETY: each address was returned by IdApi.alloc and remains rooted
             // by this provider until process teardown.
             unsafe { mark(unit as Oop) };
         }
+    }
+    if let Ok(materializations) = MATERIALIZATIONS.lock() {
+        for entry in materializations.iter() {
+            // SAFETY: bounded ready entries form an explicit cache lease;
+            // staging entries protect their unit and vtable across
+            // allocation-capable setup. After eviction, live Block vtables
+            // retain the same unit through their two-edge private carrier.
+            unsafe {
+                if entry.vtable != 0 {
+                    mark(entry.vtable as Oop);
+                }
+                if entry.unit != 0 {
+                    mark(entry.unit as Oop);
+                }
+            }
+        }
+    }
+    if let Ok(bindings) = CODE_BINDINGS.lock() {
+        for binding in bindings.iter() {
+            // Current semantic bindings retain target, selector,
+            // implementation, provenance, and native owner. Retiring rows
+            // retain the same graph only until Runtime generation quiescence;
+            // staging rows make publication allocation-safe.
+            for value in [
+                binding.target,
+                binding.vtable,
+                binding.selector,
+                binding.implementation,
+                binding.provenance,
+                binding.unit,
+            ] {
+                if value != 0 {
+                    unsafe { mark(value as Oop) };
+                }
+            }
+        }
+    }
+    if let Ok(stage) = PORTABLE_IMAGE_STAGE.lock()
+        && let Some(stage) = stage.as_ref()
+        && stage.owner != 0
+    {
+        // SAFETY: an active recovery stage owns this Oop until commit or
+        // compensation transfers/releases it.
+        unsafe { mark(stage.owner as Oop) };
     }
     let Ok(sources) = MODULE_SOURCES.lock() else {
         return;
@@ -529,9 +769,17 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
     }
     if let Ok(roots) = CANDIDATE_ROOTS.lock() {
         for root in roots.iter() {
-            // SAFETY: candidate root slots are generated Oops retained until
-            // process teardown; the provider keeps block captures alive across
-            // candidate activation and collection.
+            // SAFETY: candidate root slots are generated Oops retained while
+            // their mapped generation is admitted. Logical discard withdraws
+            // the whole generation before collection and physical retirement.
+            unsafe { mark(root.value as Oop) };
+        }
+    }
+    if let Ok(roots) = VTABLE_CACHE_ROOTS.lock() {
+        for root in roots.iter() {
+            // SAFETY: generated code publishes only vtable Oops. The cache is
+            // process-owned rather than mapping-owned, so its provider remains
+            // callable while candidate mappings quiesce or unload.
             unsafe { mark(root.value as Oop) };
         }
     }
@@ -589,6 +837,33 @@ fn take_initializer_transaction(unit: usize) -> Option<Vec<CandidateGlobalMutati
     (active.unit == unit).then_some(active.writes)
 }
 
+fn reserve_initializer_compensation(owner: usize, facts: usize) -> bool {
+    STORE_COMPENSATION_API
+        .get()
+        .is_some_and(|table| unsafe { (table.reserve)(owner, facts) == 1 })
+}
+
+fn consume_initializer_compensation(owner: usize, facts: usize) -> bool {
+    STORE_COMPENSATION_API
+        .get()
+        .is_some_and(|table| unsafe { (table.consume)(owner, facts) == 1 })
+}
+
+fn release_initializer_compensation(owner: usize) -> usize {
+    STORE_COMPENSATION_API
+        .get()
+        .map_or(0, |table| unsafe { (table.release)(owner) })
+}
+
+fn release_initializer_compensations(writes: &[CandidateGlobalMutation]) {
+    let mut owners = BTreeSet::new();
+    for write in writes {
+        if owners.insert(write.owner) {
+            let _ = release_initializer_compensation(write.owner);
+        }
+    }
+}
+
 unsafe fn current_global_raw(api: &IdApi, key: Oop) -> Oop {
     unsafe {
         send(
@@ -609,25 +884,30 @@ unsafe fn restore_initializer_writes(api: &IdApi, writes: &[CandidateGlobalMutat
         if current as usize != write.post {
             return false;
         }
-        if !current.is_null()
-            && unsafe { send(api, store, STORE_RETRACT_SELECTOR, &[entity, key, current]) }
-                == api.nilObj
-        {
-            return false;
+        if !current.is_null() {
+            if !consume_initializer_compensation(write.owner, 1)
+                || unsafe { send(api, store, STORE_RETRACT_SELECTOR, &[entity, key, current]) }
+                    != store
+            {
+                return false;
+            }
         }
-        if write.prior != 0
-            && unsafe {
-                send(
-                    api,
-                    store,
-                    STORE_ASSERT_SELECTOR,
-                    &[entity, key, write.prior as Oop],
-                )
-            } == api.nilObj
-        {
-            return false;
+        if write.prior != 0 {
+            if !consume_initializer_compensation(write.owner, 1)
+                || unsafe {
+                    send(
+                        api,
+                        store,
+                        STORE_ASSERT_SELECTOR,
+                        &[entity, key, write.prior as Oop],
+                    )
+                } != store
+            {
+                return false;
+            }
         }
     }
+    release_initializer_compensations(writes);
     true
 }
 
@@ -646,13 +926,39 @@ pub unsafe extern "C" fn birnam_global_set(name: *const c_char, value: Oop) -> O
         return api.nilObj;
     }
     let key = unsafe { (api.intern)(name) };
-    let transaction_active = INITIALIZER_TRANSACTION
-        .lock()
-        .ok()
-        .is_some_and(|transaction| transaction.is_some());
-    if transaction_active {
-        let prior = unsafe { current_global_raw(api, key) };
-        let name_bytes = unsafe { CStr::from_ptr(name) }.to_bytes().to_vec();
+    let transaction_write = INITIALIZER_TRANSACTION.lock().ok().and_then(|transaction| {
+        transaction.as_ref().map(|transaction| {
+            let is_new = !transaction
+                .writes
+                .iter()
+                .any(|write| write.key == key as usize);
+            (transaction.unit, is_new)
+        })
+    });
+    let pending_write = transaction_write.and_then(|(owner, is_new)| {
+        is_new.then(|| CandidateGlobalMutation {
+            owner,
+            name: unsafe { CStr::from_ptr(name) }.to_bytes().to_vec(),
+            key: key as usize,
+            prior: unsafe { current_global_raw(api, key) } as usize,
+            post: value as usize,
+        })
+    });
+    if let Some(pending_write) = &pending_write
+        && !reserve_initializer_compensation(pending_write.owner, 2)
+    {
+        return unsafe { error_value(api, b"historyResourceLimit") };
+    }
+    let result = unsafe { send(api, globals, GLOBAL_AT_PUT_SELECTOR, &[key, value]) };
+    if result != value {
+        if let Some(pending_write) = &pending_write {
+            if !consume_initializer_compensation(pending_write.owner, 2) {
+                abort("candidate initializer compensation reservation was corrupted");
+            }
+        }
+        return result;
+    }
+    if let Some(pending_write) = pending_write {
         let Ok(mut transaction) = INITIALIZER_TRANSACTION.lock() else {
             return api.nilObj;
         };
@@ -666,15 +972,10 @@ pub unsafe extern "C" fn birnam_global_set(name: *const c_char, value: Oop) -> O
         {
             write.post = value as usize;
         } else {
-            transaction.writes.push(CandidateGlobalMutation {
-                name: name_bytes,
-                key: key as usize,
-                prior: prior as usize,
-                post: value as usize,
-            });
+            transaction.writes.push(pending_write);
         }
     }
-    unsafe { send(api, globals, GLOBAL_AT_PUT_SELECTOR, &[key, value]) }
+    result
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_global")]
@@ -699,10 +1000,13 @@ pub unsafe extern "C" fn birnam_rust_codegen_global_b(symbol: Oop) -> Oop {
     if symbol.is_null() {
         return api.nilObj;
     }
-    let name = unsafe { (api.symbolName)(symbol) };
-    // SAFETY: symbolName returns the interned NUL-terminated storage for a
-    // live Symbol, which remains valid for the synchronous send.
-    unsafe { birnam_rust_codegen_global(name.cast()) }
+    let Some(name) = (unsafe { reflect_symbol_name(api, symbol) }) else {
+        return api.nilObj;
+    };
+    let name =
+        CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
+    // SAFETY: the owned CString remains live for the complete lookup.
+    unsafe { birnam_rust_codegen_global(name.as_ptr()) }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_global_set")]
@@ -795,40 +1099,6 @@ pub unsafe extern "C" fn birnam_record_module_source(
     length: c_long,
 ) {
     unsafe { birnam_rust_codegen_record_module_source(name, source, length) }
-}
-
-/// Persist one source-carrying method mutation in the image recovery journal.
-/// The vtable mirror deliberately cannot be serialized because its method
-/// carriers are process-local code pointers; the source operation is the
-/// durable projection used to rebuild that dispatch after image load.
-unsafe fn record_method_operation(api: &IdApi, source: Oop) {
-    if source.is_null()
-        || source == api.nilObj
-        || unsafe { (api.vtableOf)(source) } != api.string_vt
-        || IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        || HOST_CAPABILITY_LOADING.load(Ordering::Acquire)
-        || CANDIDATE_PREPARING.load(Ordering::Acquire)
-    {
-        return;
-    }
-    let store = runtime().store as Oop;
-    if store.is_null() || store == api.nilObj {
-        return;
-    }
-    let basis = unsafe { send0(api, store, b"basis\0") };
-    let basis = if unsafe { (api.isSmallInt)(basis) } != 0 {
-        unsafe { (api.smallIntValue)(basis) }
-    } else {
-        return;
-    };
-    let tie = METHOD_OP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let key = format!("__mop_{basis}_{tie}");
-    let key = unsafe { intern_bytes(api, key.as_bytes()) };
-    let entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
-    let result = unsafe { send(api, store, STORE_ASSERT_SELECTOR, &[entity, key, source]) };
-    if result != api.nilObj {
-        METHOD_OP_PRESENT.store(true, Ordering::Release);
-    }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_is_error")]
@@ -941,7 +1211,7 @@ pub unsafe extern "C" fn birnam_remove_method(
 /// # Safety
 /// `value` must be a live Oop or a null ABI carrier.
 pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_set(
-    salt: u64,
+    generation: u64,
     index: c_long,
     value: Oop,
 ) -> Oop {
@@ -950,19 +1220,27 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_set(
     if let Ok(mut roots) = CANDIDATE_ROOTS.lock() {
         if let Some(root) = roots
             .iter_mut()
-            .find(|root| root.salt == salt && root.index == index)
+            .find(|root| root.generation == generation && root.index == index)
         {
             root.value = value;
         } else {
-            roots.push(CandidateRoot { salt, index, value });
+            roots.push(CandidateRoot {
+                generation,
+                index,
+                value,
+            });
         }
     }
     value as Oop
 }
 
 #[unsafe(export_name = "birnam_candidate_root_set")]
-pub unsafe extern "C" fn birnam_candidate_root_set(salt: u64, index: c_long, value: Oop) -> Oop {
-    unsafe { birnam_rust_codegen_candidate_root_set(salt, index, value) }
+pub unsafe extern "C" fn birnam_candidate_root_set(
+    generation: u64,
+    index: c_long,
+    value: Oop,
+) -> Oop {
+    unsafe { birnam_rust_codegen_candidate_root_set(generation, index, value) }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_candidate_root_get")]
@@ -970,7 +1248,10 @@ pub unsafe extern "C" fn birnam_candidate_root_set(salt: u64, index: c_long, val
 ///
 /// # Safety
 /// The call must occur while the Rust Codegen module remains initialized.
-pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(salt: u64, index: c_long) -> Oop {
+pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(
+    generation: u64,
+    index: c_long,
+) -> Oop {
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     let index = index as isize;
@@ -980,7 +1261,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(salt: u64, index
         .and_then(|roots| {
             roots
                 .iter()
-                .find(|root| root.salt == salt && root.index == index)
+                .find(|root| root.generation == generation && root.index == index)
                 .copied()
         })
         .map(|root| root.value as Oop)
@@ -988,8 +1269,233 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_root_get(salt: u64, index
 }
 
 #[unsafe(export_name = "birnam_candidate_root_get")]
-pub unsafe extern "C" fn birnam_candidate_root_get(salt: u64, index: c_long) -> Oop {
-    unsafe { birnam_rust_codegen_candidate_root_get(salt, index) }
+pub unsafe extern "C" fn birnam_candidate_root_get(generation: u64, index: c_long) -> Oop {
+    unsafe { birnam_rust_codegen_candidate_root_get(generation, index) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_vtable_cache_get")]
+pub unsafe extern "C" fn birnam_rust_codegen_vtable_cache_get(generation: u64, index: u64) -> Oop {
+    if generation == 0 {
+        return core::ptr::null_mut();
+    }
+    VTABLE_CACHE_ROOTS
+        .lock()
+        .ok()
+        .and_then(|roots| {
+            roots
+                .iter()
+                .find(|root| root.generation == generation && root.index == index)
+                .map(|root| root.value as Oop)
+        })
+        .unwrap_or(core::ptr::null_mut())
+}
+
+#[unsafe(export_name = "birnam_vtable_cache_get")]
+pub unsafe extern "C" fn birnam_vtable_cache_get(generation: u64, index: u64) -> Oop {
+    unsafe { birnam_rust_codegen_vtable_cache_get(generation, index) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_vtable_cache_set")]
+pub unsafe extern "C" fn birnam_rust_codegen_vtable_cache_set(
+    generation: u64,
+    index: u64,
+    value: Oop,
+) -> Oop {
+    if generation == 0 || value.is_null() {
+        return core::ptr::null_mut();
+    }
+    let value = value as usize;
+    if let Ok(mut roots) = VTABLE_CACHE_ROOTS.lock() {
+        if let Some(root) = roots
+            .iter_mut()
+            .find(|root| root.generation == generation && root.index == index)
+        {
+            root.value = value;
+        } else {
+            roots.push(VtableCacheRoot {
+                generation,
+                index,
+                value,
+            });
+        }
+    }
+    value as Oop
+}
+
+#[unsafe(export_name = "birnam_vtable_cache_set")]
+pub unsafe extern "C" fn birnam_vtable_cache_set(generation: u64, index: u64, value: Oop) -> Oop {
+    unsafe { birnam_rust_codegen_vtable_cache_set(generation, index, value) }
+}
+
+unsafe fn portable_code_api(api: &IdApi) -> Option<&'static PortableCodeApiV1> {
+    let object = unsafe { (api.import)(c"_BirnamPortableCodeApiV1".as_ptr()) };
+    let vtable = unsafe { (api.import)(c"_BirnamPortableCodeApiV1Vt".as_ptr()) };
+    if object.is_null()
+        || object == api.nilObj
+        || vtable.is_null()
+        || vtable == api.nilObj
+        || unsafe { (api.vtableOf)(object) } != vtable
+        || unsafe { (api.objectPayloadSize)(object) } != size_of::<PortableCodeApiV1>()
+    {
+        return None;
+    }
+    let capability = unsafe { &*object.cast::<PortableCodeApiV1>() };
+    if capability.abi_version != PORTABLE_CODE_API_V1_VERSION
+        || capability.struct_size != size_of::<PortableCodeApiV1>() as u64
+    {
+        return None;
+    }
+    Some(capability)
+}
+
+unsafe fn portable_code_api_v2(api: &IdApi) -> Option<&'static PortableCodeApiV2> {
+    let object = unsafe { (api.import)(c"_BirnamPortableCodeApiV2".as_ptr()) };
+    let vtable = unsafe { (api.import)(c"_BirnamPortableCodeApiV2Vt".as_ptr()) };
+    if object.is_null()
+        || object == api.nilObj
+        || vtable.is_null()
+        || vtable == api.nilObj
+        || unsafe { (api.vtableOf)(object) } != vtable
+        || unsafe { (api.objectPayloadSize)(object) } != size_of::<PortableCodeApiV2>()
+    {
+        return None;
+    }
+    let capability = unsafe { &*object.cast::<PortableCodeApiV2>() };
+    if capability.abi_version != PORTABLE_CODE_API_V2_VERSION
+        || capability.struct_size != size_of::<PortableCodeApiV2>() as u64
+    {
+        return None;
+    }
+    Some(capability)
+}
+
+unsafe fn portable_program_view_api(api: &IdApi) -> Option<&'static PortableProgramViewApiV1> {
+    let object = unsafe { (api.import)(c"_BirnamPortableProgramViewApiV1".as_ptr()) };
+    let vtable = unsafe { (api.import)(c"_BirnamPortableProgramViewApiV1Vt".as_ptr()) };
+    if object.is_null()
+        || object == api.nilObj
+        || vtable.is_null()
+        || vtable == api.nilObj
+        || unsafe { (api.vtableOf)(object) } != vtable
+        || unsafe { (api.objectPayloadSize)(object) } != size_of::<PortableProgramViewApiV1>()
+    {
+        return None;
+    }
+    let capability = unsafe { &*object.cast::<PortableProgramViewApiV1>() };
+    if capability.abi_version != PORTABLE_PROGRAM_VIEW_API_V1_VERSION
+        || capability.struct_size != size_of::<PortableProgramViewApiV1>() as u64
+    {
+        return None;
+    }
+    Some(capability)
+}
+
+unsafe fn copy_code_object_program(api: &IdApi, code_object: Oop) -> Option<Vec<u8>> {
+    let capability = unsafe { portable_program_view_api(api) }?;
+    let length = unsafe { (capability.copy_program)(code_object, ptr::null_mut(), 0) };
+    if length == 0 || length > 64 << 20 {
+        return None;
+    }
+    let mut bytes = vec![0; length];
+    if unsafe { (capability.copy_program)(code_object, bytes.as_mut_ptr(), bytes.len()) } != length
+        || birnam_codegen::portable::program_signature(&bytes).is_err()
+    {
+        return None;
+    }
+    Some(bytes)
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_portable_code_admit_v1")]
+pub unsafe extern "C" fn birnam_rust_codegen_portable_code_admit_v1(
+    bytes: *const u8,
+    length: usize,
+) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let Some(capability) = (unsafe { portable_code_api(api) }) else {
+        return api.nilObj;
+    };
+    unsafe { (capability.admit_program)(bytes, length) }
+}
+
+#[unsafe(export_name = "birnam_portable_code_admit_v1")]
+pub unsafe extern "C" fn birnam_portable_code_admit_v1(bytes: *const u8, length: usize) -> Oop {
+    unsafe { birnam_rust_codegen_portable_code_admit_v1(bytes, length) }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_portable_block_new_v1")]
+pub unsafe extern "C" fn birnam_rust_codegen_portable_block_new_v1(
+    block_vtable: Oop,
+    code_object: Oop,
+    captures: *const Oop,
+    capture_count: usize,
+) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let Some(capability) = (unsafe { portable_code_api(api) }) else {
+        return api.nilObj;
+    };
+    unsafe { (capability.new_block)(block_vtable, code_object, captures, capture_count) }
+}
+
+#[unsafe(export_name = "birnam_portable_block_new_v1")]
+pub unsafe extern "C" fn birnam_portable_block_new_v1(
+    block_vtable: Oop,
+    code_object: Oop,
+    captures: *const Oop,
+    capture_count: usize,
+) -> Oop {
+    unsafe {
+        birnam_rust_codegen_portable_block_new_v1(
+            block_vtable,
+            code_object,
+            captures,
+            capture_count,
+        )
+    }
+}
+
+#[unsafe(export_name = "birnam_rust_codegen_portable_materialized_block_new_v2")]
+pub unsafe extern "C" fn birnam_rust_codegen_portable_materialized_block_new_v2(
+    block_vtable: Oop,
+    code_object: Oop,
+    captures: *const Oop,
+    capture_count: usize,
+    materialization_owner: Oop,
+) -> Oop {
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let Some(capability) = (unsafe { portable_code_api_v2(api) }) else {
+        return api.nilObj;
+    };
+    unsafe {
+        (capability.new_materialized_block)(
+            block_vtable,
+            code_object,
+            captures,
+            capture_count,
+            materialization_owner,
+        )
+    }
+}
+
+#[unsafe(export_name = "birnam_portable_materialized_block_new_v2")]
+pub unsafe extern "C" fn birnam_portable_materialized_block_new_v2(
+    block_vtable: Oop,
+    code_object: Oop,
+    captures: *const Oop,
+    capture_count: usize,
+    materialization_owner: Oop,
+) -> Oop {
+    unsafe {
+        birnam_rust_codegen_portable_materialized_block_new_v2(
+            block_vtable,
+            code_object,
+            captures,
+            capture_count,
+            materialization_owner,
+        )
+    }
 }
 
 #[unsafe(export_name = "birnam_rust_codegen_candidate_prepare_mode")]
@@ -1075,6 +1581,40 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
+    let name = unsafe { (api.mkString)(b"birnam_vtable_cache_get".as_ptr(), 23) };
+    let address = unsafe { (api.mkSmallInt)(birnam_vtable_cache_get as *const () as usize as i64) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let name = unsafe { (api.mkString)(b"birnam_vtable_cache_set".as_ptr(), 23) };
+    let address = unsafe { (api.mkSmallInt)(birnam_vtable_cache_set as *const () as usize as i64) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let name = unsafe { (api.mkString)(b"birnam_portable_code_admit_v1".as_ptr(), 29) };
+    let address =
+        unsafe { (api.mkSmallInt)(birnam_portable_code_admit_v1 as *const () as usize as i64) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let name = unsafe { (api.mkString)(b"birnam_portable_block_new_v1".as_ptr(), 28) };
+    let address =
+        unsafe { (api.mkSmallInt)(birnam_portable_block_new_v1 as *const () as usize as i64) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let name = unsafe {
+        (api.mkString)(
+            b"birnam_portable_materialized_block_new_v2".as_ptr(),
+            b"birnam_portable_materialized_block_new_v2".len(),
+        )
+    };
+    let address = unsafe {
+        (api.mkSmallInt)(birnam_portable_materialized_block_new_v2 as *const () as usize as i64)
+    };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
     let Some(registration) = (unsafe { floor_symbol(api, b"birnam_register_resumable_v1\0") })
     else {
         return false;
@@ -1084,7 +1624,58 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
         return false;
     };
     let address = unsafe { (api.mkSmallInt)(registration) };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
+    let Some(registration) = (unsafe { floor_symbol(api, b"birnam_register_resumable_v2\0") })
+    else {
+        return false;
+    };
+    let name = unsafe { (api.mkString)(b"birnam_register_resumable_v2".as_ptr(), 28) };
+    let Ok(registration) = i64::try_from(registration) else {
+        return false;
+    };
+    let address = unsafe { (api.mkSmallInt)(registration) };
     unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
+}
+
+unsafe fn bind_jit_code_generation_identity(api: &IdApi, unit: Oop) -> bool {
+    let name = unsafe {
+        (api.mkString)(
+            b"__birnam_code_generation_identity".as_ptr(),
+            b"__birnam_code_generation_identity".len(),
+        )
+    };
+    let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[name]) };
+    if unsafe { (api.isSmallInt)(symbol) } == 0 {
+        return false;
+    }
+    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+    if address == 0 {
+        return false;
+    }
+    // SAFETY: the generated translation unit exports one writable u64 carrier
+    // and TCC keeps it mapped while the Unit object owns the generation.
+    unsafe { ptr::write(address as *mut u64, unit as usize as u64) };
+    true
+}
+
+unsafe fn bind_mapped_code_generation_identity(
+    api: &IdApi,
+    handle: *mut c_void,
+    generation: u64,
+) -> bool {
+    if generation == 0 {
+        return false;
+    }
+    let symbol = unsafe { (api.dlsym)(handle, c"__birnam_code_generation_identity".as_ptr()) };
+    if symbol.is_null() {
+        return false;
+    }
+    // SAFETY: every current generated artifact exports this writable u64
+    // carrier, and the handle remains mapped through this write.
+    unsafe { ptr::write(symbol.cast::<u64>(), generation) };
+    true
 }
 
 #[repr(C)]
@@ -1943,9 +2534,13 @@ fn compile_resumable_plan_indexed<'a>(
             None
         };
         if let Some(disposition) = disposition {
+            let portable_program =
+                birnam_codegen::portable::encode_block(resolved.block, &resolved.captures)
+                    .map_err(|_| ResumablePlanError::Compile)?;
             placeholder_block_literals.push(BlockLiteralSpec {
                 block: resolved.block,
                 disposition,
+                portable_program,
             });
         }
         if key.root_kind == InventoryRootKind::MethodOperation {
@@ -2090,9 +2685,13 @@ fn compile_resumable_plan_indexed<'a>(
             None
         };
         if let Some(disposition) = disposition {
+            let portable_program =
+                birnam_codegen::portable::encode_block(resolved.block, &resolved.captures)
+                    .map_err(|_| ResumablePlanError::Compile)?;
             block_literals.push(BlockLiteralSpec {
                 block: resolved.block,
                 disposition,
+                portable_program,
             });
         }
         if key.root_kind == InventoryRootKind::MethodOperation {
@@ -2317,6 +2916,13 @@ fn codegen_shim_name(name: &[u8], rust_owned: bool) -> &'static [u8] {
         b"birnam_remove_method" => b"birnam_rust_codegen_remove_method",
         b"birnam_candidate_root_set" => b"birnam_rust_codegen_candidate_root_set",
         b"birnam_candidate_root_get" => b"birnam_rust_codegen_candidate_root_get",
+        b"birnam_vtable_cache_set" => b"birnam_rust_codegen_vtable_cache_set",
+        b"birnam_vtable_cache_get" => b"birnam_rust_codegen_vtable_cache_get",
+        b"birnam_portable_code_admit_v1" => b"birnam_rust_codegen_portable_code_admit_v1",
+        b"birnam_portable_block_new_v1" => b"birnam_rust_codegen_portable_block_new_v1",
+        b"birnam_portable_materialized_block_new_v2" => {
+            b"birnam_rust_codegen_portable_materialized_block_new_v2"
+        }
         b"birnam_candidate_prepare_mode" => b"birnam_rust_codegen_candidate_prepare_mode",
         b"birnam_candidate_preparing" => b"birnam_rust_codegen_candidate_preparing",
         b"birnam_candidate_validate_binding" => b"birnam_rust_codegen_candidate_validate_binding",
@@ -2326,12 +2932,17 @@ fn codegen_shim_name(name: &[u8], rust_owned: bool) -> &'static [u8] {
 
 fn rewrite_codegen_shims(generated: &[u8]) -> Vec<u8> {
     let mut rewritten = generated.to_vec();
-    const NAMES: [&[u8]; 13] = [
+    const NAMES: [&[u8]; 18] = [
         b"birnam_candidate_validate_binding",
         b"birnam_candidate_prepare_mode",
         b"birnam_candidate_preparing",
         b"birnam_candidate_root_set",
         b"birnam_candidate_root_get",
+        b"birnam_vtable_cache_set",
+        b"birnam_vtable_cache_get",
+        b"birnam_portable_code_admit_v1",
+        b"birnam_portable_block_new_v1",
+        b"birnam_portable_materialized_block_new_v2",
         b"birnam_record_module_source",
         b"birnam_record_global_src",
         b"birnam_install_method",
@@ -5496,6 +6107,20 @@ unsafe fn materialize_image_heaps(api: &IdApi, image: &Image<'_>) -> Result<Vec<
     Ok(relocations)
 }
 
+unsafe fn materialize_image_fact_fields(
+    api: &IdApi,
+    entity: Field<'_>,
+    attribute: Field<'_>,
+    value: Field<'_>,
+    relocations: &[Oop],
+) -> Result<(Oop, Oop, Oop), ()> {
+    Ok((
+        unsafe { materialize_image_field_with_relocations(api, entity, Some(relocations))? },
+        unsafe { materialize_image_field_with_relocations(api, attribute, Some(relocations))? },
+        unsafe { materialize_image_field_with_relocations(api, value, Some(relocations))? },
+    ))
+}
+
 /// Replay v5 facts through the Rust Store image ABI after all heap objects and
 /// field values have been decoded successfully. Heap allocation and swizzling
 /// happen before Store mutation so malformed relocation data cannot masquerade
@@ -5579,6 +6204,7 @@ unsafe fn rust_codegen_replay_image_facts_impl(
     let mut pending = Vec::new();
     let mut has_facts = false;
     let mut max_basis = 0i64;
+    let mut retention_metadata = None;
     let mut records = image.records();
     loop {
         let record = match records.next_record() {
@@ -5593,42 +6219,90 @@ unsafe fn rust_codegen_replay_image_facts_impl(
             continue;
         }
         has_facts = true;
-        let Ok(mut facts) = Facts::parse(record.payload) else {
-            note_error(b"RustCodegen image facts framing is invalid");
-            return api.nilObj;
-        };
-        // v5 serializes all fixed-width integers little-endian, independently
-        // of the host that is replaying the image.
-        max_basis = max_basis.max(i64::from_le_bytes(facts.basis().to_le_bytes()));
-        loop {
-            let Ok(next) = facts.next_fact() else {
-                note_error(b"RustCodegen image facts framing is invalid");
+        if image.header.format_version == v6::FORMAT_VERSION {
+            let Ok(mut facts) = v6::Facts::parse(record.payload) else {
+                note_error(b"RustCodegen image-v6 facts framing is invalid");
                 return api.nilObj;
             };
-            let Some(fact) = next else { break };
-            if fact.operation > 1 {
-                note_error(b"RustCodegen image facts operation is invalid");
+            let metadata = (
+                facts.oldest_retained_basis,
+                facts.retention.code(),
+                facts.retention.argument(),
+            );
+            if retention_metadata
+                .replace(metadata)
+                .is_some_and(|old| old != metadata)
+            {
+                note_error(b"RustCodegen image-v6 retention metadata disagrees");
                 return api.nilObj;
             }
-            let Ok(entity) = (unsafe {
-                materialize_image_field_with_relocations(api, fact.entity, Some(&relocations))
-            }) else {
-                note_error(b"RustCodegen image facts require materialized heap references");
+            max_basis = max_basis.max(i64::from_le_bytes(facts.basis.to_le_bytes()));
+            loop {
+                let Ok(next) = facts.next_fact() else {
+                    note_error(b"RustCodegen image-v6 facts framing is invalid");
+                    return api.nilObj;
+                };
+                let Some(fact) = next else { break };
+                let Ok((entity, attribute, value)) = (unsafe {
+                    materialize_image_fact_fields(
+                        api,
+                        fact.entity,
+                        fact.attribute,
+                        fact.value,
+                        &relocations,
+                    )
+                }) else {
+                    note_error(b"RustCodegen image facts require materialized heap references");
+                    return api.nilObj;
+                };
+                pending.push((
+                    entity,
+                    attribute,
+                    value,
+                    fact.transaction,
+                    fact.operation,
+                    fact.historied,
+                ));
+            }
+        } else {
+            let Ok(mut facts) = Facts::parse(record.payload) else {
+                note_error(b"RustCodegen image-v5 facts framing is invalid");
                 return api.nilObj;
             };
-            let Ok(attribute) = (unsafe {
-                materialize_image_field_with_relocations(api, fact.attribute, Some(&relocations))
-            }) else {
-                note_error(b"RustCodegen image facts require materialized heap references");
-                return api.nilObj;
-            };
-            let Ok(value) = (unsafe {
-                materialize_image_field_with_relocations(api, fact.value, Some(&relocations))
-            }) else {
-                note_error(b"RustCodegen image facts require materialized heap references");
-                return api.nilObj;
-            };
-            pending.push((entity, attribute, value, fact.transaction, fact.operation));
+            max_basis = max_basis.max(i64::from_le_bytes(facts.basis().to_le_bytes()));
+            loop {
+                let Ok(next) = facts.next_fact() else {
+                    note_error(b"RustCodegen image-v5 facts framing is invalid");
+                    return api.nilObj;
+                };
+                let Some(fact) = next else { break };
+                if fact.operation > 1 {
+                    note_error(b"RustCodegen image facts operation is invalid");
+                    return api.nilObj;
+                }
+                let Ok((entity, attribute, value)) = (unsafe {
+                    materialize_image_fact_fields(
+                        api,
+                        fact.entity,
+                        fact.attribute,
+                        fact.value,
+                        &relocations,
+                    )
+                }) else {
+                    note_error(b"RustCodegen image facts require materialized heap references");
+                    return api.nilObj;
+                };
+                // v5 had no history-status field. Conservative migration marks
+                // every loaded transition historied.
+                pending.push((
+                    entity,
+                    attribute,
+                    value,
+                    fact.transaction,
+                    fact.operation,
+                    true,
+                ));
+            }
         }
     }
     // Heap-only images are valid framing inputs, but they have no Store
@@ -5643,34 +6317,76 @@ unsafe fn rust_codegen_replay_image_facts_impl(
         note_error(b"RustCodegen image facts Store is unavailable");
         return api.nilObj;
     }
+    let fact_bytes_limit = unsafe { send0(api, store, b"factBytesLimit\0") };
+    let fact_record_bytes = unsafe { send0(api, store, b"factRecordBytes\0") };
+    if unsafe { (api.isSmallInt)(fact_bytes_limit) } == 0
+        || unsafe { (api.isSmallInt)(fact_record_bytes) } == 0
+        || unsafe { (api.smallIntValue)(fact_bytes_limit) } <= 0
+        || unsafe { (api.smallIntValue)(fact_record_bytes) } <= 0
+        || pending
+            .len()
+            .saturating_mul(unsafe { (api.smallIntValue)(fact_record_bytes) as usize })
+            > unsafe { (api.smallIntValue)(fact_bytes_limit) as usize }
+    {
+        note_error(b"RustCodegen image facts exceed the configured Store ceiling");
+        return api.nilObj;
+    }
     if unsafe { send0(api, store, b"imageLoadBegin\0") } == api.nilObj {
         note_error(b"RustCodegen image facts Store load could not begin");
         return api.nilObj;
     }
-    for (entity, attribute, value, tx, op) in pending.iter().copied() {
+    for (entity, attribute, value, tx, op, historied) in pending.iter().copied() {
         let arguments = [
             entity,
             attribute,
             value,
             unsafe { (api.mkSmallInt)(i64::from_le_bytes(tx.to_le_bytes())) },
             unsafe { (api.mkSmallInt)(i64::from(op)) },
+            if historied { api.trueObj } else { api.falseObj },
         ];
-        if unsafe { send(api, store, b"imageAddFact:attr:value:tx:op:\0", &arguments) }
-            == api.nilObj
-        {
+        let selector = if image.header.format_version == v6::FORMAT_VERSION {
+            b"imageAddFact:attr:value:tx:op:historied:\0".as_slice()
+        } else {
+            b"imageAddFact:attr:value:tx:op:\0".as_slice()
+        };
+        let arguments = if image.header.format_version == v6::FORMAT_VERSION {
+            &arguments[..]
+        } else {
+            &arguments[..5]
+        };
+        if unsafe { send(api, store, selector, arguments) } == api.nilObj {
             note_error(b"RustCodegen image facts Store append failed");
             return api.nilObj;
         }
     }
-    let end_arguments = [unsafe { (api.mkSmallInt)(max_basis) }, api.falseObj];
-    if unsafe { send(api, store, b"imageLoadEnd:raw:\0", &end_arguments) } == api.nilObj {
+    let end_result = if let Some((oldest, policy, argument)) = retention_metadata {
+        let end_arguments = [
+            unsafe { (api.mkSmallInt)(max_basis) },
+            api.falseObj,
+            unsafe { (api.mkSmallInt)(oldest as i64) },
+            unsafe { (api.mkSmallInt)(i64::from(policy)) },
+            unsafe { (api.mkSmallInt)(argument as i64) },
+        ];
+        unsafe {
+            send(
+                api,
+                store,
+                b"imageLoadEnd:raw:oldest:policy:argument:\0",
+                &end_arguments,
+            )
+        }
+    } else {
+        let end_arguments = [unsafe { (api.mkSmallInt)(max_basis) }, api.falseObj];
+        unsafe { send(api, store, b"imageLoadEnd:raw:\0", &end_arguments) }
+    };
+    if end_result == api.nilObj {
         note_error(b"RustCodegen image facts Store load could not finish");
         return api.nilObj;
     }
     let methodops_entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
     if pending
         .iter()
-        .any(|(entity, _, _, _, _)| *entity == methodops_entity)
+        .any(|(entity, _, _, _, _, _)| *entity == methodops_entity)
     {
         METHOD_OP_PRESENT.store(true, Ordering::Release);
     }
@@ -6300,6 +7016,7 @@ unsafe extern "C" fn rust_codegen_eval(
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+        || !unsafe { bind_jit_code_generation_identity(api, unit) }
     {
         unsafe { dispose_unit(api, unit) };
         note_error(b"RustCodegen generated C failed to compile");
@@ -6348,6 +7065,2259 @@ unsafe extern "C" fn rust_codegen_eval(
     let result = unsafe { send0(api, instance, ENTRY_SELECTOR) };
     retain_unit(unit);
     result
+}
+
+fn issue_materialization_namespace() -> Option<u32> {
+    NEXT_MATERIALIZATION_NAMESPACE
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current.checked_add(1).filter(|next| *next < 1 << 31)
+        })
+        .ok()
+        .and_then(|value| u32::try_from(value).ok())
+        .filter(|value| *value != 0)
+}
+
+fn next_materialization_age() -> u64 {
+    NEXT_MATERIALIZATION_AGE.fetch_add(1, Ordering::AcqRel)
+}
+
+fn cached_materialization(
+    disposition: MaterializationDisposition,
+    digest: [u8; 32],
+    program: &[u8],
+) -> Option<(Oop, Oop)> {
+    let mut entries = MATERIALIZATIONS.lock().ok()?;
+    let entry = entries.iter_mut().find(|entry| {
+        entry.ready
+            && entry.disposition == disposition
+            && entry.digest == digest
+            && entry.program == program
+    })?;
+    entry.age = next_materialization_age();
+    Some((entry.vtable as Oop, entry.unit as Oop))
+}
+
+fn stage_materialization(
+    disposition: MaterializationDisposition,
+    digest: [u8; 32],
+    program: Vec<u8>,
+    unit: Oop,
+    generated_bytes: usize,
+) -> bool {
+    let Ok(mut entries) = MATERIALIZATIONS.lock() else {
+        return false;
+    };
+    while entries.len() >= MAX_MATERIALIZATION_CACHE_ENTRIES
+        || entries
+            .iter()
+            .try_fold(0usize, |total, entry| {
+                total.checked_add(entry.program.len())
+            })
+            .and_then(|total| total.checked_add(program.len()))
+            .is_none_or(|total| total > MAX_MATERIALIZATION_CACHE_PROGRAM_BYTES)
+        || entries
+            .iter()
+            .try_fold(0usize, |total, entry| {
+                total.checked_add(entry.generated_bytes)
+            })
+            .and_then(|total| total.checked_add(generated_bytes))
+            .is_none_or(|total| total > MAX_MATERIALIZATION_C_SOURCE_BYTES)
+    {
+        let Some((index, _)) = entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.ready)
+            .min_by_key(|(_, entry)| entry.age)
+        else {
+            return false;
+        };
+        entries.remove(index);
+    }
+    entries.push(MaterializationEntry {
+        disposition,
+        digest,
+        program,
+        vtable: 0,
+        unit: unit as usize,
+        generated_bytes,
+        age: next_materialization_age(),
+        ready: false,
+    });
+    true
+}
+
+fn set_staged_materialization_vtable(unit: Oop, vtable: Oop) -> bool {
+    let Ok(mut entries) = MATERIALIZATIONS.lock() else {
+        return false;
+    };
+    let Some(entry) = entries
+        .iter_mut()
+        .find(|entry| !entry.ready && entry.unit == unit as usize)
+    else {
+        return false;
+    };
+    entry.vtable = vtable as usize;
+    true
+}
+
+fn commit_staged_materialization(unit: Oop) -> bool {
+    let Ok(mut entries) = MATERIALIZATIONS.lock() else {
+        return false;
+    };
+    let Some(entry) = entries
+        .iter_mut()
+        .find(|entry| !entry.ready && entry.unit == unit as usize && entry.vtable != 0)
+    else {
+        return false;
+    };
+    entry.ready = true;
+    entry.age = next_materialization_age();
+    true
+}
+
+fn remove_materialization(unit: Oop) {
+    let removed = if let Ok(mut entries) = MATERIALIZATIONS.lock() {
+        let before = entries.len();
+        entries.retain(|entry| entry.unit != unit as usize);
+        before != entries.len()
+    } else {
+        false
+    };
+    if removed {
+        let _ = take_vtable_cache_roots(unit as usize as u64);
+    }
+}
+
+unsafe fn compile_synchronous_materialization(
+    api: &IdApi,
+    program: &[u8],
+    digest: [u8; 32],
+) -> Option<(Oop, Oop)> {
+    let namespace = issue_materialization_namespace()?;
+    let compiled = compile_synchronous_block_v1(program, namespace).ok()?;
+    if compiled.c_source.len() > MAX_MATERIALIZATION_C_SOURCE_BYTES {
+        return None;
+    }
+    let runtime = runtime();
+    let tcc = runtime.tcc as Oop;
+    if tcc.is_null() {
+        return None;
+    }
+    let unit = unsafe { send0(api, tcc, NEW_SELECTOR) };
+    if unit.is_null() || unit == api.nilObj {
+        return None;
+    }
+    let c_source = unsafe { (api.mkString)(compiled.c_source.as_ptr(), compiled.c_source.len()) };
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
+        || !unsafe { bind_global_shims(api, unit) }
+        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
+        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+        || !unsafe { bind_jit_code_generation_identity(api, unit) }
+    {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let entry_name =
+        unsafe { (api.mkString)(compiled.entry_symbol.as_ptr(), compiled.entry_symbol.len()) };
+    let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
+    if unsafe { (api.isSmallInt)(symbol) } == 0
+        || !stage_materialization(
+            MaterializationDisposition::Synchronous,
+            digest,
+            program.to_vec(),
+            unit,
+            compiled.c_source.len(),
+        )
+    {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+    if address == 0 {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let block_family = unsafe { (api.import)(c"BlockVt".as_ptr()) };
+    let vtable = if block_family.is_null() || block_family == api.nilObj {
+        ptr::null_mut()
+    } else {
+        unsafe { (api.proto)(block_family) }
+    };
+    if vtable.is_null() || !set_staged_materialization_vtable(unit, vtable) {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let selector = unsafe { intern_bytes(api, &compiled.selector) };
+    let entry: Method = unsafe { core::mem::transmute(address) };
+    unsafe {
+        (api.method)(vtable, selector, entry);
+        (api.setLayout)(vtable, ptr::null(), 0, SLOT_OOP);
+    }
+    if unsafe { send0(api, unit, DISPOSABLE_SELECTOR) } == api.nilObj {
+        remove_materialization(unit);
+        return None;
+    }
+    Some((vtable, unit))
+}
+
+struct PortableResumablePlan {
+    programs: Vec<u8>,
+    bindings: Vec<u8>,
+    selection: Vec<u8>,
+    manifest: Vec<u8>,
+    authority: [u8; 32],
+    c_source: Vec<u8>,
+    root_manifest_entry_index: u32,
+}
+
+struct PortableNamedPlan {
+    programs: Vec<u8>,
+    bindings: Vec<u8>,
+    selection: Vec<u8>,
+    manifest: Vec<u8>,
+    authority: [u8; 32],
+    c_source: Vec<u8>,
+}
+
+struct PortableImagePlan {
+    programs: Vec<u8>,
+    bindings: Vec<u8>,
+    selection: Vec<u8>,
+    manifest: Vec<u8>,
+    authority: [u8; 32],
+    c_source: Vec<u8>,
+    binding_count: u32,
+    program_count: u32,
+}
+
+fn portable_image_plan(
+    programs: &[u8],
+    bindings: &[u8],
+    selection: &[u8],
+) -> Option<PortableImagePlan> {
+    let program_inventory = portable_inventory::inspect(programs).ok()?;
+    let binding_inventory = code_binding_inventory::inspect(bindings).ok()?;
+    let selection_view = materialization_selection::inspect(selection, programs, bindings).ok()?;
+    let binding_count = binding_inventory.binding_count;
+    let program_count = program_inventory.program_count;
+    if selection_view.row_count != binding_count.checked_add(program_count)? {
+        return None;
+    }
+    let mut named = Vec::with_capacity(binding_count as usize);
+    for index in 0..binding_count {
+        let row = selection_view.row(index as usize)?;
+        named.push(compile_portable_materialization_named_v1(row, index, index).ok()?);
+    }
+    let mut blocks = Vec::with_capacity(program_count as usize);
+    for program_index in 0..program_count {
+        let program = program_inventory.program(program_index as usize)?;
+        let inspected = birnam_artifact::portable_program::inspect(program).ok()?;
+        let mut literals = Vec::new();
+        for node_index in 0..inspected.node_count as usize {
+            let node = inspected.node(node_index)?;
+            if node.semantic_kind()
+                != Some(birnam_artifact::portable_program::NodeKind::BlockLiteral)
+            {
+                continue;
+            }
+            let nested_index = (0..program_count as usize)
+                .find(|index| program_inventory.program(*index) == Some(node.data))?;
+            literals.push(PortableBlockLiteralSpec {
+                node_index: u32::try_from(node_index).ok()?,
+                disposition: BlockLiteralDisposition::Resumable {
+                    manifest_entry_index: binding_count
+                        .checked_add(u32::try_from(nested_index).ok()?)?,
+                },
+                portable_program: node.data.to_vec(),
+                retain_materialization_owner: true,
+            });
+        }
+        let row_index = binding_count.checked_add(program_index)?;
+        blocks.push(
+            compile_portable_materialization_block_v1(
+                program,
+                selection_view.row(row_index as usize)?,
+                row_index,
+                row_index,
+                &literals,
+            )
+            .ok()?,
+        );
+    }
+    let authority = materialization_selection::authority(programs, bindings, selection).ok()?;
+    let mut manifest_entries = Vec::with_capacity(selection_view.row_count as usize);
+    for (index, entry) in named.iter().enumerate() {
+        manifest_entries.push(portable_resumable_manifest::EntrySpec {
+            selection_row_index: u32::try_from(index).ok()?,
+            driver_argument_count: 0,
+            lowering_version: resumable_descriptor::LOWERING_VERSION_V1,
+            descriptor: &entry.descriptor,
+        });
+    }
+    for (index, entry) in blocks.iter().enumerate() {
+        manifest_entries.push(portable_resumable_manifest::EntrySpec {
+            selection_row_index: binding_count.checked_add(u32::try_from(index).ok()?)?,
+            driver_argument_count: entry.driver_argument_count,
+            lowering_version: resumable_descriptor::LOWERING_VERSION_V1,
+            descriptor: &entry.descriptor,
+        });
+    }
+    let manifest =
+        portable_resumable_manifest::materialize(authority, &selection_view, &manifest_entries)
+            .ok()?;
+    let mut translation_unit = TranslationUnit::new(false);
+    translation_unit.push_function(resumable_registration_c::registration_prelude_v2());
+    fn push_exported_bytes(unit: &mut TranslationUnit, name: &str, bytes: &[u8]) {
+        let mut declaration = format!("const unsigned char {name}[]={{").into_bytes();
+        for (index, byte) in bytes.iter().enumerate() {
+            if index != 0 {
+                declaration.push(b',');
+            }
+            declaration.extend_from_slice(byte.to_string().as_bytes());
+        }
+        declaration.extend_from_slice(
+            format!(
+                "}};\nconst unsigned long long {name}_size={}ULL;\n",
+                bytes.len()
+            )
+            .as_bytes(),
+        );
+        unit.push_function(&declaration);
+    }
+    push_exported_bytes(
+        &mut translation_unit,
+        "__birnam_portable_program_inventory_v1",
+        programs,
+    );
+    push_exported_bytes(
+        &mut translation_unit,
+        "__birnam_code_binding_inventory_v1",
+        bindings,
+    );
+    push_exported_bytes(
+        &mut translation_unit,
+        "__birnam_code_materialization_selection_v1",
+        selection,
+    );
+    push_exported_bytes(
+        &mut translation_unit,
+        "__birnam_portable_resumable_manifest_v1",
+        &manifest,
+    );
+    translation_unit.push_function(b"void* __birnam_materialization_owner;\n");
+    translation_unit.push_function(
+        b"void* __birnam_resolve_block_vtable_v1(unsigned int manifest_entry_index);\n",
+    );
+    for entry in &named {
+        translation_unit.push_function(&entry.c_source);
+    }
+    for entry in &blocks {
+        translation_unit.push_function(&entry.c_source);
+    }
+    let mut prepare_blocks =
+        b"unsigned int __birnam_prepare_portable_image_blocks_v1(void){\n".to_vec();
+    for index in 0..program_count {
+        let row = binding_count.checked_add(index)?;
+        prepare_blocks.extend_from_slice(
+            format!("if(__birnam_resumable_prepare_{row}((void*)0)!=0U)return 1U;\n").as_bytes(),
+        );
+    }
+    prepare_blocks.extend_from_slice(b"return 0U;}\n");
+    translation_unit.push_function(&prepare_blocks);
+    let mut prepare_binding = b"unsigned int __birnam_prepare_portable_image_binding_v1(unsigned int index,void* implementation){(void)implementation;switch(index){\n".to_vec();
+    for index in 0..binding_count {
+        prepare_binding.extend_from_slice(
+            format!("case {index}U:return __birnam_resumable_prepare_{index}(implementation);\n")
+                .as_bytes(),
+        );
+    }
+    prepare_binding.extend_from_slice(b"default:return 1U;}}\n");
+    translation_unit.push_function(&prepare_binding);
+    let mut binding_entry = b"unsigned long long __birnam_portable_image_binding_entry_address_v1(unsigned int index){switch(index){\n".to_vec();
+    for index in 0..binding_count {
+        binding_entry.extend_from_slice(format!("case {index}U:return (unsigned long long)(unsigned long)&__birnam_resumable_thunk_{index};\n").as_bytes());
+    }
+    binding_entry.extend_from_slice(b"default:return 0ULL;}}\n");
+    translation_unit.push_function(&binding_entry);
+    if !blocks.is_empty() {
+        let resolver_specs = blocks
+            .iter()
+            .map(|entry| entry.resolver_spec())
+            .collect::<Vec<_>>();
+        translation_unit.push_function(
+            &resumable_resolver_c::emit_block_vtable_resolver_v1(&resolver_specs).ok()?,
+        );
+    }
+    translation_unit.push_body(b"return birnam_nil();\n");
+    Some(PortableImagePlan {
+        programs: programs.to_vec(),
+        bindings: bindings.to_vec(),
+        selection: selection.to_vec(),
+        manifest,
+        authority,
+        c_source: translation_unit.finish(),
+        binding_count,
+        program_count,
+    })
+}
+
+type PortableBegin = unsafe extern "C" fn(
+    *const u8,
+    usize,
+    *const u8,
+    usize,
+    *const u8,
+    usize,
+    *const u8,
+    usize,
+    *const u8,
+    u64,
+    u64,
+) -> u32;
+type PortableClose = unsafe extern "C" fn() -> u32;
+type PortableBeginContext = unsafe extern "C" fn(u64, u64) -> u32;
+type PortableEndContext = unsafe extern "C" fn() -> u32;
+type PortablePrepareBlocks = unsafe extern "C" fn() -> u32;
+type PortablePrepareBinding = unsafe extern "C" fn(u32, Oop) -> u32;
+type PortableBindingEntryAddress = unsafe extern "C" fn(u32) -> u64;
+type PortableResolveBlockVtable = unsafe extern "C" fn(u32) -> Oop;
+type StagedBlockVtable = unsafe extern "C" fn(*const u8, usize, u32) -> Oop;
+
+unsafe fn portable_native_symbol(
+    api: &IdApi,
+    unit: Oop,
+    handle: usize,
+    name: &[u8],
+) -> Option<usize> {
+    if !unit.is_null() {
+        return unsafe { unit_symbol_address(api, unit, name) };
+    }
+    let name = CString::new(name).ok()?;
+    let symbol = unsafe { (api.dlsym)(handle as *mut c_void, name.as_ptr()) };
+    (!symbol.is_null()).then_some(symbol as usize)
+}
+
+unsafe extern "C" fn portable_mapped_unit_finalize(owner: Oop) {
+    if owner.is_null() {
+        return;
+    }
+    let payload = owner.cast::<PortableMappedUnitPayload>();
+    let handle = unsafe { (*payload).handle };
+    let generation = unsafe { (*payload).code_generation_identity };
+    unsafe {
+        (*payload).handle = 0;
+        (*payload).code_generation_identity = 0;
+    }
+    if handle == 0 {
+        return;
+    }
+    let api = unsafe { api(runtime()) };
+    if unsafe { retire_runtime_generation_v1(api, generation) } != RuntimeRetirement::Retired {
+        abort("portable mapped image generation remained live at finalization");
+    }
+    if unsafe { dlclose(handle as *mut c_void) } != 0 {
+        abort("portable mapped image unit could not be unmapped");
+    }
+}
+
+unsafe fn make_portable_mapped_owner(api: &IdApi, handle: usize, generation: u64) -> Option<Oop> {
+    let owner = unsafe {
+        (api.alloc)(
+            runtime().portable_mapped_unit_vt as Oop,
+            size_of::<PortableMappedUnitPayload>(),
+        )
+    };
+    if owner.is_null() {
+        return None;
+    }
+    unsafe {
+        owner
+            .cast::<PortableMappedUnitPayload>()
+            .write(PortableMappedUnitPayload {
+                handle,
+                code_generation_identity: generation,
+            });
+    }
+    Some(owner)
+}
+
+unsafe fn release_uncommitted_portable_owner(
+    api: &IdApi,
+    carrier_kind: PortableImageCarrierKind,
+    owner: Oop,
+    handle: usize,
+) {
+    match carrier_kind {
+        PortableImageCarrierKind::Rebuilt => unsafe { dispose_unit(api, owner) },
+        PortableImageCarrierKind::Mapped => {
+            if !owner.is_null() {
+                let payload = owner.cast::<PortableMappedUnitPayload>();
+                unsafe {
+                    (*payload).handle = 0;
+                    (*payload).code_generation_identity = 0;
+                }
+            }
+            if handle != 0 {
+                let _ = unsafe { dlclose(handle as *mut c_void) };
+            }
+        }
+    }
+}
+
+unsafe fn begin_portable_image_stage(
+    api: &IdApi,
+    plan: PortableImagePlan,
+    carrier_kind: PortableImageCarrierKind,
+    unit: Oop,
+    handle: usize,
+    owner: Oop,
+    generated_bytes: usize,
+) -> Option<Oop> {
+    if PORTABLE_IMAGE_STAGE.lock().ok()?.is_some() {
+        return None;
+    }
+    let generation = match carrier_kind {
+        PortableImageCarrierKind::Rebuilt => u64::try_from(unit as usize).ok()?,
+        PortableImageCarrierKind::Mapped => u64::try_from(handle).ok()?,
+    };
+    if generation == 0 || generation > i64::MAX as u64 {
+        return None;
+    }
+    let lease = issue_code_generation_lease()?;
+    let identity_address =
+        unsafe { portable_native_symbol(api, unit, handle, b"__birnam_code_generation_identity") }?;
+    unsafe { (identity_address as *mut u64).write(generation) };
+    let owner_address =
+        unsafe { portable_native_symbol(api, unit, handle, b"__birnam_materialization_owner") }?;
+    unsafe { (owner_address as *mut Oop).write(owner) };
+    if carrier_kind == PortableImageCarrierKind::Rebuilt {
+        let identity = unsafe { (api.mkSmallInt)(generation as i64) };
+        if unsafe { send(api, unit, OWN_CODE_GENERATION_SELECTOR, &[identity]) } == api.nilObj {
+            return None;
+        }
+    }
+    let begin_address =
+        unsafe { floor_symbol(api, b"birnam_id_begin_portable_resumable_unit_v1\0") }?;
+    let finish_address = unsafe { floor_symbol(api, b"birnam_id_finish_resumable_unit_v1\0") }?;
+    let cancel_address = unsafe { floor_symbol(api, b"birnam_id_cancel_resumable_unit_v1\0") }?;
+    let staged_vtable_address =
+        unsafe { floor_symbol(api, b"birnam_id_staged_portable_block_vtable_v1\0") }?;
+    let begin: PortableBegin = unsafe { core::mem::transmute(begin_address) };
+    let finish: PortableClose = unsafe { core::mem::transmute(finish_address) };
+    let cancel: PortableClose = unsafe { core::mem::transmute(cancel_address) };
+    let begin_context_address = unsafe {
+        portable_native_symbol(api, unit, handle, b"__birnam_resumable_context_begin_v1")
+    }?;
+    let end_context =
+        unsafe { portable_native_symbol(api, unit, handle, b"__birnam_resumable_context_end_v1") }?;
+    let prepare_blocks_address = unsafe {
+        portable_native_symbol(
+            api,
+            unit,
+            handle,
+            b"__birnam_prepare_portable_image_blocks_v1",
+        )
+    }?;
+    let prepare_binding = unsafe {
+        portable_native_symbol(
+            api,
+            unit,
+            handle,
+            b"__birnam_prepare_portable_image_binding_v1",
+        )
+    }?;
+    let binding_entry_address = unsafe {
+        portable_native_symbol(
+            api,
+            unit,
+            handle,
+            b"__birnam_portable_image_binding_entry_address_v1",
+        )
+    }?;
+    let resolve = (plan.program_count != 0)
+        .then(|| unsafe {
+            portable_native_symbol(api, unit, handle, b"__birnam_resolve_block_vtable_v1")
+        })
+        .flatten();
+    if plan.program_count != 0 && resolve.is_none() {
+        return None;
+    }
+    if unsafe {
+        begin(
+            plan.programs.as_ptr(),
+            plan.programs.len(),
+            plan.bindings.as_ptr(),
+            plan.bindings.len(),
+            plan.selection.as_ptr(),
+            plan.selection.len(),
+            plan.manifest.as_ptr(),
+            plan.manifest.len(),
+            plan.authority.as_ptr(),
+            generation,
+            lease,
+        )
+    } != 0
+    {
+        return None;
+    }
+    let begin_context: PortableBeginContext =
+        unsafe { core::mem::transmute(begin_context_address) };
+    let prepare_blocks: PortablePrepareBlocks =
+        unsafe { core::mem::transmute(prepare_blocks_address) };
+    if unsafe { begin_context(generation, lease) } != 0 || unsafe { prepare_blocks() } != 0 {
+        let end: PortableEndContext = unsafe { core::mem::transmute(end_context) };
+        let _ = unsafe { end() };
+        let _ = unsafe { cancel() };
+        return None;
+    }
+    let staged_vtable: StagedBlockVtable = unsafe { core::mem::transmute(staged_vtable_address) };
+    for program_index in 0..plan.program_count {
+        let manifest_index = plan
+            .binding_count
+            .checked_add(program_index)
+            .expect("portable plan row count was already bounded");
+        let resolve: PortableResolveBlockVtable =
+            unsafe { core::mem::transmute(resolve.expect("nonempty programs require resolver")) };
+        let resolved = unsafe { resolve(manifest_index) };
+        if resolved.is_null()
+            || unsafe {
+                staged_vtable(
+                    plan.authority.as_ptr(),
+                    plan.authority.len(),
+                    manifest_index,
+                )
+            } != resolved
+        {
+            let end: PortableEndContext = unsafe { core::mem::transmute(end_context) };
+            let _ = unsafe { end() };
+            let _ = unsafe { cancel() };
+            return None;
+        }
+    }
+    *PORTABLE_IMAGE_STAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(PortableImageStage {
+        carrier_kind,
+        owner: owner as usize,
+        handle,
+        generation,
+        authority: plan.authority,
+        bindings: plan.bindings,
+        binding_count: plan.binding_count,
+        program_count: plan.program_count,
+        generated_bytes,
+        finish: finish as usize,
+        cancel: cancel as usize,
+        end_context,
+        prepare_binding,
+        binding_entry_address,
+        committed: false,
+        prepared_bindings: 0,
+        installed_bindings: 0,
+    });
+    Some(owner)
+}
+
+unsafe fn mapped_export_matches(api: &IdApi, handle: usize, name: &[u8], expected: &[u8]) -> bool {
+    let Ok(name_c) = CString::new(name) else {
+        return false;
+    };
+    let mut size_name = name.to_vec();
+    size_name.extend_from_slice(b"_size");
+    let Ok(size_name) = CString::new(size_name) else {
+        return false;
+    };
+    let bytes = unsafe { (api.dlsym)(handle as *mut c_void, name_c.as_ptr()) };
+    let size = unsafe { (api.dlsym)(handle as *mut c_void, size_name.as_ptr()) };
+    if bytes.is_null() || size.is_null() {
+        return false;
+    }
+    let size = unsafe { ptr::read_unaligned(size.cast::<u64>()) };
+    usize::try_from(size).ok() == Some(expected.len())
+        && unsafe { core::slice::from_raw_parts(bytes.cast::<u8>(), expected.len()) } == expected
+}
+
+unsafe fn compile_portable_image_code_bytes(
+    api: &IdApi,
+    programs: &[u8],
+    bindings: &[u8],
+    selection: &[u8],
+) -> Option<Vec<u8>> {
+    let plan = portable_image_plan(programs, bindings, selection)?;
+    if plan.c_source.len() > MAX_MATERIALIZATION_C_SOURCE_BYTES {
+        return None;
+    }
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-portable-image-{}-{sequence}.dylib",
+        std::process::id()
+    ));
+    let path_bytes = path.as_os_str().as_bytes();
+    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    let path_oop = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let kind = unsafe { intern(api, b"dll\0") };
+    let result = unsafe {
+        send(
+            api,
+            runtime().tcc as Oop,
+            TCC_COMPILE_OUTPUT_SELECTOR,
+            &[source, path_oop, kind],
+        )
+    };
+    if result == api.nilObj {
+        let _ = fs::remove_file(&path);
+        return None;
+    }
+    let bytes = fs::read(&path).ok();
+    let _ = fs::remove_file(&path);
+    bytes.filter(|bytes| !bytes.is_empty())
+}
+
+unsafe extern "C" fn rust_codegen_compile_portable_image_code(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen portable image compile received invalid arguments"));
+    if values.len() != 3 {
+        abort("RustCodegen portable image compile expects programs, bindings, and selection");
+    }
+    let api = unsafe { api(runtime()) };
+    let Some(programs) = (unsafe { string_bytes(api, values[0]) }) else {
+        return api.nilObj;
+    };
+    let Some(bindings) = (unsafe { string_bytes(api, values[1]) }) else {
+        return api.nilObj;
+    };
+    let Some(selection) = (unsafe { string_bytes(api, values[2]) }) else {
+        return api.nilObj;
+    };
+    let Some(code) =
+        (unsafe { compile_portable_image_code_bytes(api, &programs, &bindings, &selection) })
+    else {
+        note_error(b"RustCodegen could not compile portable image Code");
+        return api.nilObj;
+    };
+    unsafe { (api.mkString)(code.as_ptr(), code.len()) }
+}
+
+unsafe extern "C" fn rust_codegen_begin_portable_image_rebuild(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen portable image rebuild received invalid arguments"));
+    if values.len() != 3 {
+        abort("RustCodegen portable image rebuild expects programs, bindings, and selection");
+    }
+    let api = unsafe { api(runtime()) };
+    let (Some(programs), Some(bindings), Some(selection)) = (
+        unsafe { string_bytes(api, values[0]) },
+        unsafe { string_bytes(api, values[1]) },
+        unsafe { string_bytes(api, values[2]) },
+    ) else {
+        return api.nilObj;
+    };
+    let Some(plan) = portable_image_plan(&programs, &bindings, &selection) else {
+        return api.nilObj;
+    };
+    if plan.c_source.len() > MAX_MATERIALIZATION_C_SOURCE_BYTES {
+        return api.nilObj;
+    }
+    let unit = unsafe { send0(api, runtime().tcc as Oop, NEW_SELECTOR) };
+    if unit.is_null() || unit == api.nilObj {
+        return api.nilObj;
+    }
+    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
+        || !unsafe { bind_global_shims(api, unit) }
+        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
+        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+    {
+        unsafe { dispose_unit(api, unit) };
+        return api.nilObj;
+    }
+    let generated_bytes = plan.c_source.len();
+    let owner = unsafe {
+        begin_portable_image_stage(
+            api,
+            plan,
+            PortableImageCarrierKind::Rebuilt,
+            unit,
+            0,
+            unit,
+            generated_bytes,
+        )
+    };
+    if owner.is_none() {
+        unsafe { dispose_unit(api, unit) };
+    }
+    owner.unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn rust_codegen_begin_portable_image_mapped(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen portable image mapping received invalid arguments"));
+    if values.len() != 4 {
+        abort("RustCodegen portable image mapping expects Code, programs, bindings, and selection");
+    }
+    let api = unsafe { api(runtime()) };
+    let (Some(code), Some(programs), Some(bindings), Some(selection)) = (
+        unsafe { string_bytes(api, values[0]) },
+        unsafe { string_bytes(api, values[1]) },
+        unsafe { string_bytes(api, values[2]) },
+        unsafe { string_bytes(api, values[3]) },
+    ) else {
+        return api.nilObj;
+    };
+    let Some(plan) = portable_image_plan(&programs, &bindings, &selection) else {
+        return api.nilObj;
+    };
+    if !candidate_macho_safe(&code) {
+        note_error(b"RustCodegen portable image Code violates the native mapping policy");
+        return api.nilObj;
+    }
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-portable-map-{}-{sequence}.dylib",
+        std::process::id()
+    ));
+    let wrote = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .and_then(|mut file| file.write_all(&code));
+    if wrote.is_err() {
+        return api.nilObj;
+    }
+    let Ok(path_c) = CString::new(path.as_os_str().as_bytes()) else {
+        let _ = fs::remove_file(&path);
+        return api.nilObj;
+    };
+    #[cfg(target_os = "macos")]
+    const RTLD_NOW_LOCAL: c_int = 2 | 4;
+    #[cfg(not(target_os = "macos"))]
+    const RTLD_NOW_LOCAL: c_int = 2;
+    let handle = unsafe { (api.dlopen)(path_c.as_ptr(), RTLD_NOW_LOCAL) as usize };
+    let _ = fs::remove_file(&path);
+    if handle == 0
+        || !unsafe {
+            mapped_export_matches(
+                api,
+                handle,
+                b"__birnam_portable_program_inventory_v1",
+                &programs,
+            ) && mapped_export_matches(
+                api,
+                handle,
+                b"__birnam_code_binding_inventory_v1",
+                &bindings,
+            ) && mapped_export_matches(
+                api,
+                handle,
+                b"__birnam_code_materialization_selection_v1",
+                &selection,
+            ) && mapped_export_matches(
+                api,
+                handle,
+                b"__birnam_portable_resumable_manifest_v1",
+                &plan.manifest,
+            )
+        }
+    {
+        if handle != 0 {
+            let _ = unsafe { dlclose(handle as *mut c_void) };
+        }
+        return api.nilObj;
+    }
+    let generation = handle as u64;
+    let Some(owner) = (unsafe { make_portable_mapped_owner(api, handle, generation) }) else {
+        let _ = unsafe { dlclose(handle as *mut c_void) };
+        return api.nilObj;
+    };
+    let result = unsafe {
+        begin_portable_image_stage(
+            api,
+            plan,
+            PortableImageCarrierKind::Mapped,
+            ptr::null_mut(),
+            handle,
+            owner,
+            code.len(),
+        )
+    };
+    if result.is_none() {
+        unsafe {
+            release_uncommitted_portable_owner(api, PortableImageCarrierKind::Mapped, owner, handle)
+        };
+    }
+    result.unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn rust_codegen_portable_image_block_vtable(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen portable image vtable received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustCodegen portable image vtable expects one program index");
+    }
+    let api = unsafe { api(runtime()) };
+    if unsafe { (api.isSmallInt)(values[0]) } == 0 {
+        return api.nilObj;
+    }
+    let raw = unsafe { (api.smallIntValue)(values[0]) };
+    let Ok(program_index) = u32::try_from(raw) else {
+        return api.nilObj;
+    };
+    let Ok(stage) = PORTABLE_IMAGE_STAGE.lock() else {
+        return api.nilObj;
+    };
+    let Some(stage) = stage.as_ref() else {
+        return api.nilObj;
+    };
+    if stage.committed || program_index >= stage.program_count {
+        return api.nilObj;
+    }
+    let Some(manifest_index) = stage.binding_count.checked_add(program_index) else {
+        return api.nilObj;
+    };
+    let Some(address) =
+        (unsafe { floor_symbol(api, b"birnam_id_staged_portable_block_vtable_v1\0") })
+    else {
+        return api.nilObj;
+    };
+    let resolve: StagedBlockVtable = unsafe { core::mem::transmute(address) };
+    let vtable = unsafe {
+        resolve(
+            stage.authority.as_ptr(),
+            stage.authority.len(),
+            manifest_index,
+        )
+    };
+    if vtable.is_null() { api.nilObj } else { vtable }
+}
+
+unsafe extern "C" fn rust_codegen_prepare_portable_image_binding(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen portable image binding prepare received invalid arguments")
+    });
+    if values.len() != 2 {
+        abort("RustCodegen portable image binding prepare expects index and implementation");
+    }
+    let api = unsafe { api(runtime()) };
+    if unsafe { (api.isSmallInt)(values[0]) } == 0 {
+        return api.nilObj;
+    }
+    let Ok(index) = u32::try_from(unsafe { (api.smallIntValue)(values[0]) }) else {
+        return api.nilObj;
+    };
+    let Ok(mut stage) = PORTABLE_IMAGE_STAGE.lock() else {
+        return api.nilObj;
+    };
+    let Some(stage) = stage.as_mut() else {
+        return api.nilObj;
+    };
+    if stage.committed || index != stage.prepared_bindings || index >= stage.binding_count {
+        return api.nilObj;
+    }
+    let prepare: PortablePrepareBinding = unsafe { core::mem::transmute(stage.prepare_binding) };
+    if unsafe { prepare(index, values[1]) } != 0 {
+        return api.nilObj;
+    }
+    stage.prepared_bindings += 1;
+    api.trueObj
+}
+
+unsafe extern "C" fn rust_codegen_finish_portable_image_unit(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen finishPortableImageUnit expects no arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let Some(mut stage) = PORTABLE_IMAGE_STAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    else {
+        return api.nilObj;
+    };
+    if stage.committed || stage.prepared_bindings != stage.binding_count {
+        *PORTABLE_IMAGE_STAGE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(stage);
+        return api.nilObj;
+    }
+    let end: PortableEndContext = unsafe { core::mem::transmute(stage.end_context) };
+    let finish: PortableClose = unsafe { core::mem::transmute(stage.finish) };
+    let cancel: PortableClose = unsafe { core::mem::transmute(stage.cancel) };
+    let context_ok = unsafe { end() } == 0;
+    let committed = context_ok && unsafe { finish() } == 0;
+    if !committed {
+        if !context_ok && unsafe { cancel() } != 0 {
+            abort("portable image staged-unit compensation failed");
+        }
+        unsafe {
+            release_uncommitted_portable_owner(
+                api,
+                stage.carrier_kind,
+                stage.owner as Oop,
+                stage.handle,
+            )
+        };
+        return api.nilObj;
+    }
+    let owner = stage.owner as Oop;
+    match stage.carrier_kind {
+        PortableImageCarrierKind::Rebuilt => {
+            if unsafe { send0(api, owner, DISPOSABLE_SELECTOR) } == api.nilObj {
+                abort("committed portable rebuilt unit could not become disposable");
+            }
+        }
+        PortableImageCarrierKind::Mapped => unsafe {
+            (api.setFinalizer)(owner, portable_mapped_unit_finalize)
+        },
+    }
+    stage.committed = true;
+    if stage.binding_count != 0 {
+        *PORTABLE_IMAGE_STAGE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(stage);
+    }
+    api.trueObj
+}
+
+unsafe extern "C" fn rust_codegen_cancel_portable_image_unit(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen cancelPortableImageUnit expects no arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let stage = {
+        let Ok(mut slot) = PORTABLE_IMAGE_STAGE.lock() else {
+            return api.nilObj;
+        };
+        if slot.as_ref().is_some_and(|stage| stage.committed) {
+            return api.nilObj;
+        }
+        slot.take()
+    };
+    let Some(stage) = stage else {
+        return api.nilObj;
+    };
+    let end: PortableEndContext = unsafe { core::mem::transmute(stage.end_context) };
+    let cancel: PortableClose = unsafe { core::mem::transmute(stage.cancel) };
+    let _ = unsafe { end() };
+    if unsafe { cancel() } != 0 {
+        abort("portable image staged-unit compensation failed");
+    }
+    unsafe {
+        release_uncommitted_portable_owner(
+            api,
+            stage.carrier_kind,
+            stage.owner as Oop,
+            stage.handle,
+        )
+    };
+    api.trueObj
+}
+
+unsafe extern "C" fn rust_codegen_install_portable_image_binding(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }.unwrap_or_else(|| {
+        abort("RustCodegen portable image binding install received invalid arguments")
+    });
+    if values.len() != 4 {
+        abort(
+            "RustCodegen portable image binding install expects index, target, implementation, and provenance",
+        );
+    }
+    let api = unsafe { api(runtime()) };
+    if unsafe { (api.isSmallInt)(values[0]) } == 0 {
+        return api.nilObj;
+    }
+    let Ok(index) = u32::try_from(unsafe { (api.smallIntValue)(values[0]) }) else {
+        return api.nilObj;
+    };
+    let (selector_bytes, method, owner, generation, authority, generated_bytes) = {
+        let Ok(stage) = PORTABLE_IMAGE_STAGE.lock() else {
+            return api.nilObj;
+        };
+        let Some(stage) = stage.as_ref() else {
+            return api.nilObj;
+        };
+        if !stage.committed || index != stage.installed_bindings || index >= stage.binding_count {
+            return api.nilObj;
+        }
+        let Ok(bindings) = code_binding_inventory::inspect(&stage.bindings) else {
+            return api.nilObj;
+        };
+        let Some(binding) = bindings.binding_spec(index as usize) else {
+            return api.nilObj;
+        };
+        let entry: PortableBindingEntryAddress =
+            unsafe { core::mem::transmute(stage.binding_entry_address) };
+        let Ok(method) = usize::try_from(unsafe { entry(index) }) else {
+            return api.nilObj;
+        };
+        if method == 0 {
+            return api.nilObj;
+        }
+        (
+            binding.selector.to_vec(),
+            method,
+            stage.owner,
+            stage.generation,
+            stage.authority,
+            stage.generated_bytes,
+        )
+    };
+    let target = values[1];
+    let implementation = values[2];
+    let provenance = values[3];
+    let selector = unsafe { intern_bytes(api, &selector_bytes) };
+    let vtable = unsafe { (api.ensurePrivateVtable)(target) };
+    if vtable.is_null() {
+        return api.nilObj;
+    }
+    {
+        let Ok(mut bindings) = CODE_BINDINGS.lock() else {
+            return api.nilObj;
+        };
+        let current_count = bindings
+            .iter()
+            .filter(|binding| binding.lifecycle == CodeBindingLifecycle::Current)
+            .count();
+        let replacing = bindings.iter().any(|binding| {
+            binding.lifecycle == CodeBindingLifecycle::Current
+                && binding.target == target as usize
+                && binding.selector == selector as usize
+        });
+        // Image recovery runs on the Runtime owner thread, so no competing
+        // publisher can consume this reservation between the two lock scopes.
+        // Keep every fallible registry operation ahead of Store publication.
+        if (current_count >= MAX_CURRENT_CODE_BINDINGS && !replacing)
+            || bindings.try_reserve(1).is_err()
+        {
+            return api.nilObj;
+        }
+    }
+    let stored = unsafe {
+        send(
+            api,
+            runtime().store as Oop,
+            b"addMethod:on:with:\0",
+            &[selector, vtable, method as Oop],
+        )
+    };
+    if stored == api.nilObj {
+        return api.nilObj;
+    }
+    let predecessors = {
+        let Ok(mut bindings) = CODE_BINDINGS.lock() else {
+            abort("portable image binding registry became unavailable after Store publication");
+        };
+        let mut predecessors = Vec::new();
+        for binding in bindings.iter_mut() {
+            if binding.lifecycle == CodeBindingLifecycle::Current
+                && binding.target == target as usize
+                && binding.selector == selector as usize
+            {
+                binding.lifecycle = CodeBindingLifecycle::Retiring;
+                predecessors.push(binding.generation);
+            }
+        }
+        bindings.push(CodeBindingEntry {
+            target: target as usize,
+            vtable: vtable as usize,
+            selector: selector as usize,
+            implementation: implementation as usize,
+            provenance: provenance as usize,
+            unit: owner,
+            generation,
+            method,
+            authority,
+            generated_bytes,
+            lifecycle: CodeBindingLifecycle::Current,
+        });
+        predecessors
+    };
+    unsafe { request_code_binding_retirements(api, &predecessors) };
+    let mut slot = PORTABLE_IMAGE_STAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let stage = slot
+        .as_mut()
+        .unwrap_or_else(|| abort("portable image binding stage disappeared"));
+    stage.installed_bindings += 1;
+    if stage.installed_bindings == stage.binding_count {
+        *slot = None;
+    }
+    vtable
+}
+
+fn portable_named_plan(selector: &[u8], provenance: Option<&[u8]>) -> Option<PortableNamedPlan> {
+    let programs = portable_inventory::encode_closure(&[]).ok()?;
+    // HeapRef ordinals are local structural names for the two live Oops. The
+    // CodeBinding registry compares those Oops directly; image-v7 later emits
+    // their actual canonical Field locations. Provenance is nonsemantic.
+    let bindings = code_binding_inventory::encode(&[code_binding_inventory::BindingSpec {
+        target: code_binding_inventory::Field::HeapRef(0),
+        selector,
+        implementation: code_binding_inventory::Field::HeapRef(1),
+        provenance: provenance.map_or(
+            code_binding_inventory::Field::Nil,
+            code_binding_inventory::Field::String,
+        ),
+    }])
+    .ok()?;
+    let selection = materialization_selection::encode(
+        &programs,
+        &bindings,
+        &[materialization_selection::Disposition::Resumable],
+        &[],
+    )
+    .ok()?;
+    let selection_view =
+        materialization_selection::inspect(&selection, &programs, &bindings).ok()?;
+    let compiled = compile_portable_materialization_named_v1(selection_view.row(0)?, 0, 0).ok()?;
+    let authority = materialization_selection::authority(&programs, &bindings, &selection).ok()?;
+    let manifest = portable_resumable_manifest::materialize(
+        authority,
+        &selection_view,
+        &[portable_resumable_manifest::EntrySpec {
+            selection_row_index: 0,
+            driver_argument_count: 0,
+            lowering_version: resumable_descriptor::LOWERING_VERSION_V1,
+            descriptor: &compiled.descriptor,
+        }],
+    )
+    .ok()?;
+    let mut translation_unit = TranslationUnit::new(false);
+    translation_unit.push_function(resumable_registration_c::registration_prelude_v2());
+    translation_unit.push_function(&compiled.c_source);
+    translation_unit.push_function(
+        b"unsigned int __birnam_prepare_portable_named_v1(void* implementation){return __birnam_resumable_prepare_0(implementation);}\n",
+    );
+    translation_unit.push_function(
+        b"unsigned long long __birnam_portable_named_entry_address_v1(void){return (unsigned long long)(unsigned long)&__birnam_resumable_thunk_0;}\n",
+    );
+    translation_unit.push_body(b"return birnam_nil();\n");
+    Some(PortableNamedPlan {
+        programs,
+        bindings,
+        selection,
+        manifest,
+        authority,
+        c_source: translation_unit.finish(),
+    })
+}
+
+fn portable_resumable_plan(program: &[u8]) -> Option<PortableResumablePlan> {
+    let programs = portable_inventory::encode_closure(&[program]).ok()?;
+    let inventory = portable_inventory::inspect(&programs).ok()?;
+    let root_program_index = (0..inventory.program_count as usize)
+        .find(|index| inventory.program(*index) == Some(program))?;
+    let bindings = code_binding_inventory::encode(&[]).ok()?;
+    // `materializeResumable:` is the explicit policy producer for this
+    // source-less unit. Its complete transitive Block closure is resumable;
+    // canonical Node occurrences select the corresponding inventory row.
+    let block_dispositions =
+        vec![materialization_selection::Disposition::Resumable; inventory.program_count as usize];
+    let selection =
+        materialization_selection::encode(&programs, &bindings, &[], &block_dispositions).ok()?;
+    let selection_view =
+        materialization_selection::inspect(&selection, &programs, &bindings).ok()?;
+    let mut compiled = Vec::with_capacity(inventory.program_count as usize);
+    for program_index in 0..inventory.program_count as usize {
+        let program_bytes = inventory.program(program_index)?;
+        let inspected = birnam_artifact::portable_program::inspect(program_bytes).ok()?;
+        let mut literals = Vec::new();
+        for node_index in 0..inspected.node_count as usize {
+            let node = inspected.node(node_index)?;
+            if node.semantic_kind()
+                != Some(birnam_artifact::portable_program::NodeKind::BlockLiteral)
+            {
+                continue;
+            }
+            let nested_index = (0..inventory.program_count as usize)
+                .find(|index| inventory.program(*index) == Some(node.data))?;
+            literals.push(PortableBlockLiteralSpec {
+                node_index: u32::try_from(node_index).ok()?,
+                disposition: BlockLiteralDisposition::Resumable {
+                    manifest_entry_index: u32::try_from(nested_index).ok()?,
+                },
+                portable_program: node.data.to_vec(),
+                retain_materialization_owner: true,
+            });
+        }
+        let index = u32::try_from(program_index).ok()?;
+        compiled.push(
+            compile_portable_materialization_block_v1(
+                program_bytes,
+                selection_view.row(program_index)?,
+                index,
+                index,
+                &literals,
+            )
+            .ok()?,
+        );
+    }
+    let authority = materialization_selection::authority(&programs, &bindings, &selection).ok()?;
+    let manifest_entries = compiled
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| portable_resumable_manifest::EntrySpec {
+            selection_row_index: u32::try_from(index).expect("bounded inventory index"),
+            driver_argument_count: entry.driver_argument_count,
+            lowering_version: resumable_descriptor::LOWERING_VERSION_V1,
+            descriptor: &entry.descriptor,
+        })
+        .collect::<Vec<_>>();
+    let manifest =
+        portable_resumable_manifest::materialize(authority, &selection_view, &manifest_entries)
+            .ok()?;
+    let mut translation_unit = TranslationUnit::new(false);
+    translation_unit.push_function(resumable_registration_c::registration_prelude_v2());
+    translation_unit.push_function(b"void* __birnam_materialization_owner;\n");
+    translation_unit.push_function(
+        b"void* __birnam_resolve_block_vtable_v1(unsigned int manifest_entry_index);\n",
+    );
+    for entry in &compiled {
+        translation_unit.push_function(&entry.c_source);
+    }
+    let mut prepare_all = b"unsigned int __birnam_prepare_portable_resumables_v1(void){\n".to_vec();
+    for index in 0..inventory.program_count {
+        prepare_all.extend_from_slice(b"if(__birnam_resumable_prepare_");
+        prepare_all.extend_from_slice(index.to_string().as_bytes());
+        prepare_all.extend_from_slice(b"((void*)0)!=0U)return 1U;\n");
+    }
+    prepare_all.extend_from_slice(b"return 0U;\n}\n");
+    translation_unit.push_function(&prepare_all);
+    let resolver_specs = compiled
+        .iter()
+        .map(|entry| entry.resolver_spec())
+        .collect::<Vec<_>>();
+    translation_unit
+        .push_function(&resumable_resolver_c::emit_block_vtable_resolver_v1(&resolver_specs).ok()?);
+    translation_unit.push_body(b"return birnam_nil();\n");
+    Some(PortableResumablePlan {
+        programs,
+        bindings,
+        selection,
+        manifest,
+        authority,
+        c_source: translation_unit.finish(),
+        root_manifest_entry_index: u32::try_from(root_program_index).ok()?,
+    })
+}
+
+unsafe fn unit_symbol_address(api: &IdApi, unit: Oop, name: &[u8]) -> Option<usize> {
+    let name = unsafe { (api.mkString)(name.as_ptr(), name.len()) };
+    let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[name]) };
+    if unsafe { (api.isSmallInt)(symbol) } == 0 {
+        return None;
+    }
+    usize::try_from(unsafe { (api.smallIntValue)(symbol) })
+        .ok()
+        .filter(|address| *address != 0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_code_binding(
+    target: Oop,
+    vtable: Oop,
+    selector: Oop,
+    implementation: Oop,
+    provenance: Oop,
+    unit: Oop,
+    generation: u64,
+    authority: [u8; 32],
+    generated_bytes: usize,
+) -> bool {
+    let Ok(mut bindings) = CODE_BINDINGS.lock() else {
+        return false;
+    };
+    let current_count = bindings
+        .iter()
+        .filter(|binding| binding.lifecycle == CodeBindingLifecycle::Current)
+        .count();
+    let replacing = bindings.iter().any(|binding| {
+        binding.lifecycle == CodeBindingLifecycle::Current
+            && binding.target == target as usize
+            && binding.selector == selector as usize
+    });
+    if (current_count >= MAX_CURRENT_CODE_BINDINGS && !replacing)
+        || bindings.iter().any(|binding| {
+            binding.lifecycle == CodeBindingLifecycle::Staging
+                && binding.target == target as usize
+                && binding.selector == selector as usize
+        })
+    {
+        return false;
+    }
+    bindings.push(CodeBindingEntry {
+        target: target as usize,
+        vtable: vtable as usize,
+        selector: selector as usize,
+        implementation: implementation as usize,
+        provenance: provenance as usize,
+        unit: unit as usize,
+        generation,
+        method: 0,
+        authority,
+        generated_bytes,
+        lifecycle: CodeBindingLifecycle::Staging,
+    });
+    true
+}
+
+fn set_staged_code_binding_method(unit: Oop, method: usize) -> bool {
+    let Ok(mut bindings) = CODE_BINDINGS.lock() else {
+        return false;
+    };
+    let Some(binding) = bindings.iter_mut().find(|binding| {
+        binding.unit == unit as usize && binding.lifecycle == CodeBindingLifecycle::Staging
+    }) else {
+        return false;
+    };
+    if method == 0 {
+        return false;
+    }
+    binding.method = method;
+    true
+}
+
+fn remove_staged_code_binding(unit: Oop) {
+    if let Ok(mut bindings) = CODE_BINDINGS.lock() {
+        bindings.retain(|binding| {
+            binding.unit != unit as usize || binding.lifecycle != CodeBindingLifecycle::Staging
+        });
+    }
+}
+
+fn retire_staged_code_binding(unit: Oop) -> Option<u64> {
+    let mut bindings = CODE_BINDINGS.lock().ok()?;
+    let binding = bindings.iter_mut().find(|binding| {
+        binding.unit == unit as usize && binding.lifecycle == CodeBindingLifecycle::Staging
+    })?;
+    binding.lifecycle = CodeBindingLifecycle::Retiring;
+    Some(binding.generation)
+}
+
+fn publish_staged_code_binding(unit: Oop) -> Option<Vec<u64>> {
+    let mut bindings = CODE_BINDINGS.lock().ok()?;
+    let staged_index = bindings.iter().position(|binding| {
+        binding.unit == unit as usize
+            && binding.lifecycle == CodeBindingLifecycle::Staging
+            && binding.method != 0
+    })?;
+    let target = bindings[staged_index].target;
+    let selector = bindings[staged_index].selector;
+    let mut predecessors = Vec::new();
+    for (index, binding) in bindings.iter_mut().enumerate() {
+        if index != staged_index
+            && binding.lifecycle == CodeBindingLifecycle::Current
+            && binding.target == target
+            && binding.selector == selector
+        {
+            binding.lifecycle = CodeBindingLifecycle::Retiring;
+            predecessors.push(binding.generation);
+        }
+    }
+    bindings[staged_index].lifecycle = CodeBindingLifecycle::Current;
+    Some(predecessors)
+}
+
+fn withdraw_current_code_binding(target: Oop, selector: Oop) -> Vec<u64> {
+    let Ok(mut bindings) = CODE_BINDINGS.lock() else {
+        return Vec::new();
+    };
+    let mut generations = Vec::new();
+    for binding in bindings.iter_mut() {
+        if binding.lifecycle == CodeBindingLifecycle::Current
+            && binding.target == target as usize
+            && binding.selector == selector as usize
+        {
+            binding.lifecycle = CodeBindingLifecycle::Retiring;
+            generations.push(binding.generation);
+        }
+    }
+    generations
+}
+
+fn update_current_code_binding_provenance(target: Oop, selector: Oop, provenance: Oop) -> bool {
+    let Ok(mut bindings) = CODE_BINDINGS.lock() else {
+        return false;
+    };
+    let Some(binding) = bindings.iter_mut().find(|binding| {
+        binding.lifecycle == CodeBindingLifecycle::Current
+            && binding.target == target as usize
+            && binding.selector == selector as usize
+    }) else {
+        return false;
+    };
+    binding.provenance = provenance as usize;
+    true
+}
+
+fn current_code_binding_implementation(vtable: Oop, selector: Oop) -> Option<Oop> {
+    CODE_BINDINGS.lock().ok().and_then(|bindings| {
+        bindings
+            .iter()
+            .find(|binding| {
+                binding.lifecycle == CodeBindingLifecycle::Current
+                    && binding.vtable == vtable as usize
+                    && binding.selector == selector as usize
+            })
+            .map(|binding| binding.implementation as Oop)
+    })
+}
+
+unsafe fn request_code_binding_retirements(api: &IdApi, generations: &[u64]) {
+    for generation in generations.iter().copied() {
+        let _ = unsafe { retire_runtime_generation_v1(api, generation) };
+    }
+}
+
+unsafe fn reap_code_bindings(api: &IdApi) -> usize {
+    let generations = CODE_BINDINGS
+        .lock()
+        .ok()
+        .map(|bindings| {
+            bindings
+                .iter()
+                .filter(|binding| binding.lifecycle == CodeBindingLifecycle::Retiring)
+                .map(|binding| binding.generation)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut retired = Vec::new();
+    for generation in generations {
+        if unsafe { retire_runtime_generation_v1(api, generation) } == RuntimeRetirement::Retired {
+            retired.push(generation);
+        }
+    }
+    if retired.is_empty() {
+        return 0;
+    }
+    let removed = CODE_BINDINGS
+        .lock()
+        .ok()
+        .map(|mut bindings| {
+            let before = bindings.len();
+            bindings.retain(|binding| {
+                binding.lifecycle != CodeBindingLifecycle::Retiring
+                    || !retired.contains(&binding.generation)
+            });
+            before - bindings.len()
+        })
+        .unwrap_or(0);
+    // Removed rows release their disposable Unit Oops. Collection runs only
+    // after Runtime has forgotten every native address in those generations.
+    let _ = unsafe { (api.gcCollect)() };
+    removed
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn compile_portable_named_materialization(
+    api: &IdApi,
+    target: Oop,
+    vtable: Oop,
+    selector: Oop,
+    selector_bytes: &[u8],
+    implementation: Oop,
+    provenance: Oop,
+) -> Option<(Oop, Oop)> {
+    type BeginPortable = unsafe extern "C" fn(
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const u8,
+        u64,
+        u64,
+    ) -> u32;
+    type CloseStage = unsafe extern "C" fn() -> u32;
+    type BeginContext = unsafe extern "C" fn(u64, u64) -> u32;
+    type EndContext = unsafe extern "C" fn() -> u32;
+    type Prepare = unsafe extern "C" fn(Oop) -> u32;
+    type EntryAddress = unsafe extern "C" fn() -> u64;
+
+    let provenance_bytes = unsafe { string_bytes(api, provenance) };
+    let plan = portable_named_plan(selector_bytes, provenance_bytes.as_deref())?;
+    if plan.c_source.len() > MAX_MATERIALIZATION_C_SOURCE_BYTES {
+        return None;
+    }
+    let begin_address =
+        unsafe { floor_symbol(api, b"birnam_id_begin_portable_resumable_unit_v1\0") }?;
+    let finish_address = unsafe { floor_symbol(api, b"birnam_id_finish_resumable_unit_v1\0") }?;
+    let cancel_address = unsafe { floor_symbol(api, b"birnam_id_cancel_resumable_unit_v1\0") }?;
+    let unit = unsafe { send0(api, runtime().tcc as Oop, NEW_SELECTOR) };
+    if unit.is_null() || unit == api.nilObj {
+        return None;
+    }
+    let generation = u64::try_from(unit as usize).ok()?;
+    if generation == 0 || generation > i64::MAX as u64 {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    if !stage_code_binding(
+        target,
+        vtable,
+        selector,
+        implementation,
+        provenance,
+        unit,
+        generation,
+        plan.authority,
+        plan.c_source.len(),
+    ) {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
+        || !unsafe { bind_global_shims(api, unit) }
+        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
+        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+        || !unsafe { bind_jit_code_generation_identity(api, unit) }
+    {
+        remove_staged_code_binding(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let identity = unsafe { (api.mkSmallInt)(generation as i64) };
+    if unsafe { send(api, unit, OWN_CODE_GENERATION_SELECTOR, &[identity]) } == api.nilObj {
+        remove_staged_code_binding(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let Some(lease) = issue_code_generation_lease() else {
+        remove_staged_code_binding(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    let begin: BeginPortable = unsafe { core::mem::transmute(begin_address) };
+    let finish: CloseStage = unsafe { core::mem::transmute(finish_address) };
+    let cancel: CloseStage = unsafe { core::mem::transmute(cancel_address) };
+    if unsafe {
+        begin(
+            plan.programs.as_ptr(),
+            plan.programs.len(),
+            plan.bindings.as_ptr(),
+            plan.bindings.len(),
+            plan.selection.as_ptr(),
+            plan.selection.len(),
+            plan.manifest.as_ptr(),
+            plan.manifest.len(),
+            plan.authority.as_ptr(),
+            generation,
+            lease,
+        )
+    } != 0
+    {
+        remove_staged_code_binding(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let staged = (|| unsafe {
+        let begin_context_address =
+            unit_symbol_address(api, unit, b"__birnam_resumable_context_begin_v1");
+        let end_context_address =
+            unit_symbol_address(api, unit, b"__birnam_resumable_context_end_v1");
+        let prepare_address = unit_symbol_address(api, unit, b"__birnam_prepare_portable_named_v1");
+        let entry_address =
+            unit_symbol_address(api, unit, b"__birnam_portable_named_entry_address_v1");
+        let begin_context: BeginContext = core::mem::transmute(begin_context_address?);
+        let end_context: EndContext = core::mem::transmute(end_context_address?);
+        let prepare: Prepare = core::mem::transmute(prepare_address?);
+        let entry_address: EntryAddress = core::mem::transmute(entry_address?);
+        let method = usize::try_from(entry_address())
+            .ok()
+            .filter(|address| *address != 0)?;
+        if begin_context(generation, lease) != 0 {
+            return None;
+        }
+        if prepare(implementation) != 0 {
+            let _ = end_context();
+            return None;
+        }
+        let end_status = end_context();
+        if end_status != 0 || !set_staged_code_binding_method(unit, method) {
+            return None;
+        }
+        Some(method as Oop)
+    })();
+    let Some(method) = staged else {
+        if unsafe { cancel() } != 0 {
+            abort("portable named staged-unit compensation failed");
+        }
+        remove_staged_code_binding(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    if unsafe { finish() } != 0 || unsafe { send0(api, unit, DISPOSABLE_SELECTOR) } == api.nilObj {
+        let generation = retire_staged_code_binding(unit).unwrap_or(generation);
+        unsafe { request_code_binding_retirements(api, &[generation]) };
+        return None;
+    }
+    Some((unit, method))
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn compile_resumable_materialized_block(
+    api: &IdApi,
+    code_object: Oop,
+    captures: &[Oop],
+    program: &[u8],
+    digest: [u8; 32],
+) -> Option<Oop> {
+    type BeginPortable = unsafe extern "C" fn(
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const u8,
+        usize,
+        *const u8,
+        u64,
+        u64,
+    ) -> u32;
+    type CloseStage = unsafe extern "C" fn() -> u32;
+    type BeginContext = unsafe extern "C" fn(u64, u64) -> u32;
+    type EndContext = unsafe extern "C" fn() -> u32;
+    type PrepareAll = unsafe extern "C" fn() -> u32;
+    type ResolveBlockVtable = unsafe extern "C" fn(u32) -> Oop;
+
+    let begin_address =
+        unsafe { floor_symbol(api, b"birnam_id_begin_portable_resumable_unit_v1\0") }?;
+    let finish_address = unsafe { floor_symbol(api, b"birnam_id_finish_resumable_unit_v1\0") }?;
+    let cancel_address = unsafe { floor_symbol(api, b"birnam_id_cancel_resumable_unit_v1\0") }?;
+    let plan = portable_resumable_plan(program)?;
+    if plan.c_source.len() > MAX_MATERIALIZATION_C_SOURCE_BYTES {
+        return None;
+    }
+    let tcc = runtime().tcc as Oop;
+    if tcc.is_null() {
+        return None;
+    }
+    let unit = unsafe { send0(api, tcc, NEW_SELECTOR) };
+    if unit.is_null() || unit == api.nilObj {
+        return None;
+    }
+    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
+        || !unsafe { bind_global_shims(api, unit) }
+        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
+        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+        || !unsafe { bind_jit_code_generation_identity(api, unit) }
+        || !stage_materialization(
+            MaterializationDisposition::Resumable,
+            digest,
+            program.to_vec(),
+            unit,
+            plan.c_source.len(),
+        )
+    {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let Ok(code_generation_identity) = u64::try_from(unit as usize) else {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    let Some(code_generation_lease) = issue_code_generation_lease() else {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    if code_generation_identity > i64::MAX as u64 {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    let identity = unsafe { (api.mkSmallInt)(code_generation_identity as i64) };
+    if unsafe { send(api, unit, OWN_CODE_GENERATION_SELECTOR, &[identity]) } == api.nilObj {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+
+    let begin: BeginPortable = unsafe { core::mem::transmute(begin_address) };
+    let finish: CloseStage = unsafe { core::mem::transmute(finish_address) };
+    let cancel: CloseStage = unsafe { core::mem::transmute(cancel_address) };
+    if unsafe {
+        begin(
+            plan.programs.as_ptr(),
+            plan.programs.len(),
+            plan.bindings.as_ptr(),
+            plan.bindings.len(),
+            plan.selection.as_ptr(),
+            plan.selection.len(),
+            plan.manifest.as_ptr(),
+            plan.manifest.len(),
+            plan.authority.as_ptr(),
+            code_generation_identity,
+            code_generation_lease,
+        )
+    } != 0
+    {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+
+    let staged =
+        (|| unsafe {
+            let begin_context: BeginContext = core::mem::transmute(unit_symbol_address(
+                api,
+                unit,
+                b"__birnam_resumable_context_begin_v1",
+            )?);
+            let end_context: EndContext = core::mem::transmute(unit_symbol_address(
+                api,
+                unit,
+                b"__birnam_resumable_context_end_v1",
+            )?);
+            let resolve_block_vtable: ResolveBlockVtable = core::mem::transmute(
+                unit_symbol_address(api, unit, b"__birnam_resolve_block_vtable_v1")?,
+            );
+            let owner_address = unit_symbol_address(api, unit, b"__birnam_materialization_owner")?;
+            let prepare_all: PrepareAll = core::mem::transmute(unit_symbol_address(
+                api,
+                unit,
+                b"__birnam_prepare_portable_resumables_v1",
+            )?);
+            // The generated word is a private physical carrier, never durable
+            // authority. Every nested Block copies this Unit into its traced v2
+            // carrier before it can escape the currently executing receiver.
+            (owner_address as *mut Oop).write(unit);
+            if begin_context(code_generation_identity, code_generation_lease) != 0 {
+                return None;
+            }
+            if prepare_all() != 0 {
+                let _ = end_context();
+                return None;
+            }
+            if end_context() != 0 {
+                return None;
+            }
+            let vtable = resolve_block_vtable(plan.root_manifest_entry_index);
+            if vtable.is_null() || !set_staged_materialization_vtable(unit, vtable) {
+                return None;
+            }
+            let capability = portable_code_api_v2(api)?;
+            let block = (capability.new_materialized_block)(
+                vtable,
+                code_object,
+                captures.as_ptr(),
+                captures.len(),
+                unit,
+            );
+            if block.is_null() || block == api.nilObj || birnam_rust_codegen_is_error(block) != 0 {
+                return None;
+            }
+            Some(block)
+        })();
+    let Some(block) = staged else {
+        if unsafe { cancel() } != 0 {
+            abort("portable resumable staged-unit compensation failed");
+        }
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    if unsafe { finish() } != 0
+        || unsafe { send0(api, unit, DISPOSABLE_SELECTOR) } == api.nilObj
+        || !commit_staged_materialization(unit)
+    {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
+    Some(block)
+}
+
+unsafe extern "C" fn rust_codegen_materialize_synchronous(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen materializeSynchronous: received invalid arguments"));
+    if values.len() != 2 {
+        abort("RustCodegen materializeSynchronous:captures: expects two arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let code_object = values[0];
+    let captures_object = values[1];
+    let Some(program) = (unsafe { copy_code_object_program(api, code_object) }) else {
+        note_error(b"RustCodegen materialization needs an admitted CodeObject");
+        return api.nilObj;
+    };
+    let Some((_, capture_count)) = birnam_codegen::portable::program_signature(&program).ok()
+    else {
+        note_error(b"RustCodegen materialization rejected PortableProgram semantics");
+        return api.nilObj;
+    };
+    let vector_vtable = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    if unsafe { vector_length(api, captures_object, vector_vtable) }
+        != usize::try_from(capture_count).ok()
+    {
+        note_error(b"RustCodegen materialization capture count disagrees with CodeObject");
+        return api.nilObj;
+    }
+    let digest = sha256_raw(&program);
+    let (vtable, unit, staged) =
+        match cached_materialization(MaterializationDisposition::Synchronous, digest, &program) {
+            Some((vtable, unit)) => (vtable, unit, false),
+            None => {
+                let Some((vtable, unit)) =
+                    (unsafe { compile_synchronous_materialization(api, &program, digest) })
+                else {
+                    note_error(b"RustCodegen could not compile PortableProgram materialization");
+                    return api.nilObj;
+                };
+                (vtable, unit, true)
+            }
+        };
+    let captures = (0..capture_count as usize)
+        .map(|index| unsafe { vector_item(api, captures_object, index) })
+        .collect::<Vec<_>>();
+    let Some(capability) = (unsafe { portable_code_api_v2(api) }) else {
+        if staged {
+            remove_materialization(unit);
+        }
+        note_error(b"RustCodegen PortableCodeApiV2 is unavailable");
+        return api.nilObj;
+    };
+    let block = unsafe {
+        (capability.new_materialized_block)(
+            vtable,
+            code_object,
+            captures.as_ptr(),
+            captures.len(),
+            unit,
+        )
+    };
+    if block.is_null() || block == api.nilObj || unsafe { birnam_rust_codegen_is_error(block) } != 0
+    {
+        if staged {
+            remove_materialization(unit);
+        }
+        return block;
+    }
+    if staged && !commit_staged_materialization(unit) {
+        remove_materialization(unit);
+        note_error(b"RustCodegen could not publish PortableProgram materialization");
+        return api.nilObj;
+    }
+    block
+}
+
+unsafe extern "C" fn rust_codegen_materialize_resumable(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustCodegen materializeResumable: received invalid arguments"));
+    if values.len() != 2 {
+        abort("RustCodegen materializeResumable:captures: expects two arguments");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    clear_error();
+    let code_object = values[0];
+    let captures_object = values[1];
+    let Some(program) = (unsafe { copy_code_object_program(api, code_object) }) else {
+        note_error(b"RustCodegen resumable materialization needs an admitted CodeObject");
+        return api.nilObj;
+    };
+    let Some((_, capture_count)) = birnam_codegen::portable::program_signature(&program).ok()
+    else {
+        note_error(b"RustCodegen resumable materialization rejected PortableProgram semantics");
+        return api.nilObj;
+    };
+    let vector_vtable = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    if unsafe { vector_length(api, captures_object, vector_vtable) }
+        != usize::try_from(capture_count).ok()
+    {
+        note_error(b"RustCodegen resumable capture count disagrees with CodeObject");
+        return api.nilObj;
+    }
+    let captures = (0..capture_count as usize)
+        .map(|index| unsafe { vector_item(api, captures_object, index) })
+        .collect::<Vec<_>>();
+    let digest = sha256_raw(&program);
+    if let Some((vtable, unit)) =
+        cached_materialization(MaterializationDisposition::Resumable, digest, &program)
+    {
+        let Some(capability) = (unsafe { portable_code_api_v2(api) }) else {
+            note_error(b"RustCodegen PortableCodeApiV2 is unavailable");
+            return api.nilObj;
+        };
+        let block = unsafe {
+            (capability.new_materialized_block)(
+                vtable,
+                code_object,
+                captures.as_ptr(),
+                captures.len(),
+                unit,
+            )
+        };
+        if block.is_null()
+            || block == api.nilObj
+            || unsafe { birnam_rust_codegen_is_error(block) } != 0
+        {
+            return block;
+        }
+        return block;
+    }
+    let Some(block) = (unsafe {
+        compile_resumable_materialized_block(api, code_object, &captures, &program, digest)
+    }) else {
+        note_error(b"RustCodegen could not compile portable resumable materialization");
+        return api.nilObj;
+    };
+    block
+}
+
+unsafe extern "C" fn rust_codegen_materialization_count(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen materializationCount expects no arguments");
+    }
+    let value = MATERIALIZATIONS
+        .lock()
+        .map(|entries| entries.iter().filter(|entry| entry.ready).count())
+        .unwrap_or(0);
+    let api = unsafe { api(runtime()) };
+    unsafe { (api.mkSmallInt)(value as i64) }
+}
+
+unsafe extern "C" fn rust_codegen_current_code_binding_count(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen currentCodeBindingCount expects no arguments");
+    }
+    let value = CODE_BINDINGS
+        .lock()
+        .map(|bindings| {
+            bindings
+                .iter()
+                .filter(|binding| {
+                    binding.lifecycle == CodeBindingLifecycle::Current
+                        && binding.authority != [0; 32]
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let api = unsafe { api(runtime()) };
+    unsafe { (api.mkSmallInt)(value as i64) }
+}
+
+unsafe extern "C" fn rust_codegen_retiring_code_binding_count(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen retiringCodeBindingCount expects no arguments");
+    }
+    let value = CODE_BINDINGS
+        .lock()
+        .map(|bindings| {
+            bindings
+                .iter()
+                .filter(|binding| binding.lifecycle == CodeBindingLifecycle::Retiring)
+                .count()
+        })
+        .unwrap_or(0);
+    let api = unsafe { api(runtime()) };
+    unsafe { (api.mkSmallInt)(value as i64) }
+}
+
+unsafe extern "C" fn rust_codegen_code_binding_generated_bytes(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen codeBindingGeneratedBytes expects no arguments");
+    }
+    let value = CODE_BINDINGS
+        .lock()
+        .ok()
+        .and_then(|bindings| {
+            let mut generations = BTreeMap::<u64, usize>::new();
+            for binding in bindings.iter() {
+                generations
+                    .entry(binding.generation)
+                    .and_modify(|bytes| *bytes = (*bytes).max(binding.generated_bytes))
+                    .or_insert(binding.generated_bytes);
+            }
+            generations
+                .into_values()
+                .try_fold(0usize, usize::checked_add)
+        })
+        .unwrap_or(usize::MAX);
+    let api = unsafe { api(runtime()) };
+    i64::try_from(value)
+        .ok()
+        .map(|value| unsafe { (api.mkSmallInt)(value) })
+        .unwrap_or(api.nilObj)
+}
+
+unsafe extern "C" fn rust_codegen_reap_code_bindings(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen reapCodeBindings expects no arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    let removed = unsafe { reap_code_bindings(api) };
+    unsafe { (api.mkSmallInt)(removed as i64) }
+}
+
+/// Return a point-in-time semantic snapshot of the current CodeBindings.
+///
+/// This is a private K5 image-writer seam, not public compilation policy. Each
+/// row is `[target, selector, implementation, provenance]`; publication
+/// generations, Methods, units, and other process-local carrier state are
+/// deliberately absent. Automatic collection is disabled while copied Oops are
+/// between the rooted registry and the returned rooted Vector graph.
+unsafe extern "C" fn rust_codegen_portable_image_bindings(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen portableImageBindings expects no arguments");
+    }
+    let api = unsafe { api(runtime()) };
+    unsafe { (api.gcSetAuto)(0) };
+    struct AutoGc<'a>(&'a IdApi);
+    impl Drop for AutoGc<'_> {
+        fn drop(&mut self) {
+            unsafe { (self.0.gcSetAuto)(1) };
+        }
+    }
+    let _auto_gc = AutoGc(api);
+    let rows = CODE_BINDINGS
+        .lock()
+        .ok()
+        .map(|bindings| {
+            bindings
+                .iter()
+                .filter(|binding| binding.lifecycle == CodeBindingLifecycle::Current)
+                .map(|binding| {
+                    [
+                        binding.target as Oop,
+                        binding.selector as Oop,
+                        binding.implementation as Oop,
+                        binding.provenance as Oop,
+                    ]
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    if vector.is_null() || vector == api.nilObj {
+        return api.nilObj;
+    }
+    let mut encoded = Vec::with_capacity(rows.len());
+    for row in rows {
+        let row = unsafe { make_vector(api, vector, &row) };
+        if row.is_null() || row == api.nilObj {
+            return api.nilObj;
+        }
+        encoded.push(row);
+    }
+    unsafe { make_vector(api, vector, &encoded) }
+}
+
+unsafe extern "C" fn rust_codegen_evict_materializations(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    if count != 0 {
+        abort("RustCodegen evictMaterializations expects no arguments");
+    }
+    let (removed, generations) = MATERIALIZATIONS
+        .lock()
+        .map(|mut entries| {
+            let before = entries.len();
+            let mut generations = Vec::new();
+            entries.retain(|entry| {
+                if entry.ready {
+                    generations.push((entry.disposition, entry.unit as u64));
+                    false
+                } else {
+                    true
+                }
+            });
+            (before - entries.len(), generations)
+        })
+        .unwrap_or_default();
+    // The repository cache lease and the generated vtable/code-object cache
+    // lease end together. Live Block headers still trace their private vtable,
+    // whose carrier traces the Unit; an evicted-but-live unit can therefore
+    // rebuild a missing nested cache row without becoming a hidden root.
+    for (disposition, generation) in generations {
+        let _ = take_vtable_cache_roots(generation);
+        if disposition == MaterializationDisposition::Resumable {
+            let api = unsafe { api(runtime()) };
+            // A live Block makes this first attempt reject after preserving
+            // the generation for a later GC safe-point retry. A quiescent unit
+            // retires immediately. Either result leaves no repository root.
+            let _ = unsafe { retire_runtime_generation_v1(api, generation) };
+        }
+    }
+    let api = unsafe { api(runtime()) };
+    unsafe { (api.mkSmallInt)(removed as i64) }
 }
 
 unsafe extern "C" fn rust_codegen_eval_persisting(
@@ -6405,6 +9375,7 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
+        || !unsafe { bind_jit_code_generation_identity(api, unit) }
     {
         unsafe { dispose_unit(api, unit) };
         note_error(b"RustCodegen generated C failed to compile");
@@ -7484,6 +10455,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             prepared: 0,
             active: false,
             installed_method_ever: false,
+            all_installed_methods_resumable: true,
             predecessor: 0,
             rollback_leases: Vec::new(),
         });
@@ -7511,6 +10483,7 @@ type TryAcquireStacklessGenerationLeaseV1 =
     unsafe extern "C" fn(Oop, *mut StacklessGenerationLeaseV1) -> u32;
 type ReleaseStacklessGenerationLeaseV1 =
     unsafe extern "C" fn(*const StacklessGenerationLeaseV1) -> u32;
+type RetireStacklessCodeGenerationV1 = unsafe extern "C" fn(u64) -> u32;
 
 struct PendingRollbackLeasesV1 {
     release: ReleaseStacklessGenerationLeaseV1,
@@ -7590,6 +10563,49 @@ unsafe fn release_rollback_leases_v1(api: &IdApi, leases: &mut Vec<StacklessGene
             abort("rollback generation lease release failed");
         }
     }
+}
+
+unsafe fn installed_methods_are_resumable_v1(
+    api: &IdApi,
+    operations: &[CandidateOperationState],
+) -> bool {
+    let methods = operations
+        .iter()
+        .filter(|operation| operation.install && operation.post_present)
+        .map(|operation| operation.post_method)
+        .collect::<BTreeSet<_>>();
+    if methods.is_empty() {
+        return true;
+    }
+    let Some(acquire_address) = (unsafe {
+        floor_symbol(
+            api,
+            b"birnam_id_try_acquire_stackless_generation_lease_v1\0",
+        )
+    }) else {
+        return false;
+    };
+    let Some(release_address) =
+        (unsafe { floor_symbol(api, b"birnam_id_release_stackless_generation_lease_v1\0") })
+    else {
+        return false;
+    };
+    let acquire: TryAcquireStacklessGenerationLeaseV1 =
+        unsafe { core::mem::transmute(acquire_address) };
+    let release: ReleaseStacklessGenerationLeaseV1 =
+        unsafe { core::mem::transmute(release_address) };
+    for method in methods {
+        let mut lease = StacklessGenerationLeaseV1::default();
+        if unsafe { acquire(method as Oop, core::ptr::addr_of_mut!(lease)) } != 0
+            || lease.token_generation == 0
+        {
+            return false;
+        }
+        if unsafe { release(core::ptr::addr_of!(lease)) } != 0 {
+            abort("resumable method eligibility lease release failed");
+        }
+    }
+    true
 }
 
 struct ActiveResumableStageV1 {
@@ -7814,6 +10830,7 @@ unsafe extern "C" fn rust_codegen_begin_quiescence(
         )
         .is_ok()
     {
+        unsafe { reap_retained_generations(api) };
         return api.trueObj;
     }
     note_error(b"RustCodegen cannot begin quiescence from the current phase");
@@ -8062,6 +11079,15 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     {
         return unsafe {
             map_candidate_failure(api, handle, b"RustCodegen candidate ABI mismatches")
+        };
+    }
+    if !unsafe { bind_mapped_code_generation_identity(api, handle, handle as usize as u64) } {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen candidate cache identity is unavailable",
+            )
         };
     }
     let manifest_symbol = unsafe { (api.dlsym)(handle, c"__birnam_candidate_manifest".as_ptr()) };
@@ -8875,6 +11901,8 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         ACTIVE_GENERATION.store(plan.successor_generation, Ordering::Release);
     }
     let installed_method = operations.iter().any(|operation| operation.install);
+    let all_installed_methods_resumable =
+        unsafe { installed_methods_are_resumable_v1(api, &operations) };
     if let Ok(mut candidates) = CANDIDATES.lock() {
         let index = candidates
             .iter()
@@ -8885,6 +11913,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
             candidates[index].operations = operations;
             candidates[index].initializer_writes = initializer_writes;
             candidates[index].installed_method_ever |= installed_method;
+            candidates[index].all_installed_methods_resumable &= all_installed_methods_resumable;
             candidates[index].predecessor = prior;
             candidates[index].rollback_leases = rollback_leases
                 .map(PendingRollbackLeasesV1::into_inner)
@@ -9039,6 +12068,7 @@ unsafe extern "C" fn rust_codegen_reconcile_candidate(
             api.falseObj,
         )
     };
+    release_initializer_compensations(&initializer_writes);
     note_error(b"RustCodegen candidate dispatch drifted");
     api.nilObj
 }
@@ -9205,6 +12235,7 @@ unsafe extern "C" fn rust_codegen_adopt_composed_generation(
             prepared: 0,
             active: true,
             installed_method_ever: false,
+            all_installed_methods_resumable: true,
             predecessor: 0,
             rollback_leases: Vec::new(),
         });
@@ -9356,6 +12387,7 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
                     api.falseObj,
                 )
             };
+            release_initializer_compensations(&initializer_writes);
             note_error(b"RustCodegen candidate dispatch drifted");
             return api.nilObj;
         }
@@ -9372,6 +12404,7 @@ unsafe extern "C" fn rust_codegen_prepare_rollback(
                 api.falseObj,
             )
         };
+        release_initializer_compensations(&initializer_writes);
         note_error(b"RustCodegen candidate initializer projection drifted");
         return api.nilObj;
     }
@@ -9717,6 +12750,15 @@ unsafe fn rust_codegen_load_impl(
                 api,
                 handle,
                 b"RustCodegen artifact ABI marker is incompatible",
+            )
+        };
+    }
+    if !unsafe { bind_mapped_code_generation_identity(api, handle, handle as usize as u64) } {
+        return unsafe {
+            map_candidate_failure(
+                api,
+                handle,
+                b"RustCodegen artifact cache identity is unavailable",
             )
         };
     }
@@ -10314,11 +13356,125 @@ enum PhysicalDisposition {
     Retained(&'static [u8]),
 }
 
+fn take_candidate_roots(generation: u64) -> Vec<CandidateRoot> {
+    let Ok(mut roots) = CANDIDATE_ROOTS.lock() else {
+        return Vec::new();
+    };
+    let mut retained = Vec::with_capacity(roots.len());
+    let mut taken = Vec::new();
+    for root in roots.drain(..) {
+        if root.generation == generation {
+            taken.push(root);
+        } else {
+            retained.push(root);
+        }
+    }
+    *roots = retained;
+    taken
+}
+
+fn take_vtable_cache_roots(generation: u64) -> Vec<VtableCacheRoot> {
+    let Ok(mut roots) = VTABLE_CACHE_ROOTS.lock() else {
+        return Vec::new();
+    };
+    let mut retained = Vec::with_capacity(roots.len());
+    let mut taken = Vec::new();
+    for root in roots.drain(..) {
+        if root.generation == generation {
+            taken.push(root);
+        } else {
+            retained.push(root);
+        }
+    }
+    *roots = retained;
+    taken
+}
+
+unsafe fn restore_live_vtable_cache_roots(api: &IdApi, roots: Vec<VtableCacheRoot>) {
+    let Ok(mut cache) = VTABLE_CACHE_ROOTS.lock() else {
+        return;
+    };
+    for root in roots {
+        let value = root.value as Oop;
+        // vtableParent is an exact registry lookup and does not dereference an
+        // untrusted payload. A null result means GC reclaimed the cache value;
+        // generated code will rebuild that slot on its next use.
+        if !value.is_null() && !(unsafe { (api.vtableParent)(value) }).is_null() {
+            cache.push(root);
+        }
+    }
+}
+
 fn candidate_mapped_bytes(candidate: &CandidateState) -> usize {
     fs::metadata(Path::new(OsStr::from_bytes(&candidate.author_path)))
         .ok()
         .and_then(|metadata| usize::try_from(metadata.len()).ok())
         .unwrap_or(0)
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum RuntimeRetirement {
+    Rejected,
+    Retired,
+    Deferred,
+}
+
+unsafe fn retire_runtime_generation_v1(
+    api: &IdApi,
+    code_generation_identity: u64,
+) -> RuntimeRetirement {
+    let Some(address) =
+        (unsafe { floor_symbol(api, b"birnam_id_retire_stackless_code_generation_v1\0") })
+    else {
+        return RuntimeRetirement::Rejected;
+    };
+    let retire: RetireStacklessCodeGenerationV1 = unsafe { core::mem::transmute(address) };
+    match unsafe { retire(code_generation_identity) } {
+        1 => RuntimeRetirement::Retired,
+        2 => RuntimeRetirement::Deferred,
+        _ => RuntimeRetirement::Rejected,
+    }
+}
+
+unsafe fn reap_retained_generations(api: &IdApi) {
+    let mut pending = RETAINED_GENERATIONS
+        .lock()
+        .ok()
+        .map(|mut retained| core::mem::take(&mut *retained))
+        .unwrap_or_default();
+    let mut still_retained = Vec::new();
+    for mut entry in pending.drain(..) {
+        if !entry.runtime_retired {
+            let cache_roots = take_vtable_cache_roots(entry.handle as u64);
+            let _ = unsafe { (api.gcCollect)() };
+            if !entry.runtime_retirement_eligible {
+                unsafe { restore_live_vtable_cache_roots(api, cache_roots) };
+                still_retained.push(entry);
+                continue;
+            }
+            match unsafe { retire_runtime_generation_v1(api, entry.handle as u64) } {
+                RuntimeRetirement::Retired => {}
+                RuntimeRetirement::Deferred => {
+                    still_retained.push(entry);
+                    continue;
+                }
+                RuntimeRetirement::Rejected => {
+                    unsafe { restore_live_vtable_cache_roots(api, cache_roots) };
+                    still_retained.push(entry);
+                    continue;
+                }
+            }
+            entry.runtime_retired = true;
+        }
+        if unsafe { dlclose(entry.handle as *mut c_void) } == 0 {
+            unsafe { release_rollback_leases_v1(api, &mut entry.rollback_leases) };
+        } else {
+            still_retained.push(entry);
+        }
+    }
+    if let Ok(mut retained) = RETAINED_GENERATIONS.lock() {
+        retained.extend(still_retained);
+    }
 }
 
 unsafe fn dispose_or_retain_candidate(
@@ -10329,29 +13485,58 @@ unsafe fn dispose_or_retain_candidate(
         return PhysicalDisposition::Disposed;
     }
     if candidate.installed_method_ever {
+        let api = unsafe { api(runtime()) };
+        let _candidate_roots = take_candidate_roots(candidate.handle as u64);
+        let cache_roots = take_vtable_cache_roots(candidate.handle as u64);
+        let _ = unsafe { (api.gcCollect)() };
+        let retirement = if candidate.all_installed_methods_resumable {
+            unsafe { retire_runtime_generation_v1(api, candidate.handle as u64) }
+        } else {
+            RuntimeRetirement::Rejected
+        };
+        let runtime_retired = retirement == RuntimeRetirement::Retired;
+        if runtime_retired && unsafe { dlclose(candidate.handle as *mut c_void) } == 0 {
+            unsafe { release_rollback_leases_v1(api, &mut candidate.rollback_leases) };
+            return PhysicalDisposition::Disposed;
+        }
+        if retirement == RuntimeRetirement::Rejected {
+            unsafe { restore_live_vtable_cache_roots(api, cache_roots) };
+        }
         if let Ok(mut retained) = RETAINED_GENERATIONS.lock() {
             retained.push(RetainedGeneration {
                 unit: candidate.unit,
                 handle: candidate.handle,
                 mapped_bytes,
-                _rollback_leases: core::mem::take(&mut candidate.rollback_leases),
+                runtime_retirement_eligible: candidate.all_installed_methods_resumable,
+                runtime_retired,
+                rollback_leases: core::mem::take(&mut candidate.rollback_leases),
             });
         }
-        return PhysicalDisposition::Retained(b"codeGenerationPinned\0");
+        return PhysicalDisposition::Retained(if runtime_retired {
+            b"disposalFailed\0"
+        } else {
+            b"codeGenerationPinned\0"
+        });
     }
     // SAFETY: this mapping never installed a method and is detached from the
     // candidate registry, so no vtable or lifecycle callback can reach it.
+    let _candidate_roots = take_candidate_roots(candidate.handle as u64);
+    let cache_roots = take_vtable_cache_roots(candidate.handle as u64);
     if unsafe { dlclose(candidate.handle as *mut c_void) } == 0 {
         let api = unsafe { api(runtime()) };
         unsafe { release_rollback_leases_v1(api, &mut candidate.rollback_leases) };
         PhysicalDisposition::Disposed
     } else {
+        let api = unsafe { api(runtime()) };
+        unsafe { restore_live_vtable_cache_roots(api, cache_roots) };
         if let Ok(mut retained) = RETAINED_GENERATIONS.lock() {
             retained.push(RetainedGeneration {
                 unit: candidate.unit,
                 handle: candidate.handle,
                 mapped_bytes,
-                _rollback_leases: core::mem::take(&mut candidate.rollback_leases),
+                runtime_retirement_eligible: true,
+                runtime_retired: true,
+                rollback_leases: core::mem::take(&mut candidate.rollback_leases),
             });
         }
         PhysicalDisposition::Retained(b"disposalFailed\0")
@@ -10502,6 +13687,59 @@ unsafe extern "C" fn rust_codegen_retained_generation_bytes(
     unsafe { (api.mkSmallInt)(value) }
 }
 
+unsafe fn floor_usize_diagnostic(api: &IdApi, symbol: &[u8]) -> Option<usize> {
+    let address = unsafe { floor_symbol(api, symbol) }?;
+    let read: unsafe extern "C" fn() -> usize = unsafe { core::mem::transmute(address) };
+    Some(unsafe { read() })
+}
+
+unsafe extern "C" fn rust_codegen_live_vtable_count(
+    _receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (api.mkSmallInt)((api.vtableCount)().min(i64::MAX as usize) as i64) }
+}
+
+unsafe fn floor_diagnostic_method(count: usize, symbol: &[u8]) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(value) = (unsafe { floor_usize_diagnostic(api, symbol) }) else {
+        return api.nilObj;
+    };
+    unsafe { (api.mkSmallInt)(value.min(i64::MAX as usize) as i64) }
+}
+
+unsafe extern "C" fn rust_codegen_live_symbol_count(
+    _receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { floor_diagnostic_method(count, b"birnam_id_live_symbol_count_v1\0") }
+}
+
+unsafe extern "C" fn rust_codegen_live_symbol_name_bytes(
+    _receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { floor_diagnostic_method(count, b"birnam_id_live_symbol_name_bytes_v1\0") }
+}
+
+unsafe extern "C" fn rust_codegen_live_heap_bytes(
+    _receiver: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    unsafe { floor_diagnostic_method(count, b"birnam_id_live_heap_bytes_v1\0") }
+}
+
 unsafe extern "C" fn rust_codegen_discard_candidate(
     _self_object: Oop,
     pointer: *const Oop,
@@ -10568,6 +13806,7 @@ unsafe extern "C" fn rust_codegen_discard_candidate(
         note_error(b"RustCodegen candidate Store is unavailable");
         return api.nilObj;
     }
+    let _ = release_initializer_compensation(candidate.unit);
     let disposition = unsafe { dispose_or_retain_candidate(&mut candidate, mapped_bytes) };
     unsafe { make_discard_receipt(api, values[0], disposition) }
 }
@@ -10604,6 +13843,7 @@ unsafe extern "C" fn rust_codegen_release_candidate(
         return if unit == 0 { api.nilObj } else { values[0] };
     };
     let mapped_bytes = candidate_mapped_bytes(&candidate);
+    let _ = release_initializer_compensation(candidate.unit);
     let _ = unsafe { dispose_or_retain_candidate(&mut candidate, mapped_bytes) };
     let _ = unsafe {
         assert_candidate_fact(
@@ -10636,7 +13876,8 @@ unsafe fn reflect_exported_symbol(api: &IdApi, value: Oop) -> Oop {
     if name.is_null() {
         return api.nilObj;
     }
-    unsafe { (api.intern)(name) }
+    let name = unsafe { CStr::from_ptr(name) }.to_owned();
+    unsafe { (api.intern)(name.as_ptr()) }
 }
 
 unsafe fn reflect_map_put(api: &IdApi, map: Oop, key: &[u8], value: Oop) -> Oop {
@@ -10727,7 +13968,9 @@ unsafe fn reflect_method_descriptor(
             &[vt, selector],
         )
     };
-    let method = if mirror == api.nilObj {
+    let method = if let Some(implementation) = current_code_binding_implementation(vt, selector) {
+        implementation
+    } else if mirror == api.nilObj {
         unsafe { intern(api, b"primitive\0") }
     } else if mirror == unsafe { intern(api, b"primitive\0") }
         || unsafe { (api.objectPayloadSize)(mirror) } != 0
@@ -10829,25 +14072,26 @@ unsafe extern "C" fn rust_reflect_export_vtable(
         abort("RustReflect exportVtableOf:as: expects value and symbol");
     }
     let api = unsafe { api(runtime()) };
-    if unsafe { reflect_symbol_name(api, values[1]) }.is_none() {
+    let Some(name) = (unsafe { reflect_symbol_name(api, values[1]) }) else {
         note_error(b"RustReflect exportVtableOf:as: expects a symbol");
         return api.nilObj;
-    }
+    };
+    let name =
+        CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
     let vt = unsafe { (api.vtableOf)(values[0]) };
     if vt.is_null() || unsafe { (api.vtableOwner)(vt) } != values[0] {
         note_error(b"RustReflect exportVtableOf:as: target has no stable vtable");
         return api.nilObj;
     }
-    let name = unsafe { (api.symbolName)(values[1]) };
-    if unsafe { (api.isExported)(name) } != 0 {
-        return if unsafe { (api.import)(name) } == vt {
+    if unsafe { (api.isExported)(name.as_ptr()) } != 0 {
+        return if unsafe { (api.import)(name.as_ptr()) } == vt {
             values[0]
         } else {
             note_error(b"RustReflect exportVtableOf:as: name conflict");
             api.nilObj
         };
     }
-    if unsafe { (api.exportObj)(name, vt) }.is_null() {
+    if unsafe { (api.exportObj)(name.as_ptr(), vt) }.is_null() {
         note_error(b"RustReflect exportVtableOf:as: export failed");
         return api.nilObj;
     }
@@ -10865,70 +14109,35 @@ unsafe extern "C" fn rust_reflect_export_object(
         abort("RustReflect exportObject:as: expects value and symbol");
     }
     let api = unsafe { api(runtime()) };
-    if unsafe { reflect_symbol_name(api, values[1]) }.is_none() {
+    let Some(name) = (unsafe { reflect_symbol_name(api, values[1]) }) else {
         note_error(b"RustReflect exportObject:as: expects a symbol");
         return api.nilObj;
-    }
-    let name = unsafe { (api.symbolName)(values[1]) };
-    if unsafe { (api.isExported)(name) } != 0 {
-        return if unsafe { (api.import)(name) } == values[0] {
+    };
+    let name =
+        CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
+    if unsafe { (api.isExported)(name.as_ptr()) } != 0 {
+        return if unsafe { (api.import)(name.as_ptr()) } == values[0] {
             values[0]
         } else {
             note_error(b"RustReflect exportObject:as: name conflict");
             api.nilObj
         };
     }
-    if unsafe { (api.exportObj)(name, values[0]) }.is_null() {
+    if unsafe { (api.exportObj)(name.as_ptr(), values[0]) }.is_null() {
         note_error(b"RustReflect exportObject:as: export failed");
         return api.nilObj;
     }
     values[0]
 }
 
-unsafe fn compile_reflect_trampoline(
+unsafe fn reflect_install_method(
     api: &IdApi,
-    selector: &[u8],
-    key: &[u8],
-) -> Option<(Oop, Oop)> {
-    let runtime = runtime();
-    let unit = unsafe { send0(api, runtime.tcc as Oop, NEW_SELECTOR) };
-    if unit.is_null() || unit == api.nilObj {
-        return None;
-    }
-    // Colons alone do not carry the arity: a binary operator has none, so
-    // counting them read `#|>` as unary and handed its two-parameter block a
-    // `value:` it does not understand. selector_arity knows the whole rule.
-    let arity = selector_arity(selector);
-    let value_selector = "value:".repeat(arity + 1);
-    let source = format!(
-        "extern void* birnam_send(void*, void*, void**, long);\nextern void* birnam_intern(const char*);\nextern void* birnam_global(const char*);\nvoid* __tramp(void* self, void** args, long n) {{ (void)n; void* a[{}]; a[0] = self; for (long i = 0; i < {}; ++i) a[i + 1] = args[i]; return birnam_send(birnam_global(\"{}\"), birnam_intern(\"{}\"), a, {}L); }}\n",
-        arity + 1,
-        arity,
-        String::from_utf8_lossy(key),
-        value_selector,
-        arity + 1,
-    );
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
-    if unsafe { send(api, unit, COMPILE_SELECTOR, &[source_object]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
-        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
-        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
-    {
-        unsafe { dispose_unit(api, unit) };
-        return None;
-    }
-    let entry = unsafe { (api.mkString)(b"__tramp".as_ptr(), 7) };
-    let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry]) };
-    if unsafe { (api.isSmallInt)(symbol) } == 0 {
-        unsafe { dispose_unit(api, unit) };
-        return None;
-    }
-    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
-    let method: Oop = address as Oop;
-    Some((unit, method))
-}
-
-unsafe fn reflect_install_method(api: &IdApi, selector: Oop, target: Oop, block: Oop) -> Oop {
+    selector: Oop,
+    target: Oop,
+    implementation: Oop,
+    provenance: Oop,
+) -> Oop {
+    let _ = unsafe { reap_code_bindings(api) };
     let Some(selector_bytes) = (unsafe { reflect_symbol_name(api, selector) }) else {
         note_error(b"RustReflect defineMethod: expects a selector symbol");
         return api.nilObj;
@@ -10938,26 +14147,18 @@ unsafe fn reflect_install_method(api: &IdApi, selector: Oop, target: Oop, block:
         note_error(b"RustReflect defineMethod: target has no vtable");
         return api.nilObj;
     }
-    let id = REFLECT_METHOD_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let key = format!("__rust_mblk_{id}");
-    let key_symbol = unsafe { intern_bytes(api, key.as_bytes()) };
-    let globals_entity = unsafe { intern(api, GLOBALS_ENTITY_NAME) };
-    if unsafe {
-        send(
+    let Some((unit, method)) = (unsafe {
+        compile_portable_named_materialization(
             api,
-            runtime().store as Oop,
-            STORE_ASSERT_SELECTOR,
-            &[globals_entity, key_symbol, block],
+            target,
+            vt,
+            selector,
+            &selector_bytes,
+            implementation,
+            provenance,
         )
-    } == api.nilObj
-    {
-        note_error(b"RustReflect defineMethod: could not retain block");
-        return api.nilObj;
-    }
-    let Some((unit, method)) =
-        (unsafe { compile_reflect_trampoline(api, &selector_bytes, key.as_bytes()) })
-    else {
-        note_error(b"RustReflect defineMethod: trampoline compilation failed");
+    }) else {
+        note_error(b"RustReflect defineMethod: portable NamedAdapter materialization failed");
         return api.nilObj;
     };
     let result = unsafe {
@@ -10969,11 +14170,15 @@ unsafe fn reflect_install_method(api: &IdApi, selector: Oop, target: Oop, block:
         )
     };
     if result == api.nilObj {
-        unsafe { dispose_unit(api, unit) };
+        let generation = retire_staged_code_binding(unit)
+            .unwrap_or_else(|| abort("published NamedAdapter lost its staged CodeBinding"));
+        unsafe { request_code_binding_retirements(api, &[generation]) };
         note_error(b"RustReflect defineMethod: Store rejected method");
         return api.nilObj;
     }
-    retain_unit(unit);
+    let predecessors = publish_staged_code_binding(unit)
+        .unwrap_or_else(|| abort("published NamedAdapter lost its staged CodeBinding"));
+    unsafe { request_code_binding_retirements(api, &predecessors) };
     vt
 }
 
@@ -10988,7 +14193,7 @@ unsafe extern "C" fn rust_reflect_define_method(
         abort("RustReflect defineMethod:on:as: expects selector, target, and block");
     }
     let api = unsafe { api(runtime()) };
-    unsafe { reflect_install_method(api, values[0], values[1], values[2]) }
+    unsafe { reflect_install_method(api, values[0], values[1], values[2], api.nilObj) }
 }
 
 unsafe extern "C" fn rust_reflect_remove_method(
@@ -11004,12 +14209,16 @@ unsafe extern "C" fn rust_reflect_remove_method(
     let result = unsafe { birnam_rust_codegen_remove_method(values[1], values[0], ptr::null(), 0) };
     if result == unsafe { api(runtime()).nilObj } {
         note_error(b"RustReflect removeMethod:on: Store rejected method");
+    } else {
+        let api = unsafe { api(runtime()) };
+        let generations = withdraw_current_code_binding(values[1], values[0]);
+        unsafe { request_code_binding_retirements(api, &generations) };
     }
     result
 }
 
 unsafe extern "C" fn rust_reflect_define_method_sourced(
-    self_object: Oop,
+    _self_object: Oop,
     pointer: *const Oop,
     count: usize,
 ) -> Oop {
@@ -11018,12 +14227,8 @@ unsafe extern "C" fn rust_reflect_define_method_sourced(
     if values.len() != 4 {
         abort("RustReflect defineMethod:on:as:source: expects four arguments");
     }
-    let result = unsafe { rust_reflect_define_method(self_object, values.as_ptr(), 3) };
     let api = unsafe { api(runtime()) };
-    if result != api.nilObj {
-        unsafe { record_method_operation(api, values[3]) };
-    }
-    result
+    unsafe { reflect_install_method(api, values[0], values[1], values[2], values[3]) }
 }
 
 unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
@@ -11042,7 +14247,7 @@ unsafe extern "C" fn rust_reflect_define_method_doc_sourced(
     // prototype and docstring rather than silently dropping the doc payload.
     let result = unsafe { send(api, self_object, b"defineMethod:on:as:doc:\0", &values[..4]) };
     if result != api.nilObj {
-        unsafe { record_method_operation(api, values[4]) };
+        let _ = update_current_code_binding_provenance(values[1], values[0], values[4]);
     }
     result
 }
@@ -11057,12 +14262,7 @@ unsafe extern "C" fn rust_reflect_remove_method_sourced(
     if values.len() != 3 {
         abort("RustReflect removeMethod:on:source: expects three arguments");
     }
-    let result = unsafe { rust_reflect_remove_method(self_object, values.as_ptr(), 2) };
-    if result != unsafe { api(runtime()) }.nilObj {
-        let api = unsafe { api(runtime()) };
-        unsafe { record_method_operation(api, values[2]) };
-    }
-    result
+    unsafe { rust_reflect_remove_method(self_object, values.as_ptr(), 2) }
 }
 
 unsafe extern "C" fn rust_reflect_all_methods(
@@ -11255,6 +14455,13 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             let object = unsafe { (host_api.alloc)(vt, 0) };
             (vt, object)
         };
+        let portable_mapped_unit_vt = if unsafe {
+            (host_api.isExported)(PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) != 0
+        } {
+            unsafe { (host_api.import)(PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) }
+        } else {
+            unsafe { (host_api.proto)(host_api.object_vt) }
+        };
         if adapter_codegen_vt.is_null()
             || adapter_codegen.is_null()
             || adapter_reflect_vt.is_null()
@@ -11262,12 +14469,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             || adapter_collector_vt.is_null()
             || discard_receipt_vt.is_null()
             || discard_receipt.is_null()
+            || portable_mapped_unit_vt.is_null()
         {
             abort("RustCodegen adapter exports were incomplete");
         }
         unsafe {
             (host_api.setLayout)(adapter_collector_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
             (host_api.setLayout)(discard_receipt_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
+            (host_api.setLayout)(portable_mapped_unit_vt, ptr::null(), 0, SLOT_RAW);
         }
         let tcc = unsafe { (host_api.import)(TCC_NAME.as_ptr().cast()) };
         if tcc.is_null() {
@@ -11286,6 +14495,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             adapter_collector_vt: adapter_collector_vt as usize,
             discard_receipt_vt: discard_receipt_vt as usize,
             discard_receipt: discard_receipt as usize,
+            portable_mapped_unit_vt: portable_mapped_unit_vt as usize,
             tcc: tcc as usize,
             globals: globals as usize,
             store: store as usize,
@@ -11300,6 +14510,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.rust_codegen_vt as Oop,
             intern(api, EMIT_SELECTOR),
             rust_codegen_emit,
+        );
+        (api.exportObj)(
+            PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast(),
+            runtime.portable_mapped_unit_vt as Oop,
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
@@ -11548,6 +14762,91 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, MATERIALIZE_SYNCHRONOUS_SELECTOR),
+            rust_codegen_materialize_synchronous,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, MATERIALIZE_RESUMABLE_SELECTOR),
+            rust_codegen_materialize_resumable,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, MATERIALIZATION_COUNT_SELECTOR),
+            rust_codegen_materialization_count,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, EVICT_MATERIALIZATIONS_SELECTOR),
+            rust_codegen_evict_materializations,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, CURRENT_CODE_BINDING_COUNT_SELECTOR),
+            rust_codegen_current_code_binding_count,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, RETIRING_CODE_BINDING_COUNT_SELECTOR),
+            rust_codegen_retiring_code_binding_count,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, CODE_BINDING_GENERATED_BYTES_SELECTOR),
+            rust_codegen_code_binding_generated_bytes,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, REAP_CODE_BINDINGS_SELECTOR),
+            rust_codegen_reap_code_bindings,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PORTABLE_IMAGE_BINDINGS_SELECTOR),
+            rust_codegen_portable_image_bindings,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, COMPILE_PORTABLE_IMAGE_CODE_SELECTOR),
+            rust_codegen_compile_portable_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, BEGIN_PORTABLE_IMAGE_REBUILD_SELECTOR),
+            rust_codegen_begin_portable_image_rebuild,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, BEGIN_PORTABLE_IMAGE_MAPPED_SELECTOR),
+            rust_codegen_begin_portable_image_mapped,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PORTABLE_IMAGE_BLOCK_VTABLE_SELECTOR),
+            rust_codegen_portable_image_block_vtable,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, PREPARE_PORTABLE_IMAGE_BINDING_SELECTOR),
+            rust_codegen_prepare_portable_image_binding,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, FINISH_PORTABLE_IMAGE_UNIT_SELECTOR),
+            rust_codegen_finish_portable_image_unit,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, CANCEL_PORTABLE_IMAGE_UNIT_SELECTOR),
+            rust_codegen_cancel_portable_image_unit,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
+            intern(api, INSTALL_PORTABLE_IMAGE_BINDING_SELECTOR),
+            rust_codegen_install_portable_image_binding,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, COMPILE_OUTPUT_SELECTOR),
             rust_codegen_compile_output,
         );
@@ -11613,6 +14912,24 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         );
         for (selector, method) in [
             (
+                LIVE_VTABLE_COUNT_SELECTOR,
+                rust_codegen_live_vtable_count as birnam_abi::Method,
+            ),
+            (LIVE_SYMBOL_COUNT_SELECTOR, rust_codegen_live_symbol_count),
+            (
+                LIVE_SYMBOL_NAME_BYTES_SELECTOR,
+                rust_codegen_live_symbol_name_bytes,
+            ),
+            (LIVE_HEAP_BYTES_SELECTOR, rust_codegen_live_heap_bytes),
+        ] {
+            (api.method)(
+                runtime.rust_codegen_vt as Oop,
+                intern(api, selector),
+                method,
+            );
+        }
+        for (selector, method) in [
+            (
                 b"generation\0".as_slice(),
                 discard_receipt_generation as birnam_abi::Method,
             ),
@@ -11651,6 +14968,35 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         adapter_method!(b"evalPersisting:\0", rust_codegen_eval_persisting);
         adapter_method!(b"eval:from:\0", rust_codegen_eval);
         adapter_method!(b"evalPersisting:from:\0", rust_codegen_eval_persisting);
+        adapter_method!(
+            MATERIALIZE_SYNCHRONOUS_SELECTOR,
+            rust_codegen_materialize_synchronous
+        );
+        adapter_method!(
+            MATERIALIZE_RESUMABLE_SELECTOR,
+            rust_codegen_materialize_resumable
+        );
+        adapter_method!(
+            MATERIALIZATION_COUNT_SELECTOR,
+            rust_codegen_materialization_count
+        );
+        adapter_method!(
+            EVICT_MATERIALIZATIONS_SELECTOR,
+            rust_codegen_evict_materializations
+        );
+        adapter_method!(
+            CURRENT_CODE_BINDING_COUNT_SELECTOR,
+            rust_codegen_current_code_binding_count
+        );
+        adapter_method!(
+            RETIRING_CODE_BINDING_COUNT_SELECTOR,
+            rust_codegen_retiring_code_binding_count
+        );
+        adapter_method!(
+            CODE_BINDING_GENERATED_BYTES_SELECTOR,
+            rust_codegen_code_binding_generated_bytes
+        );
+        adapter_method!(REAP_CODE_BINDINGS_SELECTOR, rust_codegen_reap_code_bindings);
         adapter_method!(b"compile:output:\0", rust_codegen_compile_output);
         adapter_method!(b"compile:output:from:\0", rust_codegen_compile_output);
         adapter_method!(b"compile:output:root:\0", rust_codegen_compile_output_root);
@@ -11778,6 +15124,13 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             RETAINED_GENERATION_BYTES_SELECTOR,
             rust_codegen_retained_generation_bytes
         );
+        adapter_method!(LIVE_VTABLE_COUNT_SELECTOR, rust_codegen_live_vtable_count);
+        adapter_method!(LIVE_SYMBOL_COUNT_SELECTOR, rust_codegen_live_symbol_count);
+        adapter_method!(
+            LIVE_SYMBOL_NAME_BYTES_SELECTOR,
+            rust_codegen_live_symbol_name_bytes
+        );
+        adapter_method!(LIVE_HEAP_BYTES_SELECTOR, rust_codegen_live_heap_bytes);
         adapter_method!(LOAD_SELECTOR, rust_codegen_load);
         adapter_method!(
             LOAD_INITIAL_MODULE_SELECTOR,
@@ -11892,6 +15245,11 @@ pub extern "C" fn birnam_codegen_rust_identity() -> *const c_char {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
+}
+
+#[unsafe(no_mangle)]
 ///
 /// # Safety
 ///
@@ -11910,18 +15268,208 @@ mod tests {
         ParsedSelectionRequests, RevisionMetadata, RevisionOperation, RootKind,
         SelectionDisposition, SelectionImplementationKind, artifact_selection,
         artifact_selection_with_requests, artifact_source, birnam_codegen_rust_identity,
-        candidate_manifest, candidate_manifest_matches, candidate_selection_matches,
-        compile_resumable_plan, decode_hex_digest, dispatch_generation_authority_with,
-        empty_resumable_manifest, expand_selection_requests, image_artifact_selection_and_requests,
-        inspect_artifact_selection, inspect_generation_selection, inspect_manifest,
-        rebase_image_resumable_plan, resumable_indices, resumable_manifest, selector_arity,
-        sha256_hex,
+        birnam_rust_codegen_candidate_root_set, birnam_rust_codegen_vtable_cache_get,
+        birnam_rust_codegen_vtable_cache_set, candidate_manifest, candidate_manifest_matches,
+        candidate_selection_matches, compile_resumable_plan, decode_hex_digest,
+        dispatch_generation_authority_with, empty_resumable_manifest, expand_selection_requests,
+        image_artifact_selection_and_requests, inspect_artifact_selection,
+        inspect_generation_selection, inspect_manifest, portable_image_plan, portable_named_plan,
+        portable_resumable_plan, rebase_image_resumable_plan, resumable_indices,
+        resumable_manifest, selector_arity, sha256_hex, take_candidate_roots,
+        take_vtable_cache_roots,
     };
+    use birnam_artifact::portable_program::{NodeSpec, ProgramSpec, StatementSpec, encode};
     use birnam_codegen::{
         Block, BlockResumableEmission, Expr, NamedResumableEmission, Program, Statement,
     };
     use std::borrow::Cow;
     use std::ffi::CStr;
+    use std::process::Command;
+
+    #[test]
+    fn source_less_resumable_plan_covers_nested_closure_and_is_c11_clean() {
+        let nested = encode(ProgramSpec {
+            parameters: &[],
+            captures: &[b"held"],
+            lets: &[],
+            statements: &[StatementSpec::Expression { root_node: 0 }],
+            nodes: &[NodeSpec::LexicalRead(0)],
+        })
+        .unwrap();
+        let outer = encode(ProgramSpec {
+            parameters: &[b"held"],
+            captures: &[],
+            lets: &[],
+            statements: &[StatementSpec::Expression { root_node: 0 }],
+            nodes: &[NodeSpec::BlockLiteral {
+                program: &nested,
+                captures: &[0],
+            }],
+        })
+        .unwrap();
+        let plan = portable_resumable_plan(&outer).expect("complete portable closure compiles");
+        let selection = birnam_artifact::materialization_selection::inspect(
+            &plan.selection,
+            &plan.programs,
+            &plan.bindings,
+        )
+        .unwrap();
+        let manifest = birnam_artifact::portable_resumable_manifest::inspect(
+            &plan.manifest,
+            plan.authority,
+            &selection,
+        )
+        .unwrap();
+        assert_eq!(manifest.entry_count(), 2);
+        assert!(
+            plan.c_source
+                .windows(b"birnam_portable_materialized_block_new_v2".len())
+                .any(|window| window == b"birnam_portable_materialized_block_new_v2")
+        );
+
+        let path = std::env::temp_dir().join(format!(
+            "birnam-portable-resumable-plan-{}.c",
+            std::process::id()
+        ));
+        std::fs::write(&path, &plan.c_source).unwrap();
+        let output = Command::new("cc")
+            .args([
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-Wno-unused-function",
+                "-fsyntax-only",
+            ])
+            .arg(&path)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_file(path);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn source_less_named_plan_is_portable_and_c11_clean() {
+        let plan = portable_named_plan(b"at:put:", Some(b"definition provenance"))
+            .expect("portable named adapter compiles");
+        let selection = birnam_artifact::materialization_selection::inspect(
+            &plan.selection,
+            &plan.programs,
+            &plan.bindings,
+        )
+        .unwrap();
+        let row = selection.row(0).unwrap();
+        assert_eq!(
+            row.kind,
+            birnam_artifact::materialization_selection::SubjectKind::NamedAdapter
+        );
+        assert_eq!(row.language_arity, 2);
+        let manifest = birnam_artifact::portable_resumable_manifest::inspect(
+            &plan.manifest,
+            plan.authority,
+            &selection,
+        )
+        .unwrap();
+        assert_eq!(manifest.entry_count(), 1);
+        assert!(
+            plan.c_source
+                .windows(b"__birnam_prepare_portable_named_v1".len())
+                .any(|window| window == b"__birnam_prepare_portable_named_v1")
+        );
+
+        let path = std::env::temp_dir().join(format!(
+            "birnam-portable-named-plan-{}.c",
+            std::process::id()
+        ));
+        std::fs::write(&path, &plan.c_source).unwrap();
+        let output = Command::new("cc")
+            .args([
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-Wno-unused-function",
+                "-fsyntax-only",
+            ])
+            .arg(&path)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_file(path);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn portable_image_plan_exports_exact_authority_inputs_and_is_c11_clean() {
+        let program = encode(ProgramSpec {
+            parameters: &[],
+            captures: &[],
+            lets: &[],
+            statements: &[StatementSpec::Expression { root_node: 0 }],
+            nodes: &[NodeSpec::Integer(7)],
+        })
+        .unwrap();
+        let programs = birnam_artifact::portable_inventory::encode_closure(&[&program]).unwrap();
+        let bindings = birnam_artifact::code_binding_inventory::encode(&[]).unwrap();
+        let selection = birnam_artifact::materialization_selection::encode(
+            &programs,
+            &bindings,
+            &[],
+            &[birnam_artifact::materialization_selection::Disposition::Resumable],
+        )
+        .unwrap();
+        let plan = portable_image_plan(&programs, &bindings, &selection)
+            .expect("complete portable image compiles");
+        assert_eq!(plan.programs, programs);
+        assert_eq!(plan.bindings, bindings);
+        assert_eq!(plan.selection, selection);
+        for name in [
+            b"__birnam_portable_program_inventory_v1".as_slice(),
+            b"__birnam_code_binding_inventory_v1".as_slice(),
+            b"__birnam_code_materialization_selection_v1".as_slice(),
+            b"__birnam_portable_resumable_manifest_v1".as_slice(),
+            b"__birnam_prepare_portable_image_blocks_v1".as_slice(),
+            b"__birnam_resolve_block_vtable_v1".as_slice(),
+        ] {
+            assert!(
+                plan.c_source
+                    .windows(name.len())
+                    .any(|window| window == name),
+                "missing {}",
+                String::from_utf8_lossy(name)
+            );
+        }
+        let path = std::env::temp_dir().join(format!(
+            "birnam-portable-image-plan-{}.c",
+            std::process::id()
+        ));
+        std::fs::write(&path, &plan.c_source).unwrap();
+        let output = Command::new("cc")
+            .args([
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-Wno-unused-function",
+                "-fsyntax-only",
+            ])
+            .arg(&path)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_file(path);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     #[test]
     fn selector_arity_counts_binary_operators_as_one_argument() {
@@ -11938,6 +15486,54 @@ mod tests {
         // SAFETY: the export points to immutable crate storage for process life.
         let identity = unsafe { CStr::from_ptr(birnam_codegen_rust_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), IDENTITY);
+    }
+
+    #[test]
+    fn generated_vtable_caches_are_generation_owned_and_withdrawable() {
+        const LEFT: u64 = 0xf001_f001_f001_f001;
+        const RIGHT: u64 = 0xf002_f002_f002_f002;
+        let left = core::ptr::NonNull::<u8>::dangling().as_ptr().cast();
+        let right = core::ptr::NonNull::<u16>::dangling().as_ptr().cast();
+        unsafe {
+            assert_eq!(birnam_rust_codegen_vtable_cache_set(LEFT, 7, left), left);
+            assert_eq!(birnam_rust_codegen_vtable_cache_set(RIGHT, 7, right), right);
+            assert_eq!(birnam_rust_codegen_vtable_cache_get(LEFT, 7), left);
+            assert_eq!(birnam_rust_codegen_vtable_cache_get(RIGHT, 7), right);
+        }
+
+        let withdrawn = take_vtable_cache_roots(LEFT);
+        assert_eq!(withdrawn.len(), 1);
+        assert_eq!(withdrawn[0].generation, LEFT);
+        assert!(unsafe { birnam_rust_codegen_vtable_cache_get(LEFT, 7) }.is_null());
+        assert_eq!(
+            unsafe { birnam_rust_codegen_vtable_cache_get(RIGHT, 7) },
+            right
+        );
+        assert_eq!(take_vtable_cache_roots(RIGHT).len(), 1);
+    }
+
+    #[test]
+    fn generated_candidate_roots_are_generation_owned_and_withdrawable() {
+        const LEFT: u64 = 0xf003_f003_f003_f003;
+        const RIGHT: u64 = 0xf004_f004_f004_f004;
+        let left = core::ptr::NonNull::<u32>::dangling().as_ptr().cast();
+        let right = core::ptr::NonNull::<u64>::dangling().as_ptr().cast();
+        unsafe {
+            assert_eq!(birnam_rust_codegen_candidate_root_set(LEFT, 3, left), left);
+            assert_eq!(
+                birnam_rust_codegen_candidate_root_set(RIGHT, 3, right),
+                right
+            );
+        }
+
+        let withdrawn = take_candidate_roots(LEFT);
+        assert_eq!(withdrawn.len(), 1);
+        assert_eq!(withdrawn[0].generation, LEFT);
+        assert_eq!(withdrawn[0].value, left as usize);
+        let remaining = take_candidate_roots(RIGHT);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].generation, RIGHT);
+        assert_eq!(remaining[0].value, right as usize);
     }
 
     #[test]

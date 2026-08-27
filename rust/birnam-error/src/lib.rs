@@ -7,7 +7,7 @@
 
 #![allow(clippy::missing_safety_doc)]
 
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
@@ -35,6 +35,20 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
+
+unsafe extern "C" fn mark_runtime_roots(mark: MarkFn) {
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [
+            runtime.error_vt,
+            runtime.factory_vt,
+            runtime.factory_obj,
+            runtime.wild_kind,
+        ] {
+            unsafe { mark(value as Oop) };
+        }
+    }
+}
 
 fn abort(message: &str) -> ! {
     eprintln!("birnam Rust Error: {message}");
@@ -170,8 +184,8 @@ unsafe extern "C" fn object_dnu(_self_object: Oop, args: *const Oop, count: usiz
     if symbol_name.is_null() {
         return api.nilObj;
     }
-    // SAFETY: IdApi symbolName returns the interned NUL-terminated selector
-    // name for a valid symbol.
+    // SAFETY: selector remains rooted by this active send while its borrowed
+    // NUL-terminated name is copied into `message` below.
     let name = unsafe { CStr::from_ptr(symbol_name) }.to_bytes();
     let mut message = Vec::with_capacity(b"does not understand #".len() + name.len());
     message.extend_from_slice(b"does not understand #");
@@ -260,6 +274,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             object_dnu,
         );
     }
+    ROOT_REGISTERED.get_or_init(|| unsafe {
+        (api.gcRegisterRootProvider)(mark_runtime_roots);
+    });
     if unsafe { (api.isExported)(ERROR_NAME.as_ptr().cast()) } == 0 {
         unsafe {
             let _ = (api.exportObj)(ERROR_VT_NAME.as_ptr().cast(), runtime.error_vt as Oop);
@@ -272,6 +289,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_error_rust_identity() -> *const c_char {
     RUST_ERROR_IDENTITY.as_ptr().cast()
+}
+
+/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+    1
 }
 
 #[unsafe(no_mangle)]

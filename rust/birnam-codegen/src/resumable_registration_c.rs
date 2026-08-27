@@ -1,4 +1,4 @@
-//! Exact registration-envelope v1 C production.
+//! Exact registration-envelope v2 C production.
 //!
 //! The common declaration is emitted once per translation unit. Each entry
 //! owns descriptor bytes, a token cell, and Prepare/Abort helpers. Physical
@@ -31,11 +31,11 @@ pub enum Error {
 }
 
 /// Exact target declaration shared by every emitted registration operation.
-pub const fn registration_prelude_v1() -> &'static [u8] {
+pub const fn registration_prelude_v2() -> &'static [u8] {
     br#"typedef void* BirnamOopV1;
 typedef BirnamOopV1 (*BirnamMethodV1)(BirnamOopV1, BirnamOopV1 const*, unsigned long);
 typedef BirnamMethodV1 BirnamStepMethodV1;
-typedef struct BirnamResumableRegistrationV1 {
+typedef struct BirnamResumableRegistrationV2 {
 unsigned int carrier_version;
 unsigned int struct_size;
 unsigned int operation;
@@ -54,8 +54,10 @@ unsigned long long portable_implementation_identity;
 unsigned int language_arity;
 unsigned int driver_argument_count;
 unsigned char descriptor_sha256[32];
-} BirnamResumableRegistrationV1;
-extern unsigned int birnam_register_resumable_v1(BirnamResumableRegistrationV1*);
+unsigned int receiver_capture_offset_words;
+unsigned int reserved1;
+} BirnamResumableRegistrationV2;
+extern unsigned int birnam_register_resumable_v2(BirnamResumableRegistrationV2*);
 typedef struct BirnamResumableContextV1 {
 unsigned long long generation_identity;
 unsigned long long generation_lease;
@@ -73,32 +75,34 @@ __birnam_resumable_context_v1.generation_identity=0ULL;__birnam_resumable_contex
 _Static_assert(sizeof(void*)==8,"Birnam v1 Oop width");
 _Static_assert(sizeof(unsigned long)==8,"Birnam v1 size_t width");
 _Static_assert(sizeof(BirnamMethodV1)==8,"Birnam v1 Method width");
-_Static_assert(_Alignof(BirnamResumableRegistrationV1)==8,"Birnam registration alignment");
-_Static_assert(sizeof(BirnamResumableRegistrationV1)==136,"Birnam registration size");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,carrier_version)==0x00,"carrier_version offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,struct_size)==0x04,"struct_size offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,operation)==0x08,"operation offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,flags)==0x0c,"flags offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,manifest_entry_index)==0x10,"manifest_entry_index offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,reserved0)==0x14,"reserved0 offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,registration_token)==0x18,"registration_token offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,descriptor_bytes)==0x20,"descriptor_bytes offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,descriptor_length)==0x28,"descriptor_length offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,entry_thunk)==0x30,"entry_thunk offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,step_method)==0x38,"step_method offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,implementation_oop)==0x40,"implementation_oop offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,code_generation_identity)==0x48,"code_generation_identity offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,code_generation_lease)==0x50,"code_generation_lease offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,portable_implementation_identity)==0x58,"portable_implementation_identity offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,language_arity)==0x60,"language_arity offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,driver_argument_count)==0x64,"driver_argument_count offset");
-_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV1,descriptor_sha256)==0x68,"descriptor_sha256 offset");
+_Static_assert(_Alignof(BirnamResumableRegistrationV2)==8,"Birnam registration alignment");
+_Static_assert(sizeof(BirnamResumableRegistrationV2)==144,"Birnam registration size");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,carrier_version)==0x00,"carrier_version offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,struct_size)==0x04,"struct_size offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,operation)==0x08,"operation offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,flags)==0x0c,"flags offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,manifest_entry_index)==0x10,"manifest_entry_index offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,reserved0)==0x14,"reserved0 offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,registration_token)==0x18,"registration_token offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,descriptor_bytes)==0x20,"descriptor_bytes offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,descriptor_length)==0x28,"descriptor_length offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,entry_thunk)==0x30,"entry_thunk offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,step_method)==0x38,"step_method offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,implementation_oop)==0x40,"implementation_oop offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,code_generation_identity)==0x48,"code_generation_identity offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,code_generation_lease)==0x50,"code_generation_lease offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,portable_implementation_identity)==0x58,"portable_implementation_identity offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,language_arity)==0x60,"language_arity offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,driver_argument_count)==0x64,"driver_argument_count offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,descriptor_sha256)==0x68,"descriptor_sha256 offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,receiver_capture_offset_words)==0x88,"receiver_capture_offset_words offset");
+_Static_assert(__builtin_offsetof(BirnamResumableRegistrationV2,reserved1)==0x8c,"reserved1 offset");
 "#
 }
 
 /// Emit one entry's immutable descriptor and context-consuming
 /// Prepare/Abort operations.
-pub fn emit_registration_v1(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error> {
+pub fn emit_registration_v2(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error> {
     if spec.descriptor.is_empty() {
         return Err(Error::EmptyDescriptor);
     }
@@ -122,7 +126,7 @@ pub fn emit_registration_v1(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error
     if spec.implementation_kind == ImplementationKind::BlockBody {
         output.push(b"(void)implementation;\n");
     }
-    output.push(b"BirnamResumableRegistrationV1 e={0};\ne.carrier_version=1U;e.struct_size=136U;e.operation=1U;e.manifest_entry_index=");
+    output.push(b"BirnamResumableRegistrationV2 e={0};\ne.carrier_version=2U;e.struct_size=144U;e.operation=1U;e.manifest_entry_index=");
     decimal(&mut output, spec.manifest_entry_index);
     output.push(b"U;e.descriptor_bytes=__birnam_resumable_descriptor_");
     decimal(&mut output, spec.symbol_index);
@@ -143,9 +147,14 @@ pub fn emit_registration_v1(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error
     decimal(&mut output, spec.language_arity);
     output.push(b"U;e.driver_argument_count=");
     decimal(&mut output, spec.driver_argument_count);
+    output.push(b"U;e.receiver_capture_offset_words=");
+    decimal(
+        &mut output,
+        u32::from(spec.implementation_kind == ImplementationKind::BlockBody),
+    );
     output.push(b"U;\nstatic const unsigned char h[32]={");
     emit_byte_list(&mut output, &digest);
-    output.push(b"};for(unsigned int i=0;i<32U;i++)e.descriptor_sha256[i]=h[i];\nunsigned int status=birnam_register_resumable_v1(&e);if(status==0U)__birnam_resumable_token_");
+    output.push(b"};for(unsigned int i=0;i<32U;i++)e.descriptor_sha256[i]=h[i];\nunsigned int status=birnam_register_resumable_v2(&e);if(status==0U)__birnam_resumable_token_");
     decimal(&mut output, spec.symbol_index);
     output.push(
         b"=e.registration_token;else __birnam_resumable_context_v1.failed=1U;return status;\n}\n",
@@ -155,11 +164,11 @@ pub fn emit_registration_v1(spec: RegistrationSpec<'_>) -> Result<Vec<u8>, Error
     decimal(&mut output, spec.symbol_index);
     output.push(b"(void){\nif(__birnam_resumable_token_");
     decimal(&mut output, spec.symbol_index);
-    output.push(b"==0ULL)return 1U;BirnamResumableRegistrationV1 e={0};e.carrier_version=1U;e.struct_size=136U;e.operation=2U;e.manifest_entry_index=");
+    output.push(b"==0ULL)return 1U;BirnamResumableRegistrationV2 e={0};e.carrier_version=2U;e.struct_size=144U;e.operation=2U;e.manifest_entry_index=");
     decimal(&mut output, spec.manifest_entry_index);
     output.push(b"U;e.registration_token=__birnam_resumable_token_");
     decimal(&mut output, spec.symbol_index);
-    output.push(b";unsigned int status=birnam_register_resumable_v1(&e);if(status==0U)__birnam_resumable_token_");
+    output.push(b";unsigned int status=birnam_register_resumable_v2(&e);if(status==0U)__birnam_resumable_token_");
     decimal(&mut output, spec.symbol_index);
     output.push(b"=0ULL;else __birnam_resumable_context_v1.failed=1U;return status;\n}\n");
 
@@ -189,7 +198,7 @@ mod tests {
     #[test]
     fn emits_exact_prepare_and_abort_shapes_without_baking_physical_context() {
         let source = String::from_utf8(
-            emit_registration_v1(RegistrationSpec {
+            emit_registration_v2(RegistrationSpec {
                 symbol_index: 4,
                 manifest_entry_index: 7,
                 implementation_kind: ImplementationKind::BlockBody,
@@ -204,6 +213,8 @@ mod tests {
         assert!(source.contains("__birnam_resumable_prepare_4(void* implementation)"));
         assert!(source.contains("e.manifest_entry_index=7U"));
         assert!(source.contains("e.implementation_oop=(void*)0"));
+        assert!(source.contains("e.receiver_capture_offset_words=1U"));
+        assert!(source.contains("birnam_register_resumable_v2(&e)"));
         assert!(source.contains(
             "e.code_generation_identity=__birnam_resumable_context_v1.generation_identity"
         ));
@@ -217,7 +228,7 @@ mod tests {
 
     #[test]
     fn prelude_exports_fail_closed_artifact_local_context_brackets() {
-        let prelude = String::from_utf8(registration_prelude_v1().to_vec()).unwrap();
+        let prelude = String::from_utf8(registration_prelude_v2().to_vec()).unwrap();
         assert!(prelude.contains("static BirnamResumableContextV1 __birnam_resumable_context_v1"));
         assert!(!prelude.contains("_Thread_local"));
         assert!(prelude.contains("__birnam_resumable_context_begin_v1(unsigned long long generation_identity,unsigned long long generation_lease)"));
@@ -235,7 +246,7 @@ mod tests {
         );
         let source_path = directory.join(format!("{stem}.c"));
         let executable_path = directory.join(stem);
-        let mut source = registration_prelude_v1().to_vec();
+        let mut source = registration_prelude_v2().to_vec();
         source.extend_from_slice(
             br#"int main(void){
 if(__birnam_resumable_context_begin_v1(0ULL,13ULL)==0U)return 1;
@@ -268,7 +279,7 @@ return __birnam_resumable_context_end_v1()==0U?0:9;
 
     #[test]
     fn named_registration_uses_only_the_supplied_live_implementation() {
-        let source = emit_registration_v1(RegistrationSpec {
+        let source = emit_registration_v2(RegistrationSpec {
             symbol_index: 1,
             manifest_entry_index: 0,
             implementation_kind: ImplementationKind::NamedAdapter,
@@ -282,6 +293,11 @@ return __birnam_resumable_context_end_v1()==0U?0:9;
             source
                 .windows(b"e.implementation_oop=implementation".len())
                 .any(|window| window == b"e.implementation_oop=implementation")
+        );
+        assert!(
+            source
+                .windows(b"e.receiver_capture_offset_words=0U".len())
+                .any(|window| window == b"e.receiver_capture_offset_words=0U")
         );
     }
 }
