@@ -12,7 +12,7 @@ CODEC = REPO / "rust/birnam-artifact/src/lib.rs"
 PROJECTION = REPO / "rust/birnam-artifact/src/module.rs"
 ARTIFACT_CODEC = REPO / "rust/birnam-artifact-codec/src/lib.rs"
 IMAGE_PROVIDER = REPO / "rust/birnam-image/src/lib.rs"
-IMAGE_V7 = REPO / "rust/birnam-image/src/v7.rs"
+IMAGE_V8 = REPO / "rust/birnam-image/src/v8.rs"
 ARTIFACT_CODEC_MANIFEST = REPO / "rust/birnam-artifact-codec/Cargo.toml"
 CODEGEN_RUNTIME_MANIFEST = REPO / "rust/birnam-codegen-runtime/Cargo.toml"
 HOST = REPO / "rust/birnam-host/src/lib.rs"
@@ -40,7 +40,7 @@ def main() -> None:
     projection = read(PROJECTION)
     artifact_codec = read(ARTIFACT_CODEC)
     image_provider = read(IMAGE_PROVIDER)
-    image_v7 = read(IMAGE_V7)
+    image_v8 = read(IMAGE_V8)
     artifact_codec_manifest = read(ARTIFACT_CODEC_MANIFEST)
     codegen_runtime_manifest = read(CODEGEN_RUNTIME_MANIFEST)
     host = read(HOST)
@@ -57,15 +57,15 @@ def main() -> None:
         fail("descriptor codec imports the IdApi ABI")
 
     # Artifact parsing remains provider-free because Codegen consumes it. The
-    # exact-current image-v7 codec is owned solely by Image; Codegen must not
+    # exact-current image-v8 codec is owned solely by Image; Codegen must not
     # regain an image-format dependency or a second reader authority.
     require(artifact_codec, "pub use provider_source::*", "artifact codec")
     if re.search(r"(?m)^\s*pub\s+unsafe\s+extern", artifact_codec) or "module_init" in artifact_codec:
         fail("artifact codec contains a provider entrypoint")
     if "default = []" not in artifact_codec_manifest or 'crate-type = ["rlib"]' not in artifact_codec_manifest:
         fail("artifact codec Cargo surface is not provider-free")
-    require(image_v7, "pub const FORMAT_VERSION: u32 = 7", "Image v7 codec")
-    require(image_v7, "pub fn structural_preflight", "Image v7 codec")
+    require(image_v8, "pub const FORMAT_VERSION: u32 = 8", "Image v8 codec")
+    require(image_v8, "pub fn structural_preflight", "Image v8 codec")
     if "birnam-image" in codegen_runtime_manifest:
         fail("Codegen runtime depends on the Image provider")
 

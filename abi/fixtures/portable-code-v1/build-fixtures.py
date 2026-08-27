@@ -133,13 +133,13 @@ def field(tag: int, value: int | bytes | None = None) -> bytes:
     if tag in (0, 1, 2, 8):
         assert value is None
         return bytes((tag,))
-    if tag == 3:
+    if tag in (3, 13, 14, 15):
         assert isinstance(value, int)
-        return bytes((tag,)) + struct.pack("<q", value)
+        return bytes((tag,)) + struct.pack("<q" if tag in (3, 13) else "<Q", value)
     if tag in (7, 11, 12):
         assert isinstance(value, int)
         return bytes((tag,)) + struct.pack("<I", value)
-    assert tag in (5, 6, 9) and isinstance(value, bytes)
+    assert tag in (5, 9, 16) and isinstance(value, bytes)
     return bytes((tag,)) + struct.pack("<I", len(value)) + value
 
 
@@ -155,7 +155,7 @@ def code_bindings(rows: tuple[tuple[bytes, bytes, bytes, bytes], ...]) -> bytes:
     fields = b"".join(value for row in rows for value in row)
     fields_offset = align8(128 + 32 * len(rows))
     total = fields_offset + len(fields)
-    out = bytearray(b"birnam.code-bindings.v1\0")
+    out = bytearray(b"birnam.code-bindings.v2\0")
     out.extend(bytes(32 - len(out)))
     out.extend(struct.pack("<IIQIIII", 1, 64, total, 0, 2, 32, 0))
     out.extend(directory(1, 32, len(rows), 128))
@@ -185,7 +185,7 @@ def binding_semantics(value: bytes) -> tuple[bytes, tuple[tuple[bytes, int, byte
             cursor += length
         target, selector, implementation, _ = encoded
         digest = hashlib.sha256(
-            b"birnam.code-binding-row.v1\0"
+            b"birnam.code-binding-row.v2\0"
             + struct.pack("<5I", index, len(target), len(selector), len(implementation), arity)
             + target
             + selector
@@ -194,7 +194,7 @@ def binding_semantics(value: bytes) -> tuple[bytes, tuple[tuple[bytes, int, byte
         digests.append(digest)
         rows.append((selector[5:], arity, digest))
     semantics = hashlib.sha256(
-        b"birnam.code-binding-semantics.v1\0" + struct.pack("<I", count) + b"".join(digests)
+        b"birnam.code-binding-semantics.v2\0" + struct.pack("<I", count) + b"".join(digests)
     ).digest()
     return semantics, tuple(rows)
 
@@ -238,7 +238,7 @@ def materializations(
     return bytes(out)
 
 
-def image_v7(
+def image_v8(
     programs: bytes,
     bindings: bytes,
     selection: bytes,
@@ -262,7 +262,7 @@ def image_v7(
     def hashed(kind: int, value: bytes) -> bytes:
         return record(kind, hashlib.sha256(value).digest() + struct.pack("<Q", len(value)) + value)
 
-    out = bytearray(b"BIRNAMIM" + struct.pack("<IIIQ", 7, 0x01020304, 1, 0x6C3B67F0EF1614B3))
+    out = bytearray(b"BIRNAMIM" + struct.pack("<IIIQ", 8, 0x01020304, 1, 0xCDB641F978540D45))
     out.extend(record(5, authority))
     out.extend(hashed(7, programs))
     out.extend(hashed(8, bindings))
@@ -348,17 +348,17 @@ def fixtures() -> dict[str, bytes]:
         nodes=(Node(11, auxiliary_0=0, auxiliary_1=1, operands=(0,), data=nonempty_nested),),
     )
     binding_rows = (
-        (field(5, b"Type"), field(5, b"run"), field(7, 7), field(6, b"source")),
-        (field(3, -1), field(5, b"+"), field(9, b"Plus"), field(0)),
+        (field(5, b"Type"), field(5, b"run"), field(7, 7), field(7, 11)),
+        (field(7, 8), field(5, b"+"), field(9, b"Plus"), field(0)),
         (field(0), field(5, b"at:put:"), field(5, b"method"), field(7, 3)),
     )
     provenance_variant = binding_rows[:-3] + (
-        (field(5, b"Type"), field(5, b"run"), field(7, 7), field(6, b"other")),
+        (field(5, b"Type"), field(5, b"run"), field(7, 7), field(7, 10)),
         binding_rows[1],
         binding_rows[2],
     )
     block_implementation_rows = (
-        (field(5, b"Type"), field(5, b"run"), field(7, 1), field(6, b"source")),
+        (field(5, b"Type"), field(5, b"run"), field(7, 1), field(7, 11)),
         binding_rows[1],
         binding_rows[2],
     )
@@ -376,11 +376,15 @@ def fixtures() -> dict[str, bytes]:
     )
     shared_selection = materializations(shared_program_inventory, empty_binding_inventory, (), (1, 2))
     empty_selection = materializations(empty_program_inventory, empty_binding_inventory, (), ())
-    heap = bytearray(struct.pack("<I", 8))
+    heap = bytearray(struct.pack("<I", 12))
     heap.extend(field(9, b"CodeObjectVt") + struct.pack("<I", 2) + field(11, 1) + field(0))
     heap.extend(field(12, 0) + struct.pack("<I", 1) + field(7, 0))
     for _ in range(6):
         heap.extend(field(9, b"ObjectVt") + struct.pack("<I", 0))
+    heap.extend(field(13, -1) + struct.pack("<I", 0))
+    heap.extend(field(14, 0x7FF8000000000042) + struct.pack("<I", 0))
+    heap.extend(field(15, 0xFEDCBA9876543210) + struct.pack("<I", 0))
+    heap.extend(field(16, b"source") + struct.pack("<I", 0))
     facts = (
         struct.pack("<QQB7xQI", 10, 5, 2, 3, 1)
         + struct.pack("<BBQ", 1, 0, 9)
@@ -502,29 +506,29 @@ def fixtures() -> dict[str, bytes]:
         "selection-block-implementation.bin": block_binding_selection,
         "selection-mixed.bin": mixed_selection,
         "selection-shared-cyclic.bin": shared_selection,
-        "image-empty-stripped.bin": image_v7(empty_program_inventory, empty_binding_inventory, empty_selection),
-        "image-mixed-stripped.bin": image_v7(program_inventory, binding_inventory, mixed_selection, (bytes(heap),)),
-        "image-block-binding-stripped.bin": image_v7(
+        "image-empty-stripped.bin": image_v8(empty_program_inventory, empty_binding_inventory, empty_selection),
+        "image-mixed-stripped.bin": image_v8(program_inventory, binding_inventory, mixed_selection, (bytes(heap),)),
+        "image-block-binding-stripped.bin": image_v8(
             program_inventory,
             block_binding_inventory,
             block_binding_selection,
             (bytes(heap),),
         ),
-        "image-mixed-code.bin": image_v7(
+        "image-mixed-code.bin": image_v8(
             program_inventory,
             binding_inventory,
             mixed_selection,
             (bytes(heap),),
-            code=b"\x7fELFbirnam-v7-fixture",
+            code=b"\x7fELFbirnam-v8-fixture",
         ),
-        "image-mixed-facts-stripped.bin": image_v7(
+        "image-mixed-facts-stripped.bin": image_v8(
             program_inventory,
             binding_inventory,
             mixed_selection,
             (bytes(heap),),
             (facts,),
         ),
-        "image-shared-cyclic-stripped.bin": image_v7(
+        "image-shared-cyclic-stripped.bin": image_v8(
             shared_program_inventory,
             empty_binding_inventory,
             shared_selection,

@@ -39,24 +39,24 @@ INVENTORIES = {
     "inventory-shared-cyclic.bin": (1554, "e4b9de8f3fc899ae908357a3180adadbe77c8cc4e628a411a2f151eba9667324"),
 }
 BINDINGS = {
-    "bindings-block-implementation.bin": (311, "85b68cbc7dff332e847a8fab41106c902d1dcffcc5b66687f6d89515aa439137"),
-    "bindings-empty.bin": (128, "595c03cdb1bcb1b16c44ef6484fb181a7ce66e72a5fd1e27520eb2662f12137e"),
-    "bindings-mixed.bin": (311, "b3ed0178b2b12b62116f2ebec14c88739129898a7ab222eae0f62ce4edb44a12"),
-    "bindings-provenance-only-change.bin": (310, "17a8d519befc45bbd52087c45e3e553a5a5dcd7af6492c070dda17f3db60804b"),
+    "bindings-block-implementation.bin": (301, "f8edb5918b18c001f7046a94a3edc94a7fae1a3e11c570246ce7aed92cf2526d"),
+    "bindings-empty.bin": (128, "a9f34270ec76eef44ccde2463750358bccf149fa6e0d13243297ebb36c127559"),
+    "bindings-mixed.bin": (301, "d0f9a5d2b42d226ff07929289597d13ad104dc5c21b6b7ecb282e33c959bfcd0"),
+    "bindings-provenance-only-change.bin": (301, "d249bbade6844865e58888fbcffff479ba286a52132727a05be1f4db80f35c75"),
 }
 SELECTIONS = {
-    "selection-block-implementation.bin": (566, "0eb7470667a9fd3160508b5c17a60404b87182066528c96123c444b4b84a79e4"),
-    "selection-empty.bin": (224, "804be5574dbc2f8d48a3f230e45e3e0426220d2cffa67a233536fc093e62c4df"),
-    "selection-mixed.bin": (566, "bcf671860a1bc1a974d08d0de576513d67be0a3fd7f6c97c0eef0bf893f2f9f5"),
-    "selection-shared-cyclic.bin": (363, "4ec8ecfe60aee4904820110f2cca51f47f744721f7ead8ff5c7b84701ec69446"),
+    "selection-block-implementation.bin": (566, "668def22178af86381a48ad60b13fa2ab79dd0838d16929beb0b64c90fc1b7bd"),
+    "selection-empty.bin": (224, "324d0a4841ad194a13e9b4265f80e548cd3c9af940856351cad11be0ad0cda5f"),
+    "selection-mixed.bin": (566, "edf4886953004e7f1baba07d08dbe351a2beca25794f405d4cb1b9c31eb1930c"),
+    "selection-shared-cyclic.bin": (363, "b5d5554a58ead5f26d884c515806a647909a937bb9a7dc0bc6c56f924699680b"),
 }
 IMAGES = {
-    "image-block-binding-stripped.bin": (2573, "dd9be7bd81512c8fd78353cb4e5bf65f29827016769594624a9274fe211bf924"),
-    "image-empty-stripped.bin": (740, "d419fdb9524786ef3002fa48b31ff3bfbbc405448f401dc02ee7e4607fd73bc5"),
-    "image-mixed-stripped.bin": (2573, "c1f9a7f747b739a6eda2e2e3486d3f824eee13e760fa57f3eeb4d127217f6dc6"),
-    "image-mixed-code.bin": (2678, "50cc5843aae527f9d5f530ed9160e8e0b6e7d0d208f54384a9c91ceb7c505841"),
-    "image-mixed-facts-stripped.bin": (2650, "ff83f15317c370b144b426827b2cc68a157eb238bbe7bd3a7c6fe4fa7305a193"),
-    "image-shared-cyclic-stripped.bin": (2495, "86a3ac647f2dd098aabc8077b08673af7e1ef1a457391db98293fcb97226d718"),
+    "image-block-binding-stripped.bin": (2617, "7456ffc6a1c20b19839fbe966c5413dc448a3909259196f50fabd4ea7a8f4bc7"),
+    "image-empty-stripped.bin": (740, "14612bb39cf197be3f304996431b85534927e19934f6bd79de224e2aa57f6097"),
+    "image-mixed-stripped.bin": (2617, "57c23b8e2f848d52403d2d9fe0fdf2bf2fae751276d4dbf477b71ccdbaadb6ac"),
+    "image-mixed-code.bin": (2722, "ff1a05c75ab7232c8e5de1b741ff69fc1b81403522417e15b91ef24d274e213e"),
+    "image-mixed-facts-stripped.bin": (2694, "652fc3d59db0713f11136dd22c34e9be522ac190a0e9031f934d1960cc6b12a5"),
+    "image-shared-cyclic-stripped.bin": (2495, "e6b03ccd40fb8b0a77519dc189f117bd661ebe0a9924e44d884f603db77f954d"),
 }
 
 
@@ -374,16 +374,13 @@ def parse_inventory(data: bytes, roots: tuple[bytes, ...] | None = None) -> tupl
 def parse_field(data: bytes) -> tuple[int, bytes | None]:
     require(len(data) >= 1, "binding-field", "empty field")
     tag = data[0]
-    if tag in (0, 1, 2, 8):
+    if tag in (0, 1, 2):
         require(len(data) == 1, "binding-field", "singleton length")
-        return tag, None
-    if tag in (3, 4):
-        require(len(data) == 9, "binding-field", "numeric length")
         return tag, None
     if tag == 7:
         require(len(data) == 5, "binding-field", "heap length")
         return tag, None
-    require(tag in (5, 6, 9) and len(data) >= 5, "binding-field", "tag")
+    require(tag in (5, 9) and len(data) >= 5, "binding-field", "tag")
     length = u32(data, 1, "binding-field")
     value = data[5:]
     require(len(value) == length, "binding-field", "length-delimited field")
@@ -393,7 +390,7 @@ def parse_field(data: bytes) -> tuple[int, bytes | None]:
 
 
 def parse_bindings(data: bytes) -> tuple[bytes, tuple[tuple[bytes, int, bytes], ...]]:
-    domain = b"birnam.code-bindings.v1\0"
+    domain = b"birnam.code-bindings.v2\0"
     require(len(data) >= 128 and data[: len(domain)] == domain, "bindings-prefix", "domain or length")
     require(
         data[len(domain) : 32] == bytes(32 - len(domain))
@@ -452,10 +449,10 @@ def parse_bindings(data: bytes) -> tuple[bytes, tuple[tuple[bytes, int, bytes], 
         derived_arity = selector_arity(selector_value)
         key = (target, selector_value)
         require(
-            target_tag in (0, 1, 2, 3, 5, 7, 9)
+            target_tag in (0, 1, 2, 5, 7, 9)
             and selector_tag == 5
-            and implementation_tag in (0, 1, 2, 3, 5, 7, 9)
-            and provenance_tag in (0, 6, 7, 9)
+            and implementation_tag in (0, 1, 2, 5, 7, 9)
+            and provenance_tag in (0, 7, 9)
             and arity == derived_arity
             and flags == reserved == 0
             and (previous is None or previous < key),
@@ -463,7 +460,7 @@ def parse_bindings(data: bytes) -> tuple[bytes, tuple[tuple[bytes, int, bytes], 
             "shape, arity, or order",
         )
         digest = hashlib.sha256(
-            b"birnam.code-binding-row.v1\0"
+            b"birnam.code-binding-row.v2\0"
             + struct.pack("<5I", index, len(target), len(selector), len(implementation), arity)
             + target
             + selector
@@ -474,7 +471,7 @@ def parse_bindings(data: bytes) -> tuple[bytes, tuple[tuple[bytes, int, bytes], 
         result.append((selector_value, arity, digest))
     require(cursor == len(data), "bindings-row", "field consumption")
     semantics = hashlib.sha256(
-        b"birnam.code-binding-semantics.v1\0" + struct.pack("<I", count) + b"".join(digests)
+        b"birnam.code-binding-semantics.v2\0" + struct.pack("<I", count) + b"".join(digests)
     ).digest()
     return semantics, tuple(result)
 
@@ -566,13 +563,13 @@ def image_field(data: bytes, offset: int) -> tuple[tuple[int, int | None, bytes 
     require(tag != 10, "image-field", "legacy tag 10")
     if tag in (0, 1, 2, 8):
         return (tag, None, None), offset
-    if tag in (3, 4):
+    if tag in (3, 13, 14, 15):
         require(offset + 8 <= len(data), "image-field", "numeric")
         return (tag, None, None), offset + 8
     if tag in (7, 11, 12):
         require(offset + 4 <= len(data), "image-field", "index")
         return (tag, u32(data, offset, "image-field"), None), offset + 4
-    require(tag in (5, 6, 9), "image-field", "unknown tag")
+    require(tag in (5, 9, 16), "image-field", "unknown tag")
     length = u32(data, offset, "image-field")
     offset += 4
     end = offset + length
@@ -606,9 +603,10 @@ def parse_heap(payloads: list[bytes], programs: bytes, bindings: bytes) -> tuple
         offset = 4
         for _ in range(count):
             locator, offset = image_field(payload, offset)
-            require(locator[0] in (9, 12), "heap", "locator")
+            require(locator[0] in (9, 12, 13, 14, 15, 16), "heap", "locator")
             words = u32(payload, offset, "heap")
             offset += 4
+            require(locator[0] not in (13, 14, 15, 16) or words == 0, "heap", "constructor words")
             slots = []
             for _ in range(words):
                 value, offset = image_field(payload, offset)
@@ -626,14 +624,18 @@ def parse_heap(payloads: list[bytes], programs: bytes, bindings: bytes) -> tuple
                 and slots[0][0] == 11
                 and slots[0][1] is not None
                 and slots[0][1] < len(program_values)
-                and slots[1][0] in (0, 6, 7, 9),
+                and slots[1][0] in (0, 7, 9),
                 "heap",
                 "CodeObject payload",
             )
             code_programs[index] = slots[0][1]
             roots.append(program_values[slots[0][1]])
         else:
-            require(all(field_value[0] != 11 for field_value in slots), "heap", "ProgramRef placement")
+            require(
+                all(field_value[0] not in (4, 6, 11, 13, 14, 15, 16) for field_value in slots),
+                "heap",
+                "field placement",
+            )
         for field_value in (locator, *slots):
             if field_value[0] in (7, 12):
                 require(field_value[1] is not None and field_value[1] < len(objects), "heap", "reference range")
@@ -686,7 +688,7 @@ def parse_facts(payload: bytes, heap_count: int, code_objects: tuple[bool, ...])
         offset += 10
         for _ in range(3):
             field_value, offset = image_field(payload, offset)
-            require(field_value[0] != 11, "image-facts", "ProgramRef placement")
+            require(field_value[0] in (0, 1, 2, 5, 7, 8, 9, 12), "image-facts", "field placement")
             if field_value[0] in (7, 12):
                 require(field_value[1] is not None and field_value[1] < heap_count, "image-facts", "reference")
             if field_value[0] == 12:
@@ -743,10 +745,10 @@ def parse_image(data: bytes) -> tuple[int, bool]:
     require(
         len(data) >= 28
         and data[:8] == b"BIRNAMIM"
-        and u32(data, 8, "image-header") == 7
+        and u32(data, 8, "image-header") == 8
         and u32(data, 12, "image-header") == 0x01020304
         and u32(data, 16, "image-header") == 1
-        and u64(data, 20, "image-header") == 0x6C3B67F0EF1614B3,
+        and u64(data, 20, "image-header") == 0xCDB641F978540D45,
         "image-header",
         "header",
     )
@@ -1173,9 +1175,9 @@ def main() -> None:
         ("bindings row flags", mutation(mixed_bindings, 148, b"\x01"), "bindings-row"),
         ("bindings row reserved", mutation(mixed_bindings, 152, b"\x01"), "bindings-row"),
         ("bindings unknown target field", mutation(mixed_bindings, fields_offset, b"\x0a"), "binding-field"),
-        ("bindings selector field kind", mutation(mixed_bindings, 225, b"\x06"), "bindings-row"),
+        ("bindings selector field kind", mutation(mixed_bindings, 225, b"\x06"), "binding-field"),
         ("bindings selector embedded NUL", mutation(mixed_bindings, 230, b"\0"), "binding-field"),
-        ("bindings forbidden provenance", mutation(mixed_bindings, 300, b"\x05"), "bindings-row"),
+        ("bindings forbidden provenance", mutation(mixed_bindings, 300, b"\x05"), "binding-field"),
         ("bindings duplicate key", bytes(duplicate_bindings), "bindings-row"),
         ("bindings reordered rows", bytes(reordered_bindings), "bindings-row"),
     )
@@ -1238,11 +1240,11 @@ def main() -> None:
     shared_image = image_values["image-shared-cyclic-stripped.bin"]
     block_binding_image = image_values["image-block-binding-stripped.bin"]
     require(parse_image(empty_image) == (0, False), "test", "empty image summary")
-    require(parse_image(mixed_image) == (8, False), "test", "mixed image summary")
-    require(parse_image(code_image) == (8, True), "test", "code image summary")
-    require(parse_image(facts_image) == (8, False), "test", "facts image summary")
+    require(parse_image(mixed_image) == (12, False), "test", "mixed image summary")
+    require(parse_image(code_image) == (12, True), "test", "code image summary")
+    require(parse_image(facts_image) == (12, False), "test", "facts image summary")
     require(parse_image(shared_image) == (8, False), "test", "shared cyclic image summary")
-    require(parse_image(block_binding_image) == (8, False), "test", "Block binding image summary")
+    require(parse_image(block_binding_image) == (12, False), "test", "Block binding image summary")
     letter_offset = next(index for index, byte in enumerate(mixed_image[40:104], 40) if byte in b"abcdef")
     try:
         parse_image(mutation(mixed_image, letter_offset, bytes((mixed_image[letter_offset] - 32,))))
@@ -1250,19 +1252,6 @@ def main() -> None:
         require(error.stage == "image-authority", "test", "uppercase authority stage")
     else:
         raise AssertionError("uppercase authority accepted")
-    for label, changed, stage in (
-        ("legacy record", mutation(mixed_image, 2414, struct.pack("<I", 6)), "image-record"),
-        ("legacy field", mutation(mixed_image, 2430, b"\x0a"), "image-field"),
-        ("forged program hash", mutation(mixed_image, 116, bytes((mixed_image[116] ^ 1,))), "image-record"),
-        ("code checksum", mutation(code_image, 2585, bytes((code_image[2585] ^ 1,))), "image-code"),
-        ("code suffix", code_image + b"\0", "image-record"),
-    ):
-        try:
-            parse_image(changed)
-        except Reject as error:
-            require(error.stage == stage, "test", f"{label} stage")
-        else:
-            raise AssertionError(f"{label} accepted")
     def image_records(data: bytes) -> list[tuple[int, int, int, int]]:
         rows = []
         cursor = 28
@@ -1278,8 +1267,25 @@ def main() -> None:
         return rows
 
     mixed_records = image_records(mixed_image)
-    facts_records = image_records(facts_image)
     code_records = image_records(code_image)
+    heap_record = next(row for row in mixed_records if row[0] == 3)
+    _, first_locator_end = image_field(mixed_image, heap_record[2] + 4)
+    first_slot = first_locator_end + 4
+    code_record = next(row for row in code_records if row[0] == 4)
+    for label, changed, stage in (
+        ("legacy record", mutation(mixed_image, heap_record[1], struct.pack("<I", 6)), "image-record"),
+        ("legacy field", mutation(mixed_image, first_slot, b"\x0a"), "image-field"),
+        ("forged program hash", mutation(mixed_image, 116, bytes((mixed_image[116] ^ 1,))), "image-record"),
+        ("code checksum", mutation(code_image, code_record[2], bytes((code_image[code_record[2]] ^ 1,))), "image-code"),
+        ("code suffix", code_image + b"\0", "image-record"),
+    ):
+        try:
+            parse_image(changed)
+        except Reject as error:
+            require(error.stage == stage, "test", f"{label} stage")
+        else:
+            raise AssertionError(f"{label} accepted")
+    facts_records = image_records(facts_image)
     program_record = mixed_records[1]
     binding_record = mixed_records[2]
     selection_record = mixed_records[3]
@@ -1302,7 +1308,7 @@ def main() -> None:
     facts_payload = facts_record[2]
     image_mutations = (
         ("image magic", mutation(mixed_image, 0, b"C"), "image-header"),
-        ("image version", mutation(mixed_image, 8, struct.pack("<I", 8)), "image-header"),
+        ("image version", mutation(mixed_image, 8, struct.pack("<I", 7)), "image-header"),
         ("image endian", mutation(mixed_image, 12, struct.pack("<I", 0)), "image-header"),
         ("image architecture", mutation(mixed_image, 16, struct.pack("<I", 2)), "image-header"),
         ("image runtime ABI", mutation(mixed_image, 20, struct.pack("<Q", 0)), "image-header"),

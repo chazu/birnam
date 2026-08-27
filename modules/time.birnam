@@ -12,8 +12,8 @@
 // int gettimeofday(struct timeval *tv, struct timezone *tz)
 //   struct timeval { long tv_sec; int tv_usec; }   // macOS: 8 + 4 bytes (16 w/ pad)
 // Alien marshals the method receiver as the FIRST C argument, so the receiver IS
-// the tv buffer (a Word from `Alien alloc:`) and `tz` is the one birnam argument.
-[Alien wrap: "gettimeofday" signature: "i p p" as: #fillTimeval: on: Word];
+// the tv buffer (a ForeignAddress from `Alien alloc:`) and `tz` is the argument.
+[Alien wrap: "gettimeofday" signature: "i p p" as: #fillTimeval: on: ForeignAddress];
 
 // uint64_t clock_gettime_nsec_np(clockid_t) — macOS-only: a monotonic clock in
 // ONE call, no out-param buffer. The receiver (an Integer) is the clock id;

@@ -7,7 +7,10 @@
 
 #![allow(clippy::missing_safety_doc)]
 
-use birnam_abi::{IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args};
+use birnam_abi::{
+    IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
+    foreign_address::{self, KIND_BORROWED},
+};
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
 use core::ptr::{self, NonNull};
@@ -154,6 +157,18 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
         (b"birnam_floatValue", validation_float as *const c_void),
         (b"birnam_mkWord", validation_pointer as *const c_void),
         (b"birnam_wordValue", validation_word as *const c_void),
+        (
+            b"birnam_mkForeignAddress",
+            validation_pointer as *const c_void,
+        ),
+        (
+            b"birnam_foreignAddressValue",
+            validation_word as *const c_void,
+        ),
+        (
+            b"birnam_isForeignAddress",
+            validation_small_int as *const c_void,
+        ),
         (b"birnam_uintValue", validation_word as *const c_void),
         (b"birnam_cstr", validation_cstr as *const c_void),
         (b"birnam_free_cstr", validation_free_cstr as *const c_void),
@@ -605,8 +620,9 @@ unsafe extern "C" fn m_add_symbol(self_object: Oop, args: *const Oop, count: usi
     let Some(name) = (unsafe { string_arg(api, name_object) }) else {
         return api.nilObj;
     };
-    // SAFETY: the address is the documented raw pointer carrier.
-    let address = unsafe { (api.smallIntValue)(address_object) } as usize;
+    let Some((address, _kind)) = (unsafe { foreign_address::value(api, address_object) }) else {
+        return api.nilObj;
+    };
     // SAFETY: name owns the C string and state is pre-relocation.
     if unsafe { tcc_add_symbol(state, name.as_ptr(), address as *const c_void) } < 0 {
         api.nilObj
@@ -755,8 +771,8 @@ unsafe extern "C" fn m_symbol(self_object: Oop, args: *const Oop, count: usize) 
     if symbol.is_null() {
         api.nilObj
     } else {
-        // SAFETY: the ABI carries a raw pointer as a SmallInt bit pattern.
-        unsafe { (api.mkSmallInt)(symbol as usize as i64) }
+        unsafe { foreign_address::allocate(api, symbol as usize, KIND_BORROWED) }
+            .unwrap_or(api.nilObj)
     }
 }
 
@@ -919,6 +935,33 @@ pub unsafe extern "C" fn rt_word_value(object: Oop) -> u64 {
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     unsafe { (api_ref(runtime).wordValue)(object) }
+}
+
+#[unsafe(export_name = "birnam_mkForeignAddress")]
+pub unsafe extern "C" fn rt_mk_foreign_address(value: usize) -> Oop {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let api = unsafe { api_ref(runtime) };
+    unsafe { foreign_address::allocate(api, value, KIND_BORROWED) }.unwrap_or(api.nilObj)
+}
+
+#[unsafe(export_name = "birnam_foreignAddressValue")]
+pub unsafe extern "C" fn rt_foreign_address_value(object: Oop) -> usize {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    unsafe { foreign_address::value(api_ref(runtime), object) }
+        .map(|(address, _kind)| address)
+        .unwrap_or(0)
+}
+
+#[unsafe(export_name = "birnam_isForeignAddress")]
+pub unsafe extern "C" fn rt_is_foreign_address(object: Oop) -> i64 {
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    i64::from(unsafe { foreign_address::value(api_ref(runtime), object) }.is_some())
 }
 
 #[unsafe(export_name = "birnam_uintValue")]
@@ -1119,6 +1162,18 @@ static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
         address: rt_word_value as *const c_void,
     },
     RuntimeSymbol {
+        name: b"birnam_mkForeignAddress\0",
+        address: rt_mk_foreign_address as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_foreignAddressValue\0",
+        address: rt_foreign_address_value as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_isForeignAddress\0",
+        address: rt_is_foreign_address as *const c_void,
+    },
+    RuntimeSymbol {
         name: b"birnam_uintValue\0",
         address: rt_uint_value as *const c_void,
     },
@@ -1202,6 +1257,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
+    if unsafe { foreign_address::ensure_family(api) }.is_none() {
+        abort("ForeignAddress exports were incomplete");
+    }
     let runtime = *RUNTIME.get_or_init(|| {
         let reloading = unsafe { (api.isExported)(TCC_NAME.as_ptr().cast()) != 0 };
         let (tcc_vt, unit_vt, tcc) = if reloading {

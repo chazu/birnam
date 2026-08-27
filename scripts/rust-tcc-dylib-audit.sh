@@ -17,11 +17,14 @@ birnam_cstr
 birnam_ensurePrivateVtable
 birnam_false
 birnam_floatValue
+birnam_foreignAddressValue
 birnam_free_cstr
 birnam_intern
+birnam_isForeignAddress
 birnam_layoutAllOops
 birnam_method
 birnam_mkFloat
+birnam_mkForeignAddress
 birnam_mkSmallInt
 birnam_mkString
 birnam_mkWord

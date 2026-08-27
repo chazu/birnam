@@ -46,14 +46,15 @@ let path := ["PATH" getenv];
 // Tcc right here — birnam's compiler IS a C compiler, after all.
 let cb := [Alien callback: [:x | [x * 2]] signature: "l l"];
 let unit := [Tcc new];
-[unit compile: "extern long birnam_smallIntValue(void*); extern void* birnam_mkSmallInt(long); void* __call(void* self, void** args, long n) { long (*fp)(long) = (long(*)(long))birnam_smallIntValue(self); return birnam_mkSmallInt(fp(21)); }"];
+[unit compile: "extern unsigned long birnam_foreignAddressValue(void*); extern void* birnam_mkSmallInt(long); void* __call(void* self, void** args, long n) { long (*fp)(long) = (long(*)(long))birnam_foreignAddressValue(self); return birnam_mkSmallInt(fp(21)); }"];
 [unit bindRuntime];
 [unit relocate];
-[unit install: "__call" as: #callWith21 on: Integer];
+[unit install: "__call" as: #callWith21 on: ForeignAddress];
 [System println: ["C calling a birnam block (21 doubled): " , [[cb callWith21] printString]]];
 
-// Out-params without writing C (§F F4): a Word is a machine address, so it
-// doubles as a C buffer. `[Alien alloc: n]` mints one over n zeroed bytes;
+// Out-params without writing C (§F F4): a ForeignAddress is an explicit,
+// process-local native capability. `[Alien alloc: n]` mints an owned one over
+// n zeroed bytes;
 // `poke…:at:` / `peek…At:` read and write typed values at a byte offset; `free`
 // reclaims it. modf(x, double* ipart) RETURNS the fraction and FILLS *ipart with
 // the integer part — a real out-param, wrapped by passing the buffer as its `p`.

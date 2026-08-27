@@ -1,4 +1,4 @@
-# Portable code v1 and image-v7 canonical fixtures
+# Portable code v1 and image-v8 canonical fixtures
 
 These files are frozen conformance evidence for
 [Design 60L](../../../docs/design/60l-portable-program-and-image-v7-byte-grammar.md).
@@ -33,7 +33,7 @@ same vectors without importing this builder.
 | PortableProgramInventory | `inventory-*.bin` | empty and one-row values, digest/byte sorting, duplicate elision, and exact transitive nested closure |
 | CodeBindingInventory | `bindings-*.bin` | canonical Field encodings and sorting, selector arity, Block and non-Block implementations, semantic row digests, and provenance-only byte change with stable semantics |
 | CodeMaterializationSelection | `selection-*.bin` | empty metadata, exact NamedAdapter/BlockBody coverage with mixed dispositions, and independence from physical FrameDescriptor hashes |
-| image-v7 | `image-*.bin` | empty and mixed stripped images, Block-valued bindings, shared CodeObjects, repeated Blocks, cyclic captures, CodeObject/portable Block heap contracts, v6 retention Facts with tag 12, authority derivation, and final Code framing/checksum |
+| image-v8 | `image-*.bin` | empty and mixed stripped images, identity-bearing boxed values, Block-valued bindings, shared CodeObjects, repeated Blocks, cyclic captures, CodeObject/portable Block heap contracts, retained Facts with tag 12, authority derivation, and final Code framing/checksum |
 
 Exact lengths and SHA-256 digests are frozen in [`SHA256SUMS`](SHA256SUMS).
 Replacing any binary is a physical-format change and requires deliberate
@@ -48,7 +48,7 @@ algorithm tests, not claims that a SHA-256 collision fixture exists.
 ## Evidence boundary
 
 `image-mixed-code.bin` contains a small synthetic nonempty native-unit byte
-string. It proves image-v7's final Code record, wyhash checksum, and portable
+string. It proves image-v8's final Code record, wyhash checksum, and portable
 authority agreement. It is not evidence that a native artifact exports the
 new selection/authority surface, maps successfully, or registers executable
 entries. Likewise, stripped-image structural preflight proves format

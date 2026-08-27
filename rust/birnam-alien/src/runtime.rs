@@ -10,7 +10,10 @@
 use crate::codegen::{emit_callback, emit_shim};
 use crate::loader::{LibraryRegistry, LoaderError};
 use crate::parse_signature;
-use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
+use birnam_abi::{
+    IdApi, MarkFn, Oop, borrowed_oop_args,
+    foreign_address::{self, KIND_ALIEN_MALLOC, KIND_BORROWED},
+};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -357,17 +360,19 @@ unsafe fn ensure_callback_roots(api: &IdApi) {
 }
 
 unsafe fn address_value(api: &IdApi, value: Oop) -> Option<usize> {
-    if unsafe { (api.isWord)(value) } != 0 {
-        return Some(unsafe { (api.wordValue)(value) } as usize);
-    }
-    if unsafe { (api.isSmallInt)(value) } != 0 {
-        return Some(unsafe { (api.smallIntValue)(value) } as usize);
-    }
-    None
+    unsafe { foreign_address::value(api, value) }.map(|(address, _kind)| address)
 }
 
 unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Result<usize, Oop> {
-    let base = unsafe { (api.wordValue)(receiver) } as usize;
+    let Some((base, _kind)) = (unsafe { foreign_address::value(api, receiver) }) else {
+        return Err(unsafe {
+            make_error(
+                api,
+                b"typeMismatch\0",
+                b"memory access needs a ForeignAddress receiver",
+            )
+        });
+    };
     if base == 0 {
         return Err(unsafe {
             make_error(
@@ -414,18 +419,100 @@ unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usi
     // SAFETY: malloc returned `size` writable bytes and the slice does not
     // escape; this is the frozen zero-initialized buffer contract.
     unsafe { ptr::write_bytes(pointer.cast::<u8>(), 0, size as usize) };
-    unsafe { (api.mkWord)(pointer as usize as u64) }
+    let Some(address) =
+        (unsafe { foreign_address::allocate(api, pointer as usize, KIND_ALIEN_MALLOC) })
+    else {
+        unsafe { free(pointer) };
+        return unsafe {
+            make_error(
+                api,
+                b"outOfMemory\0",
+                b"alloc: could not allocate the ForeignAddress owner",
+            )
+        };
+    };
+    unsafe { (api.setFinalizer)(address, alien_buffer_finalize) };
+    address
 }
 
 unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    let address = unsafe { (api.wordValue)(receiver) };
-    if address != 0 {
-        // SAFETY: the caller owns the raw address and promises it came from a
-        // compatible allocator, matching the existing unsafe Word protocol.
+    let Some((address, kind)) = (unsafe { foreign_address::value(api, receiver) }) else {
+        return unsafe { make_error(api, b"typeMismatch\0", b"free needs a ForeignAddress") };
+    };
+    if kind != KIND_ALIEN_MALLOC {
+        return unsafe {
+            make_error(
+                api,
+                b"notOwned\0",
+                b"free only accepts an address returned by Alien alloc:",
+            )
+        };
+    }
+    if address == 0 {
+        return unsafe { make_error(api, b"alreadyFreed\0", b"the address was already freed") };
+    }
+    unsafe { foreign_address::clear(api, receiver) };
+    unsafe { free(address as *mut c_void) };
+    api.nilObj
+}
+
+unsafe extern "C" fn foreign_address_is_null(
+    receiver: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    match unsafe { foreign_address::value(api, receiver) } {
+        Some((0, _kind)) => api.trueObj,
+        Some((_address, _kind)) => api.falseObj,
+        None => api.nilObj,
+    }
+}
+
+unsafe extern "C" fn foreign_address_equal(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    let (Some((left, _left_kind)), Some(other)) =
+        (unsafe { foreign_address::value(api, receiver) }, unsafe {
+            argument(args, count)
+        })
+    else {
+        return api.nilObj;
+    };
+    match unsafe { foreign_address::value(api, other) } {
+        Some((right, _right_kind)) if left == right => api.trueObj,
+        _ => api.falseObj,
+    }
+}
+
+unsafe extern "C" fn foreign_address_print_string(
+    receiver: Oop,
+    _args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some((address, _kind)) = (unsafe { foreign_address::value(api, receiver) }) else {
+        return api.nilObj;
+    };
+    let text = format!("ForeignAddress(0x{address:x})");
+    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+}
+
+unsafe extern "C" fn alien_buffer_finalize(object: Oop) {
+    // Only Alien-owned buffers receive this finalizer, so reading the fixed
+    // two-word payload does not need an IdApi query during collection.
+    let address = unsafe { object.cast::<usize>().read() };
+    let kind = unsafe { object.cast::<usize>().add(1).read() };
+    if address != 0 && kind == KIND_ALIEN_MALLOC {
+        unsafe { object.cast::<usize>().write(0) };
         unsafe { free(address as *mut c_void) };
     }
-    api.nilObj
 }
 
 unsafe extern "C" fn alien_peek_int(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -475,7 +562,7 @@ unsafe extern "C" fn alien_peek_pointer(receiver: Oop, args: *const Oop, count: 
         Err(error) => return error,
     };
     let value = unsafe { ptr::read_unaligned(address as *const usize) };
-    unsafe { (api.mkWord)(value as u64) }
+    unsafe { foreign_address::allocate(api, value, KIND_BORROWED) }.unwrap_or(api.nilObj)
 }
 
 unsafe extern "C" fn alien_peek_double(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -567,7 +654,7 @@ unsafe extern "C" fn alien_poke_pointer(receiver: Oop, args: *const Oop, count: 
             make_error(
                 api,
                 b"typeMismatch\0",
-                b"pokePtr: needs a Word or Integer address",
+                b"pokePtr: needs a ForeignAddress value",
             )
         };
     };
@@ -752,7 +839,10 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
     let function_name_object =
         unsafe { (api.mkString)(function_name.as_ptr(), function_name.len()) };
-    let address_object = unsafe { (api.mkSmallInt)(address as i64) };
+    let Some(address_object) = (unsafe { foreign_address::allocate(api, address, KIND_BORROWED) })
+    else {
+        return unsafe { make_error(api, b"outOfMemory\0", b"could not box the symbol address") };
+    };
     let symbol_arguments = [function_name_object, address_object];
     if unsafe {
         (api.send)(
@@ -774,7 +864,13 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
     if !signature.aggregates.is_empty() {
         let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
         let vector_name = unsafe { (api.mkString)(c"__vecFactory".as_ptr().cast(), 12) };
-        let vector_address = unsafe { (api.mkSmallInt)(vector as usize as i64) };
+        let Some(vector_address) =
+            (unsafe { foreign_address::allocate(api, vector as usize, KIND_BORROWED) })
+        else {
+            return unsafe {
+                make_error(api, b"outOfMemory\0", b"could not box the Vector address")
+            };
+        };
         let vector_arguments = [vector_name, vector_address];
         if unsafe {
             (api.send)(
@@ -900,7 +996,11 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     }
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
     let block_name = unsafe { (api.mkString)(c"__cbBlock".as_ptr().cast(), 9) };
-    let block_address = unsafe { (api.mkSmallInt)(block as usize as i64) };
+    let Some(block_address) =
+        (unsafe { foreign_address::allocate(api, block as usize, KIND_BORROWED) })
+    else {
+        return unsafe { make_error(api, b"outOfMemory\0", b"could not box the callback block") };
+    };
     let block_arguments = [block_name, block_address];
     if unsafe {
         (api.send)(
@@ -916,7 +1016,13 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     if !signature.aggregates.is_empty() {
         let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
         let vector_name = unsafe { (api.mkString)(c"__vecFactory".as_ptr().cast(), 12) };
-        let vector_address = unsafe { (api.mkSmallInt)(vector as usize as i64) };
+        let Some(vector_address) =
+            (unsafe { foreign_address::allocate(api, vector as usize, KIND_BORROWED) })
+        else {
+            return unsafe {
+                make_error(api, b"outOfMemory\0", b"could not box the Vector address")
+            };
+        };
         let vector_arguments = [vector_name, vector_address];
         if unsafe {
             (api.send)(
@@ -1004,6 +1110,7 @@ unsafe extern "C" fn alien_release_callback(
             0,
         )
     };
+    unsafe { foreign_address::clear(api, value) };
     api.trueObj
 }
 
@@ -1020,6 +1127,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         }
     }
     let api = unsafe { &*api_pointer };
+    let Some((foreign_address_vt, _foreign_address)) =
+        (unsafe { foreign_address::ensure_family(api) })
+    else {
+        abort("ForeignAddress exports were incomplete");
+    };
     unsafe { ensure_callback_roots(api) };
     let reloading = unsafe { (api.isExported)(ALIEN_NAME.as_ptr().cast()) } != 0;
     let (alien_vt, alien_obj) = if reloading {
@@ -1043,6 +1155,21 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         abort("Alien runtime was initialized with a different IdApi");
     }
     unsafe {
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"printString\0"),
+            foreign_address_print_string,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"=\0"),
+            foreign_address_equal,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"isNull\0"),
+            foreign_address_is_null,
+        );
         (api.method)(
             runtime.alien_vt as Oop,
             intern(api, b"libraryDir:\0"),
@@ -1078,17 +1205,52 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"alloc:\0"),
             alien_alloc,
         );
-        let word_vt = api.word_vt;
-        (api.method)(word_vt, intern(api, b"free\0"), alien_free);
-        (api.method)(word_vt, intern(api, b"peekIntAt:\0"), alien_peek_int);
-        (api.method)(word_vt, intern(api, b"peekByteAt:\0"), alien_peek_byte);
-        (api.method)(word_vt, intern(api, b"peekPtrAt:\0"), alien_peek_pointer);
-        (api.method)(word_vt, intern(api, b"peekDoubleAt:\0"), alien_peek_double);
-        (api.method)(word_vt, intern(api, b"peekStringAt:\0"), alien_peek_string);
-        (api.method)(word_vt, intern(api, b"pokeInt:at:\0"), alien_poke_int);
-        (api.method)(word_vt, intern(api, b"pokeByte:at:\0"), alien_poke_byte);
-        (api.method)(word_vt, intern(api, b"pokePtr:at:\0"), alien_poke_pointer);
-        (api.method)(word_vt, intern(api, b"pokeDouble:at:\0"), alien_poke_double);
+        (api.method)(foreign_address_vt, intern(api, b"free\0"), alien_free);
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"peekIntAt:\0"),
+            alien_peek_int,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"peekByteAt:\0"),
+            alien_peek_byte,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"peekPtrAt:\0"),
+            alien_peek_pointer,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"peekDoubleAt:\0"),
+            alien_peek_double,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"peekStringAt:\0"),
+            alien_peek_string,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"pokeInt:at:\0"),
+            alien_poke_int,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"pokeByte:at:\0"),
+            alien_poke_byte,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"pokePtr:at:\0"),
+            alien_poke_pointer,
+        );
+        (api.method)(
+            foreign_address_vt,
+            intern(api, b"pokeDouble:at:\0"),
+            alien_poke_double,
+        );
     }
     if !reloading {
         unsafe {

@@ -1,12 +1,12 @@
-//! Canonical pointer-free CodeBindingInventory v1 bytes.
+//! Canonical pointer-free CodeBindingInventory v2 bytes.
 
 use sha2::{Digest, Sha256};
 
 use crate::portable_program::Error;
 
-const DOMAIN: &[u8] = b"birnam.code-bindings.v1\0";
-const ROW_DOMAIN: &[u8] = b"birnam.code-binding-row.v1\0";
-const SEMANTICS_DOMAIN: &[u8] = b"birnam.code-binding-semantics.v1\0";
+const DOMAIN: &[u8] = b"birnam.code-bindings.v2\0";
+const ROW_DOMAIN: &[u8] = b"birnam.code-binding-row.v2\0";
+const SEMANTICS_DOMAIN: &[u8] = b"birnam.code-binding-semantics.v2\0";
 const HEADER_BYTES: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,9 +14,7 @@ pub enum Field<'a> {
     Nil,
     True,
     False,
-    Integer(i64),
     Symbol(&'a [u8]),
-    String(&'a [u8]),
     HeapRef(u32),
     ExportRef(&'a [u8]),
 }
@@ -148,10 +146,7 @@ fn decode_field(bytes: &[u8]) -> Option<Field<'_>> {
         0 if bytes.len() == 1 => Some(Field::Nil),
         1 if bytes.len() == 1 => Some(Field::True),
         2 if bytes.len() == 1 => Some(Field::False),
-        3 if bytes.len() == 9 => Some(Field::Integer(i64::from_le_bytes(
-            bytes.get(1..9)?.try_into().ok()?,
-        ))),
-        5 | 6 | 9 => {
+        5 | 9 => {
             let length = read_u32(bytes, 1)? as usize;
             let value = bytes.get(5..)?.get(..length)?;
             if bytes.len() != 5usize.checked_add(length)? {
@@ -159,7 +154,6 @@ fn decode_field(bytes: &[u8]) -> Option<Field<'_>> {
             }
             match bytes[0] {
                 5 => Some(Field::Symbol(value)),
-                6 => Some(Field::String(value)),
                 9 => Some(Field::ExportRef(value)),
                 _ => None,
             }
@@ -189,7 +183,6 @@ pub fn encode(bindings: &[BindingSpec<'_>]) -> Result<Vec<u8>, Error> {
             Field::Nil
                 | Field::True
                 | Field::False
-                | Field::Integer(_)
                 | Field::Symbol(_)
                 | Field::HeapRef(_)
                 | Field::ExportRef(_)
@@ -198,13 +191,12 @@ pub fn encode(bindings: &[BindingSpec<'_>]) -> Result<Vec<u8>, Error> {
             Field::Nil
                 | Field::True
                 | Field::False
-                | Field::Integer(_)
                 | Field::Symbol(_)
                 | Field::HeapRef(_)
                 | Field::ExportRef(_)
         ) || !matches!(
             binding.provenance,
-            Field::Nil | Field::String(_) | Field::HeapRef(_) | Field::ExportRef(_)
+            Field::Nil | Field::HeapRef(_) | Field::ExportRef(_)
         ) {
             return Err(Error::Format);
         }
@@ -345,10 +337,10 @@ pub fn inspect(bytes: &[u8]) -> Result<Inventory<'_>, Error> {
         let provenance = parse_field(values[3])?;
         let selector_name = selector.data.ok_or(Error::Format)?;
         let arity = selector_arity(selector_name)?;
-        if !matches!(target.tag, 0 | 1 | 2 | 3 | 5 | 7 | 9)
+        if !matches!(target.tag, 0 | 1 | 2 | 5 | 7 | 9)
             || selector.tag != 5
-            || !matches!(implementation.tag, 0 | 1 | 2 | 3 | 5 | 7 | 9)
-            || !matches!(provenance.tag, 0 | 6 | 7 | 9)
+            || !matches!(implementation.tag, 0 | 1 | 2 | 5 | 7 | 9)
+            || !matches!(provenance.tag, 0 | 7 | 9)
             || read_u32(rows, base + 16) != Some(arity)
             || read_u32(rows, base + 20) != Some(0)
             || read_u64(rows, base + 24) != Some(0)
@@ -415,18 +407,15 @@ struct ParsedField<'a> {
 fn parse_field(bytes: &[u8]) -> Result<ParsedField<'_>, Error> {
     let tag = *bytes.first().ok_or(Error::Format)?;
     let data = match tag {
-        0..=2 | 8 if bytes.len() == 1 => None,
-        3 | 4 if bytes.len() == 9 => None,
+        0..=2 if bytes.len() == 1 => None,
         7 if bytes.len() == 5 => None,
-        5 | 6 | 9 => {
+        5 | 9 => {
             let length = read_u32(bytes, 1).ok_or(Error::Format)? as usize;
             let data = bytes
                 .get(5..)
                 .filter(|data| data.len() == length)
                 .ok_or(Error::Format)?;
-            if matches!(tag, 5 | 9) {
-                validate_name(data)?;
-            }
+            validate_name(data)?;
             Some(data)
         }
         _ => return Err(Error::Format),
@@ -440,17 +429,10 @@ fn encode_field(field: Field<'_>) -> Result<Vec<u8>, Error> {
         Field::Nil => output.push(0),
         Field::True => output.push(1),
         Field::False => output.push(2),
-        Field::Integer(value) => {
-            output.push(3);
-            output.extend_from_slice(&value.to_le_bytes());
-        }
-        Field::Symbol(bytes) | Field::String(bytes) | Field::ExportRef(bytes) => {
-            if !matches!(field, Field::String(_)) {
-                validate_name(bytes)?;
-            }
+        Field::Symbol(bytes) | Field::ExportRef(bytes) => {
+            validate_name(bytes)?;
             output.push(match field {
                 Field::Symbol(_) => 5,
-                Field::String(_) => 6,
                 Field::ExportRef(_) => 9,
                 _ => unreachable!(),
             });
@@ -563,17 +545,17 @@ mod tests {
         assert_eq!(
             <[u8; 32]>::from(Sha256::digest(&bytes)),
             [
-                0x59, 0x5c, 0x03, 0xcd, 0xb1, 0xbc, 0xb1, 0xb1, 0x6c, 0x44, 0xef, 0x64, 0x84, 0xfb,
-                0x18, 0x1a, 0x7c, 0xe6, 0x6e, 0x72, 0xa5, 0xfd, 0x1e, 0x27, 0x52, 0x0e, 0xb2, 0x66,
-                0x2f, 0x12, 0x13, 0x7e,
+                0xa9, 0xf3, 0x42, 0x70, 0xec, 0x76, 0xee, 0xf4, 0x4c, 0xcd, 0xe2, 0x46, 0x37, 0x50,
+                0x35, 0x8b, 0xcc, 0xf1, 0x49, 0xfa, 0x6e, 0x0d, 0x13, 0x24, 0x32, 0x97, 0xeb, 0xb3,
+                0x6c, 0x12, 0x75, 0x59,
             ]
         );
         assert_eq!(
             super::inspect(&bytes).unwrap().semantic_digest,
             [
-                0x23, 0x47, 0x4f, 0x95, 0x40, 0xe4, 0xac, 0x42, 0x6b, 0x78, 0xb7, 0x2c, 0x59, 0x3d,
-                0xc9, 0x2c, 0x11, 0x98, 0x25, 0x06, 0x32, 0xa2, 0x03, 0xdf, 0xd7, 0xbd, 0x42, 0xe7,
-                0xc9, 0x31, 0x92, 0xf7,
+                0x15, 0x15, 0xd2, 0xdb, 0xa1, 0xda, 0x6e, 0x7e, 0x81, 0xa5, 0xc9, 0xcf, 0xb6, 0x0b,
+                0x5b, 0xbe, 0x63, 0xbf, 0x57, 0x42, 0x2c, 0xe6, 0xea, 0x65, 0xce, 0x64, 0x7e, 0xe8,
+                0xb7, 0xd4, 0x8b, 0x4d,
             ]
         );
     }
@@ -587,10 +569,10 @@ mod tests {
                 target: Field::Symbol(b"Type"),
                 selector: b"run",
                 implementation: Field::HeapRef(7),
-                provenance: Field::String(b"source"),
+                provenance: Field::HeapRef(11),
             },
             BindingSpec {
-                target: Field::Integer(-1),
+                target: Field::HeapRef(8),
                 selector: b"+",
                 implementation: Field::ExportRef(b"Plus"),
                 provenance: Field::Nil,
@@ -603,7 +585,7 @@ mod tests {
             },
         ];
         let bytes = super::encode(&bindings).unwrap();
-        assert_eq!(bytes.len(), 311);
+        assert_eq!(bytes.len(), 301);
         assert_eq!(
             bytes,
             include_bytes!(concat!(
@@ -616,14 +598,14 @@ mod tests {
         assert_eq!(
             inventory.semantic_digest,
             [
-                0x65, 0x37, 0x66, 0x71, 0x69, 0x48, 0x0a, 0x54, 0xee, 0xcc, 0x10, 0x78, 0x4f, 0xcc,
-                0x0e, 0x3e, 0xac, 0xbf, 0x15, 0x23, 0xda, 0xf0, 0xab, 0x13, 0x91, 0x2a, 0x81, 0x90,
-                0xbf, 0x52, 0x6a, 0xe2,
+                0x05, 0x8a, 0xb6, 0x70, 0x04, 0x52, 0x47, 0xf6, 0x67, 0xce, 0x84, 0x2e, 0x92, 0xf3,
+                0xe7, 0xfb, 0x4e, 0xd3, 0xf4, 0xdb, 0xae, 0x49, 0xf2, 0x16, 0x53, 0x94, 0x6e, 0x2c,
+                0x45, 0x07, 0x0f, 0xb8,
             ]
         );
 
         let mut changed = bindings;
-        changed[0].provenance = Field::String(b"other");
+        changed[0].provenance = Field::HeapRef(10);
         let changed_bytes = super::encode(&changed).unwrap();
         assert_ne!(bytes, changed_bytes);
         assert_eq!(

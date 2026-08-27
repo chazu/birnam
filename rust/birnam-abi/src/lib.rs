@@ -6,6 +6,8 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::{align_of, offset_of, size_of};
 
+pub mod foreign_address;
+
 pub const SLOT_RAW: u8 = 0;
 pub const SLOT_OOP: u8 = 1;
 pub const SLOT_CODE: u8 = 2;

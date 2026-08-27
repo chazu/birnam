@@ -116,11 +116,11 @@
   // FILE *fdopen(int fd, const char *mode)  — receiver = the fd (0 stdin, 2 stderr).
   [Alien wrap: "fdopen" signature: "p i s"   as: #fdopenMode:     on: Integer];
   // char *fgets(char *buf, int size, FILE *stream)  — receiver = buf; NULL at EOF.
-  [Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: Word];
+  [Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: ForeignAddress];
   // int fputs(const char *s, FILE *stream)  — receiver = the string.
   [Alien wrap: "fputs"  signature: "i s p"   as: #fputsTo:        on: String];
-  // int fflush(FILE *stream)  — receiver = the FILE* word.
-  [Alien wrap: "fflush" signature: "i p"     as: #fflush          on: Word];
+  // int fflush(FILE *stream)  — receiver = the FILE* capability.
+  [Alien wrap: "fflush" signature: "i p"     as: #fflush          on: ForeignAddress];
   self] doc:
   "Installs the libc stdio Alien wraps (fdopen/fgets/fputs/fflush); idempotent, re-run at every console session start."];
 

@@ -758,9 +758,9 @@ pub unsafe fn load_image(
         return Err(ImageError::InvalidHeader);
     }
     let observed = u32::from_le_bytes(fixed_header[8..12].try_into().expect("fixed image version"));
-    if observed != 7 {
+    if observed != 8 {
         return Err(ImageError::VersionMismatch {
-            expected: 7,
+            expected: 8,
             observed,
         });
     }
@@ -793,7 +793,7 @@ pub unsafe fn load_image(
             if begun == api.nilObj || send_is_error(api, begun) {
                 return Err(ImageError::LoadRejected);
             }
-            // The v7 loader already admitted and published the exact portable
+            // The v8 loader already admitted and published the exact portable
             // generation. Recompile its recovered self-hosted sources into
             // methods without introducing a new source generation.
             let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
@@ -859,7 +859,7 @@ pub unsafe fn load_image(
         if begun == api.nilObj || send_is_error(api, begun) {
             return Err(ImageError::LoadRejected);
         }
-        // The v7 loader has already rebuilt the exact stored PortablePrograms
+        // The v8 loader has already rebuilt the exact stored PortablePrograms
         // and selection before returning false. Recompile the recovered
         // self-hosted sources without bootstrapping a new durable generation.
         let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };

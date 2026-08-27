@@ -164,4 +164,4 @@ grep -Fxq 'birnam> #codeGenerationPinned' "$smoke_root/evolve.out"
 grep -Fxq 'birnam> 0' "$smoke_root/evolve.out"
 test ! -s "$smoke_root/evolve.err"
 
-echo "stackless-image-lifecycle-smoke: v7 generation-projected named+method-block+initializer-block recovery, rooted-origin retirement, image rollback, and physical successor reclamation passed"
+echo "stackless-image-lifecycle-smoke: v8 generation-projected named+method-block+initializer-block recovery, rooted-origin retirement, image rollback, and physical successor reclamation passed"

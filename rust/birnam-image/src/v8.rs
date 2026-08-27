@@ -1,4 +1,4 @@
-//! Inert image-v7 format proof. This module performs structural preflight only;
+//! Inert image-v8 format proof. This module performs structural preflight only;
 //! it performs no native admission or runtime publication.
 
 use birnam_artifact::{
@@ -6,7 +6,7 @@ use birnam_artifact::{
 };
 use sha2::{Digest, Sha256};
 
-pub const FORMAT_VERSION: u32 = 7;
+pub const FORMAT_VERSION: u32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -316,11 +316,14 @@ fn validate_heaps(
         let mut offset = 4usize;
         for _ in 0..count {
             let locator = parse_field(payload, &mut offset)?;
-            if !matches!(locator.tag, 9 | 12) {
+            if !matches!(locator.tag, 9 | 12..=16) {
                 return Err(Error::Heap);
             }
             let word_count = read_u32(payload, offset).ok_or(Error::Heap)?;
             offset = offset.checked_add(4).ok_or(Error::Quantity)?;
+            if matches!(locator.tag, 13..=16) && word_count != 0 {
+                return Err(Error::Heap);
+            }
             if word_count as usize > payload.len().saturating_sub(offset) {
                 return Err(Error::Heap);
             }
@@ -359,7 +362,7 @@ fn validate_heaps(
             let provenance = parse_field(object.encoded_slots, &mut slot_offset)?;
             if slot_offset != object.encoded_slots.len()
                 || program_field.tag != 11
-                || !matches!(provenance.tag, 0 | 6 | 7 | 9)
+                || !matches!(provenance.tag, 0 | 7 | 9)
             {
                 return Err(Error::Heap);
             }
@@ -371,7 +374,7 @@ fn validate_heaps(
             roots.push(program);
         } else {
             visit_slots(object, |field| {
-                if field.tag == 11 {
+                if matches!(field.tag, 4 | 6 | 11 | 13..=16) {
                     return Err(Error::Heap);
                 }
                 Ok(())
@@ -475,7 +478,7 @@ pub(crate) fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Fie
             index: None,
             data: None,
         }),
-        3 | 4 => {
+        3 | 13..=15 => {
             *offset = offset
                 .checked_add(8)
                 .filter(|end| *end <= bytes.len())
@@ -495,7 +498,7 @@ pub(crate) fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Fie
                 data: None,
             })
         }
-        5 | 6 | 9 => {
+        5 | 9 | 16 => {
             let length = read_u32(bytes, *offset).ok_or(Error::Heap)? as usize;
             *offset = offset.checked_add(4).ok_or(Error::Quantity)?;
             let end = offset.checked_add(length).ok_or(Error::Quantity)?;
@@ -540,7 +543,7 @@ fn validate_facts(payload: &[u8], heap_count: u32, code_objects: &[bool]) -> Res
         offset += 10;
         for _ in 0..3 {
             let field = parse_field(payload, &mut offset).map_err(|_| Error::Facts)?;
-            if field.tag == 11
+            if !matches!(field.tag, 0 | 1 | 2 | 5 | 7 | 8 | 9 | 12)
                 || (matches!(field.tag, 7 | 12)
                     && field.index.is_none_or(|index| index >= heap_count))
                 || (field.tag == 12
@@ -621,7 +624,7 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     #[test]
-    fn empty_stripped_image_has_frozen_v7_bytes() {
+    fn empty_stripped_image_has_frozen_v8_bytes() {
         let programs = include_bytes!(concat!(
             "../../../abi/fixtures/portable-code-v1/",
             "inventory-empty.bin"
@@ -635,18 +638,18 @@ mod tests {
             "selection-empty.bin"
         ));
         let bytes =
-            super::compose_stripped(1, 0x6c3b_67f0_ef16_14b3, programs, bindings, selection)
+            super::compose_stripped(1, 0xcdb6_41f9_7854_0d45, programs, bindings, selection)
                 .unwrap();
         assert_eq!(bytes.len(), 740);
         assert_eq!(
             <[u8; 32]>::from(Sha256::digest(&bytes)),
             [
-                0xd4, 0x19, 0xfd, 0xb9, 0x52, 0x47, 0x86, 0xef, 0x30, 0x02, 0xfa, 0x48, 0xb3, 0x1f,
-                0xf3, 0xbf, 0xbb, 0xc4, 0x05, 0x44, 0x8f, 0x40, 0x1d, 0xc0, 0x2e, 0xe7, 0xe4, 0x60,
-                0x7f, 0xd7, 0x3b, 0xc5,
+                0x14, 0x61, 0x2b, 0xb3, 0x9c, 0xf1, 0x97, 0xbe, 0x3f, 0x30, 0x49, 0x96, 0x43, 0x1b,
+                0x85, 0x53, 0x49, 0x27, 0xe1, 0x99, 0x34, 0xf6, 0xbd, 0x79, 0xde, 0x22, 0x4e, 0x2a,
+                0xa5, 0x7f, 0x60, 0x97,
             ]
         );
-        let image = super::structural_preflight(&bytes, 1, 0x6c3b_67f0_ef16_14b3).unwrap();
+        let image = super::structural_preflight(&bytes, 1, 0xcdb6_41f9_7854_0d45).unwrap();
         assert_eq!(image.heap_objects, 0);
         assert!(!image.has_code);
     }
@@ -669,7 +672,7 @@ mod tests {
         let heaps = [heap.as_slice()];
         let bytes = super::compose(super::ImageSpec {
             architecture: 1,
-            runtime_abi: 0x6c3b_67f0_ef16_14b3,
+            runtime_abi: 0xcdb6_41f9_7854_0d45,
             programs,
             bindings,
             selection,
@@ -678,13 +681,13 @@ mod tests {
             code: None,
         })
         .unwrap();
-        assert_eq!(bytes.len(), 2573);
+        assert_eq!(bytes.len(), 2617);
         assert_eq!(
             <[u8; 32]>::from(Sha256::digest(&bytes)),
             [
-                0xc1, 0xf9, 0xa7, 0xf7, 0x47, 0xb7, 0x39, 0xa6, 0xed, 0xa2, 0xe2, 0xe3, 0x48, 0x6d,
-                0x3f, 0x82, 0x4e, 0xee, 0x13, 0xe7, 0x60, 0xfa, 0x57, 0xf3, 0xee, 0xb4, 0xd1, 0x27,
-                0x21, 0x7f, 0x6d, 0xc6,
+                0x57, 0xc2, 0x3b, 0x8e, 0x2f, 0x84, 0x8d, 0x52, 0x40, 0x3d, 0x2d, 0x9f, 0xe0, 0xfd,
+                0xf2, 0xbf, 0x2f, 0xae, 0x75, 0x12, 0x76, 0xd4, 0xdb, 0xf4, 0x77, 0xb7, 0x1c, 0xcd,
+                0xba, 0xad, 0xb6, 0xac,
             ]
         );
         assert_eq!(
@@ -694,8 +697,8 @@ mod tests {
                 "image-mixed-stripped.bin"
             ))
         );
-        let image = super::structural_preflight(&bytes, 1, 0x6c3b_67f0_ef16_14b3).unwrap();
-        assert_eq!(image.heap_objects, 8);
+        let image = super::structural_preflight(&bytes, 1, 0xcdb6_41f9_7854_0d45).unwrap();
+        assert_eq!(image.heap_objects, 12);
         assert!(!image.has_code);
     }
 
@@ -717,22 +720,22 @@ mod tests {
         let heaps = [heap.as_slice()];
         let bytes = super::compose(super::ImageSpec {
             architecture: 1,
-            runtime_abi: 0x6c3b_67f0_ef16_14b3,
+            runtime_abi: 0xcdb6_41f9_7854_0d45,
             programs,
             bindings,
             selection,
             heaps: &heaps,
             facts: &[],
-            code: Some(b"\x7fELFbirnam-v7-fixture"),
+            code: Some(b"\x7fELFbirnam-v8-fixture"),
         })
         .unwrap();
-        assert_eq!(bytes.len(), 2678);
+        assert_eq!(bytes.len(), 2722);
         assert_eq!(
             <[u8; 32]>::from(Sha256::digest(&bytes)),
             [
-                0x50, 0xcc, 0x58, 0x43, 0xaa, 0xe5, 0x27, 0xf9, 0xd5, 0xf5, 0x30, 0xed, 0x91, 0x60,
-                0xe8, 0xe0, 0xb6, 0xe7, 0xd0, 0xd2, 0x08, 0xf5, 0x43, 0x84, 0xa9, 0xc9, 0x1c, 0xeb,
-                0x7c, 0x50, 0x58, 0x41,
+                0xff, 0x1a, 0x05, 0xc7, 0x5a, 0xb7, 0x23, 0x2c, 0x8e, 0x5d, 0xe1, 0xb7, 0x41, 0xff,
+                0x69, 0xfc, 0x1b, 0x81, 0x40, 0x35, 0x22, 0x41, 0x7e, 0x15, 0xb9, 0x1e, 0xf2, 0x4d,
+                0x27, 0x4e, 0x21, 0x3e,
             ]
         );
         assert_eq!(
@@ -743,7 +746,7 @@ mod tests {
             ))
         );
         assert!(
-            super::structural_preflight(&bytes, 1, 0x6c3b_67f0_ef16_14b3)
+            super::structural_preflight(&bytes, 1, 0xcdb6_41f9_7854_0d45)
                 .unwrap()
                 .has_code
         );
@@ -780,7 +783,7 @@ mod tests {
         let fact_sets = [facts.as_slice()];
         let bytes = super::compose(super::ImageSpec {
             architecture: 1,
-            runtime_abi: 0x6c3b_67f0_ef16_14b3,
+            runtime_abi: 0xcdb6_41f9_7854_0d45,
             programs,
             bindings,
             selection,
@@ -789,13 +792,13 @@ mod tests {
             code: None,
         })
         .unwrap();
-        assert_eq!(bytes.len(), 2650);
+        assert_eq!(bytes.len(), 2694);
         assert_eq!(
             <[u8; 32]>::from(Sha256::digest(&bytes)),
             [
-                0xff, 0x83, 0xf1, 0x53, 0x17, 0xc3, 0x70, 0xb1, 0x44, 0xb4, 0x26, 0x82, 0x7b, 0x2c,
-                0xc6, 0x8a, 0x15, 0x7e, 0xb2, 0x38, 0xbb, 0xe7, 0xbd, 0x3a, 0x7c, 0x6f, 0xe4, 0xfa,
-                0x73, 0x05, 0xa1, 0x93,
+                0x65, 0x2f, 0xc3, 0xd5, 0x9d, 0xb0, 0x71, 0x3f, 0x11, 0x13, 0x6d, 0xd2, 0x2c, 0x34,
+                0xe9, 0xbe, 0x52, 0x2a, 0xc1, 0x90, 0xa0, 0xe9, 0x03, 0x1f, 0x93, 0x4d, 0x19, 0x60,
+                0xcc, 0x6b, 0x12, 0xa5,
             ]
         );
         assert_eq!(
@@ -806,10 +809,10 @@ mod tests {
             ))
         );
         assert_eq!(
-            super::structural_preflight(&bytes, 1, 0x6c3b_67f0_ef16_14b3)
+            super::structural_preflight(&bytes, 1, 0xcdb6_41f9_7854_0d45)
                 .unwrap()
                 .heap_objects,
-            8
+            12
         );
     }
 
@@ -831,7 +834,7 @@ mod tests {
         let heaps = [heap.as_slice()];
         let bytes = super::compose(super::ImageSpec {
             architecture: 1,
-            runtime_abi: 0x6c3b_67f0_ef16_14b3,
+            runtime_abi: 0xcdb6_41f9_7854_0d45,
             programs,
             bindings,
             selection,
@@ -848,7 +851,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            super::structural_preflight(&bytes, 1, 0x6c3b_67f0_ef16_14b3)
+            super::structural_preflight(&bytes, 1, 0xcdb6_41f9_7854_0d45)
                 .unwrap()
                 .heap_objects,
             8
@@ -873,7 +876,7 @@ mod tests {
         let heaps = [heap.as_slice()];
         let bytes = super::compose(super::ImageSpec {
             architecture: 1,
-            runtime_abi: 0x6c3b_67f0_ef16_14b3,
+            runtime_abi: 0xcdb6_41f9_7854_0d45,
             programs,
             bindings,
             selection,
@@ -922,7 +925,7 @@ mod tests {
         for fixture in fixtures {
             for end in 0..fixture.len() {
                 let prefix = &fixture[..end];
-                if super::structural_preflight(prefix, 1, 0x6c3b_67f0_ef16_14b3).is_ok() {
+                if super::structural_preflight(prefix, 1, 0xcdb6_41f9_7854_0d45).is_ok() {
                     assert!(
                         fixtures.contains(&prefix),
                         "accepted non-image prefix {end} of {}",
@@ -935,7 +938,7 @@ mod tests {
                 mutated[offset] ^= 1;
                 assert!(
                     std::panic::catch_unwind(|| {
-                        let _ = super::structural_preflight(&mutated, 1, 0x6c3b_67f0_ef16_14b3);
+                        let _ = super::structural_preflight(&mutated, 1, 0xcdb6_41f9_7854_0d45);
                     })
                     .is_ok()
                 );
@@ -949,12 +952,12 @@ mod tests {
             "../../../abi/fixtures/portable-code-v1/",
             "image-empty-stripped.bin"
         ));
-        assert!(super::decode(fixture, 1, 0x6c3b_67f0_ef16_14b3).is_ok());
+        assert!(super::decode(fixture, 1, 0xcdb6_41f9_7854_0d45).is_ok());
         for version in [4u32, 5, 6] {
             let mut obsolete = fixture.to_vec();
             obsolete[8..12].copy_from_slice(&version.to_le_bytes());
             assert_eq!(
-                super::decode(&obsolete, 1, 0x6c3b_67f0_ef16_14b3).map(|_| ()),
+                super::decode(&obsolete, 1, 0xcdb6_41f9_7854_0d45).map(|_| ()),
                 Err(super::Error::Header)
             );
         }
@@ -980,7 +983,7 @@ mod tests {
                 .collect();
             let bytes = super::compose(super::ImageSpec {
                 architecture: 1,
-                runtime_abi: 0x6c3b_67f0_ef16_14b3,
+                runtime_abi: 0xcdb6_41f9_7854_0d45,
                 programs,
                 bindings,
                 selection,
@@ -990,7 +993,7 @@ mod tests {
             })
             .unwrap();
             assert!(
-                super::structural_preflight(&bytes, 1, 0x6c3b_67f0_ef16_14b3)
+                super::structural_preflight(&bytes, 1, 0xcdb6_41f9_7854_0d45)
                     .unwrap()
                     .has_code
             );
@@ -999,7 +1002,7 @@ mod tests {
             mutated[offset] ^= 1;
             assert!(
                 std::panic::catch_unwind(|| {
-                    let _ = super::structural_preflight(&mutated, 1, 0x6c3b_67f0_ef16_14b3);
+                    let _ = super::structural_preflight(&mutated, 1, 0xcdb6_41f9_7854_0d45);
                 })
                 .is_ok()
             );
@@ -1007,7 +1010,7 @@ mod tests {
     }
 
     fn mixed_heap() -> Vec<u8> {
-        let mut heap = 8u32.to_le_bytes().to_vec();
+        let mut heap = 12u32.to_le_bytes().to_vec();
         push_named(&mut heap, 9, b"CodeObjectVt");
         heap.extend_from_slice(&2u32.to_le_bytes());
         push_indexed(&mut heap, 11, 1);
@@ -1019,6 +1022,17 @@ mod tests {
             push_named(&mut heap, 9, b"ObjectVt");
             heap.extend_from_slice(&0u32.to_le_bytes());
         }
+        heap.push(13);
+        heap.extend_from_slice(&(-1i64).to_le_bytes());
+        heap.extend_from_slice(&0u32.to_le_bytes());
+        heap.push(14);
+        heap.extend_from_slice(&0x7ff8_0000_0000_0042u64.to_le_bytes());
+        heap.extend_from_slice(&0u32.to_le_bytes());
+        heap.push(15);
+        heap.extend_from_slice(&0xfedc_ba98_7654_3210u64.to_le_bytes());
+        heap.extend_from_slice(&0u32.to_le_bytes());
+        push_named(&mut heap, 16, b"source");
+        heap.extend_from_slice(&0u32.to_le_bytes());
         heap
     }
 

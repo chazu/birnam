@@ -112,15 +112,16 @@ pub fn emit_scalar_shim(
         let Type::Scalar(scalar) = ty else {
             unreachable!("aggregate shim was rejected before emission");
         };
-        source.push_str(scalar_c_type(*scalar).expect("scalar has a C spelling"));
-        source.push_str(" a");
-        source.push_str(&index.to_string());
-        source.push_str(" = ");
         let expression = if index == 0 {
             "self".to_owned()
         } else {
             format!("args[{}]", index - 1)
         };
+        emit_pointer_guard(&mut source, *scalar, &expression, "birnam_nil()");
+        source.push_str(scalar_c_type(*scalar).expect("scalar has a C spelling"));
+        source.push_str(" a");
+        source.push_str(&index.to_string());
+        source.push_str(" = ");
         emit_unbox(&mut source, *scalar, &expression);
         source.push_str(";\n");
     }
@@ -229,6 +230,7 @@ pub fn emit_shim(function_name: &[u8], signature: &Signature) -> Result<String, 
         };
         match ty {
             Type::Scalar(scalar) => {
+                emit_pointer_guard(&mut source, *scalar, &expression, "birnam_nil()");
                 source.push_str(scalar_c_type(*scalar).expect("scalar has a C spelling"));
                 source.push_str(" a");
                 source.push_str(&index.to_string());
@@ -403,7 +405,9 @@ pub fn emit_callback(signature: &Signature) -> Result<String, CodegenError> {
         Type::Scalar(Scalar::UnsignedLong) => source.push_str("return birnam_uintValue(r);\n"),
         Type::Scalar(Scalar::Double) => source.push_str("return birnam_floatValue(r);\n"),
         Type::Scalar(Scalar::Float) => source.push_str("return (float)birnam_floatValue(r);\n"),
-        Type::Scalar(Scalar::Pointer) => source.push_str("return (void*)birnam_wordValue(r);\n"),
+        Type::Scalar(Scalar::Pointer) => source.push_str(
+            "return birnam_isForeignAddress(r) ? (void*)birnam_foreignAddressValue(r) : (void*)0;\n",
+        ),
         Type::Scalar(Scalar::StringPointer) => unreachable!("rejected above"),
         Type::Aggregate(index) => {
             source.push_str("__S");
@@ -449,6 +453,9 @@ fn emit_unmarshal_field(
 ) -> Result<(), CodegenError> {
     match field {
         Type::Scalar(scalar) => {
+            if *scalar == Scalar::Pointer {
+                source.push_str("if (!birnam_isForeignAddress(e)) return 0;\n");
+            }
             source.push_str("out->f");
             source.push_str(&field_index.to_string());
             source.push_str(" = ");
@@ -470,6 +477,9 @@ fn emit_unmarshal_field(
             source.push_str("L) return 0;\n{ long __k; for (__k = 0; __k < ");
             source.push_str(&count.to_string());
             source.push_str("L; __k++) {\nvoid* __ae = birnam_send(e, birnam_intern(\"at:\"), (void*[]){birnam_mkSmallInt(__k)}, 1L);\n");
+            if *element == Scalar::Pointer {
+                source.push_str("if (!birnam_isForeignAddress(__ae)) return 0;\n");
+            }
             source.push_str("out->f");
             source.push_str(&field_index.to_string());
             source.push_str("[__k] = ");
@@ -532,12 +542,25 @@ fn runtime_preamble() -> String {
         + "extern double birnam_floatValue(void*);\n"
         + "extern void* birnam_mkWord(unsigned long);\n"
         + "extern unsigned long birnam_wordValue(void*);\n"
+        + "extern void* birnam_mkForeignAddress(unsigned long);\n"
+        + "extern unsigned long birnam_foreignAddressValue(void*);\n"
+        + "extern long birnam_isForeignAddress(void*);\n"
         + "extern unsigned long birnam_uintValue(void*);\n"
         + "extern const char* birnam_cstr(void*);\n"
         + "extern void birnam_free_cstr(const char*);\n"
         + "extern void* birnam_mkString(const char*, long);\n"
         + "extern void* birnam_nil(void);\n"
         + "extern long strlen(const char*);\n"
+}
+
+fn emit_pointer_guard(source: &mut String, scalar: Scalar, expression: &str, failure: &str) {
+    if scalar == Scalar::Pointer {
+        source.push_str("if (!birnam_isForeignAddress(");
+        source.push_str(expression);
+        source.push_str(")) return ");
+        source.push_str(failure);
+        source.push_str(";\n");
+    }
 }
 
 fn emit_unbox(source: &mut String, scalar: Scalar, expression: &str) {
@@ -571,7 +594,7 @@ fn emit_unbox(source: &mut String, scalar: Scalar, expression: &str) {
             source.push(')');
         }
         Scalar::Pointer => {
-            source.push_str("(void*)birnam_wordValue(");
+            source.push_str("(void*)birnam_foreignAddressValue(");
             source.push_str(expression);
             source.push(')');
         }
@@ -601,7 +624,7 @@ fn emit_box_expr(source: &mut String, scalar: Scalar, expression: &str) {
             source.push_str("))")
         }
         Scalar::Pointer => {
-            source.push_str("birnam_mkWord((unsigned long)(");
+            source.push_str("birnam_mkForeignAddress((unsigned long)(");
             source.push_str(expression);
             source.push_str("))")
         }
@@ -624,7 +647,9 @@ fn emit_box_return(source: &mut String, scalar: Scalar) {
         Scalar::StringPointer => {
             source.push_str("return __r ? birnam_mkString(__r, strlen(__r)) : birnam_nil();\n")
         }
-        Scalar::Pointer => source.push_str("return birnam_mkWord((unsigned long)__r);\n"),
+        Scalar::Pointer => {
+            source.push_str("return birnam_mkForeignAddress((unsigned long)__r);\n")
+        }
     }
 }
 
@@ -789,6 +814,25 @@ mod tests {
         assert!(source.contains("long __r = strlen(a0);"));
         assert!(source.contains("birnam_free_cstr(a0);"));
         assert!(source.contains("return birnam_mkSmallInt((long)__r);"));
+    }
+
+    #[test]
+    fn pointer_signatures_guard_foreign_address_membership_before_unboxing() {
+        let scalar = emit_scalar_shim(b"free", &parse_signature(b"v p").unwrap()).unwrap();
+        assert!(
+            scalar.contains(
+                "if (!birnam_isForeignAddress(self)) return birnam_nil();\nvoid* a0 = (void*)birnam_foreignAddressValue(self);"
+            )
+        );
+
+        let aggregate = emit_aggregate_support(&parse_signature(b"{p2p}").unwrap()).unwrap();
+        assert!(aggregate.contains("if (!birnam_isForeignAddress(e)) return 0;"));
+        assert!(aggregate.contains("if (!birnam_isForeignAddress(__ae)) return 0;"));
+
+        let callback = emit_callback(&parse_signature(b"p").unwrap()).unwrap();
+        assert!(callback.contains(
+            "return birnam_isForeignAddress(r) ? (void*)birnam_foreignAddressValue(r) : (void*)0;"
+        ));
     }
 
     #[test]

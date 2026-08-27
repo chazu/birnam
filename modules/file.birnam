@@ -42,12 +42,12 @@
 [Alien wrap: "opendir" signature: "p s"   as: #opendir     on: String];  // DIR* opendir(path)
 [Alien wrap: "fputs"   signature: "i s p" as: #fputsTo:    on: String];  // int fputs(s, stream)  (receiver = the string)
 //
-// On Word (a FILE* / DIR* / dirent* handle is the first argument):
-[Alien wrap: "fclose"   signature: "i p"     as: #fclose             on: Word];  // int fclose(FILE*)
-[Alien wrap: "fseek"    signature: "i p l i"  as: #fseekOffset:whence: on: Word]; // int fseek(FILE*, off, whence)
-[Alien wrap: "ftell"    signature: "l p"     as: #ftell              on: Word];  // long ftell(FILE*)
-[Alien wrap: "readdir"  signature: "p p"     as: #readdir            on: Word];  // dirent* readdir(DIR*)
-[Alien wrap: "closedir" signature: "i p"     as: #closedir           on: Word];  // int closedir(DIR*)
+// On ForeignAddress (a FILE* / DIR* / dirent* handle is the first argument):
+[Alien wrap: "fclose"   signature: "i p"     as: #fclose             on: ForeignAddress];  // int fclose(FILE*)
+[Alien wrap: "fseek"    signature: "i p l i"  as: #fseekOffset:whence: on: ForeignAddress]; // int fseek(FILE*, off, whence)
+[Alien wrap: "ftell"    signature: "l p"     as: #ftell              on: ForeignAddress];  // long ftell(FILE*)
+[Alien wrap: "readdir"  signature: "p p"     as: #readdir            on: ForeignAddress];  // dirent* readdir(DIR*)
+[Alien wrap: "closedir" signature: "i p"     as: #closedir           on: ForeignAddress];  // int closedir(DIR*)
 
 // The module: a named singleton, the Config / Toml / Time shape.
 [Module named: #file requires: #[]];

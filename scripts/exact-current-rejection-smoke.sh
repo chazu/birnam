@@ -13,7 +13,7 @@ printf '[System saveImage: "%s"];\n:quit\n' "$current" | "$bin" --repl >"$root/s
 test ! -s "$root/save.err"
 test -s "$current"
 
-for version in 4 5 6 8; do
+for version in 4 5 6 7 9; do
   rejected="$root/version-${version}.image"
   cp "$current" "$rejected"
   python3 - "$rejected" "$version" <<'PY'
@@ -28,7 +28,7 @@ PY
     printf 'obsolete image version %s was accepted\n' "$version" >&2
     exit 1
   fi
-  grep -Fq "VersionMismatch { expected: 7, observed: $version }" "$root/version-${version}.err"
+  grep -Fq "VersionMismatch { expected: 8, observed: $version }" "$root/version-${version}.err"
 done
 
 invalid="$root/invalid-magic.image"
@@ -40,4 +40,4 @@ if printf ':quit\n' | "$bin" "$invalid" >"$root/invalid.out" 2>"$root/invalid.er
 fi
 grep -Fq 'InvalidHeader' "$root/invalid.err"
 
-printf 'exact-current-rejection-smoke: v4, v5, v6, unknown, and invalid images rejected before load\n'
+printf 'exact-current-rejection-smoke: v4, v5, v6, v7, future, and invalid images rejected before load\n'

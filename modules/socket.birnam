@@ -78,9 +78,8 @@
 [Reflect defineMethod: #soReuseAddr on: Socket as: [:self | 4] doc:
   "The SO_REUSEADDR option constant (macOS value 4)."];
 
-// Ignore SIGPIPE process-wide. SIG_IGN is (void*)1 — a Word can't be minted from a
-// bare Integer (`p` args untag through a Word), so build one: alloc 8 zeroed bytes,
-// write 1 as an int, read it back as a pointer.
+// Ignore SIGPIPE process-wide. SIG_IGN is (void*)1 — pointer arguments require a
+// ForeignAddress, so build one via an owned buffer: write 1, then read it as a pointer.
 [Reflect defineMethod: #ignoreSigpipe on: Socket as: [:self |
   let h := [Alien alloc: 8];
   [h pokeInt: 1 at: 0];

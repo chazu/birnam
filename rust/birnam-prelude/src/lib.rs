@@ -428,21 +428,6 @@ unsafe extern "C" fn word_as_integer(self_object: Oop, _args: *const Oop, count:
     unsafe { (api.mkSmallInt)(value as i64) }
 }
 
-unsafe extern "C" fn word_is_null(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { word_value(api, self_object) }) else {
-        return api.nilObj;
-    };
-    if value == 0 {
-        api.trueObj
-    } else {
-        api.falseObj
-    }
-}
-
 unsafe fn float_self(api: &IdApi, value: Oop) -> Option<f64> {
     if value.is_null() || unsafe { (api.isFloat)(value) } == 0 {
         return None;
@@ -1478,7 +1463,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b"printString\0", word_print_string),
         (b"=\0", word_eq),
         (b"asInteger\0", word_as_integer),
-        (b"isNull\0", word_is_null),
     ];
     for (selector, method) in word_methods {
         let symbol = unsafe { intern(api, selector) };

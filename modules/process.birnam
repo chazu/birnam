@@ -25,9 +25,9 @@
 [Alien wrap: "popen"  signature: "p s s"  as: #popenType:      on: String];
 // char *fgets(char *buf, int size, FILE *stream)        — receiver = buf; answers
 // buf, or NULL at EOF (checked with `isNull`); the bytes are read back with peek.
-[Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: Word];
-// int pclose(FILE *stream)  — receiver = the FILE* word; answers the wait status.
-[Alien wrap: "pclose" signature: "i p"    as: #pclose         on: Word];
+[Alien wrap: "fgets"  signature: "p p i p" as: #fgetsSize:stream: on: ForeignAddress];
+// int pclose(FILE *stream)  — receiver = the FILE* capability; answers the wait status.
+[Alien wrap: "pclose" signature: "i p"    as: #pclose         on: ForeignAddress];
 
 // The module + a result prototype (its fields live in cells keyed on self).
 [Module named: #process requires: #[]];

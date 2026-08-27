@@ -1,4 +1,4 @@
-//! Current retained-fact encoding shared by image-v7 save and load.
+//! Current retained-fact encoding shared by image-v8 save and load.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetentionPolicy {

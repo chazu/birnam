@@ -38,7 +38,9 @@
 > The S0-S4 delivery boundary closed 2026-08-24 after forced-GC collection
 > callback proof and mapped/rebuilt image successor activation plus exact
 > rollback. The 60G lifetime/host-integration and 60J identity/history work,
-> including 60K portable CodeObjects and image-v7, closed 2026-08-27. The 60H
+> including 60K portable CodeObjects, closed 2026-08-27. Design 60O then made
+> the clean image-v8 identity cut and separated portable numeric `Word` from
+> process-local `ForeignAddress`; it is implemented and verified. The 60H
 > exact-current cut, production gates, evidence driver, longevity reducer, and
 > immutable-promotion checks were implemented the same day; actual production
 > designation remains a release operation over one clean committed archive.
@@ -66,9 +68,10 @@
 > - [60ka — Portable CodeObjects adversarial review](60ka-portable-codeobjects-adversarial-review.md)
 > - [60l — PortableProgram v1 and image-v7 byte grammar](60l-portable-program-and-image-v7-byte-grammar.md)
 > - [60la — PortableProgram/image-v7 adversarial review](60la-portable-program-and-image-v7-adversarial-review.md)
+> - [60o — Image-v8 identity preservation](60o-image-v8-identity-preservation.md)
+> - [60oa — Image-v8 adversarial review](60oa-image-v8-adversarial-review.md)
 >
-> A future 60H record will cover the release acceptance matrix and rollout
-> policy.
+> 60H owns the release acceptance matrix and rollout policy.
 
 ## 1. Scope
 

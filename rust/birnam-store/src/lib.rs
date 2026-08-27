@@ -7,7 +7,7 @@
 //! through the raw fact bridge below; no Rust reference or lock crosses an
 //! IdApi callback.
 
-use birnam_abi::IdApi;
+use birnam_abi::{IdApi, foreign_address};
 use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
@@ -267,9 +267,11 @@ unsafe extern "C" fn set_method_authorizer(
 ) -> birnam_abi::Oop {
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    // SAFETY: this selector has exactly one SmallInt argument carrying the
-    // callback address, matching the frozen Store callback ABI.
-    let candidate = unsafe { (api.smallIntValue)(*args) } as usize;
+    // SAFETY: this selector has exactly one argument. Native callback authority
+    // is explicit and cannot be smuggled through a portable numeric object.
+    let Some((candidate, _kind)) = (unsafe { foreign_address::value(api, *args) }) else {
+        return mop_error(runtime, b"methodMutationAuthorizerNeedsForeignAddress\0");
+    };
     let current = METHOD_AUTHORIZER.load(Ordering::Acquire);
     if current != 0 && current != candidate {
         return mop_error(runtime, b"methodMutationAuthorizerAlreadySet\0");

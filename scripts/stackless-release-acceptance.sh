@@ -83,7 +83,7 @@ run_gate image_resave_plateau scripts/image-resave-plateau-smoke.sh "$prefix"
 run_gate stackless_image scripts/stackless-image-lifecycle-smoke.sh "$prefix"
 run_gate portable_resumable scripts/portable-resumable-lifecycle-smoke.sh "$prefix"
 run_gate portable_code_binding scripts/portable-code-binding-lifecycle-smoke.sh "$prefix"
-run_gate portable_image_v7 scripts/portable-image-v7-smoke.sh "$prefix"
+run_gate portable_image_v8 scripts/portable-image-v8-smoke.sh "$prefix"
 run_gate stackless_control scripts/stackless-control-smoke.sh "$prefix"
 run_gate bounded_churn scripts/runtime-bounded-churn-smoke.sh "$prefix"
 
@@ -116,7 +116,7 @@ def digest(path):
 with open(install_path, encoding="utf-8") as handle:
     install = json.load(handle)
 assert install["schema"] == 3
-assert install["admission_contract"]["image_version"] == 7
+assert install["admission_contract"]["image_version"] == 8
 assert install["admission_contract"]["candidate_manifest_version"] == 4
 
 gates = []

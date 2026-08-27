@@ -168,6 +168,26 @@ not_imageable_probe tail-call-action '[TailCallAction clone]' stepActionNotImage
 not_imageable_probe return-action '[ReturnAction clone]' stepActionNotImageable
 not_imageable_probe frame-view '[FrameView clone]' frameViewNotImageable
 not_imageable_probe discard-receipt '[DiscardReceipt clone]' discardReceiptNotImageable
+not_imageable_probe foreign-address '[Alien alloc: 8]' foreignAddressNotImageable
+
+cat >"$tmp/foreign-address-contract.birnam" <<'EOF'
+let owned := [Alien alloc: 8];
+[owned free];
+let twice := [owned free];
+[System println: [[twice kind] printString]];
+let unit := [Tcc new];
+[unit compile: "void* borrowed_symbol(void* value) { return value; }"];
+[unit relocate];
+let borrowed := [unit symbol: "borrowed_symbol"];
+let borrowedFree := [borrowed free];
+[System println: [[borrowedFree kind] printString]];
+let fresh := [Tcc new];
+[System println: [[[fresh addSymbol: "numeric" value: 1] isNil] printString]]
+EOF
+"$bin" "$tmp/foreign-address-contract.birnam" >"$tmp/foreign-address-contract.out"
+grep -Fxq '#alreadyFreed' "$tmp/foreign-address-contract.out"
+grep -Fxq '#notOwned' "$tmp/foreign-address-contract.out"
+grep -Fxq 'true' "$tmp/foreign-address-contract.out"
 
 # An image saved by a non-REPL script does not contain Repl. Its boot fallback
 # must install the process-local REPL from the relocated compiled unit.

@@ -15,7 +15,7 @@ runtime admits only current image, artifact, manifest, descriptor, selection,
 native-carrier, IdApi, and Runtime-ABI versions. Backward compatibility is not
 a product requirement.
 
-The stackless/v7 implementation is simply Birnam. There is no legacy runtime
+The stackless/v8 implementation is simply Birnam. There is no legacy runtime
 mode, stackless feature flag, dual writer, compatibility reader, upgrade shim,
 or downgrade writer. Synchronous and resumable implementation dispositions
 remain ordinary compiler policy inside the one current runtime; they are not
@@ -30,24 +30,24 @@ later be rebuilt.
 
 ### 2.1 Images
 
-The only admitted durable image format is image-v7.
+The only admitted durable image format is image-v8, as amended by Design 60O.
 
-- New saves write v7.
-- v4, v5, v6, unknown, and future versions reject before heap allocation,
+- New saves write v8.
+- v4, v5, v6, v7, unknown, and future versions reject before heap allocation,
   Store mutation, native mapping, or image-recovery publication.
-- The runtime contains no v4/v5/v6 admission or recovery reader.
-- There is no in-runtime migration or v7-to-legacy downgrade path.
+- The runtime contains no v4/v5/v6/v7 admission or recovery reader.
+- There is no in-runtime migration or v8-to-legacy downgrade path.
 - Historical format descriptions may remain as design provenance. Historical
   bytes may remain only as explicit rejection inputs; they are not positive
   compatibility fixtures.
 
 Version-neutral canonical-field, retained-fact, checksum, and outer-framing
-helpers used by v7 belong to the current v7 implementation. Refactoring such a
+helpers used by v8 belong to the current v8 implementation. Refactoring such a
 helper out of a legacy-named module is required before deleting that module;
 copying it into two authorities or retaining a callable legacy admission path
 is forbidden.
 
-Rollback restores another image-v7 checkpoint admitted by the selected
+Rollback restores another image-v8 checkpoint admitted by the selected
 release. Deleting the only admitted checkpoint is an operator action, not a
 condition the runtime disguises with lossy reconstruction.
 
@@ -79,7 +79,7 @@ not promote a platform.
 
 Every compatibility failure is explicit and kinded. Diagnostics identify the
 rejected component, expected exact version or fingerprint, observed value when
-safe to report, and the current remedy: rebuild the cache, supply a current v7
+safe to report, and the current remedy: rebuild the cache, supply a current v8
 image, or use a matching release.
 
 The runtime never:
@@ -92,9 +92,9 @@ The runtime never:
   rejected input; or
 - changes meaning merely to make an old artifact boot.
 
-A v7 image with incompatible or absent native code may rebuild the exact
+A v8 image with incompatible or absent native code may rebuild the exact
 admitted PortablePrograms and materialization selection through a compatible
-current compiler. That is v7's normal physical projection rule, not a
+current compiler. That is v8's normal physical projection rule, not a
 compatibility fallback. With neither compatible mapped code nor compiler,
 recovery rejects explicitly.
 
@@ -119,7 +119,7 @@ The candidate archive, not an in-tree development binary, passes:
 1. clean production build from the pinned toolchain;
 2. archive integrity, ad-hoc signing, clean-environment boot, cold archive,
    relocation, and installed-layout checks;
-3. image-v7 mapped, forced-rebuilt, deliberately stripped, resaved, and
+3. image-v8 mapped, forced-rebuilt, deliberately stripped, resaved, and
    fresh-process recovery;
 4. current candidate activation, replacement, exact rollback, discard, and
    physical reclamation;
@@ -137,7 +137,7 @@ gate may be inapplicable only by removing that platform from the release claim.
 The packaged candidate runs twenty epochs. Each epoch performs at least 5,000
 method define/replace/remove operations, 5,000 transient Symbol operations,
 and 5,000 bounded-history operations over a fixed live set. Every epoch
-compacts, saves v7, exits, and reloads in a fresh process; mapped and forced
+compacts, saves v8, exits, and reloads in a fresh process; mapped and forced
 rebuild recovery alternate.
 
 After warm-up:
@@ -225,7 +225,7 @@ the already-digested archive; it never rebuilds it. The release tag names the
 same commit recorded in the receipt, and published checksums match the verified
 archive and its contents.
 
-Rollback selects another already-published exact-current release and a v7
+Rollback selects another already-published exact-current release and a v8
 checkpoint admitted by it. There is no promise that a newly changed future ABI
 accepts today's artifacts; its own release must establish its own exact-current
 matrix and checkpoint contract.
@@ -235,7 +235,7 @@ matrix and checkpoint contract.
 1. **H0 — Contract and review.** Freeze this record and 60HA.
 2. **H1 — Exact-current cut.** Remove v4/v5/v6 runtime readers, obsolete
    candidate-manifest readers, compatibility branches, and positive legacy
-   tests. Move v7-owned shared helpers to version-neutral ownership.
+   tests. Move v8-owned shared helpers to version-neutral ownership.
 3. **H2 — Rejection matrix.** Add exact old/unknown-version and stale-artifact
    failure-before-publication gates.
 4. **H3 — Evidence driver.** Extend the receipt and add one release-acceptance
@@ -249,7 +249,7 @@ matrix and checkpoint contract.
 
 ## 9. Implementation checkpoint
 
-The runtime now has one current candidate-manifest reader and one image-v7
+The runtime now has one current candidate-manifest reader and one image-v8
 reader. V4-v6 image modules, the legacy image-codec crate, replay journals,
 source/bootstrap fallback, and obsolete Store/image load protocols were
 removed. Early rejection covers old, unknown, and malformed image headers and

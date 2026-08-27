@@ -1,10 +1,11 @@
 # The image — the system, made durable
 
 > **Exact-current amendment (2026-08-27):** Design 60H retires the historical
-> v4-v6 readers and the `replayMethods` / `deriveImageMethodTargets` source
-> recovery path described below. Production accepts image-v7 only and restores
+> v4-v7 readers and the `replayMethods` / `deriveImageMethodTargets` source
+> recovery path described below. Production accepts image-v8 only and restores
 > portable meaning plus its exact stored selection; this record remains the
-> history of the earlier slices, not a compatibility promise.
+> history of the earlier slices, not a compatibility promise. Design 60O owns
+> v8 boxed identity and the `Word` / `ForeignAddress` split.
 
 > **Status:** Design accepted (2026-07-01). **Slice 1 SHIPPED (2026-07-01):**
 > relocatable code — the `birnam_*` shims are dynamic symbols of the runtime,

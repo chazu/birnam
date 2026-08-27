@@ -8,6 +8,7 @@ use birnam_abi::{
     IdApi, MarkFn, Method, Oop, PORTABLE_CODE_API_V1_VERSION, PORTABLE_CODE_API_V2_VERSION,
     PORTABLE_PROGRAM_VIEW_API_V1_VERSION, PortableCodeApiV1, PortableCodeApiV2,
     PortableProgramViewApiV1, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
+    foreign_address::{self, KIND_BORROWED},
 };
 use birnam_artifact::{
     code_binding_inventory, materialization_selection, portable_inventory,
@@ -309,7 +310,7 @@ enum CodeBindingLifecycle {
 }
 
 /// Process-local carrier for the current semantic method association and its
-/// physical NamedAdapter. Durable image-v7 meaning excludes `unit`,
+/// physical NamedAdapter. Durable image-v8 meaning excludes `unit`,
 /// `generation`, `method`, and `lifecycle`; those fields only keep native code
 /// attributed until resolve-and-pin quiescence permits retirement.
 struct CodeBindingEntry {
@@ -1548,40 +1549,63 @@ pub unsafe extern "C" fn birnam_candidate_validate_binding(
 
 unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     let name = unsafe { (api.mkString)(b"birnam_global".as_ptr(), 13) };
-    let address = unsafe { (api.mkSmallInt)(birnam_global as *const () as usize as i64) };
+    let Some(address) = (unsafe { borrowed_address(api, birnam_global as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
     let name = unsafe { (api.mkString)(b"birnam_global_b".as_ptr(), 15) };
-    let address =
-        unsafe { (api.mkSmallInt)(birnam_rust_codegen_global_b as *const () as usize as i64) };
+    let Some(address) =
+        (unsafe { borrowed_address(api, birnam_rust_codegen_global_b as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
     let name = unsafe { (api.mkString)(b"birnam_global_set".as_ptr(), 17) };
-    let address = unsafe { (api.mkSmallInt)(birnam_global_set as *const () as usize as i64) };
+    let Some(address) = (unsafe { borrowed_address(api, birnam_global_set as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
     let name = unsafe { (api.mkString)(b"birnam_vtable_cache_get".as_ptr(), 23) };
-    let address = unsafe { (api.mkSmallInt)(birnam_vtable_cache_get as *const () as usize as i64) };
+    let Some(address) =
+        (unsafe { borrowed_address(api, birnam_vtable_cache_get as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
     let name = unsafe { (api.mkString)(b"birnam_vtable_cache_set".as_ptr(), 23) };
-    let address = unsafe { (api.mkSmallInt)(birnam_vtable_cache_set as *const () as usize as i64) };
+    let Some(address) =
+        (unsafe { borrowed_address(api, birnam_vtable_cache_set as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
     let name = unsafe { (api.mkString)(b"birnam_portable_code_admit_v1".as_ptr(), 29) };
-    let address =
-        unsafe { (api.mkSmallInt)(birnam_portable_code_admit_v1 as *const () as usize as i64) };
+    let Some(address) =
+        (unsafe { borrowed_address(api, birnam_portable_code_admit_v1 as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
     let name = unsafe { (api.mkString)(b"birnam_portable_block_new_v1".as_ptr(), 28) };
-    let address =
-        unsafe { (api.mkSmallInt)(birnam_portable_block_new_v1 as *const () as usize as i64) };
+    let Some(address) =
+        (unsafe { borrowed_address(api, birnam_portable_block_new_v1 as *const () as usize) })
+    else {
+        return false;
+    };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
@@ -1591,8 +1615,13 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
             b"birnam_portable_materialized_block_new_v2".len(),
         )
     };
-    let address = unsafe {
-        (api.mkSmallInt)(birnam_portable_materialized_block_new_v2 as *const () as usize as i64)
+    let Some(address) = (unsafe {
+        borrowed_address(
+            api,
+            birnam_portable_materialized_block_new_v2 as *const () as usize,
+        )
+    }) else {
+        return false;
     };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
@@ -1602,10 +1631,9 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
         return false;
     };
     let name = unsafe { (api.mkString)(b"birnam_register_resumable_v1".as_ptr(), 28) };
-    let Ok(registration) = i64::try_from(registration) else {
+    let Some(address) = (unsafe { borrowed_address(api, registration) }) else {
         return false;
     };
-    let address = unsafe { (api.mkSmallInt)(registration) };
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
@@ -1614,11 +1642,18 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
         return false;
     };
     let name = unsafe { (api.mkString)(b"birnam_register_resumable_v2".as_ptr(), 28) };
-    let Ok(registration) = i64::try_from(registration) else {
+    let Some(address) = (unsafe { borrowed_address(api, registration) }) else {
         return false;
     };
-    let address = unsafe { (api.mkSmallInt)(registration) };
     unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) != api.nilObj }
+}
+
+unsafe fn borrowed_address(api: &IdApi, address: usize) -> Option<Oop> {
+    unsafe { foreign_address::allocate(api, address, KIND_BORROWED) }
+}
+
+unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
+    unsafe { foreign_address::value(api, object) }.map(|(address, _kind)| address)
 }
 
 unsafe fn bind_jit_code_generation_identity(api: &IdApi, unit: Oop) -> bool {
@@ -1629,10 +1664,9 @@ unsafe fn bind_jit_code_generation_identity(api: &IdApi, unit: Oop) -> bool {
         )
     };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[name]) };
-    if unsafe { (api.isSmallInt)(symbol) } == 0 {
+    let Some(address) = (unsafe { foreign_address_value(api, symbol) }) else {
         return false;
-    }
-    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+    };
     if address == 0 {
         return false;
     }
@@ -1711,7 +1745,9 @@ unsafe fn bind_baked_global_shims(api: &IdApi, unit: Oop, baked_globals: &[Vec<u
         let symbol = unsafe { intern_bytes(api, name_bytes) };
         let mut name = format!("__g{index}").into_bytes();
         let name_object = unsafe { (api.mkString)(name.as_mut_ptr(), name.len()) };
-        let address = unsafe { (api.mkSmallInt)(symbol as usize as i64) };
+        let Some(address) = (unsafe { borrowed_address(api, symbol as usize) }) else {
+            return false;
+        };
         if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name_object, address]) } == api.nilObj {
             return false;
         }
@@ -6141,12 +6177,11 @@ unsafe extern "C" fn rust_codegen_eval(
     let entry_selector = unsafe { intern(api, ENTRY_SELECTOR) };
     if !source.bytes.windows(5).any(|window| window == b"__blk") {
         let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
-        if unsafe { (api.isSmallInt)(symbol) } == 0 {
+        let Some(address) = (unsafe { foreign_address_value(api, symbol) }) else {
             unsafe { dispose_unit(api, unit) };
             note_error(b"RustCodegen could not resolve generated entry point");
             return api.nilObj;
-        }
-        let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+        };
         // SAFETY: TCC's `symbol:` returns the generated `__ev` address with the
         // frozen Method ABI; the unit is still relocated and not installed.
         let entry: Method = unsafe { core::mem::transmute(address) };
@@ -6335,19 +6370,20 @@ unsafe fn compile_synchronous_materialization(
     let entry_name =
         unsafe { (api.mkString)(compiled.entry_symbol.as_ptr(), compiled.entry_symbol.len()) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
-    if unsafe { (api.isSmallInt)(symbol) } == 0
-        || !stage_materialization(
-            MaterializationDisposition::Synchronous,
-            digest,
-            program.to_vec(),
-            unit,
-            compiled.c_source.len(),
-        )
-    {
+    let Some(address) = (unsafe { foreign_address_value(api, symbol) }) else {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    if !stage_materialization(
+        MaterializationDisposition::Synchronous,
+        digest,
+        program.to_vec(),
+        unit,
+        compiled.c_source.len(),
+    ) {
         unsafe { dispose_unit(api, unit) };
         return None;
     }
-    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
     if address == 0 {
         remove_materialization(unit);
         unsafe { dispose_unit(api, unit) };
@@ -7394,19 +7430,18 @@ unsafe extern "C" fn rust_codegen_install_portable_image_binding(
     vtable
 }
 
-fn portable_named_plan(selector: &[u8], provenance: Option<&[u8]>) -> Option<PortableNamedPlan> {
+fn portable_named_plan(selector: &[u8], _provenance: Option<&[u8]>) -> Option<PortableNamedPlan> {
     let programs = portable_inventory::encode_closure(&[]).ok()?;
     // HeapRef ordinals are local structural names for the two live Oops. The
-    // CodeBinding registry compares those Oops directly; image-v7 later emits
+    // CodeBinding registry compares those Oops directly; image-v8 later emits
     // their actual canonical Field locations. Provenance is nonsemantic.
     let bindings = code_binding_inventory::encode(&[code_binding_inventory::BindingSpec {
         target: code_binding_inventory::Field::HeapRef(0),
         selector,
         implementation: code_binding_inventory::Field::HeapRef(1),
-        provenance: provenance.map_or(
-            code_binding_inventory::Field::Nil,
-            code_binding_inventory::Field::String,
-        ),
+        // Provenance is excluded from executable authority. The live registry
+        // retains the Oop, while image-v8 later assigns its actual HeapRef.
+        provenance: code_binding_inventory::Field::Nil,
     }])
     .ok()?;
     let selection = materialization_selection::encode(
@@ -7553,12 +7588,7 @@ fn portable_resumable_plan(program: &[u8]) -> Option<PortableResumablePlan> {
 unsafe fn unit_symbol_address(api: &IdApi, unit: Oop, name: &[u8]) -> Option<usize> {
     let name = unsafe { (api.mkString)(name.as_ptr(), name.len()) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[name]) };
-    if unsafe { (api.isSmallInt)(symbol) } == 0 {
-        return None;
-    }
-    usize::try_from(unsafe { (api.smallIntValue)(symbol) })
-        .ok()
-        .filter(|address| *address != 0)
+    unsafe { foreign_address_value(api, symbol) }.filter(|address| *address != 0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -8498,12 +8528,11 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     }
     let entry_name = unsafe { (api.mkString)(b"__ev".as_ptr(), 4) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
-    if unsafe { (api.isSmallInt)(symbol) } == 0 {
+    let Some(address) = (unsafe { foreign_address_value(api, symbol) }) else {
         unsafe { dispose_unit(api, unit) };
         note_error(b"RustCodegen could not resolve generated entry point");
         return api.nilObj;
-    }
-    let address = unsafe { (api.smallIntValue)(symbol) } as usize;
+    };
     // SAFETY: `symbol:` returns the generated Method-ABI entry point and the
     // unit remains relocated but uninstalled for this direct invocation.
     let entry: Method = unsafe { core::mem::transmute(address) };
@@ -10085,8 +10114,13 @@ unsafe fn ensure_store_callbacks(api: &IdApi, runtime: &Runtime) {
     if observer == api.nilObj {
         return;
     }
-    let callback = unsafe {
-        (api.mkSmallInt)(rust_codegen_authorize_method_mutation as *const () as usize as i64)
+    let Some(callback) = (unsafe {
+        borrowed_address(
+            api,
+            rust_codegen_authorize_method_mutation as *const () as usize,
+        )
+    }) else {
+        return;
     };
     let authorizer = unsafe {
         send(
@@ -12392,7 +12426,7 @@ unsafe fn rust_codegen_load_impl(
     if let Some(source) = artifact_source
         && !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
     {
-        // Current image-v7 recovery has already restored this exact source
+        // Current image-v8 recovery has already restored this exact source
         // projection into Store. The mapped/rebuilt unit must materialize its
         // methods, but re-registering the source would create a fresh durable
         // generation identity on every image lifetime.

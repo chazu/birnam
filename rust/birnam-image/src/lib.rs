@@ -1,11 +1,11 @@
-//! Portable Birnam image-v7 support and runtime provider.
+//! Portable Birnam image-v8 support and runtime provider.
 
 #![allow(clippy::missing_safety_doc)]
 
 mod retained_facts;
-pub mod v7;
+pub mod v8;
 
-/// Version-neutral support used by the image-v7 codec and runtime provider.
+/// Version-neutral support used by the image-v8 codec and runtime provider.
 pub mod support {
 
     pub const AUTHORITY_DIGEST_LEN: usize = 64;
@@ -17,7 +17,7 @@ pub mod support {
     } else {
         0
     };
-    const RUNTIME_ABI_VERSION: u32 = 3;
+    const RUNTIME_ABI_VERSION: u32 = 4;
     const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
         b"birnam_send",
         b"birnam_intern",
@@ -25,6 +25,12 @@ pub mod support {
         b"birnam_smallIntValue",
         b"birnam_mkFloat",
         b"birnam_floatValue",
+        b"birnam_mkWord",
+        b"birnam_wordValue",
+        b"birnam_uintValue",
+        b"birnam_mkForeignAddress",
+        b"birnam_foreignAddressValue",
+        b"birnam_isForeignAddress",
         b"birnam_mkString",
         b"birnam_nil",
         b"birnam_true",
@@ -229,7 +235,7 @@ pub mod support {
         PayloadTooLarge,
     }
 
-    /// Encoder for image-v7 canonical values.
+    /// Encoder for image-v8 canonical Oop references.
     #[derive(Default)]
     pub struct FieldEncoder {
         bytes: Vec<u8>,
@@ -252,16 +258,6 @@ pub mod support {
             self.bytes.push(2);
         }
 
-        pub fn integer(&mut self, value: i64) {
-            self.bytes.push(3);
-            self.bytes.extend_from_slice(&value.to_le_bytes());
-        }
-
-        pub fn float_bits(&mut self, bits: u64) {
-            self.bytes.push(4);
-            self.bytes.extend_from_slice(&bits.to_le_bytes());
-        }
-
         pub fn heap_ref(&mut self, id: u32) {
             self.bytes.push(7);
             self.bytes.extend_from_slice(&id.to_le_bytes());
@@ -273,10 +269,6 @@ pub mod support {
 
         pub fn symbol(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
             self.length_delimited(5, bytes)
-        }
-
-        pub fn string(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
-            self.length_delimited(6, bytes)
         }
 
         pub fn export_ref(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
@@ -451,7 +443,7 @@ mod runtime {
     use std::path::Path;
     use std::sync::{Mutex, OnceLock};
 
-    const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r7-portable\0";
+    const RUST_IMAGE_IDENTITY: &[u8] = b"rust-image-r8-portable\0";
     const IMAGE_REPORT_VT_NAME: &[u8] = b"ImageSaveReportVt\0";
     const IMAGE_REPORT_NAME: &[u8] = b"ImageSaveReport\0";
     const COLLECTOR_VT_NAME: &[u8] = b"ImageCollectorVt\0";
@@ -481,6 +473,7 @@ mod runtime {
     const RESTORE_ACTION_NAME: &[u8] = b"RestoreAction\0";
     const ABORT_ACTION_NAME: &[u8] = b"AbortAction\0";
     const DISCARD_RECEIPT_NAME: &[u8] = b"DiscardReceipt\0";
+    const FOREIGN_ADDRESS_NAME: &[u8] = b"ForeignAddress\0";
     const PORTABLE_BLOCK_CARRIER_VTABLE_NAME: &[u8] = b"_BirnamPortableBlockCarrierVt";
     const PORTABLE_PROGRAM_VIEW_API_NAME: &[u8] = b"_BirnamPortableProgramViewApiV1\0";
     const PORTABLE_PROGRAM_VIEW_API_VTABLE_NAME: &[u8] = b"_BirnamPortableProgramViewApiV1Vt\0";
@@ -496,6 +489,7 @@ mod runtime {
         FrameView,
         Continuation,
         DiscardReceipt,
+        ForeignAddress,
     }
 
     impl ImageRejectionKind {
@@ -506,6 +500,7 @@ mod runtime {
                 Self::FrameView => b"frameViewNotImageable\0",
                 Self::Continuation => b"continuationNotImageable\0",
                 Self::DiscardReceipt => b"discardReceiptNotImageable\0",
+                Self::ForeignAddress => b"foreignAddressNotImageable\0",
             }
         }
 
@@ -516,6 +511,7 @@ mod runtime {
                 Self::FrameView => "Rust Image rejected process-local FrameView",
                 Self::Continuation => "Rust Image rejected process-local Continuation",
                 Self::DiscardReceipt => "Rust Image rejected process-local DiscardReceipt",
+                Self::ForeignAddress => "Rust Image rejected process-local ForeignAddress",
             }
         }
     }
@@ -633,9 +629,7 @@ mod runtime {
         Nil,
         True,
         False,
-        Integer(i64),
         Symbol(Vec<u8>),
-        String(Vec<u8>),
         HeapRef(u32),
         ExportRef(Vec<u8>),
     }
@@ -647,9 +641,7 @@ mod runtime {
                 Self::Nil => Field::Nil,
                 Self::True => Field::True,
                 Self::False => Field::False,
-                Self::Integer(value) => Field::Integer(*value),
                 Self::Symbol(bytes) => Field::Symbol(bytes),
-                Self::String(bytes) => Field::String(bytes),
                 Self::HeapRef(index) => Field::HeapRef(*index),
                 Self::ExportRef(bytes) => Field::ExportRef(bytes),
             }
@@ -703,19 +695,16 @@ mod runtime {
             .collect()
     }
 
-    unsafe fn runtime_oop_is_inline(api: &IdApi, object: Oop) -> bool {
+    unsafe fn runtime_oop_is_canonical_reference(api: &IdApi, object: Oop) -> bool {
         if object.is_null()
             || object == api.nilObj
             || object == api.trueObj
             || object == api.falseObj
-            || unsafe { (api.isSmallInt)(object) } != 0
-            || unsafe { (api.isFloat)(object) } != 0
         {
             return true;
         }
         let vtable = unsafe { (api.vtableOf)(object) };
-        vtable == api.symbol_vt
-            || vtable == api.string_vt
+        (unsafe { vtable_inherits_from(api, vtable, api.symbol_vt) })
             || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
     }
 
@@ -729,6 +718,45 @@ mod runtime {
             remaining -= 1;
         }
         false
+    }
+
+    enum BoxedValue {
+        Integer(i64),
+        Float(u64),
+        Word(u64),
+        String(Vec<u8>),
+    }
+
+    unsafe fn boxed_value(api: &IdApi, object: Oop) -> Option<BoxedValue> {
+        if object.is_null() || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some() {
+            return None;
+        }
+        let vtable = unsafe { (api.vtableOf)(object) };
+        if unsafe { vtable_inherits_from(api, vtable, api.smallint_vt) } {
+            return Some(BoxedValue::Integer(unsafe { (api.smallIntValue)(object) }));
+        }
+        if unsafe { vtable_inherits_from(api, vtable, api.float_vt) } {
+            return Some(BoxedValue::Float(
+                unsafe { (api.floatValue)(object) }.to_bits(),
+            ));
+        }
+        if unsafe { vtable_inherits_from(api, vtable, api.word_vt) } {
+            return Some(BoxedValue::Word(unsafe { (api.wordValue)(object) }));
+        }
+        if unsafe { vtable_inherits_from(api, vtable, api.string_vt) } {
+            let mut length = 0usize;
+            let pointer = unsafe { (api.stringBytes)(object, &mut length) };
+            if pointer.is_null() && length != 0 {
+                return None;
+            }
+            let bytes = if length == 0 {
+                Vec::new()
+            } else {
+                unsafe { core::slice::from_raw_parts(pointer, length) }.to_vec()
+            };
+            return Some(BoxedValue::String(bytes));
+        }
+        None
     }
 
     unsafe fn belongs_to_exported_capability_family(
@@ -775,6 +803,9 @@ mod runtime {
         if unsafe { belongs_to_exported_capability_family(api, object, DISCARD_RECEIPT_NAME) } {
             return Some(ImageRejectionKind::DiscardReceipt);
         }
+        if unsafe { belongs_to_exported_capability_family(api, object, FOREIGN_ADDRESS_NAME) } {
+            return Some(ImageRejectionKind::ForeignAddress);
+        }
         None
     }
 
@@ -803,6 +834,12 @@ mod runtime {
             let vtable = unsafe { (api.vtableOf)(object) };
             if vtable.is_null() {
                 return None;
+            }
+            if unsafe { boxed_value(api, object) }.is_some() {
+                let id = u32::try_from(self.objects.len()).ok()?;
+                self.relocations.insert(key, id);
+                self.objects.push(key);
+                return Some(id);
             }
             let portable_program = unsafe { copy_code_object_program(api, object) };
             let portable_block = unsafe { portable_block_code_object(api, vtable) };
@@ -842,7 +879,7 @@ mod runtime {
             if let Some(program) = portable_program {
                 self.portable_programs.push((key, program));
                 let provenance = unsafe { send0(api, object, b"sourceProvenance\0") };
-                if !unsafe { runtime_oop_is_inline(api, provenance) }
+                if !unsafe { runtime_oop_is_canonical_reference(api, provenance) }
                     && unsafe { c_string_bytes((api.exportedNameOf)(provenance)) }.is_none()
                 {
                     unsafe { self.intern(api, provenance) }?;
@@ -857,7 +894,7 @@ mod runtime {
                     (object as *const u8).wrapping_add(index * core::mem::size_of::<usize>());
                 // SAFETY: the layout marks this initialized payload word as an Oop.
                 let child = unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
-                if unsafe { runtime_oop_is_inline(api, child) }
+                if unsafe { runtime_oop_is_canonical_reference(api, child) }
                     || unsafe { self.block_vtable_image_reference(api, child).is_some() }
                 {
                     continue;
@@ -867,7 +904,7 @@ mod runtime {
             Some(id)
         }
 
-        unsafe fn finish_v7(&mut self, api: &IdApi) -> Option<(Vec<u8>, Vec<u8>)> {
+        unsafe fn finish_v8(&mut self, api: &IdApi) -> Option<(Vec<u8>, Vec<u8>)> {
             let roots = self
                 .portable_programs
                 .iter()
@@ -884,20 +921,44 @@ mod runtime {
                     return None;
                 }
                 let vtable = unsafe { (api.vtableOf)(object) };
+                if let Some(boxed) = unsafe { boxed_value(api, object) } {
+                    match boxed {
+                        BoxedValue::Integer(value) => {
+                            payload.push(13);
+                            payload.extend_from_slice(&value.to_le_bytes());
+                        }
+                        BoxedValue::Float(bits) => {
+                            payload.push(14);
+                            payload.extend_from_slice(&bits.to_le_bytes());
+                        }
+                        BoxedValue::Word(value) => {
+                            payload.push(15);
+                            payload.extend_from_slice(&value.to_le_bytes());
+                        }
+                        BoxedValue::String(bytes) => {
+                            payload.push(16);
+                            payload
+                                .extend_from_slice(&u32::try_from(bytes.len()).ok()?.to_le_bytes());
+                            payload.extend_from_slice(&bytes);
+                        }
+                    }
+                    payload.extend_from_slice(&0u32.to_le_bytes());
+                    continue;
+                }
                 if let Some(program) = self
                     .portable_programs
                     .iter()
                     .find(|(candidate, _)| *candidate == object as usize)
                     .map(|(_, program)| program)
                 {
-                    encode_v7_name_field(&mut payload, 9, b"CodeObjectVt")?;
+                    encode_v8_name_field(&mut payload, 9, b"CodeObjectVt")?;
                     payload.extend_from_slice(&2u32.to_le_bytes());
                     let program_index = (0..inventory.program_count as usize)
                         .find(|index| inventory.program(*index) == Some(program.as_slice()))?;
                     payload.push(11);
                     payload.extend_from_slice(&u32::try_from(program_index).ok()?.to_le_bytes());
                     let provenance = unsafe { send0(api, object, b"sourceProvenance\0") };
-                    unsafe { encode_v7_oop(api, &mut payload, provenance, self) }?;
+                    unsafe { encode_v8_oop(api, &mut payload, provenance, self) }?;
                     continue;
                 }
                 let portable_code_object = unsafe { portable_block_code_object(api, vtable) };
@@ -916,7 +977,7 @@ mod runtime {
                     payload.extend_from_slice(&code_object.to_le_bytes());
                 } else {
                     let name = unsafe { c_string_bytes((api.exportedNameOf)(layout_vtable)) }?;
-                    encode_v7_name_field(&mut payload, 9, &name)?;
+                    encode_v8_name_field(&mut payload, 9, &name)?;
                 }
                 let payload_size = unsafe { (api.objectPayloadSize)(object) };
                 let words = payload_size / size_of::<usize>();
@@ -931,7 +992,7 @@ mod runtime {
                     if kind == birnam_abi::SLOT_OOP {
                         let child =
                             unsafe { core::ptr::read_unaligned(address.cast::<usize>()) as Oop };
-                        unsafe { encode_v7_oop(api, &mut payload, child, self) }?;
+                        unsafe { encode_v8_oop(api, &mut payload, child, self) }?;
                     } else if kind == birnam_abi::SLOT_RAW {
                         let word = unsafe { core::ptr::read_unaligned(address.cast::<i64>()) };
                         payload.push(3);
@@ -970,7 +1031,7 @@ mod runtime {
         }
     }
 
-    fn encode_v7_name_field(output: &mut Vec<u8>, tag: u8, bytes: &[u8]) -> Option<()> {
+    fn encode_v8_name_field(output: &mut Vec<u8>, tag: u8, bytes: &[u8]) -> Option<()> {
         if bytes.is_empty() || bytes.contains(&0) {
             return None;
         }
@@ -980,7 +1041,7 @@ mod runtime {
         Some(())
     }
 
-    unsafe fn encode_v7_oop(
+    unsafe fn encode_v8_oop(
         api: &IdApi,
         output: &mut Vec<u8>,
         object: Oop,
@@ -994,37 +1055,17 @@ mod runtime {
             output.push(1);
         } else if object == api.falseObj {
             output.push(2);
-        } else if unsafe { (api.isSmallInt)(object) } != 0 {
-            output.push(3);
-            output.extend_from_slice(&unsafe { (api.smallIntValue)(object) }.to_le_bytes());
-        } else if unsafe { (api.isFloat)(object) } != 0 {
-            output.push(4);
-            output.extend_from_slice(&unsafe { (api.floatValue)(object) }.to_bits().to_le_bytes());
+        } else if unsafe { vtable_inherits_from(api, (api.vtableOf)(object), api.symbol_vt) } {
+            encode_v8_name_field(output, 5, &unsafe {
+                c_string_bytes((api.symbolName)(object))
+            }?)?;
+        } else if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
+            encode_v8_name_field(output, 9, &name)?;
         } else if unsafe { (api.vtableOf)(object) } == api.vtable_vt
             && let Some(code_object) = unsafe { portable_block_code_object(api, object) }
         {
             output.push(12);
             output.extend_from_slice(&heap.relocations.get(&(code_object as usize))?.to_le_bytes());
-        } else if unsafe { (api.vtableOf)(object) } == api.symbol_vt {
-            encode_v7_name_field(output, 5, &unsafe {
-                c_string_bytes((api.symbolName)(object))
-            }?)?;
-        } else if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
-            encode_v7_name_field(output, 9, &name)?;
-        } else if unsafe { (api.vtableOf)(object) } == api.string_vt {
-            let mut length = 0usize;
-            let pointer = unsafe { (api.stringBytes)(object, &mut length) };
-            if pointer.is_null() && length != 0 {
-                return None;
-            }
-            let bytes = if length == 0 {
-                &[][..]
-            } else {
-                unsafe { core::slice::from_raw_parts(pointer, length) }
-            };
-            output.push(6);
-            output.extend_from_slice(&u32::try_from(bytes.len()).ok()?.to_le_bytes());
-            output.extend_from_slice(bytes);
         } else {
             output.push(7);
             output.extend_from_slice(&heap.relocations.get(&(object as usize))?.to_le_bytes());
@@ -1047,28 +1088,11 @@ mod runtime {
         if object == api.falseObj {
             return Some(OwnedBindingField::False);
         }
-        if unsafe { (api.isSmallInt)(object) } != 0 {
-            return Some(OwnedBindingField::Integer(unsafe {
-                (api.smallIntValue)(object)
-            }));
-        }
         let vtable = unsafe { (api.vtableOf)(object) };
-        if vtable == api.symbol_vt && !provenance {
+        if unsafe { vtable_inherits_from(api, vtable, api.symbol_vt) } && !provenance {
             return Some(OwnedBindingField::Symbol(unsafe {
                 c_string_bytes((api.symbolName)(object))
             }?));
-        }
-        if provenance && vtable == api.string_vt {
-            let mut length = 0usize;
-            let pointer = unsafe { (api.stringBytes)(object, &mut length) };
-            if pointer.is_null() && length != 0 {
-                return None;
-            }
-            return Some(OwnedBindingField::String(if length == 0 {
-                Vec::new()
-            } else {
-                unsafe { core::slice::from_raw_parts(pointer, length) }.to_vec()
-            }));
         }
         if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
             return Some(OwnedBindingField::ExportRef(name));
@@ -1430,14 +1454,6 @@ mod runtime {
             encoder.false_value();
             return true;
         }
-        if unsafe { (api.isSmallInt)(object) } != 0 {
-            encoder.integer(unsafe { (api.smallIntValue)(object) });
-            return true;
-        }
-        if unsafe { (api.isFloat)(object) } != 0 {
-            encoder.float_bits(unsafe { (api.floatValue)(object).to_bits() });
-            return true;
-        }
         if let Some(kind) = unsafe { image_rejection_kind(api, object) } {
             heap.image_rejection.get_or_insert(kind);
             return false;
@@ -1447,7 +1463,7 @@ mod runtime {
             return true;
         }
         let vtable = unsafe { (api.vtableOf)(object) };
-        if vtable == api.symbol_vt {
+        if unsafe { vtable_inherits_from(api, vtable, api.symbol_vt) } {
             let Some(bytes) = (unsafe { c_string_bytes((api.symbolName)(object)) }) else {
                 return false;
             };
@@ -1455,20 +1471,6 @@ mod runtime {
         }
         if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
             return encoder.export_ref(&name).is_ok();
-        }
-        if vtable == api.string_vt {
-            let mut length = 0;
-            let bytes = unsafe { (api.stringBytes)(object, &mut length) };
-            if bytes.is_null() && length != 0 {
-                return false;
-            }
-            // SAFETY: stringBytes supplies `length` readable bytes for a live String.
-            let bytes = if length == 0 {
-                &[]
-            } else {
-                unsafe { core::slice::from_raw_parts(bytes, length) }
-            };
-            return encoder.string(bytes).is_ok();
         }
         let Some(id) = (unsafe { heap.intern(api, object) }) else {
             return false;
@@ -1653,44 +1655,42 @@ mod runtime {
     }
 
     #[derive(Clone, Copy)]
-    enum V7Value<'a> {
+    enum V8Value<'a> {
         Nil,
         True,
         False,
-        Integer(i64),
-        FloatBits(u64),
+        RawWord(u64),
         Symbol(&'a [u8]),
-        String(&'a [u8]),
         HeapRef(u32),
         Null,
         ExportRef(&'a [u8]),
         ProgramRef(u32),
         PortableBlockVtable(u32),
+        BoxedInteger(i64),
+        BoxedFloat(u64),
+        BoxedWord(u64),
+        BoxedString(&'a [u8]),
     }
 
-    struct V7HeapObject<'a> {
-        locator: V7Value<'a>,
-        fields: Vec<V7Value<'a>>,
+    struct V8HeapObject<'a> {
+        locator: V8Value<'a>,
+        fields: Vec<V8Value<'a>>,
     }
 
-    fn parse_v7_value<'a>(bytes: &'a [u8], offset: &mut usize) -> Option<V7Value<'a>> {
+    fn parse_v8_value<'a>(bytes: &'a [u8], offset: &mut usize) -> Option<V8Value<'a>> {
         let tag = *bytes.get(*offset)?;
         *offset = offset.checked_add(1)?;
         match tag {
-            0 => Some(V7Value::Nil),
-            1 => Some(V7Value::True),
-            2 => Some(V7Value::False),
-            3 | 4 => {
+            0 => Some(V8Value::Nil),
+            1 => Some(V8Value::True),
+            2 => Some(V8Value::False),
+            3 => {
                 let end = offset.checked_add(8)?;
                 let bits = u64::from_le_bytes(bytes.get(*offset..end)?.try_into().ok()?);
                 *offset = end;
-                if tag == 3 {
-                    Some(V7Value::Integer(i64::from_le_bytes(bits.to_le_bytes())))
-                } else {
-                    Some(V7Value::FloatBits(bits))
-                }
+                Some(V8Value::RawWord(bits))
             }
-            5 | 6 | 9 => {
+            5 | 9 | 16 => {
                 let end = offset.checked_add(4)?;
                 let length = u32::from_le_bytes(bytes.get(*offset..end)?.try_into().ok()?) as usize;
                 *offset = end;
@@ -1698,9 +1698,9 @@ mod runtime {
                 let value = bytes.get(*offset..end)?;
                 *offset = end;
                 match tag {
-                    5 => Some(V7Value::Symbol(value)),
-                    6 => Some(V7Value::String(value)),
-                    9 => Some(V7Value::ExportRef(value)),
+                    5 => Some(V8Value::Symbol(value)),
+                    9 => Some(V8Value::ExportRef(value)),
+                    16 => Some(V8Value::BoxedString(value)),
                     _ => None,
                 }
             }
@@ -1709,18 +1709,31 @@ mod runtime {
                 let index = u32::from_le_bytes(bytes.get(*offset..end)?.try_into().ok()?);
                 *offset = end;
                 match tag {
-                    7 => Some(V7Value::HeapRef(index)),
-                    11 => Some(V7Value::ProgramRef(index)),
-                    12 => Some(V7Value::PortableBlockVtable(index)),
+                    7 => Some(V8Value::HeapRef(index)),
+                    11 => Some(V8Value::ProgramRef(index)),
+                    12 => Some(V8Value::PortableBlockVtable(index)),
                     _ => None,
                 }
             }
-            8 => Some(V7Value::Null),
+            8 => Some(V8Value::Null),
+            13..=15 => {
+                let end = offset.checked_add(8)?;
+                let bits = u64::from_le_bytes(bytes.get(*offset..end)?.try_into().ok()?);
+                *offset = end;
+                match tag {
+                    13 => Some(V8Value::BoxedInteger(i64::from_le_bytes(
+                        bits.to_le_bytes(),
+                    ))),
+                    14 => Some(V8Value::BoxedFloat(bits)),
+                    15 => Some(V8Value::BoxedWord(bits)),
+                    _ => None,
+                }
+            }
             _ => None,
         }
     }
 
-    fn parse_v7_heaps<'a>(payloads: &[&'a [u8]]) -> Option<Vec<V7HeapObject<'a>>> {
+    fn parse_v8_heaps<'a>(payloads: &[&'a [u8]]) -> Option<Vec<V8HeapObject<'a>>> {
         let mut objects = Vec::new();
         for payload in payloads {
             let mut offset = 0usize;
@@ -1728,14 +1741,14 @@ mod runtime {
             let count = u32::from_le_bytes(payload.get(offset..end)?.try_into().ok()?);
             offset = end;
             for _ in 0..count {
-                let locator = parse_v7_value(payload, &mut offset)?;
+                let locator = parse_v8_value(payload, &mut offset)?;
                 let end = offset.checked_add(4)?;
                 let words = u32::from_le_bytes(payload.get(offset..end)?.try_into().ok()?);
                 offset = end;
                 let fields = (0..words)
-                    .map(|_| parse_v7_value(payload, &mut offset))
+                    .map(|_| parse_v8_value(payload, &mut offset))
                     .collect::<Option<Vec<_>>>()?;
-                objects.push(V7HeapObject { locator, fields });
+                objects.push(V8HeapObject { locator, fields });
             }
             if offset != payload.len() {
                 return None;
@@ -1752,45 +1765,63 @@ mod runtime {
         (!object.is_null()).then_some(object)
     }
 
-    unsafe fn materialize_v7_value(
+    unsafe fn materialize_v8_value(
         api: &IdApi,
-        value: V7Value<'_>,
+        value: V8Value<'_>,
         relocations: &[Oop],
     ) -> Option<Oop> {
         match value {
-            V7Value::Nil => Some(api.nilObj),
-            V7Value::True => Some(api.trueObj),
-            V7Value::False => Some(api.falseObj),
-            V7Value::Integer(value) => Some(unsafe { (api.mkSmallInt)(value) }),
-            V7Value::FloatBits(bits) => Some(unsafe { (api.mkFloat)(f64::from_bits(bits)) }),
-            V7Value::Symbol(bytes) => {
+            V8Value::Nil => Some(api.nilObj),
+            V8Value::True => Some(api.trueObj),
+            V8Value::False => Some(api.falseObj),
+            V8Value::Symbol(bytes) => {
                 let mut terminated = Vec::with_capacity(bytes.len().checked_add(1)?);
                 terminated.extend_from_slice(bytes);
                 terminated.push(0);
                 Some(unsafe { (api.intern)(terminated.as_ptr().cast()) })
             }
-            V7Value::String(bytes) => Some(unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }),
-            V7Value::HeapRef(index) => relocations.get(index as usize).copied(),
-            V7Value::Null => Some(ptr::null_mut()),
-            V7Value::ExportRef(bytes) => unsafe { import_bytes(api, bytes) },
-            V7Value::ProgramRef(_) | V7Value::PortableBlockVtable(_) => None,
+            V8Value::HeapRef(index) => relocations.get(index as usize).copied(),
+            V8Value::Null => Some(ptr::null_mut()),
+            V8Value::ExportRef(bytes) => unsafe { import_bytes(api, bytes) },
+            V8Value::RawWord(_)
+            | V8Value::ProgramRef(_)
+            | V8Value::PortableBlockVtable(_)
+            | V8Value::BoxedInteger(_)
+            | V8Value::BoxedFloat(_)
+            | V8Value::BoxedWord(_)
+            | V8Value::BoxedString(_) => None,
         }
     }
 
-    unsafe fn materialize_v7_heaps(
+    unsafe fn materialize_v8_heaps(
         api: &IdApi,
-        decoded: &v7::DecodedImage<'_>,
+        decoded: &v8::DecodedImage<'_>,
         materialization_owner: Oop,
     ) -> Option<Vec<Oop>> {
-        let objects = parse_v7_heaps(&decoded.heaps)?;
+        let objects = parse_v8_heaps(&decoded.heaps)?;
         let programs = birnam_artifact::portable_inventory::inspect(decoded.programs).ok()?;
         let mut relocations = vec![ptr::null_mut(); objects.len()];
+
+        for (index, object) in objects.iter().enumerate() {
+            relocations[index] = match object.locator {
+                V8Value::BoxedInteger(value) => unsafe { (api.mkSmallInt)(value) },
+                V8Value::BoxedFloat(bits) => unsafe { (api.mkFloat)(f64::from_bits(bits)) },
+                V8Value::BoxedWord(value) => unsafe { (api.mkWord)(value) },
+                V8Value::BoxedString(bytes) => unsafe {
+                    (api.mkString)(bytes.as_ptr(), bytes.len())
+                },
+                _ => continue,
+            };
+            if relocations[index].is_null() {
+                return None;
+            }
+        }
 
         // Ordinary exported-layout shells have no execution authority and may
         // be allocated before portable meaning. This also resolves the usual
         // heap provenance references before immutable CodeObjects are admitted.
         for (index, object) in objects.iter().enumerate() {
-            let V7Value::ExportRef(name) = object.locator else {
+            let V8Value::ExportRef(name) = object.locator else {
                 continue;
             };
             if name == b"CodeObjectVt" {
@@ -1806,16 +1837,16 @@ mod runtime {
 
         let portable_api = unsafe { portable_code_api_v3(api) }?;
         for (index, object) in objects.iter().enumerate() {
-            let V7Value::ExportRef(name) = object.locator else {
+            let V8Value::ExportRef(name) = object.locator else {
                 continue;
             };
             if name != b"CodeObjectVt" || object.fields.len() != 2 {
                 continue;
             }
-            let V7Value::ProgramRef(program_index) = object.fields[0] else {
+            let V8Value::ProgramRef(program_index) = object.fields[0] else {
                 return None;
             };
-            let provenance = unsafe { materialize_v7_value(api, object.fields[1], &relocations) }?;
+            let provenance = unsafe { materialize_v8_value(api, object.fields[1], &relocations) }?;
             let program = programs.program(program_index as usize)?;
             relocations[index] = unsafe {
                 (portable_api.admit_program_with_provenance)(
@@ -1835,12 +1866,12 @@ mod runtime {
         }
         let block_api = unsafe { portable_code_api_v2(api) }?;
         for (index, object) in objects.iter().enumerate() {
-            let V7Value::PortableBlockVtable(code_object_index) = object.locator else {
+            let V8Value::PortableBlockVtable(code_object_index) = object.locator else {
                 continue;
             };
             let code_object = *relocations.get(code_object_index as usize)?;
             let code_object_record = objects.get(code_object_index as usize)?;
-            let V7Value::ProgramRef(program_index) = *code_object_record.fields.first()? else {
+            let V8Value::ProgramRef(program_index) = *code_object_record.fields.first()? else {
                 return None;
             };
             let capture_count = object.fields.len().checked_sub(1)?;
@@ -1865,7 +1896,7 @@ mod runtime {
         }
 
         for (index, object) in objects.iter().enumerate() {
-            if matches!(object.locator, V7Value::ExportRef(b"CodeObjectVt")) {
+            if matches!(object.locator, V8Value::ExportRef(b"CodeObjectVt")) {
                 continue;
             }
             let receiver = *relocations.get(index)?;
@@ -1877,11 +1908,11 @@ mod runtime {
                 let address = unsafe { receiver.cast::<usize>().add(word) };
                 match unsafe { (api.slotKind)(vtable, word) } {
                     birnam_abi::SLOT_OOP => {
-                        let value = unsafe { materialize_v7_value(api, field, &relocations) }?;
+                        let value = unsafe { materialize_v8_value(api, field, &relocations) }?;
                         unsafe { address.write(value as usize) };
                     }
                     birnam_abi::SLOT_RAW => {
-                        let V7Value::Integer(value) = field else {
+                        let V8Value::RawWord(value) = field else {
                             return None;
                         };
                         unsafe { address.write(value as usize) };
@@ -1893,7 +1924,7 @@ mod runtime {
         Some(relocations)
     }
 
-    struct StagedV7Facts {
+    struct StagedV8Facts {
         store: Oop,
         facts: Vec<[Oop; 6]>,
         basis: Oop,
@@ -1902,13 +1933,13 @@ mod runtime {
         argument: Oop,
     }
 
-    unsafe fn prepare_v7_facts(
+    unsafe fn prepare_v8_facts(
         api: &IdApi,
         payloads: &[&[u8]],
         relocations: &[Oop],
-    ) -> Option<StagedV7Facts> {
+    ) -> Option<StagedV8Facts> {
         if payloads.is_empty() {
-            return Some(StagedV7Facts {
+            return Some(StagedV8Facts {
                 store: api.nilObj,
                 facts: Vec::new(),
                 basis: api.nilObj,
@@ -1946,13 +1977,13 @@ mod runtime {
                 let tx_end = offset.checked_add(10)?;
                 let tx = u64::from_le_bytes(payload.get(offset + 2..tx_end)?.try_into().ok()?);
                 offset = tx_end;
-                let entity = parse_v7_value(payload, &mut offset)?;
-                let attribute = parse_v7_value(payload, &mut offset)?;
-                let value = parse_v7_value(payload, &mut offset)?;
+                let entity = parse_v8_value(payload, &mut offset)?;
+                let attribute = parse_v8_value(payload, &mut offset)?;
+                let value = parse_v8_value(payload, &mut offset)?;
                 facts.push([
-                    unsafe { materialize_v7_value(api, entity, relocations) }?,
-                    unsafe { materialize_v7_value(api, attribute, relocations) }?,
-                    unsafe { materialize_v7_value(api, value, relocations) }?,
+                    unsafe { materialize_v8_value(api, entity, relocations) }?,
+                    unsafe { materialize_v8_value(api, attribute, relocations) }?,
+                    unsafe { materialize_v8_value(api, value, relocations) }?,
                     unsafe { (api.mkSmallInt)(tx as i64) },
                     unsafe { (api.mkSmallInt)(i64::from(op)) },
                     if historied == 1 {
@@ -1967,7 +1998,7 @@ mod runtime {
             }
         }
         let (basis, oldest, policy, argument) = final_metadata?;
-        Some(StagedV7Facts {
+        Some(StagedV8Facts {
             store,
             facts,
             basis: unsafe { (api.mkSmallInt)(basis as i64) },
@@ -1977,7 +2008,7 @@ mod runtime {
         })
     }
 
-    unsafe fn replay_v7_facts(api: &IdApi, staged: &StagedV7Facts) -> Option<usize> {
+    unsafe fn replay_v8_facts(api: &IdApi, staged: &StagedV8Facts) -> Option<usize> {
         if staged.facts.is_empty() && staged.store == api.nilObj {
             return Some(0);
         }
@@ -2025,19 +2056,17 @@ mod runtime {
             Field::Nil => Some(api.nilObj),
             Field::True => Some(api.trueObj),
             Field::False => Some(api.falseObj),
-            Field::Integer(value) => Some(unsafe { (api.mkSmallInt)(value) }),
             Field::Symbol(bytes) => {
                 let mut name = bytes.to_vec();
                 name.push(0);
                 Some(unsafe { (api.intern)(name.as_ptr().cast()) })
             }
-            Field::String(bytes) => Some(unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }),
             Field::HeapRef(index) => relocations.get(index as usize).copied(),
             Field::ExportRef(bytes) => unsafe { import_bytes(api, bytes) },
         }
     }
 
-    unsafe fn prepare_v7_bindings(api: &IdApi, bytes: &[u8], relocations: &[Oop]) -> Option<usize> {
+    unsafe fn prepare_v8_bindings(api: &IdApi, bytes: &[u8], relocations: &[Oop]) -> Option<usize> {
         let inventory = birnam_artifact::code_binding_inventory::inspect(bytes).ok()?;
         let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
@@ -2074,7 +2103,7 @@ mod runtime {
         Some(inventory.binding_count as usize)
     }
 
-    unsafe fn install_v7_bindings(api: &IdApi, bytes: &[u8], relocations: &[Oop]) -> Option<usize> {
+    unsafe fn install_v8_bindings(api: &IdApi, bytes: &[u8], relocations: &[Oop]) -> Option<usize> {
         let inventory = birnam_artifact::code_binding_inventory::inspect(bytes).ok()?;
         let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
@@ -2104,9 +2133,9 @@ mod runtime {
         Some(inventory.binding_count as usize)
     }
 
-    unsafe fn begin_v7_native_unit(
+    unsafe fn begin_v8_native_unit(
         api: &IdApi,
-        decoded: &v7::DecodedImage<'_>,
+        decoded: &v8::DecodedImage<'_>,
         rebuild: bool,
     ) -> Option<(Oop, bool)> {
         let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
@@ -2145,8 +2174,8 @@ mod runtime {
         (owner != api.nilObj && !owner.is_null()).then_some((owner, false))
     }
 
-    unsafe fn load_v7(api: &IdApi, bytes: &[u8], rebuild: bool) -> Oop {
-        let Ok(decoded) = v7::decode(bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
+    unsafe fn load_v8(api: &IdApi, bytes: &[u8], rebuild: bool) -> Oop {
+        let Ok(decoded) = v8::decode(bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
             return api.nilObj;
         };
         unsafe { (api.gcSetAuto)(0) };
@@ -2157,7 +2186,7 @@ mod runtime {
             }
         }
         let _auto_gc = AutoGc(api);
-        let Some((owner, mapped)) = (unsafe { begin_v7_native_unit(api, &decoded, rebuild) })
+        let Some((owner, mapped)) = (unsafe { begin_v8_native_unit(api, &decoded, rebuild) })
         else {
             return api.nilObj;
         };
@@ -2177,14 +2206,14 @@ mod runtime {
             }
         }
         let mut stage = StageGuard { api, armed: true };
-        let Some(relocations) = (unsafe { materialize_v7_heaps(api, &decoded, owner) }) else {
+        let Some(relocations) = (unsafe { materialize_v8_heaps(api, &decoded, owner) }) else {
             return api.nilObj;
         };
-        let Some(staged_facts) = (unsafe { prepare_v7_facts(api, &decoded.facts, &relocations) })
+        let Some(staged_facts) = (unsafe { prepare_v8_facts(api, &decoded.facts, &relocations) })
         else {
             return api.nilObj;
         };
-        if unsafe { prepare_v7_bindings(api, decoded.bindings, &relocations) }.is_none() {
+        if unsafe { prepare_v8_bindings(api, decoded.bindings, &relocations) }.is_none() {
             return api.nilObj;
         }
         let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
@@ -2195,10 +2224,10 @@ mod runtime {
             return api.nilObj;
         }
         stage.armed = false;
-        if unsafe { replay_v7_facts(api, &staged_facts) }.is_none() {
+        if unsafe { replay_v8_facts(api, &staged_facts) }.is_none() {
             return api.nilObj;
         }
-        if unsafe { install_v7_bindings(api, decoded.bindings, &relocations) }.is_none() {
+        if unsafe { install_v8_bindings(api, decoded.bindings, &relocations) }.is_none() {
             return api.nilObj;
         }
         if mapped { api.trueObj } else { api.falseObj }
@@ -2237,11 +2266,11 @@ mod runtime {
             return false;
         };
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_IMAGE_BYTES
-            || bytes.get(8..12) != Some(&v7::FORMAT_VERSION.to_le_bytes())
+            || bytes.get(8..12) != Some(&v8::FORMAT_VERSION.to_le_bytes())
         {
             return false;
         }
-        v7::decode(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
+        v8::decode(&bytes, IMAGE_ARCH_TAG, runtime_abi_hash()).is_ok()
     }
 
     unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: &[u8]) -> bool {
@@ -2273,10 +2302,10 @@ mod runtime {
         let Ok(image_bytes) = fs::read(Path::new(OsStr::from_bytes(&path_bytes))) else {
             return api.nilObj;
         };
-        if image_bytes.get(8..12) != Some(&v7::FORMAT_VERSION.to_le_bytes()) {
+        if image_bytes.get(8..12) != Some(&v8::FORMAT_VERSION.to_le_bytes()) {
             return api.nilObj;
         }
-        let Ok(decoded) = v7::decode(&image_bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
+        let Ok(decoded) = v8::decode(&image_bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
             return api.nilObj;
         };
         let composition = decoded
@@ -2292,7 +2321,7 @@ mod runtime {
         {
             return api.nilObj;
         }
-        let loaded = unsafe { load_v7(api, &image_bytes, rebuild) };
+        let loaded = unsafe { load_v8(api, &image_bytes, rebuild) };
         let ended = unsafe { send0(api, codegen, RUST_CODEGEN_END_IMAGE_RECOVERY) };
         if (loaded != api.trueObj && loaded != api.falseObj) || ended != api.trueObj {
             return api.nilObj;
@@ -2465,7 +2494,7 @@ mod runtime {
                 .iter()
                 .flat_map(|binding| [binding.target, binding.implementation, binding.provenance])
             {
-                if unsafe { runtime_oop_is_inline(api, object) }
+                if unsafe { runtime_oop_is_canonical_reference(api, object) }
                     || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
                 {
                     continue;
@@ -2476,7 +2505,7 @@ mod runtime {
                 }
             }
         }
-        let portable_heap = unsafe { collection.heap.finish_v7(api) };
+        let portable_heap = unsafe { collection.heap.finish_v8(api) };
         let heap_payload = portable_heap.as_ref().map(|(heap, _)| heap.clone());
         let portable_records = portable_heap.and_then(|(_, programs)| {
             let (bindings, selection) = unsafe {
@@ -2502,7 +2531,7 @@ mod runtime {
             .zip(PORTABLE_SAVE_RECORDS.lock().ok())
             .and_then(|(heap, records)| {
                 let records = records.as_ref()?;
-                v7::compose(v7::ImageSpec {
+                v8::compose(v8::ImageSpec {
                     architecture: IMAGE_ARCH_TAG,
                     runtime_abi: runtime_abi_hash(),
                     programs: &records.programs,
@@ -2566,7 +2595,7 @@ mod runtime {
                 .code_units = 0;
             return unsafe { image_rejection_error(api, kind) };
         }
-        // New saves make the accepted clean v7 cut. Code is an authority-bound
+        // New saves make the accepted clean v8 cut. Code is an authority-bound
         // mapped acceleration; canonical inventories remain sufficient for a
         // forced source-free rebuild.
         let portable_records = PORTABLE_SAVE_RECORDS
@@ -2587,7 +2616,7 @@ mod runtime {
                     && preflight.heap_ok
                     && preflight.writer_ok)
                     .then(|| {
-                        v7::compose(v7::ImageSpec {
+                        v8::compose(v8::ImageSpec {
                             architecture: IMAGE_ARCH_TAG,
                             runtime_abi: runtime_abi_hash(),
                             programs: &records.programs,
@@ -2650,7 +2679,7 @@ mod runtime {
         } else if portable_code.is_none() {
             "Rust Image portable native Code compilation failed"
         } else if composed.is_none() {
-            "Rust Image v7 composition failed"
+            "Rust Image v8 composition failed"
         } else if publication_requested {
             "Rust Image atomic publication failed"
         } else {
