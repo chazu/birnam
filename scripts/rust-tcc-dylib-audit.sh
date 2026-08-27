@@ -31,8 +31,11 @@ birnam_mkWord
 birnam_nil
 birnam_objectVt
 birnam_proto
+birnam_register_resumable_v1
+birnam_register_resumable_v2
 birnam_send
 birnam_smallIntValue
+birnam_symbol_borrow_v1
 birnam_tcc_rust_identity
 birnam_true
 birnam_uintValue
