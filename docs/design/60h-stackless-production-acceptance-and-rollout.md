@@ -7,6 +7,10 @@
 > This is the production gate for the completed S0-S4, 60G, 60J, and 60K
 > stackless runtime. It adds no execution semantics, compatibility adapters, or
 > language annotations.
+>
+> The explicit one-release v0.14 performance decision is recorded separately
+> in [60HB](60hb-v0.14-performance-tradeoffs.md). Later releases do not inherit
+> that exception.
 
 ## 1. Decision
 
@@ -184,6 +188,11 @@ candidate, using release builds and the existing 60C/60E/60F probes.
 
 An accepted regression requires a new explicit design decision. Updating a
 baseline to make a candidate pass is not acceptance.
+
+Design 60HB is that explicit decision for the first complete v0.14 stackless
+release. Its executable gate freezes the blocked clean candidate's exact
+runtime identity, complete case set, medians, and ordinary noise allowances;
+it does not replace the baseline or relax this policy for later releases.
 
 ## 6. Release evidence
 

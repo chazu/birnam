@@ -45,6 +45,18 @@ loader ports are complete.
 - The Rust TCC dylib audit covers the stackless export seams used by installed
   and relocated release bundles.
 
+### Performance
+
+- This first complete stackless release explicitly accepts substantial
+  throughput regressions in exchange for bounded native-stack use, resumable
+  execution, portable CodeObjects, image-v8 recovery, and reclaimable live-code
+  lifecycles. Against the newest retained production Rust snapshot,
+  `sends.unary` is 19.6% slower, `loops.to-do` is about 237x slower,
+  `query.single-clause` is about 456x slower, and full documentation generation
+  is about 30x slower. The complete decision, case boundary, and release-only
+  ceilings are recorded in Design 60HB; later releases return to the ordinary
+  performance policy.
+
 ## [0.13.0] — 2026-08-04
 
 ### Added

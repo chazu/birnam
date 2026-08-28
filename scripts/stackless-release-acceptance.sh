@@ -90,7 +90,18 @@ run_gate bounded_churn scripts/runtime-bounded-churn-smoke.sh "$prefix"
 benchmark="$evidence_dir/benchmark.json"
 run_gate benchmark env BENCH_PREFIX="$prefix" BENCH_FINAL_OUT="$benchmark" scripts/bench.sh --release --floor=rust
 run_gate baseline_contract validate_benchmark_pair "$baseline" "$benchmark"
-run_gate performance_compare env BENCH_BIN="$prefix/bin/birnam" scripts/bench-compare.sh "$baseline" "$benchmark"
+candidate_version=$(python3 - "$benchmark" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.load(handle)["stamp"]["version"])
+PY
+)
+if [[ $candidate_version == 0.14.0 ]]; then
+  run_gate performance_compare python3 scripts/v014-performance-acceptance.py "$baseline" "$benchmark"
+else
+  run_gate performance_compare env BENCH_BIN="$prefix/bin/birnam" scripts/bench-compare.sh "$baseline" "$benchmark"
+fi
 run_gate longevity scripts/stackless-longevity-smoke.sh "$prefix" "$evidence_dir/longevity"
 
 archive_after=$(shasum -a 256 "$archive" | awk '{print $1}')

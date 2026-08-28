@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 python3 scripts/release-changelog-test.py
+python3 scripts/v014-performance-acceptance-test.py
 cargo test --workspace --locked --offline
 scripts/rust-driver-native-smoke.sh
 scripts/rust-driver-cold-archive-smoke.sh
