@@ -43,19 +43,10 @@ echo "==> release: ${cur} -> ${new} (${tag})"
 
 # CHANGELOG gate: every release must be documented. Either the version section
 # already exists, or an `## [Unreleased]` section is promoted to it (dated).
+# Promotion also opens a fresh Unreleased section for the next release.
 today="$(date +%F)"
-if grep -qE "^## \[${new}\]" CHANGELOG.md; then
-  : # entry already written
-elif grep -qE "^## \[Unreleased\]" CHANGELOG.md; then
-  echo "==> CHANGELOG: promoting [Unreleased] -> [${new}] — ${today}"
-  sed -i.bak -E "s/^## \[Unreleased\].*/## [${new}] — ${today}/" CHANGELOG.md
-  rm -f CHANGELOG.md.bak
-  git add CHANGELOG.md
-else
-  echo "error: CHANGELOG.md has no '## [${new}]' section and no '## [Unreleased]' to promote." >&2
-  echo "       Add release notes under '## [Unreleased]' (or '## [${new}]') first." >&2
-  exit 1
-fi
+echo "==> CHANGELOG: $(python3 scripts/release-changelog.py CHANGELOG.md "$new" "$today")"
+git add CHANGELOG.md
 
 # Release notes = this version's CHANGELOG section (fallback to a one-liner).
 notes_body="$(awk -v v="$new" '/^## \[/{ if (p) exit } $0 ~ "^## \\[" v "\\]"{ p=1; next } p' CHANGELOG.md)"

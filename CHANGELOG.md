@@ -6,6 +6,43 @@ All notable changes to birnam are recorded here. Format follows
 other targets are rejected at build time until their libtcc and shared-library
 loader ports are complete.
 
+## [Unreleased]
+
+### Added
+
+- **Stackless native execution is now the production runtime path.** Birnam
+  lowers resumable methods and blocks into explicit Machines, Frames, and
+  StepMethods, preserving ordinary dispatch, inheritance, DNU, late binding,
+  callbacks, and tail-call behavior without growing the native stack.
+- **Portable CodeObjects preserve executable meaning across processes and
+  images.** Programs, lexical bindings, statements, captures, and source maps
+  are encoded canonically, restored through image v8, and rematerialized into
+  disposable native code without making process-local addresses durable.
+- **One-shot continuations and resumable lifecycle controls.** Host suspension,
+  restoration, code-binding retention, unload/retirement fencing, bounded
+  history compaction, and image recovery now share explicit ownership rules and
+  production acceptance coverage.
+
+### Changed
+
+- **Release acceptance now proves the shipped archive itself.** The release
+  gate installs the immutable candidate, exercises exact-current rejection,
+  image and resumable lifecycles, long-running stack-flat control, bounded
+  churn, performance comparison, and longevity, then publishes the receipt and
+  complete evidence bundle beside the tarball.
+- The image carrier advances to v8 to preserve boxed identity and foreign
+  addresses while retaining portable executable meaning.
+
+### Fixed
+
+- Release promotion now replaces the consumed `## [Unreleased]` heading with a
+  fresh one, so the next release does not fail merely because the previous
+  release successfully promoted its notes.
+- Restored image entry and baked-image boot behavior on the Rust host, including
+  exact-current checks and stackless registration after recovery.
+- The Rust TCC dylib audit covers the stackless export seams used by installed
+  and relocated release bundles.
+
 ## [0.13.0] — 2026-08-04
 
 ### Added
