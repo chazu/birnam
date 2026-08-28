@@ -23,7 +23,7 @@ def candidate() -> dict:
                 "name": name,
                 "net_us": value / 1000,
                 "ops": 1,
-                "ns_per_op_raw": max(abs(value), 1),
+                "ns_per_op_raw": MODULE.RAW_REFERENCE.get(name, max(abs(value), 1)),
                 "median_us": max(abs(value) / 1000, 1),
             }
         )
@@ -65,6 +65,30 @@ class V014PerformanceAcceptanceTest(unittest.TestCase):
         document = candidate()
         document["macro"].pop()
         with self.assertRaisesRegex(MODULE.Rejected, "case set differs"):
+            MODULE.validate_candidate(document, "Mac15,12")
+
+    def test_rejects_a_raw_bounded_case_above_its_ceiling(self) -> None:
+        document = candidate()
+        case = next(
+            case
+            for suite in document["suites"]
+            for case in suite["data"]["cases"]
+            if case["name"] == "error.propagate-5-deep"
+        )
+        case["ns_per_op_raw"] *= 1.101
+        with self.assertRaisesRegex(MODULE.Rejected, "error.propagate-5-deep.*exceeds accepted raw ceiling"):
+            MODULE.validate_candidate(document, "Mac15,12")
+
+    def test_rejects_a_run_bounded_case_above_its_ceiling(self) -> None:
+        document = candidate()
+        case = next(
+            case
+            for suite in document["suites"]
+            for case in suite["data"]["cases"]
+            if case["name"] == "image.save"
+        )
+        case["net_us"] = MODULE.MAX_RUN_REFERENCE["image.save"] * 1.051 / 1000
+        with self.assertRaisesRegex(MODULE.Rejected, "image.save.*exceeds accepted run ceiling"):
             MODULE.validate_candidate(document, "Mac15,12")
 
     def test_quarantine_requires_real_raw_measurements(self) -> None:
