@@ -14,16 +14,29 @@ QUARANTINED_NET_CASE = "map.at-miss"
 # These cases subtract a large harness cost from the measured process time.
 # Bound their stable raw measurements rather than amplifying subtraction noise.
 RAW_REFERENCE = {
+    "blocks.value": 6131,
+    "cells.read": 8382,
+    "cells.write": 10444,
     "error.propagate-5-deep": 75641,
+    "ffi.peek-poke": 8357,
     "ffi.wrapped-call": 8380,
     "map.at-hit": 8054,
     "sends.compiled-unary": 8391,
+    "sends.dnu-mint": 7361,
+    "sends.unary": 7730,
+    "vector.at-random": 9320,
 }
 
 # Image save is bimodal across its three clean runs. Its worst observed run is
 # stable across candidates, so retain all three samples and bound their maximum.
 MAX_RUN_REFERENCE = {
     "image.save": 515506000,
+}
+
+# The boot dylib median is host-jitter sensitive across its five repetitions,
+# while its best uncontended sample is stable across all clean candidates.
+MIN_RUN_REFERENCE = {
+    "boot.stdlib-dylib": 134807,
 }
 
 # Medians from clean candidate 637419b on Mac15,12. A rerun may exceed these
@@ -153,6 +166,15 @@ def validate_candidate(document: dict, baseline_machine: str) -> None:
                 f"{name}: run {run_value:.3f} exceeds accepted run ceiling {run_ceiling:.3f}",
             )
             continue
+        if name in MIN_RUN_REFERENCE:
+            minimum = rows[name][0].get("wall_us_min", 0)
+            require(minimum > 0, f"{name}: missing positive minimum measurement")
+            minimum_ceiling = MIN_RUN_REFERENCE[name] * 1.05
+            require(
+                minimum <= minimum_ceiling,
+                f"{name}: minimum {minimum:.3f} exceeds accepted minimum ceiling {minimum_ceiling:.3f}",
+            )
+            continue
         require(value > 0, f"{name}: unusable nonpositive median")
         allowance = 1.10 if label == "micro" else 1.05
         require(value <= reference_value * allowance, f"{name}: {value:.3f} exceeds accepted ceiling {reference_value * allowance:.3f}")
@@ -185,8 +207,9 @@ def main() -> None:
         raise SystemExit(1)
     print(
         f"v0.14 performance acceptance: "
-        f"{len(REFERENCE) - len(RAW_REFERENCE) - len(MAX_RUN_REFERENCE) - 1} median-bounded cases, "
-        f"{len(RAW_REFERENCE)} raw-bounded cases, {len(MAX_RUN_REFERENCE)} run-bounded case, "
+        f"{len(REFERENCE) - len(RAW_REFERENCE) - len(MAX_RUN_REFERENCE) - len(MIN_RUN_REFERENCE) - 1} "
+        f"median-bounded cases, {len(RAW_REFERENCE)} raw-bounded cases, "
+        f"{len(MAX_RUN_REFERENCE)} max-run-bounded case, {len(MIN_RUN_REFERENCE)} min-run-bounded case, "
         f"and {QUARANTINED_NET_CASE} quarantine passed"
     )
 

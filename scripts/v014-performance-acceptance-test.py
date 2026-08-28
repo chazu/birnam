@@ -16,7 +16,13 @@ def candidate() -> dict:
     macros = []
     for name, (label, value) in MODULE.REFERENCE.items():
         if label == "macro":
-            macros.append({"name": name, "wall_us_median": value})
+            macros.append(
+                {
+                    "name": name,
+                    "wall_us_median": value,
+                    "wall_us_min": MODULE.MIN_RUN_REFERENCE.get(name, value),
+                }
+            )
             continue
         suites.setdefault(label, []).append(
             {
@@ -55,10 +61,10 @@ class V014PerformanceAcceptanceTest(unittest.TestCase):
             case
             for suite in document["suites"]
             for case in suite["data"]["cases"]
-            if case["name"] == "sends.unary"
+            if case["name"] == "loops.to-do"
         )
         case["net_us"] *= 1.101
-        with self.assertRaisesRegex(MODULE.Rejected, "sends.unary.*exceeds accepted ceiling"):
+        with self.assertRaisesRegex(MODULE.Rejected, "loops.to-do.*exceeds accepted ceiling"):
             MODULE.validate_candidate(document, "Mac15,12")
 
     def test_rejects_a_missing_case(self) -> None:
@@ -89,6 +95,13 @@ class V014PerformanceAcceptanceTest(unittest.TestCase):
         )
         case["net_us"] = MODULE.MAX_RUN_REFERENCE["image.save"] * 1.051 / 1000
         with self.assertRaisesRegex(MODULE.Rejected, "image.save.*exceeds accepted run ceiling"):
+            MODULE.validate_candidate(document, "Mac15,12")
+
+    def test_rejects_a_minimum_bounded_case_above_its_ceiling(self) -> None:
+        document = candidate()
+        case = next(case for case in document["macro"] if case["name"] == "boot.stdlib-dylib")
+        case["wall_us_min"] = MODULE.MIN_RUN_REFERENCE["boot.stdlib-dylib"] * 1.051
+        with self.assertRaisesRegex(MODULE.Rejected, "boot.stdlib-dylib.*exceeds accepted minimum ceiling"):
             MODULE.validate_candidate(document, "Mac15,12")
 
     def test_quarantine_requires_real_raw_measurements(self) -> None:
