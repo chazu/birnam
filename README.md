@@ -8,6 +8,33 @@ images.
 It is an active pre-alpha system. The architecture and its bootstrap are the
 product; compatibility and language surface can and will still change.
 
+## Contents
+
+- [Support](#support)
+- [Install](#install)
+- [Quick Start](#quick-start)
+  - [First session](#first-session)
+  - [Start a project](#start-a-project)
+  - [Project workflow](#project-workflow)
+- [Running Birnam](#running-birnam)
+  - [Execution modes](#execution-modes)
+  - [Terminal REPL](#terminal-repl)
+  - [Socket REPL](#socket-repl)
+  - [Language server](#language-server)
+- [Images and Executables](#images-and-executables)
+  - [Save an image](#save-an-image)
+  - [Boot an image](#boot-an-image)
+  - [Create an image application](#create-an-image-application)
+  - [Bake an executable](#bake-an-executable)
+- [Staged Code Changes](#staged-code-changes)
+- [Isolated Workers](#isolated-workers)
+- [Developer Tools](#developer-tools)
+- [Verification](#verification)
+- [Benchmarks](#benchmarks)
+- [Architecture](#architecture)
+- [Repository Guide](#repository-guide)
+- [Design Notes](#design-notes)
+
 ## Support
 
 Birnam currently supports **arm64 macOS** with the pinned Rust toolchain and
@@ -36,7 +63,9 @@ directory. `mise run build` uses the same Rust installer for a debug prefix.
 toolchain and exposes the Rust tasks for `mise run build`, `mise run install`,
 `mise run verify`, `mise run dist`, and `mise run release`.
 
-## First Session
+## Quick Start
+
+### First session
 
 Run `birnam` with no arguments to enter the console REPL:
 
@@ -63,34 +92,88 @@ For the two pipeline forms and their stdlib vocabulary, run
 [`examples/pipeline.birnam`](examples/pipeline.birnam) and
 [`examples/combinators.birnam`](examples/combinators.birnam).
 
-For a project, `birnam` discovers the nearest `birnam.toml` from the current
-directory upward and validates its latest successful project build. Project
-modules are loaded from their exact published artifact paths; the runtime's own
-modules remain rooted in the installed runtime `lib/`, while project-native
-libraries resolve beside the project artifacts. It loads the
-`load = ["module"]` list dependency-first, then runs a root-relative
-`main = "main.birnam"` before the REPL opens. For an explicit project run, use
-`birnam run`: it evaluates `main` once and exits by default, or can start a
-tty/socket REPL through the manifest's `[run]` table or command flags.
-`birnam init` writes a commented starter file.
+### Start a project
 
-`birnam check [directory]` resolves the nearest source project and compiles each
-module into a private temporary directory without loading, evaluating, or
-publishing it. Human output includes the deterministic dependency-first order
-and compiler diagnostics. `--format=json` emits the stable
-`birnam-check-v1` result for tools. The directory defaults to the current
-directory; use `birnam check --help` for the full contract.
+Create a directory and ask Birnam for a starter manifest:
 
-`birnam build [directory]` compiles that same graph dependency-first into
-`.birnam/build/<target>/<profile>`. It publishes `lib/`, `resolution.toml`, and
-`artifacts.toml` together after a successful build; it does not run or activate
-the project. The TOML files are internal build receipts for freshness, reuse,
-and source-to-output validation; they are not installed and are not runtime
-module metadata. A manifest can also declare `[[wrapped]]` C libraries; each
-declaration runs its argv build commands with `{output}` expanded to a private
-staging path, then publishes `lib/lib<name>.dylib` beside the compiled Birnam
-wrapper. A logical Birnam module can be composed from multiple ordered source
-files and is still emitted as one `libbirnam_<name>.dylib`:
+```sh
+mkdir hello-birnam
+cd hello-birnam
+birnam init
+mkdir -p src tests
+```
+
+`birnam init` writes a commented, self-documenting `birnam.toml` and refuses to
+overwrite an existing one. A minimal application can use:
+
+```toml
+name = "hello-birnam"
+version = "0.1.0"
+main = "main.birnam"
+```
+
+Create `main.birnam` beside the manifest:
+
+```birnam
+[System println: "hello from Birnam"]
+```
+
+Then build and run it:
+
+```sh
+birnam check
+birnam run --build
+```
+
+Larger projects normally put declared modules below `src/` and load them before
+the entry source:
+
+```toml
+source_roots = ["src"]
+load = ["app"]
+main = "main.birnam"
+```
+
+The entry file for that module begins with a declaration such as
+`[Module named: #app requires: #[#stdlib]]`. Birnam discovers the nearest
+`birnam.toml` from the requested directory upward, so commands may be run from
+nested project directories.
+
+### Project workflow
+
+The normal source-project loop is:
+
+```sh
+birnam check                         # compile-check without publishing
+birnam build                         # publish the debug artifact graph
+birnam run                           # run the published main and exit
+birnam run --build -- arg1 arg2      # rebuild, run, and set ProjectArgs
+birnam test --build                  # build, then test in fresh processes
+birnam install                       # copy the publication into the runtime lib/
+```
+
+`check` compiles every resolved module in dependency-first order in a private
+temporary directory. It does not load, evaluate, or publish project code;
+`--format=json` emits the stable `birnam-check-v1` result for tools.
+
+`build` publishes the graph atomically beneath
+`.birnam/build/<target>/<profile>`. Its `resolution.toml` and `artifacts.toml`
+are disposable build receipts, not installed runtime metadata. Build, run,
+install, and test accept `--profile debug|release`; `debug` is the default and
+each profile has an independent publication record.
+
+`run` validates that publication, loads the manifest's `load` list
+dependency-first, evaluates `main` exactly once, and exits by default. Arguments
+after `--` are available as `[Globals at: #ProjectArgs]`. A bare `birnam` inside
+a project instead validates the latest build, evaluates `main`, and then opens
+the terminal REPL.
+
+`test` runs each configured `[test].sources` entry in a fresh process. Without
+that list, it discovers `.birnam` files beneath `test/` and `tests/`, preventing
+mutable image and Store state from leaking between test sources.
+
+A logical module may contain several ordered source files while still producing
+one `libbirnam_<name>.dylib`:
 
 ```toml
 [[module]]
@@ -98,112 +181,199 @@ entry = "src/json.birnam"
 files = ["src/json/parser.birnam", "src/json/render.birnam"]
 ```
 
-The entry owns the module declaration; the additional files are ordinary
-Birnam source and are concatenated in the listed order. Use
-`birnam build --help` for the current build contract.
+Projects may also declare `[[wrapped]]` native libraries and embed
+project-relative files at compile time with
+`[System embedFile: "assets/schema.json"]`. See
+[Project check, build, and run](docs/design/52-project-check-build-and-run.md)
+for the complete manifest and publication contract.
 
-Build, run, install, and test accept `--profile debug|release`; `debug` is the
-default. Profiles have independent publications and validation records. The
-current TCC backend emits the same native compilation mode for both; `release`
-establishes a separate reproducible publication identity without claiming an
-optimizer that Birnam does not yet have.
+## Running Birnam
 
-Source can also embed a project-relative file directly into the compiled
-dylib:
+### Execution modes
 
-```birnam
-[System embedFile: "assets/schema.json"]
-```
+The same executable selects its mode from the first argument:
 
-The path must be a literal and the result is a binary-safe `String`; the file
-is read during compilation and is not needed when the dylib is loaded. Asset
-contents participate in build invalidation, so changing the file recompiles
-its owning module.
+| Command | Behavior |
+| --- | --- |
+| `birnam` | Discover project startup when present, then open the terminal REPL. |
+| `birnam --repl` | Explicitly open the terminal REPL. `-i` and `repl` are aliases. |
+| `birnam file.birnam` | Compile and evaluate one source file, then exit. |
+| `birnam run [directory]` | Run a project's published entry source; no REPL by default. |
+| `birnam artifact.dylib` | Inspect a self-described compiled root and activate its sibling closure. |
+| `birnam file.image` | Validate and boot an image, mapping its compatible compiled generation. |
+| `birnam --rebuild file.image` | Boot the same image by recompiling its recorded source and selection. |
+| `birnam --listen PORT [file.birnam]` | Optionally run a script, then serve the socket REPL. |
+| `birnam --lsp` | Serve the project-aware language server over stdio. |
+| `birnam --bake IMAGE EXECUTABLE` | Append an image to a runtime executable. |
 
-`birnam install [directory]` validates that project-local publication and copies
-all of its `libbirnam_<name>.dylib` modules and `[[wrapped]]` native libraries
-into the runtime library directory. The destination is `$BIRNAM_LIB_DIR` when
-set, otherwise the installed runtime's sibling `lib/`; pass `--build` to build
-before installing. It copies no `birnam.toml`, `resolution.toml`, or
-`artifacts.toml`: each installed module carries its own identity, dependency,
-ABI, target, native-requirement, capability, and source/revision description.
+`birnam --help` is the authoritative top-level reference. The project commands
+also provide `check --help`, `build --help`, `install --help`, `run --help`, and
+`test --help`.
 
-An installed compiled root can be selected directly, without its source project
-or build receipt:
+An installed compiled root can be selected without its source project or build
+receipt:
 
 ```sh
 birnam /path/to/libbirnam_app.dylib
 ```
 
-The siphon inspects the complete sibling closure through the ID-floor artifact
-protocol before it loads the activation stack. See [Shipping compiled
-artifacts](docs/guide/09-shipping-artifacts.md).
+Before activation, the artifact inspector validates its identity, ABI, target,
+native requirements, and complete sibling dependency closure. See
+[Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md).
 
-`birnam run [directory] [options] [-- args...]` consumes the last successful
-build; add `--build` to rebuild first. The default is no REPL. Use
-`--repl=tty` or `--repl=socket`, with `--repl-bind` and `--repl-port` for the
-socket endpoint. Arguments after `--` are available to the entry source as
-`Globals at: #ProjectArgs`.
+### Terminal REPL
 
-`birnam test [directory]` validates the selected publication and runs every
-project test source in a fresh Birnam process. Configure an explicit ordered set
-with `[test].sources`, or omit it to discover `.birnam` files beneath `test/`
-and `tests/`. Each source registers one or more `TestSuite` values; the worker
-runs only those suites with `ConsoleRunner`, so mutable image and Store state
-cannot leak between test sources. Pass `--build` to publish before testing and
-`--profile` to select the build.
+Start the console explicitly with `birnam --repl`. It reads complete bracketed
+forms, so multiline messages and blocks may be pasted directly. Bindings persist
+for the life of the process. The console commands are `:help`, `:globals`, and
+`:quit`, with `:h`, `:g`, and `:q` aliases.
 
-`birnam --help` is the authoritative command reference. The primary entry
-points are:
+For a project entry followed by an interactive console, use:
 
-```text
-birnam <file.birnam>       Compile and run a script.
-birnam <file.image>        Boot a saved image.
-birnam <artifact.dylib>    Inspect and activate a self-described compiled root.
-birnam --rebuild <image>   Boot an image by replaying source.
-birnam --bake <image> <executable>
-                             Bake an image into a self-booting executable.
-birnam check [directory]     Resolve and compile-check a source project.
-birnam check --help          Show check command documentation.
-birnam build [directory]     Compile and publish a project-local build.
-birnam build --help          Show build command documentation.
-birnam install [directory]   Install a project's published modules into the
-                             runtime library directory.
-birnam install --help        Show install command documentation.
-birnam run [directory]       Run a project main; default is no REPL.
-birnam run --help            Show run, REPL, socket, and argument documentation.
-birnam test [directory]      Run discovered project tests in fresh processes.
-birnam test --help           Show test discovery and profile documentation.
-birnam wrap <name>         Scaffold a C-library wrapper.
+```sh
+birnam run --build --repl=tty
 ```
 
-## Images
+The equivalent manifest setting is:
 
-An image makes a live system durable. Its compiled dylib units are the primary
-executable layer; store facts and source are the reflective/meta-level surface
-and explicit recovery material. A normal boot maps compatible compiled code;
-`--rebuild` deliberately recovers from recorded source instead.
+```toml
+[run]
+repl = "tty"
+```
+
+### Socket REPL
+
+The socket REPL evaluates forms against the same live image and preserves
+bindings across requests. For a project, bind it explicitly to loopback:
+
+```sh
+birnam run --build --repl=socket \
+  --repl-bind=127.0.0.1 --repl-port=4400
+```
+
+Connect from another terminal:
+
+```sh
+nc 127.0.0.1 4400
+```
+
+The manifest equivalent is:
+
+```toml
+[run]
+repl = "socket"
+socket_bind = "127.0.0.1"
+socket_port = 4400
+```
+
+For a standalone runtime rather than a project run, `birnam --listen 5555`
+starts the socket REPL, and `birnam --listen 5555 file.birnam` evaluates the file
+before listening. This shorthand binds to `0.0.0.0`. The protocol has no
+authentication or encryption, so prefer the project form bound to `127.0.0.1`
+and do not expose it to an untrusted network. The current server is blocking and
+serves one client at a time; `:quit` closes the client session.
+
+### Language server
+
+Run the LSP server over stdio from the project root:
+
+```sh
+cd /path/to/project
+birnam --lsp
+```
+
+Editors should launch that command directly with the workspace root as its
+working directory; stdout is reserved for LSP framing. The server provides
+syntax and safe selector-arity diagnostics, hover, completion, signature help,
+definitions, references, and document/workspace symbols across authored project
+dependencies. It does not evaluate project code or use generated artifacts as
+source locations.
+
+The bundled [Emacs mode](tools/emacs/README.md) configures `lsp-mode`
+automatically and uses the nearest `birnam.toml` as the project root. Other LSP
+clients should use command `birnam`, arguments `["--lsp"]`, and the project root
+as the working directory.
+
+## Images and Executables
+
+An image makes a live system durable. Its Store, globals, accepted dispatch
+generation, source, and selected compiled units travel together. Compatible
+boot maps the recorded native generation; `--rebuild` deliberately reconstructs
+the same accepted generation from its recorded source and selection.
+
+### Save an image
+
+Save from a script or REPL with:
+
+```birnam
+[System saveImage: "/tmp/birnam-demo.image"]
+```
+
+The save uses atomic full-file replacement and answers the receiver on success
+or `nil` on failure. After a rejected save, inspect:
+
+```birnam
+[[System imageSaveReport] detail]
+```
+
+Persistence does not imply that every process value is serializable. Durable
+values need either a portable encoding or a registered source/compiled recovery
+path; process capabilities such as isolate handles are rejected.
+
+[`examples/image.birnam`](examples/image.birnam) creates an image containing
+data and a user-defined method:
 
 ```sh
 birnam examples/image.birnam
+```
+
+### Boot an image
+
+Boot the compatible compiled generation, or deliberately rebuild it from the
+recorded source:
+
+```sh
 birnam /tmp/birnam-demo.image
 birnam --rebuild /tmp/birnam-demo.image
 ```
 
-Inside birnam, save with `[System saveImage: path]`. A global `main` block makes
-an image an application entry point; [examples/app.birnam](examples/app.birnam)
-shows saving and baking one.
+An image without a global `main` opens the terminal REPL after recovery, where
+its restored globals and methods are immediately available.
 
-Use `[System saveImage: path]` to create a worker image. The same image can be
-passed directly to `Isolate start:selector:image:`. See the
-[image guide](docs/guide/04-images.md).
+### Create an image application
 
-Persistence is intentionally not a claim that every process value can be
-serialized. Saving is atomic and rejects durable values without either a
-portable encoding or a registered recovery path; inspect
-`[System imageSaveReport]` after a rejected save. See
-[The Image](docs/design/40-the-image.md) for the exact durability contract and
-recovery paths.
+Bind a zero-argument block to global `main` before saving:
+
+```birnam
+let banner := "hello from an image";
+let main := [| [System println: banner]];
+[System saveImage: "/tmp/app.image"]
+```
+
+Booting that image runs `main` and exits instead of opening a REPL:
+
+```sh
+birnam /tmp/app.image
+```
+
+[`examples/app.birnam`](examples/app.birnam) is a complete runnable example.
+
+### Bake an executable
+
+Bake an existing image into a copy of the Birnam runtime, then run it directly:
+
+```sh
+birnam --bake /tmp/app.image ./myapp
+BIRNAM_LIB_DIR="$HOME/.local/lib" ./myapp
+```
+
+From inside a running system, `[System bakeExe: "./myapp"]` saves and bakes the
+current image in one operation. A baked executable is self-booting but not a
+single-file static binary: it still resolves the runtime dylib closure from
+`<executable>/../lib` or `$BIRNAM_LIB_DIR`.
+
+See [Images: save, boot, bake](docs/guide/04-images.md) for the full durability,
+recovery, and executable-layout contract.
 
 ## Staged Code Changes
 
@@ -244,14 +414,13 @@ use the installed prefix (by default `$HOME/.local/bin/birnam`).
 BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
 "$BIRNAM_BIN" doc time nowMillis
 "$BIRNAM_BIN" docgen /tmp/birnam-docs.html
-"$BIRNAM_BIN" --lsp
-"$BIRNAM_BIN" --listen 5555 examples/fizzbuzz.birnam
 ```
 
 - `doc` prints module or selector documentation.
 - `docgen` writes an HTML reference for birnam modules and native floor APIs.
-- `--lsp` serves the language server over stdio.
-- `--listen` starts a socket REPL, optionally after running a script.
+
+The terminal REPL, socket REPL, and LSP launch forms are documented under
+[Running Birnam](#running-birnam).
 
 The generated reference opens with the authored language, idioms, fact-store,
 and image guide, followed by the API reference extracted from current module
