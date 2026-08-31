@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-prefix=${BIRNAM_PREFIX:-$HOME/.local}
+prefix=${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}
 distribution=${BIRNAM_DISTRIBUTION:-production}
 case "$distribution" in
   production|test) ;;

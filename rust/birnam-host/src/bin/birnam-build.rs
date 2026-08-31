@@ -28,6 +28,11 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id_image.dylib",
 ];
 
+const WRAPPED_DYNAMIC_LIBRARIES: &[(&str, &str)] = &[
+    ("wrapped/linenoise/liblinenoise.dylib", "liblinenoise.dylib"),
+    ("wrapped/termbox2/libtermbox2.dylib", "libtermbox2.dylib"),
+];
+
 const STAGE1_MODULES: &[(&str, &str, bool)] = &[
     ("src/id/modules.birnam", "modules", false),
     ("src/id/stdlib.birnam", "stdlib", false),
@@ -263,6 +268,15 @@ fn source_manifest(root: &Path) -> Result<BTreeMap<String, String>, String> {
     collect_files(root, Path::new("docs/guide"), &mut entries, &|path| {
         path.extension().and_then(|value| value.to_str()) == Some("md")
     })?;
+    for (relative, _) in WRAPPED_DYNAMIC_LIBRARIES {
+        let relative = Path::new(relative);
+        if root.join(relative).is_file() {
+            entries.insert(
+                relative.to_string_lossy().into_owned(),
+                sha256_file(&root.join(relative))?,
+            );
+        }
+    }
     Ok(entries)
 }
 
@@ -315,6 +329,77 @@ fn installed_manifest(root: &Path, excluded: &Path) -> Result<BTreeMap<String, S
     }
     visit(root, root, &excluded, &mut entries)?;
     Ok(entries)
+}
+
+fn ensure_replaceable_prefix(prefix: &Path) -> Result<(), String> {
+    if !prefix.exists() {
+        return Ok(());
+    }
+    if fs::symlink_metadata(prefix)
+        .map_err(|error| format!("stat existing prefix {}: {error}", prefix.display()))?
+        .file_type()
+        .is_symlink()
+    {
+        return Err(format!(
+            "refusing to replace symlink prefix: {}",
+            prefix.display()
+        ));
+    }
+    if !prefix.is_dir() {
+        return Err(format!(
+            "refusing to replace non-directory prefix: {}",
+            prefix.display()
+        ));
+    }
+    let mut entries = fs::read_dir(prefix)
+        .map_err(|error| format!("read existing prefix {}: {error}", prefix.display()))?;
+    if entries.next().is_none() {
+        return Ok(());
+    }
+
+    let receipt_relative = Path::new("share/birnam/rust-install.json");
+    let receipt_path = prefix.join(receipt_relative);
+    let receipt_bytes = fs::read(&receipt_path).map_err(|error| {
+        format!(
+            "refusing to replace non-empty prefix without a readable Birnam install receipt at {}: {error}; choose a dedicated --prefix",
+            receipt_path.display()
+        )
+    })?;
+    let receipt: serde_json::Value = serde_json::from_slice(&receipt_bytes).map_err(|error| {
+        format!(
+            "refusing to replace prefix with invalid Birnam install receipt {}: {error}",
+            receipt_path.display()
+        )
+    })?;
+    let manifest = receipt
+        .get("staged_manifest")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| {
+            format!(
+                "refusing to replace prefix whose Birnam receipt has no staged_manifest: {}",
+                receipt_path.display()
+            )
+        })?;
+
+    let current = installed_manifest(prefix, receipt_relative)?;
+    let unexpected = current
+        .keys()
+        .filter(|relative| {
+            !manifest.contains_key(*relative)
+                && !WRAPPED_DYNAMIC_LIBRARIES
+                    .iter()
+                    .any(|(_, name)| *relative == &format!("lib/{name}"))
+        })
+        .take(5)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unexpected.is_empty() {
+        return Err(format!(
+            "refusing to replace prefix containing files not owned by Birnam ({}); choose a dedicated --prefix",
+            unexpected.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 fn sync_tree(root: &Path) -> Result<(), String> {
@@ -444,6 +529,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             return Err("--prefix must not resolve inside the source root".to_owned());
         }
     }
+    ensure_replaceable_prefix(&prefix)?;
 
     let source_before = source_manifest(&root)?;
     let source_digest = manifest_digest(&source_before)?;
@@ -497,6 +583,12 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     for canonical in CANONICAL_DYNAMIC_LIBRARIES {
         let source = profile_dir.join(native_library_source(canonical));
         copy_file(&source, &lib_dir.join(canonical))?;
+    }
+    for (relative, name) in WRAPPED_DYNAMIC_LIBRARIES {
+        let source = root.join(relative);
+        if source.is_file() {
+            copy_file(&source, &lib_dir.join(name))?;
+        }
     }
     fs::remove_dir_all(&target_dir)
         .map_err(|error| format!("remove Rust target staging directory: {error}"))?;
@@ -697,5 +789,67 @@ fn main() -> ExitCode {
     match install_rust_prefix(options) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn scratch(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after epoch")
+            .as_nanos();
+        env::temp_dir().join(format!(
+            "birnam-build-{name}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn mixed_prefix_is_never_replaceable() {
+        let prefix = scratch("mixed-prefix");
+        fs::create_dir_all(prefix.join("share/chezmoi")).expect("create mixed prefix");
+        fs::write(prefix.join("share/chezmoi/README"), b"personal data")
+            .expect("write unrelated file");
+
+        let error = ensure_replaceable_prefix(&prefix).expect_err("mixed prefix must be refused");
+        assert!(error.contains("without a readable Birnam install receipt"));
+        assert_eq!(
+            fs::read(prefix.join("share/chezmoi/README")).expect("unrelated file survives"),
+            b"personal data"
+        );
+        fs::remove_dir_all(prefix).expect("remove scratch prefix");
+    }
+
+    #[test]
+    fn receipt_does_not_authorize_unowned_files() {
+        let prefix = scratch("unowned-file");
+        fs::create_dir_all(prefix.join("bin")).expect("create bin directory");
+        fs::create_dir_all(prefix.join("share/birnam")).expect("create receipt directory");
+        fs::write(prefix.join("bin/birnam"), b"owned").expect("write owned file");
+        fs::write(
+            prefix.join("share/birnam/rust-install.json"),
+            br#"{"staged_manifest":{"bin/birnam":"digest"}}"#,
+        )
+        .expect("write receipt");
+        ensure_replaceable_prefix(&prefix).expect("owned prefix is replaceable");
+
+        fs::create_dir_all(prefix.join("lib")).expect("create library directory");
+        fs::write(prefix.join("lib/liblinenoise.dylib"), b"legacy wrapper")
+            .expect("write legacy wrapped library");
+        ensure_replaceable_prefix(&prefix)
+            .expect("known Birnam wrapper from the old install task is replaceable");
+
+        fs::write(prefix.join("notes.txt"), b"unowned").expect("write unowned file");
+        let error = ensure_replaceable_prefix(&prefix).expect_err("unowned file must be refused");
+        assert!(error.contains("notes.txt"));
+        assert_eq!(
+            fs::read(prefix.join("notes.txt")).expect("unowned file survives"),
+            b"unowned"
+        );
+        fs::remove_dir_all(prefix).expect("remove scratch prefix");
     }
 }

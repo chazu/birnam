@@ -4,7 +4,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 target_dir="$repo/.cargo-target"
 bin=${BIRNAM_BIN:-$HOME/.local/bin/birnam}
-libdir=${BIRNAM_LIB_DIR:-$HOME/.local/lib}
+libdir=${BIRNAM_LIB_DIR:-${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/lib}
 
 probe_profile() {
   local profile=$1

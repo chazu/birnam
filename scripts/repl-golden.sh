@@ -12,7 +12,7 @@
 # change, update the golden HERE in the same commit and say why.
 set -u
 cd "$(dirname "$0")/.."
-BIN=${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam}
+BIN=${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/bin/birnam}
 BIN_ABS="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
 BANNER='birnam — an interactive image. :help for commands, :quit (or Ctrl-D) to leave.'
 

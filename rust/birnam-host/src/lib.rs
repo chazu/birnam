@@ -1,9 +1,8 @@
-//! Pure executable-relative runtime-resource resolution for the Rust host.
+//! Executable-relative runtime-resource resolution for the Rust host.
 //!
-//! This is deliberately not a loader and does not inspect the filesystem. It
-//! only reproduces the installed Birnam layout and its narrow resource
-//! overrides. Loading the Rust floor and higher rungs happens at the host
-//! boundary.
+//! The pure resolver remains lexical, while the process entrypoint follows an
+//! installed launcher symlink before deriving the prefix. Loading the Rust
+//! floor and higher rungs happens at the host boundary.
 
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -8350,13 +8349,21 @@ pub fn resolve() -> io::Result<Resources> {
     let lib_dir = env::var_os("BIRNAM_LIB_DIR").map(PathBuf::from);
     let id_dylib = env::var_os("BIRNAM_ID_DYLIB").map(PathBuf::from);
     let rust_workspace_dir = env::var_os("BIRNAM_RUST_WORKSPACE_DIR").map(PathBuf::from);
-    resolve_from_exe_dir(
-        executable.parent().unwrap_or_else(|| Path::new(".")),
+    resolve_from_executable(
+        &executable,
         Overrides {
             lib_dir: lib_dir.as_deref(),
             id_dylib: id_dylib.as_deref(),
             rust_workspace_dir: rust_workspace_dir.as_deref(),
         },
+    )
+}
+
+fn resolve_from_executable(executable: &Path, overrides: Overrides<'_>) -> io::Result<Resources> {
+    let executable = std::fs::canonicalize(executable).unwrap_or_else(|_| executable.to_path_buf());
+    resolve_from_exe_dir(
+        executable.parent().unwrap_or_else(|| Path::new(".")),
+        overrides,
     )
 }
 
@@ -8591,6 +8598,34 @@ mod tests {
             resources.id_dylib,
             Path::new("/opt/birnam/lib/libbirnam_id.dylib")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn executable_launcher_symlink_uses_the_target_prefix() {
+        use std::os::unix::fs::symlink;
+
+        let scratch = std::fs::canonicalize(std::env::temp_dir())
+            .expect("temporary directory canonicalizes")
+            .join(format!(
+                "birnam-host-launcher-symlink-{}",
+                std::process::id()
+            ));
+        let target = scratch.join("opt/birnam/bin/birnam");
+        let launcher = scratch.join("local/bin/birnam");
+        std::fs::create_dir_all(target.parent().expect("target has parent"))
+            .expect("create target directory");
+        std::fs::create_dir_all(launcher.parent().expect("launcher has parent"))
+            .expect("create launcher directory");
+        std::fs::write(&target, b"host").expect("write target");
+        symlink(&target, &launcher).expect("create launcher symlink");
+
+        let resources = resolve_from_executable(&launcher, Overrides::default())
+            .expect("launcher should resolve");
+        assert_eq!(resources.prefix, scratch.join("opt/birnam"));
+        assert_eq!(resources.lib_dir, scratch.join("opt/birnam/lib"));
+
+        std::fs::remove_dir_all(scratch).expect("remove scratch layout");
     }
 
     #[test]

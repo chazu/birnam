@@ -5,8 +5,8 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-bin=${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam}
-libdir=${BIRNAM_LIB_DIR:-${BIRNAM_PREFIX:-$HOME/.local}/lib}
+bin=${BIRNAM_BIN:-${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/bin/birnam}
+libdir=${BIRNAM_LIB_DIR:-${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/lib}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

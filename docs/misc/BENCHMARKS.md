@@ -7,7 +7,7 @@ this page is what you need day to day.
 ## TL;DR
 
 ```
-BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
+BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}/bin/birnam"
 BENCH_QUICK=1 "$BIRNAM_BIN" bench/micro.birnam        # tight dev loop, ~5s
 mise run bench                                          # isolated Rust instrument
 mise run bench-release                                  # tracked Rust snapshot

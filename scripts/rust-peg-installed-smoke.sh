@@ -3,7 +3,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-prefix=${BIRNAM_PREFIX:-$HOME/.local}
+prefix=${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}
 test -x "$prefix/bin/birnam"
 test -f "$prefix/lib/libbirnam_id_peg_rust.dylib"
 

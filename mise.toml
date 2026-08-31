@@ -15,7 +15,8 @@ rust = "1.95.0"
 [tasks.build]
 description = "Build the Rust development prefix"
 run = """
-scripts/rust-install.sh install --root "$PWD" --prefix "${BIRNAM_PREFIX:-$HOME/.local}" --profile debug
+prefix="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile debug
 """
 
 [tasks.clean]
@@ -69,8 +70,12 @@ run = "bash scripts/rust-cutover-verify.sh"
 [tasks.install]
 description = "Install the Rust production Birnam prefix"
 run = """
-scripts/rust-install.sh install --root "$PWD" --prefix "${BIRNAM_PREFIX:-$HOME/.local}" --profile debug
-cp wrapped/*/lib*.dylib "${BIRNAM_PREFIX:-$HOME/.local}/lib/" 2>/dev/null || true
+prefix="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile debug
+if [ -z "${BIRNAM_PREFIX:-}" ]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sfn "$prefix/bin/birnam" "$HOME/.local/bin/birnam"
+fi
 """
 
 [tasks.dist]
