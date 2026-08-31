@@ -133,6 +133,46 @@ spawn a server until the buffer is actually displayed."
       (should (local-variable-p 'lsp-auto-guess-root))
       (should lsp-auto-guess-root))))
 
+(ert-deftest birnam-mode-lsp-prefers-the-nearest-birnam-project-root ()
+  "Keep Projectile from broadening lsp-mode's root past `birnam.toml'."
+  (let* ((root (file-name-as-directory (make-temp-file "birnam-mode-" t)))
+         (nested (expand-file-name "src/" root))
+         (file (expand-file-name "main.birnam" nested))
+         (broad-root (file-name-directory (directory-file-name root)))
+         (fallback (lambda (_directory) broad-root)))
+    (unwind-protect
+        (progn
+          (make-directory nested t)
+          (with-temp-file (expand-file-name "birnam.toml" root)
+            (insert "[project]\nname = \"test\"\n"))
+          (with-temp-buffer
+            (setq default-directory nested)
+            (setq buffer-file-name file)
+            (let ((birnam-lsp-automatic-start nil))
+              (birnam-mode)
+              (setq-local projectile-project-root-functions (list fallback))
+              (birnam-lsp-start)
+              (should (local-variable-p
+                       'projectile-project-root-functions))
+              (should (eq (car projectile-project-root-functions)
+                          #'birnam--projectile-root))
+              (should (eq (cadr projectile-project-root-functions)
+                          fallback))
+              (should (equal
+                       (funcall (car projectile-project-root-functions)
+                                nested)
+                       root)))))
+      (delete-directory root t))))
+
+(ert-deftest birnam-mode-tab-completes-after-indentation ()
+  "TAB should ask completion-at-point once indentation is already correct."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (should (eq tab-always-indent 'complete))
+      (should (eq (key-binding (kbd "TAB"))
+                  #'indent-for-tab-command)))))
+
 (ert-deftest birnam-mode-lsp-start-falls-back-without-deferred ()
   "Older lsp-mode builds without `lsp-deferred' still start directly."
   (let ((birnam-test-lsp-started nil)
@@ -190,5 +230,36 @@ two files can be loaded in either order without a lexical/dynamic conflict."
       (indent-region (point-min) (point-max))
       (should (equal (buffer-string)
                      "[Map\n  => new\n  => at: #a put: 1]\n")))))
+
+(ert-deftest birnam-mode-keeps-semicolon-free-top-level-forms-unindented ()
+  "Whitespace-separated top-level forms are statements, not continuations."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (insert "// No semicolons are required.\n\n"
+              "[System println: \"first\"]\n\n"
+              "let main := [| [System println: \"second\"] ]\n\n"
+              "[main value]\n")
+      (birnam-mode)
+      (indent-region (point-min) (point-max))
+      (should (equal (buffer-string)
+                     (concat "// No semicolons are required.\n\n"
+                             "[System println: \"first\"]\n\n"
+                             "let main := [| [System println: \"second\"] ]\n\n"
+                             "[main value]\n"))))))
+
+(ert-deftest birnam-mode-indents-a-let-value-after-assignment ()
+  "A value moved below its `:=' remains a top-level continuation."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (insert "let main :=\n[|\n[System println: \"hello\"]\n]\n"
+              "[main value]\n")
+      (birnam-mode)
+      (indent-region (point-min) (point-max))
+      (should (equal (buffer-string)
+                     (concat "let main :=\n"
+                             "  [|\n"
+                             "    [System println: \"hello\"]\n"
+                             "  ]\n"
+                             "[main value]\n"))))))
 
 ;;; birnam-mode-test.el ends here

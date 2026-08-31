@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.4.0
+;; Version: 0.4.2
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -193,20 +193,26 @@ unchanged."
     (skip-chars-backward " \t")
     (point)))
 
-(defun birnam--prev-code-line-ends-statement-p ()
-  "Non-nil if the nearest preceding code line ends a statement.
-A statement is terminated by `;'.  Blank lines and whole-line comments
-are skipped.  Returns non-nil when there is no preceding code line, so
-the first statement in a buffer sits at column 0.  Assumes point is at
-the current line's beginning."
+(defun birnam--prev-code-line-continues-statement-p ()
+  "Non-nil if the nearest preceding code line requires a continuation.
+Blank lines and whole-line comments are skipped.  Birnam expressions are
+self-delimiting and `;' is optional, so an ordinary completed expression
+does not indent the next top-level line.  A trailing `:=' is the one
+top-level prefix whose value may begin on a following line.  Assumes point
+is at the current line's beginning."
   (save-excursion
     (catch 'done
       (while (not (bobp))
         (forward-line -1)
         (let ((code-end (birnam--code-end-of-line)))
           (when (> code-end (line-beginning-position))
-            (throw 'done (eq (char-before code-end) ?\;)))))
-      t)))
+            (goto-char code-end)
+            (throw 'done
+                   (and (>= (- code-end (line-beginning-position)) 2)
+                        (equal (buffer-substring-no-properties
+                                (- code-end 2) code-end)
+                               ":="))))))
+      nil)))
 
 (defun birnam--send-first-keyword-colon (open limit)
   "Column of the colon of the FIRST keyword selector part sitting
@@ -247,9 +253,9 @@ is indented `birnam-indent-offset' past the line that OPENED the
 bracket it sits in — not by absolute nesting depth — so a send that
 wraps before opening a bracket no longer snaps back to column 0.  A
 line that begins by closing a bracket lines up with the line that
-opened it.  At the top level a line that continues an unterminated
-statement (the previous code line did not end in `;') is indented one
-step; a fresh statement sits at column 0.
+opened it.  Top-level forms sit at column 0 whether or not the previous
+form used the optional `;' separator.  A value beginning on the line
+after a trailing `:=' is indented one step.
 
 Keyword-message continuation is Obj-C style: when a line begins with a
 keyword selector part (`put:') and an EARLIER keyword part of the same
@@ -264,7 +270,9 @@ it is moved to BOL."
     (cond
      ((nth 3 ppss) nil)                        ; inside a string literal
      ((null open)                              ; top level
-      (if (birnam--prev-code-line-ends-statement-p) 0 birnam-indent-offset))
+      (if (birnam--prev-code-line-continues-statement-p)
+          birnam-indent-offset
+        0))
      (t                                        ; inside a bracket
       (let* ((starts-with-closer (looking-at "[ \t]*\\s)"))
              (kw (and (not starts-with-closer)
@@ -386,6 +394,11 @@ because a compilation buffer has no terminal to host the project's
 ;; one here would leave it nil when this file happens to load first.
 (defvar lsp-language-id-configuration)
 
+;; Projectile is one of lsp-mode's preferred project-root providers.  Declare
+;; its policy variable special without loading Projectile eagerly so a Birnam
+;; buffer can put its precise manifest lookup first when Projectile is present.
+(defvar projectile-project-root-functions)
+
 (declare-function lsp "lsp-mode" (&optional arg))
 (declare-function lsp-deferred "lsp-mode" ())
 (declare-function lsp-register-client "lsp-mode" (client))
@@ -395,6 +408,12 @@ because a compilation buffer has no terminal to host the project's
 (defun birnam--lsp-activate (_filename mode)
   "Activate the Birnam lsp-mode client only for `birnam-mode'."
   (eq mode 'birnam-mode))
+
+(defun birnam--projectile-root (directory)
+  "Return the nearest Birnam project root above DIRECTORY.
+This adapter lets Projectile and lsp-mode use the same `birnam.toml'
+boundary as `project.el'."
+  (birnam--project-root directory))
 
 (defvar birnam--lsp-client-registered nil)
 
@@ -422,9 +441,10 @@ because a compilation buffer has no terminal to host the project's
   "Start lsp-mode for the current Birnam buffer.
 
 The workspace is the nearest `birnam.toml': `birnam--project-try'
-teaches `project.el' about Birnam projects, and `lsp-auto-guess-root'
-is set buffer-locally so lsp-mode consults that instead of prompting,
-including when Emacs was launched from another directory.
+teaches `project.el' about Birnam projects, a buffer-local Projectile
+root function prevents lsp-mode from choosing a broader cached project,
+and `lsp-auto-guess-root' avoids prompting when Emacs was launched from
+another directory.
 
 Startup goes through `lsp-deferred' when lsp-mode provides it, so a
 Birnam file opened invisibly — by a grep, a project search, or a
@@ -434,6 +454,12 @@ Birnam file opened invisibly — by a grep, a project search, or a
     (user-error "lsp-mode is not installed or loaded"))
   (birnam--register-lsp-client)
   (setq-local lsp-auto-guess-root t)
+  (setq-local projectile-project-root-functions
+              (cons #'birnam--projectile-root
+                    (delq #'birnam--projectile-root
+                          (and (boundp 'projectile-project-root-functions)
+                               (copy-sequence
+                                projectile-project-root-functions)))))
   (if (fboundp 'lsp-deferred)
       (lsp-deferred)
     (let ((default-directory (birnam--workspace-directory)))
@@ -534,6 +560,10 @@ rather than filed in as a unit."
   ;; to match, breaking the alignment everywhere else.
   (setq-local indent-tabs-mode nil)
   (setq-local indent-line-function #'birnam-indent-line)
+  ;; Preserve TAB's first duty as the indentation command, but once the line
+  ;; is correctly indented let it call `completion-at-point' (and therefore
+  ;; lsp-mode's completion provider).
+  (setq-local tab-always-indent 'complete)
   (setq-local electric-indent-chars
               (append '(?\] ?} ?\)) electric-indent-chars)))
 
