@@ -901,6 +901,67 @@ let analysisThreadedSpecialSelectors := {
   ] doc:
   "Builds a method, module, or authored symbol CompletionItem." ];
 
+[Reflect defineMethod: #completionSkipSpacesLeft:in: on: Lsp as: [:self :i :line |
+  [[i <= 0]
+    ifTrue: [| 0]
+    ifFalse: [|
+      let byte := [line byteAt: [i - 1]];
+      let whitespace := [[byte = 32] | [byte = 9]];
+      [whitespace
+        ifTrue: [| [self completionSkipSpacesLeft: [i - 1] in: line]]
+        ifFalse: [| i]]]]
+  ] doc:
+  "Scans left over horizontal whitespace and answers the first occupied boundary." ];
+
+[Reflect defineMethod: #completionLiteralReceiverAtPosition:in: on: Lsp as: [:self :position :text |
+  let lineNo := [position at: "line" ifAbsent: [| 0]];
+  let line := [self lineAt: lineNo in: text];
+  let col := [self byteOffsetForUtf16: [position at: "character" ifAbsent: [| 0]] in: line];
+  let prefixStart := [self scanLeft: col in: line];
+  let receiverEnd := [self completionSkipSpacesLeft: prefixStart in: line];
+  let receiverStart := [self scanLeft: receiverEnd in: line];
+  let head := [self completionSkipSpacesLeft: receiverStart in: line];
+  let bracketed := [[head > 0] & [[line byteAt: [head - 1]] = 91]];
+  let present := [receiverEnd > receiverStart];
+  [[bracketed & present]
+    ifTrue: [| [line copyFrom: receiverStart to: receiverEnd]]
+    ifFalse: [| ""]]
+  ] doc:
+  "Answers the exact global receiver in an incomplete `[ Global prefix` send, or empty." ];
+
+[Reflect defineMethod: #completionItemForRuntimeMethod:receiver: on: Lsp as: [:self :entry :receiverName |
+  let selector := [entry at: #selector ifAbsent: [| nil]];
+  let name := [[selector isNil] ifTrue: [| ""] ifFalse: [| [Reflect nameOf: selector]]];
+  let target := [entry at: #target ifAbsent: [| nil]];
+  let targetName := [[target isNil] ifTrue: [| receiverName] ifFalse: [| [Reflect nameOf: target]]];
+  [Map
+    => new
+    => at: "label" put: name
+    => at: "kind" put: 2
+    => at: "detail" put: ["runtime method on " , targetName]]
+  ] doc:
+  "Builds a bounded method CompletionItem without scanning historical source generations." ];
+
+[Reflect defineMethod: #completionItemsForRuntimeReceiver:position:prefix:seen: on: Lsp as: [:self :text :position :prefix :seen |
+  let receiverName := [self completionLiteralReceiverAtPosition: position in: text];
+  let receiver := [[receiverName isEmpty]
+    ifTrue: [| nil]
+    ifFalse: [| [Reflect globalNamed: [receiverName asSymbol]]]];
+  let methods := [[receiver isNil] ifTrue: [| #[]] ifFalse: [| [Reflect allMethodsOf: receiver]]];
+  [methods inject: #[] into: [:out :entry |
+    let selector := [entry at: #selector ifAbsent: [| nil]];
+    let name := [[selector isNil] ifTrue: [| ""] ifFalse: [| [Reflect nameOf: selector]]];
+    let already := [[seen value] at: name ifAbsent: [| nil]];
+    let wanted := [[[name isEmpty] not] & [name startsWith: prefix]];
+    let shouldAdd := [[already isNil] & wanted];
+    [shouldAdd
+      ifTrue: [|
+        [seen set: [[seen value] at: name put: true]];
+        [out add: [self completionItemForRuntimeMethod: entry receiver: receiverName]]]
+      ifFalse: [| out]]]]
+  ] doc:
+  "Answers live methods only when the incomplete send spells an exact global receiver." ];
+
 [Reflect defineMethod: #completionItemsFor:uri:position:index: on: Lsp as: [:self :text :uri :position :index |
   let prefix := [self completionPrefixAtPosition: position in: text];
   let offset := [self byteOffsetAtPosition: position in: text];
@@ -924,9 +985,11 @@ let analysisThreadedSpecialSelectors := {
     let already := [[seen value] at: name ifAbsent: [| nil]];
     let shouldAdd := [[already isNil] & [name startsWith: prefix]];
     [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForSymbol: entry]]]]]]];
+  let runtimeItems := [self completionItemsForRuntimeReceiver: text position: position prefix: prefix seen: seen];
+  [runtimeItems do: [:item | [items set: [[items value] add: item]]]];
   [items value]]]
   ] doc:
-  "Answers scoped authored bindings first, then resolver-selected methods and modules filtered by the typed prefix." ];
+  "Answers scoped authored bindings and symbols, plus live methods for an exact literal global receiver." ];
 
 [Reflect defineMethod: #onCompletion:id: on: Lsp as: [:self :p :id |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];

@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.4.2
+;; Version: 0.4.3
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -540,6 +540,7 @@ rather than filed in as a unit."
     (define-key map (kbd "C-c C-p") #'birnam-run-project)
     (define-key map (kbd "C-c C-t") #'birnam-test-project)
     (define-key map (kbd "C-c C-e") #'birnam-lsp-start)
+    (define-key map (kbd "<tab>") #'indent-for-tab-command)
     map)
   "Keymap for `birnam-mode'.")
 

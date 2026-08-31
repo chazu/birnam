@@ -145,6 +145,13 @@ let s := [TestSuite named: "Stdlib" module: #stdlib];
   [t expect: [Reflect nameOf: #named:requires:] equals: "named:requires:" describes: "keyword selector keeps its colons"];
   [t expect: [[Reflect nameOf: "str"] kind] equals: #notASymbol describes: "a non-symbol answers the kinded error"]]];
 
+[s test: "Reflect globalNamed: resolves canonical exported globals" do: [:t |
+  let system := [Reflect globalNamed: #System];
+  [t expect: [system == System] equals: true describes: "the canonical export wins over a persisted namesake"];
+  let println := [[Reflect allMethodsOf: system] detect: [:entry |
+    [[entry at: #selector] = #println:]]];
+  [t expect: [println at: #target] equals: #System describes: "native System protocol remains visible"]]];
+
 // Appending "" must be a no-op even on a FRESH builder (backing still null) —
 // pinned because inline-markup folds add empty segments routinely.
 [s test: "StringBuilder add: of an empty string is a safe no-op" do: [:t |

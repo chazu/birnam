@@ -171,6 +171,8 @@ spawn a server until the buffer is actually displayed."
       (birnam-mode)
       (should (eq tab-always-indent 'complete))
       (should (eq (key-binding (kbd "TAB"))
+                  #'indent-for-tab-command))
+      (should (eq (lookup-key birnam-mode-map (kbd "<tab>"))
                   #'indent-for-tab-command)))))
 
 (ert-deftest birnam-mode-lsp-start-falls-back-without-deferred ()

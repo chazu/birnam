@@ -13190,6 +13190,31 @@ unsafe extern "C" fn rust_reflect_name_of(
     unsafe { (api.mkString)(name.as_ptr(), name.len()) }
 }
 
+unsafe extern "C" fn rust_reflect_global_named(
+    _self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let values = unsafe { borrowed_oop_args(pointer, count) }
+        .unwrap_or_else(|| abort("RustReflect globalNamed: received invalid arguments"));
+    if values.len() != 1 {
+        abort("RustReflect globalNamed: expects one symbol");
+    }
+    let runtime = runtime();
+    let api = unsafe { api(runtime) };
+    let Some(name) = (unsafe { reflect_symbol_name(api, values[0]) }) else {
+        note_error(b"RustReflect globalNamed: expects a symbol");
+        return api.nilObj;
+    };
+    let name =
+        CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
+    let imported = unsafe { (api.import)(name.as_ptr()) };
+    if !imported.is_null() && imported != api.nilObj {
+        return imported;
+    }
+    unsafe { send(api, runtime.globals as Oop, b"at:\0", &[values[0]]) }
+}
+
 unsafe extern "C" fn rust_reflect_export_vtable(
     _self_object: Oop,
     pointer: *const Oop,
@@ -14262,6 +14287,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         reflect_method!(b"exportVtableOf:as:\0", rust_reflect_export_vtable);
         reflect_method!(b"exportObject:as:\0", rust_reflect_export_object);
         reflect_method!(b"nameOf:\0", rust_reflect_name_of);
+        reflect_method!(b"globalNamed:\0", rust_reflect_global_named);
         reflect_method!(b"allMethodsOf:\0", rust_reflect_all_methods);
         reflect_method!(b"methodSource:\0", rust_reflect_method_source);
         reflect_method!(b"factsOf:\0", rust_reflect_facts_of);

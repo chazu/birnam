@@ -105,9 +105,10 @@ my $manifest = $ENV{OTHER_MANIFEST};
 my $dep_uri = $ENV{DEP_URI};
 my $bad = "[\\\"" . "\xC3\xA9" . "\\\" + ]";
 my $arity = "[Reflect defineMethod: #needs: on: Integer as: [:self | 1]]";
-my $nav = "let answer := 1; [answer + 1]; [1 dependencyAnswer]; " . $arity;
+my $nav = "let answer := 1; [answer + 1]; [1 dependencyAnswer]; [System pri]; " . $arity;
 my $dep_call = index($nav, "dependencyAnswer");
 my $answer_use = index($nav, "answer +");
+my $runtime_call = index($nav, "pri") + 3;
 $sendm->("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"workspaceFolders\":[{\"uri\":\"$root\"},{\"uri\":\"$other_root\"}]}}");
 $receive_until->(sub { $_[0] =~ /"id":1(?:,|\})/ }, "initialize response");
 $sendm->("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"$app_doc\",\"version\":1,\"text\":\"[1 + 2]\"}}}");
@@ -129,11 +130,12 @@ $sendm->("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\",\"para
 $sendm->("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"$doc\"},\"position\":{\"line\":0,\"character\":$dep_call}}}");
 $sendm->("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"textDocument/signatureHelp\",\"params\":{\"textDocument\":{\"uri\":\"$doc\"},\"position\":{\"line\":0,\"character\":$dep_call}}}");
 $sendm->("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"$doc\"},\"position\":{\"line\":0,\"character\":$answer_use}}}");
+$sendm->("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"$doc\"},\"position\":{\"line\":0,\"character\":$runtime_call}}}");
 my %navigation_ids;
 $receive_until->(sub {
   my ($body) = @_;
-  $navigation_ids{$1} = 1 if $body =~ /"id":(3|4|5|6|7|8|9|10)(?:,|\})/;
-  return scalar(keys %navigation_ids) == 8;
+  $navigation_ids{$1} = 1 if $body =~ /"id":(3|4|5|6|7|8|9|10|11)(?:,|\})/;
+  return scalar(keys %navigation_ids) == 9;
 }, "navigation responses");
 for my $version (4 .. 20) {
   $sendm->("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":$version},\"contentChanges\":[{\"text\":\"$arity\"}]}}");
@@ -176,6 +178,12 @@ grep -q '"id":8' "$tmp/out"
 grep -q 'dependencyAnswer' "$tmp/out"
 grep -q '"id":9' "$tmp/out"
 grep -q '"id":10' "$tmp/out"
+if ! grep -q '"id":11.*"label":"println:"' "$tmp/out"; then
+  echo "lsp-project smoke: System pri completion omitted println:" >&2
+  grep '"id":11' "$tmp/out" >&2 || true
+  sed -n '1,80p' "$tmp/err" >&2
+  exit 1
+fi
 grep -q "$DEP_URI" "$tmp/out"
 test "$(grep -o 'textDocument/publishDiagnostics' "$tmp/out" | wc -l | tr -d ' ')" -ge 20
 grep -q '"diagnostics":\[\]' "$tmp/out"

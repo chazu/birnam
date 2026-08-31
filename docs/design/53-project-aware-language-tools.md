@@ -139,7 +139,9 @@ The implemented semantic assistance provides:
 - in-scope local completion rather than a global-name dump;
 - selector arity and receiver information;
 - completion entries that distinguish globals, locals, modules, methods, and
-  symbols.
+  symbols;
+- live floor methods when an incomplete send names an exact literal global
+  receiver, without dumping every runtime or interned name.
 
 The server uses the existing documentation generator plus authored-source
 indexing, while preserving source spans and avoiding generated Zig
@@ -254,6 +256,8 @@ REPL/evaluation workflow remains independent.
 - Hover and go-to-definition for a method in a dependency open its authored
   source, not a temporary artifact or unrelated generated code.
 - Completion in a local scope does not dump every interned name by default.
+- Completion after `[System pri` includes the native `println:` method through
+  read-only reflection of that exact receiver.
 - M-x lsp/automatic lsp-mode startup works from a clean installed bundle and a
   checkout, regardless of the editor's current cwd.
 - Emacs check and build commands show standard compiler diagnostics in a
