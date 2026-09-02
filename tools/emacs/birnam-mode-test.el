@@ -209,6 +209,26 @@ spawn a server until the buffer is actually displayed."
                      '(birnam-cached-completion-at-point
                        birnam-test-generic-capf))))))
 
+(ert-deftest birnam-mode-empty-cached-prefix-does-not-fall-through ()
+  "A known receiver with no matching selector must not call a slow CAPF."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ System definitelyNoSuchSelector")
+      (let ((response (let ((result (make-hash-table :test #'equal)))
+                        (puthash "items" [] result)
+                        result))
+            (fallback-called nil))
+        (birnam--record-completions "System" "" response)
+        (setq-local
+         completion-at-point-functions
+         (list #'birnam-cached-completion-at-point
+               (lambda ()
+                 (setq fallback-called t)
+                 nil)))
+        (completion-at-point)
+        (should-not fallback-called)))))
+
 (ert-deftest birnam-mode-bounds-runtime-completion-prefixes ()
   "Edited prefixes must not grow a receiver cache without bound."
   (let ((birnam-lsp-automatic-start nil))

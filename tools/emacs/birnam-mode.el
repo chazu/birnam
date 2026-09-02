@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.4.5
+;; Version: 0.4.6
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -121,7 +121,9 @@ are still retained in the process-stable local cache."
    ((listp response) response)))
 
 (defun birnam--record-completions (receiver prefix response)
-  "Cache labels from RESPONSE for RECEIVER beginning with PREFIX."
+  "Cache labels from RESPONSE for RECEIVER beginning with PREFIX.
+An empty successful response is retained too, so later completion can
+distinguish a known-empty prefix from a cache that is not ready yet."
   (let ((labels
          (delete-dups
           (delq nil
@@ -134,17 +136,23 @@ are still retained in the process-stable local cache."
                                              (alist-get 'label item))))))
                      (and (stringp label) (substring-no-properties label))))
                  (birnam--completion-items response))))))
-    (when labels
-      (unless (hash-table-p birnam--completion-cache)
-        (setq birnam--completion-cache (make-hash-table :test #'equal)))
-      (let* ((buckets (gethash receiver birnam--completion-cache))
-             (buckets (cons (cons prefix labels)
-                            (assoc-delete-all prefix buckets))))
-        ;; Different disjoint prefixes are useful, but never let edited text
-        ;; grow this process-stable cache without bound.
-        (when (> (length buckets) 8)
-          (setcdr (nthcdr 7 buckets) nil))
-        (puthash receiver buckets birnam--completion-cache)))))
+    (unless (hash-table-p birnam--completion-cache)
+      (setq birnam--completion-cache (make-hash-table :test #'equal)))
+    (let* ((buckets (gethash receiver birnam--completion-cache))
+           (buckets (cons (cons prefix labels)
+                          (assoc-delete-all prefix buckets))))
+      ;; Different disjoint prefixes are useful, but never let edited text
+      ;; grow this process-stable cache without bound.
+      (when (> (length buckets) 8)
+        (setcdr (nthcdr 7 buckets) nil))
+      (puthash receiver buckets birnam--completion-cache))))
+
+(defun birnam--completion-cache-covers-p (receiver prefix)
+  "Return non-nil when RECEIVER's cache has a snapshot covering PREFIX."
+  (and (hash-table-p birnam--completion-cache)
+       (seq-some (lambda (bucket)
+                   (string-prefix-p (car bucket) prefix))
+                 (gethash receiver birnam--completion-cache))))
 
 (defun birnam--cached-labels (receiver prefix)
   "Return cached RECEIVER labels applicable to PREFIX."
@@ -162,9 +170,15 @@ are still retained in the process-stable local cache."
   "Complete a literal Birnam receiver from the process-stable local cache."
   (when-let* ((context (birnam--runtime-completion-context))
               (receiver (plist-get context :receiver))
-              (prefix (plist-get context :prefix))
-              (labels (birnam--cached-labels receiver prefix)))
-    (list (plist-get context :start) (point) labels :exclusive 'no)))
+              (prefix (plist-get context :prefix)))
+    (when (birnam--completion-cache-covers-p receiver prefix)
+      ;; A known-empty table is deliberately exclusive.  Returning nil, or
+      ;; marking it non-exclusive, makes completion-at-point fall through to
+      ;; lsp-mode and synchronously repeat the request that prefetch already
+      ;; answered.
+      (list (plist-get context :start) (point)
+            (birnam--cached-labels receiver prefix)
+            :exclusive t))))
 
 (defun birnam--prefetch-finished (buffer receiver response)
   "Record RECEIVER RESPONSE for BUFFER and clear its in-flight marker."
@@ -191,7 +205,7 @@ are still retained in the process-stable local cache."
       (when (and (bound-and-true-p lsp-mode) (lsp-workspaces))
         (when-let* ((context (birnam--runtime-completion-context))
                     (receiver (plist-get context :receiver)))
-          (unless (or (birnam--cached-labels receiver "")
+          (unless (or (birnam--completion-cache-covers-p receiver "")
                       (and (hash-table-p birnam--completion-prefetches)
                            (gethash receiver birnam--completion-prefetches)))
             (unless (hash-table-p birnam--completion-prefetches)
