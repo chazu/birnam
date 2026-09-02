@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.5.0
+;; Version: 0.5.1
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -216,33 +216,66 @@ distinguish a known-empty prefix from a cache that is not ready yet."
       (when (hash-table-p birnam--completion-prefetches)
         (remhash cache-key birnam--completion-prefetches)))))
 
+(defun birnam--completion-workspace-state ()
+  "Return `starting', `ready', `unsupported', or `unavailable'."
+  (let ((workspaces (lsp-workspaces)))
+    (cond
+     ((seq-some (lambda (workspace)
+                  (eq (lsp--workspace-status workspace) 'starting))
+                workspaces)
+      'starting)
+     ((seq-some (lambda (workspace)
+                  (eq (lsp--workspace-status workspace) 'initialized))
+                workspaces)
+      (if (condition-case nil
+              (lsp--capability "completionProvider")
+            (error nil))
+          'ready
+        'unsupported))
+     (t 'unavailable))))
+
 (defun birnam--start-completion-prefetch (buffer)
   "Start a non-blocking receiver completion request for BUFFER."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (setq birnam--completion-prefetch-timer nil)
-      (when (and (bound-and-true-p lsp-mode) (lsp-workspaces))
-        (when-let* ((context (birnam--completion-context))
-                    (cache-key (plist-get context :cache-key)))
-          (unless (or (birnam--completion-cache-covers-p cache-key "")
-                      (and (hash-table-p birnam--completion-prefetches)
-                           (gethash cache-key birnam--completion-prefetches)))
-            (unless (hash-table-p birnam--completion-prefetches)
-              (setq birnam--completion-prefetches
-                    (make-hash-table :test #'equal)))
-            (puthash cache-key t birnam--completion-prefetches)
-            (let ((params
-                   (save-excursion
-                     (goto-char (plist-get context :start))
-                     (lsp--text-document-position-params))))
-              (lsp-request-async
-               "textDocument/completion" params
-               (lambda (response)
-                 (birnam--prefetch-finished buffer cache-key response))
-               :error-handler
-               (lambda (error)
-                 (birnam--prefetch-failed buffer cache-key error))
-               :mode 'detached))))))))
+      (when (bound-and-true-p lsp-mode)
+        (pcase (birnam--completion-workspace-state)
+          ('starting
+           ;; lsp-completion-mode can run before initialize has supplied the
+           ;; server capabilities.  Retry without asking lsp-mode to validate
+           ;; a capability that does not exist yet.
+           (birnam--schedule-completion-prefetch))
+          ('ready
+           (when-let* ((context (birnam--completion-context))
+                       (cache-key (plist-get context :cache-key)))
+             (unless (or (birnam--completion-cache-covers-p cache-key "")
+                         (and (hash-table-p birnam--completion-prefetches)
+                              (gethash cache-key birnam--completion-prefetches)))
+               (unless (hash-table-p birnam--completion-prefetches)
+                 (setq birnam--completion-prefetches
+                       (make-hash-table :test #'equal)))
+               (puthash cache-key t birnam--completion-prefetches)
+               (let ((params
+                      (save-excursion
+                        (goto-char (plist-get context :start))
+                        (lsp--text-document-position-params))))
+                 ;; lsp-request-async can signal synchronously during a
+                 ;; workspace lifecycle transition, before its error handler
+                 ;; is installed.  A timer must never leak that error or leave
+                 ;; a permanently in-flight cache key.
+                 (condition-case error
+                     (lsp-request-async
+                      "textDocument/completion" params
+                      (lambda (response)
+                        (birnam--prefetch-finished buffer cache-key response))
+                      :error-handler
+                      (lambda (async-error)
+                        (birnam--prefetch-failed
+                         buffer cache-key async-error))
+                      :mode 'detached)
+                   (error
+                    (birnam--prefetch-failed buffer cache-key error))))))))))))
 
 (defun birnam--schedule-completion-prefetch ()
   "Schedule non-blocking completion prefetch for the receiver at point."

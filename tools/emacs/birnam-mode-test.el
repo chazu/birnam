@@ -260,6 +260,57 @@ spawn a server until the buffer is actually displayed."
                      '(birnam-cached-completion-at-point
                        birnam-test-generic-capf))))))
 
+(ert-deftest birnam-mode-prefetch-waits-for-lsp-initialization ()
+  "A startup timer must not request completion before capabilities arrive."
+  (let ((birnam-lsp-automatic-start nil)
+        (request-called nil)
+        (rescheduled nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ Syst")
+      (setq-local lsp-mode t)
+      (cl-letf (((symbol-function 'lsp-workspaces)
+                 (lambda () '(birnam-test-workspace)))
+                ((symbol-function 'lsp--workspace-status)
+                 (lambda (_workspace) 'starting))
+                ((symbol-function 'lsp--text-document-position-params)
+                 (lambda () 'birnam-test-params))
+                ((symbol-function 'lsp-request-async)
+                 (lambda (&rest _args) (setq request-called t)))
+                ((symbol-function 'birnam--schedule-completion-prefetch)
+                 (lambda () (setq rescheduled t))))
+        (birnam--start-completion-prefetch (current-buffer)))
+      (should-not request-called)
+      (should rescheduled)
+      (should-not (gethash :globals birnam--completion-prefetches)))))
+
+(ert-deftest birnam-mode-prefetch-clears-a-synchronous-lsp-error ()
+  "A preflight LSP error must not escape its timer or poison the cache key."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ Syst")
+      (setq-local lsp-mode t)
+      (cl-letf (((symbol-function 'lsp-workspaces)
+                 (lambda () '(birnam-test-workspace)))
+                ((symbol-function 'lsp--workspace-status)
+                 (lambda (_workspace) 'initialized))
+                ((symbol-function 'lsp--capability)
+                 (lambda (_capability) t))
+                ((symbol-function 'lsp--text-document-position-params)
+                 (lambda () 'birnam-test-params))
+                ((symbol-function 'lsp-request-async)
+                 (lambda (&rest _args)
+                   (error "Birnam test startup race"))))
+        (should
+         (eq (condition-case nil
+                 (progn
+                   (birnam--start-completion-prefetch (current-buffer))
+                   'returned)
+               (error 'escaped))
+             'returned)))
+      (should-not (gethash :globals birnam--completion-prefetches)))))
+
 (ert-deftest birnam-mode-empty-cached-prefix-does-not-fall-through ()
   "A known receiver with no matching selector must not call a slow CAPF."
   (let ((birnam-lsp-automatic-start nil))
