@@ -137,10 +137,11 @@ $receive_until->(sub {
   $navigation_ids{$1} = 1 if $body =~ /"id":(3|4|5|6|7|8|9|10|11)(?:,|\})/;
   return scalar(keys %navigation_ids) == 9;
 }, "navigation responses");
+# Change notifications retain current text/version but defer diagnostics until
+# save, keeping following completion/navigation requests latency-bounded.
 for my $version (4 .. 20) {
   $sendm->("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":$version},\"contentChanges\":[{\"text\":\"$arity\"}]}}");
 }
-$receive_until->(sub { $diagnostic_count >= 20 }, "versioned diagnostics");
 open my $fh, ">", $manifest or die "open $manifest: $!";
 print {$fh} "name = \"other\"\nsource_roots = [\"src\"]\nload = []\n";
 close $fh or die "close $manifest: $!";
@@ -185,7 +186,7 @@ if ! grep -q '"id":11.*"label":"println:"' "$tmp/out"; then
   exit 1
 fi
 grep -q "$DEP_URI" "$tmp/out"
-test "$(grep -o 'textDocument/publishDiagnostics' "$tmp/out" | wc -l | tr -d ' ')" -ge 20
+test "$(grep -o 'textDocument/publishDiagnostics' "$tmp/out" | wc -l | tr -d ' ')" -eq 4
 grep -q '"diagnostics":\[\]' "$tmp/out"
 test ! -s "$tmp/err"
 

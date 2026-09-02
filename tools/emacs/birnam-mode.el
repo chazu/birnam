@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.4.3
+;; Version: 0.4.4
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -43,6 +43,8 @@
 (require 'comint)
 (require 'compile)
 (require 'project)
+(require 'seq)
+(require 'subr-x)
 
 (defgroup birnam nil
   "Major mode for editing Birnam source."
@@ -84,6 +86,178 @@ Defaults to `--repl', which starts the interactive read-eval-print loop."
   "When non-nil, start lsp-mode when a Birnam buffer is opened."
   :type 'boolean
   :group 'birnam)
+
+(defcustom birnam-lsp-completion-prefetch-delay 0.15
+  "Idle seconds before prefetching literal receiver methods.
+Set this to nil to disable background prefetch; successful explicit requests
+are still retained in the process-stable local cache."
+  :type '(choice (const :tag "Disabled" nil) number)
+  :group 'birnam)
+
+;;;; LSP runtime completion cache ---------------------------------------
+
+(defvar-local birnam--completion-cache nil)
+(defvar-local birnam--completion-prefetches nil)
+(defvar-local birnam--completion-prefetch-timer nil)
+
+(defun birnam--runtime-completion-context (&optional position)
+  "Return literal receiver completion context at POSITION, or nil."
+  (save-excursion
+    (when position (goto-char position))
+    (let* ((line-start (line-beginning-position))
+           (text (buffer-substring-no-properties line-start (point)))
+           (pattern
+            ".*\\[\\s-*\\([[:alpha:]_][[:alnum:]_]*\\)\\s-+\\([[:alnum:]_]*\\)\\'"))
+      (when (string-match pattern text)
+        (list :receiver (match-string 1 text)
+              :prefix (match-string 2 text)
+              :start (+ line-start (match-beginning 2)))))))
+
+(defun birnam--completion-items (response)
+  "Return completion items carried by LSP RESPONSE."
+  (cond
+   ((hash-table-p response) (gethash "items" response))
+   ((vectorp response) (append response nil))
+   ((listp response) response)))
+
+(defun birnam--record-completions (receiver prefix response)
+  "Cache labels from RESPONSE for RECEIVER beginning with PREFIX."
+  (let ((labels
+         (delete-dups
+          (delq nil
+                (mapcar
+                 (lambda (item)
+                   (let ((label
+                          (cond
+                           ((hash-table-p item) (gethash "label" item))
+                           ((listp item) (or (plist-get item :label)
+                                             (alist-get 'label item))))))
+                     (and (stringp label) (substring-no-properties label))))
+                 (birnam--completion-items response))))))
+    (when labels
+      (unless (hash-table-p birnam--completion-cache)
+        (setq birnam--completion-cache (make-hash-table :test #'equal)))
+      (let* ((buckets (gethash receiver birnam--completion-cache))
+             (buckets (cons (cons prefix labels)
+                            (assoc-delete-all prefix buckets))))
+        ;; Different disjoint prefixes are useful, but never let edited text
+        ;; grow this process-stable cache without bound.
+        (when (> (length buckets) 8)
+          (setcdr (nthcdr 7 buckets) nil))
+        (puthash receiver buckets birnam--completion-cache)))))
+
+(defun birnam--cached-labels (receiver prefix)
+  "Return cached RECEIVER labels applicable to PREFIX."
+  (when (hash-table-p birnam--completion-cache)
+    (let (best-prefix best-labels)
+      (dolist (bucket (gethash receiver birnam--completion-cache))
+        (when (and (string-prefix-p (car bucket) prefix)
+                   (or (null best-prefix)
+                       (> (length (car bucket)) (length best-prefix))))
+          (setq best-prefix (car bucket)
+                best-labels (cdr bucket))))
+      (seq-filter (lambda (label) (string-prefix-p prefix label)) best-labels))))
+
+(defun birnam-cached-completion-at-point ()
+  "Complete a literal Birnam receiver from the process-stable local cache."
+  (when-let* ((context (birnam--runtime-completion-context))
+              (receiver (plist-get context :receiver))
+              (prefix (plist-get context :prefix))
+              (labels (birnam--cached-labels receiver prefix)))
+    (list (plist-get context :start) (point) labels :exclusive 'no)))
+
+(defun birnam--prefetch-finished (buffer receiver response)
+  "Record RECEIVER RESPONSE for BUFFER and clear its in-flight marker."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (when (hash-table-p birnam--completion-prefetches)
+        (remhash receiver birnam--completion-prefetches))
+      ;; The request starts at the selector, so the response contains the
+      ;; receiver's complete method set and applies to every later prefix.
+      (birnam--record-completions receiver "" response))))
+
+(defun birnam--prefetch-failed (buffer receiver _error)
+  "Clear BUFFER's in-flight RECEIVER marker after a failed request."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (when (hash-table-p birnam--completion-prefetches)
+        (remhash receiver birnam--completion-prefetches)))))
+
+(defun birnam--start-completion-prefetch (buffer)
+  "Start a non-blocking receiver completion request for BUFFER."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (setq birnam--completion-prefetch-timer nil)
+      (when (and (bound-and-true-p lsp-mode) (lsp-workspaces))
+        (when-let* ((context (birnam--runtime-completion-context))
+                    (receiver (plist-get context :receiver)))
+          (unless (or (birnam--cached-labels receiver "")
+                      (and (hash-table-p birnam--completion-prefetches)
+                           (gethash receiver birnam--completion-prefetches)))
+            (unless (hash-table-p birnam--completion-prefetches)
+              (setq birnam--completion-prefetches
+                    (make-hash-table :test #'equal)))
+            (puthash receiver t birnam--completion-prefetches)
+            (let ((params
+                   (save-excursion
+                     (goto-char (plist-get context :start))
+                     (lsp--text-document-position-params))))
+              (lsp-request-async
+               "textDocument/completion" params
+               (lambda (response)
+                 (birnam--prefetch-finished buffer receiver response))
+               :error-handler
+               (lambda (error)
+                 (birnam--prefetch-failed buffer receiver error))
+               :mode 'detached))))))))
+
+(defun birnam--schedule-completion-prefetch ()
+  "Schedule non-blocking completion prefetch for the receiver at point."
+  (when (timerp birnam--completion-prefetch-timer)
+    (cancel-timer birnam--completion-prefetch-timer))
+  (setq birnam--completion-prefetch-timer nil)
+  (when (and birnam-lsp-completion-prefetch-delay
+             (birnam--runtime-completion-context))
+    (setq birnam--completion-prefetch-timer
+          (run-with-idle-timer birnam-lsp-completion-prefetch-delay nil
+                              #'birnam--start-completion-prefetch
+                              (current-buffer)))))
+
+(defun birnam--record-sync-completion (original method params)
+  "Call ORIGINAL with METHOD PARAMS and retain Birnam completion labels."
+  (let ((context (and (derived-mode-p 'birnam-mode)
+                      (equal method "textDocument/completion")
+                      (birnam--runtime-completion-context))))
+    (let ((response (funcall original method params)))
+      (when context
+        (birnam--record-completions
+         (plist-get context :receiver)
+         (plist-get context :prefix)
+         response))
+      response)))
+
+(defun birnam--lsp-completion-cache-setup ()
+  "Put the receiver cache before lsp-mode's synchronous completion CAPF."
+  (when (derived-mode-p 'birnam-mode)
+    ;; A restarted workspace may expose a different runtime method set.
+    (setq birnam--completion-cache (make-hash-table :test #'equal)
+          birnam--completion-prefetches (make-hash-table :test #'equal))
+    (add-to-list 'completion-at-point-functions
+                 #'birnam-cached-completion-at-point)
+    (birnam--schedule-completion-prefetch)))
+
+(defun birnam--completion-cache-setup ()
+  "Initialize bounded runtime completion state in the current buffer."
+  (setq birnam--completion-cache (make-hash-table :test #'equal)
+        birnam--completion-prefetches (make-hash-table :test #'equal))
+  (add-hook 'post-command-hook #'birnam--schedule-completion-prefetch nil t))
+
+(with-eval-after-load 'lsp-completion
+  (unless (advice-member-p #'birnam--record-sync-completion
+                           #'lsp-request-while-no-input)
+    (advice-add 'lsp-request-while-no-input :around
+                #'birnam--record-sync-completion))
+  (add-hook 'lsp-completion-mode-hook #'birnam--lsp-completion-cache-setup))
 
 ;;;; Faces / font-lock ---------------------------------------------------
 
@@ -566,7 +740,8 @@ rather than filed in as a unit."
   ;; lsp-mode's completion provider).
   (setq-local tab-always-indent 'complete)
   (setq-local electric-indent-chars
-              (append '(?\] ?} ?\)) electric-indent-chars)))
+              (append '(?\] ?} ?\)) electric-indent-chars))
+  (birnam--completion-cache-setup))
 
 (add-hook 'birnam-mode-hook #'birnam--maybe-start-lsp)
 

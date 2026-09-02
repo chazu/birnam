@@ -34,11 +34,13 @@ birnam.toml independently or infer dependencies from filenames.
 
 ### 2.2 Diagnostics are safe by default
 
-Per-keystroke and didChange diagnostics parse and statically validate source.
-They do not evaluate top-level forms, install methods, mutate the user's Store,
-activate a generation, or write a project artifact. Any future eval/snapshot
-diagnostic is an explicit opt-in or on-save operation with a separate process or
-image boundary.
+Diagnostics on open/save parse and statically validate source. didChange only
+retains the latest full text/version so latency-sensitive completion and
+navigation requests cannot queue behind a diagnostic pass for every keystroke.
+Static diagnostics do not evaluate top-level forms, install methods, mutate the
+user's Store, activate a generation, or write a project artifact. Any future
+eval/snapshot diagnostic is an explicit opt-in with a separate process or image
+boundary.
 
 ### 2.3 Editor coordinates are LSP coordinates
 
@@ -223,8 +225,10 @@ static boundary is deliberately narrow:
 - no invented unbound-name errors, because ordinary identifiers and dispatch
   remain late-bound globals/runtime behavior.
 
-Repeated didChange requests replace the document text/version and republish
-fresh diagnostics without compiling an artifact or retaining stale documents.
+Repeated didChange requests replace the document text/version without compiling
+an artifact or retaining stale documents. didOpen and didSave publish fresh
+diagnostics; this keeps the synchronous stdio server responsive to interactive
+requests while preserving a deterministic diagnostic boundary.
 
 ### P2 — navigation and completion — implemented
 
@@ -247,8 +251,9 @@ REPL/evaluation workflow remains independent.
 - Opening src/app.birnam from a nested directory selects the same project root
   and dependency graph as birnam check.
 - A syntax error after a non-ASCII character reports the correct UTF-16 range.
-- Repeated changes to one document replace its diagnostics and do not retain an
-  unbounded old document/store record.
+- Repeated changes to one document replace its retained text/version; save
+  replaces its diagnostics, without retaining an unbounded old document/store
+  record.
 - A missing dependency is reported by both birnam check and LSP with the same
   diagnostic kind and chain.
 - Document symbols include top-level bindings and literal method declarations;

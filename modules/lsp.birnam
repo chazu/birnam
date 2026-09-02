@@ -3,9 +3,10 @@
 // Speaks LSP (JSON-RPC + `Content-Length` framing) on stdin/stdout, backed by the
 // pure-birnam Json module. The first project-aware slice adds read-only workspace
 // resolution, per-document project contexts, UTF-16 coordinates, full-document
-// versions, and bounded document retention. On didOpen/didChange it performs
-// parse-only diagnostics; source-backed navigation reads retained open buffers
-// and never activates code.
+// versions, and bounded document retention. It performs parse-only diagnostics
+// on open/save; change notifications only retain text so completion requests are
+// never queued behind a full diagnostic pass. Source-backed navigation reads
+// retained open buffers and never activates code.
 // Lifecycle, document synchronization, diagnostics, hover, and source-backed
 // navigation are handled; unsupported requests answer method-not-found.
 //
@@ -30,6 +31,9 @@
 [[db cellFor: Lsp attr: #projectFailures] set: [Map new]];
 [[db cellFor: Lsp attr: #documentPaths] set: [Map new]];
 [[db cellFor: Lsp attr: #projectIndexes] set: [Map new]];
+[[db cellFor: Lsp attr: #runtimeCompletionCache] set: [Map new]];
+[[db cellFor: Lsp attr: #completionResponseCache] set: [Map new]];
+[[db cellFor: Lsp attr: #inputBuffer] set: ""];
 [[db cellFor: Lsp attr: #workspaceUri] set: ""];
 
 // These are syntax-sensitive compiler forms, indexed as data so the analysis
@@ -79,20 +83,45 @@ let analysisThreadedSpecialSelectors := {
 
 // -- framed input -------------------------------------------------------------
 
-// Read the header block one byte at a time until "\r\n\r\n" (headers are tiny).
-// Returns what was read; a short read at EOF just returns the partial accumulator.
-[Reflect defineMethod: #readHeaderInto:acc: on: Lsp as: [:self :buf :acc |
-  let k := [0 readInto: buf count: 1];
-  let r := [[k < 1]
-    ifTrue: [| acc]
+[Reflect defineMethod: #inputBuffer on: Lsp as: [:self |
+  [[db cellFor: self attr: #inputBuffer] value]
+  ] doc:
+  "Answers bytes already read from stdin but not consumed as a complete JSON-RPC frame." ];
+
+[Reflect defineMethod: #inputBuffer: on: Lsp as: [:self :bytes |
+  [[db cellFor: self attr: #inputBuffer] set: bytes];
+  self
+  ] doc:
+  "Replaces the retained JSON-RPC input bytes." ];
+
+[Reflect defineMethod: #readInputChunk on: Lsp as: [:self |
+  let buf := [Alien alloc: 65537];
+  let k := [0 readInto: buf count: 65536];
+  [[k > 0] ifTrue: [|
+    [buf pokeByte: 0 at: k];
+    [self inputBuffer: [[self inputBuffer] , [buf peekStringAt: 0]]]]];
+  [buf free];
+  k
+  ] doc:
+  "Reads one available stdin chunk into the retained framing buffer." ];
+
+[Reflect defineMethod: #takeBufferedMessage on: Lsp as: [:self |
+  let buffered := [self inputBuffer];
+  let headerEnd := [buffered indexOf: "\r\n\r\n"];
+  [[headerEnd isNil]
+    ifTrue: [| nil]
     ifFalse: [|
-      [buf pokeByte: 0 at: 1];
-      let acc2 := [acc , [buf peekStringAt: 0]];
-      [[acc2 endsWith: "\r\n\r\n"]
-        ifTrue:  [| acc2]
-        ifFalse: [| [self readHeaderInto: buf acc: acc2]]]]];
-  r] doc:
-  "Reads header bytes from stdin one at a time onto `acc` until the CRLFCRLF terminator; at EOF answers the partial accumulator."];
+      let bodyStart := [headerEnd + 4];
+      let header := [buffered copyFrom: 0 to: bodyStart];
+      let bodyEnd := [bodyStart + [self contentLengthOf: header]];
+      [[bodyEnd > [buffered size]]
+        ifTrue: [| nil]
+        ifFalse: [|
+          let body := [buffered copyFrom: bodyStart to: bodyEnd];
+          [self inputBuffer: [buffered copyFrom: bodyEnd to: [buffered size]]];
+          body]]]]
+  ] doc:
+  "Consumes and answers one complete retained JSON-RPC body, or nil when more bytes are needed." ];
 
 // Extract the Content-Length value (an Integer) from a header block.
 [Reflect defineMethod: #contentLengthOf: on: Lsp as: [:self :header |
@@ -105,37 +134,16 @@ let analysisThreadedSpecialSelectors := {
   r] doc:
   "Answers the Content-Length value (an Integer) extracted from the `header` block."];
 
-// Read exactly `n` body bytes, accumulating into a String across partial reads
-// (read into buf@0 each time, so no pointer arithmetic).
-[Reflect defineMethod: #drainN:buf:acc: on: Lsp as: [:self :n :buf :acc |
-  let r := [[n <= 0]
-    ifTrue: [| acc]
-    ifFalse: [|
-      let want := [[n < 65535] ifTrue: [| n] ifFalse: [| 65535]];
-      let k := [0 readInto: buf count: want];
-      [[k < 1]
-        ifTrue:  [| acc]
-        ifFalse: [|
-          [buf pokeByte: 0 at: k];
-          [self drainN: [n - k] buf: buf acc: [acc , [buf peekStringAt: 0]]]]]]];
-  r] doc:
-  "Reads exactly `n` body bytes from stdin, accumulating onto `acc` across partial reads; short at EOF."];
-
 // Read one whole message; answer its JSON body String, or nil at EOF.
 [Reflect defineMethod: #readMessage on: Lsp as: [:self |
-  let hb := [Alien alloc: 2];
-  let header := [self readHeaderInto: hb acc: ""];
-  [hb free];
-  let r := [[header includesSubstring: "Content-Length:"]
-    ifTrue: [|
-      let n := [self contentLengthOf: header];
-      let buf := [Alien alloc: 65536];
-      let body := [self drainN: n buf: buf acc: ""];
-      [buf free];
-      body]
-    ifFalse: [| nil]];
-  r] doc:
-  "Reads one whole framed message; answers its JSON body String, or nil at EOF."];
+  let buffered := [self takeBufferedMessage];
+  [[buffered notNil]
+    ifTrue: [| buffered]
+    ifFalse: [|
+      let k := [self readInputChunk];
+      [[k < 1] ifTrue: [| nil] ifFalse: [| [self readMessage]]]]]
+  ] doc:
+  "Reads one whole framed message through a retained chunk buffer; answers its JSON body String, or nil at EOF."];
 
 // -- diagnostics --------------------------------------------------------------
 
@@ -942,54 +950,127 @@ let analysisThreadedSpecialSelectors := {
   ] doc:
   "Builds a bounded method CompletionItem without scanning historical source generations." ];
 
+[Reflect defineMethod: #runtimeCompletionCacheMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #runtimeCompletionCache] value]
+  ] doc:
+  "Answers receiver-name-to-bounded-runtime-completion-items retained for this server process." ];
+
+[Reflect defineMethod: #clearRuntimeCompletionCache on: Lsp as: [:self |
+  [[db cellFor: self attr: #runtimeCompletionCache] set: [Map new]];
+  self
+  ] doc:
+  "Drops the process-local runtime completion snapshot cache." ];
+
+[Reflect defineMethod: #runtimeCompletionItemsFor:named: on: Lsp as: [:self :receiver :receiverName |
+  let cached := [[self runtimeCompletionCacheMap] at: receiverName ifAbsent: [| nil]];
+  [[cached notNil]
+    ifTrue: [| cached]
+    ifFalse: [|
+      let items := [[Reflect allMethodsOf: receiver] inject: #[] into: [:out :entry |
+        [out add: [self completionItemForRuntimeMethod: entry receiver: receiverName]]]];
+      [[db cellFor: self attr: #runtimeCompletionCache] set:
+        [[self runtimeCompletionCacheMap] at: receiverName put: items]];
+      items]]
+  ] doc:
+  "Builds each literal global receiver's bounded method items once; the LSP process does not evaluate edited source, so its runtime method set is stable." ];
+
+[Reflect defineMethod: #runtimeCompletionItemsFor:named:prefix: on: Lsp as: [:self :receiver :receiverName :prefix |
+  [[self runtimeCompletionItemsFor: receiver named: receiverName]
+    inject: #[] into: [:out :item |
+      let name := [item at: "label" ifAbsent: [| ""]];
+      [[name startsWith: prefix] ifTrue: [| [out add: item]] ifFalse: [| out]]]]
+  ] doc:
+  "Filters one already-cached receiver method snapshot without retaining edited prefixes." ];
+
+[Reflect defineMethod: #completionResponseCacheMap on: Lsp as: [:self |
+  [[db cellFor: self attr: #completionResponseCache] value]
+  ] doc:
+  "Answers the single exact completion response retained per open document URI." ];
+
+[Reflect defineMethod: #clearCompletionResponseCache on: Lsp as: [:self |
+  [[db cellFor: self attr: #completionResponseCache] set: [Map new]];
+  self
+  ] doc:
+  "Drops exact document completion responses." ];
+
+[Reflect defineMethod: #cachedCompletionFor:uri:position: on: Lsp as: [:self :text :uri :position |
+  let entry := [[self completionResponseCacheMap] at: uri ifAbsent: [| nil]];
+  let storedPosition := [[entry isNil]
+    ifTrue: [| nil]
+    ifFalse: [| [entry at: "position" ifAbsent: [| nil]]]];
+  let sameText := [[entry notNil] & [[entry at: "text" ifAbsent: [| ""]] = text]];
+  let sameLine := [[storedPosition notNil] &
+    [[storedPosition at: "line" ifAbsent: [| -1]] = [position at: "line" ifAbsent: [| -2]]]];
+  let sameCharacter := [[storedPosition notNil] &
+    [[storedPosition at: "character" ifAbsent: [| -1]] = [position at: "character" ifAbsent: [| -2]]]];
+  [[sameText & [sameLine & sameCharacter]]
+    ifTrue: [| [entry at: "result" ifAbsent: [| nil]]]
+    ifFalse: [| nil]]
+  ] doc:
+  "Answers a retained completion only for byte-identical text and the same LSP position." ];
+
+[Reflect defineMethod: #rememberCompletion:text:uri:position: on: Lsp as: [:self :result :text :uri :position |
+  let entry := [Map
+    => new
+    => at: "text" put: text
+    => at: "position" put: position
+    => at: "result" put: result];
+  [[db cellFor: self attr: #completionResponseCache] set:
+    [[self completionResponseCacheMap] at: uri put: entry]];
+  result
+  ] doc:
+  "Retains one exact completion response per document, replacing the older entry." ];
+
 [Reflect defineMethod: #completionItemsForRuntimeReceiver:position:prefix:seen: on: Lsp as: [:self :text :position :prefix :seen |
   let receiverName := [self completionLiteralReceiverAtPosition: position in: text];
   let receiver := [[receiverName isEmpty]
     ifTrue: [| nil]
     ifFalse: [| [Reflect globalNamed: [receiverName asSymbol]]]];
-  let methods := [[receiver isNil] ifTrue: [| #[]] ifFalse: [| [Reflect allMethodsOf: receiver]]];
-  [methods inject: #[] into: [:out :entry |
-    let selector := [entry at: #selector ifAbsent: [| nil]];
-    let name := [[selector isNil] ifTrue: [| ""] ifFalse: [| [Reflect nameOf: selector]]];
+  let items := [[receiver isNil]
+    ifTrue: [| #[]]
+    ifFalse: [| [self runtimeCompletionItemsFor: receiver named: receiverName prefix: prefix]]];
+  [items inject: #[] into: [:out :item |
+    let name := [item at: "label" ifAbsent: [| ""]];
     let already := [[seen value] at: name ifAbsent: [| nil]];
-    let wanted := [[[name isEmpty] not] & [name startsWith: prefix]];
-    let shouldAdd := [[already isNil] & wanted];
+    let shouldAdd := [[already isNil] & [[name isEmpty] not]];
     [shouldAdd
       ifTrue: [|
         [seen set: [[seen value] at: name put: true]];
-        [out add: [self completionItemForRuntimeMethod: entry receiver: receiverName]]]
+        [out add: item]]
       ifFalse: [| out]]]]
   ] doc:
-  "Answers live methods only when the incomplete send spells an exact global receiver." ];
+  "Answers cached live methods only when the incomplete send spells an exact global receiver." ];
 
 [Reflect defineMethod: #completionItemsFor:uri:position:index: on: Lsp as: [:self :text :uri :position :index |
   let prefix := [self completionPrefixAtPosition: position in: text];
-  let offset := [self byteOffsetAtPosition: position in: text];
-  let doc := [self documentInIndex: index uri: uri];
   let seen := [Map new asCell];
-  let items := [#[] asCell];
-  [[doc notNil] ifTrue: [|
-    let bindings := [doc at: "bindings" ifAbsent: [| #[]]];
-    [bindings do: [:entry |
-      let name := [entry at: "name" ifAbsent: [| ""]];
-      let start := [entry at: "scopeStart" ifAbsent: [| 0]];
-      let finish := [entry at: "scopeEnd" ifAbsent: [| [text size]]];
-      let already := [[seen value] at: name ifAbsent: [| nil]];
-      let inScope := [[offset >= start] & [offset <= finish]];
-      let wanted := [[already isNil] & [name startsWith: prefix]];
-      let shouldAdd := [wanted & inScope];
-      [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForBinding: entry]]]]]]];
-  let symbols := [index at: "symbols" ifAbsent: [| #[]]];
-      [symbols do: [:entry |
-        let name := [entry at: "name" ifAbsent: [| ""]];
-    let already := [[seen value] at: name ifAbsent: [| nil]];
-    let shouldAdd := [[already isNil] & [name startsWith: prefix]];
-    [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForSymbol: entry]]]]]]];
-  let runtimeItems := [self completionItemsForRuntimeReceiver: text position: position prefix: prefix seen: seen];
-  [runtimeItems do: [:item | [items set: [[items value] add: item]]]];
-  [items value]]]
+  let receiverName := [self completionLiteralReceiverAtPosition: position in: text];
+  [[receiverName isEmpty]
+    ifTrue: [|
+      let offset := [self byteOffsetAtPosition: position in: text];
+      let doc := [self documentInIndex: index uri: uri];
+      let items := [#[] asCell];
+      [[doc notNil] ifTrue: [|
+        let bindings := [doc at: "bindings" ifAbsent: [| #[]]];
+        [bindings do: [:entry |
+          let name := [entry at: "name" ifAbsent: [| ""]];
+          let start := [entry at: "scopeStart" ifAbsent: [| 0]];
+          let finish := [entry at: "scopeEnd" ifAbsent: [| [text size]]];
+          let already := [[seen value] at: name ifAbsent: [| nil]];
+          let inScope := [[offset >= start] & [offset <= finish]];
+          let wanted := [[already isNil] & [name startsWith: prefix]];
+          let shouldAdd := [wanted & inScope];
+          [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForBinding: entry]]]]]]];
+      let symbols := [index at: "symbols" ifAbsent: [| #[]]];
+          [symbols do: [:entry |
+            let name := [entry at: "name" ifAbsent: [| ""]];
+        let already := [[seen value] at: name ifAbsent: [| nil]];
+        let shouldAdd := [[already isNil] & [name startsWith: prefix]];
+        [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForSymbol: entry]]]]]]];
+      [items value]]]]
+    ifFalse: [| [self completionItemsForRuntimeReceiver: text position: position prefix: prefix seen: seen]]]
   ] doc:
-  "Answers scoped authored bindings and symbols, plus live methods for an exact literal global receiver." ];
+  "Answers only live methods for an exact literal global receiver; otherwise scoped authored bindings and symbols." ];
 
 [Reflect defineMethod: #onCompletion:id: on: Lsp as: [:self :p :id |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];
@@ -997,8 +1078,16 @@ let analysisThreadedSpecialSelectors := {
   let position := [p at: "position" ifAbsent: [| [Map new]]];
   let stored := [[self docsMap] at: uri ifAbsent: [| ""]];
   let text := [[stored isNil] ifTrue: [| ""] ifFalse: [| stored]];
-  let index := [self projectIndexFor: uri];
-  let result := [[index isNil] ifTrue: [| #[]] ifFalse: [| [self completionItemsFor: text uri: uri position: position index: index]]];
+  let cached := [self cachedCompletionFor: text uri: uri position: position];
+  let result := [[cached notNil]
+    ifTrue: [| cached]
+    ifFalse: [|
+      let receiverName := [self completionLiteralReceiverAtPosition: position in: text];
+      let index := [[receiverName isEmpty] ifTrue: [| [self projectIndexFor: uri]] ifFalse: [| [Map new]]];
+      let computed := [[[receiverName isEmpty] & [index isNil]]
+        ifTrue: [| #[]]
+        ifFalse: [| [self completionItemsFor: text uri: uri position: position index: index]]];
+      [self rememberCompletion: computed text: text uri: uri position: position]]];
   [self respond: id result: result];
   self] doc:
   "Answers LSP completion from in-scope bindings and resolver-selected authored symbols." ];
@@ -1468,9 +1557,9 @@ let analysisThreadedSpecialSelectors := {
   let text := [[changes isEmpty] ifTrue: [| ""] ifFalse: [| [[changes at: 0] at: "text" ifAbsent: [| ""]]]];
   let current := [self versionOf: uri];
   [[version >= current]
-    ifTrue: [| [self storeDoc: uri text: text version: version]; [self diagnoseUri: uri text: text]]];
+    ifTrue: [| [self storeDoc: uri text: text version: version]]];
   self] doc:
-  "didChange: accepts only non-stale full-text versions, replaces the document, and republishes diagnostics."];
+  "didChange: accepts only non-stale full-text versions and replaces the document; diagnostics run on open/save so interactive requests do not queue behind every keystroke."];
 
 [Reflect defineMethod: #republishProjectDiagnosticsFor:and: on: Lsp as: [:self :oldRoot :newRoot |
   let docs := [self docsMap];

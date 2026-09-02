@@ -175,6 +175,43 @@ spawn a server until the buffer is actually displayed."
       (should (eq (lookup-key birnam-mode-map (kbd "<tab>"))
                   #'indent-for-tab-command)))))
 
+(ert-deftest birnam-mode-caches-literal-receiver-completion ()
+  "A prefetched receiver response should make later CAPF calls local."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ System pri")
+      (let* ((context (birnam--runtime-completion-context))
+             (response (let ((result (make-hash-table :test #'equal))
+                             (print (make-hash-table :test #'equal))
+                             (println (make-hash-table :test #'equal)))
+                         (puthash "label" "print:" print)
+                         (puthash "label" "println:" println)
+                         (puthash "items" (vector print println) result)
+                         result)))
+        (should (equal (plist-get context :receiver) "System"))
+        (should (equal (plist-get context :prefix) "pri"))
+        (birnam--record-completions "System" "" response)
+        (pcase-let ((`(,beg ,end ,labels . ,_)
+                     (birnam-cached-completion-at-point)))
+          (should (= beg 10))
+          (should (= end (point)))
+          (should (equal labels '("print:" "println:"))))))))
+
+(ert-deftest birnam-mode-bounds-runtime-completion-prefixes ()
+  "Edited prefixes must not grow a receiver cache without bound."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (dotimes (i 12)
+        (let ((response (let ((result (make-hash-table :test #'equal))
+                              (item (make-hash-table :test #'equal)))
+                          (puthash "label" (format "p%d" i) item)
+                          (puthash "items" (vector item) result)
+                          result)))
+          (birnam--record-completions "System" (format "p%d" i) response)))
+      (should (= (length (gethash "System" birnam--completion-cache)) 8)))))
+
 (ert-deftest birnam-mode-lsp-start-falls-back-without-deferred ()
   "Older lsp-mode builds without `lsp-deferred' still start directly."
   (let ((birnam-test-lsp-started nil)

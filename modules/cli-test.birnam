@@ -132,3 +132,45 @@ let s := [TestSuite named: "Cli" module: #cli];
 [s test: "Lsp translates UTF-8 byte spans and UTF-16 positions" do: [:t |
   [t expect: [Lsp utf16Offset: 3 in: "aé"] equals: 2 describes: "a two-byte code point is one UTF-16 unit"];
   [t expect: [Lsp byteOffsetForUtf16: 2 in: "aé"] equals: 3 describes: "a UTF-16 cursor advances over the full UTF-8 code point"]]];
+
+[s test: "Lsp caches bounded runtime completion items per receiver" do: [:t |
+  [Lsp clearRuntimeCompletionCache];
+  let first := [Lsp runtimeCompletionItemsFor: System named: "System"];
+  let second := [Lsp runtimeCompletionItemsFor: System named: "System"];
+  let prefixedFirst := [Lsp runtimeCompletionItemsFor: System named: "System" prefix: "pri"];
+  let prefixedSecond := [Lsp runtimeCompletionItemsFor: System named: "System" prefix: "pri"];
+  [t assert: [[first size] >= 1] describes: "System exposes runtime completion items"];
+  [t expect: first equals: second describes: "a repeated lookup reuses the cached item vector"];
+  [t expect: prefixedFirst equals: prefixedSecond describes: "a repeated prefix lookup filters the same bounded receiver snapshot"];
+  [t assert: [prefixedFirst anySatisfy: [:item | [[item at: "label"] = "println:"]]]
+     describes: "the prefix index retains matching runtime selectors"];
+  [t expect: [[Lsp runtimeCompletionCacheMap] keys] equals: #["System"]
+     describes: "the cache is bounded by receiver name"]]];
+
+[s test: "Lsp runtime receiver completion bypasses authored index traversal" do: [:t |
+  [Lsp clearRuntimeCompletionCache];
+  let position := [Map => new => at: "line" put: 0 => at: "character" put: 12];
+  let items := [Lsp completionItemsFor: "[ System pri" uri: "file:///main.birnam"
+    position: position index: [Map new]];
+  [t assert: [items anySatisfy: [:item | [[item at: "label"] = "println:"]]]
+     describes: "an exact runtime receiver completes without a project document"]]];
+
+[s test: "Lsp reuses only an exact document completion result" do: [:t |
+  [Lsp clearCompletionResponseCache];
+  let position := [Map => new => at: "line" put: 0 => at: "character" put: 12];
+  let result := #[[Map => new => at: "label" put: "print:"]];
+  [Lsp rememberCompletion: result text: "[ System pri" uri: "file:///main.birnam" position: position];
+  [t expect: [Lsp cachedCompletionFor: "[ System pri" uri: "file:///main.birnam" position: position]
+     equals: result describes: "unchanged text and position reuse the bounded result"];
+  [t assert: [[Lsp cachedCompletionFor: "[ System print" uri: "file:///main.birnam" position: position] isNil]
+     describes: "changed text cannot reuse a completion result"]]];
+
+[s test: "Lsp chunk framing consumes complete messages and retains overread bytes" do: [:t |
+  [Lsp inputBuffer: "Content-Length: 3\r\n\r\noneContent-Length: 3\r\n\r\ntwo"];
+  [t expect: [Lsp takeBufferedMessage] equals: "one" describes: "the first complete body is consumed"];
+  [t expect: [Lsp takeBufferedMessage] equals: "two" describes: "overread bytes retain the following frame"];
+  [Lsp inputBuffer: "Content-Length: 4\r\n\r\nabc"];
+  [t assert: [[Lsp takeBufferedMessage] isNil] describes: "an incomplete body waits for another chunk"];
+  [t expect: [Lsp inputBuffer] equals: "Content-Length: 4\r\n\r\nabc"
+     describes: "an incomplete frame remains byte-identical"];
+  [Lsp inputBuffer: ""]]];
