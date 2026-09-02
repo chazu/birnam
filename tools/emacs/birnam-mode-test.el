@@ -198,6 +198,17 @@ spawn a server until the buffer is actually displayed."
           (should (= end (point)))
           (should (equal labels '("print:" "println:"))))))))
 
+(ert-deftest birnam-mode-installs-cache-ahead-of-existing-lsp-capfs ()
+  "Receiver cache must survive and precede general LSP CAPF setup."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (setq-local completion-at-point-functions '(birnam-test-generic-capf))
+      (birnam--lsp-completion-cache-setup)
+      (should (equal completion-at-point-functions
+                     '(birnam-cached-completion-at-point
+                       birnam-test-generic-capf))))))
+
 (ert-deftest birnam-mode-bounds-runtime-completion-prefixes ()
   "Edited prefixes must not grow a receiver cache without bound."
   (let ((birnam-lsp-automatic-start nil))

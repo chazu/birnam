@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.4.4
+;; Version: 0.4.5
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -257,7 +257,12 @@ are still retained in the process-stable local cache."
                            #'lsp-request-while-no-input)
     (advice-add 'lsp-request-while-no-input :around
                 #'birnam--record-sync-completion))
-  (add-hook 'lsp-completion-mode-hook #'birnam--lsp-completion-cache-setup))
+  ;; Run after general LSP completion setup.  User configurations commonly
+  ;; replace `completion-at-point-functions' from this hook (for example to
+  ;; wrap LSP and file completion with CAPE), so installing the cache first
+  ;; would make it disappear even though the background prefetch still ran.
+  (add-hook 'lsp-completion-mode-hook
+            #'birnam--lsp-completion-cache-setup t))
 
 ;;;; Faces / font-lock ---------------------------------------------------
 
