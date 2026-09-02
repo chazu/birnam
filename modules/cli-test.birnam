@@ -155,6 +155,37 @@ let s := [TestSuite named: "Cli" module: #cli];
   [t assert: [items anySatisfy: [:item | [[item at: "label"] = "println:"]]]
      describes: "an exact runtime receiver completes without a project document"]]];
 
+[s test: "Lsp completes exported globals in receiver position" do: [:t |
+  [Lsp clearRuntimeGlobalCompletionCache];
+  let position := [Map => new => at: "line" put: 0 => at: "character" put: 6];
+  let names := [Reflect allGlobalNames];
+  [t assert: [names anySatisfy: [:name | [[Reflect nameOf: name] = "System"]]]
+     describes: "reflection exposes the actual System export"];
+  [t expect: [Lsp completionGlobalReceiverPrefixAtPosition: position in: "[ Syst"]
+     equals: "Syst" describes: "receiver-position parsing keeps the partial global"];
+  let tokenStart := [Map => new => at: "line" put: 0 => at: "character" put: 2];
+  [t expect: [Lsp completionGlobalReceiverPrefixAtPosition: tokenStart in: "[ Syst"]
+     equals: "" describes: "prefetch at the token start requests the complete global snapshot"];
+  [t expect: [Lsp completionLiteralReceiverAtPosition: position in: "[ Syst"]
+     equals: "" describes: "a partial receiver is not mistaken for a method receiver"];
+  [t assert: [[Lsp runtimeGlobalCompletionItemsForPrefix: "Syst"]
+     anySatisfy: [:item | [[item at: "label"] = "System"]]]
+     describes: "the cached runtime export snapshot filters System"];
+  let items := [Lsp completionItemsFor: "[ Syst" uri: "file:///main.birnam"
+    position: position index: [Map new]];
+  [t assert: [items anySatisfy: [:item | [[item at: "label"] = "System"]]]
+     describes: "a partial receiver completes an exported runtime global"];
+  let allItems := [Lsp completionItemsFor: "[ Syst" uri: "file:///main.birnam"
+    position: tokenStart index: [Map new]];
+  [t assert: [allItems anySatisfy: [:item | [[item at: "label"] = "System"]]]
+     describes: "token-start prefetch includes System in the complete snapshot"];
+  [t expect: [Lsp runtimeGlobalCompletionBuildCount] equals: 1
+     describes: "the first global lookup builds one bounded snapshot"];
+  [Lsp completionItemsFor: "[ Obj" uri: "file:///main.birnam"
+    position: position index: [Map new]];
+  [t expect: [Lsp runtimeGlobalCompletionBuildCount] equals: 1
+     describes: "later prefixes reuse the runtime global snapshot"]]];
+
 [s test: "Lsp reuses only an exact document completion result" do: [:t |
   [Lsp clearCompletionResponseCache];
   let position := [Map => new => at: "line" put: 0 => at: "character" put: 12];

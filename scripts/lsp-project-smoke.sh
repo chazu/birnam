@@ -137,9 +137,12 @@ $receive_until->(sub {
   $navigation_ids{$1} = 1 if $body =~ /"id":(3|4|5|6|7|8|9|10|11)(?:,|\})/;
   return scalar(keys %navigation_ids) == 9;
 }, "navigation responses");
+$sendm->("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":4},\"contentChanges\":[{\"text\":\"[ Syst\"}]}}");
+$sendm->("{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"$doc\"},\"position\":{\"line\":0,\"character\":6}}}");
+$receive_until->(sub { $_[0] =~ /"id":12(?:,|\})/ }, "global completion response");
 # Change notifications retain current text/version but defer diagnostics until
 # save, keeping following completion/navigation requests latency-bounded.
-for my $version (4 .. 20) {
+for my $version (5 .. 20) {
   $sendm->("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"$doc\",\"version\":$version},\"contentChanges\":[{\"text\":\"$arity\"}]}}");
 }
 open my $fh, ">", $manifest or die "open $manifest: $!";
@@ -182,6 +185,12 @@ grep -q '"id":10' "$tmp/out"
 if ! grep -q '"id":11.*"label":"println:"' "$tmp/out"; then
   echo "lsp-project smoke: System pri completion omitted println:" >&2
   grep '"id":11' "$tmp/out" >&2 || true
+  sed -n '1,80p' "$tmp/err" >&2
+  exit 1
+fi
+if ! grep -q '"id":12.*"label":"System"' "$tmp/out"; then
+  echo "lsp-project smoke: Syst receiver completion omitted System" >&2
+  grep '"id":12' "$tmp/out" >&2 || true
   sed -n '1,80p' "$tmp/err" >&2
   exit 1
 fi

@@ -198,6 +198,57 @@ spawn a server until the buffer is actually displayed."
           (should (= end (point)))
           (should (equal labels '("print:" "println:"))))))))
 
+(ert-deftest birnam-mode-caches-global-receiver-completion ()
+  "A prefetched global snapshot should complete `[ Syst' locally."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ Syst")
+      (let* ((context (birnam--global-completion-context))
+             (response (let ((result (make-hash-table :test #'equal))
+                             (system (make-hash-table :test #'equal))
+                             (symbol (make-hash-table :test #'equal)))
+                         (puthash "label" "System" system)
+                         (puthash "label" "Symbol" symbol)
+                         (puthash "items" (vector system symbol) result)
+                         result)))
+        (should (equal (plist-get context :cache-key) :globals))
+        (should (equal (plist-get context :prefix) "Syst"))
+        (birnam--record-completions :globals "" response)
+        (pcase-let ((`(,beg ,end ,labels . ,_)
+                     (birnam-cached-completion-at-point)))
+          (should (= beg 3))
+          (should (= end (point)))
+          (should (equal labels '("System"))))))))
+
+(ert-deftest birnam-mode-cached-runtime-completion-stays-fast ()
+  "Method and global cache lookups should remain safely below interactive latency."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (let ((response (let ((result (make-hash-table :test #'equal))
+                            (system (make-hash-table :test #'equal))
+                            (println (make-hash-table :test #'equal)))
+                        (puthash "label" "System" system)
+                        (puthash "label" "println:" println)
+                        (puthash "items" (vector system println) result)
+                        result)))
+        (birnam--record-completions :globals "" response)
+        (birnam--record-completions "System" "" response)
+        (let ((started (float-time)))
+          (dotimes (_ 1000)
+            (erase-buffer)
+            (insert "[ Syst")
+            (should (equal (nth 2 (birnam-cached-completion-at-point))
+                           '("System")))
+            (erase-buffer)
+            (insert "[ System pri")
+            (should (equal (nth 2 (birnam-cached-completion-at-point))
+                           '("println:"))))
+          ;; Two thousand full context parses and cache lookups should average
+          ;; under 0.5 ms even with a generous cross-machine budget.
+          (should (< (- (float-time) started) 1.0)))))))
+
 (ert-deftest birnam-mode-installs-cache-ahead-of-existing-lsp-capfs ()
   "Receiver cache must survive and precede general LSP CAPF setup."
   (let ((birnam-lsp-automatic-start nil))
@@ -220,6 +271,26 @@ spawn a server until the buffer is actually displayed."
                         result))
             (fallback-called nil))
         (birnam--record-completions "System" "" response)
+        (setq-local
+         completion-at-point-functions
+         (list #'birnam-cached-completion-at-point
+               (lambda ()
+                 (setq fallback-called t)
+                 nil)))
+        (completion-at-point)
+        (should-not fallback-called)))))
+
+(ert-deftest birnam-mode-empty-global-prefix-does-not-fall-through ()
+  "A known global snapshot with no matching name must not call a slow CAPF."
+  (let ((birnam-lsp-automatic-start nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ DefinitelyNoSuchGlobal")
+      (let ((response (let ((result (make-hash-table :test #'equal)))
+                        (puthash "items" [] result)
+                        result))
+            (fallback-called nil))
+        (birnam--record-completions :globals "" response)
         (setq-local
          completion-at-point-functions
          (list #'birnam-cached-completion-at-point

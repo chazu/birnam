@@ -55,12 +55,10 @@ impl Environment {
             .collect()
     }
 
-    #[cfg(test)]
     pub(crate) fn count(&self) -> usize {
         self.ordered.len()
     }
 
-    #[cfg(test)]
     pub(crate) fn name_at(&self, index: usize) -> Oop {
         self.ordered
             .get(index)

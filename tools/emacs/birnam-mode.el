@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.4.6
+;; Version: 0.5.0
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -109,9 +109,28 @@ are still retained in the process-stable local cache."
            (pattern
             ".*\\[\\s-*\\([[:alpha:]_][[:alnum:]_]*\\)\\s-+\\([[:alnum:]_]*\\)\\'"))
       (when (string-match pattern text)
-        (list :receiver (match-string 1 text)
+        (list :cache-key (match-string 1 text)
+              :receiver (match-string 1 text)
               :prefix (match-string 2 text)
               :start (+ line-start (match-beginning 2)))))))
+
+(defun birnam--global-completion-context (&optional position)
+  "Return global receiver-name completion context at POSITION, or nil."
+  (save-excursion
+    (when position (goto-char position))
+    (let* ((line-start (line-beginning-position))
+           (text (buffer-substring-no-properties line-start (point)))
+           (pattern
+            ".*\\[\\s-*\\([[:alpha:]_][[:alnum:]_]*\\)\\'"))
+      (when (string-match pattern text)
+        (list :cache-key :globals
+              :prefix (match-string 1 text)
+              :start (+ line-start (match-beginning 1)))))))
+
+(defun birnam--completion-context (&optional position)
+  "Return the Birnam runtime completion context at POSITION, or nil."
+  (or (birnam--runtime-completion-context position)
+      (birnam--global-completion-context position)))
 
 (defun birnam--completion-items (response)
   "Return completion items carried by LSP RESPONSE."
@@ -120,8 +139,8 @@ are still retained in the process-stable local cache."
    ((vectorp response) (append response nil))
    ((listp response) response)))
 
-(defun birnam--record-completions (receiver prefix response)
-  "Cache labels from RESPONSE for RECEIVER beginning with PREFIX.
+(defun birnam--record-completions (cache-key prefix response)
+  "Cache labels from RESPONSE for CACHE-KEY beginning with PREFIX.
 An empty successful response is retained too, so later completion can
 distinguish a known-empty prefix from a cache that is not ready yet."
   (let ((labels
@@ -138,27 +157,27 @@ distinguish a known-empty prefix from a cache that is not ready yet."
                  (birnam--completion-items response))))))
     (unless (hash-table-p birnam--completion-cache)
       (setq birnam--completion-cache (make-hash-table :test #'equal)))
-    (let* ((buckets (gethash receiver birnam--completion-cache))
+    (let* ((buckets (gethash cache-key birnam--completion-cache))
            (buckets (cons (cons prefix labels)
                           (assoc-delete-all prefix buckets))))
       ;; Different disjoint prefixes are useful, but never let edited text
       ;; grow this process-stable cache without bound.
       (when (> (length buckets) 8)
         (setcdr (nthcdr 7 buckets) nil))
-      (puthash receiver buckets birnam--completion-cache))))
+      (puthash cache-key buckets birnam--completion-cache))))
 
-(defun birnam--completion-cache-covers-p (receiver prefix)
-  "Return non-nil when RECEIVER's cache has a snapshot covering PREFIX."
+(defun birnam--completion-cache-covers-p (cache-key prefix)
+  "Return non-nil when CACHE-KEY has a snapshot covering PREFIX."
   (and (hash-table-p birnam--completion-cache)
        (seq-some (lambda (bucket)
                    (string-prefix-p (car bucket) prefix))
-                 (gethash receiver birnam--completion-cache))))
+                 (gethash cache-key birnam--completion-cache))))
 
-(defun birnam--cached-labels (receiver prefix)
-  "Return cached RECEIVER labels applicable to PREFIX."
+(defun birnam--cached-labels (cache-key prefix)
+  "Return cached CACHE-KEY labels applicable to PREFIX."
   (when (hash-table-p birnam--completion-cache)
     (let (best-prefix best-labels)
-      (dolist (bucket (gethash receiver birnam--completion-cache))
+      (dolist (bucket (gethash cache-key birnam--completion-cache))
         (when (and (string-prefix-p (car bucket) prefix)
                    (or (null best-prefix)
                        (> (length (car bucket)) (length best-prefix))))
@@ -167,35 +186,35 @@ distinguish a known-empty prefix from a cache that is not ready yet."
       (seq-filter (lambda (label) (string-prefix-p prefix label)) best-labels))))
 
 (defun birnam-cached-completion-at-point ()
-  "Complete a literal Birnam receiver from the process-stable local cache."
-  (when-let* ((context (birnam--runtime-completion-context))
-              (receiver (plist-get context :receiver))
+  "Complete Birnam runtime names from the process-stable local cache."
+  (when-let* ((context (birnam--completion-context))
+              (cache-key (plist-get context :cache-key))
               (prefix (plist-get context :prefix)))
-    (when (birnam--completion-cache-covers-p receiver prefix)
+    (when (birnam--completion-cache-covers-p cache-key prefix)
       ;; A known-empty table is deliberately exclusive.  Returning nil, or
       ;; marking it non-exclusive, makes completion-at-point fall through to
       ;; lsp-mode and synchronously repeat the request that prefetch already
       ;; answered.
       (list (plist-get context :start) (point)
-            (birnam--cached-labels receiver prefix)
+            (birnam--cached-labels cache-key prefix)
             :exclusive t))))
 
-(defun birnam--prefetch-finished (buffer receiver response)
-  "Record RECEIVER RESPONSE for BUFFER and clear its in-flight marker."
+(defun birnam--prefetch-finished (buffer cache-key response)
+  "Record CACHE-KEY RESPONSE for BUFFER and clear its in-flight marker."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (when (hash-table-p birnam--completion-prefetches)
-        (remhash receiver birnam--completion-prefetches))
-      ;; The request starts at the selector, so the response contains the
-      ;; receiver's complete method set and applies to every later prefix.
-      (birnam--record-completions receiver "" response))))
+        (remhash cache-key birnam--completion-prefetches))
+      ;; The request starts at the token, so the response contains the complete
+      ;; method or global set and applies to every later prefix.
+      (birnam--record-completions cache-key "" response))))
 
-(defun birnam--prefetch-failed (buffer receiver _error)
-  "Clear BUFFER's in-flight RECEIVER marker after a failed request."
+(defun birnam--prefetch-failed (buffer cache-key _error)
+  "Clear BUFFER's in-flight CACHE-KEY marker after a failed request."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (when (hash-table-p birnam--completion-prefetches)
-        (remhash receiver birnam--completion-prefetches)))))
+        (remhash cache-key birnam--completion-prefetches)))))
 
 (defun birnam--start-completion-prefetch (buffer)
   "Start a non-blocking receiver completion request for BUFFER."
@@ -203,15 +222,15 @@ distinguish a known-empty prefix from a cache that is not ready yet."
     (with-current-buffer buffer
       (setq birnam--completion-prefetch-timer nil)
       (when (and (bound-and-true-p lsp-mode) (lsp-workspaces))
-        (when-let* ((context (birnam--runtime-completion-context))
-                    (receiver (plist-get context :receiver)))
-          (unless (or (birnam--completion-cache-covers-p receiver "")
+        (when-let* ((context (birnam--completion-context))
+                    (cache-key (plist-get context :cache-key)))
+          (unless (or (birnam--completion-cache-covers-p cache-key "")
                       (and (hash-table-p birnam--completion-prefetches)
-                           (gethash receiver birnam--completion-prefetches)))
+                           (gethash cache-key birnam--completion-prefetches)))
             (unless (hash-table-p birnam--completion-prefetches)
               (setq birnam--completion-prefetches
                     (make-hash-table :test #'equal)))
-            (puthash receiver t birnam--completion-prefetches)
+            (puthash cache-key t birnam--completion-prefetches)
             (let ((params
                    (save-excursion
                      (goto-char (plist-get context :start))
@@ -219,10 +238,10 @@ distinguish a known-empty prefix from a cache that is not ready yet."
               (lsp-request-async
                "textDocument/completion" params
                (lambda (response)
-                 (birnam--prefetch-finished buffer receiver response))
+                 (birnam--prefetch-finished buffer cache-key response))
                :error-handler
                (lambda (error)
-                 (birnam--prefetch-failed buffer receiver error))
+                 (birnam--prefetch-failed buffer cache-key error))
                :mode 'detached))))))))
 
 (defun birnam--schedule-completion-prefetch ()
@@ -231,7 +250,7 @@ distinguish a known-empty prefix from a cache that is not ready yet."
     (cancel-timer birnam--completion-prefetch-timer))
   (setq birnam--completion-prefetch-timer nil)
   (when (and birnam-lsp-completion-prefetch-delay
-             (birnam--runtime-completion-context))
+             (birnam--completion-context))
     (setq birnam--completion-prefetch-timer
           (run-with-idle-timer birnam-lsp-completion-prefetch-delay nil
                               #'birnam--start-completion-prefetch
@@ -241,11 +260,11 @@ distinguish a known-empty prefix from a cache that is not ready yet."
   "Call ORIGINAL with METHOD PARAMS and retain Birnam completion labels."
   (let ((context (and (derived-mode-p 'birnam-mode)
                       (equal method "textDocument/completion")
-                      (birnam--runtime-completion-context))))
+                      (birnam--completion-context))))
     (let ((response (funcall original method params)))
       (when context
         (birnam--record-completions
-         (plist-get context :receiver)
+         (plist-get context :cache-key)
          (plist-get context :prefix)
          response))
       response)))

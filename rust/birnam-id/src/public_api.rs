@@ -460,6 +460,14 @@ pub(crate) fn live_heap_bytes() -> usize {
     runtime().gc_live_bytes()
 }
 
+pub(crate) fn export_count() -> usize {
+    runtime().export_count()
+}
+
+pub(crate) fn export_name_at(index: usize) -> Oop {
+    runtime().export_name_at(index)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

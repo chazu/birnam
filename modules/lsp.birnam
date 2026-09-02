@@ -32,6 +32,8 @@
 [[db cellFor: Lsp attr: #documentPaths] set: [Map new]];
 [[db cellFor: Lsp attr: #projectIndexes] set: [Map new]];
 [[db cellFor: Lsp attr: #runtimeCompletionCache] set: [Map new]];
+[[db cellFor: Lsp attr: #runtimeGlobalCompletionCache] set: nil];
+[[db cellFor: Lsp attr: #runtimeGlobalCompletionBuildCount] set: 0];
 [[db cellFor: Lsp attr: #completionResponseCache] set: [Map new]];
 [[db cellFor: Lsp attr: #inputBuffer] set: ""];
 [[db cellFor: Lsp attr: #workspaceUri] set: ""];
@@ -937,6 +939,63 @@ let analysisThreadedSpecialSelectors := {
   ] doc:
   "Answers the exact global receiver in an incomplete `[ Global prefix` send, or empty." ];
 
+[Reflect defineMethod: #completionGlobalReceiverPrefixAtPosition:in: on: Lsp as: [:self :position :text |
+  let lineNo := [position at: "line" ifAbsent: [| 0]];
+  let line := [self lineAt: lineNo in: text];
+  let col := [self byteOffsetForUtf16: [position at: "character" ifAbsent: [| 0]] in: line];
+  let prefixStart := [self scanLeft: col in: line];
+  let head := [self completionSkipSpacesLeft: prefixStart in: line];
+  let bracketed := [[head > 0] & [[line byteAt: [head - 1]] = 91]];
+  [bracketed
+    ifTrue: [| [line copyFrom: prefixStart to: col]]
+    ifFalse: [| nil]]
+  ] doc:
+  "Answers the possibly-empty global prefix directly after `[` in receiver position, or nil." ];
+
+[Reflect defineMethod: #completionItemForRuntimeGlobalName: on: Lsp as: [:self :globalName |
+  let name := [Reflect nameOf: globalName];
+  [Map
+    => new
+    => at: "label" put: name
+    => at: "kind" put: 6
+    => at: "detail" put: "exported runtime global"]
+  ] doc:
+  "Builds one CompletionItem from an exported runtime global name." ];
+
+[Reflect defineMethod: #runtimeGlobalCompletionBuildCount on: Lsp as: [:self |
+  [[db cellFor: self attr: #runtimeGlobalCompletionBuildCount] value]
+  ] doc:
+  "Answers how many times this LSP process built its bounded export snapshot." ];
+
+[Reflect defineMethod: #clearRuntimeGlobalCompletionCache on: Lsp as: [:self |
+  [[db cellFor: self attr: #runtimeGlobalCompletionCache] set: nil];
+  [[db cellFor: self attr: #runtimeGlobalCompletionBuildCount] set: 0];
+  self
+  ] doc:
+  "Drops the process-local exported-global completion snapshot." ];
+
+[Reflect defineMethod: #runtimeGlobalCompletionItems on: Lsp as: [:self |
+  let cached := [[db cellFor: self attr: #runtimeGlobalCompletionCache] value];
+  [[cached notNil]
+    ifTrue: [| cached]
+    ifFalse: [|
+      let items := [[Reflect allGlobalNames] inject: #[] into: [:out :name |
+        [out add: [self completionItemForRuntimeGlobalName: name]]]];
+      [[db cellFor: self attr: #runtimeGlobalCompletionCache] set: items];
+      [[db cellFor: self attr: #runtimeGlobalCompletionBuildCount] set:
+        [[self runtimeGlobalCompletionBuildCount] + 1]];
+      items]]
+  ] doc:
+  "Builds the exported runtime global CompletionItems once per LSP process." ];
+
+[Reflect defineMethod: #runtimeGlobalCompletionItemsForPrefix: on: Lsp as: [:self :prefix |
+  [[self runtimeGlobalCompletionItems]
+    inject: #[] into: [:out :item |
+      let name := [item at: "label" ifAbsent: [| ""]];
+      [[name startsWith: prefix] ifTrue: [| [out add: item]] ifFalse: [| out]]]]
+  ] doc:
+  "Filters the process-cached exported-global snapshot by receiver prefix." ];
+
 [Reflect defineMethod: #completionItemForRuntimeMethod:receiver: on: Lsp as: [:self :entry :receiverName |
   let selector := [entry at: #selector ifAbsent: [| nil]];
   let name := [[selector isNil] ifTrue: [| ""] ifFalse: [| [Reflect nameOf: selector]]];
@@ -1045,11 +1104,19 @@ let analysisThreadedSpecialSelectors := {
   let prefix := [self completionPrefixAtPosition: position in: text];
   let seen := [Map new asCell];
   let receiverName := [self completionLiteralReceiverAtPosition: position in: text];
+  let globalPrefix := [self completionGlobalReceiverPrefixAtPosition: position in: text];
   [[receiverName isEmpty]
     ifTrue: [|
       let offset := [self byteOffsetAtPosition: position in: text];
       let doc := [self documentInIndex: index uri: uri];
       let items := [#[] asCell];
+      [[globalPrefix notNil] ifTrue: [|
+        [[self runtimeGlobalCompletionItemsForPrefix: globalPrefix] do: [:item |
+          let name := [item at: "label" ifAbsent: [| ""]];
+          let already := [[seen value] at: name ifAbsent: [| nil]];
+          [[[already isNil] & [[name isEmpty] not]] ifTrue: [|
+            [seen set: [[seen value] at: name put: true]];
+            [items set: [[items value] add: item]]]]]]]];
       [[doc notNil] ifTrue: [|
         let bindings := [doc at: "bindings" ifAbsent: [| #[]]];
         [bindings do: [:entry |
@@ -1060,17 +1127,17 @@ let analysisThreadedSpecialSelectors := {
           let inScope := [[offset >= start] & [offset <= finish]];
           let wanted := [[already isNil] & [name startsWith: prefix]];
           let shouldAdd := [wanted & inScope];
-          [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForBinding: entry]]]]]]];
+          [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForBinding: entry]]]]]]]]];
       let symbols := [index at: "symbols" ifAbsent: [| #[]]];
-          [symbols do: [:entry |
-            let name := [entry at: "name" ifAbsent: [| ""]];
+      [symbols do: [:entry |
+        let name := [entry at: "name" ifAbsent: [| ""]];
         let already := [[seen value] at: name ifAbsent: [| nil]];
         let shouldAdd := [[already isNil] & [name startsWith: prefix]];
         [shouldAdd ifTrue: [| [seen set: [[seen value] at: name put: true]]; [items set: [[items value] add: [self completionItemForSymbol: entry]]]]]]];
-      [items value]]]]
+      [items value]]
     ifFalse: [| [self completionItemsForRuntimeReceiver: text position: position prefix: prefix seen: seen]]]
   ] doc:
-  "Answers only live methods for an exact literal global receiver; otherwise scoped authored bindings and symbols." ];
+  "Answers exported receiver names, exact-receiver live methods, and scoped authored bindings and symbols." ];
 
 [Reflect defineMethod: #onCompletion:id: on: Lsp as: [:self :p :id |
   let td := [p at: "textDocument" ifAbsent: [| [Map new]]];

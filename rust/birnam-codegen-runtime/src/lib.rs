@@ -13215,6 +13215,42 @@ unsafe extern "C" fn rust_reflect_global_named(
     unsafe { send(api, runtime.globals as Oop, b"at:\0", &[values[0]]) }
 }
 
+unsafe extern "C" fn rust_reflect_all_global_names(
+    _self_object: Oop,
+    _pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let Some(count_address) = (unsafe { floor_symbol(api, b"birnam_id_export_count_v1\0") }) else {
+        return api.nilObj;
+    };
+    let Some(name_address) = (unsafe { floor_symbol(api, b"birnam_id_export_name_at_v1\0") })
+    else {
+        return api.nilObj;
+    };
+    let export_count: unsafe extern "C" fn() -> usize =
+        unsafe { core::mem::transmute(count_address) };
+    let export_name_at: unsafe extern "C" fn(usize) -> Oop =
+        unsafe { core::mem::transmute(name_address) };
+    let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
+    if vector.is_null() || vector == api.nilObj {
+        return api.nilObj;
+    }
+    unsafe { (api.gcSetAuto)(0) };
+    let names = (0..unsafe { export_count() })
+        .filter_map(|index| {
+            let name = unsafe { export_name_at(index) };
+            (!name.is_null()).then_some(name)
+        })
+        .collect::<Vec<_>>();
+    let result = unsafe { make_vector(api, vector, &names) };
+    unsafe { (api.gcSetAuto)(1) };
+    result
+}
+
 unsafe extern "C" fn rust_reflect_export_vtable(
     _self_object: Oop,
     pointer: *const Oop,
@@ -14288,6 +14324,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         reflect_method!(b"exportObject:as:\0", rust_reflect_export_object);
         reflect_method!(b"nameOf:\0", rust_reflect_name_of);
         reflect_method!(b"globalNamed:\0", rust_reflect_global_named);
+        reflect_method!(b"allGlobalNames\0", rust_reflect_all_global_names);
         reflect_method!(b"allMethodsOf:\0", rust_reflect_all_methods);
         reflect_method!(b"methodSource:\0", rust_reflect_method_source);
         reflect_method!(b"factsOf:\0", rust_reflect_facts_of);

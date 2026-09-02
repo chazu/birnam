@@ -102,6 +102,18 @@ pub extern "C" fn birnam_id_live_heap_bytes_v1() -> usize {
     public_api::live_heap_bytes()
 }
 
+/// Private read-only export inventory used by tooling above the frozen IdApi.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_export_count_v1() -> usize {
+    public_api::export_count()
+}
+
+/// Return the interned name of one process export, or null past the end.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_id_export_name_at_v1(index: usize) -> abi::Oop {
+    public_api::export_name_at(index)
+}
+
 /// Test-only proof that a Rust panic cannot unwind across the C ABI.
 #[cfg(feature = "ffi-test-hooks")]
 #[unsafe(no_mangle)]

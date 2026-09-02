@@ -3684,14 +3684,12 @@ impl Runtime {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn export_count(&self) -> usize {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied count.
         unsafe { (*self.state.get()).environment.count() }
     }
 
-    #[cfg(test)]
     pub(crate) fn export_name_at(&self, index: usize) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied identity.
