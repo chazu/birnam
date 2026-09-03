@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.5.1
+;; Version: 0.5.2
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -190,14 +190,27 @@ distinguish a known-empty prefix from a cache that is not ready yet."
   (when-let* ((context (birnam--completion-context))
               (cache-key (plist-get context :cache-key))
               (prefix (plist-get context :prefix)))
-    (when (birnam--completion-cache-covers-p cache-key prefix)
+    (cond
+     ((birnam--completion-cache-covers-p cache-key prefix)
       ;; A known-empty table is deliberately exclusive.  Returning nil, or
       ;; marking it non-exclusive, makes completion-at-point fall through to
       ;; lsp-mode and synchronously repeat the request that prefetch already
       ;; answered.
       (list (plist-get context :start) (point)
             (birnam--cached-labels cache-key prefix)
-            :exclusive t))))
+            :exclusive t))
+     ((or (and (hash-table-p birnam--completion-prefetches)
+               (gethash cache-key birnam--completion-prefetches))
+          (and (bound-and-true-p lsp-mode)
+               (memq (birnam--completion-workspace-state)
+                     '(starting ready))))
+      ;; Own a cold runtime context immediately.  Otherwise CAPE falls through
+      ;; to lsp-mode and sends a synchronous duplicate while our asynchronous
+      ;; request is still queued, freezing TAB until lsp-response-timeout.
+      (unless (and (hash-table-p birnam--completion-prefetches)
+                   (gethash cache-key birnam--completion-prefetches))
+        (birnam--start-completion-prefetch (current-buffer)))
+      (list (plist-get context :start) (point) nil :exclusive t)))))
 
 (defun birnam--prefetch-finished (buffer cache-key response)
   "Record CACHE-KEY RESPONSE for BUFFER and clear its in-flight marker."

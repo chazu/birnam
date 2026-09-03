@@ -311,6 +311,46 @@ spawn a server until the buffer is actually displayed."
              'returned)))
       (should-not (gethash :globals birnam--completion-prefetches)))))
 
+(ert-deftest birnam-mode-inflight-prefetch-does-not-fall-through ()
+  "A cold receiver must not duplicate its asynchronous request synchronously."
+  (let ((birnam-lsp-automatic-start nil)
+        (fallback-called nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ Reflect ")
+      (puthash "Reflect" t birnam--completion-prefetches)
+      (setq-local
+       completion-at-point-functions
+       (list #'birnam-cached-completion-at-point
+             (lambda ()
+               (setq fallback-called t)
+               nil)))
+      (completion-at-point)
+      (should-not fallback-called))))
+
+(ert-deftest birnam-mode-cold-runtime-context-starts-prefetch-exclusively ()
+  "The first completion command should start async work without blocking."
+  (let ((birnam-lsp-automatic-start nil)
+        (prefetch-started nil)
+        (fallback-called nil))
+    (with-temp-buffer
+      (birnam-mode)
+      (insert "[ Reflect ")
+      (setq-local lsp-mode t)
+      (cl-letf (((symbol-function 'birnam--completion-workspace-state)
+                 (lambda () 'ready))
+                ((symbol-function 'birnam--start-completion-prefetch)
+                 (lambda (_buffer) (setq prefetch-started t))))
+        (setq-local
+         completion-at-point-functions
+         (list #'birnam-cached-completion-at-point
+               (lambda ()
+                 (setq fallback-called t)
+                 nil)))
+        (completion-at-point))
+      (should prefetch-started)
+      (should-not fallback-called))))
+
 (ert-deftest birnam-mode-empty-cached-prefix-does-not-fall-through ()
   "A known receiver with no matching selector must not call a slow CAPF."
   (let ((birnam-lsp-automatic-start nil))
