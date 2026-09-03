@@ -149,6 +149,7 @@ nested project directories.
 The normal source-project loop is:
 
 ```sh
+birnam fetch                         # explicitly acquire pinned Git dependencies
 birnam check                         # compile-check without publishing
 birnam build                         # publish the debug artifact graph
 birnam run                           # run the published main and exit
@@ -156,6 +157,21 @@ birnam run --build -- arg1 arg2      # rebuild, run, and set ProjectArgs
 birnam test --build                  # build, then test in fresh processes
 birnam install                       # copy the publication into the runtime lib/
 ```
+
+Dependencies may name either a project-relative path or an immutable Git
+commit:
+
+```toml
+[dependencies]
+shared = { path = "../birnam-shared" }
+twin = { git = "https://github.com/chazu/birnam-alien-twin.git", rev = "<full-commit-id>" }
+```
+
+`birnam fetch` recursively acquires Git dependencies into the owning project's
+content-addressed `.birnam/dependencies/git/` cache. The revision must be a
+full 40- or 64-digit hexadecimal object id. All other project commands,
+including LSP workspace discovery, remain offline and fail if an exact, clean
+cached checkout is unavailable.
 
 `check` compiles every resolved module in dependency-first order in a private
 temporary directory. It does not load, evaluate, or publish project code;
@@ -203,6 +219,7 @@ The same executable selects its mode from the first argument:
 | `birnam` | Discover project startup when present, then open the terminal REPL. |
 | `birnam --repl` | Explicitly open the terminal REPL. `-i` and `repl` are aliases. |
 | `birnam file.birnam` | Compile and evaluate one source file, then exit. |
+| `birnam fetch [directory]` | Explicitly acquire a project's commit-pinned Git dependency closure. |
 | `birnam run [directory]` | Run a project's published entry source; no REPL by default. |
 | `birnam artifact.dylib` | Inspect a self-described compiled root and activate its sibling closure. |
 | `birnam file.image` | Validate and boot an image, mapping its compatible compiled generation. |
@@ -554,7 +571,8 @@ birnam install --build
 commands. `build` and the `--build` forms compile the dylib into private staging,
 compile the wrapper module, and atomically publish both. A later `run` validates
 their recorded checksums before loading them. The same workflow includes
-wrapped artifacts declared by transitive path dependencies.
+wrapped artifacts declared by transitive path or commit-pinned Git
+dependencies.
 
 If loading fails, first confirm that the `[[wrapped]].name`, the bare
 `Alien dlopen:` filename, and the exported symbol spellings agree. For larger

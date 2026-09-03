@@ -1,6 +1,7 @@
 # 51 — Project Manifests and Dependency Resolution
 
-> **Status:** Source resolver, materialized artifact records, conservative
+> **Status:** Source resolver, path and commit-pinned Git dependencies,
+> explicit dependency fetch, materialized artifact records, conservative
 > artifact reuse, the first project-run consumer, and the Birnam-owned project
 > policy slice implemented, 2026-07-16; reconciled with the self-describing
 > artifact/runtime boundary on 2026-07-22. This is the first design in the
@@ -49,8 +50,8 @@ explicit runtime loading step after resolution and artifact validation. The
 materialized build consumes these records and reuses validated artifacts when
 possible. It writes an internal build receipt while compilation projects runtime
 identity into each dylib's descriptor; build itself does not activate artifacts.
-This document does not introduce a registry, network fetches, or a second
-runtime module representation.
+This document does not introduce a registry, implicit network fetches, or a
+second runtime module representation.
 
 ## 2. Governing invariants
 
@@ -152,10 +153,13 @@ module generation model.
 
 ### 2.8 Local-first means no hidden network behavior
 
-The first resolver handles the local filesystem and explicitly named path
-dependencies. Normal check, build, run, test, and LSP startup do not contact a
-registry or mutate a global cache. Registry and remote transport can be added
-behind an explicit later policy without changing the graph contract.
+The resolver handles explicitly named path dependencies and exact Git commits.
+Only `birnam fetch` may contact a Git remote or populate a dependency cache.
+Normal check, build, run, test, and LSP startup do not contact a remote or
+mutate a global cache; they validate the exact clean checkout in the owning
+project's content-addressed `.birnam/dependencies/git/` cache. A registry can
+still be added behind an explicit later policy without changing the graph
+contract.
 
 ### 2.9 One resolver serves every front end
 
@@ -197,7 +201,7 @@ socket_bind = "127.0.0.1"
 socket_port = 4400
 ~~~
 
-The project layer adds source roots and explicit local dependencies:
+The project layer adds source roots and explicit dependency origins:
 
 ~~~toml
 name = "hello-birnam"
@@ -210,6 +214,7 @@ source_roots = ["src", "modules"]
 [dependencies]
 http = { path = "../birnam-http" }
 shared = { path = "vendor/shared" }
+twin = { git = "https://github.com/chazu/birnam-alien-twin.git", rev = "0123456789abcdef0123456789abcdef01234567" }
 
 [[wrapped]]
 name = "foo"
@@ -228,8 +233,10 @@ build slice. Its semantics are:
 - run selects the explicit post-main interaction mode; `repl` is `none`, `tty`,
   or `socket`, with socket bind-address/port settings consumed by design 52.
 - source_roots are ordered search roots for project-owned source modules.
-- dependencies maps canonical module names to standalone local project roots
-  in the first slice. Each path dependency has its own birnam.toml.
+- dependencies maps canonical module names to standalone project roots. A path
+  origin is relative to its owning manifest. A Git origin pairs a remote URL
+  with a full 40- or 64-digit hexadecimal commit id and is acquired explicitly
+  with `birnam fetch`. Every dependency project has its own birnam.toml.
 - wrapped names a logical C library. Each `build` entry is an argv array, not a
   shell string; `{output}` is required and is replaced with a private staging
   path. `{project}`, `{build}`, and `{lib}` are also available as path
@@ -250,9 +257,14 @@ project. The dependency project may contain other source modules for its own
 transitive closure; a package-wide multi-module dependency declaration is not
 part of this slice.
 
-If source_roots is absent, the first implementation uses `["src"]`. The path
-is always resolved relative to the owning manifest; absolute dependency paths
-and registry/URL origins are not accepted.
+If source_roots is absent, the first implementation uses `["src"]`. Paths are
+always resolved relative to the owning manifest; absolute path dependencies,
+symbolic Git refs such as branches/tags, and registry origins are not accepted.
+The Git cache key covers the complete URL and normalized revision, not the
+dependency alias. Cached detached HEAD, manifest presence, and tracked-file
+cleanliness are revalidated during every ordinary resolution. Origin identity
+is encoded by the cache key and configured only by the atomic fetch staging
+operation.
 
 Existing projects without a manifest continue to work. Existing main and load
 behavior remains compatible while the new resolver is introduced behind the
@@ -396,10 +408,18 @@ and directly selected roots carry the corresponding runtime information in
 their descriptors and need no receipt. Source fallback remains intentionally
 outside this project-run slice.
 
-### P3 — lock and remote policy, only if demanded
+### P1.5 — commit-pinned Git dependencies — implemented
 
-Add a lockfile and registry/transport policy only after local projects show a
-need. A registry is not part of the initial developer-experience milestone.
+Add full-revision Git origins, a project-local content-addressed checkout
+cache, recursive `birnam fetch`, exact origin/HEAD validation, and tracked-file
+dirty rejection. Ordinary project commands and LSP remain read-only and never
+fetch implicitly. Updating means editing `rev` and explicitly fetching the new
+identity; no mutable branch or tag state participates in resolution.
+
+### P3 — registry and richer lock policy, only if demanded
+
+Add a registry and lockfile policy only after path and pinned-Git projects show
+a need. A registry is not part of the initial developer-experience milestone.
 
 ## 8. Acceptance scenarios
 
@@ -413,6 +433,11 @@ need. A registry is not part of the initial developer-experience milestone.
   dependents while leaving unrelated modules reusable.
 - A transitive dependency is emitted once, before its dependent, independent of
   filesystem order.
+- An explicit fetch acquires a transitive Git closure at exact commits; a
+  repeated fetch reuses verified checkouts, while normal commands never create
+  the cache or contact remotes.
+- A missing, wrong-revision, malformed, or tracked-dirty Git checkout is
+  rejected before project policy or compilation.
 - A missing dependency reports the complete root-to-missing chain.
 - A cycle reports the cycle and terminates without loading or hanging.
 - Two projects can be resolved independently without mutating a global registry
@@ -425,7 +450,7 @@ need. A registry is not part of the initial developer-experience milestone.
 
 ## 9. Explicit non-goals
 
-- no package registry or implicit network fetch;
+- no package registry, mutable Git refs, or implicit network fetch;
 - no new runtime module graph competing with Store facts;
 - no automatic module rename from a path or package name;
 - no multi-module package semantics in P0/P1;

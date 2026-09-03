@@ -1,6 +1,7 @@
 .cargo-target/
 .zig-cache/
 zig-out/
+.birnam/
 chat.md
 
 # Override global ignore so we can commit vendored libs (dyncall, etc.)

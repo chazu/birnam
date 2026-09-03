@@ -169,9 +169,12 @@
 # Source modules indexed by `birnam check`; omitted means [\"src\"].
 # source_roots = [\"src\"]
 
-# Standalone local source projects, resolved relative to this manifest.
+# Standalone source projects. Path dependencies resolve relative to this
+# manifest. Git dependencies require a full 40- or 64-digit commit id and an
+# explicit `birnam fetch`; check/build/run/test/LSP never fetch implicitly.
 # [dependencies]
 # http = { path = \"../birnam-http\" }
+# twin = { git = \"https://github.com/chazu/birnam-alien-twin.git\", rev = \"0123456789abcdef0123456789abcdef01234567\" }
 
 # C-library wrappers: each build entry is an argv array; {output} is the
 # required staged dylib path. The wrapper source should be under source_roots.

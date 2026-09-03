@@ -9,7 +9,7 @@ use birnam_host::{
     CommandKind, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy,
     WorkerStartupError, bake_executable, classify_command, compile_module, eval_script,
     host_target_identity, load_image, load_image_bytes, parse_bake_args, parse_build_args,
-    parse_check_args, parse_compile_module_args, parse_install_args,
+    parse_check_args, parse_compile_module_args, parse_fetch_args, parse_install_args,
     parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
     parse_worker_args, preflight_artifact, read_baked_image, resolve, start,
     start_from_environment,
@@ -21,12 +21,13 @@ use std::os::unix::fs::PermissionsExt;
 const VERSION: &str = include_str!("../../../../VERSION");
 const USAGE: &str = "birnam — Rust host\n\n\
 Supported: --help, --version, <file.birnam>, <file.image>, <artifact.dylib>,\n\
-           --repl, --listen <port>, doc, docgen, init, wrap,\n\
+           --repl, --listen <port>, doc, docgen, init, fetch, wrap,\n\
            --worker <image> <receiver> <selector> --channel-fd <fd>,\n\
            --bake <image> <exe>, --rebuild <image>\n\
 Rust-hosted check/build/install/run/test/lsp are canonical.\n";
 
 const CHECK_USAGE: &str = "usage: birnam check [directory] [--format human|json]\n";
+const FETCH_USAGE: &str = "usage: birnam fetch [directory]\n";
 const BUILD_USAGE: &str = "usage: birnam build [directory] [--profile debug|release]\n";
 const INSTALL_USAGE: &str =
     "usage: birnam install [directory] [--build] [--profile debug|release]\n";
@@ -172,6 +173,33 @@ fn check_command(args: &[OsString]) -> Result<(), String> {
                     println!("]}}");
                 }
             }
+            Ok(())
+        }
+    }
+}
+
+fn fetch_command(args: &[OsString]) -> Result<(), String> {
+    let outcome = parse_fetch_args(&args[1..]).map_err(|error| format!("fetch: {error:?}"))?;
+    match outcome {
+        ParseOutcome::Help => {
+            print!("{FETCH_USAGE}");
+            Ok(())
+        }
+        ParseOutcome::Parsed(options) => {
+            let runtime = unsafe { start_from_environment() }
+                .map_err(|error| format!("startup: {error:?}"))?;
+            let mut anchor = 0usize;
+            unsafe { runtime.prepare_execution(&mut anchor) };
+            let result = unsafe { runtime.fetch_project_dependencies(&options.directory) }
+                .map_err(|error| format!("fetch: {error:?}"))?;
+            println!(
+                "fetched {} Git dependenc{}; reused {} cached checkout{} for {}",
+                result.fetched,
+                if result.fetched == 1 { "y" } else { "ies" },
+                result.reused,
+                if result.reused == 1 { "" } else { "s" },
+                result.project_root.display(),
+            );
             Ok(())
         }
     }
@@ -599,6 +627,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
             unsafe { runtime.run_cli(&args) }.map_err(|error| format!("cli: {error:?}"))
         }
         CommandKind::Check => check_command(&args),
+        CommandKind::Fetch => fetch_command(&args),
         CommandKind::Build => build_command(&args),
         CommandKind::Install => install_command(&args),
         CommandKind::Run => run_project_command(&args),

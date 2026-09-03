@@ -396,7 +396,8 @@ acquiring duplicate project subcommands.
 
 ## 9. Explicit non-goals
 
-- no implicit network dependency fetching;
+- no implicit network dependency fetching; only an explicit `birnam fetch`
+  may populate commit-pinned Git dependency checkouts;
 - no background watch/build daemon;
 - no automatic live activation after build;
 - no replacement of direct script or image invocation;

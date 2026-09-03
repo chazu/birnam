@@ -53,6 +53,7 @@ pub enum CommandKind {
     Doc,
     Docgen,
     Init,
+    Fetch,
     Check,
     Build,
     Install,
@@ -84,6 +85,11 @@ pub enum OutputFormat {
 pub struct CheckOptions {
     pub directory: PathBuf,
     pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchOptions {
+    pub directory: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1110,6 +1116,32 @@ pub fn parse_check_args<T: AsRef<std::ffi::OsStr>>(
     }))
 }
 
+pub fn parse_fetch_args<T: AsRef<std::ffi::OsStr>>(
+    args: &[T],
+) -> Result<ParseOutcome<FetchOptions>, ProjectParseError> {
+    let mut directory = None;
+    for (index, argument) in args.iter().enumerate() {
+        let token = argument.as_ref();
+        if token == std::ffi::OsStr::new("--help") || token == std::ffi::OsStr::new("-h") {
+            if index + 1 != args.len() {
+                return Err(ProjectParseError::UnexpectedAfterHelp);
+            }
+            return Ok(ParseOutcome::Help);
+        }
+        let token_text = token.to_string_lossy();
+        if token_text.starts_with('-') {
+            return Err(ProjectParseError::UnknownOption(token_text.into_owned()));
+        }
+        if directory.is_some() {
+            return Err(ProjectParseError::DuplicateDirectory);
+        }
+        directory = Some(PathBuf::from(token));
+    }
+    Ok(ParseOutcome::Parsed(FetchOptions {
+        directory: directory.unwrap_or_else(|| PathBuf::from(".")),
+    }))
+}
+
 pub fn parse_build_args<T: AsRef<std::ffi::OsStr>>(
     args: &[T],
 ) -> Result<ParseOutcome<BuildOptions>, ProjectParseError> {
@@ -1487,6 +1519,7 @@ pub fn classify_command<T: AsRef<std::ffi::OsStr>>(
         ("doc", CommandKind::Doc),
         ("docgen", CommandKind::Docgen),
         ("init", CommandKind::Init),
+        ("fetch", CommandKind::Fetch),
         ("check", CommandKind::Check),
         ("build", CommandKind::Build),
         ("install", CommandKind::Install),
@@ -1827,10 +1860,22 @@ pub struct ProjectManifestObservation {
     pub source_roots: Vec<String>,
     pub loads: Vec<String>,
     pub modules: Vec<ProjectModulePlan>,
-    pub dependencies: Vec<ProjectDependencyObservation>,
+    pub dependencies: Vec<ProjectManifestDependencyObservation>,
     pub run: ProjectRunObservation,
     pub wrapped: Vec<ProjectWrappedObservation>,
     pub test_sources: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectManifestDependencyObservation {
+    pub name: String,
+    pub source: ProjectDependencySourceObservation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectDependencySourceObservation {
+    Path(String),
+    Git { url: String, revision: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1850,6 +1895,13 @@ pub struct ProjectWrappedArtifactObservation {
 pub struct ProjectDependencyObservation {
     pub name: String,
     pub root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectFetchResult {
+    pub project_root: PathBuf,
+    pub fetched: usize,
+    pub reused: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2337,6 +2389,16 @@ pub enum ProjectObservationBuildError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectFetchError {
+    Discovery(ProjectDiscoveryError),
+    Manifest(ProjectManifestError),
+    Decode(ProjectManifestDecodeError),
+    Dependency(ProjectDependencyResolutionError),
+    Canonicalize { path: PathBuf, kind: io::ErrorKind },
+    DependencyCycle(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectCheckError {
     Observation(ProjectObservationBuildError),
     Snapshot(ProjectSnapshotError),
@@ -2555,6 +2617,8 @@ pub enum ProjectManifestDecodeError {
     MissingWrappedOutput(String),
     InvalidTestSource(String),
     InvalidSchema(String),
+    InvalidDependency(String),
+    InvalidGitRevision { name: String, revision: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2567,6 +2631,31 @@ pub enum ProjectDependencyResolutionError {
         name: String,
         path: PathBuf,
         kind: io::ErrorKind,
+    },
+    GitCacheMissing {
+        name: String,
+        path: PathBuf,
+    },
+    GitCacheInvalid {
+        name: String,
+        path: PathBuf,
+        reason: String,
+    },
+    CacheIo {
+        path: PathBuf,
+        operation: &'static str,
+        kind: io::ErrorKind,
+    },
+    GitSpawn {
+        name: String,
+        operation: &'static str,
+        kind: io::ErrorKind,
+    },
+    GitCommand {
+        name: String,
+        operation: &'static str,
+        code: Option<i32>,
+        detail: String,
     },
 }
 
@@ -2716,6 +2805,273 @@ pub fn resolve_project_dependency_paths(
     Ok(resolved)
 }
 
+/// Accept only immutable, full Git object identifiers. SHA-1 repositories use
+/// 40 hexadecimal digits and object-format=sha256 repositories use 64.
+pub fn normalize_git_revision(revision: &str) -> Option<String> {
+    if !matches!(revision.len(), 40 | 64) || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some(revision.to_ascii_lowercase())
+}
+
+fn valid_git_remote(url: &str) -> bool {
+    !url.is_empty()
+        && !url.starts_with('-')
+        && !url.starts_with("ext::")
+        && !url.bytes().any(|byte| matches!(byte, 0 | b'\n' | b'\r'))
+}
+
+/// Derive a project-local cache path from the complete immutable Git origin.
+/// Dependency aliases do not affect identity, so two aliases of one URL/rev
+/// pair share a checkout within the owning project.
+pub fn project_git_dependency_cache_path(
+    project_root: &Path,
+    url: &str,
+    revision: &str,
+) -> PathBuf {
+    let mut identity = Vec::with_capacity(url.len() + revision.len() + 1);
+    identity.extend_from_slice(url.as_bytes());
+    identity.push(0);
+    identity.extend_from_slice(revision.as_bytes());
+    let digest = String::from_utf8_lossy(&sha256_hex(&identity)).into_owned();
+    project_root.join(".birnam/dependencies/git").join(digest)
+}
+
+fn git_output(
+    name: &str,
+    operation: &'static str,
+    current_dir: &Path,
+    arguments: &[OsString],
+) -> Result<std::process::Output, ProjectDependencyResolutionError> {
+    let output = std::process::Command::new("git")
+        .current_dir(current_dir)
+        .args(arguments)
+        .output()
+        .map_err(|error| ProjectDependencyResolutionError::GitSpawn {
+            name: name.to_owned(),
+            operation,
+            kind: error.kind(),
+        })?;
+    if !output.status.success() {
+        let mut detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        if detail.is_empty() {
+            detail = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        }
+        if detail.len() > 16 * 1024 {
+            detail.truncate(16 * 1024);
+        }
+        return Err(ProjectDependencyResolutionError::GitCommand {
+            name: name.to_owned(),
+            operation,
+            code: output.status.code(),
+            detail,
+        });
+    }
+    Ok(output)
+}
+
+fn validate_cached_git_dependency(
+    name: &str,
+    revision: &str,
+    path: &Path,
+) -> Result<(), ProjectDependencyResolutionError> {
+    if !path.is_dir() {
+        return Err(ProjectDependencyResolutionError::GitCacheMissing {
+            name: name.to_owned(),
+            path: path.to_path_buf(),
+        });
+    }
+    if !path.join("birnam.toml").is_file() {
+        return Err(ProjectDependencyResolutionError::GitCacheInvalid {
+            name: name.to_owned(),
+            path: path.to_path_buf(),
+            reason: "checkout does not contain birnam.toml".to_owned(),
+        });
+    }
+    let head_path = path.join(".git/HEAD");
+    let actual = std::fs::read_to_string(&head_path)
+        .map_err(|error| ProjectDependencyResolutionError::GitCacheInvalid {
+            name: name.to_owned(),
+            path: path.to_path_buf(),
+            reason: format!("cannot read detached HEAD: {}", error.kind()),
+        })?
+        .trim()
+        .to_ascii_lowercase();
+    if actual != revision {
+        return Err(ProjectDependencyResolutionError::GitCacheInvalid {
+            name: name.to_owned(),
+            path: path.to_path_buf(),
+            reason: format!("expected revision {revision}, found {actual}"),
+        });
+    }
+    let status = git_output(
+        name,
+        "inspect cached checkout",
+        path,
+        &[
+            OsString::from("status"),
+            OsString::from("--porcelain"),
+            OsString::from("--untracked-files=no"),
+        ],
+    )?;
+    if !status.stdout.is_empty() {
+        return Err(ProjectDependencyResolutionError::GitCacheInvalid {
+            name: name.to_owned(),
+            path: path.to_path_buf(),
+            reason: "checkout has tracked modifications".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// Resolve manifest dependencies without performing network or cache writes.
+/// Git dependencies must already have an exact, clean checkout produced by an
+/// explicit fetch operation.
+pub fn resolve_project_dependencies_cached(
+    project_root: &Path,
+    dependencies: &[ProjectManifestDependencyObservation],
+) -> Result<Vec<ProjectDependencyObservation>, ProjectDependencyResolutionError> {
+    let mut resolved = Vec::with_capacity(dependencies.len());
+    for dependency in dependencies {
+        let root = match &dependency.source {
+            ProjectDependencySourceObservation::Path(path) => {
+                let path_dependency = ProjectDependencyObservation {
+                    name: dependency.name.clone(),
+                    root: path.clone(),
+                };
+                PathBuf::from(
+                    &resolve_project_dependency_paths(project_root, &[path_dependency])?[0].root,
+                )
+            }
+            ProjectDependencySourceObservation::Git { url, revision } => {
+                let path = project_git_dependency_cache_path(project_root, url, revision);
+                validate_cached_git_dependency(&dependency.name, revision, &path)?;
+                std::fs::canonicalize(&path).map_err(|error| {
+                    ProjectDependencyResolutionError::Canonicalize {
+                        name: dependency.name.clone(),
+                        path: path.clone(),
+                        kind: error.kind(),
+                    }
+                })?
+            }
+        };
+        resolved.push(ProjectDependencyObservation {
+            name: dependency.name.clone(),
+            root: root.to_string_lossy().into_owned(),
+        });
+    }
+    resolved.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(resolved)
+}
+
+fn acquire_project_git_dependency(
+    project_root: &Path,
+    dependency: &ProjectManifestDependencyObservation,
+) -> Result<(PathBuf, bool), ProjectDependencyResolutionError> {
+    let ProjectDependencySourceObservation::Git { url, revision } = &dependency.source else {
+        unreachable!("only Git dependencies are acquired")
+    };
+    let final_path = project_git_dependency_cache_path(project_root, url, revision);
+    if final_path.exists() {
+        validate_cached_git_dependency(&dependency.name, revision, &final_path)?;
+        return Ok((final_path, false));
+    }
+    let cache_root = final_path
+        .parent()
+        .expect("Git dependency cache path always has a parent");
+    std::fs::create_dir_all(cache_root).map_err(|error| {
+        ProjectDependencyResolutionError::CacheIo {
+            path: cache_root.to_path_buf(),
+            operation: "create cache directory",
+            kind: error.kind(),
+        }
+    })?;
+    let process = std::process::id();
+    let mut staging = None;
+    for attempt in 0..128u32 {
+        let candidate = cache_root.join(format!(".fetch-{process}-{attempt}"));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => {
+                staging = Some(candidate);
+                break;
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(ProjectDependencyResolutionError::CacheIo {
+                    path: candidate,
+                    operation: "create fetch staging directory",
+                    kind: error.kind(),
+                });
+            }
+        }
+    }
+    let staging = staging.ok_or_else(|| ProjectDependencyResolutionError::CacheIo {
+        path: cache_root.to_path_buf(),
+        operation: "allocate fetch staging directory",
+        kind: io::ErrorKind::AlreadyExists,
+    })?;
+    let acquired = (|| {
+        git_output(
+            &dependency.name,
+            "initialize checkout",
+            &staging,
+            &[OsString::from("init"), OsString::from("--quiet")],
+        )?;
+        git_output(
+            &dependency.name,
+            "configure origin",
+            &staging,
+            &[
+                OsString::from("remote"),
+                OsString::from("add"),
+                OsString::from("origin"),
+                OsString::from(url),
+            ],
+        )?;
+        git_output(
+            &dependency.name,
+            "fetch pinned revision",
+            &staging,
+            &[
+                OsString::from("fetch"),
+                OsString::from("--quiet"),
+                OsString::from("--depth=1"),
+                OsString::from("origin"),
+                OsString::from(revision),
+            ],
+        )?;
+        git_output(
+            &dependency.name,
+            "checkout pinned revision",
+            &staging,
+            &[
+                OsString::from("checkout"),
+                OsString::from("--quiet"),
+                OsString::from("--detach"),
+                OsString::from("FETCH_HEAD"),
+            ],
+        )?;
+        validate_cached_git_dependency(&dependency.name, revision, &staging)?;
+        match std::fs::rename(&staging, &final_path) {
+            Ok(()) => Ok((final_path.clone(), true)),
+            Err(_) if final_path.exists() => {
+                validate_cached_git_dependency(&dependency.name, revision, &final_path)?;
+                Ok((final_path.clone(), false))
+            }
+            Err(error) => Err(ProjectDependencyResolutionError::CacheIo {
+                path: final_path.clone(),
+                operation: "publish fetched checkout",
+                kind: error.kind(),
+            }),
+        }
+    })();
+    if staging.exists() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    acquired
+}
+
 /// Plan a root-first dependency closure from already-observed project nodes.
 /// The function is deliberately filesystem-free: callers resolve and observe
 /// manifests separately, then provide canonical project roots here. Edges are
@@ -2794,6 +3150,9 @@ fn collect_project_source_tree(
                 path: path.clone(),
                 kind: error.kind(),
             })?;
+        if file_type.is_dir() && entry.file_name() == OsStr::new(".birnam") {
+            continue;
+        }
         if file_type.is_dir() {
             collect_project_source_tree(&path, files)?;
         } else if file_type.is_file()
@@ -3276,7 +3635,7 @@ impl<'a> ProjectManifestDecoder<'a> {
     unsafe fn dependencies(
         &self,
         value: birnam_abi::Oop,
-    ) -> Result<Vec<ProjectDependencyObservation>, ProjectManifestDecodeError> {
+    ) -> Result<Vec<ProjectManifestDependencyObservation>, ProjectManifestDecodeError> {
         if value == self.api.nilObj {
             return Ok(Vec::new());
         }
@@ -3290,11 +3649,41 @@ impl<'a> ProjectManifestDecoder<'a> {
         for name in names {
             let spec = unsafe { self.at(value, &name) }
                 .map_err(|_| ProjectManifestDecodeError::InvalidMap("dependency spec"))?;
-            let path = unsafe { self.string(self.at(spec, "path")?, "dependency.path")? };
-            if Path::new(&path).is_absolute() {
-                return Err(ProjectManifestDecodeError::InvalidPath("dependency.path"));
+            if spec == self.api.nilObj || unsafe { (self.api.vtableOf)(spec) } != self.map_vt {
+                return Err(ProjectManifestDecodeError::InvalidMap("dependency spec"));
             }
-            result.push(ProjectDependencyObservation { name, root: path });
+            let path_value = unsafe { self.at(spec, "path")? };
+            let git_value = unsafe { self.at(spec, "git")? };
+            let revision_value = unsafe { self.at(spec, "rev")? };
+            let source = match (
+                path_value != self.api.nilObj,
+                git_value != self.api.nilObj,
+                revision_value != self.api.nilObj,
+            ) {
+                (true, false, false) => {
+                    let path = unsafe { self.string(path_value, "dependency.path")? };
+                    if path.is_empty() || Path::new(&path).is_absolute() {
+                        return Err(ProjectManifestDecodeError::InvalidPath("dependency.path"));
+                    }
+                    ProjectDependencySourceObservation::Path(path)
+                }
+                (false, true, true) => {
+                    let url = unsafe { self.string(git_value, "dependency.git")? };
+                    let revision = unsafe { self.string(revision_value, "dependency.rev")? };
+                    if !valid_git_remote(&url) {
+                        return Err(ProjectManifestDecodeError::InvalidDependency(name));
+                    }
+                    let revision = normalize_git_revision(&revision).ok_or_else(|| {
+                        ProjectManifestDecodeError::InvalidGitRevision {
+                            name: name.clone(),
+                            revision,
+                        }
+                    })?;
+                    ProjectDependencySourceObservation::Git { url, revision }
+                }
+                _ => return Err(ProjectManifestDecodeError::InvalidDependency(name)),
+            };
+            result.push(ProjectManifestDependencyObservation { name, source });
         }
         result.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(result)
@@ -5242,6 +5631,107 @@ impl HostRuntime {
         Ok((root, parsed))
     }
 
+    unsafe fn fetch_project_dependencies_at(
+        &self,
+        root: &Path,
+        visiting: &mut HashSet<PathBuf>,
+        visited: &mut HashSet<PathBuf>,
+        fetched: &mut usize,
+        reused: &mut usize,
+    ) -> Result<(), ProjectFetchError> {
+        let root =
+            std::fs::canonicalize(root).map_err(|error| ProjectFetchError::Canonicalize {
+                path: root.to_path_buf(),
+                kind: error.kind(),
+            })?;
+        if visited.contains(&root) {
+            return Ok(());
+        }
+        if !visiting.insert(root.clone()) {
+            return Err(ProjectFetchError::DependencyCycle(root));
+        }
+        let result = (|| {
+            let manifest_path = root.join("birnam.toml");
+            let parsed = unsafe { self.parse_project_manifest(&manifest_path) }
+                .map_err(ProjectFetchError::Manifest)?;
+            let manifest = unsafe { decode_project_manifest(self.stack.api(), parsed) }
+                .map_err(ProjectFetchError::Decode)?;
+            for dependency in &manifest.dependencies {
+                let dependency_root = match &dependency.source {
+                    ProjectDependencySourceObservation::Path(path) => {
+                        let path_dependency = ProjectDependencyObservation {
+                            name: dependency.name.clone(),
+                            root: path.clone(),
+                        };
+                        PathBuf::from(
+                            &resolve_project_dependency_paths(&root, &[path_dependency])
+                                .map_err(ProjectFetchError::Dependency)?[0]
+                                .root,
+                        )
+                    }
+                    ProjectDependencySourceObservation::Git { .. } => {
+                        let (path, acquired) = acquire_project_git_dependency(&root, dependency)
+                            .map_err(ProjectFetchError::Dependency)?;
+                        if acquired {
+                            *fetched += 1;
+                        } else {
+                            *reused += 1;
+                        }
+                        path
+                    }
+                };
+                unsafe {
+                    self.fetch_project_dependencies_at(
+                        &dependency_root,
+                        visiting,
+                        visited,
+                        fetched,
+                        reused,
+                    )?
+                };
+            }
+            Ok::<(), ProjectFetchError>(())
+        })();
+        visiting.remove(&root);
+        if result.is_ok() {
+            visited.insert(root);
+        }
+        result
+    }
+
+    /// Acquire every commit-pinned Git dependency in the complete project
+    /// closure. This is the sole network-capable dependency operation; normal
+    /// project observation only validates these cached checkouts.
+    ///
+    /// # Safety
+    ///
+    /// The caller must keep a live GC anchor and remain on the floor owner
+    /// thread while each dependency manifest is parsed.
+    pub unsafe fn fetch_project_dependencies(
+        &self,
+        start: &Path,
+    ) -> Result<ProjectFetchResult, ProjectFetchError> {
+        let root = nearest_project_root(start).map_err(ProjectFetchError::Discovery)?;
+        let mut visiting = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut fetched = 0;
+        let mut reused = 0;
+        unsafe {
+            self.fetch_project_dependencies_at(
+                &root,
+                &mut visiting,
+                &mut visited,
+                &mut fetched,
+                &mut reused,
+            )?
+        };
+        Ok(ProjectFetchResult {
+            project_root: root,
+            fetched,
+            reused,
+        })
+    }
+
     unsafe fn observe_project_at(
         &self,
         root: &Path,
@@ -5253,7 +5743,7 @@ impl HostRuntime {
             .map_err(ProjectObservationBuildError::Manifest)?;
         let manifest = unsafe { decode_project_manifest(self.stack.api(), parsed) }
             .map_err(ProjectObservationBuildError::Decode)?;
-        let dependencies = resolve_project_dependency_paths(root, &manifest.dependencies)
+        let dependencies = resolve_project_dependencies_cached(root, &manifest.dependencies)
             .map_err(ProjectObservationBuildError::Dependency)?;
         let root_string = root.to_string_lossy().into_owned();
         let mut sources = Vec::new();
@@ -9337,6 +9827,13 @@ mod tests {
         std::fs::write(root.join("src/z.birnam"), b"z").expect("source fixture writes");
         std::fs::write(root.join("src/nested/a.birnam"), b"a").expect("source fixture writes");
         std::fs::write(root.join("src/ignore.txt"), b"ignore").expect("source fixture writes");
+        std::fs::create_dir_all(root.join("src/.birnam/dependencies"))
+            .expect("internal fixture creates");
+        std::fs::write(
+            root.join("src/.birnam/dependencies/cached.birnam"),
+            b"cached",
+        )
+        .expect("internal source fixture writes");
         let files =
             collect_project_source_files(&root, &["src".to_owned()]).expect("source walk succeeds");
         assert_eq!(
@@ -9382,6 +9879,68 @@ mod tests {
                 .to_string_lossy()
         );
         std::fs::remove_dir_all(&root).expect("dependency fixture removes");
+    }
+
+    #[test]
+    fn git_dependency_revisions_are_full_hex_object_ids() {
+        assert_eq!(
+            normalize_git_revision("ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
+            Some("abcdef0123456789abcdef0123456789abcdef01".to_owned())
+        );
+        assert!(normalize_git_revision("main").is_none());
+        assert!(normalize_git_revision("abcdef0").is_none());
+        assert!(normalize_git_revision("zbcdef0123456789abcdef0123456789abcdef01").is_none());
+        assert!(valid_git_remote("https://github.com/chazu/example.git"));
+        assert!(valid_git_remote("git@github.com:chazu/example.git"));
+        assert!(valid_git_remote("/tmp/example.git"));
+        assert!(!valid_git_remote("ext::sh -c exploit"));
+        assert!(!valid_git_remote("--upload-pack=exploit"));
+    }
+
+    #[test]
+    fn git_dependency_cache_identity_uses_url_and_revision() {
+        let root = Path::new("/tmp/project");
+        let first = project_git_dependency_cache_path(
+            root,
+            "https://example.test/library.git",
+            "0123456789abcdef0123456789abcdef01234567",
+        );
+        assert!(first.starts_with(root.join(".birnam/dependencies/git")));
+        assert_eq!(
+            first.file_name().and_then(OsStr::to_str).map(str::len),
+            Some(64)
+        );
+        assert_ne!(
+            first,
+            project_git_dependency_cache_path(
+                root,
+                "https://example.test/library.git",
+                "1123456789abcdef0123456789abcdef01234567",
+            )
+        );
+    }
+
+    #[test]
+    fn ordinary_resolution_never_fetches_a_missing_git_dependency() {
+        let root = std::env::temp_dir().join(format!(
+            "birnam-host-missing-git-dependency-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture root creates");
+        let dependency = ProjectManifestDependencyObservation {
+            name: "library".to_owned(),
+            source: ProjectDependencySourceObservation::Git {
+                url: "https://example.test/library.git".to_owned(),
+                revision: "0123456789abcdef0123456789abcdef01234567".to_owned(),
+            },
+        };
+        assert!(matches!(
+            resolve_project_dependencies_cached(&root, &[dependency]),
+            Err(ProjectDependencyResolutionError::GitCacheMissing { name, .. })
+                if name == "library"
+        ));
+        assert!(!root.join(".birnam").exists());
+        std::fs::remove_dir_all(root).expect("fixture removes");
     }
 
     #[test]
@@ -9648,6 +10207,30 @@ mod tests {
         assert_eq!(
             parse_check_args(&["--help"]).expect("help parses"),
             ParseOutcome::Help
+        );
+    }
+
+    #[test]
+    fn fetch_parser_accepts_only_one_project_directory() {
+        assert_eq!(
+            classify_command(&["fetch"]).expect("fetch is top-level"),
+            CommandKind::Fetch
+        );
+        assert_eq!(
+            parse_fetch_args::<&str>(&[]).expect("defaults parse"),
+            ParseOutcome::Parsed(FetchOptions {
+                directory: PathBuf::from("."),
+            })
+        );
+        assert_eq!(
+            parse_fetch_args(&["project"]).expect("directory parses"),
+            ParseOutcome::Parsed(FetchOptions {
+                directory: PathBuf::from("project"),
+            })
+        );
+        assert_eq!(
+            parse_fetch_args(&["one", "two"]),
+            Err(ProjectParseError::DuplicateDirectory)
         );
     }
 

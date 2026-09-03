@@ -142,4 +142,85 @@ test -f "$transitive_install_lib/libbirnam_transitive_fixture.dylib"
 test -f "$transitive_install_lib/libtransitive_fixture.dylib"
 test -f "$transitive_install_lib/libroot_marker.dylib"
 
-echo "rust-project-check: relocated check human/JSON, build, run, install, test, and transitive wrapped dependency passed"
+# Git dependencies are immutable full-revision origins. Fetch two local Git
+# repositories recursively, then prove ordinary resolution, wrapped artifact
+# propagation, and execution all consume the exact cached closure offline.
+mkdir -p "$tmp/git/native/src" "$tmp/git/native/native"
+cat >"$tmp/git/native/birnam.toml" <<'EOF'
+name = "git-native"
+source_roots = ["src"]
+
+[[wrapped]]
+name = "git_native"
+build = [["cc", "-dynamiclib", "native/git_native.c", "-o", "{output}"]]
+EOF
+cat >"$tmp/git/native/src/git_native.birnam" <<'EOF'
+[Module named: #git_native requires: #[]];
+[Alien dlopen: "libgit_native.dylib"];
+[Globals at: #GitNative put: [Object clone]];
+[Alien wrap: "git_native_answer" signature: "i" as: #answer on: GitNative]
+EOF
+cat >"$tmp/git/native/native/git_native.c" <<'EOF'
+int git_native_answer(void) { return 84; }
+EOF
+git -C "$tmp/git/native" init --quiet
+git -C "$tmp/git/native" add birnam.toml src native
+git -C "$tmp/git/native" -c user.name=Birnam -c user.email=birnam@example.invalid commit --quiet -m fixture
+native_revision="$(git -C "$tmp/git/native" rev-parse HEAD)"
+
+mkdir -p "$tmp/git/middle/src"
+cat >"$tmp/git/middle/birnam.toml" <<EOF
+name = "git-middle"
+source_roots = ["src"]
+
+[dependencies]
+git_native = { git = "$tmp/git/native", rev = "$native_revision" }
+EOF
+cat >"$tmp/git/middle/src/git_middle.birnam" <<'EOF'
+[Module named: #git_middle requires: #[#git_native]];
+EOF
+git -C "$tmp/git/middle" init --quiet
+git -C "$tmp/git/middle" add birnam.toml src
+git -C "$tmp/git/middle" -c user.name=Birnam -c user.email=birnam@example.invalid commit --quiet -m fixture
+middle_revision="$(git -C "$tmp/git/middle" rev-parse HEAD)"
+
+mkdir -p "$tmp/git/root/src"
+cat >"$tmp/git/root/birnam.toml" <<EOF
+name = "git-root"
+main = "main.birnam"
+load = ["git_middle"]
+
+[dependencies]
+git_middle = { git = "$tmp/git/middle", rev = "$middle_revision" }
+EOF
+cat >"$tmp/git/root/main.birnam" <<'EOF'
+[System println: [[GitNative answer] printString]];
+EOF
+
+if run_from_clean_cwd check "$tmp/git/root" >"$tmp/git/missing.out" 2>&1; then
+  echo "check unexpectedly fetched a missing Git dependency" >&2
+  exit 1
+fi
+grep -Fq 'GitCacheMissing' "$tmp/git/missing.out"
+test ! -e "$tmp/git/root/.birnam"
+
+git_fetch="$(run_from_clean_cwd fetch "$tmp/git/root")"
+grep -Fq 'fetched 2 Git dependencies; reused 0 cached checkouts' <<<"$git_fetch"
+git_refetch="$(run_from_clean_cwd fetch "$tmp/git/root")"
+grep -Fq 'fetched 0 Git dependencies; reused 2 cached checkouts' <<<"$git_refetch"
+git_check="$(run_from_clean_cwd check "$tmp/git/root")"
+grep -Fq 'git_native -> lib/libgit_native.dylib' <<<"$git_check"
+run_from_clean_cwd build "$tmp/git/root" >/dev/null
+git_run="$(run_from_clean_cwd run "$tmp/git/root" --no-repl)"
+grep -Fxq '84' <<<"$git_run"
+
+cached_native="$(find "$tmp/git/root/.birnam/dependencies/git" -path '*/src/git_native.birnam' -print -quit)"
+test -n "$cached_native"
+printf '\n// local mutation\n' >>"$cached_native"
+if run_from_clean_cwd check "$tmp/git/root" >"$tmp/git/dirty.out" 2>&1; then
+  echo "check accepted a modified Git dependency checkout" >&2
+  exit 1
+fi
+grep -Fq 'checkout has tracked modifications' "$tmp/git/dirty.out"
+
+echo "rust-project-check: relocated check human/JSON, build, run, install, test, path dependencies, and pinned Git dependencies passed"
