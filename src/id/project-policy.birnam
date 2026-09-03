@@ -124,6 +124,57 @@
                   nil]
                 ifFalse: [| failure]]]]]]]]]];
 
+// Wrapped artifacts occupy one native filename namespace in the root build.
+// Visit the observed project graph in postorder so dependency libraries are
+// available to dependent recipes through {lib}, and retain the declaring root
+// for the host's cwd and {project} effect boundary.
+[Reflect defineMethod: #visitWrappedProject:state: on: ProjectPolicy as: [:self :project :state |
+  let root := [project at: "root"];
+  let visited := [[state at: "wrappedVisited"] value];
+  [[self hasName: root in: visited]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let visiting := [[state at: "wrappedVisiting"] value];
+      [[[visiting indexOf: root] notNil]
+        ifTrue: [| [Error kind: #dependencyCycle
+                    message: ["project dependency cycle at " , root]]]
+        ifFalse: [|
+          [[state at: "wrappedVisiting"] set: [visiting add: root]];
+          let dependencies := [[project at: "dependencies"] sortBy: [:dependency | [dependency at: "name"]]];
+          let failure := [dependencies inject: nil into: [:acc :dependency |
+            [[acc isNil]
+              ifTrue: [|
+                let dependencyProject := [self projectNamed: [dependency at: "root"] in: [state at: "projects"] at: 0];
+                [[dependencyProject isNil]
+                  ifTrue: [| [Error kind: #dependencyOriginInvalid
+                              message: ["dependency " , [dependency at: "name"] , " has no observed project root"]]]
+                  ifFalse: [| [self visitWrappedProject: dependencyProject state: state]]]]
+              ifFalse: [| acc]]]];
+          [[state at: "wrappedVisiting"] set: visiting];
+          [[failure notNil]
+            ifTrue: [| failure]
+            ifFalse: [|
+              let artifacts := [project at: "wrapped"];
+              let artifactFailure := [artifacts inject: nil into: [:acc :artifact |
+                [[acc isNil]
+                  ifTrue: [|
+                    let name := [artifact at: "name"];
+                    let owner := [[[state at: "wrappedOwners"] value] at: name ifAbsent: [| nil]];
+                    [[owner notNil]
+                      ifTrue: [| [Error kind: #duplicateWrapped
+                                  message: ["wrapped " , name , " is declared by both " , owner , " and " , root]]]
+                      ifFalse: [|
+                        [[state at: "wrappedOwners"] set: [[[state at: "wrappedOwners"] value] at: name put: root]];
+                        let rooted := [artifact at: "projectRoot" put: root];
+                        [[state at: "wrappedResolved"] set: [[[state at: "wrappedResolved"] value] add: rooted]];
+                        nil]]]
+                  ifFalse: [| acc]]]];
+              [[artifactFailure notNil]
+                ifTrue: [| artifactFailure]
+                ifFalse: [|
+                  [[state at: "wrappedVisited"] set: [[[state at: "wrappedVisited"] value] add: root]];
+                  nil]]]]]]]]]];
+
 [Reflect defineMethod: #resolutionFrom: on: ProjectPolicy as: [:self :snapshot |
   let projects := [snapshot at: "projects"];
   let root := [snapshot at: "root"];
@@ -143,17 +194,30 @@
       [[failure notNil]
         ifTrue: [| failure]
         ifFalse: [|
-          let result := [Map new];
-          let r1 := [result at: "projectRoot" put: [rootProject at: "root"]];
-          let r2 := [r1 at: "manifest" put: [rootProject at: "manifest"]];
-          let r3 := [r2 at: "projectName" put: [rootProject at: "name"]];
-          let r4 := [r3 at: "main" put: [rootProject at: "main"]];
-          let r5 := [r4 at: "run" put: [rootProject at: "run"]];
-          let r6 := [r5 at: "wrapped" put: [rootProject at: "wrapped"]];
-          let r7 := [r6 at: "loadRoots" put: roots];
-          let resolved := [[withVisiting at: "resolved"] value];
-          let final := [r7 at: "modules" put: resolved];
-          final]]]]]];
+          let wrappedState0 := [Map new];
+          let wrappedState1 := [wrappedState0 at: "projects" put: projects];
+          let wrappedState2 := [wrappedState1 at: "wrappedVisited" put: [#[] asCell]];
+          let wrappedState3 := [wrappedState2 at: "wrappedVisiting" put: [#[] asCell]];
+          let wrappedState4 := [wrappedState3 at: "wrappedOwners" put: [[Map new] asCell]];
+          let wrappedState := [wrappedState4 at: "wrappedResolved" put: [#[] asCell]];
+          let hasWrapped := [projects anySatisfy: [:candidate | [[[candidate at: "wrapped"] size] > 0]]];
+          let wrappedFailure := [hasWrapped
+            ifTrue: [| [self visitWrappedProject: rootProject state: wrappedState]]
+            ifFalse: [| nil]];
+          [[wrappedFailure notNil]
+            ifTrue: [| wrappedFailure]
+            ifFalse: [|
+              let result := [Map new];
+              let r1 := [result at: "projectRoot" put: [rootProject at: "root"]];
+              let r2 := [r1 at: "manifest" put: [rootProject at: "manifest"]];
+              let r3 := [r2 at: "projectName" put: [rootProject at: "name"]];
+              let r4 := [r3 at: "main" put: [rootProject at: "main"]];
+              let r5 := [r4 at: "run" put: [rootProject at: "run"]];
+              let r6 := [r5 at: "wrapped" put: [[wrappedState at: "wrappedResolved"] value]];
+              let r7 := [r6 at: "loadRoots" put: roots];
+              let resolved := [[withVisiting at: "resolved"] value];
+              let final := [r7 at: "modules" put: resolved];
+              final]]]]]]]];
 
 [Reflect defineMethod: #resolveSnapshot: on: ProjectPolicy as: [:self :snapshot |
   [self resolutionFrom: snapshot]] doc:

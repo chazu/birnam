@@ -16,6 +16,14 @@
   let r1 := [result at: "name" put: name];
   [r1 at: "root" put: root]]];
 
+[Reflect defineMethod: #wrapped: on: ProjectPolicyTest as: [:self :name |
+  let result := [Map new];
+  let r1 := [result at: "name" put: name];
+  [r1 at: "build" put: #[#["cc" "-o" "{output}"]]]]];
+
+[Reflect defineMethod: #withWrapped:on: on: ProjectPolicyTest as: [:self :wrapped :project |
+  [project at: "wrapped" put: wrapped]]];
+
 [Reflect defineMethod: #project:name:loads:dependencies:sources: on: ProjectPolicyTest as: [:self :root :name :loads :dependencies :sources |
   let run := [Map new];
   let run1 := [run at: "repl" put: "none"];
@@ -117,6 +125,31 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
   let names := [[result at: "modules"] collect: [:entry | [entry at: "name"]]];
   [t expect: names equals: #["leaf" "dep" "util" "app"] describes: "dependency-first module order"]]];
+
+[s test: "wrapped artifacts propagate dependency-first with their declaring roots" do: [:t |
+  let native := [ProjectPolicyTest project: "/native" name: "native" loads: #[] dependencies: #[] sources: #[]];
+  let nativeWrapped := [ProjectPolicyTest withWrapped: #[[ProjectPolicyTest wrapped: "native_lib"]] on: native];
+  let nativeRef := [ProjectPolicyTest dependency: "/native" name: "native"];
+  let middle := [ProjectPolicyTest project: "/middle" name: "middle" loads: #[] dependencies: #[nativeRef] sources: #[]];
+  let middleWrapped := [ProjectPolicyTest withWrapped: #[[ProjectPolicyTest wrapped: "middle_lib"]] on: middle];
+  let middleRef := [ProjectPolicyTest dependency: "/middle" name: "middle"];
+  let root := [ProjectPolicyTest project: "/root" name: "root" loads: #[] dependencies: #[middleRef nativeRef] sources: #[]];
+  let rootWrapped := [ProjectPolicyTest withWrapped: #[[ProjectPolicyTest wrapped: "root_lib"]] on: root];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: #[rootWrapped middleWrapped nativeWrapped]]];
+  let wrapped := [result at: "wrapped"];
+  [t expect: [wrapped collect: [:entry | [entry at: "name"]]] equals: #["native_lib" "middle_lib" "root_lib"] describes: "wrapped artifacts are dependency-first and shared projects appear once"];
+  [t expect: [wrapped collect: [:entry | [entry at: "projectRoot"]]] equals: #["/native" "/middle" "/root"] describes: "wrapped artifacts retain declaring roots"]]];
+
+[s test: "duplicate wrapped names across dependencies are rejected" do: [:t |
+  let dep := [ProjectPolicyTest project: "/dep" name: "dep" loads: #[] dependencies: #[] sources: #[]];
+  let depWrapped := [ProjectPolicyTest withWrapped: #[[ProjectPolicyTest wrapped: "collision"]] on: dep];
+  let depRef := [ProjectPolicyTest dependency: "/dep" name: "dep"];
+  let root := [ProjectPolicyTest project: "/root" name: "root" loads: #[] dependencies: #[depRef] sources: #[]];
+  let rootWrapped := [ProjectPolicyTest withWrapped: #[[ProjectPolicyTest wrapped: "collision"]] on: root];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: #[rootWrapped depWrapped]]];
+  [t expect: [result kind] equals: #duplicateWrapped describes: "duplicate wrapped name kind"];
+  [t assert: [[result message] includesSubstring: "/dep"] describes: "duplicate names report first project"];
+  [t assert: [[result message] includesSubstring: "/root"] describes: "duplicate names report second project"]]];
 
 [s test: "missing providers carry the dependency path" do: [:t |
   let appSource := [ProjectPolicyTest source: "app" requires: #["missing"]];

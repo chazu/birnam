@@ -1840,6 +1840,13 @@ pub struct ProjectWrappedObservation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectWrappedArtifactObservation {
+    pub project_root: String,
+    pub name: String,
+    pub build: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectDependencyObservation {
     pub name: String,
     pub root: String,
@@ -1891,6 +1898,7 @@ pub struct ProjectResolutionObservation {
     pub main: Option<String>,
     pub load_roots: Vec<String>,
     pub modules: Vec<ProjectSourceObservation>,
+    pub wrapped: Vec<ProjectWrappedArtifactObservation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1907,7 +1915,7 @@ pub struct ProjectCompileDiagnostic {
 pub struct ProjectCheckResult {
     pub resolution: ProjectResolutionObservation,
     pub resolution_digest: String,
-    pub wrapped: Vec<ProjectWrappedObservation>,
+    pub wrapped: Vec<ProjectWrappedArtifactObservation>,
     pub test_sources: Option<Vec<String>>,
     pub diagnostics: Vec<ProjectCompileDiagnostic>,
 }
@@ -1987,7 +1995,7 @@ pub struct ProjectArtifactRecordRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
     pub staged: &'a [ProjectStagedArtifact],
     pub native: &'a [ProjectPreviousNativeArtifact],
-    pub wrapped: &'a [ProjectWrappedObservation],
+    pub wrapped: &'a [ProjectWrappedArtifactObservation],
     pub target: &'a str,
     pub profile: &'a str,
     pub tool_version: &'a str,
@@ -2207,7 +2215,7 @@ pub enum ProjectBuildPublicationError {
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
-    pub wrapped: &'a [ProjectWrappedObservation],
+    pub wrapped: &'a [ProjectWrappedArtifactObservation],
     pub previous: Option<&'a ProjectBuildRecord>,
     pub target: &'a str,
     pub profile: &'a str,
@@ -3201,6 +3209,36 @@ impl<'a> ProjectManifestDecoder<'a> {
         Ok(result)
     }
 
+    unsafe fn wrapped_artifacts(
+        &self,
+        value: birnam_abi::Oop,
+    ) -> Result<Vec<ProjectWrappedArtifactObservation>, ProjectManifestDecodeError> {
+        let wrapped = unsafe { self.wrapped(value)? };
+        if wrapped.is_empty() {
+            return Ok(Vec::new());
+        }
+        let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
+        let mut result = Vec::with_capacity(wrapped.len());
+        for (index, artifact) in wrapped.into_iter().enumerate() {
+            let item = unsafe {
+                (self.api.send)(
+                    value,
+                    at_selector,
+                    [(self.api.mkSmallInt)(index as i64)].as_ptr(),
+                    1,
+                )
+            };
+            let project_root =
+                unsafe { self.string(self.at(item, "projectRoot")?, "wrapped.projectRoot")? };
+            result.push(ProjectWrappedArtifactObservation {
+                project_root,
+                name: artifact.name,
+                build: artifact.build,
+            });
+        }
+        Ok(result)
+    }
+
     unsafe fn test_sources(
         &self,
         value: birnam_abi::Oop,
@@ -3359,6 +3397,7 @@ pub unsafe fn decode_project_resolution(
     };
     let load_roots =
         unsafe { decoder.strings(decoder.at(resolution, "loadRoots")?, "loadRoots", false)? };
+    let wrapped = unsafe { decoder.wrapped_artifacts(decoder.at(resolution, "wrapped")?)? };
     let modules_value = unsafe { decoder.at(resolution, "modules")? };
     if modules_value == api.nilObj || unsafe { (api.vtableOf)(modules_value) } != decoder.vector_vt
     {
@@ -3415,6 +3454,7 @@ pub unsafe fn decode_project_resolution(
         main,
         load_roots,
         modules,
+        wrapped,
     })
 }
 
@@ -3444,6 +3484,41 @@ pub fn project_resolution_digest(
         add(&mut input, &module.source_digest);
         for dependency in &module.requires {
             add(&mut input, dependency);
+        }
+    }
+    String::from_utf8_lossy(&sha256_hex(&input)).into_owned()
+}
+
+/// Extend the source-resolution identity with the complete wrapped-artifact
+/// closure. This invalidates a published build when a dependency changes a
+/// native recipe even if its selected Birnam module source is unchanged.
+pub fn project_build_resolution_digest(
+    project_root: &str,
+    manifest_bytes: &[u8],
+    modules: &[ProjectSourceObservation],
+    wrapped: &[ProjectWrappedArtifactObservation],
+) -> String {
+    let source_digest = project_resolution_digest(project_root, manifest_bytes, modules);
+    let mut input = Vec::new();
+    let add = |input: &mut Vec<u8>, value: &str| {
+        input.extend_from_slice(&(value.len() as u64).to_be_bytes());
+        input.extend_from_slice(value.as_bytes());
+    };
+    let add_count = |input: &mut Vec<u8>, value: usize| {
+        input.extend_from_slice(&(value as u64).to_be_bytes());
+    };
+    add(&mut input, "birnam.project-build-resolution.v2");
+    add(&mut input, &source_digest);
+    add_count(&mut input, wrapped.len());
+    for artifact in wrapped {
+        add(&mut input, &artifact.project_root);
+        add(&mut input, &artifact.name);
+        add_count(&mut input, artifact.build.len());
+        for command in &artifact.build {
+            add_count(&mut input, command.len());
+            for argument in command {
+                add(&mut input, argument);
+            }
         }
     }
     String::from_utf8_lossy(&sha256_hex(&input)).into_owned()
@@ -5341,21 +5416,23 @@ impl HostRuntime {
             .map_err(ProjectCheckError::Policy)?;
         let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
             .map_err(ProjectCheckError::Resolution)?;
+        let wrapped = resolution.wrapped.clone();
         let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
             ProjectCheckError::ManifestRead {
                 path: PathBuf::from(&resolution.manifest),
                 kind: error.kind(),
             }
         })?;
-        let resolution_digest =
-            project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let resolution_digest = project_build_resolution_digest(
+            &resolution.project_root,
+            &manifest,
+            &resolution.modules,
+            &wrapped,
+        );
         let root_observation = snapshot
             .projects
             .iter()
             .find(|project| project.root == resolution.project_root);
-        let wrapped = root_observation
-            .map(|project| project.wrapped.clone())
-            .unwrap_or_default();
         let test_sources = root_observation.and_then(|project| project.test_sources.clone());
         let temporary = create_check_temp_directory()
             .map_err(|kind| ProjectCheckError::TempDirectory { kind })?;
@@ -5597,13 +5674,13 @@ impl HostRuntime {
         Ok(staged)
     }
 
-    /// Execute wrapped native build commands directly (never through a shell),
-    /// expand the frozen placeholders, and copy each produced dylib into the
-    /// module library area of the same disposable stage.
+    /// Execute policy-ordered wrapped native build commands directly (never
+    /// through a shell) from each declaring project, expand the frozen
+    /// placeholders, and copy every produced dylib into the shared module
+    /// library area of the same disposable stage.
     pub fn stage_project_wrapped(
         &self,
-        project_root: &Path,
-        wrapped: &[ProjectWrappedObservation],
+        wrapped: &[ProjectWrappedArtifactObservation],
         stage_root: &Path,
     ) -> Result<Vec<ProjectPreviousNativeArtifact>, ProjectWrappedBuildError> {
         let lib_root = stage_root.join("lib");
@@ -5617,6 +5694,7 @@ impl HostRuntime {
         let native_root = stage_root.join("native");
         let mut result = Vec::with_capacity(wrapped.len());
         for item in wrapped {
+            let project_root = Path::new(&item.project_root);
             let command_root = native_root.join(&item.name);
             std::fs::create_dir_all(&command_root).map_err(|error| {
                 ProjectWrappedBuildError::CopyOutput {
@@ -5798,10 +5876,9 @@ impl HostRuntime {
             .map_err(ProjectArtifactRecordError::Decode)
     }
 
-    /// Execute the Rust-hosted core project build for projects without wrapped
-    /// native modules. Observation and policy remain ahead of every effect;
-    /// the stage is removed on all failures and only a complete stage is
-    /// published atomically.
+    /// Execute the Rust-hosted core project build. Observation and policy
+    /// remain ahead of every effect; the stage is removed on all failures and
+    /// only a complete module/native closure is published atomically.
     ///
     /// # Safety
     ///
@@ -5813,26 +5890,25 @@ impl HostRuntime {
     ) -> Result<ProjectBuildResult, ProjectBuildError> {
         let snapshot = unsafe { self.observe_project_snapshot(request.start) }
             .map_err(ProjectBuildError::Observation)?;
-        let root = snapshot
-            .projects
-            .first()
-            .ok_or(ProjectBuildError::Observation(
-                ProjectObservationBuildError::EmptyClosure,
-            ))?;
         let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
             .map_err(ProjectBuildError::Snapshot)?;
         let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
             .map_err(ProjectBuildError::Policy)?;
         let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
             .map_err(ProjectBuildError::Resolution)?;
+        let wrapped = resolution.wrapped.clone();
         let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
             ProjectBuildError::ManifestRead {
                 path: PathBuf::from(&resolution.manifest),
                 kind: error.kind(),
             }
         })?;
-        let resolution_digest =
-            project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let resolution_digest = project_build_resolution_digest(
+            &resolution.project_root,
+            &manifest,
+            &resolution.modules,
+            &wrapped,
+        );
         let build_root = PathBuf::from(&resolution.project_root).join(".birnam/build");
         let target_root = build_root.join(request.target);
         std::fs::create_dir_all(&target_root).map_err(|error| {
@@ -5853,7 +5929,7 @@ impl HostRuntime {
         };
         let plan_request = ProjectArtifactPlanRequest {
             resolution: &resolution,
-            wrapped: &root.wrapped,
+            wrapped: &wrapped,
             previous: previous.as_ref(),
             target: request.target,
             profile: request.profile,
@@ -5886,17 +5962,13 @@ impl HostRuntime {
             let artifacts = unsafe { self.stage_project_artifacts(&stage_request) }
                 .map_err(ProjectBuildError::Stage)?;
             let native = self
-                .stage_project_wrapped(
-                    Path::new(&resolution.project_root),
-                    &root.wrapped,
-                    &stage_root,
-                )
+                .stage_project_wrapped(&wrapped, &stage_root)
                 .map_err(ProjectBuildError::Wrapped)?;
             let record_request = ProjectArtifactRecordRequest {
                 resolution: &resolution,
                 staged: &artifacts,
                 native: &native,
-                wrapped: &root.wrapped,
+                wrapped: &wrapped,
                 target: request.target,
                 profile: request.profile,
                 tool_version: request.tool_version,
@@ -5939,26 +6011,25 @@ impl HostRuntime {
     ) -> Result<ProjectBuildResult, ProjectBuildError> {
         let snapshot = unsafe { self.observe_project_snapshot(start) }
             .map_err(ProjectBuildError::Observation)?;
-        let root = snapshot
-            .projects
-            .first()
-            .ok_or(ProjectBuildError::Observation(
-                ProjectObservationBuildError::EmptyClosure,
-            ))?;
         let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
             .map_err(ProjectBuildError::Snapshot)?;
         let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
             .map_err(ProjectBuildError::Policy)?;
         let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
             .map_err(ProjectBuildError::Resolution)?;
+        let wrapped = resolution.wrapped.clone();
         let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
             ProjectBuildError::ManifestRead {
                 path: PathBuf::from(&resolution.manifest),
                 kind: error.kind(),
             }
         })?;
-        let resolution_digest =
-            project_resolution_digest(&resolution.project_root, &manifest, &resolution.modules);
+        let resolution_digest = project_build_resolution_digest(
+            &resolution.project_root,
+            &manifest,
+            &resolution.modules,
+            &wrapped,
+        );
         let final_root = PathBuf::from(&resolution.project_root)
             .join(".birnam/build")
             .join(target)
@@ -5967,7 +6038,7 @@ impl HostRuntime {
             .map_err(ProjectBuildError::BuildRecord)?;
         let request = ProjectArtifactPlanRequest {
             resolution: &resolution,
-            wrapped: &root.wrapped,
+            wrapped: &wrapped,
             previous: Some(&record),
             target,
             profile,
@@ -6037,7 +6108,7 @@ impl HostRuntime {
                 checksum: old.checksum.clone(),
             });
         }
-        for wrapped in &root.wrapped {
+        for wrapped in &wrapped {
             let Some(old) = previous_native_artifact(&record, &wrapped.name) else {
                 return Err(ProjectBuildError::PublishedArtifact {
                     name: wrapped.name.clone(),
@@ -8858,6 +8929,7 @@ mod tests {
             main: None,
             load_roots: vec!["/tmp/project/src".to_owned()],
             modules: vec![module.clone()],
+            wrapped: Vec::new(),
         };
         let request = ProjectArtifactPlanRequest {
             resolution: &resolution,
@@ -9056,6 +9128,53 @@ mod tests {
                 "/tmp/project",
                 b"name = \"one\"\n",
                 &[module("two"), module("one")]
+            )
+        );
+    }
+
+    #[test]
+    fn project_build_resolution_digest_tracks_transitive_wrapped_provenance() {
+        let wrapped = |root: &str, argument: &str| ProjectWrappedArtifactObservation {
+            project_root: root.to_owned(),
+            name: "native".to_owned(),
+            build: vec![vec![
+                "cc".to_owned(),
+                argument.to_owned(),
+                "-o".to_owned(),
+                "{output}".to_owned(),
+            ]],
+        };
+        let first = project_build_resolution_digest(
+            "/tmp/project",
+            b"name = \"project\"\n",
+            &[],
+            &[wrapped("/tmp/dependency", "native/one.c")],
+        );
+        assert_eq!(
+            first,
+            project_build_resolution_digest(
+                "/tmp/project",
+                b"name = \"project\"\n",
+                &[],
+                &[wrapped("/tmp/dependency", "native/one.c")],
+            )
+        );
+        assert_ne!(
+            first,
+            project_build_resolution_digest(
+                "/tmp/project",
+                b"name = \"project\"\n",
+                &[],
+                &[wrapped("/tmp/dependency", "native/two.c")],
+            )
+        );
+        assert_ne!(
+            first,
+            project_build_resolution_digest(
+                "/tmp/project",
+                b"name = \"project\"\n",
+                &[],
+                &[wrapped("/tmp/other-dependency", "native/one.c")],
             )
         );
     }

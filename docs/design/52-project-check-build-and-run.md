@@ -115,13 +115,16 @@ process, or run main.
 
 ### 3.2 birnam build [PROJECT] — implemented
 
-Resolve and check the project, execute each declared `[[wrapped]]` build argv in
-private staging, compose each selected module entry and ordered source parts,
-and compile each logical module once to an installable
+Resolve and check the project, execute every `[[wrapped]]` build argv selected
+from the local project-dependency closure in dependency-first order and private
+staging, compose each selected module entry and ordered source parts, and
+compile each logical module once to an installable
 libbirnam_<name>.dylib, record native and Birnam artifact checksums, write the
 resolution record, and publish the complete result. Wrapped commands run from
-the project root and must use `{output}` for the expected `lib<name>.dylib`
-path; they are not passed through a shell.
+their declaring project root and must use `{output}` for the expected
+`lib<name>.dylib` path; they are not passed through a shell. `{lib}` exposes
+already-staged dependency libraries to later recipes. Duplicate wrapped names
+across projects are rejected before command execution.
 
 The layout is:
 

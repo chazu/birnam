@@ -460,6 +460,11 @@ path and publishes the result as `lib/libanswer.dylib`. The additional
 `{project}`, `{build}`, and `{lib}` path placeholders are available for more
 involved builds.
 
+Path dependencies propagate their `[[wrapped]]` artifacts transitively. Birnam
+builds them dependency-first, runs each recipe from the dependency that declares
+it, and publishes the complete native closure into the root build's `lib/`.
+Wrapped names must therefore be unique across the project closure.
+
 ### Define the wrapper
 
 Replace the scaffolded `wrapped/answer/answer.birnam` with:
@@ -548,7 +553,8 @@ birnam install --build
 `check` validates the wrapper source and manifest without executing native build
 commands. `build` and the `--build` forms compile the dylib into private staging,
 compile the wrapper module, and atomically publish both. A later `run` validates
-their recorded checksums before loading them.
+their recorded checksums before loading them. The same workflow includes
+wrapped artifacts declared by transitive path dependencies.
 
 If loading fails, first confirm that the `[[wrapped]].name`, the bare
 `Alien dlopen:` filename, and the exported symbol spellings agree. For larger

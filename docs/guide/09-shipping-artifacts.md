@@ -144,7 +144,10 @@ lookup does not fall through to the current directory or a source checkout.
 
 A project authors a `[[wrapped]]` build recipe in `birnam.toml`. The generated
 Birnam wrapper artifact declares the native dylib it opens, and the native dylib
-is published beside that wrapper. Inspection checks presence before any wrapper
+is published beside that wrapper. Local project dependencies propagate these
+recipes transitively in dependency-first order; each recipe runs from its own
+project root and all outputs share the root build's `lib/` namespace. Duplicate
+wrapped names are rejected. Inspection checks presence before any wrapper
 initializer runs. Release staging copies optional wrappers only as deliberate,
 complete, signed closures; it never discovers them from developer build dirt.
 

@@ -234,10 +234,16 @@ build slice. Its semantics are:
   shell string; `{output}` is required and is replaced with a private staging
   path. `{project}`, `{build}`, and `{lib}` are also available as path
   placeholders.
-- the first slice executes wrapped commands from the root project's directory,
-  stages the resulting `lib<name>.dylib` under the project's published `lib/`,
-  and exposes it to a wrapper's bare `[Alien dlopen: "lib<name>.dylib"]` during
-  `birnam run`. `birnam check` validates the declaration but never executes it.
+- wrapped declarations propagate across the complete local project-dependency
+  closure in deterministic dependency-first order. Each command executes from
+  its declaring project's root, and `{project}` names that root; `{lib}` names
+  the shared root-build staging directory, so dependent recipes can consume
+  already-built dependency libraries.
+- every resulting `lib<name>.dylib` is staged under the root project's
+  published `lib/` and exposed to a wrapper's bare
+  `[Alien dlopen: "lib<name>.dylib"]` during `birnam run`. Wrapped names must be
+  unique across the closure because that directory is one native namespace.
+  `birnam check` resolves and validates the closure but never executes it.
 
 One dependency entry initially selects one canonical module from the dependency
 project. The dependency project may contain other source modules for its own
@@ -329,6 +335,9 @@ manifest, or input to `Module load:`. Every artifact record contains:
 `birnam build` may reuse an artifact from the previous successful publication
 only when target, profile, tool version, artifact ABI, source identity,
 dependency metadata, expected relative path, and on-disk checksum all match.
+The resolution identity also covers each transitive wrapped artifact's
+declaring root and ordered build argv, so editing a dependency's native recipe
+invalidates the old publication.
 Invalidation is dependency-aware: a rebuilt module also rebuilds its
 dependents, while unrelated matching modules can be copied into the new
 staging directory. A missing, malformed, incompatible, or tampered record is
