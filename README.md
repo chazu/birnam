@@ -28,6 +28,11 @@ product; compatibility and language surface can and will still change.
   - [Bake an executable](#bake-an-executable)
 - [Staged Code Changes](#staged-code-changes)
 - [Isolated Workers](#isolated-workers)
+- [Wrapping a Dynamic Library with Alien](#wrapping-a-dynamic-library-with-alien)
+  - [Scaffold and build the library](#scaffold-and-build-the-library)
+  - [Define the wrapper](#define-the-wrapper)
+  - [Signature and ownership rules](#signature-and-ownership-rules)
+  - [Check, run, and install](#check-run-and-install)
 - [Developer Tools](#developer-tools)
 - [Verification](#verification)
 - [Benchmarks](#benchmarks)
@@ -403,6 +408,154 @@ available through `birnam doc isolate`.
 For interactive object and fact-store wayfinding, see the
 [image exploration guide](docs/guide/08-exploring-the-image.md).
 
+## Wrapping a Dynamic Library with Alien
+
+Birnam calls its native FFI layer `Alien`. A wrapper is an ordinary Birnam
+module that opens a dynamic library and installs selected C functions as Birnam
+methods. The project manifest supplies a repeatable native build and stages the
+resulting dylib beside the compiled wrapper.
+
+This example wraps two functions from a small `answer` library.
+
+### Scaffold and build the library
+
+From a Birnam project, generate the wrapper skeleton and create the native
+source directory:
+
+```sh
+birnam wrap answer
+mkdir -p native
+```
+
+`birnam wrap` creates `wrapped/answer/answer.birnam` and never overwrites an
+existing wrapper. It only scaffolds the Birnam source; it does not compile the
+native library.
+
+Create `native/answer.c`:
+
+```c
+int answer_version(void) {
+    return 1;
+}
+
+long answer_add(long left, long right) {
+    return left + right;
+}
+```
+
+Add the wrapper source root, startup module, and native build to `birnam.toml`:
+
+```toml
+source_roots = ["src", "wrapped"]
+load = ["answer"]
+
+[[wrapped]]
+name = "answer"
+build = [["cc", "-dynamiclib", "native/answer.c", "-o", "{output}"]]
+```
+
+Each `build` command is an argv array executed from the project root, not a
+shell command. `{output}` is required; Birnam replaces it with a private staging
+path and publishes the result as `lib/libanswer.dylib`. The additional
+`{project}`, `{build}`, and `{lib}` path placeholders are available for more
+involved builds.
+
+### Define the wrapper
+
+Replace the scaffolded `wrapped/answer/answer.birnam` with:
+
+```birnam
+[Module named: #answer requires: #[]];
+[Alien dlopen: "libanswer.dylib"];
+
+[Globals at: #Answer put: [Object clone]];
+
+[Alien wrap: "answer_version" signature: "i" as: #version on: Answer];
+[Alien wrap: "answer_add" signature: "l l l" as: #answerAdd: on: Integer]
+```
+
+`Alien dlopen:` uses the bare staged filename. During a project run, Birnam
+resolves that name from the publication's `lib/` directory before the wrapper
+initializer installs its methods.
+
+The four parts of a wrap declaration are the exported C symbol, its Alien
+signature, the Birnam selector, and the object or prototype that receives the
+method. The first signature type is the return type; all following types are C
+arguments.
+
+Alien maps the first C argument from the Birnam receiver and maps the remaining
+C arguments from the message arguments. A C function with `K` arguments must
+therefore use a selector with `K - 1` arguments. A zero-argument C function
+ignores the receiver, so `answer_version(void)` can be installed on the
+`Answer` singleton and called as `[Answer version]`. For
+`answer_add(long, long)`, the receiver supplies `left` and `answerAdd:` supplies
+`right`:
+
+```birnam
+[System println: [Answer version]];       // 1
+[System println: [20 answerAdd: 22]]      // 42
+```
+
+This receiver convention is especially useful for handle APIs: install a
+function whose first C parameter is `FILE *` or another opaque pointer on
+`ForeignAddress`, then send the operation directly to the handle.
+
+### Signature and ownership rules
+
+Whitespace in a signature is optional. The scalar codes are:
+
+| Code | C type | Birnam value |
+| --- | --- | --- |
+| `i` | `int` | Integer |
+| `l` | `long` | Integer |
+| `u` | `unsigned long` | unsigned Integer or Word |
+| `d` | `double` | Float |
+| `f` | `float` | Float |
+| `s` | `const char *` | String |
+| `p` | `void *` | ForeignAddress |
+| `v` | `void` | return type only; the call answers `nil` |
+
+For example, `"p s i"` describes a function returning `void *` and taking a
+string receiver plus one integer message argument. Pointer values are
+`ForeignAddress` objects, never integer addresses. Use `[Alien alloc: size]` for
+an owned native buffer and the `peek*At:`, `poke*At:`, and `free` messages to
+manage it.
+
+An `s` argument is copied to a temporary NUL-terminated C string and released
+as soon as the call returns; native code must not retain that pointer. An `s`
+return is copied into a Birnam String, with a null pointer becoming `nil`. If a
+library returns caller-owned memory, wrap it as `p` and expose the library's
+matching release function so ownership remains explicit.
+
+By-value structs use braces and map to Vectors: `{ll}` is a two-`long` struct.
+Fixed arrays are allowed inside structs, so `{4i}` is a struct containing one
+four-element `int` array. Struct wrappers require the collection module. Match
+the library's header exactly: Alien generates an ABI shim from the declaration,
+but it cannot detect an incorrect C type, layout, calling convention, or
+lifetime promise.
+
+### Check, run, and install
+
+Use the normal project workflow:
+
+```sh
+birnam check
+birnam run --build
+birnam test --build
+birnam install --build
+```
+
+`check` validates the wrapper source and manifest without executing native build
+commands. `build` and the `--build` forms compile the dylib into private staging,
+compile the wrapper module, and atomically publish both. A later `run` validates
+their recorded checksums before loading them.
+
+If loading fails, first confirm that the `[[wrapped]].name`, the bare
+`Alien dlopen:` filename, and the exported symbol spellings agree. For larger
+examples, see the libc methods in [`modules/file.birnam`](modules/file.birnam)
+and the first-party adapter in
+[`wrapped/termbox2/termbox2.birnam`](wrapped/termbox2/termbox2.birnam).
+
 ## Developer Tools
 
 The compiled CLI, REPL, LSP, and documentation modules are included by
@@ -418,6 +571,8 @@ BIRNAM_BIN="${BIRNAM_PREFIX:-$HOME/.local}/bin/birnam"
 
 - `doc` prints module or selector documentation.
 - `docgen` writes an HTML reference for birnam modules and native floor APIs.
+- `wrap` scaffolds an Alien wrapper without overwriting existing source; see
+  [Wrapping a Dynamic Library with Alien](#wrapping-a-dynamic-library-with-alien).
 
 The terminal REPL, socket REPL, and LSP launch forms are documented under
 [Running Birnam](#running-birnam).
@@ -425,16 +580,6 @@ The terminal REPL, socket REPL, and LSP launch forms are documented under
 The generated reference opens with the authored language, idioms, fact-store,
 and image guide, followed by the API reference extracted from current module
 facts and native-floor documentation.
-
-`wrap` is a binary-only scaffolder and works from an installed executable:
-
-```sh
-birnam wrap mylib
-```
-
-It creates an Alien-based C-library wrapper under `wrapped/`. Add that source to
-the project's `source_roots` and pair it with a `[[wrapped]]` build declaration
-to have `birnam build` produce and stage its native dylib.
 
 ## Verification
 
