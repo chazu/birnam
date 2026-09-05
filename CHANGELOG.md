@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Weak Symbol lookup now uses a collision-safe name index while preserving
+  reclamation, enumeration order, and stable live-name pointers. Generated
+  vtable caches are indexed by generation and slot, and heap allocation metadata
+  no longer stores a redundant payload pointer. Design 66 records development
+  throughput evidence and the remaining allocation investigation.
+- Development benchmarks can opt into the existing host-load gates with
+  `BENCH_CHECK_HOST=1`; release benchmarks continue to require those gates.
 - Project builds publish self-describing application, configuration, and module
   roots instead of `artifacts.toml`. Ordinary `run` and `install` consume the
   last successful publication without reading authored sources or parsing the

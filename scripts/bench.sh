@@ -5,6 +5,7 @@
 #   scripts/bench.sh --release              # tracked Rust run
 #   BENCH_QUICK=1 scripts/bench.sh # the fast dev loop (fewer reps everywhere)
 #   BENCH_TCC=rust scripts/bench.sh           # explicit Rust TCC selection
+#   BENCH_CHECK_HOST=1 scripts/bench.sh      # host-gated dev comparison
 #
 # Builds ReleaseSafe (the only tracked optimize mode), runs the birnam suites
 # (micro / parse / relational / gc / image) plus the whole-process macro cases
@@ -28,6 +29,12 @@ for arg in "$@"; do
   esac
 done
 QUICK=${BENCH_QUICK:-}
+CHECK_HOST=${BENCH_CHECK_HOST:-0}
+case "$CHECK_HOST" in
+  0|1) ;;
+  *) echo "BENCH_CHECK_HOST must be 0 or 1" >&2; exit 2 ;;
+esac
+[ "$MODE" != release ] || CHECK_HOST=1
 TCC=${BENCH_TCC:-rust}
 case "$TCC" in
   rust) ;;
@@ -40,7 +47,7 @@ if [ $MODE = release ] && [ -n "$QUICK" ]; then
   exit 1
 fi
 
-if [ "$MODE" = release ]; then
+if [ "$CHECK_HOST" = 1 ]; then
   scripts/bench-host-check.sh --wait "release benchmark pre-build"
 fi
 
@@ -87,13 +94,13 @@ echo "==> selected TCC $TCC"
 SUITE_FILES=()
 
 wait_for_quiet() { # wait_for_quiet <context>
-  [ "$MODE" != release ] || scripts/bench-host-check.sh --wait "$1"
+  [ "$CHECK_HOST" != 1 ] || scripts/bench-host-check.sh --wait "$1"
 }
 
 start_host_monitor() { # start_host_monitor <output>
   local polls=0
   HOST_MONITOR_PID=
-  if [ "$MODE" = release ]; then
+  if [ "$CHECK_HOST" = 1 ]; then
     top -l 0 -s 1 -n 0 -stats pid >"$1" 2>/dev/null &
     HOST_MONITOR_PID=$!
     while [ ! -s "$1" ]; do
@@ -125,7 +132,7 @@ stop_host_monitor() {
 }
 
 measurement_stayed_quiet() { # measurement_stayed_quiet <samples> <context>
-  [ "$MODE" != release ] || scripts/bench-host-check.sh --samples "$1" "$2"
+  [ "$CHECK_HOST" != 1 ] || scripts/bench-host-check.sh --samples "$1" "$2"
 }
 
 run_suite() { # run_suite <script> <label> <runs>

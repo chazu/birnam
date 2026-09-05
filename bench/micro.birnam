@@ -4,8 +4,10 @@
 // boundaries that decide every self-hosting lift. Case names are a CONTRACT
 // (never rename — retire + add instead; see docs/design/46).
 //
-// Every case body is one native `to:do:` loop whose body unrolls K copies of
-// the op under test (K = opsPerIter:). All setup — probe objects, texts,
+// Most case bodies use `to:do:` with K copies of the op under test
+// (K = opsPerIter:). Production control is source-authored and stackless,
+// with late-bound Machine messages (Designs 60F and 66), not a native counter.
+// All setup — probe objects, texts,
 // vectors, maps, buffers — happens HERE, outside every timed window.
 //
 //   "$HOME/.local/bin/birnam" bench/micro.birnam            # tracked run (R=5)
@@ -126,11 +128,11 @@ let s := [BenchSuite named: "micro"];
     [B value]; [B value]; [B value]; [B value];
     [B value]; [B value]; [B value]; [B value]]]]];
 
-// The loops.* subjects ARE loops — raw only (docs/46). to-do is the native
-// baseline shape; whileTrue's condition state necessarily rides a cell, so
-// ~95% of its number is store traffic (2-3 linear log scans per iteration) —
-// it tracks the loop-with-cell-state IDIOM, not the s13 prim in isolation;
-// timesRepeat is the derived stdlib wrapper.
+// The loops.* subjects ARE loops — raw only (docs/46). to-do is the empty
+// stackless baseline shape. whileTrue includes cell-backed condition state,
+// so it tracks that whole idiom, not control dispatch alone. Historical
+// percentages attributed to native-loop/store traffic do not describe the
+// current runtime; use current profiles (Design 66).
 [s rawCase: "loops.to-do" opsPerIter: 1 do: [:n |
   [1 to: n do: [:i | nil]]]];
 

@@ -1,8 +1,10 @@
 # 66 — Stackless Throughput Recovery
 
-> **Status:** Research and proposed implementation sequence, 2026-09-05.
+> **Status:** Runtime implementation and allocation investigation complete;
+> final host-gated repetition pending AC power, 2026-09-05.
 > Research task: `birnam-v0j`. Publication closeout is committed as `a1a5a69`.
-> No throughput optimization is implemented by this document.
+> The measurements in sections 2–3 describe the pre-optimization runtime.
+> Section 7 records implementation evidence; Beads owns acceptance status.
 
 ## 1. Direction
 
@@ -256,3 +258,251 @@ The timing samples and relevant profile counts are preserved above so the
 conclusions remain reviewable after temporary logs expire. A sample taken during
 the earlier module suite included parsing and compilation; it was exploratory
 only and is not the evidence used to rank the steady-state optimization.
+
+## 7. Implementation evidence
+
+### Weak Symbol name index
+
+The implementation retains ordered name ownership and adds randomized name-hash
+buckets containing record indices, with linked collision chains and full byte
+equality. It duplicates neither names nor Oop roots. Sweep clears the derived
+indexes before reclaiming names and rebuilds indices after compaction. Added
+tests cover forced collisions, middle survivors, all-dead cycles, independent
+tables and allocation-free hits. Workspace Rust tests passed for this slice.
+
+An ignored release-mode lookup diagnostic compares indexed lookup with the old
+linear scan at 1k, 10k and 100k names (10,000 probes, three samples). Indexed
+late-name hits were 32, 43 and 25 ns; linear hits were 3,312, 21,647 and 176,281
+ns. Indexed misses were 23, 20 and 17 ns versus 2,080, 23,788 and 171,710 ns.
+This demonstrates removal of linear scaling, not exact uncontended latency;
+other build/test activity may have overlapped that isolated diagnostic.
+
+Independent release prefixes are retained under
+`/tmp/birnam-publication-closeout.VJrOxG/current` (before) and
+`/tmp/birnam-throughput.To6mYL/symbol-index` (index only). The latter source
+manifest is `18597e38113f831b94783548e00c6d74e7ac9a36ca33f5d783612056247c8f2f`.
+The full, non-quick development driver has produced these initial results:
+
+| Case | Before | Symbol index |
+| --- | ---: | ---: |
+| `loops.to-do` | 51,674 ns | 38,427 ns |
+| `loops.whileTrue` | 46,496 ns | 35,515 ns |
+| `loops.timesRepeat` | 51,585 ns | 38,383 ns |
+| `query.single-clause` | 698.412 ms | 717.437 ms |
+| `query.join-3way` | 2,424.801 ms | 2,417.849 ms |
+| `query.rule-recursive` | 778.844 ms | 704.753 ms |
+| `query.asOf` | 546.733 ms | 491.950 ms |
+| `docgen.full` | 65.089 s | 52.413 s |
+
+These are one fresh process per suite with full internal calibration; the
+loop reductions are about 24–26%, while query results are mixed. Small effects
+require repetition. Docgen uses three fresh timed processes plus a separate RSS
+run: elapsed time fell 19.5%, while peak RSS rose from 418 to 433 MiB. Final
+combined-change results follow below; none of these numbers is a release qualification or proof of general query
+recovery. Raw logs and JSON are in `/tmp/birnam-throughput.To6mYL/`.
+
+The separate no-GC control probe gave 9,362,759; 7,466,529; 7,296,660 µs
+(median 74,665 ns/iteration). Its first process was unusually slow. A separate
+2,451-sample profile shifted toward Integer construction (272 leaf samples),
+heap-map insertion (251), heap-map rehash (202), and generated-vtable lookup
+(126); Symbol interning itself fell to 45 leaf samples, with additional hashing
+and indexed-lookup cost elsewhere. Do not interpret leaf-count differences as
+predicted end-to-end speedups.
+
+### Follow-on candidates and allocation diagnostics
+
+`birnam-runtime-overhead-arn` delivered two further changes: derive payload
+pointers from provenance-carrying allocation bases to shrink heap metadata,
+and index the generated-vtable cache by generation and slot. Workspace Rust
+tests passed and a private release prefix built successfully with both changes.
+Both passed lifecycle acceptance and the development comparison recorded below.
+They preserve ordinary Machine sends and fresh boxed Integer identities.
+
+`scripts/control-allocation-probe.py` provides a separate diagnostic matrix of
+iteration counts, automatic GC on/off and empty/captured callbacks. It measures
+live floor-payload bytes before, after and after explicit collection; it does
+**not** count total allocations, Rust scratch vectors or arena capacity. Those
+categories are covered by the isolated counters later in this section.
+
+The combined-change prefix has source manifest
+`c7170fdf5bf46c09a08766fc0c9c0de965f8db478601ee526bba1d87dbdf82fe`.
+Its first three-process control probe measured 6,109,585; 7,407,049; 6,215,350
+µs (median 62,154 ns/iteration); a separate sampled process took 6,120,951 µs.
+The first full combined-change driver completed successfully:
+
+| Case | Before | Combined changes |
+| --- | ---: | ---: |
+| `loops.to-do` | 51,674 ns | 35,666 ns |
+| `loops.whileTrue` | 46,496 ns | 30,656 ns |
+| `loops.timesRepeat` | 51,585 ns | 34,849 ns |
+| `query.single-clause` | 698.412 ms | 723.393 ms |
+| `query.join-3way` | 2,424.801 ms | 2,351.128 ms |
+| `query.rule-recursive` | 778.844 ms | 705.738 ms |
+| `query.asOf` | 546.733 ms | 477.876 ms |
+| `docgen.full` | 65.089 s | 43.808 s |
+
+Docgen peak RSS was 370 MiB (before 418 MiB; Symbol-only 433 MiB). These are
+development comparisons, not release acceptance; small mixed query effects
+still need alternate-order repetitions. Lifecycle gates passed as listed below.
+The combined prefix's allocation matrix produced:
+
+| Callback / GC | 1k iterations: live bytes | 10k: live bytes | 100k: live bytes | After explicit GC (all lengths) |
+| --- | ---: | ---: | ---: | ---: |
+| Empty / on | 3,451,368 | 16,700,040 | 14,949,992 | 113,552 |
+| Capture + add / on | 3,467,376 | 16,860,048 | 16,550,168 | 113,560 |
+| Empty / off | 3,451,368 | 33,475,368 | 333,715,368 | 113,552 |
+| Capture + add / off | 3,467,376 | 33,635,376 | 335,315,376 | 113,560 |
+
+Initial live bytes were 112,256 (empty) and 112,264 (capture). No-GC growth is
+exactly 3,336 bytes/iteration between tested lengths, plus 16 bytes/iteration
+for the captured addition. Those slopes account for all floor allocation in
+these workloads, not just boxed operands. Normal GC bounds live bytes here;
+equal post-GC footprints argue against retained loop-length-dependent state.
+This does not prove bounded registry/arena capacity or absence of unrelated
+leaks. The diagnostic's own timing and telemetry allocate a small fixed amount.
+
+`scripts/control-malloc-probe.py` prepares separate before/after snapshots using
+macOS malloc stack logging. `allEvents` includes freed scratch allocations;
+`allByCount` reports only live allocations. The workload pauses on stdin for
+each snapshot so startup can be separated from the loop. This instrumented
+execution must not supply throughput timings. An initial all-event dump was
+stopped after exceeding 8 GiB and its incomplete generated output was removed.
+The driver now defaults to live-only snapshots, makes all-event history opt-in,
+and caps each snapshot at 256 MiB. Live-only snapshots cannot measure freed
+scratch; isolated source counters below provide the required site attribution.
+
+Live snapshots did succeed. `scripts/control-malloc-summary.py` groups their
+before/after deltas by allocating function and immediate caller. Over 100 empty
+iterations, live Integers increased by 19,465: 18,468 from generated StepMethods,
+898 from driver resume-token construction, and 99 from other callers. The
+captured-addition variant adds exactly 100 further Integers. These are allocator
+stack attributions, not a proof that every generated Integer is a private
+slot operand; generated code can also construct source literals. The snapshots
+also show 600 additional instance allocations (21,600 bytes). Freed scratch
+and exact generated-operand/source-literal separation required the counters below.
+
+### Accepted runtime slice and remaining gates
+
+Runtime changes are committed locally as `ec281d1b`. The following passed on
+the combined-change prefix: workspace Rust tests; 611 module tests; 100k control
+callbacks in AOT/source recovery; resumable eviction/retirement; CodeBinding
+publication/replacement/self-removal; stackless image generation projection and
+rollback; image-v8 ordinary/rebuild/baked/resave identity; bounded method/Symbol/
+history churn; and relocated project check/build/run/install/test with path/Git
+dependencies. R1 and the runtime-overhead issue are closed.
+
+R2 remains open for host-gated process repetitions. R3 is closed with the full
+allocator attribution and rejected inline-storage decision documented below.
+Final verification is not release qualification; no release or deployment has
+been performed by this work.
+
+The first alternate-order repetition batch was intentionally stopped when
+unrelated host activity coincided with grossly inflated timings. Its `repeat-*`
+files are excluded from comparisons. `BENCH_CHECK_HOST=1` now enables the
+canonical driver's existing host preflight, interval monitoring and retry logic
+for development runs, without changing release thresholds or tracked outputs.
+
+An isolated archive overlay (`prepare-allocation-diagnostic.py`) builds
+successfully and its 10-iteration smoke passes with GC on/off and captured/empty
+callbacks. `run-allocation-diagnostic.py` counts between explicit GC boundaries;
+its accounting regression tests pass. Empty-loop counts are 1,953 Integers,
+including 1,844 generated Machine operands, 60 Blocks, 152 initial-slot vectors,
+160 nonempty argument vectors and 30 nonempty capture vectors. Captured addition
+adds exactly ten non-operand Integers. Retained arena bytes are zero at both
+boundaries. Full varying-length counts and the bounded decision follow below.
+This instrumentation exists only in the private archive, not production code.
+
+### R3 full counters and bounded follow-on
+
+The 100/1,000/10,000-iteration counter matrix completed with GC on/off and
+empty/captured callbacks. An accounting regression initially omitted work before
+automatic GC; retained raw logs were recounted after adding a regression test
+that includes intermediate collections between the fixture's first and last
+explicit collection. Corrected counts are identical with automatic GC on/off:
+
+| Allocation site | Count over N empty iterations |
+| --- | ---: |
+| All Integers | 195N + 3 |
+| Generated Machine slot/action operands | 184N + 4 |
+| Other Integers (including driver resume tokens) | 11N - 1 |
+| Literal Blocks | 6N |
+| Initial-slot Vec backing allocations | 15N + 2 |
+| Nonempty argument Vec backing allocations | 16N |
+| Nonempty capture Vec backing allocations | 3N |
+
+Captured addition adds exactly N non-operand Integers; other counts stay equal.
+Initial-slot capacities in the 100-iteration diagnostic are 2, 4 and 5 entries.
+Arena reservation is zero at the explicit boundaries; one automatic collection
+in each 10k GC-on case observes 752 bytes. This is sampled arena capacity, not
+an instrumented high-water maximum. Raw evidence and receipts are in
+`/tmp/birnam-throughput.To6mYL/counters-full/`.
+
+The bounded follow-on experiment is invocation-owned inline initial-slot storage
+for up to eight entries, with Vec fallback for larger entries. It targets the
+15N+2 backing allocations without sharing mutable scratch or changing rooted
+copy order, entry acquisition, semantic sends, or boxed identity. Overflow and
+independent-owner tests pass, as do focused Rust tests including million-step
+checks. A private `inline` release prefix built successfully. Retention requires
+host-gated before/after measurement and the lifecycle matrix; it is not accepted
+solely because fewer allocation calls are possible.
+
+Full `mise run verify` passed for the committed `ec281d1b` runtime before this
+experiment, including two independent cold source archives and relocated
+runtimes. The inline experiment was subsequently rejected.
+
+The experiment failed `portable-resumable-lifecycle-smoke.sh`: after dropping
+the last published Block and collecting, live native units stayed at baseline+2
+instead of baseline+1. The failure reproduced 3/3 times with the inline prefix;
+the committed Vec-backed prefix passed 3/3 differential trials. Return values
+before and after eviction remained correct. Precise heap tracing did not remove
+the extra unit; this does not disable native-stack scanning, so stale inline
+Oop copies/conservative stack retention remain a hypothesis, not a proven
+internal root path. No thresholds or lifecycle assertions were relaxed.
+
+**Decision:** reject and remove invocation-inline initial-slot storage. Keep the
+three proven runtime improvements from `ec281d1b`; retain invocation-owned Vec
+copies for control transport. A future scratch-storage design must first prove
+quiescent reclamation as well as nested callback/root safety. Do not pursue
+operand canonicalization or direct Machine access under current contracts.
+The existing end-to-end retirement smoke is the regression seam; isolated
+buffer tests did not cover this GC/retirement interaction. The production source
+was restored exactly to `ec281d1b`, whose full verification had passed, and the
+original retirement reproduction was rerun against its retained prefix.
+
+### Representative macro profile and final open gate
+
+A separate `docgen` process from the committed combined prefix completed
+successfully. Sampling began five seconds after launch and ran for three
+seconds at 1 ms, yielding 2,532 main-thread samples. Leading collapsed leaves
+were deallocation (261), vtable lookup (111), portable-program inspection (110),
+store current-value lookup (104), name hashing (92), and global import (88).
+This window shows a more mixed workload than the isolated control loop;
+allocation reclamation and portable/store processing remain relevant. It does
+not establish that bypassing validation or caching mutable store results is
+safe. No additional production change is justified by these leaf counts alone.
+
+The profile was collected on battery and is attribution evidence only: neither
+its elapsed time nor its partial-window footprint enters the timing comparison.
+Raw sample SHA-256: `b743d6857c74eae19cbd3247ce6111670c1237746e61464f233be8ba2f57ff2a`.
+Corrected allocation-result SHA-256:
+`43413bf5e902263cf3bbb49754c8f472e452ffce745dcc604c9728a520fa83aa`.
+
+The sole remaining R2 gate is a quiet-host, AC-powered repeat comparison.
+Unstable-host repetitions were excluded, and the subsequent preflight observed
+battery power repeatedly. Do not treat the initial development measurements as
+release qualification or silently relax the host gate. Resume with the original
+publication baseline and the accepted combined prefix, not the rejected inline
+or instrumented prefixes:
+
+```sh
+BENCH_CHECK_HOST=1 BENCH_PREFIX=/tmp/birnam-throughput.To6mYL/optimized \
+  BENCH_FINAL_OUT=/tmp/birnam-throughput.To6mYL/checked-after.json \
+  scripts/bench.sh --floor=rust
+BENCH_CHECK_HOST=1 BENCH_PREFIX=/tmp/birnam-publication-closeout.VJrOxG/current \
+  BENCH_FINAL_OUT=/tmp/birnam-throughput.To6mYL/checked-before.json \
+  scripts/bench.sh --floor=rust
+```
+
+This reverses the original before/after order. Inspect individual raw/net cases
+and calibrated counts, retain only host-accepted runs, and close
+`birnam-throughput-validation-ay9` only after the comparison is reviewed.
