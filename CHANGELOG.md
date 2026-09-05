@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Query matching borrows candidate values and validates constraints before
+  copying bindings. Rejected candidates allocate nothing; successful triples
+  avoid temporary value copies while preserving query ordering and equality.
 - Weak Symbol lookup now uses a collision-safe name index while preserving
   reclamation, enumeration order, and stable live-name pointers. Generated
   vtable caches are indexed by generation and slot, and heap allocation metadata

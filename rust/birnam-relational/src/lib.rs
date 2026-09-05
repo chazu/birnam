@@ -2997,30 +2997,45 @@ pub fn group_rule_body(
         .collect()
 }
 
-fn extend_rule_solution(
+// Validate borrowed candidates before constructing an owned result. Triple
+// callers pass a stack array of references; rule calls borrow their stored row.
+// No language callbacks occur here, and rejected candidates allocate nothing.
+fn extend_rule_solution<V: std::borrow::Borrow<Value>>(
     solution: &[Binding],
     terms: &[Term],
-    values: &[Value],
+    values: &[V],
 ) -> Option<Vec<Binding>> {
     if terms.len() != values.len() {
         return None;
     }
-    let mut extended = solution.to_vec();
-    for (term, value) in terms.iter().zip(values) {
+    for (index, (term, value)) in terms.iter().zip(values).enumerate() {
+        let value = value.borrow();
         match term {
             Term::Constant(expected) if !expected.matches(value) => return None,
             Term::Constant(_) => {}
             Term::Variable(variable) => {
-                if let Some(existing) = lookup(&extended, *variable) {
+                let existing = lookup(solution, *variable).or_else(|| {
+                    let earlier = terms[..index].iter().position(
+                        |earlier| matches!(earlier, Term::Variable(name) if name == variable),
+                    )?;
+                    Some(values[earlier].borrow())
+                });
+                if let Some(existing) = existing {
                     if !existing.matches(value) {
                         return None;
                     }
-                } else {
-                    extended.push(Binding {
-                        variable: *variable,
-                        value: value.clone(),
-                    });
                 }
+            }
+        }
+    }
+    let mut extended = solution.to_vec();
+    for (term, value) in terms.iter().zip(values) {
+        if let Term::Variable(variable) = term {
+            if lookup(&extended, *variable).is_none() {
+                extended.push(Binding {
+                    variable: *variable,
+                    value: value.borrow().clone(),
+                });
             }
         }
     }
@@ -3145,9 +3160,7 @@ fn evaluate_rule_body_from_solutions(
                 RuleClause::Triple(Clause(terms)) => {
                     for fact in facts {
                         let values = [&fact.entity, &fact.attribute, &fact.value];
-                        let owned: Vec<Value> =
-                            values.iter().map(|value| (*value).clone()).collect();
-                        if let Some(extended) = extend_rule_solution(solution, terms, &owned) {
+                        if let Some(extended) = extend_rule_solution(solution, terms, &values) {
                             next.push(extended);
                         }
                     }
@@ -4236,6 +4249,9 @@ pub fn project_negated(
         .filter(|solution| !clause_matches_solution(facts, solution, negative));
     project_solutions(kept.collect(), result)
 }
+
+#[cfg(test)]
+mod query_matching_tests;
 
 #[cfg(test)]
 mod tests {
