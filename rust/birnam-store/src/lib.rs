@@ -2335,6 +2335,46 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual Store scaling investigation; no timing thresholds"]
+    fn snapshot_scaling_investigation() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        let runtime = test_runtime(u64::MAX, usize::MAX);
+        for count in [100, 1000, 5000] {
+            let mut state = StoreState::new();
+            for index in 0..count {
+                append_fact(
+                    &mut state,
+                    oop(100 + index),
+                    oop(20),
+                    oop(30),
+                    Op::Assert,
+                    true,
+                );
+            }
+            let mut samples = Vec::new();
+            for _ in 0..5 {
+                let start = Instant::now();
+                let triples = super::collect_live_triples(&runtime, black_box(&state), None, None);
+                samples.push(start.elapsed().as_nanos());
+                assert_eq!(triples.len(), count);
+                for (index, triple) in triples.iter().enumerate() {
+                    assert_eq!(triple.e, oop(100 + index));
+                }
+                black_box(triples);
+            }
+            samples.sort_unstable();
+            eprintln!(
+                "snapshot distinct_pairs={count} median_ns={} pair_comparisons={} fact_search_visits={} schema_search_visits={}",
+                samples[2],
+                count * (count - 1) / 2,
+                count * (count + 1) / 2,
+                count * count
+            );
+        }
+    }
+
+    #[test]
     fn core_identity_is_a_terminated_static_string() {
         // SAFETY: the export points to the crate's immutable NUL-terminated
         // static for the process lifetime.

@@ -1,0 +1,96 @@
+# 71 — PEG matching allocation
+
+Status: investigation and implementation plan complete, 2026-09-05.
+Ticket: `birnam-peg-matching-plan-ki3`. Production implementation not started.
+
+## Evidence
+
+`match_pattern` clones literal bytes, child pointers and charset ranges at every
+visit, even though matching makes no language sends. `named_rule` linearly scans
+the copied rule vector before checking memoization. Memo keys are pattern object
+identity plus input position, not rule-name identity. Successful rule memo entries
+copy a one-element child vector. CST conversion has separate allocations and
+rooting; it must not be conflated with matching cost.
+
+`bench/peg-matching-investigation.birnam` builds a repeated one-byte atom rule
+after unused rules and times full parsing/CST conversion, excluding grammar and
+input construction. One fresh release-process diagnostic, microseconds:
+
+| Unused rules before atom | 16 bytes | 1,024 bytes | 8,192 bytes |
+| ---: | ---: | ---: | ---: |
+| 0 | 10 | 218 | 2,256 |
+| 63 | 14 | 433 | 2,281 |
+| 255 | 18 | 577 | 2,714 |
+
+Every result had the requested end offset and child count. Redefining atom from
+`x` to `y` after parsing caused `x` to fail and `y` to parse at all three sizes
+of grammar. The input traverses the atom rule N+1 times (including terminal
+failure), so name comparisons scale as (N+1)*(unused+1), plus the root lookup.
+The literal is also visited N+1 times and currently copies its byte Vec each
+time. These operation counts are source-derived, not allocation counters.
+
+This small diagnostic does not establish name lookup as the dominant cost:
+CST creation and matching have substantial fixed/linear costs, and timings
+are not host-gated. Profile the JSON grammar separately before claiming a
+workload speedup. Preserve the existing `parse.json-20kb` benchmark unchanged.
+
+## Selected design
+
+Keep the mutable Grammar/Pattern interface and transient CST contract of Design
+63. Use private parse-local state, never a persistent compiled-grammar cache.
+
+1. Build a rule-name identity lookup table for the existing parse snapshot;
+   preserve first-match behavior and resolve root/rule references with it.
+   Preserve the existing memo key (pattern identity, position), including aliases.
+2. Snapshot each distinct pattern's literal/children/ranges at most once per
+   parse into a private indexed graph. Matching reads that graph without cloning
+   vectors per visit. Maintain a pattern-identity-to-index table so shared
+   patterns stay shared. Separate immutable pattern data from mutable memo/node
+   scratch to make Rust borrowing local and explicit.
+3. Prefer lazy snapshotting of visited patterns, or a reachable graph snapshot,
+   over copying every unused rule graph on small inputs. Measure eager versus
+   lazy overhead before choosing; the first rule-index slice stands on its own.
+
+Do not eagerly reject undefined references in an unvisited ordered-choice arm:
+that would change parse behavior. Indexing must not accidentally redefine
+left-recursion detection, memo aliases or error precedence. Traverse snapshot
+graphs with visited identities; do not add unchecked recursive graph copying.
+
+Keep Oop owners rooted throughout snapshot use and CST materialization. No raw
+borrow from a mutable Pattern/Grammar may cross a language send or GC-capable
+conversion call. Per-parse data is discarded afterwards; a mutation before the
+next parse must be visible. Memo child-vector compression is a separate slice,
+not a prerequisite for eliminating per-visit pattern clones.
+
+## Bounded implementation and validation
+
+1. Pin the current matcher as a differential oracle. Generate valid small
+   grammars and compare success/failure, full rule-labelled CST spans/order,
+   furthest-failure offset and error kinds. Add shared-pattern aliases and
+   unreachable undefined rules before altering representation.
+2. Implement rule indexing alone; benchmark 0/63/255 unused rules and actual
+   JSON. Test root replacement and mutation between parses.
+3. Implement once-per-parse pattern ownership, with allocation counters for
+   literals, sequences, charsets and shared patterns. Assert copies scale with
+   visited pattern data, not visits. Test small-input overhead and peak memory.
+4. Cover zero-width star/plus, lookahead with backtracking, undefined/recursive
+   rules, per-Grammar diagnostics, deep acyclic rules and forced-GC CST conversion.
+5. Run Rust PEG tests and current production `mise run verify` / `mise run test`,
+   plus installed/source parsing parity. Design 63's old Zig commands are
+   historical; use current Rust gates rather than reviving the retired floor.
+6. Collect host-gated before/after `parse.json-20kb` and source-startup timings,
+   keeping corpus, repetitions and release thresholds fixed. Accept only with
+   correctness and bounded memory, not merely fewer apparent clone calls.
+
+No grammar syntax, IdApi, image format, error behavior or persistent cache is
+needed. The first implementation slice requires no user-facing semantic change.
+
+## Probe provenance
+
+All Birnam probes for Designs 69–71 used the fresh release prefix
+`/tmp/birnam-planning.sipzqN/prefix`, built from the query-allocation runtime
+at `d15de56d` plus the test-only Store diagnostic. Source-manifest SHA-256:
+`7ce30f43edeafbdb9bc626f68c4a06b27d7c630c938a818366b746ff47107223`.
+Logs are supplemental in `/tmp/birnam-planning.sipzqN/`; probe sources and
+the observations above are retained in the repository. No production code
+was optimized in this investigation sequence.

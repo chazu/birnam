@@ -1,0 +1,23 @@
+// Design 69 diagnostic only. Fresh process, default GC, no release thresholds.
+[System load: "modules/time.birnam"]
+[#[32 128 512] do: [:n |
+  let ascending := [[1 to: n] asVector]
+  let descending := [ascending reversed]
+  [#[ascending descending] do: [:input |
+    let started := [Time monotonicMicros]
+    let sorted := [input sortBy: [:each | each]]
+    let elapsed := [[Time monotonicMicros] - started]
+    [System println: #[#sort n [input at: 0] elapsed [sorted = ascending]]]]]]]
+[#[8 64 256] do: [:n |
+  let builder := [StringBuilder new]
+  [1 to: n do: [:i | [builder add: "x"]]]
+  let suffix := [builder asString]
+  let earlyA := ["a" , suffix]
+  let earlyB := ["b" , suffix]
+  let lateA := [suffix , "a"]
+  let lateB := [suffix , "b"]
+  [#[#[earlyA earlyB] #[lateA lateB] #[suffix suffix]] do: [:pair |
+    let started := [Time monotonicMicros]
+    let answer := [[pair at: 0] < [pair at: 1]]
+    let elapsed := [[Time monotonicMicros] - started]
+    [System println: #[#string n elapsed answer]]]]]]

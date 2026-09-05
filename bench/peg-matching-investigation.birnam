@@ -1,0 +1,17 @@
+// Design 71 diagnostic; times exclude grammar/input construction.
+[System load: "modules/time.birnam"]
+[#[0 63 255] do: [:unused |
+  let grammar := [Peg newGrammar]
+  [1 to: unused do: [:i | [grammar rule: ["unused" , [i printString]] is: [Peg literal: "z"]]]]
+  [grammar rule: #atom is: [Peg literal: "x"]]
+  [grammar rule: #root is: [Peg seqOf: #[[Peg star: [Peg ruleRef: #atom]] [Peg eof]]]]
+  [#[16 1024 8192] do: [:n |
+    let builder := [StringBuilder new]
+    [1 to: n do: [:i | [builder add: "x"]]]
+    let source := [builder asString]
+    let started := [Time monotonicMicros]
+    let tree := [grammar parse: source from: #root]
+    let elapsed := [[Time monotonicMicros] - started]
+    [System println: #[#peg unused n elapsed [tree end] [tree childCount]]]]]
+  [grammar rule: #atom is: [Peg literal: "y"]]
+  [System println: #[#mutation [[grammar parse: "x" from: #root] isError] [[grammar parse: "y" from: #root] end]]]]]

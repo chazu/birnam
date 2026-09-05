@@ -1,0 +1,16 @@
+// Design 70: characterize current behavior, not the desired fixed semantics.
+[System load: "modules/time.birnam"]
+let first := #[1 2]
+let second := #[1 2]
+let map := [[[Map new] at: first put: #first] at: second put: #second]
+[System println: #[#keys [first == second] [first = second] [map size] [map at: first] [map at: second]]]
+let removed := [map removeKey: first]
+[System println: #[#removed [removed size] [removed includesKey: first] [removed includesKey: second] [map size]]]
+let absent := [map removeKey: #[9]]
+[System println: #[#absent [absent size] [absent == map] [absent = map]]]
+[#[16 64 256] do: [:n |
+  let built := [[1 to: n] inject: [Map new] into: [:result :i | [result at: i put: i]]]
+  let started := [Time monotonicMicros]
+  let result := [built removeKey: -1]
+  let elapsed := [[Time monotonicMicros] - started]
+  [System println: #[#missing n elapsed [result size] [built == result]]]]]
