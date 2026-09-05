@@ -1,7 +1,8 @@
 # 66 — Stackless Throughput Recovery
 
-> **Status:** Runtime implementation and allocation investigation complete;
-> final host-gated repetition pending AC power, 2026-09-05.
+> **Status:** Implementation, allocation investigation, and development
+> validation complete, 2026-09-05. This is not release qualification; the
+> strict comparator findings are recorded in section 8.
 > Research task: `birnam-v0j`. Publication closeout is committed as `a1a5a69`.
 > The measurements in sections 2–3 describe the pre-optimization runtime.
 > Section 7 records implementation evidence; Beads owns acceptance status.
@@ -391,7 +392,7 @@ rollback; image-v8 ordinary/rebuild/baked/resave identity; bounded method/Symbol
 history churn; and relocated project check/build/run/install/test with path/Git
 dependencies. R1 and the runtime-overhead issue are closed.
 
-R2 remains open for host-gated process repetitions. R3 is closed with the full
+R2 is complete with the host-gated repetitions in section 8. R3 is closed with the full
 allocator attribution and rejected inline-storage decision documented below.
 Final verification is not release qualification; no release or deployment has
 been performed by this work.
@@ -487,7 +488,7 @@ Raw sample SHA-256: `b743d6857c74eae19cbd3247ce6111670c1237746e61464f233be8ba2f5
 Corrected allocation-result SHA-256:
 `43413bf5e902263cf3bbb49754c8f472e452ffce745dcc604c9728a520fa83aa`.
 
-The sole remaining R2 gate is a quiet-host, AC-powered repeat comparison.
+The final R2 gate was a quiet-host, AC-powered repeat comparison.
 Unstable-host repetitions were excluded, and the subsequent preflight observed
 battery power repeatedly. Do not treat the initial development measurements as
 release qualification or silently relax the host gate. Resume with the original
@@ -506,3 +507,64 @@ BENCH_CHECK_HOST=1 BENCH_PREFIX=/tmp/birnam-publication-closeout.VJrOxG/current 
 This reverses the original before/after order. Inspect individual raw/net cases
 and calibrated counts, retain only host-accepted runs, and close
 `birnam-throughput-validation-ay9` only after the comparison is reviewed.
+
+## 8. Final host-gated development comparison
+
+After AC power was restored, the accepted combined runtime ran first and the
+original publication runtime second, reversing the initial order. Both used
+the full non-quick fixtures and `BENCH_CHECK_HOST=1`. The baseline batch exited
+zero. The optimized batch produced host-accepted micro, relational, GC, image,
+and docgen results but exited one because all four `boot.image` timing attempts
+were spoiled by host load. That case was rerun successfully in isolation using
+an exact copy of the canonical driver's measurement/monitoring functions, with
+only the image-suite and image-startup invocations retained. No repetitions,
+thresholds, fixture bodies, or release baselines were changed.
+
+The composite optimized record adds only that missing host-accepted `boot.image`
+result and explicitly identifies its supplemental source. It does not reclassify
+the original partial batch as passing. Complete raw/net values, calibrated
+operation counts, repetitions, stamps and supplement provenance are retained in
+[`66-throughput-comparison.json`](../measurements/66-throughput-comparison.json).
+
+| Case | Baseline | Optimized | Elapsed change |
+| --- | ---: | ---: | ---: |
+| `loops.to-do` | 48,592 ns/op | 34,700 ns/op | -28.6% |
+| `loops.whileTrue` | 46,774 ns/op | 31,600 ns/op | -32.4% |
+| `loops.timesRepeat` | 49,899 ns/op | 35,487 ns/op | -28.9% |
+| `query.single-clause` | 712.557 ms/op | 722.978 ms/op | +1.5% |
+| `query.join-3way` | 2,426.301 ms/op | 2,453.877 ms/op | +1.1% |
+| `query.rule-recursive` | 733.919 ms/op | 706.414 ms/op | -3.7% |
+| `parse.json-20kb` | 599.050 ms/op | 400.921 ms/op | -33.1% |
+| `boot.image` | 1.960 s | 1.916 s | -2.2% |
+| `docgen.full` | 62.723 s | 44.022 s | -29.8% |
+
+Docgen peak RSS fell from 459,145,216 to 417,595,392 bytes (-9.0%). All query
+cases stayed between -3.7% and +1.5%; this confirms loop and documentation
+recovery, not broad relational recovery. No measured macro case regressed.
+
+**Strict comparator: exit 1, two regression flags, five unusable values, zero
+missing cases.** This result is preserved, not waived:
+
+- `string.split-native`: 3.105 to 3.604 ms net (+16.1%); raw time also increased
+  15.5%. The earlier development comparison instead improved 3.163 to 2.874 ms.
+  This variable case is not evidence of a uniformly faster runtime and needs
+  ordinary multi-process release qualification before a release claim.
+- `error.propagate-5-deep`: 688 to 7,309 ns net, but raw time fell from 74,959 to
+  59,415 ns (-20.7%). Baseline subtraction leaves a very small residual, so the
+  net ratio is ill-conditioned; the comparator still correctly flags its input.
+- `map.at-hit`, `cells.read`, `ffi.wrapped-call`, `ffi.peek-poke`, and
+  `sends.compiled-unary` have a zero/negative net value on at least one side.
+  No speedup is claimed from those net ratios. Frozen bodies were not enlarged
+  or renamed to make the comparator pass.
+
+The bounded Design 66 implementation and development evidence are complete.
+Release acceptance remains governed by ordinary Design 60H policy, including
+clean multi-process comparisons and its other gates; no release or deployment
+was performed. Raw evidence hashes:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `checked-before.json` | `3c5c6ca2bcd3364c7b9da02b7309903510162926f4a90e675895f4f0638e45c3` |
+| `checked-after.json` (partial batch) | `e907db1260fe8ba1b88faadb33b44dc6bf9200aa99848fc3d46c05585feb2282` |
+| `checked-after-image-supplement.json` | `843454fcca11665784414c1354447d277b79dc810d2e8ce0871e0220490033c4` |
+| `checked-after-complete.json` (composite) | `ff767df57caedf8e5436c757736495a28a96e7a3af05ebf7f9d06646084e7066` |
