@@ -17,9 +17,11 @@ not the unrelated home-directory Maggie tracker.
 
 ## Selected sequence — 2026-09-05
 
-1. Close out Design 65 self-describing project publications: complete acceptance,
+1. Close out [Design 65](../design/65-self-describing-project-publications.md)
+   self-describing project publications (`birnam-mtd`): complete acceptance,
    verify Git/native dependency and relocation behavior, and record launch timing.
-2. Research and document stackless throughput recovery: refresh focused evidence,
+2. Research and document [Design 66](../design/66-stackless-throughput-recovery.md)
+   stackless throughput recovery (`birnam-v0j`): refresh focused evidence,
    identify the dominant costs, and propose bounded optimization slices preserving
    stackless execution and lifecycle contracts. Implementation follows the plan.
 

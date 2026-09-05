@@ -1,0 +1,16 @@
+// Focused steady-state profile for Design 66. This is deliberately separate
+// from the frozen micro suite: no baseline subtraction or release comparison.
+// Run from the repository root with a release-runtime prefix. The ready marker
+// separates source loading from the 100,000-iteration empty control loop.
+[System load: "modules/time.birnam"]
+[System autoGc: false]
+[System gc]
+[System println: "control-probe-ready"]
+let started := [Time monotonicMicros]
+let answer := [1 to: 100000 do: [:index | nil]]
+let elapsed := [[Time monotonicMicros] - started]
+[System println: [elapsed printString]]
+[[answer = 1]
+  ifTrue: [| [System println: "control-probe-ok"]]
+  ifFalse: [| [System println: "control-probe-failed"]]]
+[System autoGc: true]

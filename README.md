@@ -691,6 +691,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 - [The destination](docs/design/30-the-destination.md) defines the architectural
   invariants and layering.
+- [Throughput recovery](docs/design/66-stackless-throughput-recovery.md) records
+  current profiles and the proposed optimization sequence.
 - [The image](docs/design/40-the-image.md) defines persistence and mapped-code
   behavior.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
