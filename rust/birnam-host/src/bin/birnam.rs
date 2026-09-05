@@ -3,13 +3,13 @@ use std::ffi::{CString, OsString};
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use birnam_host::{
-    CommandKind, OutputFormat, ParseOutcome, ProjectBuildRequest, StartupPolicy,
-    WorkerStartupError, bake_executable, classify_command, compile_module, eval_script,
-    host_target_identity, load_image, load_image_bytes, parse_bake_args, parse_build_args,
-    parse_check_args, parse_compile_module_args, parse_fetch_args, parse_install_args,
+    ArtifactPreflightError, CommandKind, OutputFormat, ParseOutcome, ProjectBuildError,
+    ProjectBuildRequest, ProjectRunError, StartupPolicy, WorkerStartupError, bake_executable,
+    classify_command, compile_module, eval_script, host_target_identity, load_image,
+    load_image_bytes, parse_bake_args, parse_build_args, parse_check_args,
+    parse_compile_module_args, parse_fetch_args, parse_install_args,
     parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
     parse_worker_args, preflight_artifact, read_baked_image, resolve, start,
     start_from_environment,
@@ -217,26 +217,25 @@ fn build_command(args: &[OsString]) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            let built_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|error| format!("build: clock: {error}"))?
-                .as_secs()
-                .to_string();
             let target = host_target_identity();
             let request = ProjectBuildRequest {
                 start: &options.directory,
                 target: &target,
                 profile: &options.profile,
                 tool_version: VERSION.trim(),
-                built_at: &built_at,
             };
             let result = unsafe { runtime.build_project(&request) }
                 .map_err(|error| format!("build: {error:?}"))?;
             println!(
-                "built {} module{} at {}",
+                "built {} module{} at {} ({} reused)",
                 result.artifacts.len(),
                 if result.artifacts.len() == 1 { "" } else { "s" },
-                result.output_root.display()
+                result.output_root.display(),
+                result
+                    .artifacts
+                    .iter()
+                    .filter(|artifact| artifact.action == "reuse")
+                    .count()
             );
             Ok(())
         }
@@ -257,22 +256,16 @@ fn install_command(args: &[OsString]) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             let target = host_target_identity();
             let build = if options.build {
-                let built_at = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(|error| format!("install: clock: {error}"))?
-                    .as_secs()
-                    .to_string();
                 let request = ProjectBuildRequest {
                     start: &options.directory,
                     target: &target,
                     profile: &options.profile,
                     tool_version: VERSION.trim(),
-                    built_at: &built_at,
                 };
                 unsafe { runtime.build_project(&request) }
             } else {
                 unsafe {
-                    runtime.validate_project_build(
+                    runtime.locate_project_build(
                         &options.directory,
                         &target,
                         &options.profile,
@@ -306,8 +299,18 @@ fn run_project_command(args: &[OsString]) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            unsafe { runtime.run_project_with_tool_version(&options, VERSION.trim()) }
-                .map_err(|error| format!("run: {error:?}"))
+            unsafe { runtime.run_project_with_tool_version(&options, VERSION.trim()) }.map_err(
+                |error| match error {
+                    ProjectRunError::ApplicationUnavailable(path)
+                    | ProjectRunError::Build(ProjectBuildError::Publication(
+                        ArtifactPreflightError::Read { path, .. },
+                    )) => format!(
+                        "run: no runnable publication at {}; run `birnam build` or retry with `birnam run --build`",
+                        path.display()
+                    ),
+                    error => format!("run: {error:?}"),
+                },
+            )
         }
     }
 }
@@ -378,17 +381,11 @@ fn test_command(args: &[OsString]) -> Result<(), String> {
             unsafe { runtime.prepare_execution(&mut anchor) };
             let target = host_target_identity();
             if options.build {
-                let built_at = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(|error| format!("test: clock: {error}"))?
-                    .as_secs()
-                    .to_string();
                 let request = ProjectBuildRequest {
                     start: &options.directory,
                     target: &target,
                     profile: &options.profile,
                     tool_version: VERSION.trim(),
-                    built_at: &built_at,
                 };
                 unsafe { runtime.build_project(&request) }
                     .map_err(|error| format!("test: {error:?}"))?;

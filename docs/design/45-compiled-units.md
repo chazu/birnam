@@ -51,9 +51,8 @@ before the language activation stack or any artifact initializer runs.
 After inspection succeeds, `Module` builds a complete dependency-first plan and
 only then asks Codegen to activate each artifact. This separation means an
 invalid later dependency cannot leave an earlier sibling partially installed.
-The descriptor is runtime authority; `artifacts.toml` is only a disposable local
-build receipt for source freshness, reuse, and output validation. Installed
-roots carry no project or build TOML sidecar.
+The descriptor is publication and runtime authority; there is no external
+artifact inventory. Installed roots carry no project or build TOML sidecar.
 
 See [Design 54](54-relocatable-bundles.md) for distribution and [Shipping
 compiled artifacts](../guide/09-shipping-artifacts.md) for the user-facing

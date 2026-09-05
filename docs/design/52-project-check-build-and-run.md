@@ -9,6 +9,10 @@
 > Resolution](51-project-manifests-and-dependency-resolution.md). It is a
 > product-facing layer over the existing --compile-module, Module load:,
 > image, and source-fallback primitives.
+>
+> **Publication amendment (2026-09-03):** Design 65 replaces the receipt-based
+> build/run contract below. Ordinary run now consumes compiled publication
+> roots without source observation; receipt-specific text is historical.
 
 ## 1. The question
 

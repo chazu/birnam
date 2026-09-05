@@ -56,7 +56,7 @@
   let r5 := [r4 at: "revisionDigest" put: digest];
   [r5 at: "requires" put: requires]]];
 
-[Reflect defineMethod: #artifactRecord:name:checksum:observed: on: ProjectPolicyTest as: [:self :module :name :checksum :observed |
+[Reflect defineMethod: #publishedArtifact:name:checksum:observed: on: ProjectPolicyTest as: [:self :module :name :checksum :observed |
   let result := [Map new];
   let r1 := [result at: "name" put: name];
   let r2 := [r1 at: "path" put: [["lib/libbirnam_" , name] , ".dylib"]];
@@ -125,6 +125,17 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
   let names := [[result at: "modules"] collect: [:entry | [entry at: "name"]]];
   [t expect: names equals: #["leaf" "dep" "util" "app"] describes: "dependency-first module order"]]];
+
+[s test: "shared dependencies appear once in the resolution" do: [:t |
+  let leaf := [ProjectPolicyTest source: "leaf" requires: #[]];
+  let left := [ProjectPolicyTest source: "left" requires: #["leaf"]];
+  let right := [ProjectPolicyTest source: "right" requires: #["leaf"]];
+  let app := [ProjectPolicyTest source: "app" requires: #["left" "right"]];
+  let sources := #[app right leaf left];
+  let project := [ProjectPolicyTest project: "/app" name: "app" loads: #["app"] dependencies: #[] sources: sources];
+  let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: #[project]]];
+  let names := [[result at: "modules"] collect: [:entry | [entry at: "name"]]];
+  [t expect: names equals: #["leaf" "left" "right" "app"] describes: "diamond dependency resolves each module once"]]];
 
 [s test: "wrapped artifacts propagate dependency-first with their declaring roots" do: [:t |
   let native := [ProjectPolicyTest project: "/native" name: "native" loads: #[] dependencies: #[] sources: #[]];
@@ -195,7 +206,7 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let result := [ProjectPolicy resolveSnapshot: [ProjectPolicyTest snapshot: projects]];
   [t expect: [result kind] equals: #duplicateModuleProvider describes: "duplicate provider kind"]]];
 
-[s test: "artifact policy compiles when no prior record exists" do: [:t |
+[s test: "artifact policy compiles when no prior publication exists" do: [:t |
   let module := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #[] digest: "app"];
   let modules0 := [Vector new];
   let modules := [modules0 add: module];
@@ -204,10 +215,10 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let item := [[plan at: "artifacts"] at: 0];
   [t expect: [item at: "action"] equals: "compile" describes: "missing prior artifact compiles"]]];
 
-[s test: "artifact policy reuses an unchanged prior record" do: [:t |
+[s test: "artifact policy reuses an unchanged prior publication" do: [:t |
   let module := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #[] digest: "app"];
   let artifacts0 := [Vector new];
-  let artifact := [ProjectPolicyTest artifactRecord: module name: "app" checksum: "app-checksum" observed: "app-checksum"];
+  let artifact := [ProjectPolicyTest publishedArtifact: module name: "app" checksum: "app-checksum" observed: "app-checksum"];
   let artifacts := [artifacts0 add: artifact];
   let previous := [ProjectPolicyTest previousFor: artifacts];
   let modules0 := [Vector new];
@@ -221,8 +232,8 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let newLeaf := [ProjectPolicyTest artifactModule: "leaf" name: "leaf" path: "/app/src/leaf.birnam" requires: #[] digest: "new-leaf"];
   let app := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #["leaf"] digest: "app"];
   let oldArtifacts0 := [Vector new];
-  let oldArtifacts1 := [oldArtifacts0 add: [ProjectPolicyTest artifactRecord: oldLeaf name: "leaf" checksum: "leaf-checksum" observed: "leaf-checksum"]];
-  let oldArtifacts := [oldArtifacts1 add: [ProjectPolicyTest artifactRecord: app name: "app" checksum: "app-checksum" observed: "app-checksum"]];
+  let oldArtifacts1 := [oldArtifacts0 add: [ProjectPolicyTest publishedArtifact: oldLeaf name: "leaf" checksum: "leaf-checksum" observed: "leaf-checksum"]];
+  let oldArtifacts := [oldArtifacts1 add: [ProjectPolicyTest publishedArtifact: app name: "app" checksum: "app-checksum" observed: "app-checksum"]];
   let previous := [ProjectPolicyTest previousFor: oldArtifacts];
   let modules0 := [Vector new];
   let modules1 := [modules0 add: newLeaf];
@@ -231,17 +242,6 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let decisions := [plan at: "artifacts"];
   [t expect: [[decisions at: 0] at: "action"] equals: "compile" describes: "changed dependency compiles"];
   [t expect: [[decisions at: 1] at: "action"] equals: "compile" describes: "dependent recompiles"]]];
-
-[s test: "artifact record policy owns the persisted record shape" do: [:t |
-  let module := [ProjectPolicyTest artifactModule: "app" name: "app" path: "/app/src/app.birnam" requires: #[] digest: "app"];
-  let modules0 := [Vector new];
-  let modules := [modules0 add: module];
-  let snapshot := [ProjectPolicyTest artifactSnapshot: modules previous: nil];
-  let artifacts0 := [Vector new];
-  let artifacts := [artifacts0 add: [ProjectPolicyTest artifactRecord: module name: "app" checksum: "app-checksum" observed: nil]];
-  let record := [ProjectPolicy artifactRecord: snapshot artifacts: artifacts native: #[]];
-  [t expect: [record at: "schema"] equals: "birnam-artifacts-v3" describes: "policy selects artifact schema"];
-  [t expect: [[[record at: "artifacts"] at: 0] at: "source"] equals: "/app/src/app.birnam" describes: "policy retains source identity"]]];
 
 [s test: "publication policy rejects incomplete staging" do: [:t |
   let notReady0 := [Map new];

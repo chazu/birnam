@@ -8,6 +8,19 @@ loader ports are complete.
 
 ## [Unreleased]
 
+### Changed
+
+- Project builds publish self-describing application, configuration, and module
+  roots instead of `artifacts.toml`. Ordinary `run` and `install` consume the
+  last successful publication without reading authored sources or parsing the
+  manifest; `--build` explicitly refreshes it. Tests load the published module
+  root without executing or requiring a valid application root.
+- Project build output reports reused modules. Missing or malformed cached
+  artifacts rebuild safely, and failed builds preserve the previous publication.
+- Ordinary project launch preflights its selected closure once. A nine-module
+  Git/native fixture measured 1.228 s before and 0.826 s after this change
+  (five warm launches, release runtime; diagnostic evidence in Design 65).
+
 ## [0.14.0] — 2026-08-27
 
 ### Added

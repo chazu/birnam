@@ -178,16 +178,17 @@ temporary directory. It does not load, evaluate, or publish project code;
 `--format=json` emits the stable `birnam-check-v1` result for tools.
 
 `build` publishes the graph atomically beneath
-`.birnam/build/<target>/<profile>`. Its `resolution.toml` and `artifacts.toml`
-are disposable build receipts, not installed runtime metadata. Build, run,
+`.birnam/build/<target>/<profile>` as self-describing module, configuration, and
+application artifacts. There is no generated build receipt. Build, run,
 install, and test accept `--profile debug|release`; `debug` is the default and
-each profile has an independent publication record.
+each profile has an independent publication.
 
-`run` validates that publication, loads the manifest's `load` list
-dependency-first, evaluates `main` exactly once, and exits by default. Arguments
-after `--` are available as `[Globals at: #ProjectArgs]`. A bare `birnam` inside
-a project instead validates the latest build, evaluates `main`, and then opens
-the terminal REPL.
+`run` does not re-read project source or `birnam.toml`: it preflights the last
+successful application publication, applies its compiled run policy, invokes
+its captured `main` exactly once, and exits by default. Use `run --build` to
+refresh it from current source. Arguments after `--` are available as
+`[Globals at: #ProjectArgs]`. A bare `birnam` inside a project instead runs the
+latest publication and then opens the terminal REPL.
 
 `test` runs each configured `[test].sources` entry in a fresh process. Without
 that list, it discovers `.birnam` files beneath `test/` and `tests/`, preventing
@@ -673,6 +674,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 ## Repository Guide
 
+- `.beads/` — active issue tracker; run `br ready` in this checkout. See
+  [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — authoritative Rust `libid` floor behind the frozen `IdApi`.
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
@@ -713,8 +716,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
   executable-relative runtime closure with relocated project, image, and isolate
   acceptance plus self-describing, source-free project/application roots.
 - [Shipping compiled artifacts](docs/guide/09-shipping-artifacts.md) explains the
-  source manifest, disposable build receipt, installed descriptor, and direct
-  dylib-root workflow.
+  source manifest, self-describing local publication, installed descriptor, and
+  direct dylib-root workflow.
 - [Embedded files](docs/design/56-embedded-files.md) documents the
   compile-time `System embedFile:` intrinsic and its project-build contract.
 - [Designs 55, 58, and 59](docs/design/59-digla-adversarial-architecture-review.md)

@@ -1,7 +1,7 @@
 # 51 — Project Manifests and Dependency Resolution
 
 > **Status:** Source resolver, path and commit-pinned Git dependencies,
-> explicit dependency fetch, materialized artifact records, conservative
+> explicit dependency fetch, self-describing project publications, conservative
 > artifact reuse, the first project-run consumer, and the Birnam-owned project
 > policy slice implemented, 2026-07-16; reconciled with the self-describing
 > artifact/runtime boundary on 2026-07-22. This is the first design in the
@@ -10,6 +10,11 @@
 > Check, Build, and Run](52-project-check-build-and-run.md), [53 — Project-Aware
 > Language Tools](53-project-aware-language-tools.md), and [54 — Relocatable
 > Bundles](54-relocatable-bundles.md).
+>
+> **Publication amendment (2026-09-03):** Design 65 removes the generated
+> artifact-record file. Receipt-specific sections below are historical; current
+> build and run semantics are defined by
+> [65 — Self-Describing Project Publications](65-self-describing-project-publications.md).
 
 Builds on [43 — Modules and the Self-Hosted Layer](43-modules-and-config.md),
 [45 — Compiled Units Are Primary](45-compiled-units.md), and [50 — Five-Phase

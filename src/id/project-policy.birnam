@@ -96,7 +96,7 @@
 // persistent values.
 [Reflect defineMethod: #visit:from:state: on: ProjectPolicy as: [:self :name :project :state |
   let resolved := [[state at: "resolved"] value];
-  [[self hasName: name in: resolved]
+  [[[self sourceNamed: name in: resolved at: 0] notNil]
     ifTrue: [| nil]
     ifFalse: [|
       let visiting := [[state at: "visiting"] value];
@@ -224,11 +224,10 @@
   "Resolve an observed project graph into a deterministic dependency-first plan without effects."];
 
 // -- build policy -------------------------------------------------------------
-// The host supplies the previous record plus checksums already observed at the
-// filesystem seam. Birnam decides whether each dependency-first artifact can
-// be reused, which records must be rebuilt, and whether the staged result may
-// be published. Compilation, copying, hashing, and the final rename remain
-// host adapters.
+// The host inspects the previous publication's embedded descriptors and
+// supplies that observation as an ephemeral value. Birnam decides whether
+// each dependency-first artifact can be reused and whether the staged result
+// may be published. No build receipt is read or written.
 
 [Reflect defineMethod: #artifactNamed:in:at: on: ProjectPolicy as: [:self :name :artifacts :index |
   [[index >= [artifacts size]]
@@ -252,15 +251,15 @@
     ifTrue: [| [self sameStrings: left with: right at: 0]]
     ifFalse: [| false]]]];
 
-[Reflect defineMethod: #recordCompatible:with: on: ProjectPolicy as: [:self :record :snapshot |
-  [[record isNil]
+[Reflect defineMethod: #publicationCompatible:with: on: ProjectPolicy as: [:self :publication :snapshot |
+  [[publication isNil]
     ifTrue: [| false]
     ifFalse: [|
-      let project := [[record at: "projectRoot"] = [snapshot at: "projectRoot"]];
-      let target := [[record at: "target"] = [snapshot at: "target"]];
-      let profile := [[record at: "profile"] = [snapshot at: "profile"]];
-      let tool := [[record at: "toolVersion"] = [snapshot at: "toolVersion"]];
-      let abi := [[record at: "artifactAbi"] = [snapshot at: "artifactAbi"]];
+      let project := [[publication at: "projectRoot"] = [snapshot at: "projectRoot"]];
+      let target := [[publication at: "target"] = [snapshot at: "target"]];
+      let profile := [[publication at: "profile"] = [snapshot at: "profile"]];
+      let tool := [[publication at: "toolVersion"] = [snapshot at: "toolVersion"]];
+      let abi := [[publication at: "artifactAbi"] = [snapshot at: "artifactAbi"]];
       [project & [target & [profile & [tool & abi]]]]]]]];
 
 [Reflect defineMethod: #metadataMatches:module: on: ProjectPolicy as: [:self :old :module |
@@ -294,7 +293,7 @@
   let previous := [state at: "previous"];
   let artifacts := [[previous isNil] ifTrue: [| #[]] ifFalse: [| [previous at: "artifacts"]]];
   let old := [self artifactNamed: [module at: "name"] in: artifacts at: 0];
-  let compatible := [self recordCompatible: previous with: [state at: "snapshot"]];
+  let compatible := [self publicationCompatible: previous with: [state at: "snapshot"]];
   [[old notNil]
     ifTrue: [|
       let metadata := [self metadataMatches: old module: module];
@@ -316,75 +315,9 @@
   let state3 := [state2 at: "dirty" put: [[Map new] asCell]];
   let plans := [[snapshot at: "modules"] inject: #[] into: [:items :module |
     [items add: [self artifactPlanFor: module state: state3]]]];
-  let record0 := [Map new];
-  let record1 := [record0 at: "schema" put: "birnam-artifacts-v3"];
-  let record2 := [record1 at: "projectRoot" put: [snapshot at: "projectRoot"]];
-  let record3 := [record2 at: "target" put: [snapshot at: "target"]];
-  let record4 := [record3 at: "profile" put: [snapshot at: "profile"]];
-  let record5 := [record4 at: "toolVersion" put: [snapshot at: "toolVersion"]];
-  let record6 := [record5 at: "artifactAbi" put: [snapshot at: "artifactAbi"]];
-  let record7 := [record6 at: "resolutionDigest" put: [snapshot at: "resolutionDigest"]];
-  let record := [record7 at: "artifacts" put: plans];
   let result0 := [Map new];
   let result1 := [result0 at: "artifacts" put: plans];
-  let result2 := [result1 at: "record" put: record];
-  [result2 at: "publication" put: "publish"]]];
-
-[Reflect defineMethod: #recordArtifact: on: ProjectPolicy as: [:self :artifact |
-  let result := [Map new];
-  let r1 := [result at: "name" put: [artifact at: "name"]];
-  let r2 := [r1 at: "path" put: [artifact at: "path"]];
-  let r3 := [r2 at: "source" put: [artifact at: "source"]];
-  let r4 := [r3 at: "sources" put: [artifact at: "sources"]];
-  let r5 := [r4 at: "sourceDigest" put: [artifact at: "sourceDigest"]];
-  let r6 := [r5 at: "revisionDigest" put: [artifact at: "revisionDigest"]];
-  let r7 := [r6 at: "requires" put: [artifact at: "requires"]];
-  [r7 at: "checksum" put: [artifact at: "checksum"]]]];
-
-[Reflect defineMethod: #recordNative: on: ProjectPolicy as: [:self :artifact |
-  let result := [Map new];
-  let r1 := [result at: "name" put: [artifact at: "name"]];
-  let r2 := [r1 at: "path" put: [artifact at: "path"]];
-  [r2 at: "checksum" put: [artifact at: "checksum"]]]];
-
-[Reflect defineMethod: #artifactRecord:artifacts:native: on: ProjectPolicy as: [:self :snapshot :artifacts :native |
-  let result := [Map new];
-  let r1 := [result at: "schema" put: "birnam-artifacts-v3"];
-  let r2 := [r1 at: "projectRoot" put: [snapshot at: "projectRoot"]];
-  let r3 := [r2 at: "target" put: [snapshot at: "target"]];
-  let r4 := [r3 at: "profile" put: [snapshot at: "profile"]];
-  let r5 := [r4 at: "toolVersion" put: [snapshot at: "toolVersion"]];
-  let r6 := [r5 at: "builtAt" put: [snapshot at: "builtAt"]];
-  let r7 := [r6 at: "artifactAbi" put: [snapshot at: "artifactAbi"]];
-  let r8 := [r7 at: "resolutionDigest" put: [snapshot at: "resolutionDigest"]];
-  let sourceRecords := [artifacts collect: [:artifact | [self recordArtifact: artifact]]];
-  let r9 := [r8 at: "artifacts" put: sourceRecords];
-  let nativeRecords := [native collect: [:artifact | [self recordNative: artifact]]];
-  [r9 at: "native" put: nativeRecords]]];
-
-[Reflect defineMethod: #artifactValid:module: on: ProjectPolicy as: [:self :old :module |
-  [[old isNil]
-    ifTrue: [| false]
-    ifFalse: [|
-      let metadata := [self metadataMatches: old module: module];
-      let observed := [old at: "observedChecksum" ifAbsent: [| nil]];
-      let present := [observed notNil];
-      let checksumMatches := [observed = [old at: "checksum"]];
-      [metadata & [present & checksumMatches]]]]]];
-
-[Reflect defineMethod: #validateArtifacts: on: ProjectPolicy as: [:self :snapshot |
-  let previous := [snapshot at: "previous" ifAbsent: [| nil]];
-  [[previous isNil]
-    ifTrue: [| false]
-    ifFalse: [|
-      let compatible := [self recordCompatible: previous with: snapshot];
-      let digestMatches := [[previous at: "resolutionDigest"] = [snapshot at: "resolutionDigest"]];
-      let modules := [snapshot at: "modules"];
-      let artifacts := [previous at: "artifacts"];
-      let complete := [[artifacts size] = [modules size]];
-      let valid := [modules allSatisfy: [:module |
-        [self artifactValid: [self artifactNamed: [module at: "name"] in: artifacts at: 0] module: module]]];
-      [compatible & [digestMatches & [complete & valid]]]]]]];
+  [result1 at: "publication" put: "publish"]]];
 
 [Reflect defineMethod: #publicationPlan: on: ProjectPolicy as: [:self :snapshot |
   [[snapshot at: "stageReady" ifAbsent: [| false]]

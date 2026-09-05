@@ -1,17 +1,18 @@
 # Shipping compiled artifacts
 
-Birnam keeps source authoring, local build bookkeeping, and installed execution
+Birnam keeps source authoring, local publication, and installed execution
 as three separate boundaries:
 
 | Boundary | Artifact | Purpose |
 | --- | --- | --- |
 | Source | `birnam.toml` and `.birnam` files | Declare project roots, origins, source composition, wrapped builds, and developer run policy. |
-| Local build | `resolution.toml` and `artifacts.toml` | Validate source-to-output freshness, checksums, reuse, and atomic publication. |
+| Local build | module, configuration, application, and native artifacts | Atomically publish a self-describing executable closure. |
 | Installed runtime | module dylibs, native siblings, or images | Describe and execute their own runtime closure without project/build TOML. |
 
-`artifacts.toml` is not a package manifest. It is disposable build state under
-`.birnam/build/<target>/<profile>/` and is never an input to the runtime module
-loader. `birnam install` copies artifacts, not the project manifest or receipts.
+There is no generated project-build receipt. `birnam build` inspects previous
+artifact descriptors to make incremental reuse decisions, then atomically
+replaces `.birnam/build/<target>/<profile>/`. `birnam install` copies the
+descriptor-discovered closure, not the project manifest or source files.
 
 ## What a module artifact describes
 
@@ -77,13 +78,11 @@ Inspection does not run constructors, `__birnam_unit_init`, `__ev`, module
 initializers, or entry behavior. Planning the complete graph first prevents an
 invalid later sibling from leaving an earlier dependency partially installed.
 
-Direct dylib selection activates the root module's own top-level program. It
-does not recover a separate `main.birnam` path that existed only in the source
-project manifest. A source-free application must therefore put its entry
-behavior in the selected root artifact, or ship an image whose application
-entry is already part of the image. A source project can continue to use
-`birnam run`, which deliberately validates its local receipt and evaluates its
-manifest-selected main.
+Direct dylib selection activates the root module's own top-level program. A
+project build captures its resolved module programs and `main` in an explicit
+application root, so ordinary `birnam run` can execute the last successful
+publication without consulting project source. Use `birnam run --build` when
+the publication should first be refreshed from current source.
 
 ## Project build and installation
 
@@ -98,19 +97,21 @@ birnam install /path/to/project
 ```
 
 `check` and `build` use `birnam.toml`. Check compile-validates every module in a
-private temporary directory and offers stable `--format=json` output. `build` publishes a complete local
-directory and writes its receipts atomically. Source-oriented `run` validates
-that publication, selects exact module paths, inspects their descriptors, loads
-project modules, and evaluates the manifest's `main` once.
+private temporary directory and offers stable `--format=json` output. `build`
+publishes a complete local directory atomically. Ordinary `run` selects and
+preflights the compiled application root, reads run policy from its compiled
+configuration root, and activates the application exactly once without source
+observation.
 
 Build, run, test, and install select independent `debug` or `release`
 publications with `--profile`. `test` discovers or reads `[test].sources` and
 runs each test source in a fresh process against the validated compiled closure.
 
-`install` validates the same publication and copies its module/native artifacts
-into the selected runtime library directory. The installed result contains no
-`birnam.toml`, `resolution.toml`, or `artifacts.toml`. Installed module identity
-and dependency planning come from the descriptors.
+`install` validates the same publication and copies the union of its module,
+application, configuration, and native closures into the selected runtime
+library directory. The installed result contains no project manifest or source
+inventory. Installed module identity and dependency planning come from the
+descriptors.
 
 The standard Birnam CLI, REPL, LSP, documentation, and library modules follow
 the same rule: their authored files live in the repository, while install and
@@ -154,10 +155,10 @@ complete, signed closures; it never discovers them from developer build dirt.
 ## Integrity and failures
 
 The embedded descriptor is routing and compatibility metadata, not an external
-checksum manifest. Local build receipts verify source freshness and artifact
-checksums before selection. Installed/release integrity belongs to the platform
-artifact and signing boundary; release staging signs and verifies each dylib and
-the siphon executable.
+checksum manifest. Explicit build compares current source metadata with the
+previous publication's descriptors for incremental reuse. Installed/release
+integrity belongs to the platform artifact and signing boundary; release staging
+signs and verifies each dylib and the siphon executable.
 
 Common pre-activation failures include:
 

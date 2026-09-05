@@ -9,7 +9,7 @@ use std::env;
 use std::ffi::{CStr, CString, OsStr, OsString, c_char, c_int, c_void};
 use std::fmt;
 use std::io;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
@@ -264,6 +264,7 @@ pub struct ArtifactEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactPlan {
     pub entries: Vec<ArtifactEntry>,
+    pub native: Vec<PathBuf>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -469,6 +470,8 @@ fn read_artifact_bytes(path: &Path) -> Result<Vec<u8>, ArtifactPreflightError> {
 
 struct ArtifactPreflight {
     entries: Vec<ArtifactEntry>,
+    native: Vec<PathBuf>,
+    native_seen: HashSet<PathBuf>,
     visiting: HashSet<Vec<u8>>,
     inspected: HashSet<Vec<u8>>,
 }
@@ -520,11 +523,15 @@ impl ArtifactPreflight {
                     requirement: requirement.to_vec(),
                 });
             };
-            if std::fs::metadata(directory.join(requirement_path)).is_err() {
+            let native_path = directory.join(requirement_path);
+            if std::fs::metadata(&native_path).is_err() {
                 return Err(ArtifactPreflightError::NativeRequirementMissing {
                     path: path.to_path_buf(),
                     requirement: requirement.to_vec(),
                 });
+            }
+            if self.native_seen.insert(native_path.clone()) {
+                self.native.push(native_path);
             }
         }
         let requires: Vec<Vec<u8>> = descriptor
@@ -584,33 +591,43 @@ pub fn preflight_artifact(
 ) -> Result<ArtifactPlan, ArtifactPreflightError> {
     let mut preflight = ArtifactPreflight {
         entries: Vec::new(),
+        native: Vec::new(),
+        native_seen: HashSet::new(),
         visiting: HashSet::new(),
         inspected: HashSet::new(),
     };
     preflight.walk(path, expected_identity)?;
     Ok(ArtifactPlan {
         entries: preflight.entries,
+        native: preflight.native,
     })
 }
 
-/// Preflight and activate an artifact through the Birnam Module manager. The
-/// preflight is completed before any object send; activation remains owned by
-/// the self-hosted manager so its Store/MOP/closure rules stay authoritative.
+/// Activate one artifact after its complete closure has already passed
+/// [`preflight_artifact`]. This is the execution half of the artifact module's
+/// interface; callers must retain the successful plan until activation ends.
 ///
 /// # Safety
 ///
-/// The runtime must remain on the selected floor's owner thread, and the
-/// caller must establish a valid GC stack bottom for synchronous sends.
-pub unsafe fn activate_artifact(
+/// The runtime must remain on the selected floor's owner thread, the caller
+/// must establish a valid GC stack bottom, and `entry` must belong to a
+/// successfully preflighted plan whose files have not changed.
+pub unsafe fn activate_preflighted_artifact(
     runtime: &HostRuntime,
-    path: &Path,
-    expected_identity: Option<&[u8]>,
+    entry: &ArtifactEntry,
 ) -> Result<(), ArtifactActivationError> {
-    preflight_artifact(path, expected_identity).map_err(ArtifactActivationError::Preflight)?;
     let api = runtime.stack.api();
     let Some(module_manager) = (unsafe { global_named(api, "Module") }) else {
         return Err(ArtifactActivationError::MissingModuleManager);
     };
+    let identity = CString::new(entry.identity.as_slice())
+        .map_err(|_| ArtifactActivationError::ActivationRejected)?;
+    let identity = unsafe { (api.intern)(identity.as_ptr()) };
+    let is_loaded = unsafe { (api.intern)(c"isLoaded:".as_ptr()) };
+    if unsafe { (api.send)(module_manager, is_loaded, [identity].as_ptr(), 1) } == api.trueObj {
+        return Ok(());
+    }
+    let path = &entry.path;
     let directory = path.parent().unwrap_or_else(|| Path::new("."));
     let directory_bytes = path_bytes(directory);
     let directory_value =
@@ -631,10 +648,36 @@ pub unsafe fn activate_artifact(
     }
     let path_bytes = path_bytes(path);
     let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
-    let selector = unsafe { (api.intern)(c"loadArtifact:".as_ptr()) };
-    let result = unsafe { (api.send)(module_manager, selector, [path_value].as_ptr(), 1) };
+    let selector = unsafe { (api.intern)(c"load:".as_ptr()) };
+    let result = unsafe { (api.send)(runtime.codegen, selector, [path_value].as_ptr(), 1) };
     if result == api.nilObj || send_is_error(api, result) {
         return Err(ArtifactActivationError::ActivationRejected);
+    }
+    let mark_loaded = unsafe { (api.intern)(c"markLoaded:".as_ptr()) };
+    let marked = unsafe { (api.send)(module_manager, mark_loaded, [identity].as_ptr(), 1) };
+    if marked == api.nilObj || send_is_error(api, marked) {
+        return Err(ArtifactActivationError::ActivationRejected);
+    }
+    Ok(())
+}
+
+/// Preflight and activate an artifact closure dependency-first. The host uses
+/// the checked plan directly, while Codegen remains the installation authority
+/// and the Birnam Module manager retains loaded-state bookkeeping.
+///
+/// # Safety
+///
+/// The runtime must remain on the selected floor's owner thread, and the
+/// caller must establish a valid GC stack bottom for synchronous sends.
+pub unsafe fn activate_artifact(
+    runtime: &HostRuntime,
+    path: &Path,
+    expected_identity: Option<&[u8]>,
+) -> Result<(), ArtifactActivationError> {
+    let plan =
+        preflight_artifact(path, expected_identity).map_err(ArtifactActivationError::Preflight)?;
+    for entry in &plan.entries {
+        unsafe { activate_preflighted_artifact(runtime, entry)? };
     }
     Ok(())
 }
@@ -1948,6 +1991,7 @@ pub struct ProjectResolutionObservation {
     pub manifest: String,
     pub project_name: String,
     pub main: Option<String>,
+    pub run: ProjectRunObservation,
     pub load_roots: Vec<String>,
     pub modules: Vec<ProjectSourceObservation>,
     pub wrapped: Vec<ProjectWrappedArtifactObservation>,
@@ -1987,20 +2031,12 @@ pub struct ProjectArtifactPlanEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectArtifactPlan {
-    pub project_root: String,
-    pub target: String,
-    pub profile: String,
-    pub tool_version: String,
-    pub artifact_abi: String,
-    pub built_at: Option<String>,
-    pub resolution_digest: String,
     pub artifacts: Vec<ProjectArtifactPlanEntry>,
     pub publication: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectArtifactPlanValidationError {
-    MetadataMismatch(&'static str),
     ArtifactCount { expected: usize, actual: usize },
     ArtifactMismatch { index: usize, field: &'static str },
     InvalidAction { index: usize, action: String },
@@ -2037,22 +2073,9 @@ pub struct ProjectStagedArtifact {
 pub struct ProjectArtifactStageRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
     pub plan: &'a ProjectArtifactPlan,
-    pub previous: Option<&'a ProjectBuildRecord>,
+    pub previous: Option<&'a ProjectPreviousPublication>,
     pub previous_root: Option<&'a Path>,
     pub stage_root: &'a Path,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ProjectArtifactRecordRequest<'a> {
-    pub resolution: &'a ProjectResolutionObservation,
-    pub staged: &'a [ProjectStagedArtifact],
-    pub native: &'a [ProjectPreviousNativeArtifact],
-    pub wrapped: &'a [ProjectWrappedArtifactObservation],
-    pub target: &'a str,
-    pub profile: &'a str,
-    pub tool_version: &'a str,
-    pub built_at: &'a str,
-    pub resolution_digest: &'a str,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2061,13 +2084,14 @@ pub struct ProjectBuildRequest<'a> {
     pub target: &'a str,
     pub profile: &'a str,
     pub tool_version: &'a str,
-    pub built_at: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectBuildResult {
     pub output_root: PathBuf,
-    pub record: ProjectBuildRecord,
+    pub module_root: PathBuf,
+    pub configuration: PathBuf,
+    pub application: Option<PathBuf>,
     pub artifacts: Vec<ProjectStagedArtifact>,
 }
 
@@ -2114,13 +2138,6 @@ pub enum ProjectArtifactStageError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProjectArtifactRecordError {
-    Snapshot(ProjectSnapshotError),
-    Policy(ProjectPolicyError),
-    Decode(ProjectManifestDecodeError),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectBuildError {
     Observation(ProjectObservationBuildError),
     Snapshot(ProjectSnapshotError),
@@ -2130,7 +2147,11 @@ pub enum ProjectBuildError {
         path: PathBuf,
         kind: io::ErrorKind,
     },
-    BuildRecord(ProjectBuildRecordLoadError),
+    GeneratedSource(ProjectSourceIndexError),
+    MainRead {
+        path: PathBuf,
+        kind: io::ErrorKind,
+    },
     Plan(ProjectArtifactPlanError),
     StageDirectory {
         path: PathBuf,
@@ -2138,8 +2159,6 @@ pub enum ProjectBuildError {
     },
     Wrapped(ProjectWrappedBuildError),
     Stage(ProjectArtifactStageError),
-    Record(ProjectArtifactRecordError),
-    Write(ProjectBuildRecordWriteError),
     Publish(ProjectBuildPublicationError),
     PublishedPolicy(ProjectPolicyError),
     PublishedArtifact {
@@ -2156,6 +2175,7 @@ pub enum ProjectBuildError {
         expected: String,
         actual: String,
     },
+    Publication(ArtifactPreflightError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2193,6 +2213,7 @@ pub enum ProjectInstallError {
         path: PathBuf,
         kind: io::ErrorKind,
     },
+    Preflight(ArtifactPreflightError),
     InvalidArtifactPath {
         name: String,
         path: String,
@@ -2221,6 +2242,8 @@ pub enum ProjectInstallError {
 pub enum ProjectRunError {
     Build(ProjectBuildError),
     MissingMain,
+    ApplicationUnavailable(PathBuf),
+    PublishedConfiguration,
     InvalidReplMode(String),
     Module(RuntimeModuleError),
     TestHarnessUnavailable,
@@ -2233,13 +2256,6 @@ pub enum ProjectRunError {
     Main(ScriptError),
     Repl(ReplError),
     Socket(SocketReplError),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProjectBuildRecordWriteError {
-    Create { path: PathBuf, kind: io::ErrorKind },
-    Write { path: PathBuf, kind: io::ErrorKind },
-    Sync { path: PathBuf, kind: io::ErrorKind },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2267,17 +2283,14 @@ pub enum ProjectBuildPublicationError {
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectArtifactPlanRequest<'a> {
     pub resolution: &'a ProjectResolutionObservation,
-    pub wrapped: &'a [ProjectWrappedArtifactObservation],
-    pub previous: Option<&'a ProjectBuildRecord>,
+    pub previous: Option<&'a ProjectPreviousPublication>,
     pub target: &'a str,
     pub profile: &'a str,
     pub tool_version: &'a str,
-    pub built_at: &'a str,
-    pub resolution_digest: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectPreviousArtifact {
+pub struct ProjectPreviousPublishedArtifact {
     pub name: String,
     pub path: String,
     pub source: String,
@@ -2290,24 +2303,13 @@ pub struct ProjectPreviousArtifact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectPreviousNativeArtifact {
-    pub name: String,
-    pub path: String,
-    pub checksum: String,
-    pub observed_checksum: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectBuildRecord {
+pub struct ProjectPreviousPublication {
     pub project_root: String,
     pub target: String,
     pub profile: String,
     pub tool_version: String,
     pub artifact_abi: String,
-    pub resolution_digest: String,
-    pub built_at: String,
-    pub artifacts: Vec<ProjectPreviousArtifact>,
-    pub native: Vec<ProjectPreviousNativeArtifact>,
+    pub artifacts: Vec<ProjectPreviousPublishedArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2414,20 +2416,6 @@ pub enum ProjectArtifactPlanError {
     Policy(ProjectPolicyError),
     Decode(ProjectManifestDecodeError),
     Validation(ProjectArtifactPlanValidationError),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProjectBuildRecordLoadError {
-    Manifest(ProjectManifestError),
-    Decode(ProjectManifestDecodeError),
-    Observe(ProjectBuildRecordObservationError),
-    InvalidPath(PathBuf),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProjectBuildRecordObservationError {
-    InvalidPath(PathBuf),
-    Read { path: PathBuf, kind: io::ErrorKind },
 }
 
 struct CheckTempDirectory(PathBuf);
@@ -3784,6 +3772,7 @@ pub unsafe fn decode_project_resolution(
     } else {
         Some(unsafe { decoder.string(main_value, "main")? })
     };
+    let run = unsafe { decoder.run(decoder.at(resolution, "run")?)? };
     let load_roots =
         unsafe { decoder.strings(decoder.at(resolution, "loadRoots")?, "loadRoots", false)? };
     let wrapped = unsafe { decoder.wrapped_artifacts(decoder.at(resolution, "wrapped")?)? };
@@ -3836,11 +3825,18 @@ pub unsafe fn decode_project_resolution(
             revision_digest,
         });
     }
+    // The source policy's dependency walk is allowed to encounter the same
+    // provider through several roots. Preserve its first dependency-first
+    // occurrence at the host boundary so one logical module is checked,
+    // compiled, and bundled once.
+    let mut seen = HashSet::new();
+    modules.retain(|module| seen.insert(module.name.clone()));
     Ok(ProjectResolutionObservation {
         project_root,
         manifest,
         project_name,
         main,
+        run,
         load_roots,
         modules,
         wrapped,
@@ -3913,6 +3909,265 @@ pub fn project_build_resolution_digest(
     String::from_utf8_lossy(&sha256_hex(&input)).into_owned()
 }
 
+const PROJECT_MODULE_ROOT_FILENAME: &str = "project-modules.dylib";
+const PROJECT_CONFIGURATION_FILENAME: &str = "project-configuration.dylib";
+const PROJECT_APPLICATION_FILENAME: &str = "application.dylib";
+const PROJECT_REPL_GLOBAL: &str = "ProjectPublicationRepl";
+const PROJECT_SOCKET_BIND_GLOBAL: &str = "ProjectPublicationSocketBind";
+const PROJECT_SOCKET_PORT_GLOBAL: &str = "ProjectPublicationSocketPort";
+
+fn project_publication_identity(project_name: &str, suffix: &str) -> String {
+    let mut identity = String::from("__");
+    for character in project_name.chars() {
+        if character.is_ascii_alphanumeric() || character == '_' {
+            identity.push(character);
+        } else {
+            identity.push('_');
+        }
+    }
+    identity.push_str(suffix);
+    identity
+}
+
+fn append_birnam_string(output: &mut String, value: &str) {
+    output.push('"');
+    for character in value.chars() {
+        match character {
+            '\\' => output.push_str("\\\\"),
+            '"' => output.push_str("\\\""),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            value => output.push(value),
+        }
+    }
+    output.push('"');
+}
+
+fn source_without_module_declaration(source: &[u8]) -> Vec<u8> {
+    let declaration = b"[Module named:";
+    let mut cursor = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut line_comment = false;
+    let mut start = None;
+    while cursor < source.len() {
+        let byte = source[cursor];
+        if line_comment {
+            if byte == b'\n' {
+                line_comment = false;
+            }
+            cursor += 1;
+            continue;
+        }
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                quoted = false;
+            }
+            cursor += 1;
+            continue;
+        }
+        if byte == b'/' && source.get(cursor + 1) == Some(&b'/') {
+            line_comment = true;
+            cursor += 2;
+            continue;
+        }
+        if byte == b'"' {
+            quoted = true;
+            cursor += 1;
+            continue;
+        }
+        if source[cursor..].starts_with(declaration) {
+            start = Some(cursor);
+            break;
+        }
+        cursor += 1;
+    }
+    let Some(start) = start else {
+        return source.to_vec();
+    };
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut line_comment = false;
+    let mut finish = None;
+    for (offset, byte) in source[start..].iter().copied().enumerate() {
+        if line_comment {
+            if byte == b'\n' {
+                line_comment = false;
+            }
+            continue;
+        }
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                quoted = false;
+            }
+            continue;
+        }
+        if byte == b'/' && source.get(start + offset + 1) == Some(&b'/') {
+            line_comment = true;
+            continue;
+        }
+        match byte {
+            b'"' => quoted = true,
+            b'[' => depth += 1,
+            b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let mut end = start + offset + 1;
+                    while source
+                        .get(end)
+                        .is_some_and(|byte| byte.is_ascii_whitespace())
+                    {
+                        end += 1;
+                    }
+                    if source.get(end) == Some(&b';') {
+                        end += 1;
+                    }
+                    finish = Some(end);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(finish) = finish else {
+        return source.to_vec();
+    };
+    let mut result = Vec::with_capacity(source.len() - (finish - start));
+    result.extend_from_slice(&source[..start]);
+    result.extend_from_slice(&source[finish..]);
+    result
+}
+
+fn project_module_root_source(
+    resolution: &ProjectResolutionObservation,
+    resolution_digest: &str,
+    target: &str,
+    profile: &str,
+    tool_version: &str,
+) -> (String, Vec<u8>) {
+    let identity = project_publication_identity(&resolution.project_name, "ProjectModules");
+    let mut source = format!(
+        "// project-publication {resolution_digest} {target} {profile} {tool_version}\n\
+         [Module named: #{identity} requires: #["
+    );
+    let mut seen = HashSet::new();
+    for module in &resolution.modules {
+        if seen.insert(module.name.as_str()) {
+            source.push('#');
+            source.push_str(&module.name);
+            source.push(' ');
+        }
+    }
+    source.push_str("]];\n");
+    for wrapped in &resolution.wrapped {
+        source.push_str("[Alien dlopen: ");
+        append_birnam_string(&mut source, &format!("lib{}.dylib", wrapped.name));
+        source.push_str("];\n");
+    }
+    (identity, source.into_bytes())
+}
+
+fn project_configuration_source(
+    resolution: &ProjectResolutionObservation,
+    resolution_digest: &str,
+    target: &str,
+    profile: &str,
+    tool_version: &str,
+) -> (String, Vec<u8>) {
+    let identity = project_publication_identity(&resolution.project_name, "ProjectConfiguration");
+    let mut source = format!(
+        "// project-configuration {resolution_digest} {target} {profile} {tool_version}\n\
+         [Module named: #{identity} requires: #[]];\n\
+         [Globals at: #{PROJECT_REPL_GLOBAL} put: "
+    );
+    append_birnam_string(&mut source, &resolution.run.repl);
+    source.push_str("];\n[Globals at: #");
+    source.push_str(PROJECT_SOCKET_BIND_GLOBAL);
+    source.push_str(" put: ");
+    append_birnam_string(&mut source, &resolution.run.socket_bind);
+    source.push_str("];\n[Globals at: #");
+    source.push_str(PROJECT_SOCKET_PORT_GLOBAL);
+    source.push_str(" put: ");
+    source.push_str(&resolution.run.socket_port.to_string());
+    source.push_str("];\n");
+    (identity, source.into_bytes())
+}
+
+fn project_application_source(
+    resolution: &ProjectResolutionObservation,
+    configuration_identity: &str,
+    resolution_digest: &str,
+    target: &str,
+    profile: &str,
+    tool_version: &str,
+    main: &[u8],
+) -> (String, Vec<u8>) {
+    let identity = project_publication_identity(&resolution.project_name, "Application");
+    let mut source = format!(
+        "// project-application {resolution_digest} {target} {profile} {tool_version}\n\
+         [Module named: #{identity} requires: #[#{configuration_identity}]];\n"
+    )
+    .into_bytes();
+    let mut seen = HashSet::new();
+    for wrapped in &resolution.wrapped {
+        let mut declaration = String::from("[Alien dlopen: ");
+        append_birnam_string(&mut declaration, &format!("lib{}.dylib", wrapped.name));
+        declaration.push_str("];\n");
+        source.extend_from_slice(declaration.as_bytes());
+    }
+    for module in &resolution.modules {
+        if seen.insert(module.name.as_str()) {
+            // Preserve each bundled module's declaration semantics while
+            // keeping Codegen's one-declaration metadata scanner focused on
+            // the application root.
+            source.extend_from_slice(b"[[Globals at: #Module] named: #");
+            source.extend_from_slice(module.name.as_bytes());
+            source.extend_from_slice(b" requires: #[");
+            for requirement in &module.requires {
+                source.push(b'#');
+                source.extend_from_slice(requirement.as_bytes());
+                source.push(b' ');
+            }
+            source.extend_from_slice(b"]];\n");
+            source.extend_from_slice(&source_without_module_declaration(&module.source));
+            if !source.ends_with(b"\n") {
+                source.push(b'\n');
+            }
+            source.extend_from_slice(b"[[Globals at: #Module] markLoaded: #");
+            source.extend_from_slice(module.name.as_bytes());
+            source.extend_from_slice(b"];\n");
+        }
+    }
+    source.extend_from_slice(main);
+    if !source.ends_with(b"\n") {
+        source.push(b'\n');
+    }
+    (identity, source)
+}
+
+fn project_publication_paths(
+    start: &Path,
+    target: &str,
+    profile: &str,
+) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf), ProjectDiscoveryError> {
+    let root = nearest_project_root(start)?;
+    let output_root = root.join(".birnam/build").join(target).join(profile);
+    let module_root = output_root.join("lib").join(PROJECT_MODULE_ROOT_FILENAME);
+    let configuration = output_root.join("lib").join(PROJECT_CONFIGURATION_FILENAME);
+    let application = output_root.join("lib").join(PROJECT_APPLICATION_FILENAME);
+    Ok((output_root, module_root, configuration, application))
+}
+
 /// Decode Birnam's side-effect-free `ProjectPolicy artifactPlan:` result.
 /// Artifact actions and reuse checks remain policy-owned; Rust only copies the
 /// typed plan before compilation/publication adapters consume it.
@@ -3929,35 +4184,6 @@ pub unsafe fn decode_project_artifact_plan(
     if plan == api.nilObj || unsafe { (api.vtableOf)(plan) } != decoder.map_vt {
         return Err(ProjectManifestDecodeError::NotMap);
     }
-    let record = unsafe { decoder.at(plan, "record")? };
-    if record == api.nilObj || unsafe { (api.vtableOf)(record) } != decoder.map_vt {
-        return Err(ProjectManifestDecodeError::InvalidMap("artifact record"));
-    }
-    let schema = unsafe { decoder.string(decoder.at(record, "schema")?, "schema")? };
-    if schema != "birnam-artifacts-v3" {
-        return Err(ProjectManifestDecodeError::InvalidSchema(schema));
-    }
-    let project_root =
-        unsafe { decoder.string(decoder.at(record, "projectRoot")?, "projectRoot")? };
-    let target = unsafe { decoder.string(decoder.at(record, "target")?, "target")? };
-    let profile = unsafe { decoder.string(decoder.at(record, "profile")?, "profile")? };
-    let tool_version =
-        unsafe { decoder.string(decoder.at(record, "toolVersion")?, "toolVersion")? };
-    let artifact_abi =
-        unsafe { decoder.string(decoder.at(record, "artifactAbi")?, "artifactAbi")? };
-    if artifact_abi.as_bytes() != birnam_artifact::ABI {
-        return Err(ProjectManifestDecodeError::InvalidSchema(format!(
-            "unsupported artifact ABI {artifact_abi}"
-        )));
-    }
-    let built_at_value = unsafe { decoder.at(record, "builtAt")? };
-    let built_at = if built_at_value == api.nilObj {
-        None
-    } else {
-        Some(unsafe { decoder.string(built_at_value, "builtAt")? })
-    };
-    let resolution_digest =
-        unsafe { decoder.string(decoder.at(record, "resolutionDigest")?, "resolutionDigest")? };
     let publication = unsafe { decoder.string(decoder.at(plan, "publication")?, "publication")? };
     let artifacts_value = unsafe { decoder.at(plan, "artifacts")? };
     if artifacts_value == api.nilObj
@@ -4019,13 +4245,6 @@ pub unsafe fn decode_project_artifact_plan(
         });
     }
     Ok(ProjectArtifactPlan {
-        project_root,
-        target,
-        profile,
-        tool_version,
-        artifact_abi,
-        built_at,
-        resolution_digest,
         artifacts,
         publication,
     })
@@ -4039,43 +4258,6 @@ pub fn validate_project_artifact_plan(
     plan: &ProjectArtifactPlan,
     request: &ProjectArtifactPlanRequest<'_>,
 ) -> Result<(), ProjectArtifactPlanValidationError> {
-    if plan.project_root != request.resolution.project_root {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "projectRoot",
-        ));
-    }
-    if plan.target != request.target {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "target",
-        ));
-    }
-    if plan.profile != request.profile {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "profile",
-        ));
-    }
-    if plan.tool_version != request.tool_version {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "toolVersion",
-        ));
-    }
-    if plan.artifact_abi.as_bytes() != birnam_artifact::ABI {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "artifactAbi",
-        ));
-    }
-    if plan.resolution_digest != request.resolution_digest {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "resolutionDigest",
-        ));
-    }
-    if let Some(built_at) = &plan.built_at
-        && built_at != request.built_at
-    {
-        return Err(ProjectArtifactPlanValidationError::MetadataMismatch(
-            "builtAt",
-        ));
-    }
     if plan.publication != "publish" {
         return Err(ProjectArtifactPlanValidationError::InvalidPublication(
             plan.publication.clone(),
@@ -4203,20 +4385,13 @@ pub fn validate_project_compiled_artifact(
 }
 
 fn previous_artifact<'a>(
-    record: &'a ProjectBuildRecord,
+    publication: &'a ProjectPreviousPublication,
     name: &str,
-) -> Option<&'a ProjectPreviousArtifact> {
-    record
+) -> Option<&'a ProjectPreviousPublishedArtifact> {
+    publication
         .artifacts
         .iter()
         .find(|artifact| artifact.name == name)
-}
-
-fn previous_native_artifact<'a>(
-    record: &'a ProjectBuildRecord,
-    name: &str,
-) -> Option<&'a ProjectPreviousNativeArtifact> {
-    record.native.iter().find(|artifact| artifact.name == name)
 }
 
 /// Expand the placeholder protocol used by wrapped build commands without
@@ -4250,401 +4425,6 @@ pub fn expand_project_wrapped_argument(
         rest = &rest[index + token.len()..];
     }
     result
-}
-
-/// Decode the persisted `birnam-artifacts-v3` record before it participates in
-/// a later reuse decision. The file remains an untrusted input; this function
-/// only copies and validates its structural metadata.
-///
-/// # Safety
-///
-/// `api` and `record` must belong to the same live runtime, and all Oops must
-/// remain valid for the duration of this synchronous decode.
-pub unsafe fn decode_project_build_record(
-    api: &IdApi,
-    record: birnam_abi::Oop,
-) -> Result<ProjectBuildRecord, ProjectManifestDecodeError> {
-    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
-    if record == api.nilObj || unsafe { (api.vtableOf)(record) } != decoder.map_vt {
-        return Err(ProjectManifestDecodeError::NotMap);
-    }
-    let schema = unsafe { decoder.string(decoder.at(record, "schema")?, "schema")? };
-    if schema != "birnam-artifacts-v3" {
-        return Err(ProjectManifestDecodeError::InvalidSchema(schema));
-    }
-    let project_root =
-        unsafe { decoder.string(decoder.at(record, "project_root")?, "project_root")? };
-    let target = unsafe { decoder.string(decoder.at(record, "target")?, "target")? };
-    let profile = unsafe { decoder.string(decoder.at(record, "profile")?, "profile")? };
-    let tool_version =
-        unsafe { decoder.string(decoder.at(record, "tool_version")?, "tool_version")? };
-    let artifact_abi =
-        unsafe { decoder.string(decoder.at(record, "artifact_abi")?, "artifact_abi")? };
-    let resolution_digest = unsafe {
-        decoder.string(
-            decoder.at(record, "resolution_digest")?,
-            "resolution_digest",
-        )?
-    };
-    let built_at = unsafe { decoder.string(decoder.at(record, "built_at")?, "built_at")? };
-    let artifacts_value = unsafe { decoder.at(record, "artifacts")? };
-    let native_value = unsafe { decoder.at(record, "native")? };
-    let decode_vector_size =
-        |value: birnam_abi::Oop, field: &'static str| -> Result<i64, ProjectManifestDecodeError> {
-            if value == api.nilObj || unsafe { (api.vtableOf)(value) } != decoder.vector_vt {
-                return Err(ProjectManifestDecodeError::InvalidList(field));
-            }
-            let selector = unsafe { (api.intern)(c"size".as_ptr()) };
-            let size = unsafe { (api.send)(value, selector, std::ptr::null(), 0) };
-            if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
-                return Err(ProjectManifestDecodeError::InvalidList(field));
-            }
-            Ok(unsafe { (api.smallIntValue)(size) })
-        };
-    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
-    let artifact_count = decode_vector_size(artifacts_value, "artifacts")?;
-    let mut artifacts = Vec::with_capacity(artifact_count as usize);
-    for index in 0..artifact_count {
-        let item = unsafe {
-            (api.send)(
-                artifacts_value,
-                at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
-                1,
-            )
-        };
-        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
-            return Err(ProjectManifestDecodeError::InvalidMap(
-                "artifact record entry",
-            ));
-        }
-        let sources_value = unsafe { decoder.at(item, "sources")? };
-        let sources = if sources_value == api.nilObj {
-            vec![unsafe { decoder.string(decoder.at(item, "source")?, "source")? }]
-        } else {
-            unsafe { decoder.strings(sources_value, "sources", false)? }
-        };
-        artifacts.push(ProjectPreviousArtifact {
-            name: unsafe { decoder.string(decoder.at(item, "name")?, "name")? },
-            path: unsafe { decoder.string(decoder.at(item, "path")?, "path")? },
-            source: unsafe { decoder.string(decoder.at(item, "source")?, "source")? },
-            sources,
-            source_digest: unsafe {
-                decoder.string(decoder.at(item, "source_digest")?, "source_digest")?
-            },
-            revision_digest: unsafe {
-                decoder.string(decoder.at(item, "revision_digest")?, "revision_digest")?
-            },
-            requires: unsafe { decoder.strings(decoder.at(item, "requires")?, "requires", false)? },
-            checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "checksum")? },
-            observed_checksum: None,
-        });
-    }
-    let native_count = decode_vector_size(native_value, "native")?;
-    let mut native = Vec::with_capacity(native_count as usize);
-    for index in 0..native_count {
-        let item = unsafe {
-            (api.send)(
-                native_value,
-                at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
-                1,
-            )
-        };
-        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
-            return Err(ProjectManifestDecodeError::InvalidMap(
-                "native record entry",
-            ));
-        }
-        native.push(ProjectPreviousNativeArtifact {
-            name: unsafe { decoder.string(decoder.at(item, "name")?, "name")? },
-            path: unsafe { decoder.string(decoder.at(item, "path")?, "path")? },
-            checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "checksum")? },
-            observed_checksum: None,
-        });
-    }
-    Ok(ProjectBuildRecord {
-        project_root,
-        target,
-        profile,
-        tool_version,
-        artifact_abi,
-        resolution_digest,
-        built_at,
-        artifacts,
-        native,
-    })
-}
-
-/// Decode the camelCase record returned by Birnam
-/// `ProjectPolicy artifactRecord:artifacts:native:` before it is serialized
-/// to the persisted snake_case TOML form.
-///
-/// # Safety
-///
-/// `api` and `record` must belong to the same live runtime, and all Oops must
-/// remain valid for the duration of this synchronous decode.
-pub unsafe fn decode_project_artifact_record(
-    api: &IdApi,
-    record: birnam_abi::Oop,
-) -> Result<ProjectBuildRecord, ProjectManifestDecodeError> {
-    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
-    if record == api.nilObj || unsafe { (api.vtableOf)(record) } != decoder.map_vt {
-        return Err(ProjectManifestDecodeError::NotMap);
-    }
-    let schema = unsafe { decoder.string(decoder.at(record, "schema")?, "schema")? };
-    if schema != "birnam-artifacts-v3" {
-        return Err(ProjectManifestDecodeError::InvalidSchema(schema));
-    }
-    let project_root =
-        unsafe { decoder.string(decoder.at(record, "projectRoot")?, "projectRoot")? };
-    let target = unsafe { decoder.string(decoder.at(record, "target")?, "target")? };
-    let profile = unsafe { decoder.string(decoder.at(record, "profile")?, "profile")? };
-    let tool_version =
-        unsafe { decoder.string(decoder.at(record, "toolVersion")?, "toolVersion")? };
-    let built_at = unsafe { decoder.string(decoder.at(record, "builtAt")?, "builtAt")? };
-    let artifact_abi =
-        unsafe { decoder.string(decoder.at(record, "artifactAbi")?, "artifactAbi")? };
-    if artifact_abi.as_bytes() != birnam_artifact::ABI {
-        return Err(ProjectManifestDecodeError::InvalidSchema(format!(
-            "unsupported artifact ABI {artifact_abi}"
-        )));
-    }
-    let resolution_digest =
-        unsafe { decoder.string(decoder.at(record, "resolutionDigest")?, "resolutionDigest")? };
-    let artifacts_value = unsafe { decoder.at(record, "artifacts")? };
-    if artifacts_value == api.nilObj
-        || unsafe { (api.vtableOf)(artifacts_value) } != decoder.vector_vt
-    {
-        return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
-    }
-    let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
-    let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
-    let size = unsafe { (api.send)(artifacts_value, size_selector, std::ptr::null(), 0) };
-    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
-        return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
-    }
-    let mut artifacts = Vec::with_capacity(unsafe { (api.smallIntValue)(size) as usize });
-    for index in 0..unsafe { (api.smallIntValue)(size) } {
-        let item = unsafe {
-            (api.send)(
-                artifacts_value,
-                at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
-                1,
-            )
-        };
-        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
-            return Err(ProjectManifestDecodeError::InvalidMap(
-                "artifact record entry",
-            ));
-        }
-        let source = unsafe { decoder.string(decoder.at(item, "source")?, "artifact.source")? };
-        let sources_value = unsafe { decoder.at(item, "sources")? };
-        let sources = if sources_value == api.nilObj {
-            vec![source.clone()]
-        } else {
-            unsafe { decoder.strings(sources_value, "artifact.sources", false)? }
-        };
-        artifacts.push(ProjectPreviousArtifact {
-            name: unsafe { decoder.string(decoder.at(item, "name")?, "artifact.name")? },
-            path: unsafe { decoder.string(decoder.at(item, "path")?, "artifact.path")? },
-            source,
-            sources,
-            source_digest: unsafe {
-                decoder.string(decoder.at(item, "sourceDigest")?, "artifact.sourceDigest")?
-            },
-            revision_digest: unsafe {
-                decoder.string(
-                    decoder.at(item, "revisionDigest")?,
-                    "artifact.revisionDigest",
-                )?
-            },
-            requires: unsafe {
-                decoder.strings(decoder.at(item, "requires")?, "artifact.requires", false)?
-            },
-            checksum: unsafe {
-                decoder.string(decoder.at(item, "checksum")?, "artifact.checksum")?
-            },
-            observed_checksum: None,
-        });
-    }
-    let native_value = unsafe { decoder.at(record, "native")? };
-    if native_value == api.nilObj || unsafe { (api.vtableOf)(native_value) } != decoder.vector_vt {
-        return Err(ProjectManifestDecodeError::InvalidList("native"));
-    }
-    let native_size = unsafe { (api.send)(native_value, size_selector, std::ptr::null(), 0) };
-    if unsafe { (api.isSmallInt)(native_size) } == 0
-        || unsafe { (api.smallIntValue)(native_size) } < 0
-    {
-        return Err(ProjectManifestDecodeError::InvalidList("native"));
-    }
-    let mut native = Vec::with_capacity(unsafe { (api.smallIntValue)(native_size) as usize });
-    for index in 0..unsafe { (api.smallIntValue)(native_size) } {
-        let item = unsafe {
-            (api.send)(
-                native_value,
-                at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
-                1,
-            )
-        };
-        if item == api.nilObj || unsafe { (api.vtableOf)(item) } != decoder.map_vt {
-            return Err(ProjectManifestDecodeError::InvalidMap(
-                "native record entry",
-            ));
-        }
-        native.push(ProjectPreviousNativeArtifact {
-            name: unsafe { decoder.string(decoder.at(item, "name")?, "native.name")? },
-            path: unsafe { decoder.string(decoder.at(item, "path")?, "native.path")? },
-            checksum: unsafe { decoder.string(decoder.at(item, "checksum")?, "native.checksum")? },
-            observed_checksum: None,
-        });
-    }
-    Ok(ProjectBuildRecord {
-        project_root,
-        target,
-        profile,
-        tool_version,
-        artifact_abi,
-        resolution_digest,
-        built_at,
-        artifacts,
-        native,
-    })
-}
-
-fn append_toml_string(output: &mut String, key: &str, value: &str) {
-    output.push_str(key);
-    output.push_str(" = \"");
-    append_toml_escaped(output, value);
-    output.push_str("\"\n");
-}
-
-fn append_toml_escaped(output: &mut String, value: &str) {
-    for byte in value.bytes() {
-        match byte {
-            b'\\' => output.push_str("\\\\"),
-            b'"' => output.push_str("\\\""),
-            b'\n' => output.push_str("\\n"),
-            b'\r' => output.push_str("\\r"),
-            b'\t' => output.push_str("\\t"),
-            0x00..=0x1f => output.push_str(&format!("\\u{byte:04x}")),
-            _ => output.push(byte as char),
-        }
-    }
-}
-
-fn append_toml_inline_string(output: &mut String, first: &mut bool, key: &str, value: &str) {
-    if !*first {
-        output.push_str(", ");
-    }
-    *first = false;
-    output.push_str(key);
-    output.push_str(" = \"");
-    append_toml_escaped(output, value);
-    output.push('"');
-}
-
-fn append_toml_inline_array(output: &mut String, first: &mut bool, key: &str, values: &[String]) {
-    if !*first {
-        output.push_str(", ");
-    }
-    *first = false;
-    output.push_str(key);
-    output.push_str(" = [");
-    for (index, value) in values.iter().enumerate() {
-        if index != 0 {
-            output.push_str(", ");
-        }
-        output.push('"');
-        append_toml_escaped(output, value);
-        output.push('"');
-    }
-    output.push(']');
-}
-
-fn append_toml_artifact(output: &mut String, artifact: &ProjectPreviousArtifact) {
-    output.push_str("{ ");
-    let mut first = true;
-    append_toml_inline_string(output, &mut first, "name", &artifact.name);
-    append_toml_inline_string(output, &mut first, "path", &artifact.path);
-    append_toml_inline_string(output, &mut first, "source", &artifact.source);
-    append_toml_inline_array(output, &mut first, "sources", &artifact.sources);
-    append_toml_inline_string(output, &mut first, "source_digest", &artifact.source_digest);
-    append_toml_inline_string(
-        output,
-        &mut first,
-        "revision_digest",
-        &artifact.revision_digest,
-    );
-    append_toml_inline_array(output, &mut first, "requires", &artifact.requires);
-    append_toml_inline_string(output, &mut first, "checksum", &artifact.checksum);
-    output.push_str(" },\n");
-}
-
-fn append_toml_native(output: &mut String, artifact: &ProjectPreviousNativeArtifact) {
-    output.push_str("{ ");
-    let mut first = true;
-    append_toml_inline_string(output, &mut first, "name", &artifact.name);
-    append_toml_inline_string(output, &mut first, "path", &artifact.path);
-    append_toml_inline_string(output, &mut first, "checksum", &artifact.checksum);
-    output.push_str(" },\n");
-}
-
-/// Serialize the policy-owned artifact record in the persisted
-/// `birnam-artifacts-v3` snake_case form. Transient observed checksums are
-/// intentionally omitted; they are recomputed from bytes whenever the record
-/// is loaded for a later policy decision.
-pub fn encode_project_build_record(record: &ProjectBuildRecord) -> Vec<u8> {
-    let mut output = String::new();
-    append_toml_string(&mut output, "schema", "birnam-artifacts-v3");
-    append_toml_string(&mut output, "project_root", &record.project_root);
-    append_toml_string(&mut output, "target", &record.target);
-    append_toml_string(&mut output, "profile", &record.profile);
-    append_toml_string(&mut output, "tool_version", &record.tool_version);
-    append_toml_string(&mut output, "built_at", &record.built_at);
-    append_toml_string(&mut output, "artifact_abi", &record.artifact_abi);
-    append_toml_string(&mut output, "resolution_digest", &record.resolution_digest);
-    output.push_str("artifacts = [\n");
-    for artifact in &record.artifacts {
-        append_toml_artifact(&mut output, artifact);
-    }
-    output.push_str("]\n");
-    output.push_str("native = [\n");
-    for artifact in &record.native {
-        append_toml_native(&mut output, artifact);
-    }
-    output.push_str("]\n");
-    output.into_bytes()
-}
-
-/// Write one encoded build record to an explicit staging path and flush it to
-/// stable storage before publication can observe it.
-pub fn write_project_build_record(
-    path: &Path,
-    record: &ProjectBuildRecord,
-) -> Result<(), ProjectBuildRecordWriteError> {
-    let bytes = encode_project_build_record(record);
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(path)
-        .map_err(|error| ProjectBuildRecordWriteError::Create {
-            path: path.to_path_buf(),
-            kind: error.kind(),
-        })?;
-    file.write_all(&bytes)
-        .map_err(|error| ProjectBuildRecordWriteError::Write {
-            path: path.to_path_buf(),
-            kind: error.kind(),
-        })?;
-    file.sync_all()
-        .map_err(|error| ProjectBuildRecordWriteError::Sync {
-            path: path.to_path_buf(),
-            kind: error.kind(),
-        })
 }
 
 /// Publish a complete staging directory by rotating the old profile directory
@@ -4708,7 +4488,7 @@ pub fn publish_project_build(
     Ok(())
 }
 
-fn safe_record_relative_path(path: &str) -> Option<&Path> {
+fn safe_artifact_relative_path(path: &str) -> Option<&Path> {
     let path = Path::new(path);
     if path.is_absolute()
         || path.components().any(|component| {
@@ -4721,62 +4501,6 @@ fn safe_record_relative_path(path: &str) -> Option<&Path> {
         return None;
     }
     Some(path)
-}
-
-/// Observe checksums for a decoded build record without trusting its stored
-/// values. Only safe relative paths below `build_root` are read; absent files
-/// remain observable as `None` for Birnam's later reuse policy.
-pub fn observe_project_build_record(
-    build_root: &Path,
-    mut record: ProjectBuildRecord,
-) -> Result<ProjectBuildRecord, ProjectBuildRecordObservationError> {
-    for artifact in &mut record.artifacts {
-        let Some(relative) = safe_record_relative_path(&artifact.path) else {
-            return Err(ProjectBuildRecordObservationError::InvalidPath(
-                PathBuf::from(&artifact.path),
-            ));
-        };
-        let path = build_root.join(relative);
-        match std::fs::read(&path) {
-            Ok(bytes) => {
-                artifact.observed_checksum =
-                    Some(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                artifact.observed_checksum = None
-            }
-            Err(error) => {
-                return Err(ProjectBuildRecordObservationError::Read {
-                    path,
-                    kind: error.kind(),
-                });
-            }
-        }
-    }
-    for artifact in &mut record.native {
-        let Some(relative) = safe_record_relative_path(&artifact.path) else {
-            return Err(ProjectBuildRecordObservationError::InvalidPath(
-                PathBuf::from(&artifact.path),
-            ));
-        };
-        let path = build_root.join(relative);
-        match std::fs::read(&path) {
-            Ok(bytes) => {
-                artifact.observed_checksum =
-                    Some(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                artifact.observed_checksum = None
-            }
-            Err(error) => {
-                return Err(ProjectBuildRecordObservationError::Read {
-                    path,
-                    kind: error.kind(),
-                });
-            }
-        }
-    }
-    Ok(record)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5257,38 +4981,39 @@ impl HostRuntime {
         &self,
         build: &ProjectBuildResult,
     ) -> Result<(), ProjectRunError> {
-        let project_lib = build.output_root.join("lib");
-        let api = self.stack.api();
-        let alien = unsafe { (api.import)(c"Alien".as_ptr()) };
-        if alien != api.nilObj {
-            let path = path_bytes(&project_lib);
-            let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
-            let selector = unsafe { (api.intern)(c"libraryDir:".as_ptr()) };
-            let result = unsafe { (api.send)(alien, selector, [value].as_ptr(), 1) };
-            if result == api.nilObj || send_is_error(api, result) {
-                return Err(ProjectRunError::NativeDirectoryRejected);
-            }
-        }
-        let mut paths = Vec::with_capacity(build.record.artifacts.len());
-        for artifact in &build.record.artifacts {
-            let Some(relative) = safe_record_relative_path(&artifact.path) else {
-                return Err(ProjectRunError::ArtifactPreflight(
-                    ArtifactPreflightError::Read {
-                        path: PathBuf::from(&artifact.path),
-                        kind: io::ErrorKind::InvalidInput,
-                    },
-                ));
-            };
-            let path = build.output_root.join(relative);
-            preflight_artifact(&path, Some(artifact.name.as_bytes()))
-                .map_err(ProjectRunError::ArtifactPreflight)?;
-            paths.push((path, artifact.name.clone()));
-        }
-        for (path, name) in paths {
-            unsafe { activate_artifact(self, &path, Some(name.as_bytes())) }
+        let plan = preflight_artifact(&build.module_root, None)
+            .map_err(ProjectRunError::ArtifactPreflight)?;
+        for entry in &plan.entries {
+            unsafe { activate_preflighted_artifact(self, entry) }
                 .map_err(ProjectRunError::ArtifactActivation)?;
         }
         Ok(())
+    }
+
+    unsafe fn project_publication_run_configuration(
+        &self,
+    ) -> Result<ProjectRunObservation, ProjectRunError> {
+        let api = self.stack.api();
+        let repl = unsafe { global_named(api, PROJECT_REPL_GLOBAL) }
+            .and_then(|value| unsafe { bridge_string(api, value) })
+            .ok_or(ProjectRunError::PublishedConfiguration)?;
+        let socket_bind = unsafe { global_named(api, PROJECT_SOCKET_BIND_GLOBAL) }
+            .and_then(|value| unsafe { bridge_string(api, value) })
+            .ok_or(ProjectRunError::PublishedConfiguration)?;
+        let port = unsafe { global_named(api, PROJECT_SOCKET_PORT_GLOBAL) }
+            .ok_or(ProjectRunError::PublishedConfiguration)?;
+        if unsafe { (api.isSmallInt)(port) } == 0 {
+            return Err(ProjectRunError::PublishedConfiguration);
+        }
+        let socket_port = unsafe { (api.smallIntValue)(port) };
+        if !(0..=65535).contains(&socket_port) {
+            return Err(ProjectRunError::PublishedConfiguration);
+        }
+        Ok(ProjectRunObservation {
+            repl,
+            socket_bind,
+            socket_port,
+        })
     }
 
     /// Run a project main after validating/building its publication, loading
@@ -5307,27 +5032,16 @@ impl HostRuntime {
     ) -> Result<(), ProjectRunError> {
         let target = host_target_identity();
         let build = if options.build {
-            let built_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|_| {
-                    ProjectRunError::Build(ProjectBuildError::ManifestRead {
-                        path: options.directory.clone(),
-                        kind: io::ErrorKind::Other,
-                    })
-                })?
-                .as_secs()
-                .to_string();
             let request = ProjectBuildRequest {
                 start: &options.directory,
                 target: &target,
                 profile: &options.profile,
                 tool_version,
-                built_at: &built_at,
             };
             unsafe { self.build_project(&request) }
         } else {
             unsafe {
-                self.validate_project_build(
+                self.locate_project_build(
                     &options.directory,
                     &target,
                     &options.profile,
@@ -5336,14 +5050,37 @@ impl HostRuntime {
             }
         }
         .map_err(ProjectRunError::Build)?;
-        let root = unsafe { self.observe_project_snapshot(&options.directory) }
-            .map_err(|error| ProjectRunError::Build(ProjectBuildError::Observation(error)))?;
-        let root = root.projects.first().ok_or(ProjectRunError::MissingMain)?;
-        let main = root.main.as_deref().ok_or(ProjectRunError::MissingMain)?;
+        let application = build.application.as_deref().ok_or_else(|| {
+            ProjectRunError::ApplicationUnavailable(
+                build
+                    .output_root
+                    .join("lib")
+                    .join(PROJECT_APPLICATION_FILENAME),
+            )
+        })?;
+        let plan =
+            preflight_artifact(application, None).map_err(ProjectRunError::ArtifactPreflight)?;
+        let configuration_bytes = read_artifact_bytes(&build.configuration)
+            .map_err(ProjectRunError::ArtifactPreflight)?;
+        let configuration_descriptor =
+            birnam_artifact::inspect(&configuration_bytes).map_err(|error| {
+                ProjectRunError::ArtifactPreflight(ArtifactPreflightError::Parse {
+                    path: build.configuration.clone(),
+                    error,
+                })
+            })?;
+        let configuration = plan
+            .entries
+            .iter()
+            .find(|entry| entry.identity == configuration_descriptor.identity)
+            .ok_or(ProjectRunError::PublishedConfiguration)?;
+        unsafe { activate_preflighted_artifact(self, configuration) }
+            .map_err(ProjectRunError::ArtifactActivation)?;
+        let published_run = unsafe { self.project_publication_run_configuration() }?;
         let mode = if let Some(mode) = options.repl {
             mode
         } else {
-            match root.run.repl.as_str() {
+            match published_run.repl.as_str() {
                 "none" => ReplMode::None,
                 "tty" => ReplMode::Tty,
                 "socket" => ReplMode::Socket,
@@ -5360,37 +5097,7 @@ impl HostRuntime {
                 unsafe { self.load_runtime_module("repl") }.map_err(ProjectRunError::Module)?;
             }
         }
-        let project_lib = build.output_root.join("lib");
         let api = self.stack.api();
-        let alien = unsafe { (api.import)(c"Alien".as_ptr()) };
-        if alien != api.nilObj {
-            let path = path_bytes(&project_lib);
-            let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
-            let selector = unsafe { (api.intern)(c"libraryDir:".as_ptr()) };
-            let result = unsafe { (api.send)(alien, selector, [value].as_ptr(), 1) };
-            if result == api.nilObj || send_is_error(api, result) {
-                return Err(ProjectRunError::NativeDirectoryRejected);
-            }
-        }
-        let mut paths = Vec::with_capacity(build.record.artifacts.len());
-        for artifact in &build.record.artifacts {
-            let Some(relative) = safe_record_relative_path(&artifact.path) else {
-                return Err(ProjectRunError::ArtifactPreflight(
-                    ArtifactPreflightError::Read {
-                        path: PathBuf::from(&artifact.path),
-                        kind: io::ErrorKind::InvalidInput,
-                    },
-                ));
-            };
-            let path = build.output_root.join(relative);
-            preflight_artifact(&path, Some(artifact.name.as_bytes()))
-                .map_err(ProjectRunError::ArtifactPreflight)?;
-            paths.push((path, artifact.name.clone()));
-        }
-        for (path, name) in paths {
-            unsafe { activate_artifact(self, &path, Some(name.as_bytes())) }
-                .map_err(ProjectRunError::ArtifactActivation)?;
-        }
         let globals =
             unsafe { global_named(api, "Globals") }.ok_or(ProjectRunError::ArgumentsRejected)?;
         let values = unsafe { native_os_string_vector(api, &options.arguments) }
@@ -5401,7 +5108,15 @@ impl HostRuntime {
         if result == api.nilObj || send_is_error(api, result) {
             return Err(ProjectRunError::ArgumentsRejected);
         }
-        unsafe { eval_script(self, Path::new(main)) }.map_err(ProjectRunError::Main)?;
+        let application = plan
+            .entries
+            .iter()
+            .find(|entry| entry.path == application)
+            .ok_or(ProjectRunError::ArtifactActivation(
+                ArtifactActivationError::ActivationRejected,
+            ))?;
+        unsafe { activate_preflighted_artifact(self, application) }
+            .map_err(ProjectRunError::ArtifactActivation)?;
         match mode {
             ReplMode::None => Ok(()),
             ReplMode::Tty => {
@@ -5412,8 +5127,10 @@ impl HostRuntime {
                 let bind = options
                     .socket_bind
                     .as_deref()
-                    .unwrap_or(&root.run.socket_bind);
-                let port = options.socket_port.unwrap_or(root.run.socket_port as u16);
+                    .unwrap_or(&published_run.socket_bind);
+                let port = options
+                    .socket_port
+                    .unwrap_or(published_run.socket_port as u16);
                 unsafe { self.serve_socket(port, bind) }.map_err(ProjectRunError::Socket)
             }
         }
@@ -5444,7 +5161,7 @@ impl HostRuntime {
         tool_version: &str,
     ) -> Result<(), ProjectRunError> {
         let build =
-            unsafe { self.validate_project_build(project_root, target, profile, tool_version) }
+            unsafe { self.locate_project_build(project_root, target, profile, tool_version) }
                 .map_err(ProjectRunError::Build)?;
         unsafe { self.activate_project_build(&build) }?;
         // Match the worker boundary: install the test harness before the
@@ -5585,30 +5302,6 @@ impl HostRuntime {
             return Err(ProjectManifestError::ParseRejected);
         }
         Ok(result)
-    }
-
-    /// Parse and re-observe one persisted `birnam-artifacts-v3` record. The
-    /// TOML map is decoded through the self-hosted parser, then every relative
-    /// artifact path is hashed below the record's parent directory. Stored
-    /// checksums never cross into policy as trusted observations.
-    ///
-    /// # Safety
-    ///
-    /// The returned record owns Rust strings only. The caller must keep a live
-    /// GC anchor and remain on the floor owner thread while parsing TOML.
-    pub unsafe fn load_project_build_record(
-        &self,
-        path: &Path,
-    ) -> Result<ProjectBuildRecord, ProjectBuildRecordLoadError> {
-        let parsed = unsafe { self.parse_project_manifest(path) }
-            .map_err(ProjectBuildRecordLoadError::Manifest)?;
-        let record = unsafe { decode_project_build_record(self.stack.api(), parsed) }
-            .map_err(ProjectBuildRecordLoadError::Decode)?;
-        let Some(build_root) = path.parent() else {
-            return Err(ProjectBuildRecordLoadError::InvalidPath(path.to_path_buf()));
-        };
-        observe_project_build_record(build_root, record)
-            .map_err(ProjectBuildRecordLoadError::Observe)
     }
 
     /// Compose nearest-root discovery with self-hosted manifest parsing. The
@@ -6048,6 +5741,41 @@ impl HostRuntime {
         Ok(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
     }
 
+    unsafe fn observe_generated_project_source(
+        &self,
+        source: Vec<u8>,
+        label: &Path,
+        project_root: &str,
+    ) -> Result<ProjectSourceObservation, ProjectSourceIndexError> {
+        if source.len() > MAX_SCRIPT_BYTES {
+            return Err(ProjectSourceIndexError::TooLarge {
+                path: label.to_path_buf(),
+                limit: MAX_SCRIPT_BYTES,
+            });
+        }
+        let api = self.stack.api();
+        let codegen = unsafe { global_named(api, "Codegen") }
+            .ok_or(ProjectSourceIndexError::MissingCodegen)?;
+        let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
+        let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
+        if metadata == api.nilObj || send_is_error(api, metadata) {
+            return Err(ProjectSourceIndexError::MetadataRejected);
+        }
+        let metadata = unsafe { decode_project_source_metadata(api, metadata) }
+            .map_err(ProjectSourceIndexError::MetadataMalformed)?;
+        Ok(ProjectSourceObservation {
+            name: metadata.name,
+            path: label.to_string_lossy().into_owned(),
+            sources: vec![label.to_string_lossy().into_owned()],
+            project_root: project_root.to_owned(),
+            source,
+            requires: metadata.requires,
+            source_digest: metadata.source_digest,
+            revision_digest: metadata.revision_digest,
+        })
+    }
+
     /// Materialize module decisions into an isolated staging directory. A
     /// compile action invokes Codegen; a reuse action copies the prior artifact
     /// only after re-reading and validating its descriptor and checksum. The
@@ -6082,7 +5810,7 @@ impl HostRuntime {
             .zip(&request.plan.artifacts)
             .enumerate()
         {
-            let Some(relative) = safe_record_relative_path(&plan.path) else {
+            let Some(relative) = safe_artifact_relative_path(&plan.path) else {
                 return Err(ProjectArtifactStageError::InvalidPlanPath {
                     index,
                     path: plan.path.clone(),
@@ -6108,7 +5836,7 @@ impl HostRuntime {
                             name: module.name.clone(),
                         });
                     };
-                    let Some(old_relative) = safe_record_relative_path(&old.path) else {
+                    let Some(old_relative) = safe_artifact_relative_path(&old.path) else {
                         return Err(ProjectArtifactStageError::InvalidPlanPath {
                             index,
                             path: old.path.clone(),
@@ -6172,7 +5900,7 @@ impl HostRuntime {
         &self,
         wrapped: &[ProjectWrappedArtifactObservation],
         stage_root: &Path,
-    ) -> Result<Vec<ProjectPreviousNativeArtifact>, ProjectWrappedBuildError> {
+    ) -> Result<(), ProjectWrappedBuildError> {
         let lib_root = stage_root.join("lib");
         std::fs::create_dir_all(&lib_root).map_err(|error| {
             ProjectWrappedBuildError::CopyOutput {
@@ -6182,7 +5910,6 @@ impl HostRuntime {
             }
         })?;
         let native_root = stage_root.join("native");
-        let mut result = Vec::with_capacity(wrapped.len());
         for item in wrapped {
             let project_root = Path::new(&item.project_root);
             let command_root = native_root.join(&item.name);
@@ -6247,20 +5974,8 @@ impl HostRuntime {
                     kind: error.kind(),
                 }
             })?;
-            let bytes = std::fs::read(&staged_output).map_err(|error| {
-                ProjectWrappedBuildError::ReadOutput {
-                    path: staged_output.clone(),
-                    kind: error.kind(),
-                }
-            })?;
-            result.push(ProjectPreviousNativeArtifact {
-                name: item.name.clone(),
-                path: format!("lib/{filename}"),
-                checksum: String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned(),
-                observed_checksum: None,
-            });
         }
-        Ok(result)
+        Ok(())
     }
 
     /// Ask Birnam policy for a side-effect-free artifact plan. The request
@@ -6300,70 +6015,88 @@ impl HostRuntime {
         Ok(plan)
     }
 
-    /// Ask Birnam policy to own the persisted artifact record after staged
-    /// bytes have been compiled/copied. Rust supplies only observed metadata
-    /// and checksums; policy remains the source of the record schema.
-    ///
-    /// # Safety
-    ///
-    /// The caller must keep a live GC anchor and remain on the floor owner
-    /// thread for all map/vector allocation and policy sends.
-    pub unsafe fn record_project_artifacts(
+    fn observe_previous_project_artifacts(
         &self,
-        request: &ProjectArtifactRecordRequest<'_>,
-    ) -> Result<ProjectBuildRecord, ProjectArtifactRecordError> {
-        if request.staged.len() != request.resolution.modules.len() {
-            return Err(ProjectArtifactRecordError::Decode(
-                ProjectManifestDecodeError::InvalidList("staged artifacts"),
-            ));
+        final_root: &Path,
+        resolution: &ProjectResolutionObservation,
+        target: &str,
+        profile: &str,
+        tool_version: &str,
+    ) -> Option<ProjectPreviousPublication> {
+        let mut artifacts = Vec::new();
+        for module in &resolution.modules {
+            let relative = format!("lib/libbirnam_{}.dylib", module.name);
+            let path = final_root.join(&relative);
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            let Ok(descriptor) = birnam_artifact::inspect(&bytes) else {
+                continue;
+            };
+            if descriptor.kind != b"module" || descriptor.identity != module.name.as_bytes() {
+                continue;
+            }
+            let checksum = String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned();
+            artifacts.push(ProjectPreviousPublishedArtifact {
+                name: String::from_utf8_lossy(descriptor.identity).into_owned(),
+                path: relative,
+                source: module.path.clone(),
+                sources: module.sources.clone(),
+                source_digest: String::from_utf8_lossy(descriptor.source_digest).into_owned(),
+                revision_digest: String::from_utf8_lossy(descriptor.revision_digest).into_owned(),
+                requires: descriptor
+                    .requires
+                    .iter()
+                    .map(|value| String::from_utf8_lossy(value).into_owned())
+                    .collect(),
+                checksum: checksum.clone(),
+                observed_checksum: Some(checksum),
+            });
         }
-        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api()) }
-            .map_err(ProjectArtifactRecordError::Snapshot)?;
-        let plan_request = ProjectArtifactPlanRequest {
-            resolution: request.resolution,
-            wrapped: request.wrapped,
-            previous: None,
-            target: request.target,
-            profile: request.profile,
-            tool_version: request.tool_version,
-            built_at: request.built_at,
-            resolution_digest: request.resolution_digest,
-        };
-        let snapshot = unsafe { builder.artifact_plan_input(&plan_request) }
-            .map_err(ProjectArtifactRecordError::Snapshot)?;
-        let mut artifacts =
-            unsafe { builder.new_vector() }.map_err(ProjectArtifactRecordError::Snapshot)?;
-        for (module, staged) in request.resolution.modules.iter().zip(request.staged) {
-            let value = unsafe { builder.staged_artifact(module, staged) }
-                .map_err(ProjectArtifactRecordError::Snapshot)?;
-            artifacts = unsafe { builder.add(artifacts, value) }
-                .map_err(ProjectArtifactRecordError::Snapshot)?;
+        if artifacts.is_empty() {
+            return None;
         }
-        let mut native =
-            unsafe { builder.new_vector() }.map_err(ProjectArtifactRecordError::Snapshot)?;
-        for item in request.native {
-            let value = unsafe { builder.staged_native_artifact(item) }
-                .map_err(ProjectArtifactRecordError::Snapshot)?;
-            native = unsafe { builder.add(native, value) }
-                .map_err(ProjectArtifactRecordError::Snapshot)?;
+        Some(ProjectPreviousPublication {
+            project_root: resolution.project_root.clone(),
+            target: target.to_owned(),
+            profile: profile.to_owned(),
+            tool_version: tool_version.to_owned(),
+            artifact_abi: String::from_utf8_lossy(birnam_artifact::ABI).into_owned(),
+            artifacts,
+        })
+    }
+
+    unsafe fn stage_generated_project_artifact(
+        &self,
+        module: &ProjectSourceObservation,
+        previous: &Path,
+        output: &Path,
+    ) -> Result<ProjectStagedArtifact, ProjectBuildError> {
+        if let Ok(bytes) = std::fs::read(previous)
+            && validate_project_compiled_artifact(module, &bytes).is_ok()
+        {
+            std::fs::copy(previous, output).map_err(|error| {
+                ProjectBuildError::Stage(ProjectArtifactStageError::Copy {
+                    source: previous.to_path_buf(),
+                    destination: output.to_path_buf(),
+                    kind: error.kind(),
+                })
+            })?;
+            return Ok(ProjectStagedArtifact {
+                name: module.name.clone(),
+                path: output.to_string_lossy().into_owned(),
+                action: "reuse".to_owned(),
+                checksum: String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned(),
+            });
         }
-        unsafe { self.load_project_policy() }.map_err(ProjectArtifactRecordError::Policy)?;
-        let api = self.stack.api();
-        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
-            return Err(ProjectArtifactRecordError::Policy(
-                ProjectPolicyError::MissingPolicy,
-            ));
-        };
-        let selector = unsafe { (api.intern)(c"artifactRecord:artifacts:native:".as_ptr()) };
-        let record =
-            unsafe { (api.send)(policy, selector, [snapshot, artifacts, native].as_ptr(), 3) };
-        if record == api.nilObj || send_is_error(api, record) {
-            return Err(ProjectArtifactRecordError::Policy(
-                ProjectPolicyError::ResolutionRejected,
-            ));
-        }
-        unsafe { decode_project_artifact_record(api, record) }
-            .map_err(ProjectArtifactRecordError::Decode)
+        let checksum = unsafe { self.compile_project_artifact(module, output) }
+            .map_err(|error| ProjectBuildError::Stage(ProjectArtifactStageError::Compile(error)))?;
+        Ok(ProjectStagedArtifact {
+            name: module.name.clone(),
+            path: output.to_string_lossy().into_owned(),
+            action: "compile".to_owned(),
+            checksum,
+        })
     }
 
     /// Execute the Rust-hosted core project build. Observation and policy
@@ -6408,24 +6141,19 @@ impl HostRuntime {
             }
         })?;
         let final_root = target_root.join(request.profile);
-        let record_path = final_root.join("artifacts.toml");
-        let previous = match unsafe { self.load_project_build_record(&record_path) } {
-            Ok(record) => Some(record),
-            Err(ProjectBuildRecordLoadError::Manifest(ProjectManifestError::Read {
-                kind: io::ErrorKind::NotFound,
-                ..
-            })) => None,
-            Err(error) => return Err(ProjectBuildError::BuildRecord(error)),
-        };
+        let previous = self.observe_previous_project_artifacts(
+            &final_root,
+            &resolution,
+            request.target,
+            request.profile,
+            request.tool_version,
+        );
         let plan_request = ProjectArtifactPlanRequest {
             resolution: &resolution,
-            wrapped: &wrapped,
             previous: previous.as_ref(),
             target: request.target,
             profile: request.profile,
             tool_version: request.tool_version,
-            built_at: request.built_at,
-            resolution_digest: &resolution_digest,
         };
         let plan = unsafe { self.plan_project_artifacts(&plan_request) }
             .map_err(ProjectBuildError::Plan)?;
@@ -6451,29 +6179,130 @@ impl HostRuntime {
             };
             let artifacts = unsafe { self.stage_project_artifacts(&stage_request) }
                 .map_err(ProjectBuildError::Stage)?;
-            let native = self
-                .stage_project_wrapped(&wrapped, &stage_root)
+            self.stage_project_wrapped(&wrapped, &stage_root)
                 .map_err(ProjectBuildError::Wrapped)?;
-            let record_request = ProjectArtifactRecordRequest {
-                resolution: &resolution,
-                staged: &artifacts,
-                native: &native,
-                wrapped: &wrapped,
-                target: request.target,
-                profile: request.profile,
-                tool_version: request.tool_version,
-                built_at: request.built_at,
-                resolution_digest: &resolution_digest,
+            let (module_identity, module_source) = project_module_root_source(
+                &resolution,
+                &resolution_digest,
+                request.target,
+                request.profile,
+                request.tool_version,
+            );
+            let module_label =
+                PathBuf::from(&resolution.project_root).join("<generated-project-modules>");
+            let module = unsafe {
+                self.observe_generated_project_source(
+                    module_source,
+                    &module_label,
+                    &resolution.project_root,
+                )
+            }
+            .map_err(ProjectBuildError::GeneratedSource)?;
+            let staged_module_root = stage_root.join("lib").join(PROJECT_MODULE_ROOT_FILENAME);
+            unsafe {
+                self.stage_generated_project_artifact(
+                    &module,
+                    &final_root.join("lib").join(PROJECT_MODULE_ROOT_FILENAME),
+                    &staged_module_root,
+                )
+            }?;
+            let canonical_module_root = stage_root
+                .join("lib")
+                .join(format!("libbirnam_{module_identity}.dylib"));
+            std::fs::hard_link(&staged_module_root, &canonical_module_root).map_err(|error| {
+                ProjectBuildError::StageDirectory {
+                    path: canonical_module_root.clone(),
+                    kind: error.kind(),
+                }
+            })?;
+
+            let (configuration_identity, configuration_source) = project_configuration_source(
+                &resolution,
+                &resolution_digest,
+                request.target,
+                request.profile,
+                request.tool_version,
+            );
+            let configuration_label =
+                PathBuf::from(&resolution.project_root).join("<generated-project-configuration>");
+            let configuration = unsafe {
+                self.observe_generated_project_source(
+                    configuration_source,
+                    &configuration_label,
+                    &resolution.project_root,
+                )
+            }
+            .map_err(ProjectBuildError::GeneratedSource)?;
+            let staged_configuration = stage_root.join("lib").join(PROJECT_CONFIGURATION_FILENAME);
+            unsafe {
+                self.stage_generated_project_artifact(
+                    &configuration,
+                    &final_root.join("lib").join(PROJECT_CONFIGURATION_FILENAME),
+                    &staged_configuration,
+                )
+            }?;
+            let canonical_configuration = stage_root
+                .join("lib")
+                .join(format!("libbirnam_{configuration_identity}.dylib"));
+            std::fs::hard_link(&staged_configuration, &canonical_configuration).map_err(
+                |error| ProjectBuildError::StageDirectory {
+                    path: canonical_configuration.clone(),
+                    kind: error.kind(),
+                },
+            )?;
+
+            let staged_application = if let Some(main_path) = resolution.main.as_deref() {
+                let main_path = PathBuf::from(main_path);
+                let main =
+                    std::fs::read(&main_path).map_err(|error| ProjectBuildError::MainRead {
+                        path: main_path.clone(),
+                        kind: error.kind(),
+                    })?;
+                let (_, application_source) = project_application_source(
+                    &resolution,
+                    &configuration_identity,
+                    &resolution_digest,
+                    request.target,
+                    request.profile,
+                    request.tool_version,
+                    &main,
+                );
+                let application_label =
+                    PathBuf::from(&resolution.project_root).join("<generated-project-application>");
+                let application = unsafe {
+                    self.observe_generated_project_source(
+                        application_source,
+                        &application_label,
+                        &resolution.project_root,
+                    )
+                }
+                .map_err(ProjectBuildError::GeneratedSource)?;
+                let output = stage_root.join("lib").join(PROJECT_APPLICATION_FILENAME);
+                unsafe {
+                    self.stage_generated_project_artifact(
+                        &application,
+                        &final_root.join("lib").join(PROJECT_APPLICATION_FILENAME),
+                        &output,
+                    )
+                }?;
+                Some(output)
+            } else {
+                None
             };
-            let record = unsafe { self.record_project_artifacts(&record_request) }
-                .map_err(ProjectBuildError::Record)?;
-            write_project_build_record(&stage_root.join("artifacts.toml"), &record)
-                .map_err(ProjectBuildError::Write)?;
+            let publication_root = staged_application
+                .as_deref()
+                .unwrap_or(staged_module_root.as_path());
+            preflight_artifact(publication_root, None).map_err(ProjectBuildError::Publication)?;
+            preflight_artifact(&staged_module_root, None)
+                .map_err(ProjectBuildError::Publication)?;
             publish_project_build(&stage_root, &final_root, &target_root)
                 .map_err(ProjectBuildError::Publish)?;
             Ok(ProjectBuildResult {
                 output_root: final_root.clone(),
-                record,
+                module_root: final_root.join("lib").join(PROJECT_MODULE_ROOT_FILENAME),
+                configuration: final_root.join("lib").join(PROJECT_CONFIGURATION_FILENAME),
+                application: staged_application
+                    .map(|_| final_root.join("lib").join(PROJECT_APPLICATION_FILENAME)),
                 artifacts,
             })
         })();
@@ -6483,164 +6312,38 @@ impl HostRuntime {
         result
     }
 
-    /// Validate an already-published project without compiling or mutating it.
-    /// The persisted record is re-observed, Birnam owns the final policy
-    /// decision, and every selected module/native file is checked before a
-    /// result is returned to install/run/test adapters.
+    /// Locate an already-published project without compiling, observing source,
+    /// or consulting an external receipt. Each consumer preflights its selected
+    /// root before activation or installation: run selects the application,
+    /// tests select the module root, and install selects their union. Discovery
+    /// does not preflight a second time or require tests to inspect the app.
     ///
     /// # Safety
     ///
     /// The caller must keep a live GC anchor and remain on the floor owner
-    /// thread for observation, TOML parsing, and policy sends.
-    pub unsafe fn validate_project_build(
+    /// thread for subsequent activation.
+    pub unsafe fn locate_project_build(
         &self,
         start: &Path,
         target: &str,
         profile: &str,
-        tool_version: &str,
+        _tool_version: &str,
     ) -> Result<ProjectBuildResult, ProjectBuildError> {
-        let snapshot = unsafe { self.observe_project_snapshot(start) }
-            .map_err(ProjectBuildError::Observation)?;
-        let raw_snapshot = unsafe { self.materialize_project_snapshot(&snapshot) }
-            .map_err(ProjectBuildError::Snapshot)?;
-        let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
-            .map_err(ProjectBuildError::Policy)?;
-        let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
-            .map_err(ProjectBuildError::Resolution)?;
-        let wrapped = resolution.wrapped.clone();
-        let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
-            ProjectBuildError::ManifestRead {
-                path: PathBuf::from(&resolution.manifest),
-                kind: error.kind(),
-            }
-        })?;
-        let resolution_digest = project_build_resolution_digest(
-            &resolution.project_root,
-            &manifest,
-            &resolution.modules,
-            &wrapped,
-        );
-        let final_root = PathBuf::from(&resolution.project_root)
-            .join(".birnam/build")
-            .join(target)
-            .join(profile);
-        let record = unsafe { self.load_project_build_record(&final_root.join("artifacts.toml")) }
-            .map_err(ProjectBuildError::BuildRecord)?;
-        let request = ProjectArtifactPlanRequest {
-            resolution: &resolution,
-            wrapped: &wrapped,
-            previous: Some(&record),
-            target,
-            profile,
-            tool_version,
-            built_at: &record.built_at,
-            resolution_digest: &resolution_digest,
-        };
-        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api()) }
-            .map_err(ProjectBuildError::Snapshot)?;
-        let snapshot_value = unsafe { builder.artifact_plan_input(&request) }
-            .map_err(ProjectBuildError::Snapshot)?;
-        unsafe { self.load_project_policy() }.map_err(ProjectBuildError::PublishedPolicy)?;
-        let api = self.stack.api();
-        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
-            return Err(ProjectBuildError::PublishedPolicy(
-                ProjectPolicyError::MissingPolicy,
-            ));
-        };
-        let selector = unsafe { (api.intern)(c"validateArtifacts:".as_ptr()) };
-        let valid = unsafe { (api.send)(policy, selector, [snapshot_value].as_ptr(), 1) };
-        if valid != api.trueObj || send_is_error(api, valid) {
-            return Err(ProjectBuildError::PublishedPolicy(
-                ProjectPolicyError::ResolutionRejected,
-            ));
-        }
-        let mut artifacts = Vec::with_capacity(resolution.modules.len());
-        for module in &resolution.modules {
-            let Some(old) = previous_artifact(&record, &module.name) else {
-                return Err(ProjectBuildError::PublishedArtifact {
-                    name: module.name.clone(),
-                    path: final_root.clone(),
-                    kind: io::ErrorKind::NotFound,
-                });
-            };
-            let Some(relative) = safe_record_relative_path(&old.path) else {
-                return Err(ProjectBuildError::PublishedArtifact {
-                    name: module.name.clone(),
-                    path: PathBuf::from(&old.path),
-                    kind: io::ErrorKind::InvalidInput,
-                });
-            };
-            let path = final_root.join(relative);
-            let bytes =
-                std::fs::read(&path).map_err(|error| ProjectBuildError::PublishedArtifact {
-                    name: module.name.clone(),
-                    path: path.clone(),
-                    kind: error.kind(),
-                })?;
-            validate_project_compiled_artifact(module, &bytes).map_err(|error| {
-                ProjectBuildError::PublishedDescriptor {
-                    name: module.name.clone(),
-                    error,
-                }
+        let (final_root, module_root, configuration, application_path) =
+            project_publication_paths(start, target, profile).map_err(|error| {
+                ProjectBuildError::Observation(ProjectObservationBuildError::Discovery(error))
             })?;
-            let actual = String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned();
-            if actual != old.checksum {
-                return Err(ProjectBuildError::PublishedChecksum {
-                    name: module.name.clone(),
-                    expected: old.checksum.clone(),
-                    actual,
-                });
-            }
-            artifacts.push(ProjectStagedArtifact {
-                name: module.name.clone(),
-                path: old.path.clone(),
-                action: "reuse".to_owned(),
-                checksum: old.checksum.clone(),
-            });
-        }
-        for wrapped in &wrapped {
-            let Some(old) = previous_native_artifact(&record, &wrapped.name) else {
-                return Err(ProjectBuildError::PublishedArtifact {
-                    name: wrapped.name.clone(),
-                    path: final_root.clone(),
-                    kind: io::ErrorKind::NotFound,
-                });
-            };
-            let expected_path = format!("lib/lib{}.dylib", wrapped.name);
-            if old.path != expected_path {
-                return Err(ProjectBuildError::PublishedArtifact {
-                    name: wrapped.name.clone(),
-                    path: PathBuf::from(&old.path),
-                    kind: io::ErrorKind::InvalidData,
-                });
-            }
-            let Some(relative) = safe_record_relative_path(&old.path) else {
-                return Err(ProjectBuildError::PublishedArtifact {
-                    name: wrapped.name.clone(),
-                    path: PathBuf::from(&old.path),
-                    kind: io::ErrorKind::InvalidInput,
-                });
-            };
-            let path = final_root.join(relative);
-            let bytes =
-                std::fs::read(&path).map_err(|error| ProjectBuildError::PublishedArtifact {
-                    name: wrapped.name.clone(),
-                    path: path.clone(),
-                    kind: error.kind(),
-                })?;
-            let actual = String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned();
-            if actual != old.checksum {
-                return Err(ProjectBuildError::PublishedChecksum {
-                    name: wrapped.name.clone(),
-                    expected: old.checksum.clone(),
-                    actual,
-                });
-            }
-        }
+        let application = if application_path.exists() {
+            Some(application_path)
+        } else {
+            None
+        };
         Ok(ProjectBuildResult {
             output_root: final_root,
-            record,
-            artifacts,
+            module_root,
+            configuration,
+            application,
+            artifacts: Vec::new(),
         })
     }
 
@@ -6675,38 +6378,41 @@ impl HostRuntime {
             kind: error.kind(),
         })?;
         let result = (|| {
-            let mut entries =
-                Vec::with_capacity(build.record.artifacts.len() + build.record.native.len());
-            entries.extend(
-                build
-                    .record
-                    .artifacts
-                    .iter()
-                    .map(|artifact| (artifact.name.as_str(), artifact.path.as_str())),
-            );
-            entries.extend(
-                build
-                    .record
-                    .native
-                    .iter()
-                    .map(|artifact| (artifact.name.as_str(), artifact.path.as_str())),
-            );
+            let mut plans = vec![
+                preflight_artifact(&build.module_root, None)
+                    .map_err(ProjectInstallError::Preflight)?,
+            ];
+            if let Some(application) = &build.application {
+                plans.push(
+                    preflight_artifact(application, None)
+                        .map_err(ProjectInstallError::Preflight)?,
+                );
+            }
+            let mut entries = Vec::new();
+            let mut filenames = HashSet::new();
+            for plan in plans {
+                for artifact in plan.entries {
+                    let identity = String::from_utf8_lossy(&artifact.identity).into_owned();
+                    let filename = format!("libbirnam_{identity}.dylib");
+                    if filenames.insert(filename.clone()) {
+                        entries.push((identity, artifact.path, filename));
+                    }
+                }
+                for native in plan.native {
+                    let Some(filename) = native.file_name().and_then(|value| value.to_str()) else {
+                        return Err(ProjectInstallError::InvalidArtifactPath {
+                            name: "native".to_owned(),
+                            path: native.to_string_lossy().into_owned(),
+                        });
+                    };
+                    if filenames.insert(filename.to_owned()) {
+                        entries.push((filename.to_owned(), native.clone(), filename.to_owned()));
+                    }
+                }
+            }
             let mut sources = Vec::with_capacity(entries.len());
-            for (name, relative_path) in entries {
-                let Some(relative) = safe_record_relative_path(relative_path) else {
-                    return Err(ProjectInstallError::InvalidArtifactPath {
-                        name: name.to_owned(),
-                        path: relative_path.to_owned(),
-                    });
-                };
-                let Some(filename) = relative.file_name().and_then(|value| value.to_str()) else {
-                    return Err(ProjectInstallError::InvalidArtifactPath {
-                        name: name.to_owned(),
-                        path: relative_path.to_owned(),
-                    });
-                };
-                let source = build.output_root.join(relative);
-                let destination = stage.join(filename);
+            for (_name, source, filename) in entries {
+                let destination = stage.join(&filename);
                 let bytes =
                     std::fs::read(&source).map_err(|error| ProjectInstallError::ReadSource {
                         path: source.clone(),
@@ -7718,7 +7424,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
 
     unsafe fn previous_artifact(
         &self,
-        value: &ProjectPreviousArtifact,
+        value: &ProjectPreviousPublishedArtifact,
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let mut item = unsafe { self.new_map()? };
         item = unsafe { self.put(item, "name", self.string(&value.name))? };
@@ -7735,23 +7441,9 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         Ok(item)
     }
 
-    unsafe fn previous_native_artifact(
+    unsafe fn previous_publication(
         &self,
-        value: &ProjectPreviousNativeArtifact,
-    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
-        let mut item = unsafe { self.new_map()? };
-        item = unsafe { self.put(item, "name", self.string(&value.name))? };
-        item = unsafe { self.put(item, "path", self.string(&value.path))? };
-        item = unsafe { self.put(item, "checksum", self.string(&value.checksum))? };
-        if let Some(observed) = &value.observed_checksum {
-            item = unsafe { self.put(item, "observedChecksum", self.string(observed))? };
-        }
-        Ok(item)
-    }
-
-    unsafe fn previous_build_record(
-        &self,
-        value: &ProjectBuildRecord,
+        value: &ProjectPreviousPublication,
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let mut result = unsafe { self.new_map()? };
         result = unsafe { self.put(result, "projectRoot", self.string(&value.project_root))? };
@@ -7759,49 +7451,11 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         result = unsafe { self.put(result, "profile", self.string(&value.profile))? };
         result = unsafe { self.put(result, "toolVersion", self.string(&value.tool_version))? };
         result = unsafe { self.put(result, "artifactAbi", self.string(&value.artifact_abi))? };
-        result = unsafe {
-            self.put(
-                result,
-                "resolutionDigest",
-                self.string(&value.resolution_digest),
-            )?
-        };
         let mut artifacts = unsafe { self.new_vector()? };
         for artifact in &value.artifacts {
             artifacts = unsafe { self.add(artifacts, self.previous_artifact(artifact)?)? };
         }
-        result = unsafe { self.put(result, "artifacts", artifacts)? };
-        let mut native = unsafe { self.new_vector()? };
-        for artifact in &value.native {
-            native = unsafe { self.add(native, self.previous_native_artifact(artifact)?)? };
-        }
-        unsafe { self.put(result, "native", native) }
-    }
-
-    unsafe fn staged_artifact(
-        &self,
-        module: &ProjectSourceObservation,
-        staged: &ProjectStagedArtifact,
-    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
-        let mut item = unsafe { self.new_map()? };
-        item = unsafe { self.put(item, "name", self.string(&module.name))? };
-        item = unsafe { self.put(item, "path", self.string(&staged.path))? };
-        item = unsafe { self.put(item, "source", self.string(&module.path))? };
-        item = unsafe { self.put(item, "sources", self.strings(&module.sources)?)? };
-        item = unsafe { self.put(item, "sourceDigest", self.string(&module.source_digest))? };
-        item = unsafe { self.put(item, "revisionDigest", self.string(&module.revision_digest))? };
-        item = unsafe { self.put(item, "requires", self.strings(&module.requires)?)? };
-        unsafe { self.put(item, "checksum", self.string(&staged.checksum)) }
-    }
-
-    unsafe fn staged_native_artifact(
-        &self,
-        value: &ProjectPreviousNativeArtifact,
-    ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
-        let mut item = unsafe { self.new_map()? };
-        item = unsafe { self.put(item, "name", self.string(&value.name))? };
-        item = unsafe { self.put(item, "path", self.string(&value.path))? };
-        unsafe { self.put(item, "checksum", self.string(&value.checksum)) }
+        unsafe { self.put(result, "artifacts", artifacts) }
     }
 
     unsafe fn artifact_module(
@@ -7834,28 +7488,13 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         snapshot = unsafe { self.put(snapshot, "toolVersion", self.string(request.tool_version))? };
         let artifact_abi = String::from_utf8_lossy(birnam_artifact::ABI);
         snapshot = unsafe { self.put(snapshot, "artifactAbi", self.string(&artifact_abi))? };
-        snapshot = unsafe {
-            self.put(
-                snapshot,
-                "resolutionDigest",
-                self.string(request.resolution_digest),
-            )?
-        };
-        snapshot = unsafe { self.put(snapshot, "builtAt", self.string(request.built_at))? };
         let mut modules = unsafe { self.new_vector()? };
         for module in &request.resolution.modules {
             modules = unsafe { self.add(modules, self.artifact_module(module)?)? };
         }
         snapshot = unsafe { self.put(snapshot, "modules", modules)? };
-        let mut wrapped = unsafe { self.new_vector()? };
-        for value in request.wrapped {
-            let mut item = unsafe { self.new_map()? };
-            item = unsafe { self.put(item, "name", self.string(&value.name))? };
-            wrapped = unsafe { self.add(wrapped, item)? };
-        }
-        snapshot = unsafe { self.put(snapshot, "wrapped", wrapped)? };
         let previous = if let Some(previous) = request.previous {
-            unsafe { self.previous_build_record(previous)? }
+            unsafe { self.previous_publication(previous)? }
         } else {
             self.api.nilObj
         };
@@ -8975,6 +8614,7 @@ fn normalize_absolute(path: &Path) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn compatibility_symbol_limits_require_positive_machine_word_values() {
@@ -9246,99 +8886,6 @@ mod tests {
     }
 
     #[test]
-    fn build_record_observation_hashes_present_artifacts_and_leaves_missing_unobserved() {
-        let root = std::env::temp_dir().join(format!(
-            "birnam-host-build-record-observation-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(root.join("native")).expect("fixture directory creates");
-        std::fs::write(root.join("module.dylib"), b"module-bytes").expect("module writes");
-        std::fs::write(root.join("native/helper.dylib"), b"native-bytes").expect("native writes");
-        let record = ProjectBuildRecord {
-            project_root: "/tmp/project".to_owned(),
-            target: "host".to_owned(),
-            profile: "debug".to_owned(),
-            tool_version: "dev".to_owned(),
-            artifact_abi: "birnam-artifact-v1".to_owned(),
-            resolution_digest: "resolution".to_owned(),
-            built_at: "now".to_owned(),
-            artifacts: vec![
-                ProjectPreviousArtifact {
-                    name: "module".to_owned(),
-                    path: "module.dylib".to_owned(),
-                    source: "module.birnam".to_owned(),
-                    sources: vec!["module.birnam".to_owned()],
-                    source_digest: "source".to_owned(),
-                    revision_digest: "revision".to_owned(),
-                    requires: Vec::new(),
-                    checksum: "stale".to_owned(),
-                    observed_checksum: None,
-                },
-                ProjectPreviousArtifact {
-                    name: "missing".to_owned(),
-                    path: "missing.dylib".to_owned(),
-                    source: "missing.birnam".to_owned(),
-                    sources: vec!["missing.birnam".to_owned()],
-                    source_digest: "source".to_owned(),
-                    revision_digest: "revision".to_owned(),
-                    requires: Vec::new(),
-                    checksum: "stale".to_owned(),
-                    observed_checksum: Some("old-observation".to_owned()),
-                },
-            ],
-            native: vec![ProjectPreviousNativeArtifact {
-                name: "helper".to_owned(),
-                path: "native/helper.dylib".to_owned(),
-                checksum: "stale".to_owned(),
-                observed_checksum: None,
-            }],
-        };
-
-        let observed = observe_project_build_record(&root, record).expect("record observes");
-        assert_eq!(
-            observed.artifacts[0].observed_checksum,
-            Some(String::from_utf8_lossy(&sha256_hex(b"module-bytes")).into_owned())
-        );
-        assert_eq!(observed.artifacts[1].observed_checksum, None);
-        assert_eq!(
-            observed.native[0].observed_checksum,
-            Some(String::from_utf8_lossy(&sha256_hex(b"native-bytes")).into_owned())
-        );
-        std::fs::remove_dir_all(root).expect("fixture directory removes");
-    }
-
-    #[test]
-    fn build_record_encoder_writes_snake_case_and_omits_observations() {
-        let record = ProjectBuildRecord {
-            project_root: "/tmp/project".to_owned(),
-            target: "aarch64-macos".to_owned(),
-            profile: "debug".to_owned(),
-            tool_version: "dev".to_owned(),
-            artifact_abi: String::from_utf8_lossy(birnam_artifact::ABI).into_owned(),
-            resolution_digest: "digest".to_owned(),
-            built_at: "now".to_owned(),
-            artifacts: vec![ProjectPreviousArtifact {
-                name: "app".to_owned(),
-                path: "lib/libbirnam_app.dylib".to_owned(),
-                source: "/tmp/project/src/app.birnam".to_owned(),
-                sources: vec!["/tmp/project/src/app.birnam".to_owned()],
-                source_digest: "source".to_owned(),
-                revision_digest: "revision".to_owned(),
-                requires: vec!["core".to_owned()],
-                checksum: "checksum".to_owned(),
-                observed_checksum: Some("observed".to_owned()),
-            }],
-            native: Vec::new(),
-        };
-        let encoded = String::from_utf8(encode_project_build_record(&record)).expect("TOML UTF-8");
-        assert!(encoded.contains("artifact_abi = \""));
-        assert!(encoded.contains("source_digest = \"source\""));
-        assert!(encoded.contains("requires = [\"core\"]"));
-        assert!(!encoded.contains("observedChecksum"));
-        assert!(!encoded.contains("observed_checksum"));
-    }
-
-    #[test]
     fn build_publication_rotates_a_complete_stage_and_removes_backup() {
         let root = std::env::temp_dir().join(format!(
             "birnam-host-build-publication-{}",
@@ -9371,33 +8918,69 @@ mod tests {
     }
 
     #[test]
-    fn build_record_observation_rejects_path_escape_before_reading() {
-        let record = ProjectBuildRecord {
+    fn bundled_source_removes_only_the_module_declaration() {
+        let source = b"// prefix mentioning [Module named: #fake with an unmatched [\n[Module named: #demo requires: #[#one #two]];\n[Reflect defineMethod: #value on: Demo as: [:self | \"[not syntax]\"]]\n";
+        assert_eq!(
+            source_without_module_declaration(source),
+            b"// prefix mentioning [Module named: #fake with an unmatched [\n\n[Reflect defineMethod: #value on: Demo as: [:self | \"[not syntax]\"]]\n"
+        );
+    }
+
+    #[test]
+    fn application_publication_bundles_modules_dependency_first_and_marks_them_loaded() {
+        let module = |name: &str, requires: Vec<String>, source: &[u8]| ProjectSourceObservation {
+            name: name.to_owned(),
+            path: format!("/tmp/project/src/{name}.birnam"),
+            sources: vec![format!("/tmp/project/src/{name}.birnam")],
             project_root: "/tmp/project".to_owned(),
-            target: "host".to_owned(),
-            profile: "debug".to_owned(),
-            tool_version: "dev".to_owned(),
-            artifact_abi: "birnam-artifact-v1".to_owned(),
-            resolution_digest: "resolution".to_owned(),
-            built_at: "now".to_owned(),
-            artifacts: vec![ProjectPreviousArtifact {
-                name: "escape".to_owned(),
-                path: "../outside.dylib".to_owned(),
-                source: "escape.birnam".to_owned(),
-                sources: vec!["escape.birnam".to_owned()],
-                source_digest: "source".to_owned(),
-                revision_digest: "revision".to_owned(),
-                requires: Vec::new(),
-                checksum: "stale".to_owned(),
-                observed_checksum: None,
-            }],
-            native: Vec::new(),
+            source: source.to_vec(),
+            requires,
+            source_digest: format!("{name}-source"),
+            revision_digest: format!("{name}-revision"),
         };
-        assert!(matches!(
-            observe_project_build_record(Path::new("/tmp/build"), record),
-            Err(ProjectBuildRecordObservationError::InvalidPath(path))
-                if path == Path::new("../outside.dylib")
-        ));
+        let resolution = ProjectResolutionObservation {
+            project_root: "/tmp/project".to_owned(),
+            manifest: "/tmp/project/birnam.toml".to_owned(),
+            project_name: "demo".to_owned(),
+            main: Some("main.birnam".to_owned()),
+            run: ProjectRunObservation {
+                repl: "none".to_owned(),
+                socket_bind: "127.0.0.1".to_owned(),
+                socket_port: 0,
+            },
+            load_roots: vec!["app".to_owned()],
+            modules: vec![
+                module(
+                    "dep",
+                    Vec::new(),
+                    b"[Module named: #dep requires: #[]];\nDep := Object clone\n",
+                ),
+                module(
+                    "app",
+                    vec!["dep".to_owned()],
+                    b"[Module named: #app requires: #[#dep]];\nApp := Object clone\n",
+                ),
+            ],
+            wrapped: Vec::new(),
+        };
+        let (_, source) = project_application_source(
+            &resolution,
+            "__demoProjectConfiguration",
+            "digest",
+            "target",
+            "debug",
+            "dev",
+            b"[App value]\n",
+        );
+        let source = String::from_utf8(source).expect("generated source is UTF-8");
+        let dep = source.find("Dep :=").expect("dependency body is bundled");
+        let app = source.find("App :=").expect("application body is bundled");
+        let main = source.find("[App value]").expect("main is bundled");
+        assert!(dep < app && app < main);
+        assert!(source.contains("[[Globals at: #Module] named: #dep requires: #[]]"));
+        assert!(source.contains("[[Globals at: #Module] markLoaded: #dep]"));
+        assert!(source.contains("[[Globals at: #Module] named: #app requires: #[#dep ]]"));
+        assert!(source.contains("[[Globals at: #Module] markLoaded: #app]"));
     }
 
     #[test]
@@ -9417,28 +9000,23 @@ mod tests {
             manifest: "/tmp/project/birnam.toml".to_owned(),
             project_name: "demo".to_owned(),
             main: None,
+            run: ProjectRunObservation {
+                repl: "none".to_owned(),
+                socket_bind: "127.0.0.1".to_owned(),
+                socket_port: 4400,
+            },
             load_roots: vec!["/tmp/project/src".to_owned()],
             modules: vec![module.clone()],
             wrapped: Vec::new(),
         };
         let request = ProjectArtifactPlanRequest {
             resolution: &resolution,
-            wrapped: &[],
             previous: None,
             target: "aarch64-macos",
             profile: "debug",
             tool_version: "dev",
-            built_at: "now",
-            resolution_digest: "digest",
         };
         let mut plan = ProjectArtifactPlan {
-            project_root: "/tmp/project".to_owned(),
-            target: "aarch64-macos".to_owned(),
-            profile: "debug".to_owned(),
-            tool_version: "dev".to_owned(),
-            artifact_abi: String::from_utf8_lossy(birnam_artifact::ABI).into_owned(),
-            built_at: Some("now".to_owned()),
-            resolution_digest: "digest".to_owned(),
             artifacts: vec![ProjectArtifactPlanEntry {
                 name: "app".to_owned(),
                 path: "lib/libbirnam_app.dylib".to_owned(),
@@ -9510,49 +9088,6 @@ mod tests {
             validate_project_compiled_artifact(&wrong_source, &bytes),
             Err(ProjectCompiledArtifactValidationError::SourceDigestMismatch)
         ));
-    }
-
-    #[test]
-    fn build_record_observation_replaces_stale_receipt_checksum() {
-        let root = std::env::temp_dir().join(format!(
-            "birnam-build-record-stale-receipt-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(root.join("lib")).expect("receipt fixture creates");
-        std::fs::write(root.join("lib/app.dylib"), b"current-bytes")
-            .expect("current artifact writes");
-        let record = ProjectBuildRecord {
-            project_root: "/tmp/project".to_owned(),
-            target: "host".to_owned(),
-            profile: "debug".to_owned(),
-            tool_version: "dev".to_owned(),
-            artifact_abi: "birnam-artifact-v1".to_owned(),
-            resolution_digest: "resolution".to_owned(),
-            built_at: "now".to_owned(),
-            artifacts: vec![ProjectPreviousArtifact {
-                name: "app".to_owned(),
-                path: "lib/app.dylib".to_owned(),
-                source: "app.birnam".to_owned(),
-                sources: vec!["app.birnam".to_owned()],
-                source_digest: "source".to_owned(),
-                revision_digest: "revision".to_owned(),
-                requires: Vec::new(),
-                checksum: "stale-receipt".to_owned(),
-                observed_checksum: None,
-            }],
-            native: Vec::new(),
-        };
-        let observed = observe_project_build_record(&root, record).expect("receipt observes");
-        let actual = observed.artifacts[0]
-            .observed_checksum
-            .as_deref()
-            .expect("observed checksum recorded");
-        assert_ne!(actual, "stale-receipt");
-        assert_eq!(
-            actual,
-            String::from_utf8_lossy(&sha256_hex(b"current-bytes"))
-        );
-        std::fs::remove_dir_all(root).expect("receipt fixture removes");
     }
 
     #[test]

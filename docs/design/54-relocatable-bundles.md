@@ -11,6 +11,11 @@
 > Resolution](51-project-manifests-and-dependency-resolution.md), [52 — Project
 > Check, Build, and Run](52-project-check-build-and-run.md), and [53 —
 > Project-Aware Language Tools](53-project-aware-language-tools.md).
+>
+> **Publication amendment (2026-09-03):** Design 65 removes local generated
+> build receipts. Artifact descriptors are now authoritative for both local
+> publication consumption and installed execution; receipt-specific text below
+> is historical.
 
 Birnam uses one conventional executable-relative runtime layout. Every
 executable artifact is self-describing through a read-only ID protocol. Every
