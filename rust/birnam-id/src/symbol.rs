@@ -4,6 +4,8 @@
 use core::ffi::c_char;
 use core::mem::offset_of;
 use core::ptr::NonNull;
+use std::collections::{HashMap, hash_map::RandomState};
+use std::hash::BuildHasher;
 
 use crate::abi::Oop;
 use crate::boundary;
@@ -24,6 +26,8 @@ const _: () = {
 struct SymbolRecord {
     object: Oop,
     nul_terminated_bytes: Box<[u8]>,
+    name_hash: u64,
+    next_same_hash: Option<usize>,
 }
 
 impl SymbolRecord {
@@ -43,6 +47,10 @@ pub(crate) struct EmbeddedNul;
 pub(crate) struct Symbols {
     ordered: Vec<SymbolRecord>,
     by_address: AddressMap<usize>,
+    // Derived weak index: owns no names or Oops. Full byte equality resolves
+    // hash collisions; ordered remains the enumeration and name authority.
+    by_name_hash: HashMap<u64, usize>,
+    name_hasher: RandomState,
     owned_name_bytes: usize,
 }
 
@@ -51,6 +59,8 @@ impl Symbols {
         Self {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
+            by_name_hash: HashMap::new(),
+            name_hasher: RandomState::new(),
             owned_name_bytes: 0,
         }
     }
@@ -64,8 +74,33 @@ impl Symbols {
         if bytes.contains(&0) {
             return Err(EmbeddedNul);
         }
-        if let Some(existing) = self.ordered.iter().find(|record| record.bytes() == bytes) {
-            return Ok(existing.object);
+        let hash = self.name_hasher.hash_one(bytes);
+        Ok(self.intern_hashed(heap, symbol_vtable, bytes, hash))
+    }
+
+    fn find_hashed(&self, bytes: &[u8], hash: u64) -> Option<Oop> {
+        let mut index = self.by_name_hash.get(&hash).copied();
+        while let Some(current) = index {
+            let record = &self.ordered[current];
+            if record.bytes() == bytes {
+                return Some(record.object);
+            }
+            index = record.next_same_hash;
+        }
+        None
+    }
+
+    // The caller validates NUL and hashes once. Keeping the supplied hash also
+    // permits deterministic collision coverage without weakening production hashing.
+    fn intern_hashed(
+        &mut self,
+        heap: &mut Heap,
+        symbol_vtable: Oop,
+        bytes: &[u8],
+        hash: u64,
+    ) -> Oop {
+        if let Some(existing) = self.find_hashed(bytes, hash) {
+            return existing;
         }
 
         let mut owned_name = Vec::with_capacity(bytes.len() + 1);
@@ -93,6 +128,8 @@ impl Symbols {
         self.ordered.push(SymbolRecord {
             object,
             nul_terminated_bytes: owned_name,
+            name_hash: hash,
+            next_same_hash: self.by_name_hash.insert(hash, index),
         });
         self.owned_name_bytes = self
             .owned_name_bytes
@@ -100,7 +137,7 @@ impl Symbols {
             .unwrap_or_else(|| boundary::fatal_invariant("Symbol name byte counter overflow"));
         let previous = self.by_address.insert(object.addr(), index);
         boundary::require_invariant(previous.is_none(), "duplicate Symbol object address");
-        Ok(object)
+        object
     }
 
     pub(crate) fn count(&self) -> usize {
@@ -112,7 +149,8 @@ impl Symbols {
     }
 
     pub(crate) fn contains_bytes(&self, bytes: &[u8]) -> bool {
-        self.ordered.iter().any(|record| record.bytes() == bytes)
+        self.find_hashed(bytes, self.name_hasher.hash_one(bytes))
+            .is_some()
     }
 
     pub(crate) fn at(&self, index: usize) -> Oop {
@@ -139,12 +177,14 @@ impl Symbols {
     /// RawSymbol payloads.
     pub(crate) fn remove_dead_collectable(&mut self, heap: &Heap) -> usize {
         let before = self.ordered.len();
+        self.by_name_hash.clear();
+        self.by_address.clear();
         self.ordered.retain(|record| {
             heap.permanence_of(record.object) != Some(Permanence::Collectable)
                 || heap.is_marked(record.object) != Some(false)
         });
-        self.by_address.clear();
-        for (index, record) in self.ordered.iter().enumerate() {
+        for (index, record) in self.ordered.iter_mut().enumerate() {
+            record.next_same_hash = self.by_name_hash.insert(record.name_hash, index);
             let previous = self.by_address.insert(record.object.addr(), index);
             boundary::require_invariant(previous.is_none(), "duplicate live Symbol address");
         }
@@ -274,6 +314,126 @@ mod tests {
             .unwrap();
         assert_ne!(second, first_dead);
         assert_eq!(symbols.bytes_of(second), Some(&b"ephemeral"[..]));
+    }
+
+    #[test]
+    fn colliding_names_survive_middle_compaction_and_all_dead_cycles() {
+        use crate::gc::Marker;
+
+        let (mut heap, vt) = symbol_harness();
+        let mut symbols = Symbols::new();
+        let first = symbols.intern_hashed(&mut heap, vt, b"first", 7);
+        let middle = symbols.intern_hashed(&mut heap, vt, b"middle", 7);
+        let last = symbols.intern_hashed(&mut heap, vt, b"last", 7);
+        let middle_name = symbols.c_name_of(middle);
+        assert_eq!(symbols.intern_hashed(&mut heap, vt, b"first", 7), first);
+        assert_eq!(symbols.intern_hashed(&mut heap, vt, b"middle", 7), middle);
+        assert_eq!(symbols.intern_hashed(&mut heap, vt, b"last", 7), last);
+        assert_eq!(symbols.find_hashed(b"absent", 7), None);
+
+        heap.clear_marks();
+        let mut marker = Marker::new();
+        marker.mark_oop(&mut heap, middle);
+        marker.mark_oop(&mut heap, last);
+        marker.drain_conservative(&mut heap);
+        assert_eq!(symbols.remove_dead_collectable(&heap), 1);
+        assert_eq!(symbols.at(0), middle);
+        assert_eq!(symbols.at(1), last);
+        assert_eq!(symbols.c_name_of(middle), middle_name);
+        assert_eq!(symbols.find_hashed(b"first", 7), None);
+        assert_eq!(symbols.find_hashed(b"middle", 7), Some(middle));
+        assert_eq!(symbols.find_hashed(b"last", 7), Some(last));
+        assert_eq!(symbols.owned_name_bytes(), b"middle\0last\0".len());
+
+        let grown = symbols.intern_hashed(&mut heap, vt, b"grown", 7);
+        assert_eq!(symbols.at(2), grown);
+        assert_eq!(symbols.find_hashed(b"middle", 7), Some(middle));
+        heap.clear_marks();
+        assert_eq!(symbols.remove_dead_collectable(&heap), 3);
+        assert_eq!(symbols.owned_name_bytes(), 0);
+        assert_eq!(symbols.find_hashed(b"middle", 7), None);
+        assert!(symbols.bytes_of(middle).is_none());
+        let recreated = symbols.intern_hashed(&mut heap, vt, b"middle", 7);
+        assert_ne!(recreated, middle);
+        assert_eq!(symbols.at(0), recreated);
+        assert_eq!(symbols.find_hashed(b"middle", 7), Some(recreated));
+    }
+
+    #[test]
+    fn indexed_lookup_is_runtime_local_and_rebuilds_after_sweep() {
+        use crate::gc::Marker;
+
+        let (mut heap, vt) = symbol_harness();
+        let (mut other_heap, other_vt) = symbol_harness();
+        let mut symbols = Symbols::new();
+        let mut other = Symbols::new();
+        let dead = symbols.intern(&mut heap, vt, b"dead").unwrap();
+        let live = symbols.intern(&mut heap, vt, b"live").unwrap();
+        let independent = other.intern(&mut other_heap, other_vt, b"live").unwrap();
+        assert_ne!(live, independent);
+        assert!(symbols.contains_bytes(b"dead"));
+        assert!(!symbols.contains_bytes(b"live\0"));
+        heap.clear_marks();
+        let mut marker = Marker::new();
+        marker.mark_oop(&mut heap, live);
+        marker.drain_conservative(&mut heap);
+        assert_eq!(symbols.remove_dead_collectable(&heap), 1);
+        assert!(!symbols.contains_bytes(b"dead"));
+        assert!(symbols.contains_bytes(b"live"));
+        assert_eq!(symbols.intern(&mut heap, vt, b"live").unwrap(), live);
+        assert_eq!(
+            other.intern(&mut other_heap, other_vt, b"live").unwrap(),
+            independent
+        );
+        assert!(symbols.bytes_of(dead).is_none());
+        let count = heap.allocation_count();
+        for _ in 0..128 {
+            assert_eq!(symbols.intern(&mut heap, vt, b"live").unwrap(), live);
+        }
+        assert_eq!(heap.allocation_count(), count);
+    }
+
+    #[test]
+    #[ignore = "diagnostic benchmark; run with --release --ignored --nocapture"]
+    fn symbol_lookup_scaling_benchmark() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        for population in [1000, 10_000, 100_000] {
+            let (mut heap, vt) = symbol_harness();
+            let mut symbols = Symbols::new();
+            for index in 0..population {
+                symbols
+                    .intern(&mut heap, vt, format!("name-{index:06}").as_bytes())
+                    .unwrap();
+            }
+            let last = format!("name-{:06}", population - 1);
+            for (kind, bytes) in [("hit", last.as_bytes()), ("miss", &b"name-absent"[..])] {
+                for strategy in ["indexed", "linear"] {
+                    let mut samples = [0.0f64; 3];
+                    for sample in &mut samples {
+                        let started = Instant::now();
+                        for _ in 0..10_000 {
+                            let result = if strategy == "indexed" {
+                                symbols.contains_bytes(black_box(bytes))
+                            } else {
+                                symbols
+                                    .ordered
+                                    .iter()
+                                    .any(|record| record.bytes() == black_box(bytes))
+                            };
+                            black_box(result);
+                        }
+                        *sample = started.elapsed().as_nanos() as f64 / 10_000.0;
+                    }
+                    samples.sort_by(f64::total_cmp);
+                    println!(
+                        "symbols={population} kind={kind} strategy={strategy} median_ns={:.2}",
+                        samples[1]
+                    );
+                }
+            }
+        }
     }
 
     #[test]

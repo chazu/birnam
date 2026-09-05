@@ -27,12 +27,19 @@ pub(crate) enum Permanence {
 struct Block {
     /// Provenance-carrying allocation base returned by `alloc_zeroed`.
     base: NonNull<u8>,
-    /// Provenance-carrying start of the object payload.
-    payload: NonNull<u8>,
     total_size: usize,
     permanence: Permanence,
     marked: bool,
     finalizer: Option<Finalizer>,
+}
+
+impl Block {
+    fn payload(&self) -> NonNull<u8> {
+        // SAFETY: a registered or detached Block retains its allocation base
+        // until reclaim. Derivation preserves provenance without storing a
+        // second pointer in every heap-registry entry.
+        unsafe { payload_from_base(self.base) }
+    }
 }
 
 /// One unreachable allocation detached from the registry before foreign code
@@ -73,7 +80,7 @@ impl PayloadWords {
 
 impl DetachedBlock {
     pub(crate) fn object(&self) -> Oop {
-        self.block.payload.as_ptr().cast()
+        self.block.payload().as_ptr().cast()
     }
 
     pub(crate) fn finalizer(&self) -> Option<Finalizer> {
@@ -161,7 +168,6 @@ impl Heap {
             payload_address,
             Block {
                 base,
-                payload,
                 total_size,
                 permanence,
                 marked: false,
@@ -210,7 +216,7 @@ impl Heap {
     pub(crate) fn payload_address(&self, object: Oop) -> Option<usize> {
         self.blocks
             .get(&object.addr())
-            .map(|block| block.payload.as_ptr().addr())
+            .map(|block| block.payload().as_ptr().addr())
     }
 
     /// Recover a live payload pointer without reconstructing it from its
@@ -218,7 +224,7 @@ impl Heap {
     pub(crate) fn object_at_address(&self, address: usize) -> Option<Oop> {
         self.blocks
             .get(&address)
-            .map(|block| block.payload.as_ptr().cast())
+            .map(|block| block.payload().as_ptr().cast())
     }
 
     /// Report the padded payload extent, matching `objectPayloadSize`.
@@ -243,7 +249,7 @@ impl Heap {
             .map(|block| {
                 // SAFETY: every registered block owns one initialized vtable
                 // header immediately before its payload.
-                unsafe { vtable_slot_from_payload(block.payload).read() }
+                unsafe { vtable_slot_from_payload(block.payload()).read() }
             })
             .filter(|vtable| !vtable.is_null())
             .collect()
@@ -275,7 +281,7 @@ impl Heap {
         let payload_size = block.total_size - VTABLE_HEADER_SIZE;
         debug_assert_eq!(payload_size % size_of::<usize>(), 0);
         Some(PayloadWords {
-            pointer: block.payload.as_ptr().cast_const().cast(),
+            pointer: block.payload().as_ptr().cast_const().cast(),
             length: payload_size / size_of::<usize>(),
         })
     }
@@ -305,7 +311,7 @@ impl Heap {
         // offset was checked to name one complete aligned payload word.
         unsafe {
             block
-                .payload
+                .payload()
                 .as_ptr()
                 .add(offset)
                 .cast::<usize>()
@@ -553,6 +559,9 @@ mod tests {
 
     #[test]
     fn blocks_have_exact_base_header_and_payload_geometry() {
+        // Metadata stays within four words despite preserving finalizers and
+        // exact membership. The former redundant payload pointer cost five.
+        assert!(size_of::<Block>() <= 4 * size_of::<usize>());
         let mut heap = Heap::new();
         let sizes = [0, 1, 7, 8, 9, 15, 16, 17, 63, 64, 65, 255, 256, 4095];
 

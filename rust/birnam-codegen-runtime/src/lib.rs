@@ -257,7 +257,7 @@ static LIVE_ARTIFACT_HANDLES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static CANDIDATE_ROOTS: Mutex<Vec<CandidateRoot>> = Mutex::new(Vec::new());
-static VTABLE_CACHE_ROOTS: Mutex<Vec<VtableCacheRoot>> = Mutex::new(Vec::new());
+static VTABLE_CACHE_ROOTS: Mutex<BTreeMap<(u64, u64), usize>> = Mutex::new(BTreeMap::new());
 static MATERIALIZATIONS: Mutex<Vec<MaterializationEntry>> = Mutex::new(Vec::new());
 static CODE_BINDINGS: Mutex<Vec<CodeBindingEntry>> = Mutex::new(Vec::new());
 static PORTABLE_IMAGE_STAGE: Mutex<Option<PortableImageStage>> = Mutex::new(None);
@@ -759,11 +759,11 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
         }
     }
     if let Ok(roots) = VTABLE_CACHE_ROOTS.lock() {
-        for root in roots.iter() {
+        for &value in roots.values() {
             // SAFETY: generated code publishes only vtable Oops. The cache is
             // process-owned rather than mapping-owned, so its provider remains
             // callable while candidate mappings quiesce or unload.
-            unsafe { mark(root.value as Oop) };
+            unsafe { mark(value as Oop) };
         }
     }
     let generation = ACTIVE_GENERATION.load(Ordering::Acquire);
@@ -1264,12 +1264,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_vtable_cache_get(generation: u64, i
     VTABLE_CACHE_ROOTS
         .lock()
         .ok()
-        .and_then(|roots| {
-            roots
-                .iter()
-                .find(|root| root.generation == generation && root.index == index)
-                .map(|root| root.value as Oop)
-        })
+        .and_then(|roots| roots.get(&(generation, index)).map(|&value| value as Oop))
         .unwrap_or(core::ptr::null_mut())
 }
 
@@ -1289,18 +1284,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_vtable_cache_set(
     }
     let value = value as usize;
     if let Ok(mut roots) = VTABLE_CACHE_ROOTS.lock() {
-        if let Some(root) = roots
-            .iter_mut()
-            .find(|root| root.generation == generation && root.index == index)
-        {
-            root.value = value;
-        } else {
-            roots.push(VtableCacheRoot {
-                generation,
-                index,
-                value,
-            });
-        }
+        roots.insert((generation, index), value);
     }
     value as Oop
 }
@@ -12506,16 +12490,17 @@ fn take_vtable_cache_roots(generation: u64) -> Vec<VtableCacheRoot> {
     let Ok(mut roots) = VTABLE_CACHE_ROOTS.lock() else {
         return Vec::new();
     };
-    let mut retained = Vec::with_capacity(roots.len());
-    let mut taken = Vec::new();
-    for root in roots.drain(..) {
-        if root.generation == generation {
-            taken.push(root);
-        } else {
-            retained.push(root);
-        }
+    let taken: Vec<_> = roots
+        .range((generation, 0)..=(generation, u64::MAX))
+        .map(|(&(generation, index), &value)| VtableCacheRoot {
+            generation,
+            index,
+            value,
+        })
+        .collect();
+    for root in &taken {
+        roots.remove(&(root.generation, root.index));
     }
-    *roots = retained;
     taken
 }
 
@@ -12529,7 +12514,11 @@ unsafe fn restore_live_vtable_cache_roots(api: &IdApi, roots: Vec<VtableCacheRoo
         // untrusted payload. A null result means GC reclaimed the cache value;
         // generated code will rebuild that slot on its next use.
         if !value.is_null() && !(unsafe { (api.vtableParent)(value) }).is_null() {
-            cache.push(root);
+            // A reentrant rebuild after withdrawal wins over the old cache,
+            // matching the former vector's first-match lookup semantics.
+            cache
+                .entry((root.generation, root.index))
+                .or_insert(root.value);
         }
     }
 }
@@ -14667,6 +14656,43 @@ mod tests {
             right
         );
         assert_eq!(take_vtable_cache_roots(RIGHT).len(), 1);
+    }
+
+    #[test]
+    fn generated_vtable_cache_replacement_and_boundary_slots_survive_growth() {
+        const GENERATION: u64 = 0xf011_f011_f011_f011;
+        let original = core::ptr::NonNull::<u8>::dangling().as_ptr().cast();
+        let replacement = core::ptr::NonNull::<u64>::dangling().as_ptr().cast();
+        unsafe {
+            assert!(birnam_rust_codegen_vtable_cache_set(0, 0, original).is_null());
+            assert!(birnam_rust_codegen_vtable_cache_get(0, 0).is_null());
+            for slot in 0..4096 {
+                birnam_rust_codegen_vtable_cache_set(GENERATION, slot, original);
+            }
+            birnam_rust_codegen_vtable_cache_set(GENERATION, u64::MAX, original);
+            birnam_rust_codegen_vtable_cache_set(GENERATION, 2048, replacement);
+            assert_eq!(
+                birnam_rust_codegen_vtable_cache_get(GENERATION, 0),
+                original
+            );
+            assert_eq!(
+                birnam_rust_codegen_vtable_cache_get(GENERATION, 2048),
+                replacement
+            );
+            assert_eq!(
+                birnam_rust_codegen_vtable_cache_get(GENERATION, u64::MAX),
+                original
+            );
+            assert!(birnam_rust_codegen_vtable_cache_get(GENERATION, 4096).is_null());
+        }
+        let taken = take_vtable_cache_roots(GENERATION);
+        assert_eq!(taken.len(), 4097);
+        assert_eq!(
+            taken.iter().find(|root| root.index == 2048).unwrap().value,
+            replacement as usize
+        );
+        assert!(unsafe { birnam_rust_codegen_vtable_cache_get(GENERATION, u64::MAX) }.is_null());
+        assert!(take_vtable_cache_roots(GENERATION).is_empty());
     }
 
     #[test]
