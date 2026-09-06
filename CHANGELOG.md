@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Store snapshots use transient ordered pair indexes instead of repeated
+  whole-log scans. PEG indexes rule names and copies visited pattern data once
+  per parse, preserving mutable grammars, memo identity and parse diagnostics.
 - Query matching borrows candidate values and validates constraints before
   copying bindings. Rejected candidates allocate nothing; successful triples
   avoid temporary value copies while preserving query ordering and equality.

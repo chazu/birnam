@@ -1,7 +1,8 @@
 # 71 — PEG matching allocation
 
-Status: investigation and implementation plan complete, 2026-09-05.
-Ticket: `birnam-peg-matching-plan-ki3`. Production implementation not started.
+Status: rule indexing and once-per-parse pattern ownership implemented and
+correctness-verified. Ticket: `birnam-peg-matching-plan-ki3` (implementation
+authorized after planning).
 
 ## Evidence
 
@@ -94,3 +95,45 @@ at `d15de56d` plus the test-only Store diagnostic. Source-manifest SHA-256:
 Logs are supplemental in `/tmp/birnam-planning.sipzqN/`; probe sources and
 the observations above are retained in the repository. No production code
 was optimized in this investigation sequence.
+
+## Implementation
+
+Each Matcher now has a first-wins rule-name identity index and a lazy
+pattern-identity map of immutable owned PatternState snapshots. Rc handles
+permit recursive matching to borrow immutable pattern data while mutating memo
+and CST scratch; cloning a handle does not allocate or copy pattern vectors.
+Only visited patterns are copied, once per parse. Memo keys, child-node carriers,
+floor object layouts, CST conversion and public Grammar/Pattern methods remain
+unchanged. No persistent compiled-grammar cache was introduced.
+
+A frozen test-only matcher compares outcomes, diagnostics and every temporary
+node, including discarded lookahead nodes, for 261 generated pattern roots over
+eight inputs (2,088 comparisons). This includes all combinators, zero-width
+repetition, undefined/recursive rules and alias names sharing a pattern. A
+128-rule acyclic chain preserves spans and labels. The repeated-input test keeps
+exactly three copied patterns, one literal byte and one child pointer for
+1/100/1,000 bytes; an unused 4KB literal is never copied. New invocations observe
+pattern mutation. These are pattern-copy/ownership checks, not total allocator
+counts: memo and CST allocation is intentionally unchanged.
+
+Validation: focused Rust PEG tests, full `mise run verify`, all 611 language
+tests and runtime bounded-churn save/load/resave passed. The forced-source PEG
+probe retained all end-offset, child-count and between-parse mutation checks.
+The optimized runtime was built into a private release prefix; no user
+installation or running runtime was replaced.
+
+## Performance acceptance still open
+
+The unchanged `parse.json-20kb` case fell from 386.4 to 373.2 ms (3.4%) in the
+host-accepted focused development comparison. This supports only a modest
+workload change, not a large parsing-speed claim. Pattern-copy tests establish
+bounded copying; they do not establish lower total parse allocation or RSS.
+
+The retained [comparison](../measurements/71-store-peg-comparison.json) fails
+the unchanged standard comparator on bare startup (+11.8%), source startup
+(+7.6%) and missing after-docgen. Dylib-startup peak RSS grew 15.3%; source-startup
+RSS fell 2.1%. Docgen windows were rejected for host load, and the remaining
+preflight was stopped during unrelated compilation. Repeat startup/docgen under
+the existing host gates and investigate reproducible regressions before closing
+performance acceptance. This ticket remains open; correctness completion is not
+a clean performance qualification.

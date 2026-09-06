@@ -1392,6 +1392,7 @@ fn in_lower_bound(fact: &Fact, lo: Option<u64>) -> bool {
     lo.is_none_or(|watermark| fact.tx >= watermark)
 }
 
+#[cfg(test)]
 fn cardinality_as_of(
     runtime: &Runtime,
     state: &StoreState,
@@ -1703,51 +1704,53 @@ fn collect_live_triples(
     lo: Option<u64>,
     hi: Option<u64>,
 ) -> Vec<Triple> {
-    let mut pairs: Vec<(birnam_abi::Oop, birnam_abi::Oop)> = Vec::new();
+    // All indices are invocation-local and gone before the first foreign send.
+    // Physical order matters: non-historied facts can be updated in place.
+    let mut by_pair = std::collections::HashMap::new();
+    let mut groups: Vec<Vec<&Fact>> = Vec::new();
+    let mut previous = None;
     for fact in &state.facts {
-        if !visible(fact, hi)
-            || pairs
-                .iter()
-                .any(|(entity, attribute)| same(*entity, fact.e) && same(*attribute, fact.a))
-        {
+        if !visible(fact, hi) {
             continue;
         }
-        pairs.push((fact.e, fact.a));
+        let pair = (fact.e, fact.a);
+        let index = match previous {
+            Some((key, index)) if key == pair => index,
+            _ => {
+                let next = groups.len();
+                let index = *by_pair.entry(pair).or_insert_with(|| {
+                    groups.push(Vec::new());
+                    next
+                });
+                previous = Some((pair, index));
+                index
+            }
+        };
+        groups[index].push(fact);
     }
 
     let mut triples = Vec::new();
-    for (entity, attribute) in pairs {
-        let cardinality = cardinality_as_of(runtime, state, attribute, hi);
-        if cardinality == as_oop(runtime.many) {
-            let mut seen = Vec::new();
-            for fact in state.facts.iter().rev() {
-                if !same(fact.e, entity) || !same(fact.a, attribute) || !visible(fact, hi) {
-                    continue;
-                }
-                if seen.contains(&fact.v) {
-                    continue;
-                }
-                seen.push(fact.v);
-                if fact.op == Op::Assert && in_lower_bound(fact, lo) {
-                    triples.push(Triple {
-                        e: entity,
-                        a: attribute,
-                        v: fact.v,
-                    });
-                }
+    let mut seen = std::collections::HashSet::new();
+    for group in &groups {
+        let last = group.last().expect("nonempty visible fact group");
+        let many = by_pair
+            .get(&(last.a, as_oop(runtime.cardinality)))
+            .and_then(|index| groups[*index].last())
+            .is_some_and(|schema| schema.op == Op::Assert && schema.v == as_oop(runtime.many));
+        seen.clear();
+        for fact in group.iter().rev() {
+            if many && !seen.insert(fact.v) {
+                continue;
             }
-        } else {
-            for fact in state.facts.iter().rev() {
-                if same(fact.e, entity) && same(fact.a, attribute) && visible(fact, hi) {
-                    if fact.op == Op::Assert && in_lower_bound(fact, lo) {
-                        triples.push(Triple {
-                            e: entity,
-                            a: attribute,
-                            v: fact.v,
-                        });
-                    }
-                    break;
-                }
+            if fact.op == Op::Assert && in_lower_bound(fact, lo) {
+                triples.push(Triple {
+                    e: fact.e,
+                    a: fact.a,
+                    v: fact.v,
+                });
+            }
+            if !many {
+                break;
             }
         }
     }
@@ -2281,6 +2284,9 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 }
 
 #[cfg(test)]
+mod snapshot_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{
         Fact, Op, RUST_STORE_IDENTITY, RetentionPolicy, Runtime, StoreState, append_fact,
@@ -2314,7 +2320,7 @@ mod tests {
         .unwrap()
     }
 
-    fn test_runtime(compaction_transitions: u64, fact_bytes_limit: usize) -> Runtime {
+    pub(super) fn test_runtime(compaction_transitions: u64, fact_bytes_limit: usize) -> Runtime {
         Runtime {
             api: 0,
             store_vt: 0,
@@ -2365,7 +2371,7 @@ mod tests {
             }
             samples.sort_unstable();
             eprintln!(
-                "snapshot distinct_pairs={count} median_ns={} pair_comparisons={} fact_search_visits={} schema_search_visits={}",
+                "snapshot distinct_pairs={count} median_ns={} legacy_pair_comparisons={} legacy_fact_search_visits={} legacy_schema_search_visits={}",
                 samples[2],
                 count * (count - 1) / 2,
                 count * (count + 1) / 2,

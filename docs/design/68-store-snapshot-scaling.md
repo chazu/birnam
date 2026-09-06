@@ -1,7 +1,7 @@
 # 68 — Store snapshot scaling
 
-Status: investigation and implementation plan complete, 2026-09-05.
-Ticket: `birnam-store-snapshot-plan-1nj`. Production implementation not started.
+Status: transient snapshot indexing implemented and correctness-verified.
+Ticket: `birnam-store-snapshot-plan-1nj` (implementation authorized after planning).
 
 ## Evidence
 
@@ -90,3 +90,54 @@ Each production slice requires focused Store tests, full `mise run verify`,
 `mise run test`, image/retirement and bounded-churn coverage. Permanent indexes
 and compaction are explicitly not prerequisites for snapshot optimization.
 No user-facing semantic change is required for the first slice.
+
+## Implementation
+
+`collect_live_triples` now groups visible facts by identity-keyed pairs in
+physical order and resolves cardinality through the same transient lookup.
+Groups retain ordered borrowed fact references; many-valued output uses a
+temporary identity set. All scratch is dropped before callbacks. A consecutive
+pair hint avoids hashing each entry of a contiguous history. There is no
+permanent index, mutation hook, additional GC root or image representation.
+
+The old scan remains a test oracle. Generated histories exercise 64 seeds,
+36 lower/upper-bound combinations, before and after compaction (4,608 exact
+ordered-output comparisons), including in-place timestamp changes. A real
+callback probe retracts returned facts and forces GC in AOT and forced-source
+modes. Input values remain explicitly rooted by the fixture; this checks the
+existing callback seam, not a new ownership guarantee for unrooted snapshots.
+
+The size matrix caught an initial history-only regression from repeated hashing;
+the consecutive-pair hint reduced the 5,000-fact case from about 54 us to 6.8 us,
+against a 6.2 us scan. Small inputs still pay indexing setup overhead (sub-us in
+the isolated 10-fact cases); do not describe this as universally faster.
+The 5,000-distinct-pair diagnostic fell from about 25 ms to 0.36 ms. These are
+local pure-kernel measurements, not release-qualified end-to-end results.
+
+The permanent current-value index and compactor rewrite above remain separately
+profile-gated follow-ups, not part of the selected transient-snapshot delivery.
+
+Validation: focused Rust differential tests, full `mise run verify`, all 611
+language tests, AOT/forced-source callback mutation and GC, and the runtime
+bounded-churn save/load/resave gate passed using the private release prefix.
+This includes the production image, retirement and relocation gates; no user
+installation or running runtime was replaced.
+
+## Performance acceptance still open
+
+The host-accepted focused development comparison is retained in
+[`71-store-peg-comparison.json`](../measurements/71-store-peg-comparison.json).
+Single-clause queries fell from 596.5 to 46.2 ms (12.9x), three-way joins from
+671.9 to 120.8 ms (5.6x), and nested pull from 572.1 to 7.4 ms (77.7x).
+Assertion throughput was 4.4% slower, within the unchanged comparator threshold.
+These are unchanged case bodies, not a complete release benchmark suite.
+
+The standard comparator exits 1: bare startup is 11.8% slower, source startup
+7.6% slower, and after-docgen is missing. Two docgen windows were rejected by
+the existing host gate; unrelated compilation then prevented a quiet preflight,
+so the remaining driver was stopped. No noisy docgen timing is accepted.
+Dylib-startup peak RSS increased from 70.9 to 81.7 MB; source-startup RSS fell
+from 142.6 to 139.7 MB. These process peaks are not isolated scratch allocation
+measurements. Repeat startup and docgen on a quiet host and investigate any
+reproduced regression before claiming performance acceptance. The implementation
+ticket remains open for that gate despite completed code and correctness tests.

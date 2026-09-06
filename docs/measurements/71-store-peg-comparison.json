@@ -1,0 +1,396 @@
+{
+  "schema": "birnam-design-68-71-development-comparison-v1",
+  "description": "Focused development comparison, not release qualification. Canonical scripts/bench.sh measurement functions, dev repetitions and host thresholds unchanged; suite list restricted to parse and relational, macros to boot.bare, boot.stdlib-dylib, boot.stdlib-source and docgen.full. After is assembled from accepted per-case driver outputs: the driver was stopped during docgen preflight after two invalidated windows and unrelated host compilation. No rejected docgen timing retained.",
+  "comparator": {
+    "exit_code": 1,
+    "regressions": [
+      "boot.bare",
+      "boot.stdlib-source"
+    ],
+    "missing": [
+      "docgen.full"
+    ],
+    "unusable": []
+  },
+  "provenance": {
+    "baseline_runtime": "d15de56d query-allocation runtime; planning-only diagnostics added",
+    "checkout": "f15b8fbe plus Store and PEG implementation",
+    "before_source_manifest": "7ce30f43edeafbdb9bc626f68c4a06b27d7c630c938a818366b746ff47107223",
+    "after_source_manifest": "f6783e706046ca6cc51af1dc9ad67c9957cf54f61d722e5addf9ced1f763b6f4",
+    "before_store_sha256": "6c8ecd88a91bbed0d1d347619dbdc7870cbf1ba97e42efa8319e3efb5ae8d598",
+    "after_store_sha256": "180d2f32cc71a10ad6bd4c00ade6779ffd1486870f1253ecf2f0ff02013bf4f7",
+    "before_peg_sha256": "bd95746b85b31f06a32bfb5ab78a41e369b2a0efbdb598b55bef1b43bd0b127b",
+    "after_peg_sha256": "0e4bca6c9e9d2eb2d62623cd3e3ae1764c55a153a90e80693cf5d77adbdb5859",
+    "supplemental_logs": "/tmp/birnam-store-peg.486hxe",
+    "after_stamp_note": "Partial record assembled after interruption; stamp date is capture day, not driver completion timestamp."
+  },
+  "host_gate": {
+    "enabled": true,
+    "thresholds_unchanged": true,
+    "before": {
+      "parse": {
+        "intervals": 3,
+        "median_idle": 72.13,
+        "low_intervals": 0
+      },
+      "relational": {
+        "intervals": 35,
+        "median_idle": 56.91,
+        "low_intervals": 2
+      },
+      "docgen": {
+        "intervals": 162,
+        "median_idle": 58.43,
+        "low_intervals": 9
+      }
+    },
+    "after": {
+      "parse": {
+        "intervals": 3,
+        "median_idle": 61.33,
+        "low_intervals": 0
+      },
+      "relational": {
+        "intervals": 10,
+        "median_idle": 52.16,
+        "low_intervals": 0
+      },
+      "docgen_rejected": [
+        {
+          "intervals": 156,
+          "median_idle": 52.79,
+          "low_intervals": 38
+        },
+        {
+          "intervals": 214,
+          "median_idle": 7.62,
+          "low_intervals": 133
+        }
+      ]
+    }
+  },
+  "before": {
+    "stamp": {
+      "sha": "f15b8fbe",
+      "dirty": true,
+      "version": "0.14.0",
+      "date": "2026-09-06T00:31:26Z",
+      "machine": "Mac15,12",
+      "optimize": "ReleaseSafe",
+      "mode": "dev",
+      "quick": false,
+      "floor": "rust",
+      "floor_identity": "rust-id-v1",
+      "floor_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f",
+      "floor_dylib_bytes": 731504
+    },
+    "suites": [
+      {
+        "label": "parse",
+        "run": 1,
+        "data": {
+          "suite": "parse",
+          "cases": [
+            {
+              "name": "parse.json-20kb",
+              "ns_per_op": 386434000,
+              "ns_per_op_raw": 386469000,
+              "net_us": 386434,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 386469,
+              "min_us": 383282
+            }
+          ]
+        }
+      },
+      {
+        "label": "relational",
+        "run": 1,
+        "data": {
+          "suite": "relational",
+          "cases": [
+            {
+              "name": "query.single-clause",
+              "ns_per_op": 596484000,
+              "ns_per_op_raw": 596555000,
+              "net_us": 596484,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 596555,
+              "min_us": 590561
+            },
+            {
+              "name": "query.join-3way",
+              "ns_per_op": 671881000,
+              "ns_per_op_raw": 671944000,
+              "net_us": 671881,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 671944,
+              "min_us": 666972
+            },
+            {
+              "name": "query.negation",
+              "ns_per_op": 615573000,
+              "ns_per_op_raw": 615640000,
+              "net_us": 615573,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 615640,
+              "min_us": 601943
+            },
+            {
+              "name": "query.aggregate",
+              "ns_per_op": 606275000,
+              "ns_per_op_raw": 606331000,
+              "net_us": 606275,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 606331,
+              "min_us": 593693
+            },
+            {
+              "name": "query.rule-recursive",
+              "ns_per_op": 609437000,
+              "ns_per_op_raw": 609492000,
+              "net_us": 609437,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 609492,
+              "min_us": 600556
+            },
+            {
+              "name": "query.asOf",
+              "ns_per_op": 401225000,
+              "ns_per_op_raw": 401328000,
+              "net_us": 401225,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 401328,
+              "min_us": 382940
+            },
+            {
+              "name": "pull.nested",
+              "ns_per_op": 572105000,
+              "ns_per_op_raw": 572155000,
+              "net_us": 572105,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 572155,
+              "min_us": 566234
+            },
+            {
+              "name": "store.assert-10k",
+              "ns_per_op": 75684,
+              "ns_per_op_raw": 75684,
+              "net_us": 756843,
+              "ops": 10000,
+              "iters": 1,
+              "reps": 1,
+              "median_us": 756843,
+              "min_us": 756843
+            }
+          ]
+        }
+      }
+    ],
+    "macro": [
+      {
+        "name": "boot.bare",
+        "wall_us_median": 10312,
+        "wall_us_min": 9908,
+        "reps": 3,
+        "peak_rss_bytes": 7077888
+      },
+      {
+        "name": "boot.stdlib-dylib",
+        "wall_us_median": 139244,
+        "wall_us_min": 123599,
+        "reps": 3,
+        "peak_rss_bytes": 70893568
+      },
+      {
+        "name": "boot.stdlib-source",
+        "wall_us_median": 288603,
+        "wall_us_min": 283406,
+        "reps": 3,
+        "peak_rss_bytes": 142639104
+      },
+      {
+        "name": "docgen.full",
+        "wall_us_median": 44046758,
+        "wall_us_min": 42931515,
+        "reps": 3,
+        "peak_rss_bytes": 255950848
+      }
+    ]
+  },
+  "after": {
+    "stamp": {
+      "sha": "f15b8fbe",
+      "dirty": true,
+      "version": "0.14.0",
+      "date": "2026-09-06",
+      "machine": "Mac15,12",
+      "optimize": "ReleaseSafe",
+      "mode": "dev",
+      "quick": false,
+      "floor": "rust",
+      "floor_identity": "rust-id-v1",
+      "floor_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f",
+      "floor_dylib_bytes": 731504,
+      "partial": true
+    },
+    "suites": [
+      {
+        "label": "parse",
+        "run": 1,
+        "data": {
+          "suite": "parse",
+          "cases": [
+            {
+              "name": "parse.json-20kb",
+              "ns_per_op": 373213000,
+              "ns_per_op_raw": 373275000,
+              "net_us": 373213,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 373275,
+              "min_us": 366935
+            }
+          ]
+        }
+      },
+      {
+        "label": "relational",
+        "run": 1,
+        "data": {
+          "suite": "relational",
+          "cases": [
+            {
+              "name": "query.single-clause",
+              "ns_per_op": 46194000,
+              "ns_per_op_raw": 46268250,
+              "net_us": 184776,
+              "ops": 4,
+              "iters": 4,
+              "reps": 5,
+              "median_us": 185073,
+              "min_us": 176051
+            },
+            {
+              "name": "query.join-3way",
+              "ns_per_op": 120796000,
+              "ns_per_op_raw": 120853000,
+              "net_us": 120796,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 120853,
+              "min_us": 117917
+            },
+            {
+              "name": "query.negation",
+              "ns_per_op": 46795500,
+              "ns_per_op_raw": 46848500,
+              "net_us": 187182,
+              "ops": 4,
+              "iters": 4,
+              "reps": 5,
+              "median_us": 187394,
+              "min_us": 182115
+            },
+            {
+              "name": "query.aggregate",
+              "ns_per_op": 50688500,
+              "ns_per_op_raw": 50783750,
+              "net_us": 202754,
+              "ops": 4,
+              "iters": 4,
+              "reps": 5,
+              "median_us": 203135,
+              "min_us": 175538
+            },
+            {
+              "name": "query.rule-recursive",
+              "ns_per_op": 47863500,
+              "ns_per_op_raw": 47936000,
+              "net_us": 95727,
+              "ops": 2,
+              "iters": 2,
+              "reps": 5,
+              "median_us": 95872,
+              "min_us": 84991
+            },
+            {
+              "name": "query.asOf",
+              "ns_per_op": 45049000,
+              "ns_per_op_raw": 45103000,
+              "net_us": 45049,
+              "ops": 1,
+              "iters": 1,
+              "reps": 5,
+              "median_us": 45103,
+              "min_us": 41602
+            },
+            {
+              "name": "pull.nested",
+              "ns_per_op": 7363000,
+              "ns_per_op_raw": 7397250,
+              "net_us": 117808,
+              "ops": 16,
+              "iters": 16,
+              "reps": 5,
+              "median_us": 118356,
+              "min_us": 79034
+            },
+            {
+              "name": "store.assert-10k",
+              "ns_per_op": 79076,
+              "ns_per_op_raw": 79076,
+              "net_us": 790769,
+              "ops": 10000,
+              "iters": 1,
+              "reps": 1,
+              "median_us": 790769,
+              "min_us": 790769
+            }
+          ]
+        }
+      }
+    ],
+    "macro": [
+      {
+        "name": "boot.bare",
+        "wall_us_median": 11539,
+        "wall_us_min": 10934,
+        "reps": 3,
+        "peak_rss_bytes": 7077888
+      },
+      {
+        "name": "boot.stdlib-dylib",
+        "wall_us_median": 133916,
+        "wall_us_min": 129141,
+        "reps": 3,
+        "peak_rss_bytes": 81739776
+      },
+      {
+        "name": "boot.stdlib-source",
+        "wall_us_median": 310636,
+        "wall_us_min": 290203,
+        "reps": 3,
+        "peak_rss_bytes": 139673600
+      }
+    ]
+  }
+}

@@ -44,6 +44,7 @@ struct Range {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 struct PatternState {
     kind: Kind,
     literal: Vec<u8>,
@@ -94,7 +95,8 @@ struct MemoEntry {
 
 struct Matcher {
     source: Vec<u8>,
-    rules: Vec<(Oop, Oop)>,
+    rules: HashMap<usize, Oop>,
+    patterns: HashMap<usize, std::rc::Rc<PatternState>>,
     nodes: Vec<TempNode>,
     memo: HashMap<(usize, usize), MemoEntry>,
     furthest: usize,
@@ -357,24 +359,38 @@ fn note(matcher: &mut Matcher, position: usize) {
     matcher.furthest = matcher.furthest.max(position);
 }
 
-fn named_rule(rules: &[(Oop, Oop)], name: Oop) -> Option<Oop> {
-    rules
-        .iter()
-        .find(|(rule, _)| *rule == name)
-        .map(|(_, pattern)| *pattern)
+fn index_rules(rules: impl IntoIterator<Item = (Oop, Oop)>) -> HashMap<usize, Oop> {
+    let mut index = HashMap::new();
+    for (name, pattern) in rules {
+        index.entry(name as usize).or_insert(pattern);
+    }
+    index
+}
+
+fn named_rule(rules: &HashMap<usize, Oop>, name: Oop) -> Option<Oop> {
+    rules.get(&(name as usize)).copied()
 }
 
 fn match_pattern(matcher: &mut Matcher, pattern: Oop, position: usize) -> Option<MatchResult> {
-    let state = unsafe { state_ref(pattern) };
+    // Matching never calls the floor or user code. Keep each visited pattern's
+    // immutable data once per parse, while allowing recursive matching to mutate
+    // memo/CST scratch. Rc clones allocate nothing and hold no native-code roots.
+    // The Grammar owns the original graph throughout this synchronous match.
+    let state = std::rc::Rc::clone(
+        matcher
+            .patterns
+            .entry(pattern as usize)
+            .or_insert_with(|| std::rc::Rc::new(unsafe { state_ref(pattern) }.clone())),
+    );
     let kind = state.kind;
-    let literal = state.literal.clone();
-    let children = state.children.clone();
-    let ranges = state.ranges.clone();
+    let literal = &state.literal;
+    let children = &state.children;
+    let ranges = &state.ranges;
     let rule_name = state.rule_name;
     match kind {
         Kind::Literal => {
             if position + literal.len() > matcher.source.len()
-                || matcher.source[position..position + literal.len()] != literal
+                || matcher.source[position..position + literal.len()] != *literal
             {
                 note(matcher, position);
                 return None;
@@ -426,7 +442,7 @@ fn match_pattern(matcher: &mut Matcher, pattern: Oop, position: usize) -> Option
         Kind::Seq => {
             let mut at = position;
             let mut matched = Vec::new();
-            for child in children {
+            for child in children.iter().copied() {
                 let result = match_pattern(matcher, child, at)?;
                 matched.extend(result.children);
                 at = result.end;
@@ -437,7 +453,7 @@ fn match_pattern(matcher: &mut Matcher, pattern: Oop, position: usize) -> Option
             })
         }
         Kind::Choice => {
-            for child in children {
+            for child in children.iter().copied() {
                 if let Some(result) = match_pattern(matcher, child, position) {
                     return Some(result);
                 }
@@ -649,15 +665,12 @@ unsafe fn parse_grammar(grammar: Oop, source_object: Oop, root_object: Oop) -> O
     let root_name = unsafe { rule_symbol(api, root_object) };
     let rules = {
         let state = unsafe { grammar_ref(grammar) };
-        state
-            .rules
-            .iter()
-            .map(|rule| (rule.name, rule.pattern))
-            .collect::<Vec<_>>()
+        index_rules(state.rules.iter().map(|rule| (rule.name, rule.pattern)))
     };
     let mut matcher = Matcher {
         source,
         rules,
+        patterns: HashMap::new(),
         nodes: Vec::new(),
         memo: HashMap::new(),
         furthest: 0,
@@ -1236,6 +1249,9 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
     unsafe { bring_up(api) };
     ptr::null_mut()
 }
+
+#[cfg(test)]
+mod matching_tests;
 
 #[cfg(test)]
 mod tests {

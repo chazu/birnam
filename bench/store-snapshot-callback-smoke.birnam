@@ -1,0 +1,19 @@
+// Exercise the real callback seam, including mutation and GC after snapshotting.
+[System load: "modules/os.birnam"]
+let store := [Store new]
+let owner := [Object clone]
+let kept := #[[Object clone] [Object clone] [Object clone]]
+[store assert: #payload attr: #cardinality value: #many]
+[kept do: [:value | [store assert: owner attr: #payload value: value]]]
+let observed := [#[] asCell]
+[store liveTriplesDo: [:e :a :v |
+  [[a == #payload] ifTrue: [|
+    [observed set: [[observed value] add: v]]
+    [store retract: owner attr: #payload value: v]
+    [System gc]]]]]
+let expected := [kept reversed]
+let remaining := [0 asCell]
+[store liveTriplesDo: [:e :a :v | [[a == #payload] ifTrue: [| [remaining inc]]]]]
+[[[[observed value] = expected] & [[remaining value] = 0]]
+  ifTrue: [| [System println: "store-snapshot-callback-ok"]]
+  ifFalse: [| [System println: "store-snapshot-callback-failed"] [OS exit: 1]]]
