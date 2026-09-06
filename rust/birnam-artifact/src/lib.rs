@@ -7,6 +7,7 @@
 
 pub mod candidate;
 pub mod code_binding_inventory;
+pub mod digest;
 pub mod frame_descriptor;
 pub mod materialization_selection;
 #[cfg(feature = "module")]
@@ -16,6 +17,7 @@ pub mod portable_program;
 pub mod portable_resumable_manifest;
 pub mod resumable_manifest;
 pub mod stackless_selection;
+mod wire;
 
 pub const ABI: &[u8] = b"birnam-artifact-generation-v1";
 pub const TARGET: &[u8] = b"aarch64-macos";

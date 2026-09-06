@@ -1002,25 +1002,7 @@ fn push_directory(
     Ok(())
 }
 
-fn push_u32(output: &mut Vec<u8>, value: u32) {
-    output.extend_from_slice(&value.to_le_bytes());
-}
-
-fn push_u64(output: &mut Vec<u8>, value: u64) {
-    output.extend_from_slice(&value.to_le_bytes());
-}
-
-fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(
-        bytes.get(offset..offset + 4)?.try_into().ok()?,
-    ))
-}
-
-fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
-    Some(u64::from_le_bytes(
-        bytes.get(offset..offset + 8)?.try_into().ok()?,
-    ))
-}
+use super::wire::{push_u32, push_u64, read_u32, read_u64};
 
 fn align_up_8(value: usize) -> Result<usize, Error> {
     value

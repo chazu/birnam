@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Rust host and Codegen share the existing SHA-256 implementation. Artifact
+  formats share scalar byte helpers while retaining their checked/unchecked
+  offset behavior, independent validation policies, and provider-free bootstrap.
 - Store snapshots use transient ordered pair indexes instead of repeated
   whole-log scans. PEG indexes rule names and copies visited pattern data once
   per parse, preserving mutable grammars, memo identity and parse diagnostics.
