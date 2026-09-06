@@ -314,3 +314,18 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
   [Codegen evictMaterializations];
   [System gc];
   [t expect: [nested value] equals: 52 describes: "the nested Block keeps the shared native unit after eviction"]]];
+
+[s test: "repeated program views and fresh blocks survive GC and program replacement" do: [:t |
+  let original := [CodeProgram parameters: #["argument"] captures: #[] statements: #[[CodeStatement expression: [CodeNode lexicalReadAt: 0]]]];
+  let code := [CodeObject fromProgram: original];
+  let first := [Codegen materializeResumable: code captures: #[]];
+  let second := [Codegen materializeResumable: code captures: #[]];
+  let successor := [code withProgram: [CodeProgram parameters: #[] captures: #[] statements: #[[CodeStatement expression: [CodeNode integer: 92]]]]];
+  [1 to: 3 do: [:ignored |
+    [System gc];
+    [t expect: [code arity] equals: 1 describes: "original admitted arity stays live"];
+    [t expect: [successor arity] equals: 0 describes: "replacement owns separate metadata"];
+    [t expect: [[original parameterAt: 0] name] equals: "argument" describes: "binding name survives collection"];
+    [t expect: [first value: 73] equals: 73 describes: "first block remains executable"];
+    [t expect: [second value: 89] equals: 89 describes: "second block remains executable"]]];
+  [t expect: [first == second] equals: false describes: "metadata sharing does not share Block identity"]]];

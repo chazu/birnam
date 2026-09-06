@@ -3,6 +3,10 @@
 Status: investigation and proposed plan recorded, 2026-09-05; semantic approval
 pending. Ticket: `birnam-sorting-plan-byd`. No production changes.
 
+The review-ready contract and bootstrap plan are in
+[Design 73](73-scalable-ordering-contract.md). This document retains the original
+investigation evidence; the semantic decision remains pending.
+
 ## Evidence
 
 Rust `vector_sort_by` computes keys once in input order, roots elements/keys,

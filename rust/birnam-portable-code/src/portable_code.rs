@@ -215,7 +215,7 @@ fn append_node_tree(
                         let nested = unsafe { program_state(*program, runtime) }
                             .ok_or(ConstructorFailure::InvalidPortableProgram)?;
                         Some(OwnedNode::Block {
-                            program: nested.bytes.clone(),
+                            program: nested.bytes.to_vec(),
                             captures: captures.clone(),
                         })
                     }
@@ -462,7 +462,7 @@ struct StatementState {
 #[repr(C)]
 struct ProgramState {
     magic: u64,
-    bytes: Vec<u8>,
+    bytes: birnam_artifact::portable_program::ValidatedProgram,
 }
 
 #[repr(C)]
@@ -515,8 +515,7 @@ fn inspected_binding(
 )> {
     let state = unsafe { binding_state(receiver, runtime) }?;
     let program_state: &'static ProgramState = unsafe { program_state(state.program, runtime) }?;
-    let program: birnam_artifact::portable_program::Program<'static> =
-        birnam_artifact::portable_program::inspect(&program_state.bytes).ok()?;
+    let program: birnam_artifact::portable_program::Program<'static> = program_state.bytes.view();
     let binding = program.binding(state.index as usize)?;
     Some((state, binding))
 }
@@ -639,7 +638,7 @@ fn inspected_code_object(
 )> {
     let state = unsafe { code_object_state(object, runtime) }?;
     let program_state = unsafe { program_state(state.program, runtime) }?;
-    let program = birnam_artifact::portable_program::inspect(&program_state.bytes).ok()?;
+    let program = program_state.bytes.view();
     Some((state, program_state, program))
 }
 
@@ -653,17 +652,21 @@ unsafe extern "C" fn native_admit_program(bytes: *const u8, length: usize) -> Oo
         } else {
             unsafe { core::slice::from_raw_parts(bytes, length) }
         };
-        if let Err(error) = birnam_artifact::portable_program::inspect(bytes) {
-            return match error {
-                birnam_artifact::portable_program::Error::Quantity => {
-                    program_limit(runtime, b"PortableProgram bytes exceed a resource limit")
-                }
-                birnam_artifact::portable_program::Error::Format
-                | birnam_artifact::portable_program::Error::Name => {
-                    invalid_program(runtime, b"PortableProgram bytes are not canonical v1")
+        let bytes =
+            match birnam_artifact::portable_program::ValidatedProgram::copy_from_slice(bytes) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    return match error {
+                        birnam_artifact::portable_program::Error::Quantity => {
+                            program_limit(runtime, b"PortableProgram bytes exceed a resource limit")
+                        }
+                        birnam_artifact::portable_program::Error::Format
+                        | birnam_artifact::portable_program::Error::Name => {
+                            invalid_program(runtime, b"PortableProgram bytes are not canonical v1")
+                        }
+                    };
                 }
             };
-        }
         let program_vtable = runtime
             .import(b"CodeProgramVt")
             .unwrap_or(core::ptr::null_mut());
@@ -674,7 +677,7 @@ unsafe extern "C" fn native_admit_program(bytes: *const u8, length: usize) -> Oo
             crate::boundary::fatal_invariant("Portable Code families disappeared after activation")
         }
         let roots = runtime.temporary_root_scope();
-        let program = unsafe { allocate_program(runtime, program_vtable, bytes.to_vec()) };
+        let program = unsafe { allocate_program(runtime, program_vtable, bytes) };
         runtime.push_temporary_root(program);
         let object = unsafe {
             allocate_code_object(
@@ -704,9 +707,10 @@ unsafe extern "C" fn native_admit_program_with_provenance(
         } else {
             unsafe { core::slice::from_raw_parts(bytes, length) }
         };
-        if birnam_artifact::portable_program::inspect(bytes).is_err() {
+        let Ok(bytes) = birnam_artifact::portable_program::ValidatedProgram::copy_from_slice(bytes)
+        else {
             return invalid_program(runtime, b"PortableProgram bytes are not canonical v1");
-        }
+        };
         let program_vtable = runtime
             .import(b"CodeProgramVt")
             .unwrap_or(core::ptr::null_mut());
@@ -718,7 +722,7 @@ unsafe extern "C" fn native_admit_program_with_provenance(
         }
         let roots = runtime.temporary_root_scope();
         runtime.push_temporary_root(provenance);
-        let program = unsafe { allocate_program(runtime, program_vtable, bytes.to_vec()) };
+        let program = unsafe { allocate_program(runtime, program_vtable, bytes) };
         runtime.push_temporary_root(program);
         let object =
             unsafe { allocate_code_object(runtime, code_object_vtable, program, provenance) };
@@ -1087,9 +1091,7 @@ unsafe extern "C" fn code_object_arity(receiver: Oop, _args: *const Oop, count: 
         let Some(program) = (unsafe { program_state(state.program, runtime) }) else {
             crate::boundary::fatal_invariant("CodeObject lost its admitted CodeProgram")
         };
-        let Ok(program) = birnam_artifact::portable_program::inspect(&program.bytes) else {
-            crate::boundary::fatal_invariant("CodeObject program bytes became invalid")
-        };
+        let program = program.bytes.view();
         runtime.make_integer(i64::from(program.parameter_count))
     })
     .unwrap_or(core::ptr::null_mut())
@@ -1124,9 +1126,7 @@ unsafe extern "C" fn code_object_capture_schema(
         let Some(program_state) = (unsafe { program_state(state.program, runtime) }) else {
             crate::boundary::fatal_invariant("CodeObject lost its admitted CodeProgram")
         };
-        let Ok(program) = birnam_artifact::portable_program::inspect(&program_state.bytes) else {
-            crate::boundary::fatal_invariant("CodeObject program bytes became invalid")
-        };
+        let program = program_state.bytes.view();
         let Ok(vector_prototype) = runtime.import(b"Vector") else {
             return runtime.canonical().nil;
         };
@@ -1242,7 +1242,11 @@ unsafe fn program_state(receiver: Oop, runtime: &Runtime) -> Option<&'static Pro
     Some(unsafe { &*receiver.cast::<ProgramState>() })
 }
 
-unsafe fn allocate_program(runtime: &Runtime, vtable: Oop, bytes: Vec<u8>) -> Oop {
+unsafe fn allocate_program(
+    runtime: &Runtime,
+    vtable: Oop,
+    bytes: birnam_artifact::portable_program::ValidatedProgram,
+) -> Oop {
     let program = unsafe { runtime.allocate_instance_active(vtable, size_of::<ProgramState>()) };
     unsafe {
         program.cast::<ProgramState>().write(ProgramState {
@@ -1317,6 +1321,10 @@ unsafe extern "C" fn program_new(receiver: Oop, args: *const Oop, count: usize) 
             }
         };
         let vtable = unsafe { runtime.checked_vtable_of_active(receiver) };
+        let bytes =
+            birnam_artifact::portable_program::ValidatedProgram::new(bytes).unwrap_or_else(|_| {
+                crate::boundary::fatal_invariant("encoded CodeProgram bytes became invalid")
+            });
         let program = unsafe { allocate_program(runtime, vtable, bytes) };
         drop(roots);
         program
@@ -1340,9 +1348,7 @@ fn program_count(runtime: &Runtime, receiver: Oop, field: usize) -> Oop {
     let Some(state) = (unsafe { program_state(receiver, runtime) }) else {
         return runtime.canonical().nil;
     };
-    let Ok(program) = birnam_artifact::portable_program::inspect(&state.bytes) else {
-        crate::boundary::fatal_invariant("admitted CodeProgram bytes became invalid")
-    };
+    let program = state.bytes.view();
     let value = match field {
         0 | 1 => program.parameter_count,
         2 => program.capture_count,
@@ -1441,8 +1447,14 @@ fn decode_node_tree(
                 if program_vtable.is_null() {
                     return None;
                 }
-                let nested =
-                    unsafe { allocate_program(runtime, program_vtable, node.data.to_vec()) };
+                let bytes =
+                    birnam_artifact::portable_program::ValidatedProgram::copy_from_slice(node.data)
+                        .unwrap_or_else(|_| {
+                            crate::boundary::fatal_invariant(
+                                "nested CodeProgram bytes became invalid",
+                            )
+                        });
+                let nested = unsafe { allocate_program(runtime, program_vtable, bytes) };
                 runtime.push_temporary_root(nested);
                 let captures = (0..node.operand_count as usize)
                     .map(|operand| program.node_operand(index, operand))
@@ -1478,9 +1490,7 @@ unsafe extern "C" fn program_statement_at(receiver: Oop, args: *const Oop, count
         let Some(state) = (unsafe { program_state(receiver, runtime) }) else {
             return runtime.canonical().nil;
         };
-        let Ok(program) = birnam_artifact::portable_program::inspect(&state.bytes) else {
-            crate::boundary::fatal_invariant("admitted CodeProgram bytes became invalid")
-        };
+        let program = state.bytes.view();
         let Some(statement) = program.statement(index) else {
             return runtime.canonical().nil;
         };
@@ -1518,9 +1528,7 @@ fn program_binding_at(runtime: &Runtime, receiver: Oop, index: usize, partition:
     let Some(state) = (unsafe { program_state(receiver, runtime) }) else {
         return runtime.canonical().nil;
     };
-    let Ok(program) = birnam_artifact::portable_program::inspect(&state.bytes) else {
-        crate::boundary::fatal_invariant("admitted CodeProgram bytes became invalid")
-    };
+    let program = state.bytes.view();
     let let_count = program
         .binding_count
         .checked_sub(program.parameter_count)
@@ -1888,9 +1896,7 @@ unsafe extern "C" fn node_block_new(receiver: Oop, args: *const Oop, count: usiz
         let Some(program_state) = (unsafe { program_state(program, runtime) }) else {
             return type_mismatch(runtime, b"block program must be a CodeProgram");
         };
-        let Ok(inspected) = birnam_artifact::portable_program::inspect(&program_state.bytes) else {
-            return invalid_program(runtime, b"nested CodeProgram bytes are invalid");
-        };
+        let inspected = program_state.bytes.view();
         let values = match read_collection(runtime, collection, 4096) {
             Ok(values) => values,
             Err(CollectionFailure::TypeMismatch) => {

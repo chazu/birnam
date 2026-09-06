@@ -137,6 +137,99 @@ pub struct Program<'a> {
     bytes: &'a [u8],
 }
 
+/// Immutable canonical bytes with their already-validated root section layout.
+///
+/// Offsets, rather than borrowed pointers, make this owner freely movable.
+/// Every view borrows these exact bytes; callers cannot mutate the backing
+/// storage or reuse the layout with another program. Nested programs are fully
+/// validated on admission, just as they are by `inspect`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ValidatedProgram {
+    bytes: Vec<u8>,
+    layout: ProgramLayout,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ProgramLayout {
+    counts: [u32; 6],
+    sections: [core::ops::Range<usize>; 5],
+}
+
+impl ProgramLayout {
+    fn inspect(bytes: &[u8]) -> Result<Self, Error> {
+        let program = inspect(bytes)?;
+        let counts = [
+            program.parameter_count,
+            program.capture_count,
+            program.binding_count,
+            program.statement_count,
+            program.node_count,
+            program.operand_count,
+        ];
+        let sections = [
+            program.bindings,
+            program.statements,
+            program.nodes,
+            program.operands,
+            program.bytes,
+        ]
+        .map(|section| {
+            // inspect returns subslices of this same allocation, including
+            // empty sections. Only integer offsets survive the borrow.
+            let start = section.as_ptr().addr() - bytes.as_ptr().addr();
+            start..start + section.len()
+        });
+        Ok(Self { counts, sections })
+    }
+}
+
+impl ValidatedProgram {
+    pub fn new(bytes: Vec<u8>) -> Result<Self, Error> {
+        let layout = ProgramLayout::inspect(&bytes)?;
+        Ok(Self { bytes, layout })
+    }
+
+    /// Validate foreign bytes before allocating their immutable owned copy.
+    pub fn copy_from_slice(bytes: &[u8]) -> Result<Self, Error> {
+        let layout = ProgramLayout::inspect(bytes)?;
+        Ok(Self {
+            bytes: bytes.to_vec(),
+            layout,
+        })
+    }
+
+    /// Reconstitute a checked view without validation or scratch allocation.
+    pub fn view(&self) -> Program<'_> {
+        Program {
+            parameter_count: self.layout.counts[0],
+            capture_count: self.layout.counts[1],
+            binding_count: self.layout.counts[2],
+            statement_count: self.layout.counts[3],
+            node_count: self.layout.counts[4],
+            operand_count: self.layout.counts[5],
+            bindings: &self.bytes[self.layout.sections[0].clone()],
+            statements: &self.bytes[self.layout.sections[1].clone()],
+            nodes: &self.bytes[self.layout.sections[2].clone()],
+            operands: &self.bytes[self.layout.sections[3].clone()],
+            bytes: &self.bytes[self.layout.sections[4].clone()],
+        }
+    }
+}
+
+impl core::ops::Deref for ValidatedProgram {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+impl AsRef<[u8]> for ValidatedProgram {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 impl<'a> Program<'a> {
     pub fn binding(&self, index: usize) -> Option<Binding<'a>> {
         if index >= self.binding_count as usize {
@@ -695,6 +788,8 @@ fn validate_spec_postorder(
 }
 
 pub fn inspect(bytes: &[u8]) -> Result<Program<'_>, Error> {
+    #[cfg(test)]
+    tests::INSPECTION_COUNT.with(|count| count.set(count.get() + 1));
     let mut aggregate_bytes = 0usize;
     let mut root = None;
     let mut stack = vec![(bytes, 1usize)];
@@ -1117,6 +1212,78 @@ fn align8(value: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    thread_local! {
+        pub(super) static INSPECTION_COUNT: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    }
+
+    #[test]
+    fn owned_program_views_preserve_frozen_meaning_after_moves_and_source_changes() {
+        let fixtures: &[&[u8]] = &[
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-empty.bin"),
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-send.bin"),
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-nested-captures.bin"),
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-numeric-boundaries.bin"),
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-explicit-captures.bin"),
+        ];
+        let mut owners = Vec::new();
+        for fixture in fixtures {
+            let mut source = fixture.to_vec();
+            owners.push(super::ValidatedProgram::copy_from_slice(&source).unwrap());
+            source.fill(0);
+            source.clear();
+        }
+        // Moving/reallocating owners cannot invalidate their section offsets.
+        owners.reserve(100);
+        for (owner, fixture) in owners.iter().zip(fixtures) {
+            let expected = super::inspect(fixture).unwrap();
+            let before = INSPECTION_COUNT.with(|count| count.get());
+            for _ in 0..100 {
+                assert_eq!(owner.view(), expected);
+                assert_eq!(owner.as_ref(), *fixture);
+            }
+            assert_eq!(INSPECTION_COUNT.with(|count| count.get()), before);
+        }
+    }
+
+    #[test]
+    fn owned_program_admission_preserves_validation_errors() {
+        let fixture =
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-nested-captures.bin");
+        for length in 0..fixture.len() {
+            let bytes = &fixture[..length];
+            assert_eq!(
+                super::ValidatedProgram::copy_from_slice(bytes).unwrap_err(),
+                super::inspect(bytes).unwrap_err(),
+            );
+        }
+        // Exercise both foreign-copy and transferred-Vec constructors on
+        // corruption throughout the root and nested program, not just headers.
+        for index in 0..fixture.len() {
+            let mut bytes = fixture.to_vec();
+            bytes[index] ^= 0x80;
+            match super::inspect(&bytes) {
+                Ok(expected) => {
+                    assert_eq!(
+                        super::ValidatedProgram::copy_from_slice(&bytes)
+                            .unwrap()
+                            .view(),
+                        expected
+                    );
+                    assert_eq!(
+                        super::ValidatedProgram::new(bytes.clone()).unwrap().view(),
+                        expected
+                    );
+                }
+                Err(expected) => {
+                    assert_eq!(
+                        super::ValidatedProgram::copy_from_slice(&bytes).unwrap_err(),
+                        expected
+                    );
+                    assert_eq!(super::ValidatedProgram::new(bytes).unwrap_err(), expected);
+                }
+            }
+        }
+    }
     use sha2::{Digest, Sha256};
 
     use super::{ProgramSpec, encode, inspect};
@@ -1837,5 +2004,30 @@ mod tests {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect()
+    }
+    #[test]
+    #[ignore = "diagnostic scaling probe; host-gated timing acceptance is separate"]
+    fn validated_program_access_probe() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        let bytes =
+            include_bytes!("../../../abi/fixtures/portable-code-v1/program-nested-captures.bin");
+        let owner = super::ValidatedProgram::copy_from_slice(bytes).unwrap();
+        for cached in [false, true] {
+            let started = Instant::now();
+            for _ in 0..100_000 {
+                let view = if cached {
+                    black_box(&owner).view()
+                } else {
+                    super::inspect(black_box(bytes)).unwrap()
+                };
+                black_box(view);
+            }
+            eprintln!(
+                "program bytes={} cached={cached} ns={}",
+                bytes.len(),
+                started.elapsed().as_nanos() / 100_000
+            );
+        }
     }
 }

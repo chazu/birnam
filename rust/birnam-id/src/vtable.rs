@@ -48,6 +48,9 @@ struct VtableRecord {
     keys: Vec<Oop>,
     values: Vec<Oop>,
     weak_keys: Vec<bool>,
+    // Derived identity lookup only. Ordered vectors retain raw-view and GC
+    // authority; these integer addresses never add roots or cache dispatch.
+    key_indices: AddressMap<usize>,
     parent: Oop,
     owner: Oop,
     trace_hook: Option<TraceHook>,
@@ -57,6 +60,17 @@ struct VtableRecord {
 }
 
 impl VtableRecord {
+    fn key_index(&self, key: Oop) -> Option<usize> {
+        self.key_indices.get(&key.addr()).copied()
+    }
+
+    fn rebuild_key_indices(&mut self) {
+        self.key_indices.clear();
+        for (index, key) in self.keys.iter().enumerate() {
+            self.key_indices.insert(key.addr(), index);
+        }
+    }
+
     fn sync_raw_view(&mut self) {
         // SAFETY: raw is the live, uniquely runtime-owned payload allocated for
         // this record. No foreign call or other reference overlaps this update.
@@ -179,6 +193,7 @@ impl Vtables {
                 keys: Vec::new(),
                 values: Vec::new(),
                 weak_keys: Vec::new(),
+                key_indices: AddressMap::default(),
                 parent,
                 owner: core::ptr::null_mut(),
                 trace_hook: None,
@@ -288,6 +303,7 @@ impl Vtables {
     pub(crate) fn remove_dead_weak_bindings(&mut self, heap: &Heap) -> usize {
         let mut removed = 0usize;
         for record in self.by_address.values_mut() {
+            let original_length = record.keys.len();
             let mut index = 0usize;
             while index < record.keys.len() {
                 let key = record.keys[index];
@@ -302,6 +318,9 @@ impl Vtables {
                 } else {
                     index += 1;
                 }
+            }
+            if record.keys.len() != original_length {
+                record.rebuild_key_indices();
             }
             record.sync_raw_view();
         }
@@ -435,9 +454,7 @@ impl Vtables {
     pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         let record = self.record(vtable);
         record
-            .keys
-            .iter()
-            .position(|candidate| *candidate == selector)
+            .key_index(selector)
             // SAFETY: callers use this only for method dictionaries. Opaque
             // internal dictionaries are enumerated but never dispatched.
             .and_then(|index| unsafe { MethodAddress::from_oop(record.values[index]) })
@@ -446,11 +463,7 @@ impl Vtables {
     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         while !vtable.is_null() {
             let record = self.record(vtable);
-            if let Some(index) = record
-                .keys
-                .iter()
-                .position(|candidate| *candidate == selector)
-            {
+            if let Some(index) = record.key_index(selector) {
                 // SAFETY: dispatch reaches registered method dictionaries;
                 // opaque internal dictionaries are not receiver families.
                 return unsafe { MethodAddress::from_oop(record.values[index]) };
@@ -463,11 +476,7 @@ impl Vtables {
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         let method = MethodAddress::from_method(method);
         let record = self.record_mut(vtable);
-        if let Some(index) = record
-            .keys
-            .iter()
-            .position(|candidate| *candidate == selector)
-        {
+        if let Some(index) = record.key_index(selector) {
             let previous = core::mem::replace(&mut record.values[index], method.as_oop());
             record.sync_raw_view();
             let previous = unsafe { MethodAddress::from_oop(previous) }
@@ -477,6 +486,9 @@ impl Vtables {
         if record.keys.len() == record.logical_capacity {
             record.grow_dictionary();
         }
+        record
+            .key_indices
+            .insert(selector.addr(), record.keys.len());
         record.keys.push(selector);
         record.values.push(method.as_oop());
         record.weak_keys.push(false);
@@ -489,7 +501,7 @@ impl Vtables {
     /// MOP enumeration but are never dispatch families.
     pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
         let record = self.record_mut(vtable);
-        if let Some(index) = record.keys.iter().position(|candidate| *candidate == key) {
+        if let Some(index) = record.key_index(key) {
             record.values[index] = value;
             record.weak_keys[index] = true;
             record.sync_raw_view();
@@ -498,6 +510,7 @@ impl Vtables {
         if record.keys.len() == record.logical_capacity {
             record.grow_dictionary();
         }
+        record.key_indices.insert(key.addr(), record.keys.len());
         record.keys.push(key);
         record.values.push(value);
         record.weak_keys.push(true);
@@ -506,13 +519,11 @@ impl Vtables {
 
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         let record = self.record_mut(vtable);
-        let index = record
-            .keys
-            .iter()
-            .position(|candidate| *candidate == selector)?;
+        let index = record.key_index(selector)?;
         record.keys.remove(index);
         let removed = record.values.remove(index);
         record.weak_keys.remove(index);
+        record.rebuild_key_indices();
         record.sync_raw_view();
         // SAFETY: remove_method is used only for direct method dictionaries.
         unsafe { MethodAddress::from_oop(removed) }
@@ -624,6 +635,91 @@ mod tests {
             );
         }
         assert!(vtables.selector_at(parent, selectors.len()).is_null());
+    }
+
+    #[test]
+    fn indexed_mutations_preserve_order_and_current_inherited_resolution() {
+        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
+        let mut storage = [0usize; 64];
+        let selectors: Vec<Oop> = storage
+            .iter_mut()
+            .map(|v| core::ptr::from_mut(v).cast())
+            .collect();
+        for &selector in &selectors {
+            vtables.add_method(parent, selector, answer_3);
+        }
+        let mut expected: Vec<(Oop, usize)> = Vec::new();
+        let mut random = 17u64;
+        for _ in 0..1024 {
+            random = random.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let selector = selectors[(random >> 32) as usize % selectors.len()];
+            let position = expected.iter().position(|(key, _)| *key == selector);
+            if random & 3 == 0 {
+                let removed = position.map(|index| expected.remove(index).1);
+                assert_eq!(vtables.remove_method(child, selector).map(call), removed);
+            } else {
+                let value = if random & 4 == 0 { 1 } else { 2 };
+                vtables.add_method(
+                    child,
+                    selector,
+                    if value == 1 { answer_1 } else { answer_2 },
+                );
+                if let Some(index) = position {
+                    expected[index].1 = value;
+                } else {
+                    expected.push((selector, value));
+                }
+            }
+            for &key in &selectors {
+                let direct = expected
+                    .iter()
+                    .find(|(selector, _)| *selector == key)
+                    .map(|(_, value)| *value);
+                assert_eq!(vtables.direct_lookup(child, key).map(call), direct);
+                assert_eq!(
+                    vtables.lookup(child, key).map(call),
+                    Some(direct.unwrap_or(3))
+                );
+            }
+            for (index, (key, _)) in expected.iter().enumerate() {
+                assert_eq!(vtables.selector_at(child, index), *key);
+            }
+            assert!(vtables.selector_at(child, expected.len()).is_null());
+        }
+    }
+
+    #[test]
+    fn weak_index_compaction_preserves_middle_survivors_and_reinsertion() {
+        let (mut heap, mut vtables, _meta, parent, _child) = new_hierarchy();
+        let keys: Vec<_> = (0..9)
+            .map(|_| heap.allocate(0, Permanence::Collectable))
+            .collect();
+        for &key in &keys {
+            vtables.add_weak_opaque_binding(parent, key, key);
+        }
+        heap.clear_marks();
+        for index in [1, 4, 7] {
+            heap.mark_collectable_address(keys[index].addr());
+        }
+        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 6);
+        for (index, &key) in keys.iter().enumerate() {
+            assert_eq!(
+                vtables.record(parent).key_index(key).is_some(),
+                [1, 4, 7].contains(&index)
+            );
+        }
+        for (position, index) in [1, 4, 7].into_iter().enumerate() {
+            assert_eq!(vtables.selector_at(parent, position), keys[index]);
+        }
+        vtables.add_weak_opaque_binding(parent, keys[4], keys[1]);
+        assert_eq!(vtables.record(parent).values[1], keys[1]);
+        vtables.add_weak_opaque_binding(parent, keys[0], keys[0]);
+        assert_eq!(vtables.selector_at(parent, 3), keys[0]);
+        heap.clear_marks();
+        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 4);
+        assert!(vtables.record(parent).key_indices.is_empty());
+        vtables.add_weak_opaque_binding(parent, keys[7], keys[7]);
+        assert_eq!(vtables.record(parent).key_index(keys[7]), Some(0));
     }
 
     #[test]
@@ -825,5 +921,47 @@ mod tests {
         assert_eq!(vtables.parent_of(child), meta);
         vtables.set_parent(child, parent);
         assert_eq!(vtables.parent_of(child), parent);
+    }
+    #[test]
+    #[ignore = "diagnostic scaling probe; host-gated timing acceptance is separate"]
+    fn method_lookup_scaling() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        for count in [4, 32, 256, 4096] {
+            let (_heap, mut vtables, _meta, parent, _child) = new_hierarchy();
+            let mut owners: Vec<_> = (0..=count).map(Box::new).collect();
+            let keys: Vec<Oop> = owners
+                .iter_mut()
+                .map(|value| core::ptr::from_mut(value.as_mut()).cast())
+                .collect();
+            for &key in &keys[..count] {
+                vtables.add_method(parent, key, answer_1);
+            }
+            for (kind, key) in [("hit", keys[count - 1]), ("miss", keys[count])] {
+                for indexed in [false, true] {
+                    let started = Instant::now();
+                    for _ in 0..100_000 {
+                        let key = black_box(key);
+                        let result = if indexed {
+                            vtables.direct_lookup(parent, key)
+                        } else {
+                            let record = vtables.record(parent);
+                            record
+                                .keys
+                                .iter()
+                                .position(|candidate| *candidate == key)
+                                .and_then(|index| unsafe {
+                                    MethodAddress::from_oop(record.values[index])
+                                })
+                        };
+                        black_box(result);
+                    }
+                    eprintln!(
+                        "method count={count} kind={kind} indexed={indexed} ns={}",
+                        started.elapsed().as_nanos() / 100_000
+                    );
+                }
+            }
+        }
     }
 }

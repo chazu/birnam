@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- CodeProgram objects retain checked immutable layouts, so Block construction
+  and reflection reuse validated views. Global imports and method dictionaries
+  use derived identity indexes while preserving ordered enumeration, current
+  binding behavior and weak-key reclamation. Host-gated timing acceptance is
+  tracked separately from implementation and correctness verification.
 - Rust ordinary/portable C emission shares byte escaping, native providers and
   consumers share private ABI carriers, and data-only receipt validators share
   mechanical checks while retaining their schemas, diagnostics and policies.

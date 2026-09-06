@@ -15,18 +15,23 @@ Commit `.beads/issues.jsonl` with related work; the SQLite database is local.
 Before changing issues, `br where` must resolve this repository's `.beads/`,
 not the unrelated home-directory Maggie tracker.
 
-## Selected sequence — 2026-09-05
+## Selected sequence — 2026-09-06
 
-1. Close out [Design 65](../design/65-self-describing-project-publications.md)
-   self-describing project publications (`birnam-mtd`): complete acceptance,
-   verify Git/native dependency and relocation behavior, and record launch timing.
-2. Research and document [Design 66](../design/66-stackless-throughput-recovery.md)
-   stackless throughput recovery (`birnam-v0j`): refresh focused evidence,
-   identify the dominant costs, and propose bounded optimization slices preserving
-   stackless execution and lifecycle contracts. Implementation follows the plan.
+Epic `birnam-epic-as7` owns performance preparation for further self-hosting and
+Linux support. The dependency graph and acceptance state live in Beads; the
+execution map is [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md).
 
-Issue IDs and validation evidence live in Beads. Design documents describe
-contracts and plans; this page does not duplicate issue status.
+1. Close Store/PEG startup and docgen performance acceptance.
+2. Implement validated CodeProgram metadata reuse, indexed global imports and
+   indexed method dictionaries within the existing contracts.
+3. Review [Design 73](../design/73-scalable-ordering-contract.md), the proposed
+   sorting/String contract. Implementation remains blocked until acceptance.
+4. After explicit decisions, implement the remaining collection, Store,
+   allocation and Linux stories in dependency order.
+
+Design tickets remain open until their decision is accepted; writing a proposal
+alone does not unblock implementation. Preserve the independent Rust cold
+bootstrap and existing benchmark thresholds.
 
 ## Cleanup decision
 
