@@ -6,7 +6,7 @@
 
 use birnam_artifact::portable_program::{self, NodeKind, StatementKind};
 
-use crate::TranslationUnit;
+use crate::{TranslationUnit, c_string::push_c_string_body};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -295,27 +295,55 @@ fn decimal(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(value.to_string().as_bytes());
 }
 
-fn push_c_string_body(output: &mut Vec<u8>, bytes: &[u8]) {
-    for &byte in bytes {
-        match byte {
-            b'"' => output.extend_from_slice(br#"\""#),
-            b'\\' => output.extend_from_slice(br#"\\"#),
-            b'\n' => output.extend_from_slice(br#"\n"#),
-            b'\r' => output.extend_from_slice(br#"\r"#),
-            b'\t' => output.extend_from_slice(br#"\t"#),
-            0x20..=0x7e => output.push(byte),
-            other => output.extend_from_slice(&[
-                b'\\',
-                b'0' + ((other >> 6) & 7),
-                b'0' + ((other >> 3) & 7),
-                b'0' + (other & 7),
-            ]),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn both_string_emitters_preserve_every_byte_and_adjacent_pair() {
+        // Independent spelling oracle: formatted octal rather than the emitter's
+        // shifts. Every pair includes octal/hex digits after escaped bytes.
+        fn expected(bytes: &[u8]) -> Vec<u8> {
+            let mut result = String::new();
+            for &byte in bytes {
+                match byte {
+                    b'"' => result.push_str("\\\""),
+                    b'\\' => result.push_str("\\\\"),
+                    b'\n' => result.push_str("\\n"),
+                    b'\r' => result.push_str("\\r"),
+                    b'\t' => result.push_str("\\t"),
+                    32..=126 => result.push(char::from(byte)),
+                    _ => result.push_str(&format!("\\{byte:03o}")),
+                }
+            }
+            result.into_bytes()
+        }
+        fn check(bytes: &[u8]) {
+            let body = expected(bytes);
+            let mut ordinary = crate::Emitter::default();
+            ordinary.push(b"prefix:");
+            ordinary.push_c_string_body(bytes);
+            assert_eq!(ordinary.finish(), [b"prefix:".as_slice(), &body].concat());
+            let mut portable = b"prefix:".to_vec();
+            super::emit_bytes_constructor(&mut portable, b"ctor", bytes);
+            assert_eq!(
+                portable,
+                [
+                    b"prefix:ctor(\"".as_slice(),
+                    &body,
+                    format!("\",{}L)", bytes.len()).as_bytes()
+                ]
+                .concat()
+            );
+        }
+        check(&[]);
+        check(&(0..=255).collect::<Vec<u8>>());
+        for first in 0..=255 {
+            check(&[first]);
+            for second in 0..=255 {
+                check(&[first, second]);
+            }
+        }
+    }
+
     use birnam_artifact::portable_program::{
         LetSpec, NodeSpec, ProgramSpec, StatementSpec, encode,
     };

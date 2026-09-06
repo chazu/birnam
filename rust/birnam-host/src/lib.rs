@@ -10249,3 +10249,4 @@ mod tests {
 
 pub mod bootstrap_receipt;
 pub mod publication_receipt;
+mod receipt_validation;

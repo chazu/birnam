@@ -72,16 +72,7 @@ struct CompensationReservation {
     facts: usize,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct StoreCompensationApiV1 {
-    abi_version: u32,
-    byte_size: usize,
-    reserve: unsafe extern "C" fn(usize, usize) -> core::ffi::c_int,
-    consume: unsafe extern "C" fn(usize, usize) -> core::ffi::c_int,
-    release: unsafe extern "C" fn(usize) -> usize,
-    reserved: unsafe extern "C" fn(usize) -> usize,
-}
+use birnam_abi::private::StoreCompensationApiV1;
 
 #[repr(C)]
 struct CellState {

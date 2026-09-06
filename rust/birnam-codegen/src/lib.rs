@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+mod c_string;
 pub mod portable;
 pub mod portable_c;
 pub mod resumable;
@@ -923,26 +924,7 @@ impl Emitter {
     }
 
     pub fn push_c_string_body(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            match byte {
-                b'"' => self.push(br#"\""#),
-                b'\\' => self.push(br#"\\"#),
-                b'\n' => self.push(br#"\n"#),
-                b'\r' => self.push(br#"\r"#),
-                b'\t' => self.push(br#"\t"#),
-                0x20..=0x7e => self.bytes.push(byte),
-                other => {
-                    // Three octal digits avoid greedy `\\x` parsing when the
-                    // following source byte is itself a hexadecimal digit.
-                    self.bytes.extend_from_slice(&[
-                        b'\\',
-                        b'0' + ((other >> 6) & 7),
-                        b'0' + ((other >> 3) & 7),
-                        b'0' + (other & 7),
-                    ]);
-                }
-            }
-        }
+        c_string::push_c_string_body(&mut self.bytes, bytes);
     }
 
     pub fn emit_small_int(&mut self, value: i64) {

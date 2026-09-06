@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Rust ordinary/portable C emission shares byte escaping, native providers and
+  consumers share private ABI carriers, and data-only receipt validators share
+  mechanical checks while retaining their schemas, diagnostics and policies.
 - Rust host and Codegen share the existing SHA-256 implementation. Artifact
   formats share scalar byte helpers while retaining their checked/unchecked
   offset behavior, independent validation policies, and provider-free bootstrap.

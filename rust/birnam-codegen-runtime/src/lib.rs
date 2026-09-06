@@ -388,12 +388,7 @@ struct RetainedGeneration {
     rollback_leases: Vec<StacklessGenerationLeaseV1>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-#[repr(C)]
-struct StacklessGenerationLeaseV1 {
-    token_index: u64,
-    token_generation: u64,
-}
+use birnam_abi::private::StacklessGenerationLeaseV1;
 
 #[derive(Clone)]
 struct MappedImageResumables;
@@ -496,16 +491,7 @@ struct InitializerTransaction {
     writes: Vec<CandidateGlobalMutation>,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct StoreCompensationApiV1 {
-    abi_version: u32,
-    byte_size: usize,
-    reserve: unsafe extern "C" fn(usize, usize) -> c_int,
-    consume: unsafe extern "C" fn(usize, usize) -> c_int,
-    release: unsafe extern "C" fn(usize) -> usize,
-    reserved: unsafe extern "C" fn(usize) -> usize,
-}
+use birnam_abi::private::StoreCompensationApiV1;
 
 static STORE_COMPENSATION_API: OnceLock<StoreCompensationApiV1> = OnceLock::new();
 

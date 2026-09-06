@@ -6,11 +6,9 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 pub const PUBLICATION_RECEIPT_SCHEMA: u32 = 1;
 pub const PUBLICATION_RECEIPT_SCOPE: &str = "staging-publication-v1";
@@ -76,75 +74,29 @@ fn error(message: impl Into<String>) -> PublicationReceiptError {
     PublicationReceiptError(message.into())
 }
 
-fn valid_digest(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-}
+const DIAGNOSTICS: super::receipt_validation::Diagnostics =
+    super::receipt_validation::Diagnostics::Publication;
+
+use super::receipt_validation::valid_digest;
 
 fn safe_name(value: &str, label: &str) -> Result<(), PublicationReceiptError> {
-    if value.is_empty()
-        || value.contains('/')
-        || value.contains('\\')
-        || value == "."
-        || value == ".."
-        || value.bytes().any(|byte| byte.is_ascii_control())
-    {
-        return Err(error(format!("{label} is not a safe name: {value:?}")));
-    }
-    Ok(())
+    super::receipt_validation::safe_name(value, label).map_err(error)
 }
 
 fn safe_relative_path(path: &Path, label: &str) -> Result<(), PublicationReceiptError> {
-    if path.as_os_str().is_empty() || path.is_absolute() {
-        return Err(error(format!("{label} must be a relative path")));
-    }
-    for component in path.components() {
-        if !matches!(component, Component::Normal(_)) {
-            return Err(error(format!(
-                "{label} escapes the publication root: {path:?}"
-            )));
-        }
-    }
-    Ok(())
+    super::receipt_validation::safe_relative_path(path, label, &DIAGNOSTICS).map_err(error)
 }
 
 fn sha256_file(path: &Path) -> Result<String, PublicationReceiptError> {
-    let bytes = fs::read(path)
-        .map_err(|source| error(format!("cannot read {}: {source}", path.display())))?;
-    Ok(hex::encode(Sha256::digest(bytes)))
+    super::receipt_validation::sha256_file(path).map_err(error)
 }
 
 fn contained_file(
     root: &Path,
-    relative: &Path,
+    path: &Path,
     label: &str,
 ) -> Result<PathBuf, PublicationReceiptError> {
-    safe_relative_path(relative, label)?;
-    let mut cursor = root.to_path_buf();
-    for component in relative.components() {
-        let Component::Normal(part) = component else {
-            return Err(error(format!("{label} contains a non-normal component")));
-        };
-        cursor.push(part);
-        let metadata = fs::symlink_metadata(&cursor).map_err(|source| {
-            error(format!(
-                "{label} is unavailable at {}: {source}",
-                cursor.display()
-            ))
-        })?;
-        if metadata.file_type().is_symlink() {
-            return Err(error(format!(
-                "{label} contains a symlink: {}",
-                cursor.display()
-            )));
-        }
-    }
-    let canonical = cursor
-        .canonicalize()
-        .map_err(|source| error(format!("{label} cannot be canonicalized: {source}")))?;
-    if !canonical.starts_with(root) {
-        return Err(error(format!("{label} escapes the publication root")));
-    }
-    Ok(canonical)
+    super::receipt_validation::contained_file(root, path, label, &DIAGNOSTICS).map_err(error)
 }
 
 fn validate_identity(
@@ -275,8 +227,90 @@ pub fn parse_and_validate(
 mod tests {
     use super::*;
     use serde_json::json;
+    use sha2::{Digest, Sha256};
+    use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn pins_mechanical_policy_and_exact_diagnostics() {
+        for name in ["", ".", "..", "a/b", "a\\b", "a\n"] {
+            assert_eq!(
+                safe_name(name, "name").unwrap_err().0,
+                format!("name is not a safe name: {name:?}")
+            );
+        }
+        for name in ["ok", "a b", "é", "..."] {
+            safe_name(name, "name").unwrap();
+        }
+        assert!(valid_digest(&"A".repeat(64)));
+        assert!(!valid_digest(&"a".repeat(63)));
+        assert!(!valid_digest(&"g".repeat(64)));
+        for path in ["", "/absolute"] {
+            assert_eq!(
+                safe_relative_path(Path::new(path), "path").unwrap_err().0,
+                "path must be a relative path"
+            );
+        }
+        for path in [".", "../outside", "a/../b"] {
+            let path = Path::new(path);
+            let label = "path";
+            let expected = format!("{label} escapes the publication root: {path:?}");
+            let actual = safe_relative_path(path, label).unwrap_err().0;
+            assert_eq!(actual, expected);
+            assert_eq!(actual.capacity(), expected.capacity());
+        }
+        // Path::components intentionally normalizes interior dots and slashes.
+        safe_relative_path(Path::new("a/./b//"), "path").unwrap();
+        let fixture = Fixture::new();
+        let root = fixture.root.canonicalize().unwrap();
+        assert_eq!(
+            contained_file(&root, Path::new("missing/../x"), "file")
+                .unwrap_err()
+                .0,
+            "file escapes the publication root: \"missing/../x\""
+        );
+        let missing = root.join("missing");
+        let source = fs::symlink_metadata(&missing).unwrap_err();
+        assert_eq!(
+            contained_file(&root, Path::new("missing/child"), "file")
+                .unwrap_err()
+                .0,
+            format!("file is unavailable at {}: {source}", missing.display())
+        );
+        let source = fs::read(&missing).unwrap_err();
+        assert_eq!(
+            sha256_file(&missing).unwrap_err().0,
+            format!("cannot read {}: {source}", missing.display())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinks_at_each_depth_through_public_validator() {
+        use std::os::unix::fs::symlink;
+        let fixture = Fixture::new();
+        let root = fixture.root.canonicalize().unwrap();
+        symlink("absent", root.join("stage/dangling")).unwrap();
+        symlink("..", root.join("stage/link")).unwrap();
+        for (path, first_link) in [
+            ("stage/dangling", "stage/dangling"),
+            ("stage/link/source.json", "stage/link"),
+        ] {
+            let bytes = mutate(&fixture, |value| {
+                value["artifacts"][0]["path"] = json!(path);
+            });
+            assert_eq!(
+                parse_and_validate(&bytes, &fixture.root, &fixture.expected)
+                    .unwrap_err()
+                    .0,
+                format!(
+                    "published artifact contains a symlink: {}",
+                    root.join(first_link).display()
+                )
+            );
+        }
+    }
 
     struct Fixture {
         root: PathBuf,

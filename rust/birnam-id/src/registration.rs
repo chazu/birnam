@@ -31,12 +31,7 @@ const MAX_LANGUAGE_ARITY: u32 = 4096;
 
 /// Opaque process-local capability returned to the candidate repository while
 /// an overwritten resumable implementation remains a rollback target.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-#[repr(C)]
-pub(crate) struct BirnamStacklessGenerationLeaseV1 {
-    token_index: u64,
-    token_generation: u64,
-}
+pub(crate) use birnam_abi::private::StacklessGenerationLeaseV1 as BirnamStacklessGenerationLeaseV1;
 
 #[repr(C)]
 pub(crate) struct BirnamResumableRegistrationV1 {
