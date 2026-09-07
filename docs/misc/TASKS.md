@@ -17,6 +17,12 @@ not the unrelated home-directory Maggie tracker.
 
 ## Selected sequence — 2026-09-06
 
+The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),
+malleable multicore execution, guarded optimization/deoptimization, and a bounded
+execution experiment. It is proposed for review. The prior implementation
+sequence is paused while this direction is examined; existing Beads dependencies
+and pending timing acceptance are unchanged.
+
 Epic `birnam-epic-as7` owns performance preparation for further self-hosting and
 Linux support. The dependency graph and acceptance state live in Beads; the
 execution map is [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md).
@@ -32,6 +38,17 @@ execution map is [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md).
 Design tickets remain open until their decision is accepted; writing a proposal
 alone does not unblock implementation. Preserve the independent Rust cold
 bootstrap and existing benchmark thresholds.
+
+## Code-quality review proposals — 2026-09-06
+
+- [Design 75](../design/75-code-quality-and-responsibility.md) covers shared
+  language rules, exact-floor symbol lookup, Codegen and host responsibilities,
+  relational adapters, and migration-era lint/comment cleanup.
+- [Design 76](../design/76-documentation-cleanup-and-archives.md) covers current
+  documentation corrections, surviving-contract ownership, and archival moves.
+
+Both are proposed for review. Writing them does not begin implementation or
+archiving, change existing Beads dependencies, or close timing acceptance.
 
 ## Cleanup decision
 
