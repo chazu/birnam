@@ -1,7 +1,10 @@
 # 73 — Scalable sorting and String ordering
 
-**Status: proposed for human review, 2026-09-06. No ordering implementation is
-authorized by this document until its decisions are accepted.**
+**Status: ACCEPTED 2026-09-09. The user accepted both section 1 decisions (the
+sorting contract and the String traversal contract), including the section 3
+input/result behavior and the section 5 send/boot behavior. Implementation
+proceeds as two separate stories, `birnam-epic-as7.5` (stable scalable sorting)
+and `birnam-epic-as7.6` (early-exit String ordering), under section 7.**
 
 Epic: `birnam-epic-as7`. Design gate: `birnam-sorting-plan-byd`.
 Implementation: `birnam-epic-as7.5` (sorting) and `birnam-epic-as7.6` (String).
@@ -199,10 +202,12 @@ not waived by accepting this design.
 
 ## 8. Review checkpoint
 
-The requested decision is whether to accept the two contracts in section 1,
+The requested decision was whether to accept the two contracts in section 1,
 including the input/result behavior in section 3 and String send/boot behavior
-in section 5. An accepted decision should be recorded here and in
-`birnam-sorting-plan-byd` before that gate closes.
+in section 5. **Decision: both accepted by the user on 2026-09-09**, recorded
+here and on `birnam-sorting-plan-byd` (closed). The pending timing work named
+in section 7 closed the same day (Design 68/71 acceptance); implementation
+acceptance for the two stories still requires their own host-gated evidence.
 
 The Map, Store, allocation and Linux designs remain separate future reviews.
 No sorting or String implementation has been changed for this proposal.

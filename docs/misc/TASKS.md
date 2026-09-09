@@ -19,7 +19,8 @@ not the unrelated home-directory Maggie tracker.
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),
 malleable multicore execution, guarded optimization/deoptimization, and a bounded
-execution experiment. It is proposed for review. The prior implementation
+execution experiment. On 2026-09-09 the user authorized its E0 legality proof
+only (a document, no execution change); the rest remains proposed. The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 
@@ -35,8 +36,9 @@ execution map is [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md).
    indexed method dictionaries within the existing contracts.~~ Implemented
    2026-09-06; timing acceptance closed 2026-09-09 (see
    [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md)).
-3. Review [Design 73](../design/73-scalable-ordering-contract.md), the proposed
-   sorting/String contract. Implementation remains blocked until acceptance.
+3. ~~Review [Design 73](../design/73-scalable-ordering-contract.md), the proposed
+   sorting/String contract.~~ Accepted 2026-09-09; `birnam-epic-as7.5` and
+   `birnam-epic-as7.6` are implementable in that order.
 4. After explicit decisions, implement the remaining collection, Store,
    allocation and Linux stories in dependency order.
 
