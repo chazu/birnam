@@ -603,10 +603,21 @@ promotion. Freeze this criterion before measurement if the experiment is
 accepted. It is an experiment selection threshold, not an Objective-C parity
 promise or a replacement for release gates.
 
-The user left timing acceptance pending. Implementing a harness or passing E2
-would not close it. If the existing host gates refuse a run, retain correctness
-results and leave timing pending; do not waive AC/load/thermal requirements or
-change frozen benchmark names, bodies, or thresholds to obtain acceptance.
+**Amended 2026-09-09 by operator decision, after measurement.** The 20%
+figure was frozen in [74C §2](74c-e2-matrix-and-e3-measurement.md) and
+measured at −17.1% / −20.3% (1,024 iterations, empty / `step:` body) and
+−13.2% / −13.7% (16,384), every improvement exceeding its run-to-run spread
+and no reported case regressing. The operator withdrew the percentage
+threshold entirely: a change whose equivalence is proven (E0) and exercised
+(E2), that regresses nothing, and whose improvement exceeds run-to-run
+variation, is accepted on that improvement, whatever its size. Percentage
+thresholds remain appropriate for choosing between competing hypotheses and
+for release regression gates (Design 46); they are not a bar a zero-downside
+change has to clear. Under the amended criterion E3 is met and §7.6's winning
+branch applies. The operator sequenced the box-elision hypothesis
+([74D](74d-e4-slot-index-box-elision.md)) ahead of the production slot-access
+slice proposal, so that proposal is deferred, not waived. The frozen 74C record
+keeps its original verdict.
 
 ### 7.6 Stop and review
 
@@ -664,7 +675,7 @@ must not embed Darwin assumptions into portable executable meaning.
 | Guarded execution before restricting Machine reflection | Recommended investigation |
 | E0 legality proof for guarded slot access | Delivered as [Design 74A](74a-e0-guarded-slot-access-legality.md); reviewed and accepted by the user on 2026-09-09 |
 | E1 baseline and one guarded path | Authorized and delivered 2026-09-09 as [Design 74B](74b-e1-guarded-slot-access-implementation.md): feature-gated dev prefix, explicit emission selection, fixture and driver; first diagnostic −15% to −23% with every guard hit |
-| E2–E3 and the 20% continuation threshold | Delivered 2026-09-09 as [Design 74C](74c-e2-matrix-and-e3-measurement.md): E2 identical in every row; E3 criterion frozen then measured and **not met** (13–20% real gain, allocation dominant); next hypothesis (slot-index box elision on the hit path) proposed, not authorized |
+| E2–E3 and the 20% continuation threshold | Delivered 2026-09-09 as [Design 74C](74c-e2-matrix-and-e3-measurement.md): E2 identical in every row; E3 criterion frozen then measured and **not met at 20%** (13–20% real gain, allocation dominant). Same day the operator **withdrew the percentage threshold** (§7.5 amendment: proven-equivalent, non-regressing, above-spread improvements are accepted at any size): E3 is met as amended, the production slice proposal is deferred behind the box-elision hypothesis ([74D](74d-e4-slot-index-box-elision.md)), which is written up and under adversarial review, not yet authorized |
 | General deoptimization, inlining, or unboxing | Future possibilities requiring separate proof and implementation review |
 | Objective-C execution comparison | Comparative evidence, not promised parity or a runtime dependency |
 

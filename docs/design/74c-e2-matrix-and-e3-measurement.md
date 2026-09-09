@@ -3,7 +3,9 @@
 > **Status: E2 delivered, E3 protocol frozen and measured 2026-09-09 under the
 > user's authorization of both; the §3 measurements were taken only after the
 > commit that froze §2. E3 verdict: the frozen 20% criterion is not met (13–20%
-> real improvement, every guard hit); the next hypothesis in §3.5 is a proposal. Development-only throughout: the E1
+> real improvement, every guard hit); the operator later withdrew the
+> percentage threshold (§3.2a), under which E3 is met; the next hypothesis in §3.5 is written
+> up as [Design 74D](74d-e4-slot-index-box-elision.md). Development-only throughout: the E1
 > artifact ([Design 74B](74b-e1-guarded-slot-access-implementation.md)) is
 > unchanged by this document. A production slot-access slice is not proposed
 > here; Design 74 §7.6 governs what a positive result may lead to.**
@@ -145,6 +147,19 @@ so the gain is real, but only the `step:` body at 1,024 reaches the frozen 20%
 and the 16,384 cases sit at 13%. No reported case regressed. Under Design 74
 §7.6 this is the "report the outcome and review the next hypothesis
 separately" branch, not authorization for anything further.
+
+### 3.2a Operator relaxation (recorded after the frozen verdict)
+
+Later on 2026-09-09 the operator withdrew the percentage threshold (Design 74
+§7.5 amendment): a proven-equivalent change that regresses nothing and
+improves by more than its run-to-run spread is accepted at any size. Every
+judged case passes that test (−17.1%, −20.3%, −13.2%, −13.7%, each exceeding
+its spread), so E3 is met as amended. The frozen verdict above stands as the
+record of what the pre-registered criterion produced; the relaxation is an
+operator decision about what to do with a real 13–20% gain, not a
+re-measurement. The §3.5 hypothesis is being written up and reviewed first
+([Design 74D](74d-e4-slot-index-box-elision.md)); the §7.6 production slice
+proposal is deferred behind it.
 
 ### 3.3 Why the gain is bounded
 
