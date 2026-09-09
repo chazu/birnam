@@ -13,8 +13,10 @@ loader ports are complete.
 - CodeProgram objects retain checked immutable layouts, so Block construction
   and reflection reuse validated views. Global imports and method dictionaries
   use derived identity indexes while preserving ordered enumeration, current
-  binding behavior and weak-key reclamation. Host-gated timing acceptance is
-  tracked separately from implementation and correctness verification.
+  binding behavior and weak-key reclamation. Host-gated timing acceptance
+  closed on 2026-09-09 (`docs/measurements/as7-acceptance-comparison.json`):
+  Block construction and CodeObject reflection measurably cheaper, the global
+  and method indexes timing-neutral at probe scale, docgen 39.6 to 29.4 s.
 - Rust ordinary/portable C emission shares byte escaping, native providers and
   consumers share private ABI carriers, and data-only receipt validators share
   mechanical checks while retaining their schemas, diagnostics and policies.
@@ -44,6 +46,16 @@ loader ports are complete.
 - Ordinary project launch preflights its selected closure once. A nine-module
   Git/native fixture measured 1.228 s before and 0.826 s after this change
   (five warm launches, release runtime; diagnostic evidence in Design 65).
+
+### Fixed
+
+- Stdlib boot regained the ~10 ms that the PEG pattern-snapshot tables and
+  per-vtable method indexes had added: parse-local PEG tables now hash
+  integer keys with an address hasher, and method dictionaries of at most 16
+  keys scan instead of maintaining a hash index. Host-gated against the
+  pre-Design-68 baseline: dylib boot 107 to 86 ms, source boot 271 to 242 ms,
+  `parse.json-20kb` 362 to 310 ms, docgen 39.6 to 29.4 s. The earlier
+  dylib-startup RSS growth did not reproduce (65.5 MB on every run).
 
 ## [0.14.0] — 2026-08-27
 

@@ -1,0 +1,3511 @@
+{
+ "schema": "birnam-epic-as7-acceptance-comparison-v1",
+ "description": "Host-gated repeat of the Design 68/71 startup/docgen acceptance cases plus the epic as7 initial-implementation (CodeProgram metadata, global index, method index) timing acceptance. Canonical scripts/bench.sh measurement and host-monitoring functions unchanged; driver copy retains micro, parse, relational, the selfhost probe suite, and the boot/script/docgen macros (gc, image, boot.image and compile.stage1-stdlib invocations removed). Development repetitions and unchanged host thresholds.",
+ "runs": {
+  "before": {
+   "stamp": {
+    "sha": "21cf6d7b",
+    "dirty": false,
+    "version": "0.14.0",
+    "date": "2026-09-09T15:18:02Z",
+    "machine": "Mac15,12",
+    "optimize": "ReleaseSafe",
+    "mode": "dev",
+    "quick": false,
+    "floor": "rust",
+    "floor_identity": "rust-id-v1",
+    "floor_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f",
+    "floor_dylib_bytes": 731504
+   },
+   "suites": [
+    {
+     "label": "micro",
+     "run": 1,
+     "data": {
+      "suite": "micro",
+      "cases": [
+       {
+        "name": "sends.unary",
+        "ns_per_op": 1259,
+        "ns_per_op_raw": 5446,
+        "net_us": 41268,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 178473,
+        "min_us": 166268
+       },
+       {
+        "name": "sends.keyword3",
+        "ns_per_op": 2257,
+        "ns_per_op_raw": 6714,
+        "net_us": 36989,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 110016,
+        "min_us": 108436
+       },
+       {
+        "name": "sends.dnu-mint",
+        "ns_per_op": 475,
+        "ns_per_op_raw": 4737,
+        "net_us": 15593,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 155249,
+        "min_us": 150916
+       },
+       {
+        "name": "blocks.value",
+        "ns_per_op": 198,
+        "ns_per_op_raw": 4300,
+        "net_us": 6490,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 140921,
+        "min_us": 137153
+       },
+       {
+        "name": "loops.to-do",
+        "ns_per_op": 33606,
+        "ns_per_op_raw": 33606,
+        "net_us": 137652,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 137652,
+        "min_us": 135903
+       },
+       {
+        "name": "loops.whileTrue",
+        "ns_per_op": 30704,
+        "ns_per_op_raw": 30704,
+        "net_us": 125767,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 125767,
+        "min_us": 124352
+       },
+       {
+        "name": "loops.timesRepeat",
+        "ns_per_op": 34123,
+        "ns_per_op_raw": 34123,
+        "net_us": 139768,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 139768,
+        "min_us": 138597
+       },
+       {
+        "name": "string.indexOf-native",
+        "ns_per_op": 261238,
+        "ns_per_op_raw": 293453,
+        "net_us": 133754,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 150248,
+        "min_us": 147789
+       },
+       {
+        "name": "string.split-native",
+        "ns_per_op": 2616281,
+        "ns_per_op_raw": 2649812,
+        "net_us": 167442,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 169588,
+        "min_us": 165277
+       },
+       {
+        "name": "string.scan-derived",
+        "ns_per_op": 2400858000,
+        "ns_per_op_raw": 2400906000,
+        "net_us": 2400858,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 2400906,
+        "min_us": 2120886
+       },
+       {
+        "name": "stringbuilder.build-10k",
+        "ns_per_op": 44478250,
+        "ns_per_op_raw": 44514500,
+        "net_us": 177913,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 178058,
+        "min_us": 156735
+       },
+       {
+        "name": "vector.push-10k",
+        "ns_per_op": 196685000,
+        "ns_per_op_raw": 196731000,
+        "net_us": 196685,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 196731,
+        "min_us": 183365
+       },
+       {
+        "name": "vector.at-random",
+        "ns_per_op": 1063,
+        "ns_per_op_raw": 6457,
+        "net_us": 17423,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 105805,
+        "min_us": 102654
+       },
+       {
+        "name": "vector.fold-sum",
+        "ns_per_op": 196946000,
+        "ns_per_op_raw": 196998000,
+        "net_us": 196946,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 196998,
+        "min_us": 186275
+       },
+       {
+        "name": "map.put-10k",
+        "ns_per_op": 208280000,
+        "ns_per_op_raw": 208323000,
+        "net_us": 208280,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 208323,
+        "min_us": 202767
+       },
+       {
+        "name": "map.at-hit",
+        "ns_per_op": 160,
+        "ns_per_op_raw": 5511,
+        "net_us": 5274,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 180605,
+        "min_us": 166994
+       },
+       {
+        "name": "map.at-miss",
+        "ns_per_op": 176,
+        "ns_per_op_raw": 5700,
+        "net_us": 5788,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 186796,
+        "min_us": 161376
+       },
+       {
+        "name": "cells.write",
+        "ns_per_op": 2525,
+        "ns_per_op_raw": 7962,
+        "net_us": 41373,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 130459,
+        "min_us": 126250
+       },
+       {
+        "name": "cells.read",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 5701,
+        "net_us": -1914,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 186811,
+        "min_us": 177254
+       },
+       {
+        "name": "error.raise-handle",
+        "ns_per_op": 26851,
+        "ns_per_op_raw": 70850,
+        "net_us": 54992,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 145101,
+        "min_us": 139256
+       },
+       {
+        "name": "error.propagate-5-deep",
+        "ns_per_op": 5582,
+        "ns_per_op_raw": 49372,
+        "net_us": 11433,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 101115,
+        "min_us": 96164
+       },
+       {
+        "name": "codegen.define-method",
+        "ns_per_op": 394578,
+        "ns_per_op_raw": 446492,
+        "net_us": 50506,
+        "ops": 128,
+        "iters": 128,
+        "reps": 5,
+        "median_us": 57151,
+        "min_us": 56364
+       },
+       {
+        "name": "ffi.wrapped-call",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 6598,
+        "net_us": -2198,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 108116,
+        "min_us": 103061
+       },
+       {
+        "name": "ffi.peek-poke",
+        "ns_per_op": 226,
+        "ns_per_op_raw": 5245,
+        "net_us": 7416,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 171874,
+        "min_us": 165961
+       },
+       {
+        "name": "vector.includes-miss",
+        "ns_per_op": 148273,
+        "ns_per_op_raw": 199220,
+        "net_us": 75916,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 102001,
+        "min_us": 101405
+       },
+       {
+        "name": "vector.reversed",
+        "ns_per_op": 1652640,
+        "ns_per_op_raw": 1698265,
+        "net_us": 105769,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 108689,
+        "min_us": 106754
+       },
+       {
+        "name": "vector.copy-1k",
+        "ns_per_op": 165951,
+        "ns_per_op_raw": 213062,
+        "net_us": 84967,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 109088,
+        "min_us": 106518
+       },
+       {
+        "name": "range.asVector",
+        "ns_per_op": 190112000,
+        "ns_per_op_raw": 190163000,
+        "net_us": 190112,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 190163,
+        "min_us": 176397
+       },
+       {
+        "name": "sends.compiled-unary",
+        "ns_per_op": 182,
+        "ns_per_op_raw": 5024,
+        "net_us": 5970,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 164653,
+        "min_us": 163063
+       }
+      ]
+     }
+    },
+    {
+     "label": "selfhost",
+     "run": 1,
+     "data": {
+      "suite": "selfhost",
+      "cases": [
+       {
+        "name": "blocks.create",
+        "ns_per_op": 698,
+        "ns_per_op_raw": 4753,
+        "net_us": 22897,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 155750,
+        "min_us": 153582
+       },
+       {
+        "name": "code.reflect-program",
+        "ns_per_op": 704,
+        "ns_per_op_raw": 4753,
+        "net_us": 23069,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 155775,
+        "min_us": 155678
+       },
+       {
+        "name": "code.traverse-statements",
+        "ns_per_op": 5718,
+        "ns_per_op_raw": 38909,
+        "net_us": 23425,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 159375,
+        "min_us": 157500
+       },
+       {
+        "name": "lookup.dict256-first",
+        "ns_per_op": 1155,
+        "ns_per_op_raw": 5307,
+        "net_us": 37850,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 173920,
+        "min_us": 172637
+       },
+       {
+        "name": "lookup.dict256-last",
+        "ns_per_op": 1405,
+        "ns_per_op_raw": 5709,
+        "net_us": 46044,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 187092,
+        "min_us": 185398
+       },
+       {
+        "name": "lookup.inherit-depth16",
+        "ns_per_op": 975,
+        "ns_per_op_raw": 5464,
+        "net_us": 31978,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 179069,
+        "min_us": 175761
+       },
+       {
+        "name": "globals.import-512",
+        "ns_per_op": 839,
+        "ns_per_op_raw": 5006,
+        "net_us": 27511,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 164060,
+        "min_us": 148354
+       },
+       {
+        "name": "globals.at-512",
+        "ns_per_op": 1295,
+        "ns_per_op_raw": 5495,
+        "net_us": 42448,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 180077,
+        "min_us": 178209
+       },
+       {
+        "name": "globals.rebind-512",
+        "ns_per_op": 2793,
+        "ns_per_op_raw": 6891,
+        "net_us": 45775,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 112911,
+        "min_us": 110645
+       }
+      ]
+     }
+    },
+    {
+     "label": "parse",
+     "run": 1,
+     "data": {
+      "suite": "parse",
+      "cases": [
+       {
+        "name": "parse.json-20kb",
+        "ns_per_op": 361852000,
+        "ns_per_op_raw": 361887000,
+        "net_us": 361852,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 361887,
+        "min_us": 358196
+       }
+      ]
+     }
+    },
+    {
+     "label": "relational",
+     "run": 1,
+     "data": {
+      "suite": "relational",
+      "cases": [
+       {
+        "name": "query.single-clause",
+        "ns_per_op": 598142000,
+        "ns_per_op_raw": 598203000,
+        "net_us": 598142,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 598203,
+        "min_us": 589158
+       },
+       {
+        "name": "query.join-3way",
+        "ns_per_op": 666471000,
+        "ns_per_op_raw": 666520000,
+        "net_us": 666471,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 666520,
+        "min_us": 664834
+       },
+       {
+        "name": "query.negation",
+        "ns_per_op": 592083000,
+        "ns_per_op_raw": 592132000,
+        "net_us": 592083,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 592132,
+        "min_us": 590559
+       },
+       {
+        "name": "query.aggregate",
+        "ns_per_op": 590224000,
+        "ns_per_op_raw": 590273000,
+        "net_us": 590224,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 590273,
+        "min_us": 589669
+       },
+       {
+        "name": "query.rule-recursive",
+        "ns_per_op": 588208000,
+        "ns_per_op_raw": 588260000,
+        "net_us": 588208,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 588260,
+        "min_us": 587833
+       },
+       {
+        "name": "query.asOf",
+        "ns_per_op": 372347000,
+        "ns_per_op_raw": 372400000,
+        "net_us": 372347,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 372400,
+        "min_us": 371655
+       },
+       {
+        "name": "pull.nested",
+        "ns_per_op": 555985000,
+        "ns_per_op_raw": 556040000,
+        "net_us": 555985,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 556040,
+        "min_us": 555320
+       },
+       {
+        "name": "store.assert-10k",
+        "ns_per_op": 66639,
+        "ns_per_op_raw": 66639,
+        "net_us": 666399,
+        "ops": 10000,
+        "iters": 1,
+        "reps": 1,
+        "median_us": 666399,
+        "min_us": 666399
+       }
+      ]
+     }
+    }
+   ],
+   "macro": [
+    {
+     "name": "boot.bare",
+     "wall_us_median": 9724,
+     "wall_us_min": 9568,
+     "reps": 3,
+     "peak_rss_bytes": 7045120
+    },
+    {
+     "name": "boot.stdlib-dylib",
+     "wall_us_median": 106967,
+     "wall_us_min": 106433,
+     "reps": 3,
+     "peak_rss_bytes": 68632576
+    },
+    {
+     "name": "boot.stdlib-source",
+     "wall_us_median": 270738,
+     "wall_us_min": 268588,
+     "reps": 3,
+     "peak_rss_bytes": 134512640
+    },
+    {
+     "name": "script.primes",
+     "wall_us_median": 118668,
+     "wall_us_min": 118519,
+     "reps": 3,
+     "peak_rss_bytes": 83853312
+    },
+    {
+     "name": "script.word-frequency",
+     "wall_us_median": 111350,
+     "wall_us_min": 110521,
+     "reps": 3,
+     "peak_rss_bytes": 76775424
+    },
+    {
+     "name": "docgen.full",
+     "wall_us_median": 39598225,
+     "wall_us_min": 39577082,
+     "reps": 3,
+     "peak_rss_bytes": 337657856
+    }
+   ]
+  },
+  "storepeg": {
+   "stamp": {
+    "sha": "21cf6d7b",
+    "dirty": false,
+    "version": "0.14.0",
+    "date": "2026-09-09T15:37:55Z",
+    "machine": "Mac15,12",
+    "optimize": "ReleaseSafe",
+    "mode": "dev",
+    "quick": false,
+    "floor": "rust",
+    "floor_identity": "rust-id-v1",
+    "floor_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f",
+    "floor_dylib_bytes": 731504
+   },
+   "suites": [
+    {
+     "label": "micro",
+     "run": 1,
+     "data": {
+      "suite": "micro",
+      "cases": [
+       {
+        "name": "sends.unary",
+        "ns_per_op": 958,
+        "ns_per_op_raw": 5172,
+        "net_us": 31400,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 169500,
+        "min_us": 169427
+       },
+       {
+        "name": "sends.keyword3",
+        "ns_per_op": 1962,
+        "ns_per_op_raw": 6254,
+        "net_us": 64317,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 204939,
+        "min_us": 201084
+       },
+       {
+        "name": "sends.dnu-mint",
+        "ns_per_op": 355,
+        "ns_per_op_raw": 4550,
+        "net_us": 11655,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 149103,
+        "min_us": 147463
+       },
+       {
+        "name": "blocks.value",
+        "ns_per_op": 19,
+        "ns_per_op_raw": 4292,
+        "net_us": 628,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 140672,
+        "min_us": 137894
+       },
+       {
+        "name": "loops.to-do",
+        "ns_per_op": 34912,
+        "ns_per_op_raw": 34912,
+        "net_us": 143000,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 143000,
+        "min_us": 136221
+       },
+       {
+        "name": "loops.whileTrue",
+        "ns_per_op": 30062,
+        "ns_per_op_raw": 30062,
+        "net_us": 123138,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 123138,
+        "min_us": 121332
+       },
+       {
+        "name": "loops.timesRepeat",
+        "ns_per_op": 35086,
+        "ns_per_op_raw": 35086,
+        "net_us": 143715,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 143715,
+        "min_us": 139263
+       },
+       {
+        "name": "string.indexOf-native",
+        "ns_per_op": 270537,
+        "ns_per_op_raw": 302007,
+        "net_us": 138515,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 154628,
+        "min_us": 154334
+       },
+       {
+        "name": "string.split-native",
+        "ns_per_op": 2695937,
+        "ns_per_op_raw": 2725828,
+        "net_us": 172540,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 174453,
+        "min_us": 171030
+       },
+       {
+        "name": "string.scan-derived",
+        "ns_per_op": 2120994000,
+        "ns_per_op_raw": 2121052000,
+        "net_us": 2120994,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 2121052,
+        "min_us": 2082257
+       },
+       {
+        "name": "stringbuilder.build-10k",
+        "ns_per_op": 44972500,
+        "ns_per_op_raw": 45027500,
+        "net_us": 179890,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 180110,
+        "min_us": 154198
+       },
+       {
+        "name": "vector.push-10k",
+        "ns_per_op": 240048000,
+        "ns_per_op_raw": 240115000,
+        "net_us": 240048,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 240115,
+        "min_us": 232558
+       },
+       {
+        "name": "vector.at-random",
+        "ns_per_op": 540,
+        "ns_per_op_raw": 6126,
+        "net_us": 8860,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 100380,
+        "min_us": 95151
+       },
+       {
+        "name": "vector.fold-sum",
+        "ns_per_op": 201745000,
+        "ns_per_op_raw": 201816000,
+        "net_us": 201745,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 201816,
+        "min_us": 192502
+       },
+       {
+        "name": "map.put-10k",
+        "ns_per_op": 201664000,
+        "ns_per_op_raw": 201708000,
+        "net_us": 201664,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 201708,
+        "min_us": 181750
+       },
+       {
+        "name": "map.at-hit",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 5443,
+        "net_us": -7143,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 178380,
+        "min_us": 160187
+       },
+       {
+        "name": "map.at-miss",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 5440,
+        "net_us": -217,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 178272,
+        "min_us": 162427
+       },
+       {
+        "name": "cells.write",
+        "ns_per_op": 1800,
+        "ns_per_op_raw": 7723,
+        "net_us": 29496,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 126534,
+        "min_us": 120799
+       },
+       {
+        "name": "cells.read",
+        "ns_per_op": 440,
+        "ns_per_op_raw": 6220,
+        "net_us": 7215,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 101917,
+        "min_us": 99959
+       },
+       {
+        "name": "error.raise-handle",
+        "ns_per_op": 34134,
+        "ns_per_op_raw": 80273,
+        "net_us": 69907,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 164400,
+        "min_us": 146206
+       },
+       {
+        "name": "error.propagate-5-deep",
+        "ns_per_op": 10999,
+        "ns_per_op_raw": 53168,
+        "net_us": 22526,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 108889,
+        "min_us": 98715
+       },
+       {
+        "name": "codegen.define-method",
+        "ns_per_op": 363328,
+        "ns_per_op_raw": 413937,
+        "net_us": 46506,
+        "ops": 128,
+        "iters": 128,
+        "reps": 5,
+        "median_us": 52984,
+        "min_us": 51978
+       },
+       {
+        "name": "ffi.wrapped-call",
+        "ns_per_op": 264,
+        "ns_per_op_raw": 5536,
+        "net_us": 8654,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 181416,
+        "min_us": 165557
+       },
+       {
+        "name": "ffi.peek-poke",
+        "ns_per_op": 224,
+        "ns_per_op_raw": 6055,
+        "net_us": 3681,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 99208,
+        "min_us": 97055
+       },
+       {
+        "name": "vector.includes-miss",
+        "ns_per_op": 172082,
+        "ns_per_op_raw": 216064,
+        "net_us": 88106,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 110625,
+        "min_us": 103246
+       },
+       {
+        "name": "vector.reversed",
+        "ns_per_op": 2160703,
+        "ns_per_op_raw": 2207484,
+        "net_us": 138285,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 141279,
+        "min_us": 127748
+       },
+       {
+        "name": "vector.copy-1k",
+        "ns_per_op": 172140,
+        "ns_per_op_raw": 215662,
+        "net_us": 88136,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 110419,
+        "min_us": 107605
+       },
+       {
+        "name": "range.asVector",
+        "ns_per_op": 183496000,
+        "ns_per_op_raw": 183543000,
+        "net_us": 183496,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 183543,
+        "min_us": 176338
+       },
+       {
+        "name": "sends.compiled-unary",
+        "ns_per_op": 125,
+        "ns_per_op_raw": 4806,
+        "net_us": 4100,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 157513,
+        "min_us": 155704
+       }
+      ]
+     }
+    },
+    {
+     "label": "selfhost",
+     "run": 1,
+     "data": {
+      "suite": "selfhost",
+      "cases": [
+       {
+        "name": "blocks.create",
+        "ns_per_op": 737,
+        "ns_per_op_raw": 4727,
+        "net_us": 24169,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 154908,
+        "min_us": 152039
+       },
+       {
+        "name": "code.reflect-program",
+        "ns_per_op": 889,
+        "ns_per_op_raw": 4819,
+        "net_us": 29161,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 157924,
+        "min_us": 154048
+       },
+       {
+        "name": "code.traverse-statements",
+        "ns_per_op": 6297,
+        "ns_per_op_raw": 39015,
+        "net_us": 25795,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 159808,
+        "min_us": 158540
+       },
+       {
+        "name": "lookup.dict256-first",
+        "ns_per_op": 1115,
+        "ns_per_op_raw": 5238,
+        "net_us": 36537,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 171658,
+        "min_us": 170299
+       },
+       {
+        "name": "lookup.dict256-last",
+        "ns_per_op": 1183,
+        "ns_per_op_raw": 5357,
+        "net_us": 38769,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 175555,
+        "min_us": 174105
+       },
+       {
+        "name": "lookup.inherit-depth16",
+        "ns_per_op": 1252,
+        "ns_per_op_raw": 5331,
+        "net_us": 41032,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 174687,
+        "min_us": 172632
+       },
+       {
+        "name": "globals.import-512",
+        "ns_per_op": 247,
+        "ns_per_op_raw": 4339,
+        "net_us": 8118,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 142188,
+        "min_us": 140351
+       },
+       {
+        "name": "globals.at-512",
+        "ns_per_op": 1225,
+        "ns_per_op_raw": 5617,
+        "net_us": 40141,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 184070,
+        "min_us": 180873
+       },
+       {
+        "name": "globals.rebind-512",
+        "ns_per_op": 3033,
+        "ns_per_op_raw": 7078,
+        "net_us": 49694,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 115982,
+        "min_us": 109069
+       }
+      ]
+     }
+    },
+    {
+     "label": "parse",
+     "run": 1,
+     "data": {
+      "suite": "parse",
+      "cases": [
+       {
+        "name": "parse.json-20kb",
+        "ns_per_op": 360349000,
+        "ns_per_op_raw": 360384000,
+        "net_us": 360349,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 360384,
+        "min_us": 356970
+       }
+      ]
+     }
+    },
+    {
+     "label": "relational",
+     "run": 1,
+     "data": {
+      "suite": "relational",
+      "cases": [
+       {
+        "name": "query.single-clause",
+        "ns_per_op": 43181000,
+        "ns_per_op_raw": 43224250,
+        "net_us": 172724,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 172897,
+        "min_us": 171989
+       },
+       {
+        "name": "query.join-3way",
+        "ns_per_op": 116853000,
+        "ns_per_op_raw": 116908000,
+        "net_us": 116853,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 116908,
+        "min_us": 115930
+       },
+       {
+        "name": "query.negation",
+        "ns_per_op": 45759250,
+        "ns_per_op_raw": 45798500,
+        "net_us": 183037,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 183194,
+        "min_us": 180832
+       },
+       {
+        "name": "query.aggregate",
+        "ns_per_op": 43258000,
+        "ns_per_op_raw": 43296500,
+        "net_us": 173032,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 173186,
+        "min_us": 170059
+       },
+       {
+        "name": "query.rule-recursive",
+        "ns_per_op": 42926750,
+        "ns_per_op_raw": 42965500,
+        "net_us": 171707,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 171862,
+        "min_us": 167773
+       },
+       {
+        "name": "query.asOf",
+        "ns_per_op": 42696500,
+        "ns_per_op_raw": 42738750,
+        "net_us": 170786,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 170955,
+        "min_us": 170407
+       },
+       {
+        "name": "pull.nested",
+        "ns_per_op": 4665593,
+        "ns_per_op_raw": 4698875,
+        "net_us": 149299,
+        "ops": 32,
+        "iters": 32,
+        "reps": 5,
+        "median_us": 150364,
+        "min_us": 142520
+       },
+       {
+        "name": "store.assert-10k",
+        "ns_per_op": 67638,
+        "ns_per_op_raw": 67638,
+        "net_us": 676389,
+        "ops": 10000,
+        "iters": 1,
+        "reps": 1,
+        "median_us": 676389,
+        "min_us": 676389
+       }
+      ]
+     }
+    }
+   ],
+   "macro": [
+    {
+     "name": "boot.bare",
+     "wall_us_median": 11003,
+     "wall_us_min": 10794,
+     "reps": 3,
+     "peak_rss_bytes": 7045120
+    },
+    {
+     "name": "boot.stdlib-dylib",
+     "wall_us_median": 115245,
+     "wall_us_min": 115135,
+     "reps": 3,
+     "peak_rss_bytes": 68632576
+    },
+    {
+     "name": "boot.stdlib-source",
+     "wall_us_median": 280744,
+     "wall_us_min": 280684,
+     "reps": 3,
+     "peak_rss_bytes": 127877120
+    },
+    {
+     "name": "script.primes",
+     "wall_us_median": 128075,
+     "wall_us_min": 128074,
+     "reps": 3,
+     "peak_rss_bytes": 75268096
+    },
+    {
+     "name": "script.word-frequency",
+     "wall_us_median": 121049,
+     "wall_us_min": 120772,
+     "reps": 3,
+     "peak_rss_bytes": 76120064
+    },
+    {
+     "name": "docgen.full",
+     "wall_us_median": 33808841,
+     "wall_us_min": 33733303,
+     "reps": 3,
+     "peak_rss_bytes": 332070912
+    }
+   ]
+  },
+  "head": {
+   "stamp": {
+    "sha": "21cf6d7b",
+    "dirty": false,
+    "version": "0.14.0",
+    "date": "2026-09-09T15:46:15Z",
+    "machine": "Mac15,12",
+    "optimize": "ReleaseSafe",
+    "mode": "dev",
+    "quick": false,
+    "floor": "rust",
+    "floor_identity": "rust-id-v1",
+    "floor_sha256": "5ecb5b23c94613120736bed7fd140c2c39ce226365b70964809c43878240e982",
+    "floor_dylib_bytes": 731600
+   },
+   "suites": [
+    {
+     "label": "micro",
+     "run": 1,
+     "data": {
+      "suite": "micro",
+      "cases": [
+       {
+        "name": "sends.unary",
+        "ns_per_op": 1037,
+        "ns_per_op_raw": 5015,
+        "net_us": 34013,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 164350,
+        "min_us": 162405
+       },
+       {
+        "name": "sends.keyword3",
+        "ns_per_op": 2189,
+        "ns_per_op_raw": 6161,
+        "net_us": 71736,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 201913,
+        "min_us": 198390
+       },
+       {
+        "name": "sends.dnu-mint",
+        "ns_per_op": 244,
+        "ns_per_op_raw": 4485,
+        "net_us": 8015,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 146968,
+        "min_us": 144667
+       },
+       {
+        "name": "blocks.value",
+        "ns_per_op": 101,
+        "ns_per_op_raw": 4123,
+        "net_us": 3342,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 135129,
+        "min_us": 130809
+       },
+       {
+        "name": "loops.to-do",
+        "ns_per_op": 31658,
+        "ns_per_op_raw": 31658,
+        "net_us": 129675,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 129675,
+        "min_us": 127571
+       },
+       {
+        "name": "loops.whileTrue",
+        "ns_per_op": 25427,
+        "ns_per_op_raw": 25427,
+        "net_us": 104152,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 104152,
+        "min_us": 103018
+       },
+       {
+        "name": "loops.timesRepeat",
+        "ns_per_op": 32316,
+        "ns_per_op_raw": 32316,
+        "net_us": 132370,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 132370,
+        "min_us": 129471
+       },
+       {
+        "name": "string.indexOf-native",
+        "ns_per_op": 271968,
+        "ns_per_op_raw": 300046,
+        "net_us": 139248,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 153624,
+        "min_us": 152930
+       },
+       {
+        "name": "string.split-native",
+        "ns_per_op": 2648140,
+        "ns_per_op_raw": 2680515,
+        "net_us": 169481,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 171553,
+        "min_us": 170195
+       },
+       {
+        "name": "string.scan-derived",
+        "ns_per_op": 2039797000,
+        "ns_per_op_raw": 2039840000,
+        "net_us": 2039797,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 2039840,
+        "min_us": 1966869
+       },
+       {
+        "name": "stringbuilder.build-10k",
+        "ns_per_op": 46631500,
+        "ns_per_op_raw": 46679500,
+        "net_us": 93263,
+        "ops": 2,
+        "iters": 2,
+        "reps": 5,
+        "median_us": 93359,
+        "min_us": 84939
+       },
+       {
+        "name": "vector.push-10k",
+        "ns_per_op": 181404000,
+        "ns_per_op_raw": 181446000,
+        "net_us": 181404,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 181446,
+        "min_us": 174514
+       },
+       {
+        "name": "vector.at-random",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 9544,
+        "net_us": -44516,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 156375,
+        "min_us": 109930
+       },
+       {
+        "name": "vector.fold-sum",
+        "ns_per_op": 263982000,
+        "ns_per_op_raw": 264030000,
+        "net_us": 263982,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 264030,
+        "min_us": 231512
+       },
+       {
+        "name": "map.put-10k",
+        "ns_per_op": 209754000,
+        "ns_per_op_raw": 209797000,
+        "net_us": 209754,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 209797,
+        "min_us": 191498
+       },
+       {
+        "name": "map.at-hit",
+        "ns_per_op": 107,
+        "ns_per_op_raw": 5012,
+        "net_us": 3513,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 164250,
+        "min_us": 163069
+       },
+       {
+        "name": "map.at-miss",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 5369,
+        "net_us": -7019,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 175964,
+        "min_us": 170704
+       },
+       {
+        "name": "cells.write",
+        "ns_per_op": 2333,
+        "ns_per_op_raw": 8519,
+        "net_us": 38225,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 139580,
+        "min_us": 127512
+       },
+       {
+        "name": "cells.read",
+        "ns_per_op": 134,
+        "ns_per_op_raw": 6505,
+        "net_us": 2200,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 106593,
+        "min_us": 103374
+       },
+       {
+        "name": "error.raise-handle",
+        "ns_per_op": 29875,
+        "ns_per_op_raw": 79950,
+        "net_us": 61184,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 163739,
+        "min_us": 147904
+       },
+       {
+        "name": "error.propagate-5-deep",
+        "ns_per_op": 7932,
+        "ns_per_op_raw": 54197,
+        "net_us": 16246,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 110996,
+        "min_us": 94040
+       },
+       {
+        "name": "codegen.define-method",
+        "ns_per_op": 391718,
+        "ns_per_op_raw": 445015,
+        "net_us": 50140,
+        "ops": 128,
+        "iters": 128,
+        "reps": 5,
+        "median_us": 56962,
+        "min_us": 53706
+       },
+       {
+        "name": "ffi.wrapped-call",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 4827,
+        "net_us": -32689,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 158195,
+        "min_us": 151402
+       },
+       {
+        "name": "ffi.peek-poke",
+        "ns_per_op": 1815,
+        "ns_per_op_raw": 6737,
+        "net_us": 59499,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 220766,
+        "min_us": 196235
+       },
+       {
+        "name": "vector.includes-miss",
+        "ns_per_op": 158361,
+        "ns_per_op_raw": 200541,
+        "net_us": 81081,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 102677,
+        "min_us": 101622
+       },
+       {
+        "name": "vector.reversed",
+        "ns_per_op": 1992453,
+        "ns_per_op_raw": 2035218,
+        "net_us": 127517,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 130254,
+        "min_us": 118514
+       },
+       {
+        "name": "vector.copy-1k",
+        "ns_per_op": 179121,
+        "ns_per_op_raw": 220013,
+        "net_us": 91710,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 112647,
+        "min_us": 106402
+       },
+       {
+        "name": "range.asVector",
+        "ns_per_op": 204353000,
+        "ns_per_op_raw": 204397000,
+        "net_us": 204353,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 204397,
+        "min_us": 195941
+       },
+       {
+        "name": "sends.compiled-unary",
+        "ns_per_op": 594,
+        "ns_per_op_raw": 5206,
+        "net_us": 19487,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 170608,
+        "min_us": 144724
+       }
+      ]
+     }
+    },
+    {
+     "label": "selfhost",
+     "run": 1,
+     "data": {
+      "suite": "selfhost",
+      "cases": [
+       {
+        "name": "blocks.create",
+        "ns_per_op": 413,
+        "ns_per_op_raw": 4352,
+        "net_us": 13552,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 142617,
+        "min_us": 141168
+       },
+       {
+        "name": "code.reflect-program",
+        "ns_per_op": 309,
+        "ns_per_op_raw": 4266,
+        "net_us": 10141,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 139797,
+        "min_us": 138091
+       },
+       {
+        "name": "code.traverse-statements",
+        "ns_per_op": 3882,
+        "ns_per_op_raw": 36157,
+        "net_us": 15904,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 148102,
+        "min_us": 143902
+       },
+       {
+        "name": "lookup.dict256-first",
+        "ns_per_op": 1249,
+        "ns_per_op_raw": 5278,
+        "net_us": 40955,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 172962,
+        "min_us": 171367
+       },
+       {
+        "name": "lookup.dict256-last",
+        "ns_per_op": 1277,
+        "ns_per_op_raw": 5274,
+        "net_us": 41867,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 172823,
+        "min_us": 172201
+       },
+       {
+        "name": "lookup.inherit-depth16",
+        "ns_per_op": 1461,
+        "ns_per_op_raw": 5412,
+        "net_us": 47880,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 177349,
+        "min_us": 173137
+       },
+       {
+        "name": "globals.import-512",
+        "ns_per_op": 181,
+        "ns_per_op_raw": 4361,
+        "net_us": 5952,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 142913,
+        "min_us": 142148
+       },
+       {
+        "name": "globals.at-512",
+        "ns_per_op": 1309,
+        "ns_per_op_raw": 5382,
+        "net_us": 42897,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 176384,
+        "min_us": 175169
+       },
+       {
+        "name": "globals.rebind-512",
+        "ns_per_op": 2758,
+        "ns_per_op_raw": 6730,
+        "net_us": 45202,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 110275,
+        "min_us": 107481
+       }
+      ]
+     }
+    },
+    {
+     "label": "parse",
+     "run": 1,
+     "data": {
+      "suite": "parse",
+      "cases": [
+       {
+        "name": "parse.json-20kb",
+        "ns_per_op": 325203000,
+        "ns_per_op_raw": 325236000,
+        "net_us": 325203,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 325236,
+        "min_us": 323886
+       }
+      ]
+     }
+    },
+    {
+     "label": "relational",
+     "run": 1,
+     "data": {
+      "suite": "relational",
+      "cases": [
+       {
+        "name": "query.single-clause",
+        "ns_per_op": 42289750,
+        "ns_per_op_raw": 42324750,
+        "net_us": 169159,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 169299,
+        "min_us": 168619
+       },
+       {
+        "name": "query.join-3way",
+        "ns_per_op": 116145000,
+        "ns_per_op_raw": 116199000,
+        "net_us": 116145,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 116199,
+        "min_us": 115939
+       },
+       {
+        "name": "query.negation",
+        "ns_per_op": 45056500,
+        "ns_per_op_raw": 45090250,
+        "net_us": 180226,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 180361,
+        "min_us": 177245
+       },
+       {
+        "name": "query.aggregate",
+        "ns_per_op": 44703500,
+        "ns_per_op_raw": 44738750,
+        "net_us": 178814,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 178955,
+        "min_us": 169458
+       },
+       {
+        "name": "query.rule-recursive",
+        "ns_per_op": 41426250,
+        "ns_per_op_raw": 41458750,
+        "net_us": 165705,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 165835,
+        "min_us": 164272
+       },
+       {
+        "name": "query.asOf",
+        "ns_per_op": 42430250,
+        "ns_per_op_raw": 42468250,
+        "net_us": 169721,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 169873,
+        "min_us": 166655
+       },
+       {
+        "name": "pull.nested",
+        "ns_per_op": 4681812,
+        "ns_per_op_raw": 4718406,
+        "net_us": 149818,
+        "ops": 32,
+        "iters": 32,
+        "reps": 5,
+        "median_us": 150989,
+        "min_us": 136065
+       },
+       {
+        "name": "store.assert-10k",
+        "ns_per_op": 66164,
+        "ns_per_op_raw": 66164,
+        "net_us": 661642,
+        "ops": 10000,
+        "iters": 1,
+        "reps": 1,
+        "median_us": 661642,
+        "min_us": 661642
+       }
+      ]
+     }
+    }
+   ],
+   "macro": [
+    {
+     "name": "boot.bare",
+     "wall_us_median": 10376,
+     "wall_us_min": 10044,
+     "reps": 3,
+     "peak_rss_bytes": 7143424
+    },
+    {
+     "name": "boot.stdlib-dylib",
+     "wall_us_median": 117809,
+     "wall_us_min": 117199,
+     "reps": 3,
+     "peak_rss_bytes": 68747264
+    },
+    {
+     "name": "boot.stdlib-source",
+     "wall_us_median": 281526,
+     "wall_us_min": 281072,
+     "reps": 3,
+     "peak_rss_bytes": 127991808
+    },
+    {
+     "name": "script.primes",
+     "wall_us_median": 129762,
+     "wall_us_min": 129723,
+     "reps": 3,
+     "peak_rss_bytes": 69828608
+    },
+    {
+     "name": "script.word-frequency",
+     "wall_us_median": 121864,
+     "wall_us_min": 120938,
+     "reps": 3,
+     "peak_rss_bytes": 69320704
+    },
+    {
+     "name": "docgen.full",
+     "wall_us_median": 30844537,
+     "wall_us_min": 30373612,
+     "reps": 3,
+     "peak_rss_bytes": 344506368
+    }
+   ]
+  },
+  "before-repeat": {
+   "stamp": {
+    "sha": "21cf6d7b",
+    "dirty": false,
+    "version": "0.14.0",
+    "date": "2026-09-09T15:52:13Z",
+    "machine": "Mac15,12",
+    "optimize": "ReleaseSafe",
+    "mode": "dev",
+    "quick": false,
+    "floor": "rust",
+    "floor_identity": "rust-id-v1",
+    "floor_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f",
+    "floor_dylib_bytes": 731504
+   },
+   "suites": [
+    {
+     "label": "micro",
+     "run": 1,
+     "data": {
+      "suite": "micro",
+      "cases": [
+       {
+        "name": "sends.unary",
+        "ns_per_op": 1020,
+        "ns_per_op_raw": 5312,
+        "net_us": 33446,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 174069,
+        "min_us": 172128
+       },
+       {
+        "name": "sends.keyword3",
+        "ns_per_op": 2111,
+        "ns_per_op_raw": 6309,
+        "net_us": 34602,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 103383,
+        "min_us": 102235
+       },
+       {
+        "name": "sends.dnu-mint",
+        "ns_per_op": 305,
+        "ns_per_op_raw": 4663,
+        "net_us": 10018,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 152819,
+        "min_us": 152334
+       },
+       {
+        "name": "blocks.value",
+        "ns_per_op": 84,
+        "ns_per_op_raw": 4434,
+        "net_us": 2785,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 145325,
+        "min_us": 142657
+       },
+       {
+        "name": "loops.to-do",
+        "ns_per_op": 34180,
+        "ns_per_op_raw": 34180,
+        "net_us": 140005,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 140005,
+        "min_us": 137115
+       },
+       {
+        "name": "loops.whileTrue",
+        "ns_per_op": 32009,
+        "ns_per_op_raw": 32009,
+        "net_us": 131112,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 131112,
+        "min_us": 127770
+       },
+       {
+        "name": "loops.timesRepeat",
+        "ns_per_op": 37124,
+        "ns_per_op_raw": 37124,
+        "net_us": 152061,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 152061,
+        "min_us": 148064
+       },
+       {
+        "name": "string.indexOf-native",
+        "ns_per_op": 273214,
+        "ns_per_op_raw": 303701,
+        "net_us": 139886,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 155495,
+        "min_us": 154666
+       },
+       {
+        "name": "string.split-native",
+        "ns_per_op": 2666515,
+        "ns_per_op_raw": 2698750,
+        "net_us": 170657,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 172720,
+        "min_us": 170265
+       },
+       {
+        "name": "string.scan-derived",
+        "ns_per_op": 2030276000,
+        "ns_per_op_raw": 2030320000,
+        "net_us": 2030276,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 2030320,
+        "min_us": 1998755
+       },
+       {
+        "name": "stringbuilder.build-10k",
+        "ns_per_op": 38040750,
+        "ns_per_op_raw": 38075000,
+        "net_us": 152163,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 152300,
+        "min_us": 151234
+       },
+       {
+        "name": "vector.push-10k",
+        "ns_per_op": 173328000,
+        "ns_per_op_raw": 173372000,
+        "net_us": 173328,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 173372,
+        "min_us": 168980
+       },
+       {
+        "name": "vector.at-random",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 5882,
+        "net_us": -10931,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 192771,
+        "min_us": 187409
+       },
+       {
+        "name": "vector.fold-sum",
+        "ns_per_op": 201847000,
+        "ns_per_op_raw": 201894000,
+        "net_us": 201847,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 201894,
+        "min_us": 180707
+       },
+       {
+        "name": "map.put-10k",
+        "ns_per_op": 185758000,
+        "ns_per_op_raw": 185800000,
+        "net_us": 185758,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 185800,
+        "min_us": 183661
+       },
+       {
+        "name": "map.at-hit",
+        "ns_per_op": 475,
+        "ns_per_op_raw": 5267,
+        "net_us": 15565,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 172611,
+        "min_us": 165162
+       },
+       {
+        "name": "map.at-miss",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 4898,
+        "net_us": -2353,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 160523,
+        "min_us": 156314
+       },
+       {
+        "name": "cells.write",
+        "ns_per_op": 2133,
+        "ns_per_op_raw": 7403,
+        "net_us": 34957,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 121292,
+        "min_us": 119573
+       },
+       {
+        "name": "cells.read",
+        "ns_per_op": 559,
+        "ns_per_op_raw": 5456,
+        "net_us": 18331,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 178812,
+        "min_us": 168228
+       },
+       {
+        "name": "error.raise-handle",
+        "ns_per_op": 29443,
+        "ns_per_op_raw": 71427,
+        "net_us": 60301,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 146283,
+        "min_us": 136842
+       },
+       {
+        "name": "error.propagate-5-deep",
+        "ns_per_op": 9154,
+        "ns_per_op_raw": 48426,
+        "net_us": 18748,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 99177,
+        "min_us": 95812
+       },
+       {
+        "name": "codegen.define-method",
+        "ns_per_op": 400609,
+        "ns_per_op_raw": 436093,
+        "net_us": 51278,
+        "ops": 128,
+        "iters": 128,
+        "reps": 5,
+        "median_us": 55820,
+        "min_us": 51720
+       },
+       {
+        "name": "ffi.wrapped-call",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 4984,
+        "net_us": -5570,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 163341,
+        "min_us": 147853
+       },
+       {
+        "name": "ffi.peek-poke",
+        "ns_per_op": 344,
+        "ns_per_op_raw": 5287,
+        "net_us": 11301,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 173268,
+        "min_us": 168148
+       },
+       {
+        "name": "vector.includes-miss",
+        "ns_per_op": 168869,
+        "ns_per_op_raw": 204693,
+        "net_us": 86461,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 104803,
+        "min_us": 100820
+       },
+       {
+        "name": "vector.reversed",
+        "ns_per_op": 2115984,
+        "ns_per_op_raw": 2168468,
+        "net_us": 135423,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 138782,
+        "min_us": 124765
+       },
+       {
+        "name": "vector.copy-1k",
+        "ns_per_op": 173162,
+        "ns_per_op_raw": 213269,
+        "net_us": 88659,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 109194,
+        "min_us": 105903
+       },
+       {
+        "name": "range.asVector",
+        "ns_per_op": 186571000,
+        "ns_per_op_raw": 186616000,
+        "net_us": 186571,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 186616,
+        "min_us": 177780
+       },
+       {
+        "name": "sends.compiled-unary",
+        "ns_per_op": 335,
+        "ns_per_op_raw": 5054,
+        "net_us": 10996,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 165615,
+        "min_us": 159533
+       }
+      ]
+     }
+    },
+    {
+     "label": "selfhost",
+     "run": 1,
+     "data": {
+      "suite": "selfhost",
+      "cases": [
+       {
+        "name": "blocks.create",
+        "ns_per_op": 778,
+        "ns_per_op_raw": 4761,
+        "net_us": 25515,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 156036,
+        "min_us": 153751
+       },
+       {
+        "name": "code.reflect-program",
+        "ns_per_op": 735,
+        "ns_per_op_raw": 4795,
+        "net_us": 24089,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 157128,
+        "min_us": 155440
+       },
+       {
+        "name": "code.traverse-statements",
+        "ns_per_op": 5814,
+        "ns_per_op_raw": 39029,
+        "net_us": 23817,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 159865,
+        "min_us": 158355
+       },
+       {
+        "name": "lookup.dict256-first",
+        "ns_per_op": 1206,
+        "ns_per_op_raw": 5377,
+        "net_us": 39546,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 176200,
+        "min_us": 173821
+       },
+       {
+        "name": "lookup.dict256-last",
+        "ns_per_op": 1203,
+        "ns_per_op_raw": 5369,
+        "net_us": 39423,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 175946,
+        "min_us": 175440
+       },
+       {
+        "name": "lookup.inherit-depth16",
+        "ns_per_op": 1124,
+        "ns_per_op_raw": 5311,
+        "net_us": 36837,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 174062,
+        "min_us": 172231
+       },
+       {
+        "name": "globals.import-512",
+        "ns_per_op": 204,
+        "ns_per_op_raw": 4391,
+        "net_us": 6694,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 143887,
+        "min_us": 142701
+       },
+       {
+        "name": "globals.at-512",
+        "ns_per_op": 1455,
+        "ns_per_op_raw": 5657,
+        "net_us": 47708,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 185394,
+        "min_us": 181615
+       },
+       {
+        "name": "globals.rebind-512",
+        "ns_per_op": 3063,
+        "ns_per_op_raw": 7195,
+        "net_us": 50196,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 117893,
+        "min_us": 113786
+       }
+      ]
+     }
+    },
+    {
+     "label": "parse",
+     "run": 1,
+     "data": {
+      "suite": "parse",
+      "cases": [
+       {
+        "name": "parse.json-20kb",
+        "ns_per_op": 357936000,
+        "ns_per_op_raw": 357970000,
+        "net_us": 357936,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 357970,
+        "min_us": 356998
+       }
+      ]
+     }
+    },
+    {
+     "label": "relational",
+     "run": 1,
+     "data": {
+      "suite": "relational",
+      "cases": [
+       {
+        "name": "query.single-clause",
+        "ns_per_op": 588202000,
+        "ns_per_op_raw": 588252000,
+        "net_us": 588202,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 588252,
+        "min_us": 586837
+       },
+       {
+        "name": "query.join-3way",
+        "ns_per_op": 662524000,
+        "ns_per_op_raw": 662598000,
+        "net_us": 662524,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 662598,
+        "min_us": 661895
+       },
+       {
+        "name": "query.negation",
+        "ns_per_op": 597646000,
+        "ns_per_op_raw": 597695000,
+        "net_us": 597646,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 597695,
+        "min_us": 591381
+       },
+       {
+        "name": "query.aggregate",
+        "ns_per_op": 588910000,
+        "ns_per_op_raw": 588962000,
+        "net_us": 588910,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 588962,
+        "min_us": 588798
+       },
+       {
+        "name": "query.rule-recursive",
+        "ns_per_op": 589106000,
+        "ns_per_op_raw": 589154000,
+        "net_us": 589106,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 589154,
+        "min_us": 588636
+       },
+       {
+        "name": "query.asOf",
+        "ns_per_op": 370738000,
+        "ns_per_op_raw": 370789000,
+        "net_us": 370738,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 370789,
+        "min_us": 370374
+       },
+       {
+        "name": "pull.nested",
+        "ns_per_op": 555057000,
+        "ns_per_op_raw": 555107000,
+        "net_us": 555057,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 555107,
+        "min_us": 554767
+       },
+       {
+        "name": "store.assert-10k",
+        "ns_per_op": 66485,
+        "ns_per_op_raw": 66485,
+        "net_us": 664856,
+        "ops": 10000,
+        "iters": 1,
+        "reps": 1,
+        "median_us": 664856,
+        "min_us": 664856
+       }
+      ]
+     }
+    }
+   ],
+   "macro": [
+    {
+     "name": "boot.bare",
+     "wall_us_median": 10093,
+     "wall_us_min": 10068,
+     "reps": 3,
+     "peak_rss_bytes": 7045120
+    },
+    {
+     "name": "boot.stdlib-dylib",
+     "wall_us_median": 107094,
+     "wall_us_min": 106214,
+     "reps": 3,
+     "peak_rss_bytes": 68632576
+    },
+    {
+     "name": "boot.stdlib-source",
+     "wall_us_median": 269525,
+     "wall_us_min": 268745,
+     "reps": 3,
+     "peak_rss_bytes": 134856704
+    },
+    {
+     "name": "script.primes",
+     "wall_us_median": 120047,
+     "wall_us_min": 119281,
+     "reps": 3,
+     "peak_rss_bytes": 69713920
+    },
+    {
+     "name": "script.word-frequency",
+     "wall_us_median": 113091,
+     "wall_us_min": 112170,
+     "reps": 3,
+     "peak_rss_bytes": 69206016
+    },
+    {
+     "name": "docgen.full",
+     "wall_us_median": 39124975,
+     "wall_us_min": 38975905,
+     "reps": 3,
+     "peak_rss_bytes": 334741504
+    }
+   ]
+  },
+  "fixed": {
+   "stamp": {
+    "sha": "f24ff9b2",
+    "dirty": false,
+    "version": "0.14.0",
+    "date": "2026-09-09T16:16:26Z",
+    "machine": "Mac15,12",
+    "optimize": "ReleaseSafe",
+    "mode": "dev",
+    "quick": false,
+    "floor": "rust",
+    "floor_identity": "rust-id-v1",
+    "floor_sha256": "104b60ee38c188653f6664d50f9fde1ec0cba3a363a7799e2655fe0ef26b59e1",
+    "floor_dylib_bytes": 731760
+   },
+   "suites": [
+    {
+     "label": "micro",
+     "run": 1,
+     "data": {
+      "suite": "micro",
+      "cases": [
+       {
+        "name": "sends.unary",
+        "ns_per_op": 1041,
+        "ns_per_op_raw": 4944,
+        "net_us": 34122,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 162024,
+        "min_us": 160061
+       },
+       {
+        "name": "sends.keyword3",
+        "ns_per_op": 2059,
+        "ns_per_op_raw": 5936,
+        "net_us": 67484,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 194541,
+        "min_us": 191053
+       },
+       {
+        "name": "sends.dnu-mint",
+        "ns_per_op": 377,
+        "ns_per_op_raw": 4293,
+        "net_us": 12370,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 140692,
+        "min_us": 139292
+       },
+       {
+        "name": "blocks.value",
+        "ns_per_op": 30,
+        "ns_per_op_raw": 3979,
+        "net_us": 987,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 130399,
+        "min_us": 129868
+       },
+       {
+        "name": "loops.to-do",
+        "ns_per_op": 31128,
+        "ns_per_op_raw": 31128,
+        "net_us": 127502,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 127502,
+        "min_us": 125481
+       },
+       {
+        "name": "loops.whileTrue",
+        "ns_per_op": 25296,
+        "ns_per_op_raw": 25296,
+        "net_us": 103616,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 103616,
+        "min_us": 101211
+       },
+       {
+        "name": "loops.timesRepeat",
+        "ns_per_op": 31657,
+        "ns_per_op_raw": 31657,
+        "net_us": 129669,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 129669,
+        "min_us": 127661
+       },
+       {
+        "name": "string.indexOf-native",
+        "ns_per_op": 269138,
+        "ns_per_op_raw": 299996,
+        "net_us": 137799,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 153598,
+        "min_us": 152935
+       },
+       {
+        "name": "string.split-native",
+        "ns_per_op": 3160203,
+        "ns_per_op_raw": 3206312,
+        "net_us": 202253,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 205204,
+        "min_us": 203527
+       },
+       {
+        "name": "string.scan-derived",
+        "ns_per_op": 2642591000,
+        "ns_per_op_raw": 2642633000,
+        "net_us": 2642591,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 2642633,
+        "min_us": 2174423
+       },
+       {
+        "name": "stringbuilder.build-10k",
+        "ns_per_op": 37447750,
+        "ns_per_op_raw": 37481500,
+        "net_us": 149791,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 149926,
+        "min_us": 147511
+       },
+       {
+        "name": "vector.push-10k",
+        "ns_per_op": 219932000,
+        "ns_per_op_raw": 219980000,
+        "net_us": 219932,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 219980,
+        "min_us": 177935
+       },
+       {
+        "name": "vector.at-random",
+        "ns_per_op": 1525,
+        "ns_per_op_raw": 5978,
+        "net_us": 49999,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 195918,
+        "min_us": 179494
+       },
+       {
+        "name": "vector.fold-sum",
+        "ns_per_op": 169473000,
+        "ns_per_op_raw": 169512000,
+        "net_us": 169473,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 169512,
+        "min_us": 165479
+       },
+       {
+        "name": "map.put-10k",
+        "ns_per_op": 172355000,
+        "ns_per_op_raw": 172406000,
+        "net_us": 172355,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 172406,
+        "min_us": 170583
+       },
+       {
+        "name": "map.at-hit",
+        "ns_per_op": 922,
+        "ns_per_op_raw": 5338,
+        "net_us": 30231,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 174935,
+        "min_us": 143475
+       },
+       {
+        "name": "map.at-miss",
+        "ns_per_op": 1893,
+        "ns_per_op_raw": 6356,
+        "net_us": 62031,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 208286,
+        "min_us": 178575
+       },
+       {
+        "name": "cells.write",
+        "ns_per_op": 2024,
+        "ns_per_op_raw": 7944,
+        "net_us": 33177,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 130164,
+        "min_us": 129430
+       },
+       {
+        "name": "cells.read",
+        "ns_per_op": 119,
+        "ns_per_op_raw": 4921,
+        "net_us": 3924,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 161275,
+        "min_us": 151349
+       },
+       {
+        "name": "error.raise-handle",
+        "ns_per_op": 26427,
+        "ns_per_op_raw": 63113,
+        "net_us": 54124,
+        "ops": 2048,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 129256,
+        "min_us": 124657
+       },
+       {
+        "name": "error.propagate-5-deep",
+        "ns_per_op": 8475,
+        "ns_per_op_raw": 43638,
+        "net_us": 34717,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 178744,
+        "min_us": 164361
+       },
+       {
+        "name": "codegen.define-method",
+        "ns_per_op": 373671,
+        "ns_per_op_raw": 412476,
+        "net_us": 47830,
+        "ops": 128,
+        "iters": 128,
+        "reps": 5,
+        "median_us": 52797,
+        "min_us": 51337
+       },
+       {
+        "name": "ffi.wrapped-call",
+        "ns_per_op": 0,
+        "ns_per_op_raw": 4964,
+        "net_us": -32150,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 162682,
+        "min_us": 148240
+       },
+       {
+        "name": "ffi.peek-poke",
+        "ns_per_op": 1445,
+        "ns_per_op_raw": 6191,
+        "net_us": 23683,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 101435,
+        "min_us": 99034
+       },
+       {
+        "name": "vector.includes-miss",
+        "ns_per_op": 167738,
+        "ns_per_op_raw": 208423,
+        "net_us": 85882,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 106713,
+        "min_us": 106535
+       },
+       {
+        "name": "vector.reversed",
+        "ns_per_op": 1691125,
+        "ns_per_op_raw": 1730218,
+        "net_us": 108232,
+        "ops": 64,
+        "iters": 64,
+        "reps": 5,
+        "median_us": 110734,
+        "min_us": 106849
+       },
+       {
+        "name": "vector.copy-1k",
+        "ns_per_op": 158076,
+        "ns_per_op_raw": 200652,
+        "net_us": 80935,
+        "ops": 512,
+        "iters": 512,
+        "reps": 5,
+        "median_us": 102734,
+        "min_us": 101511
+       },
+       {
+        "name": "range.asVector",
+        "ns_per_op": 166900000,
+        "ns_per_op_raw": 166942000,
+        "net_us": 166900,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 166942,
+        "min_us": 159340
+       },
+       {
+        "name": "sends.compiled-unary",
+        "ns_per_op": 101,
+        "ns_per_op_raw": 4488,
+        "net_us": 3312,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 147094,
+        "min_us": 139044
+       }
+      ]
+     }
+    },
+    {
+     "label": "selfhost",
+     "run": 1,
+     "data": {
+      "suite": "selfhost",
+      "cases": [
+       {
+        "name": "blocks.create",
+        "ns_per_op": 345,
+        "ns_per_op_raw": 4477,
+        "net_us": 11325,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 146715,
+        "min_us": 144478
+       },
+       {
+        "name": "code.reflect-program",
+        "ns_per_op": 370,
+        "ns_per_op_raw": 4135,
+        "net_us": 12141,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 135527,
+        "min_us": 131206
+       },
+       {
+        "name": "code.traverse-statements",
+        "ns_per_op": 3744,
+        "ns_per_op_raw": 34718,
+        "net_us": 15338,
+        "ops": 4096,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 142205,
+        "min_us": 138572
+       },
+       {
+        "name": "lookup.dict256-first",
+        "ns_per_op": 1358,
+        "ns_per_op_raw": 5201,
+        "net_us": 44526,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 170459,
+        "min_us": 164035
+       },
+       {
+        "name": "lookup.dict256-last",
+        "ns_per_op": 1027,
+        "ns_per_op_raw": 5165,
+        "net_us": 33684,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 169265,
+        "min_us": 163912
+       },
+       {
+        "name": "lookup.inherit-depth16",
+        "ns_per_op": 1540,
+        "ns_per_op_raw": 5440,
+        "net_us": 50464,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 178271,
+        "min_us": 176487
+       },
+       {
+        "name": "globals.import-512",
+        "ns_per_op": 236,
+        "ns_per_op_raw": 4065,
+        "net_us": 7751,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 133213,
+        "min_us": 132261
+       },
+       {
+        "name": "globals.at-512",
+        "ns_per_op": 1188,
+        "ns_per_op_raw": 5243,
+        "net_us": 38954,
+        "ops": 32768,
+        "iters": 4096,
+        "reps": 5,
+        "median_us": 171803,
+        "min_us": 166444
+       },
+       {
+        "name": "globals.rebind-512",
+        "ns_per_op": 2811,
+        "ns_per_op_raw": 6603,
+        "net_us": 46056,
+        "ops": 16384,
+        "iters": 2048,
+        "reps": 5,
+        "median_us": 108187,
+        "min_us": 103760
+       }
+      ]
+     }
+    },
+    {
+     "label": "parse",
+     "run": 1,
+     "data": {
+      "suite": "parse",
+      "cases": [
+       {
+        "name": "parse.json-20kb",
+        "ns_per_op": 310228000,
+        "ns_per_op_raw": 310259000,
+        "net_us": 310228,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 310259,
+        "min_us": 304811
+       }
+      ]
+     }
+    },
+    {
+     "label": "relational",
+     "run": 1,
+     "data": {
+      "suite": "relational",
+      "cases": [
+       {
+        "name": "query.single-clause",
+        "ns_per_op": 41299250,
+        "ns_per_op_raw": 41336500,
+        "net_us": 165197,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 165346,
+        "min_us": 162463
+       },
+       {
+        "name": "query.join-3way",
+        "ns_per_op": 117017000,
+        "ns_per_op_raw": 117061000,
+        "net_us": 117017,
+        "ops": 1,
+        "iters": 1,
+        "reps": 5,
+        "median_us": 117061,
+        "min_us": 114690
+       },
+       {
+        "name": "query.negation",
+        "ns_per_op": 44427250,
+        "ns_per_op_raw": 44463750,
+        "net_us": 177709,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 177855,
+        "min_us": 174322
+       },
+       {
+        "name": "query.aggregate",
+        "ns_per_op": 40698500,
+        "ns_per_op_raw": 40732000,
+        "net_us": 162794,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 162928,
+        "min_us": 162365
+       },
+       {
+        "name": "query.rule-recursive",
+        "ns_per_op": 40830000,
+        "ns_per_op_raw": 40871500,
+        "net_us": 163320,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 163486,
+        "min_us": 160595
+       },
+       {
+        "name": "query.asOf",
+        "ns_per_op": 40688500,
+        "ns_per_op_raw": 40727250,
+        "net_us": 162754,
+        "ops": 4,
+        "iters": 4,
+        "reps": 5,
+        "median_us": 162909,
+        "min_us": 162064
+       },
+       {
+        "name": "pull.nested",
+        "ns_per_op": 4159937,
+        "ns_per_op_raw": 4189312,
+        "net_us": 133118,
+        "ops": 32,
+        "iters": 32,
+        "reps": 5,
+        "median_us": 134058,
+        "min_us": 131304
+       },
+       {
+        "name": "store.assert-10k",
+        "ns_per_op": 63540,
+        "ns_per_op_raw": 63540,
+        "net_us": 635402,
+        "ops": 10000,
+        "iters": 1,
+        "reps": 1,
+        "median_us": 635402,
+        "min_us": 635402
+       }
+      ]
+     }
+    }
+   ],
+   "macro": [
+    {
+     "name": "boot.bare",
+     "wall_us_median": 10288,
+     "wall_us_min": 10195,
+     "reps": 3,
+     "peak_rss_bytes": 7110656
+    },
+    {
+     "name": "boot.stdlib-dylib",
+     "wall_us_median": 85976,
+     "wall_us_min": 85606,
+     "reps": 3,
+     "peak_rss_bytes": 68681728
+    },
+    {
+     "name": "boot.stdlib-source",
+     "wall_us_median": 241547,
+     "wall_us_min": 240700,
+     "reps": 3,
+     "peak_rss_bytes": 135823360
+    },
+    {
+     "name": "script.primes",
+     "wall_us_median": 97222,
+     "wall_us_min": 96663,
+     "reps": 3,
+     "peak_rss_bytes": 69763072
+    },
+    {
+     "name": "script.word-frequency",
+     "wall_us_median": 91233,
+     "wall_us_min": 90816,
+     "reps": 3,
+     "peak_rss_bytes": 69255168
+    },
+    {
+     "name": "docgen.full",
+     "wall_us_median": 29400040,
+     "wall_us_min": 29343905,
+     "reps": 3,
+     "peak_rss_bytes": 336855040
+    }
+   ]
+  }
+ },
+ "provenance": {
+  "before": {
+   "prefix": "/private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/prefix/before",
+   "result_sha256": "bfa0756371e59071b7b1553c20153fec0859f81625dea2d2c26ee0a4d128abe7",
+   "log_sha256": "750c687dc6c9428cb04a0b64a8ac428b42941ae345a334893e2ba77d5eb3aa97"
+  },
+  "storepeg": {
+   "prefix": "/private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/prefix/storepeg",
+   "result_sha256": "fed45d9cb0e3850f5512f8b5faa8e93bea633a542910550ff8fcc447c8103624",
+   "log_sha256": "f282e100bfaf5eeee5e47cd8aa701ce41167e5ec0310bf46f385a2a9c617a39c"
+  },
+  "head": {
+   "prefix": "/private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/prefix/head",
+   "result_sha256": "045c5a9deac1d1a00d3cc01434ee6083c131b503edabfb2e780780673cfa167d",
+   "log_sha256": "83cf767816914b4e0a091cfdc1a933a238655cc815626ffb8e9fe50e99650bb2"
+  },
+  "before-repeat": {
+   "prefix": "/private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/prefix/before",
+   "result_sha256": "09dfcfbd9773ce809b22b92341029b94640127553f4b554eb927a41bd2049e83",
+   "log_sha256": "eee6a8bf51d2775b5ef27dc471653755e8bd4256243260de34f19c51605e2423"
+  },
+  "fixed": {
+   "prefix": "/private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/prefix/fixed",
+   "result_sha256": "3399826cb1c7d27735a5befb23c0a3618567bc6f57dd7ea50be3cca58c540605",
+   "log_sha256": "4df3aaa9fc1712231fa468d94c8a18e6e6edffb3716503045a04a7586fca65c7"
+  },
+  "before_build": {
+   "commit": "f15b8fbe",
+   "source_manifest_sha256": "a6a25e9fe3db3c703e182f69c55e50ae6e94a22553a9fa09cf648efe7dc35294",
+   "source_manifest_files": 145,
+   "profile": "release",
+   "store_dylib_sha256": "e36677807b904c8db871a29b9f4e08aa27ce166febc86781ddefd55bac071eab",
+   "peg_dylib_sha256": "0948b42ac21304965e493ce6d1f4f92f34a7119c17436e34f14506224423be67",
+   "floor_dylib_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f"
+  },
+  "storepeg_build": {
+   "commit": "3bff9357",
+   "source_manifest_sha256": "97eaa9e92ddfde3206cff378732d06764cde05b2c22da072e3f117b8148b347a",
+   "source_manifest_files": 147,
+   "profile": "release",
+   "store_dylib_sha256": "f04f5f02ad3b531dcf535d6f406c1c3813cddede338a5cf3a0f32addce63b753",
+   "peg_dylib_sha256": "146e405d6454424403ab2b1dafbbea4bf98b08a14510a46ad629c050d8d7c610",
+   "floor_dylib_sha256": "809519c3faa50bceea3f871049644f561ce3b14750acf0ece0d73d76209a922f"
+  },
+  "head_build": {
+   "commit": "21cf6d7b",
+   "source_manifest_sha256": "7d397b5b1027896e89d03ffbdd0ff4dd165804b645514ea104da89223ce23e1f",
+   "source_manifest_files": 154,
+   "profile": "release",
+   "store_dylib_sha256": "165c18325871761f0d8444e1103af867f27ed3dbb133a865a926d7a6bfa4a2ef",
+   "peg_dylib_sha256": "035fa6a7b9a4c92a206ee0a03800482790651d33ad2249c7adf3626cf411e228",
+   "floor_dylib_sha256": "5ecb5b23c94613120736bed7fd140c2c39ce226365b70964809c43878240e982"
+  },
+  "fixed_build": {
+   "commit": "f24ff9b2",
+   "source_manifest_sha256": "ee4a75a274e86030f88f39e865a8ca71661caa57dbb075d45106b6790fc43c72",
+   "source_manifest_files": 154,
+   "profile": "release",
+   "store_dylib_sha256": "1cb529bdfc839d565963149af93e468617798c3ae7b8ed7d9761dc5f3a0576d1",
+   "peg_dylib_sha256": "63cff0925df18c834bfbb4a184836762516d4aed9d5efa6f69bd9858c6b4b073",
+   "floor_dylib_sha256": "104b60ee38c188653f6664d50f9fde1ec0cba3a363a7799e2655fe0ef26b59e1"
+  }
+ },
+ "host_gate": {
+  "before": [
+   {
+    "context": "micro run 1 measurement",
+    "intervals": 76,
+    "median_idle": 78.25,
+    "low_intervals": 0
+   },
+   {
+    "context": "selfhost run 1 measurement",
+    "intervals": 19,
+    "median_idle": 79.61,
+    "low_intervals": 0
+   },
+   {
+    "context": "parse run 1 measurement",
+    "intervals": 3,
+    "median_idle": 80.11,
+    "low_intervals": 0
+   },
+   {
+    "context": "relational run 1 measurement",
+    "intervals": 34,
+    "median_idle": 81.19,
+    "low_intervals": 0
+   },
+   {
+    "context": "boot.bare measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-dylib measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-source measurement",
+    "intervals": 1,
+    "median_idle": 80.85,
+    "low_intervals": 0
+   },
+   {
+    "context": "script.primes measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "script.word-frequency measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "docgen.full measurement",
+    "intervals": 151,
+    "median_idle": 80.38,
+    "low_intervals": 0
+   }
+  ],
+  "storepeg": [
+   {
+    "context": "micro run 1 measurement",
+    "intervals": 76,
+    "median_idle": 78.7,
+    "low_intervals": 0
+   },
+   {
+    "context": "selfhost run 1 measurement",
+    "intervals": 18,
+    "median_idle": 82.85,
+    "low_intervals": 0
+   },
+   {
+    "context": "parse run 1 measurement",
+    "intervals": 3,
+    "median_idle": 83.7,
+    "low_intervals": 0
+   },
+   {
+    "context": "relational run 1 measurement",
+    "intervals": 11,
+    "median_idle": 77.71,
+    "low_intervals": 0
+   },
+   {
+    "context": "boot.bare measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-dylib measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-source measurement",
+    "intervals": 1,
+    "median_idle": 77.23,
+    "low_intervals": 0
+   },
+   {
+    "context": "script.primes measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "script.word-frequency measurement",
+    "preflight_only": true
+   },
+   {
+    "note": "bench-host-check: docgen.full measurement observed load during measurement"
+   },
+   {
+    "note": "==> discard macro docgen.full: host load appeared during measurement"
+   },
+   {
+    "note": "bench-host-check: docgen.full measurement observed load during measurement"
+   },
+   {
+    "note": "==> discard macro docgen.full: host load appeared during measurement"
+   },
+   {
+    "context": "docgen.full measurement",
+    "intervals": 131,
+    "median_idle": 67.11,
+    "low_intervals": 0
+   }
+  ],
+  "head": [
+   {
+    "context": "micro run 1 measurement",
+    "intervals": 78,
+    "median_idle": 76.97,
+    "low_intervals": 5
+   },
+   {
+    "context": "selfhost run 1 measurement",
+    "intervals": 18,
+    "median_idle": 79.32,
+    "low_intervals": 0
+   },
+   {
+    "context": "parse run 1 measurement",
+    "intervals": 3,
+    "median_idle": 78.79,
+    "low_intervals": 0
+   },
+   {
+    "context": "relational run 1 measurement",
+    "intervals": 11,
+    "median_idle": 78.21,
+    "low_intervals": 0
+   },
+   {
+    "context": "boot.bare measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-dylib measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-source measurement",
+    "intervals": 1,
+    "median_idle": 77.28,
+    "low_intervals": 0
+   },
+   {
+    "context": "script.primes measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "script.word-frequency measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "docgen.full measurement",
+    "intervals": 118,
+    "median_idle": 81.8,
+    "low_intervals": 0
+   }
+  ],
+  "before-repeat": [
+   {
+    "context": "micro run 1 measurement",
+    "intervals": 77,
+    "median_idle": 82.37,
+    "low_intervals": 0
+   },
+   {
+    "context": "selfhost run 1 measurement",
+    "intervals": 18,
+    "median_idle": 83.1,
+    "low_intervals": 0
+   },
+   {
+    "context": "parse run 1 measurement",
+    "intervals": 3,
+    "median_idle": 82.72,
+    "low_intervals": 0
+   },
+   {
+    "context": "relational run 1 measurement",
+    "intervals": 34,
+    "median_idle": 83.21,
+    "low_intervals": 0
+   },
+   {
+    "context": "boot.bare measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-dylib measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-source measurement",
+    "intervals": 1,
+    "median_idle": 83.29,
+    "low_intervals": 0
+   },
+   {
+    "context": "script.primes measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "script.word-frequency measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "docgen.full measurement",
+    "intervals": 153,
+    "median_idle": 82.62,
+    "low_intervals": 7
+   }
+  ],
+  "fixed": [
+   {
+    "context": "micro run 1 measurement",
+    "intervals": 81,
+    "median_idle": 74.73,
+    "low_intervals": 1
+   },
+   {
+    "note": "bench-host-check: selfhost run 1 measurement observed load during measurement"
+   },
+   {
+    "note": "==> discard suite selfhost run 1: host load appeared during measurement"
+   },
+   {
+    "context": "selfhost run 1 measurement",
+    "intervals": 18,
+    "median_idle": 76.62,
+    "low_intervals": 0
+   },
+   {
+    "context": "parse run 1 measurement",
+    "intervals": 3,
+    "median_idle": 68.2,
+    "low_intervals": 0
+   },
+   {
+    "context": "relational run 1 measurement",
+    "intervals": 11,
+    "median_idle": 77.49,
+    "low_intervals": 0
+   },
+   {
+    "context": "boot.bare measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-dylib measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "boot.stdlib-source measurement",
+    "intervals": 1,
+    "median_idle": 81.6,
+    "low_intervals": 0
+   },
+   {
+    "context": "script.primes measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "script.word-frequency measurement",
+    "preflight_only": true
+   },
+   {
+    "context": "docgen.full measurement",
+    "intervals": 113,
+    "median_idle": 77.34,
+    "low_intervals": 0
+   }
+  ]
+ },
+ "comparator": {
+  "before->before-repeat": {
+   "exit_code": 1,
+   "regressions": [],
+   "missing": [],
+   "unusable": [
+    "value(s)",
+    "value(s)",
+    "value(s)",
+    "value(s)"
+   ],
+   "report": "comparing /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/before.json -> /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/before-repeat.json\nIMP  sends.unary: 1259 -> 1020 (-18.9%)\nok   sends.keyword3: 2257 -> 2111 (-6.4%)\nIMP  sends.dnu-mint: 475 -> 305 (-35.7%)\nIMP  blocks.value: 198 -> 84 (-57.0%)\nok   loops.to-do: 33606 -> 34180 (+1.7%)\nok   loops.whileTrue: 30704 -> 32009 (+4.2%)\nok   loops.timesRepeat: 34123 -> 37124 (+8.7%)\nok   string.indexOf-native: 261238 -> 273214 (+4.5%)\nok   string.split-native: 2616281 -> 2666515 (+1.9%)\nIMP  string.scan-derived: 2400858000 -> 2030276000 (-15.4%)\nIMP  stringbuilder.build-10k: 44478250 -> 38040750 (-14.4%)\nIMP  vector.push-10k: 196685000 -> 173328000 (-11.8%)\nILL  vector.at-random: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nok   vector.fold-sum: 196946000 -> 201847000 (+2.4%)\nIMP  map.put-10k: 208280000 -> 185758000 (-10.8%)\nREG  map.at-hit: 160 -> 475 (+195.1%)\nILL  map.at-miss: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nIMP  cells.write: 2525 -> 2133 (-15.5%)\nILL  cells.read: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nok   error.raise-handle: 26851 -> 29443 (+9.6%)\nREG  error.propagate-5-deep: 5582 -> 9154 (+63.9%)\nok   codegen.define-method: 394578 -> 400609 (+1.5%)\nILL  ffi.wrapped-call: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  ffi.peek-poke: 226 -> 344 (+52.3%)\nREG  vector.includes-miss: 148273 -> 168869 (+13.8%)\nREG  vector.reversed: 1652640 -> 2115984 (+28.0%)\nok   vector.copy-1k: 165951 -> 173162 (+4.3%)\nok   range.asVector: 190112000 -> 186571000 (-1.8%)\nREG  sends.compiled-unary: 182 -> 335 (+84.1%)\nREG  blocks.create: 698 -> 778 (+11.4%)\nok   code.reflect-program: 704 -> 735 (+4.4%)\nok   code.traverse-statements: 5718 -> 5814 (+1.6%)\nok   lookup.dict256-first: 1155 -> 1206 (+4.4%)\nIMP  lookup.dict256-last: 1405 -> 1203 (-14.3%)\nREG  lookup.inherit-depth16: 975 -> 1124 (+15.1%)\nIMP  globals.import-512: 839 -> 204 (-75.6%)\nREG  globals.at-512: 1295 -> 1455 (+12.3%)\nREG  globals.rebind-512: 2793 -> 3063 (+9.6%)\nok   parse.json-20kb: 361852000 -> 357936000 (-1.0%)\nok   query.single-clause: 598142000 -> 588202000 (-1.6%)\nok   query.join-3way: 666471000 -> 662524000 (-0.5%)\nok   query.negation: 592083000 -> 597646000 (+0.9%)\nok   query.aggregate: 590224000 -> 588910000 (-0.2%)\nok   query.rule-recursive: 588208000 -> 589106000 (+0.1%)\nok   query.asOf: 372347000 -> 370738000 (-0.4%)\nok   pull.nested: 555985000 -> 555057000 (-0.1%)\nok   store.assert-10k: 66639 -> 66485 (-0.2%)\nok   boot.bare: 9724 -> 10093 (+3.7%)\nok   boot.stdlib-dylib: 106967 -> 107094 (+0.1%)\nok   boot.stdlib-source: 270738 -> 269525 (-0.4%)\nok   script.primes: 118668 -> 120047 (+1.1%)\nok   script.word-frequency: 111350 -> 113091 (+1.5%)\nok   docgen.full: 39598225 -> 39124975 (-1.1%)\nregressions: 10, missing: 0, unusable: 4\n"
+  },
+  "before->storepeg": {
+   "exit_code": 1,
+   "regressions": [],
+   "missing": [],
+   "unusable": [
+    "value(s)",
+    "value(s)",
+    "value(s)",
+    "value(s)"
+   ],
+   "report": "comparing /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/before.json -> /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/storepeg.json\nIMP  sends.unary: 1259 -> 958 (-23.9%)\nIMP  sends.keyword3: 2257 -> 1962 (-13.0%)\nIMP  sends.dnu-mint: 475 -> 355 (-25.2%)\nIMP  blocks.value: 198 -> 19 (-90.3%)\nok   loops.to-do: 33606 -> 34912 (+3.8%)\nok   loops.whileTrue: 30704 -> 30062 (-2.0%)\nok   loops.timesRepeat: 34123 -> 35086 (+2.8%)\nok   string.indexOf-native: 261238 -> 270537 (+3.5%)\nok   string.split-native: 2616281 -> 2695937 (+3.0%)\nIMP  string.scan-derived: 2400858000 -> 2120994000 (-11.6%)\nok   stringbuilder.build-10k: 44478250 -> 44972500 (+1.1%)\nREG  vector.push-10k: 196685000 -> 240048000 (+22.0%)\nIMP  vector.at-random: 1063 -> 540 (-49.1%)\nok   vector.fold-sum: 196946000 -> 201745000 (+2.4%)\nok   map.put-10k: 208280000 -> 201664000 (-3.1%)\nILL  map.at-hit: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nILL  map.at-miss: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nIMP  cells.write: 2525 -> 1800 (-28.7%)\nILL  cells.read: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  error.raise-handle: 26851 -> 34134 (+27.1%)\nREG  error.propagate-5-deep: 5582 -> 10999 (+97.0%)\nok   codegen.define-method: 394578 -> 363328 (-7.9%)\nILL  ffi.wrapped-call: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nok   ffi.peek-poke: 226 -> 224 (-0.7%)\nREG  vector.includes-miss: 148273 -> 172082 (+16.0%)\nREG  vector.reversed: 1652640 -> 2160703 (+30.7%)\nok   vector.copy-1k: 165951 -> 172140 (+3.7%)\nok   range.asVector: 190112000 -> 183496000 (-3.4%)\nIMP  sends.compiled-unary: 182 -> 125 (-31.3%)\nREG  blocks.create: 698 -> 737 (+5.5%)\nREG  code.reflect-program: 704 -> 889 (+26.4%)\nREG  code.traverse-statements: 5718 -> 6297 (+10.1%)\nok   lookup.dict256-first: 1155 -> 1115 (-3.4%)\nIMP  lookup.dict256-last: 1405 -> 1183 (-15.8%)\nREG  lookup.inherit-depth16: 975 -> 1252 (+28.3%)\nIMP  globals.import-512: 839 -> 247 (-70.4%)\nIMP  globals.at-512: 1295 -> 1225 (-5.4%)\nREG  globals.rebind-512: 2793 -> 3033 (+8.5%)\nok   parse.json-20kb: 361852000 -> 360349000 (-0.4%)\nIMP  query.single-clause: 598142000 -> 43181000 (-92.7%)\nIMP  query.join-3way: 666471000 -> 116853000 (-82.4%)\nIMP  query.negation: 592083000 -> 45759250 (-92.2%)\nIMP  query.aggregate: 590224000 -> 43258000 (-92.6%)\nIMP  query.rule-recursive: 588208000 -> 42926750 (-92.7%)\nIMP  query.asOf: 372347000 -> 42696500 (-88.5%)\nIMP  pull.nested: 555985000 -> 4665593 (-99.1%)\nok   store.assert-10k: 66639 -> 67638 (+1.4%)\nREG  boot.bare: 9724 -> 11003 (+13.1%)\nREG  boot.stdlib-dylib: 106967 -> 115245 (+7.7%)\nok   boot.stdlib-source: 270738 -> 280744 (+3.6%)\nREG  script.primes: 118668 -> 128075 (+7.9%)\nREG  script.word-frequency: 111350 -> 121049 (+8.7%)\nIMP  docgen.full: 39598225 -> 33808841 (-14.6%)\nregressions: 14, missing: 0, unusable: 4\n"
+  },
+  "before->head": {
+   "exit_code": 1,
+   "regressions": [],
+   "missing": [],
+   "unusable": [
+    "value(s)",
+    "value(s)",
+    "value(s)",
+    "value(s)"
+   ],
+   "report": "comparing /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/before.json -> /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/head.json\nIMP  sends.unary: 1259 -> 1037 (-17.5%)\nok   sends.keyword3: 2257 -> 2189 (-3.0%)\nIMP  sends.dnu-mint: 475 -> 244 (-48.5%)\nIMP  blocks.value: 198 -> 101 (-48.5%)\nok   loops.to-do: 33606 -> 31658 (-5.7%)\nIMP  loops.whileTrue: 30704 -> 25427 (-17.1%)\nok   loops.timesRepeat: 34123 -> 32316 (-5.2%)\nok   string.indexOf-native: 261238 -> 271968 (+4.1%)\nok   string.split-native: 2616281 -> 2648140 (+1.2%)\nIMP  string.scan-derived: 2400858000 -> 2039797000 (-15.0%)\nok   stringbuilder.build-10k: 44478250 -> 46631500 (+4.8%)\nok   vector.push-10k: 196685000 -> 181404000 (-7.7%)\nILL  vector.at-random: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  vector.fold-sum: 196946000 -> 263982000 (+34.0%)\nok   map.put-10k: 208280000 -> 209754000 (+0.7%)\nIMP  map.at-hit: 160 -> 107 (-33.3%)\nILL  map.at-miss: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nok   cells.write: 2525 -> 2333 (-7.6%)\nILL  cells.read: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  error.raise-handle: 26851 -> 29875 (+11.2%)\nREG  error.propagate-5-deep: 5582 -> 7932 (+42.0%)\nok   codegen.define-method: 394578 -> 391718 (-0.7%)\nILL  ffi.wrapped-call: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  ffi.peek-poke: 226 -> 1815 (+702.3%)\nok   vector.includes-miss: 148273 -> 158361 (+6.8%)\nREG  vector.reversed: 1652640 -> 1992453 (+20.5%)\nok   vector.copy-1k: 165951 -> 179121 (+7.9%)\nok   range.asVector: 190112000 -> 204353000 (+7.4%)\nREG  sends.compiled-unary: 182 -> 594 (+226.4%)\nIMP  blocks.create: 698 -> 413 (-40.8%)\nIMP  code.reflect-program: 704 -> 309 (-56.0%)\nIMP  code.traverse-statements: 5718 -> 3882 (-32.1%)\nREG  lookup.dict256-first: 1155 -> 1249 (+8.2%)\nIMP  lookup.dict256-last: 1405 -> 1277 (-9.0%)\nREG  lookup.inherit-depth16: 975 -> 1461 (+49.7%)\nIMP  globals.import-512: 839 -> 181 (-78.3%)\nok   globals.at-512: 1295 -> 1309 (+1.0%)\nok   globals.rebind-512: 2793 -> 2758 (-1.2%)\nIMP  parse.json-20kb: 361852000 -> 325203000 (-10.1%)\nIMP  query.single-clause: 598142000 -> 42289750 (-92.9%)\nIMP  query.join-3way: 666471000 -> 116145000 (-82.5%)\nIMP  query.negation: 592083000 -> 45056500 (-92.3%)\nIMP  query.aggregate: 590224000 -> 44703500 (-92.4%)\nIMP  query.rule-recursive: 588208000 -> 41426250 (-92.9%)\nIMP  query.asOf: 372347000 -> 42430250 (-88.6%)\nIMP  pull.nested: 555985000 -> 4681812 (-99.1%)\nok   store.assert-10k: 66639 -> 66164 (-0.7%)\nREG  boot.bare: 9724 -> 10376 (+6.7%)\nREG  boot.stdlib-dylib: 106967 -> 117809 (+10.1%)\nok   boot.stdlib-source: 270738 -> 281526 (+3.9%)\nREG  script.primes: 118668 -> 129762 (+9.3%)\nREG  script.word-frequency: 111350 -> 121864 (+9.4%)\nIMP  docgen.full: 39598225 -> 30844537 (-22.1%)\nregressions: 12, missing: 0, unusable: 4\n"
+  },
+  "storepeg->head": {
+   "exit_code": 1,
+   "regressions": [],
+   "missing": [],
+   "unusable": [
+    "value(s)",
+    "value(s)",
+    "value(s)",
+    "value(s)"
+   ],
+   "report": "comparing /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/storepeg.json -> /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/head.json\nok   sends.unary: 958 -> 1037 (+8.3%)\nREG  sends.keyword3: 1962 -> 2189 (+11.5%)\nIMP  sends.dnu-mint: 355 -> 244 (-31.2%)\nREG  blocks.value: 19 -> 101 (+432.1%)\nok   loops.to-do: 34912 -> 31658 (-9.3%)\nIMP  loops.whileTrue: 30062 -> 25427 (-15.4%)\nok   loops.timesRepeat: 35086 -> 32316 (-7.8%)\nok   string.indexOf-native: 270537 -> 271968 (+0.5%)\nok   string.split-native: 2695937 -> 2648140 (-1.7%)\nok   string.scan-derived: 2120994000 -> 2039797000 (-3.8%)\nok   stringbuilder.build-10k: 44972500 -> 46631500 (+3.6%)\nIMP  vector.push-10k: 240048000 -> 181404000 (-24.4%)\nILL  vector.at-random: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  vector.fold-sum: 201745000 -> 263982000 (+30.8%)\nok   map.put-10k: 201664000 -> 209754000 (+4.0%)\nILL  map.at-hit: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nILL  map.at-miss: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  cells.write: 1800 -> 2333 (+29.5%)\nIMP  cells.read: 440 -> 134 (-69.5%)\nIMP  error.raise-handle: 34134 -> 29875 (-12.4%)\nIMP  error.propagate-5-deep: 10999 -> 7932 (-27.8%)\nok   codegen.define-method: 363328 -> 391718 (+7.8%)\nILL  ffi.wrapped-call: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  ffi.peek-poke: 224 -> 1815 (+708.1%)\nok   vector.includes-miss: 172082 -> 158361 (-7.9%)\nok   vector.reversed: 2160703 -> 1992453 (-7.7%)\nok   vector.copy-1k: 172140 -> 179121 (+4.0%)\nREG  range.asVector: 183496000 -> 204353000 (+11.3%)\nREG  sends.compiled-unary: 125 -> 594 (+375.2%)\nIMP  blocks.create: 737 -> 413 (-43.9%)\nIMP  code.reflect-program: 889 -> 309 (-65.2%)\nIMP  code.traverse-statements: 6297 -> 3882 (-38.3%)\nREG  lookup.dict256-first: 1115 -> 1249 (+12.0%)\nREG  lookup.dict256-last: 1183 -> 1277 (+7.9%)\nREG  lookup.inherit-depth16: 1252 -> 1461 (+16.6%)\nIMP  globals.import-512: 247 -> 181 (-26.6%)\nREG  globals.at-512: 1225 -> 1309 (+6.8%)\nIMP  globals.rebind-512: 3033 -> 2758 (-9.0%)\nIMP  parse.json-20kb: 360349000 -> 325203000 (-9.7%)\nok   query.single-clause: 43181000 -> 42289750 (-2.0%)\nok   query.join-3way: 116853000 -> 116145000 (-0.6%)\nok   query.negation: 45759250 -> 45056500 (-1.5%)\nok   query.aggregate: 43258000 -> 44703500 (+3.3%)\nok   query.rule-recursive: 42926750 -> 41426250 (-3.4%)\nok   query.asOf: 42696500 -> 42430250 (-0.6%)\nok   pull.nested: 4665593 -> 4681812 (+0.3%)\nok   store.assert-10k: 67638 -> 66164 (-2.1%)\nIMP  boot.bare: 11003 -> 10376 (-5.6%)\nok   boot.stdlib-dylib: 115245 -> 117809 (+2.2%)\nok   boot.stdlib-source: 280744 -> 281526 (+0.2%)\nok   script.primes: 128075 -> 129762 (+1.3%)\nok   script.word-frequency: 121049 -> 121864 (+0.6%)\nIMP  docgen.full: 33808841 -> 30844537 (-8.7%)\nregressions: 11, missing: 0, unusable: 4\n"
+  },
+  "before->fixed": {
+   "exit_code": 1,
+   "regressions": [],
+   "missing": [],
+   "unusable": [
+    "value(s)",
+    "value(s)"
+   ],
+   "report": "comparing /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/before.json -> /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/fixed.json\nIMP  sends.unary: 1259 -> 1041 (-17.3%)\nok   sends.keyword3: 2257 -> 2059 (-8.7%)\nIMP  sends.dnu-mint: 475 -> 377 (-20.6%)\nIMP  blocks.value: 198 -> 30 (-84.7%)\nok   loops.to-do: 33606 -> 31128 (-7.3%)\nIMP  loops.whileTrue: 30704 -> 25296 (-17.6%)\nok   loops.timesRepeat: 34123 -> 31657 (-7.2%)\nok   string.indexOf-native: 261238 -> 269138 (+3.0%)\nREG  string.split-native: 2616281 -> 3160203 (+20.7%)\nREG  string.scan-derived: 2400858000 -> 2642591000 (+10.0%)\nIMP  stringbuilder.build-10k: 44478250 -> 37447750 (-15.8%)\nREG  vector.push-10k: 196685000 -> 219932000 (+11.8%)\nREG  vector.at-random: 1063 -> 1525 (+43.4%)\nIMP  vector.fold-sum: 196946000 -> 169473000 (-13.9%)\nIMP  map.put-10k: 208280000 -> 172355000 (-17.2%)\nREG  map.at-hit: 160 -> 922 (+473.2%)\nREG  map.at-miss: 176 -> 1893 (+971.7%)\nIMP  cells.write: 2525 -> 2024 (-19.8%)\nILL  cells.read: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nok   error.raise-handle: 26851 -> 26427 (-1.5%)\nREG  error.propagate-5-deep: 5582 -> 8475 (+51.8%)\nok   codegen.define-method: 394578 -> 373671 (-5.2%)\nILL  ffi.wrapped-call: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nREG  ffi.peek-poke: 226 -> 1445 (+538.7%)\nREG  vector.includes-miss: 148273 -> 167738 (+13.1%)\nok   vector.reversed: 1652640 -> 1691125 (+2.3%)\nok   vector.copy-1k: 165951 -> 158076 (-4.7%)\nIMP  range.asVector: 190112000 -> 166900000 (-12.2%)\nIMP  sends.compiled-unary: 182 -> 101 (-44.5%)\nIMP  blocks.create: 698 -> 345 (-50.5%)\nIMP  code.reflect-program: 704 -> 370 (-47.3%)\nIMP  code.traverse-statements: 5718 -> 3744 (-34.5%)\nREG  lookup.dict256-first: 1155 -> 1358 (+17.6%)\nIMP  lookup.dict256-last: 1405 -> 1027 (-26.8%)\nREG  lookup.inherit-depth16: 975 -> 1540 (+57.8%)\nIMP  globals.import-512: 839 -> 236 (-71.8%)\nIMP  globals.at-512: 1295 -> 1188 (-8.2%)\nok   globals.rebind-512: 2793 -> 2811 (+0.6%)\nIMP  parse.json-20kb: 361852000 -> 310228000 (-14.2%)\nIMP  query.single-clause: 598142000 -> 41299250 (-93.0%)\nIMP  query.join-3way: 666471000 -> 117017000 (-82.4%)\nIMP  query.negation: 592083000 -> 44427250 (-92.4%)\nIMP  query.aggregate: 590224000 -> 40698500 (-93.1%)\nIMP  query.rule-recursive: 588208000 -> 40830000 (-93.0%)\nIMP  query.asOf: 372347000 -> 40688500 (-89.0%)\nIMP  pull.nested: 555985000 -> 4159937 (-99.2%)\nok   store.assert-10k: 66639 -> 63540 (-4.6%)\nREG  boot.bare: 9724 -> 10288 (+5.8%)\nIMP  boot.stdlib-dylib: 106967 -> 85976 (-19.6%)\nIMP  boot.stdlib-source: 270738 -> 241547 (-10.7%)\nIMP  script.primes: 118668 -> 97222 (-18.0%)\nIMP  script.word-frequency: 111350 -> 91233 (-18.0%)\nIMP  docgen.full: 39598225 -> 29400040 (-25.7%)\nregressions: 12, missing: 0, unusable: 2\n"
+  },
+  "head->fixed": {
+   "exit_code": 1,
+   "regressions": [],
+   "missing": [],
+   "unusable": [
+    "value(s)",
+    "value(s)",
+    "value(s)"
+   ],
+   "report": "comparing /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/head.json -> /private/tmp/claude-501/-Users-chazu-dev-zig-birnam/c9d49f8c-3739-48e7-ba92-40a212a2afc7/scratchpad/results/fixed.json\nok   sends.unary: 1037 -> 1041 (+0.3%)\nok   sends.keyword3: 2189 -> 2059 (-5.9%)\nREG  sends.dnu-mint: 244 -> 377 (+54.3%)\nIMP  blocks.value: 101 -> 30 (-70.4%)\nok   loops.to-do: 31658 -> 31128 (-1.6%)\nok   loops.whileTrue: 25427 -> 25296 (-0.5%)\nok   loops.timesRepeat: 32316 -> 31657 (-2.0%)\nok   string.indexOf-native: 271968 -> 269138 (-1.0%)\nREG  string.split-native: 2648140 -> 3160203 (+19.3%)\nREG  string.scan-derived: 2039797000 -> 2642591000 (+29.5%)\nIMP  stringbuilder.build-10k: 46631500 -> 37447750 (-19.6%)\nREG  vector.push-10k: 181404000 -> 219932000 (+21.2%)\nILL  vector.at-random: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nIMP  vector.fold-sum: 263982000 -> 169473000 (-35.8%)\nIMP  map.put-10k: 209754000 -> 172355000 (-17.8%)\nREG  map.at-hit: 107 -> 922 (+760.5%)\nILL  map.at-miss: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nIMP  cells.write: 2333 -> 2024 (-13.2%)\nIMP  cells.read: 134 -> 119 (-10.8%)\nIMP  error.raise-handle: 29875 -> 26427 (-11.5%)\nok   error.propagate-5-deep: 7932 -> 8475 (+6.8%)\nok   codegen.define-method: 391718 -> 373671 (-4.6%)\nILL  ffi.wrapped-call: unusable value(s) \u2014 zero/negative/error (broken or ill-conditioned measurement)\nIMP  ffi.peek-poke: 1815 -> 1445 (-20.3%)\nok   vector.includes-miss: 158361 -> 167738 (+5.9%)\nIMP  vector.reversed: 1992453 -> 1691125 (-15.1%)\nIMP  vector.copy-1k: 179121 -> 158076 (-11.7%)\nIMP  range.asVector: 204353000 -> 166900000 (-18.3%)\nIMP  sends.compiled-unary: 594 -> 101 (-83.0%)\nIMP  blocks.create: 413 -> 345 (-16.4%)\nREG  code.reflect-program: 309 -> 370 (+19.7%)\nok   code.traverse-statements: 3882 -> 3744 (-3.5%)\nREG  lookup.dict256-first: 1249 -> 1358 (+8.7%)\nIMP  lookup.dict256-last: 1277 -> 1027 (-19.5%)\nREG  lookup.inherit-depth16: 1461 -> 1540 (+5.3%)\nREG  globals.import-512: 181 -> 236 (+30.2%)\nIMP  globals.at-512: 1309 -> 1188 (-9.1%)\nok   globals.rebind-512: 2758 -> 2811 (+1.8%)\nok   parse.json-20kb: 325203000 -> 310228000 (-4.6%)\nok   query.single-clause: 42289750 -> 41299250 (-2.3%)\nok   query.join-3way: 116145000 -> 117017000 (+0.7%)\nok   query.negation: 45056500 -> 44427250 (-1.3%)\nIMP  query.aggregate: 44703500 -> 40698500 (-8.9%)\nok   query.rule-recursive: 41426250 -> 40830000 (-1.4%)\nok   query.asOf: 42430250 -> 40688500 (-4.1%)\nIMP  pull.nested: 4681812 -> 4159937 (-11.1%)\nok   store.assert-10k: 66164 -> 63540 (-3.9%)\nok   boot.bare: 10376 -> 10288 (-0.8%)\nIMP  boot.stdlib-dylib: 117809 -> 85976 (-27.0%)\nIMP  boot.stdlib-source: 281526 -> 241547 (-14.2%)\nIMP  script.primes: 129762 -> 97222 (-25.0%)\nIMP  script.word-frequency: 121864 -> 91233 (-25.1%)\nok   docgen.full: 30844537 -> 29400040 (-4.6%)\nregressions: 9, missing: 0, unusable: 3\n"
+  }
+ },
+ "driver": {
+  "base": "scripts/bench.sh at 21cf6d7b (unchanged measurement, host-monitor, macro and merge functions)",
+  "delta_vs_base": "20c20\n< cd \"$(dirname \"$0\")/..\"\n---\n> cd /Users/chazu/dev/zig/birnam\n184a185\n> run_suite bench/selfhost-probe.birnam selfhost 1\n187,188d187\n< run_suite bench/gc.birnam gc $REP_SUITES\n< BENCH_IMG=\"$TMP/bench.image\" run_suite bench/image.birnam image $REP_SUITES\n279,284d277\n< if [ -f \"$TMP/bench.image\" ]; then\n<   macro_case boot.image       \"$REP_MACRO\" \"$BIN\" \"$TMP/bench.image\"\n< else\n<   echo \"FAIL macro boot.image: no image artifact (image suite failed?)\" >&2; FAIL=1\n< fi\n< macro_case compile.stage1-stdlib \"$REP_HEAVY\" \"$BIN\" --compile-module src/id/stdlib.birnam \"$TMP/libbirnam_stdlib.dylib\"\n",
+  "invocation": "BENCH_PREFIX=<prefix> BENCH_CHECK_HOST=1 BENCH_FINAL_OUT=<run>.json focused-bench.sh, from the repository root, one run per prefix in the order before, storepeg, head, before-repeat, then fixed after commit f24ff9b2"
+ },
+ "retained_prefix_note": "The prefixes retained by the 2026-09-06 comparison (/tmp/birnam-planning.sipzqN/prefix, /tmp/birnam-store-peg.486hxe/after) no longer existed on 2026-09-09. The before prefix was rebuilt from f15b8fbe (d15de56d plus the committed Store diagnostic); its manifest a6a25e9f... differs from the recorded 7ce30f43..., which was built from an uncommitted working tree that cannot be reconstructed (plain d15de56d gives 20c49e11...). Two before runs from the rebuilt prefix (before, before-repeat) bound the same-binary drift instead."
+}

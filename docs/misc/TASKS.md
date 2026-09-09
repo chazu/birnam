@@ -27,9 +27,14 @@ Epic `birnam-epic-as7` owns performance preparation for further self-hosting and
 Linux support. The dependency graph and acceptance state live in Beads; the
 execution map is [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md).
 
-1. Close Store/PEG startup and docgen performance acceptance.
-2. Implement validated CodeProgram metadata reuse, indexed global imports and
-   indexed method dictionaries within the existing contracts.
+1. ~~Close Store/PEG startup and docgen performance acceptance.~~ Closed
+   2026-09-09: the startup regression reproduced, was attributed to PEG hashing
+   and per-vtable indexes, and was fixed in `f24ff9b2`; evidence in
+   [as7-acceptance-comparison.json](../measurements/as7-acceptance-comparison.json).
+2. ~~Implement validated CodeProgram metadata reuse, indexed global imports and
+   indexed method dictionaries within the existing contracts.~~ Implemented
+   2026-09-06; timing acceptance closed 2026-09-09 (see
+   [Self-hosting performance work](SELF-HOSTING-PERFORMANCE.md)).
 3. Review [Design 73](../design/73-scalable-ordering-contract.md), the proposed
    sorting/String contract. Implementation remains blocked until acceptance.
 4. After explicit decisions, implement the remaining collection, Store,

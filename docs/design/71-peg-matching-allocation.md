@@ -122,18 +122,29 @@ probe retained all end-offset, child-count and between-parse mutation checks.
 The optimized runtime was built into a private release prefix; no user
 installation or running runtime was replaced.
 
-## Performance acceptance still open
+## Performance acceptance — closed 2026-09-09
 
-The unchanged `parse.json-20kb` case fell from 386.4 to 373.2 ms (3.4%) in the
-host-accepted focused development comparison. This supports only a modest
-workload change, not a large parsing-speed claim. Pattern-copy tests establish
-bounded copying; they do not establish lower total parse allocation or RSS.
+The acceptance repeat ([record](../measurements/as7-acceptance-comparison.json);
+procedure in [Design 68](68-store-snapshot-scaling.md)) reproduced the startup
+regression and attributed all of it to this change: over 15 interleaved reps
+the PEG-only build of `3bff9357` booted stdlib in 112.4 ms against 105.9 ms
+before, while the Store-only build measured 105.0 ms.
 
-The retained [comparison](../measurements/71-store-peg-comparison.json) fails
-the unchanged standard comparator on bare startup (+11.8%), source startup
-(+7.6%) and missing after-docgen. Dylib-startup peak RSS grew 15.3%; source-startup
-RSS fell 2.1%. Docgen windows were rejected for host load, and the remaining
-preflight was stopped during unrelated compilation. Repeat startup/docgen under
-the existing host gates and investigate reproducible regressions before closing
-performance acceptance. This ticket remains open; correctness completion is not
-a clean performance qualification.
+Cause: a dylib boot parses every self-hosted floor source through the 26-rule
+language grammar, about 250 KB per boot with each source parsed twice, and the
+rule index, the pattern-snapshot table and the memo table hashed integer keys
+with SipHash on every pattern visit. On the common leaf kinds that cost more
+than the small vector clones it replaced.
+
+Fix (`f24ff9b2`): the parse-local tables use an address/position hasher of the
+same shape as `birnam-id`'s address map. The lazy snapshot, memo keys,
+first-wins rule index, diagnostics and the frozen legacy differential matcher
+are unchanged; the matcher tests and the 627-expect language suites pass.
+Because the memo table shares the hasher, parsing is now faster than before
+this design: gated `parse.json-20kb` 361.9/357.9 ms before to 310.2 ms fixed
+(-14.2%); dylib boot 107.0 to 86.0 ms and docgen 39.6 to 29.4 s together with
+Design 68 and the as7 index work. Dylib-startup peak RSS was 65.5 MB on every
+run; the earlier +15.3% did not reproduce.
+
+Observed but not addressed here: the double parse of each floor source on
+every dylib boot, tracked as a separate investigation in Beads.

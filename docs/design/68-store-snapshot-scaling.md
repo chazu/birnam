@@ -123,21 +123,39 @@ bounded-churn save/load/resave gate passed using the private release prefix.
 This includes the production image, retirement and relocation gates; no user
 installation or running runtime was replaced.
 
-## Performance acceptance still open
+## Performance acceptance — closed 2026-09-09
 
-The host-accepted focused development comparison is retained in
-[`71-store-peg-comparison.json`](../measurements/71-store-peg-comparison.json).
-Single-clause queries fell from 596.5 to 46.2 ms (12.9x), three-way joins from
-671.9 to 120.8 ms (5.6x), and nested pull from 572.1 to 7.4 ms (77.7x).
-Assertion throughput was 4.4% slower, within the unchanged comparator threshold.
-These are unchanged case bodies, not a complete release benchmark suite.
+The 2026-09-06 comparison left bare startup (+11.8%), source startup (+7.6%)
+and a missing after-docgen open. Its retained prefixes no longer existed on
+2026-09-09, so the repeat rebuilt release prefixes from the recorded commits
+(before `f15b8fbe`, Store/PEG `3bff9357`, the later head `21cf6d7b`, and the
+fixed `f24ff9b2`) and ran the unchanged `scripts/bench.sh` measurement and
+host-gate functions on a quiet AC-powered host, with two runs from the before
+prefix bounding same-binary drift. The record, including the driver delta and
+prefix provenance, is
+[`as7-acceptance-comparison.json`](../measurements/as7-acceptance-comparison.json).
 
-The standard comparator exits 1: bare startup is 11.8% slower, source startup
-7.6% slower, and after-docgen is missing. Two docgen windows were rejected by
-the existing host gate; unrelated compilation then prevented a quiet preflight,
-so the remaining driver was stopped. No noisy docgen timing is accepted.
-Dylib-startup peak RSS increased from 70.9 to 81.7 MB; source-startup RSS fell
-from 142.6 to 139.7 MB. These process peaks are not isolated scratch allocation
-measurements. Repeat startup and docgen on a quiet host and investigate any
-reproduced regression before claiming performance acceptance. The implementation
-ticket remains open for that gate despite completed code and correctness tests.
+Startup (gated three-rep medians): dylib 107.0/107.1 ms before, 115.2 ms
+Store/PEG; source 270.7/269.5 ms before, 280.7 ms Store/PEG. The regression
+reproduced as a fixed ~10 ms per stdlib boot. The bare-boot flag did not:
+9.7/10.1 vs 11.0 ms on three reps, and 6.84 vs 6.87 ms over 15 interleaved
+reps. Bisecting `3bff9357` by file attributed the whole cost to the PEG change
+(Store-only build 105.0 ms, PEG-only 112.4 ms): the snapshot index costs
+nothing at boot. Its diagnosis and fix are recorded in
+[Design 71](71-peg-matching-allocation.md).
+
+Docgen: 39.6/39.1 s before, 33.8 s Store/PEG (-14.6%), peak RSS 322/319 to
+317 MB. The earlier dylib-startup RSS growth (70.9 to 81.7 MB) did not
+reproduce: 65.5 MB on every run. Queries: single-clause 598 to 43 ms, three-way
+join 666 to 117 ms, negation 592 to 46 ms, nested pull 556 to 4.7 ms,
+assert-10k flat (+1.5%).
+
+Against the fixed tree the same cases measure dylib boot 86.0 ms (-19.6% from
+before), source boot 241.5 ms (-10.7%) and docgen 29.4 s (-25.7%). The
+unchanged comparator still exits 1 on before-to-fixed for single-process micro
+cases (`ffi.peek-poke`, `map.at-*`, `error.propagate-5-deep`, several
+`vector.*`) whose flags also appear between the two runs of the before binary,
+and for `boot.bare` at +5.8% on three reps against +3.7% same-binary drift and
+no difference over 25 interleaved reps. Those flags are retained, not waived;
+release qualification remains the multi-process release gate. This design's
+performance acceptance is closed on the startup, docgen, RSS and query evidence.
