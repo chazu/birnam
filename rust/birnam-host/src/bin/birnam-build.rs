@@ -564,6 +564,12 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     } else {
         Vec::new()
     };
+    // Development-only cargo features (for example Design 74 E1's
+    // `birnam-id/dev-guarded-slots,...`). Recorded in the receipt's cargo
+    // invocation so a dev prefix is never mistaken for an ordinary build.
+    let cargo_features = env::var("BIRNAM_BUILD_CARGO_FEATURES")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
     let mut cargo = Command::new("cargo");
     cargo
         .current_dir(&root)
@@ -573,6 +579,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         .arg("--locked")
         .arg("--offline")
         .args(&cargo_profile);
+    if let Some(features) = &cargo_features {
+        cargo.arg("--features").arg(features);
+    }
     run_status(&mut cargo, "cargo Rust workspace build")?;
 
     let profile_dir = target_dir.join(&options.profile);
@@ -656,6 +665,10 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "--offline".to_owned(),
     ];
     cargo_invocation.extend(cargo_profile.iter().map(|value| (*value).to_owned()));
+    if let Some(features) = &cargo_features {
+        cargo_invocation.push("--features".to_owned());
+        cargo_invocation.push(features.clone());
+    }
 
     let git_commit = command_stdout("git", &["rev-parse", "HEAD"], &root)
         .unwrap_or_else(|| "unavailable".to_owned());

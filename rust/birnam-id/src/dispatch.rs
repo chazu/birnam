@@ -151,7 +151,11 @@ impl Runtime {
     }
 }
 
-unsafe extern "C" fn vtable_lookup_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+pub(crate) unsafe extern "C" fn vtable_lookup_method(
+    receiver: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
     if count == 0 || args.is_null() {
         boundary::fatal_invariant("vtable lookup requires one selector");
     }

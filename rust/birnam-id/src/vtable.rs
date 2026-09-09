@@ -150,6 +150,10 @@ pub(crate) enum AddMethod {
 pub(crate) struct Vtables {
     ordered: Vec<Oop>,
     by_address: AddressMap<VtableRecord>,
+    // Monotonic count of dictionary, parent and registry mutations. Design 74A
+    // §3.2: a reader that cached a verification against one epoch re-verifies
+    // when the epoch moved. Over-counting is harmless; never skip a mutator.
+    mutation_epoch: u64,
 }
 
 impl Vtables {
@@ -157,7 +161,16 @@ impl Vtables {
         Self {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
+            mutation_epoch: 0,
         }
+    }
+
+    pub(crate) fn mutation_epoch(&self) -> u64 {
+        self.mutation_epoch
+    }
+
+    pub(crate) fn note_mutation(&mut self) {
+        self.mutation_epoch = self.mutation_epoch.saturating_add(1);
     }
 
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
@@ -318,6 +331,9 @@ impl Vtables {
             });
         }
         self.ordered.retain(|vtable| !dead.contains(vtable));
+        if !dead.is_empty() {
+            self.note_mutation();
+        }
         dead
     }
 
@@ -347,6 +363,9 @@ impl Vtables {
                 record.rebuild_key_indices();
             }
             record.sync_raw_view();
+        }
+        if removed != 0 {
+            self.note_mutation();
         }
         removed
     }
@@ -389,6 +408,7 @@ impl Vtables {
         let record = self.record_mut(vtable);
         record.parent = parent;
         record.sync_raw_view();
+        self.note_mutation();
     }
 
     pub(crate) fn owner_of(&self, candidate: Oop) -> Oop {
@@ -499,6 +519,7 @@ impl Vtables {
 
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         let method = MethodAddress::from_method(method);
+        self.note_mutation();
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(selector) {
             let previous = core::mem::replace(&mut record.values[index], method.as_oop());
@@ -522,6 +543,7 @@ impl Vtables {
     /// and export dictionaries. These registered vtables are observable through
     /// MOP enumeration but are never dispatch families.
     pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
+        self.note_mutation();
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(key) {
             record.values[index] = value;
@@ -540,6 +562,7 @@ impl Vtables {
     }
 
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+        self.note_mutation();
         let record = self.record_mut(vtable);
         let index = record.key_index(selector)?;
         record.keys.remove(index);
@@ -985,5 +1008,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn every_dictionary_mutator_moves_the_mutation_epoch() {
+        let (mut heap, mut vtables, meta, parent, child) = new_hierarchy();
+        let mut storage = [0usize; 3];
+        let keys: Vec<Oop> = storage
+            .iter_mut()
+            .map(|v| core::ptr::from_mut(v).cast())
+            .collect();
+        let expect_moved = |vtables: &Vtables, last: &mut u64, what: &str| {
+            assert!(vtables.mutation_epoch() > *last, "{what} did not move the epoch");
+            *last = vtables.mutation_epoch();
+        };
+        let mut last = vtables.mutation_epoch();
+
+        assert_eq!(vtables.add_method(parent, keys[0], answer_1), AddMethod::Added);
+        expect_moved(&vtables, &mut last, "add_method (added)");
+        assert!(matches!(
+            vtables.add_method(parent, keys[0], answer_2),
+            AddMethod::Overwrote(_)
+        ));
+        expect_moved(&vtables, &mut last, "add_method (overwrote)");
+        assert!(vtables.remove_method(parent, keys[0]).is_some());
+        expect_moved(&vtables, &mut last, "remove_method");
+        vtables.set_parent(child, core::ptr::null_mut());
+        expect_moved(&vtables, &mut last, "set_parent");
+        vtables.set_parent(child, parent);
+        expect_moved(&vtables, &mut last, "set_parent (restore)");
+
+        let weak = heap.allocate(0, Permanence::Collectable);
+        vtables.add_weak_opaque_binding(parent, weak, weak);
+        expect_moved(&vtables, &mut last, "add_weak_opaque_binding");
+        heap.clear_marks();
+        assert!(heap.mark_collectable_address(weak.addr()));
+        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 0);
+        assert_eq!(vtables.mutation_epoch(), last, "a sweep that removed nothing is not a mutation");
+        heap.clear_marks();
+        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 1);
+        expect_moved(&vtables, &mut last, "remove_dead_weak_bindings");
+
+        let collectable = vtables.create_collectable(&mut heap, parent, meta);
+        assert!(vtables.is_registered(collectable));
+        heap.clear_marks();
+        assert_eq!(vtables.remove_dead_collectable(&heap), vec![collectable]);
+        expect_moved(&vtables, &mut last, "remove_dead_collectable");
+        assert!(vtables.remove_dead_collectable(&heap).is_empty());
+        assert_eq!(vtables.mutation_epoch(), last, "an empty vtable sweep is not a mutation");
     }
 }

@@ -8,6 +8,15 @@ loader ports are complete.
 
 ## [Unreleased]
 
+### Added
+
+- Design 74 E1 (development-only): a `dev-guarded-slots` cargo feature on the
+  floor, TCC rung and emitter adds guarded direct Machine slot access for
+  generated StepMethods, selected per compiling process by
+  `BIRNAM_DEV_GUARDED_SLOTS=1`, with a resumable loop fixture and driver.
+  Ordinary builds are unchanged; the runtime ABI hash and export surfaces are
+  untouched. Every vtable now carries a dictionary-mutation epoch.
+
 ### Changed
 
 - Release acceptance for v0.15 judges `vector.includes-miss` by its raw

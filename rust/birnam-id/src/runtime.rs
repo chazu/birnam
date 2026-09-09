@@ -185,6 +185,9 @@ pub(crate) struct Runtime {
     collection_phase: Cell<CollectionPhase>,
     state: UnsafeCell<RuntimeState>,
     entry_scopes: UnsafeCell<Vec<MachineCapability>>,
+    // Design 74A §3.2: the vtable mutation epoch at which the guarded-slot
+    // conditions 2–4 were last verified, and their verdict at that epoch.
+    slot_guard_cache: Cell<(u64, bool)>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -335,6 +338,7 @@ impl Runtime {
             owner: current_thread_token(),
             collection_phase: Cell::new(CollectionPhase::Idle),
             entry_scopes: UnsafeCell::new(Vec::new()),
+            slot_guard_cache: Cell::new((u64::MAX, false)),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
                 values,
@@ -633,7 +637,91 @@ impl Runtime {
             state.heap.set_vtable(object, private),
             "private-vtable receiver block was not registered",
         );
+        // A vtable that gained a private vtable now dispatches differently.
+        state.vtables.note_mutation();
         private
+    }
+
+    /// Design 74A §3: may generated code read or write `machine`'s current
+    /// Frame slots directly instead of sending `oopAt:` / `oopAt:put:`?
+    ///
+    /// Conditions 2–4 (canonical Machine vtable entries are the floor Methods,
+    /// no custom lookup on that vtable, and the floor lookup primitive on
+    /// `vtable_vt`) depend only on vtable state and are re-verified whenever
+    /// the vtable mutation epoch moved. Condition 1 (the receiver's own vtable
+    /// is the canonical Machine vtable) is read on every call. The reads are
+    /// private and non-effectful; an ineligible receiver takes the ordinary
+    /// send, whose own checks then decide.
+    pub(crate) fn guarded_slot_access_eligible(&self, machine: Oop) -> bool {
+        self.assert_owner();
+        // SAFETY: owner-thread serialization and immutable access only.
+        let state = unsafe { &*self.state.get() };
+        let Some(objects) = state.execution.objects() else {
+            return false;
+        };
+        let epoch = state.vtables.mutation_epoch();
+        let (verified_epoch, verified) = self.slot_guard_cache.get();
+        let verified = if verified_epoch == epoch {
+            verified
+        } else {
+            let verdict = Self::slot_guard_conditions_hold(state, &objects);
+            self.slot_guard_cache.set((epoch, verdict));
+            verdict
+        };
+        verified && Vtables::checked_vtable_of(&state.heap, machine) == objects.machine_vtable
+    }
+
+    fn slot_guard_conditions_hold(
+        state: &RuntimeState,
+        objects: &crate::execution::ExecutionObjects,
+    ) -> bool {
+        let globals = state.globals;
+        let machine_vt = objects.machine_vtable;
+        let canonical_read =
+            MethodAddress::from_method(crate::execution::machine_oop_at as crate::abi::Method);
+        let canonical_write =
+            MethodAddress::from_method(crate::execution::machine_oop_at_put as crate::abi::Method);
+        let floor_lookup =
+            MethodAddress::from_method(crate::dispatch::vtable_lookup_method as crate::abi::Method);
+        state.vtables.direct_lookup(machine_vt, objects.oop_at) == Some(canonical_read)
+            && state.vtables.direct_lookup(machine_vt, objects.oop_at_put) == Some(canonical_write)
+            && Vtables::checked_vtable_of(&state.heap, machine_vt) == globals.vtable_vt
+            && Vtables::checked_vtable_of(&state.heap, globals.vtable_vt) == globals.vtable_vt
+            && state.vtables.direct_lookup(globals.vtable_vt, globals.lookup) == Some(floor_lookup)
+    }
+
+    /// Guarded direct slot read: `None` when ineligible (the caller performs
+    /// the ordinary send exactly once); otherwise exactly what the canonical
+    /// `oopAt:` Method would have answered, including nil on every failure.
+    pub(crate) fn guarded_frame_oop_at(&self, machine: Oop, operand: Oop) -> Option<Oop> {
+        if !self.guarded_slot_access_eligible(machine) {
+            return None;
+        }
+        let nil = self.canonical().nil;
+        let Some(index) = crate::execution::nonnegative_index(self, operand) else {
+            return Some(nil);
+        };
+        Some(self.stackless_oop_at(machine, index).unwrap_or(nil))
+    }
+
+    /// Guarded direct slot write; same contract as `guarded_frame_oop_at`.
+    pub(crate) fn guarded_frame_oop_at_put(
+        &self,
+        machine: Oop,
+        operand: Oop,
+        value: Oop,
+    ) -> Option<Oop> {
+        if !self.guarded_slot_access_eligible(machine) {
+            return None;
+        }
+        let nil = self.canonical().nil;
+        let Some(index) = crate::execution::nonnegative_index(self, operand) else {
+            return Some(nil);
+        };
+        Some(
+            self.stackless_oop_at_put(machine, index, value)
+                .unwrap_or(nil),
+        )
     }
 
     pub(crate) fn allocate_empty(&self, vtable: Oop, permanence: Permanence) -> Oop {
@@ -9612,5 +9700,197 @@ mod tests {
             assert_eq!(machine_state.arena().diagnostics().live_frames, 0);
             assert_eq!(machine_state.arena().diagnostics().reserved_bytes, 0);
         }
+    }
+
+    #[cfg(feature = "dev-guarded-slots")]
+    thread_local! {
+        static GUARD_PROBE_FAILURES: Cell<u32> = const { Cell::new(0) };
+    }
+
+    #[cfg(feature = "dev-guarded-slots")]
+    fn guard_check(condition: bool, what: &str) {
+        if !condition {
+            eprintln!("guarded slot probe: {what}");
+            GUARD_PROBE_FAILURES.set(GUARD_PROBE_FAILURES.get() + 1);
+        }
+    }
+
+    #[cfg(feature = "dev-guarded-slots")]
+    unsafe extern "C" fn guarded_probe_step(machine: Oop, _: *const Oop, count: usize) -> Oop {
+        with_active_if_present(|runtime| {
+            if count != 0 {
+                return runtime.canonical().nil;
+            }
+            let nil = runtime.canonical().nil;
+            let oop_at = runtime.intern(b"oopAt:").expect("static selector");
+            let oop_at_put = runtime.intern(b"oopAt:put:").expect("static selector");
+            let lookup = runtime.globals().lookup;
+            let objects = unsafe { (*runtime.state.get()).execution.objects() }
+                .expect("execution objects are installed");
+            let machine_vt = objects.machine_vtable;
+            let vtable_vt = runtime.globals().vtable_vt;
+
+            // Hits answer exactly what the send answers, including nil failures.
+            for index in 0..2 {
+                let operand = runtime.make_integer(index);
+                let direct = runtime.guarded_frame_oop_at(machine, operand);
+                let sent = runtime.send_slice(machine, oop_at, &[operand]);
+                guard_check(direct == Some(sent), "read agrees with send");
+            }
+            let raw_slot = runtime.make_integer(3);
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, raw_slot) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[raw_slot]) == nil,
+                "raw slot answers nil on both paths",
+            );
+            let beyond = runtime.make_integer(9);
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, beyond) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[beyond]) == nil,
+                "out-of-range slot answers nil on both paths",
+            );
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, nil) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[nil]) == nil,
+                "non-Integer operand answers nil on both paths",
+            );
+            let value_slot = runtime.make_integer(2);
+            let fifty_five = runtime.make_integer(55);
+            guard_check(
+                runtime.guarded_frame_oop_at_put(machine, value_slot, fifty_five) == Some(fifty_five),
+                "guarded write answers the stored value",
+            );
+            guard_check(
+                runtime.send_slice(machine, oop_at, &[value_slot]) == fifty_five,
+                "the send observes the guarded write",
+            );
+            let sixty_six = runtime.make_integer(66);
+            let _ = runtime.send_slice(machine, oop_at_put, &[value_slot, sixty_six]);
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, value_slot) == Some(sixty_six),
+                "the guarded read observes the sent write",
+            );
+            guard_check(
+                runtime.guarded_frame_oop_at_put(machine, raw_slot, sixty_six) == Some(nil)
+                    && runtime.send_slice(machine, oop_at_put, &[raw_slot, sixty_six]) == nil,
+                "raw-slot write is rejected identically",
+            );
+
+            // Redefining the canonical entry makes the guard miss; restoring it
+            // re-verifies at the new epoch.
+            let _ = runtime.add_method(machine_vt, oop_at, synchronous_increment);
+            guard_check(!runtime.guarded_slot_access_eligible(machine), "redefined oopAt: misses");
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, value_slot).is_none(),
+                "miss answers None for the caller's fallback",
+            );
+            let _ = runtime.add_method(machine_vt, oop_at, crate::execution::machine_oop_at);
+            guard_check(runtime.guarded_slot_access_eligible(machine), "restored oopAt: hits again");
+            let _ = runtime.remove_method(machine_vt, oop_at_put);
+            guard_check(!runtime.guarded_slot_access_eligible(machine), "removed oopAt:put: misses");
+            let _ = runtime.add_method(machine_vt, oop_at_put, crate::execution::machine_oop_at_put);
+            guard_check(runtime.guarded_slot_access_eligible(machine), "restored oopAt:put: hits again");
+
+            // A global custom lookup on vtable_vt misses; restoring it hits.
+            let _ = runtime.add_method(vtable_vt, lookup, synchronous_increment);
+            guard_check(!runtime.guarded_slot_access_eligible(machine), "custom global lookup misses");
+            let _ = runtime.add_method(vtable_vt, lookup, crate::dispatch::vtable_lookup_method);
+            guard_check(runtime.guarded_slot_access_eligible(machine), "floor lookup restored hits");
+
+            // ensurePrivateVtable on a vtable answers the vtable itself (its
+            // dispatch vtable is already vtable_vt), so a different metavtable
+            // can only arrive through bootstrap or image paths. Simulate that
+            // untracked header change plus the epoch move those paths make.
+            let meta = runtime.create_vtable(vtable_vt);
+            unsafe {
+                let state = &mut *runtime.state.get();
+                assert!(state.heap.set_vtable(machine_vt, meta));
+                state.vtables.note_mutation();
+            }
+            guard_check(
+                !runtime.guarded_slot_access_eligible(machine),
+                "a non-canonical metavtable on the Machine vtable misses",
+            );
+            unsafe {
+                let state = &mut *runtime.state.get();
+                assert!(state.heap.set_vtable(machine_vt, vtable_vt));
+                state.vtables.note_mutation();
+            }
+            guard_check(
+                runtime.guarded_slot_access_eligible(machine),
+                "the canonical metavtable restored hits",
+            );
+            let _ = runtime.ensure_private_vtable(machine);
+            guard_check(
+                !runtime.guarded_slot_access_eligible(machine),
+                "private vtable on the Machine misses",
+            );
+            guard_check(
+                runtime.send_slice(machine, oop_at, &[value_slot]) == sixty_six,
+                "the ordinary send still works after every miss",
+            );
+
+            let return_at = runtime.intern(b"returnAt:").expect("static selector");
+            runtime.send_slice(machine, return_at, &[value_slot])
+        })
+        .unwrap_or(core::ptr::null_mut())
+    }
+
+    #[cfg(feature = "dev-guarded-slots")]
+    #[test]
+    fn guarded_slot_access_agrees_with_the_canonical_send_and_misses_on_overrides() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        GUARD_PROBE_FAILURES.set(0);
+
+        let machine = runtime
+            .create_stackless_machine()
+            .expect("guard probe Machine creates");
+        let nil = runtime.canonical().nil;
+        let zero = runtime.make_integer(0);
+        assert!(
+            runtime.guarded_slot_access_eligible(machine),
+            "a fresh canonical Machine is eligible"
+        );
+        runtime.enter(|| {
+            assert_eq!(
+                runtime.guarded_frame_oop_at(machine, zero),
+                Some(nil),
+                "outside a drive the guarded read fails to nil exactly as the send does"
+            );
+            assert_eq!(
+                runtime.send_slice(
+                    machine,
+                    runtime.intern(b"oopAt:").expect("static selector"),
+                    &[zero]
+                ),
+                nil
+            );
+        });
+
+        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+            identity: DescriptorIdentity {
+                implementation: 74,
+                generation: 1,
+                source_map: 74,
+            },
+            layout_version: FRAME_LAYOUT_VERSION_V1,
+            program_counter_count: 1,
+            driver_argument_count: 0,
+            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop, SlotKind::Oop, SlotKind::Raw],
+            call_sites: Vec::new(),
+            step_method: guarded_probe_step,
+        })
+        .expect("guard probe descriptor validates");
+        let first = runtime.make_integer(11);
+        let second = runtime.make_integer(22);
+        let result = runtime
+            .drive_stackless(machine, descriptor, &[(0, first), (1, second), (2, nil)])
+            .expect("guard probe drives to completion");
+        assert!(runtime.is_integer(result));
+        assert_eq!(runtime.integer_value(result), 66);
+        assert_eq!(GUARD_PROBE_FAILURES.get(), 0, "every guarded slot probe agreed");
     }
 }

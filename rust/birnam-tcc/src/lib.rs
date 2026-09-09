@@ -177,6 +177,10 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
         (b"strlen", validation_strlen as *const c_void),
         (b"birnam_send", validation_send as *const c_void),
         (b"birnam_intern", validation_intern as *const c_void),
+        #[cfg(feature = "dev-guarded-slots")]
+        (b"birnam_dev_frame_oop_at_v1", validation_pointer as *const c_void),
+        #[cfg(feature = "dev-guarded-slots")]
+        (b"birnam_dev_frame_oop_at_put_v1", validation_pointer as *const c_void),
     ];
     symbols.push((
         b"__vecFactory",
@@ -225,12 +229,11 @@ unsafe extern "C" {
     fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
 }
 
-fn floor_registration(
-    api: &IdApi,
-    symbol: &'static CStr,
-    address: &'static OnceLock<usize>,
-) -> Option<unsafe extern "C" fn(*mut c_void) -> u32> {
-    let address = *address.get_or_init(|| {
+/// Resolve one private symbol from the exact selected floor image (the one
+/// that owns `api.dlsym`), keeping that floor `RTLD_LOCAL`. Answers 0 when the
+/// image or symbol cannot be found; the result is cached per call site.
+fn floor_symbol_address(api: &IdApi, symbol: &'static CStr, address: &'static OnceLock<usize>) -> usize {
+    *address.get_or_init(|| {
         let mut info = DlInfo {
             filename: ptr::null(),
             base: ptr::null_mut(),
@@ -251,7 +254,15 @@ fn floor_registration(
             return 0;
         }
         unsafe { (api.dlsym)(handle, symbol.as_ptr()) as usize }
-    });
+    })
+}
+
+fn floor_registration(
+    api: &IdApi,
+    symbol: &'static CStr,
+    address: &'static OnceLock<usize>,
+) -> Option<unsafe extern "C" fn(*mut c_void) -> u32> {
+    let address = floor_symbol_address(api, symbol, address);
     if address == 0 {
         None
     } else {
@@ -864,6 +875,59 @@ pub unsafe extern "C" fn rt_register_resumable_v1(envelope: *mut c_void) -> u32 
     unsafe { register(envelope) }
 }
 
+/// Design 74 E1 (development-only): forward the guarded direct slot read to
+/// the selected floor. Answers 0 (ineligible) when the floor export is absent,
+/// so a candidate unit always still has its ordinary send fallback.
+#[cfg(feature = "dev-guarded-slots")]
+#[unsafe(export_name = "birnam_dev_frame_oop_at_v1")]
+pub unsafe extern "C" fn rt_dev_frame_oop_at_v1(machine: Oop, operand: Oop, out: *mut Oop) -> u32 {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let address = floor_symbol_address(
+        unsafe { api_ref(runtime) },
+        c"birnam_dev_frame_oop_at_v1",
+        &ADDRESS,
+    );
+    if address == 0 {
+        return 0;
+    }
+    let forward = unsafe {
+        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, *mut Oop) -> u32>(address)
+    };
+    unsafe { forward(machine, operand, out) }
+}
+
+/// Design 74 E1 (development-only): write form of `birnam_dev_frame_oop_at_v1`.
+#[cfg(feature = "dev-guarded-slots")]
+#[unsafe(export_name = "birnam_dev_frame_oop_at_put_v1")]
+pub unsafe extern "C" fn rt_dev_frame_oop_at_put_v1(
+    machine: Oop,
+    operand: Oop,
+    value: Oop,
+    out: *mut Oop,
+) -> u32 {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let address = floor_symbol_address(
+        unsafe { api_ref(runtime) },
+        c"birnam_dev_frame_oop_at_put_v1",
+        &ADDRESS,
+    );
+    if address == 0 {
+        return 0;
+    }
+    let forward = unsafe {
+        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, Oop, *mut Oop) -> u32>(
+            address,
+        )
+    };
+    unsafe { forward(machine, operand, value, out) }
+}
+
 /// Append-only registration-v2 forwarding for portable Block capture layout.
 #[unsafe(export_name = "birnam_register_resumable_v2")]
 pub unsafe extern "C" fn rt_register_resumable_v2(envelope: *mut c_void) -> u32 {
@@ -1129,6 +1193,16 @@ struct RuntimeSymbol {
 unsafe impl Sync for RuntimeSymbol {}
 
 static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
+    #[cfg(feature = "dev-guarded-slots")]
+    RuntimeSymbol {
+        name: b"birnam_dev_frame_oop_at_v1\0",
+        address: rt_dev_frame_oop_at_v1 as *const c_void,
+    },
+    #[cfg(feature = "dev-guarded-slots")]
+    RuntimeSymbol {
+        name: b"birnam_dev_frame_oop_at_put_v1\0",
+        address: rt_dev_frame_oop_at_put_v1 as *const c_void,
+    },
     RuntimeSymbol {
         name: b"birnam_send\0",
         address: rt_send as *const c_void,

@@ -4834,7 +4834,7 @@ fn initialize_action(
     Ok(())
 }
 
-fn nonnegative_index(runtime: &crate::runtime::Runtime, operand: Oop) -> Option<usize> {
+pub(crate) fn nonnegative_index(runtime: &crate::runtime::Runtime, operand: Oop) -> Option<usize> {
     if !runtime.is_integer(operand) {
         return None;
     }

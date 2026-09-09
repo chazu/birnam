@@ -7,10 +7,11 @@
 > arbitrary native execution through IdApi retained as a core requirement.
 > Concurrency architecture, implementation mechanisms, and experiment thresholds
 > remain proposed. Existing semantic contracts remain in force.
-> **2026-09-09: the user authorized E0 (section 7.2) only — the legality proof
-> for guarded Machine slot access. E1–E3, the 20% continuation threshold, and
-> every concurrency mechanism remain unauthorized until E0 is reviewed.** The
-> timing acceptance that was pending closed the same day (Design 68/71 record).
+> **2026-09-09: E0 (section 7.2) was delivered as Design 74A and accepted by
+> the user, who then authorized E1 (section 7.3): one guarded slot-access
+> path in a development-only artifact under explicit selection. E2–E3, the
+> 20% continuation threshold, and every concurrency mechanism remain
+> proposed.** The timing acceptance that was pending closed the same day.
 
 ## 1. Decision criteria and direction
 
@@ -661,8 +662,9 @@ must not embed Darwin assumptions into portable executable meaning.
 | Parallel owners with local synchronous sends | Preferred candidate, subject to workload and cross-owner live-change semantics |
 | Cross-owner activation scope | Open: independent versus coordinated publication |
 | Guarded execution before restricting Machine reflection | Recommended investigation |
-| E0 legality proof for guarded slot access | Authorized by the user on 2026-09-09; delivered as [Design 74A](74a-e0-guarded-slot-access-legality.md) the same day, awaiting review |
-| E1–E3 slot-access experiment and its 20% continuation threshold | Proposed; not authorized until E0 is reviewed |
+| E0 legality proof for guarded slot access | Delivered as [Design 74A](74a-e0-guarded-slot-access-legality.md); reviewed and accepted by the user on 2026-09-09 |
+| E1 baseline and one guarded path | Authorized and delivered 2026-09-09 as [Design 74B](74b-e1-guarded-slot-access-implementation.md): feature-gated dev prefix, explicit emission selection, fixture and driver; first diagnostic −15% to −23% with every guard hit |
+| E2–E3 and the 20% continuation threshold | Proposed; E2 runs on the E1 artifact, E3's criterion is frozen before measurement |
 | General deoptimization, inlining, or unboxing | Future possibilities requiring separate proof and implementation review |
 | Objective-C execution comparison | Comparative evidence, not promised parity or a runtime dependency |
 

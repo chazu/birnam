@@ -1,9 +1,9 @@
 # 74A — E0: legality of guarded Machine slot access
 
-> **Status: proof delivered 2026-09-09 for review. Authorized by the user as
-> Design 74 §7.2 (E0 only). No execution path, artifact, export, or benchmark
-> changes with this document. E1–E3 remain unauthorized until this proof is
-> reviewed and accepted.**
+> **Status: proof delivered and accepted by the user 2026-09-09; E1 was then
+> authorized and delivered as [Design 74B](74b-e1-guarded-slot-access-implementation.md),
+> which amends §2.3/§2.5 (see 74B §5). E2's remaining rows and E3 remain
+> unauthorized.**
 
 ## 0. Question and answer
 
@@ -124,9 +124,9 @@ counters (Design 74 §7.4 permits that difference).
 | --- | --- | --- | --- |
 | 2.1 | Machine header vtable differs from the canonical Machine vtable | `ensure_private_vtable(machine)` (used by `stepmethod_sends_every_microcode_message_with_a_resumable_replacement`) gives one Machine a private vtable whose parent is the canonical one; `heap.set_vtable` from image restore or any floor path | Read the header word per access; require identity with the canonical Machine vtable. A private vtable is ineligible even if it holds no override (conservative, no parent walk). |
 | 2.2 | Canonical Machine vtable's direct entry for `oopAt:` / `oopAt:put:` replaced or removed | `Vtables::add_method` (Overwrote), `remove_method`, image-restore rebuild, generation retirement replacing a binding | Verify both entries are the floor's `machine_oop_at` / `machine_oop_at_put` addresses whenever the mutation epoch changed (§3). |
-| 2.3 | Custom metacircular lookup on the Machine vtable | The vtable object itself given a private vtable (its `dispatch_vtable_of` ≠ `vtable_vt`) carrying a `lookup` override | Require `dispatch_vtable_of(canonical Machine vtable) == vtable_vt`. |
+| 2.3 | Custom metacircular lookup on the Machine vtable | The vtable object given a non-canonical metavtable (its `dispatch_vtable_of` ≠ `vtable_vt`) carrying a `lookup` override. *Amended by 74B §5: `ensure_private_vtable` on a vtable whose metavtable is already `vtable_vt` answers the vtable itself, so this can arise only through bootstrap or image code.* | Require `dispatch_vtable_of(canonical Machine vtable) == vtable_vt`. |
 | 2.4 | `lookup` redefined on `vtable_vt` (global custom lookup) | `add_method(vtable_vt, lookup, …)`; the `bind_active` fast path only bypasses the send when `receiver_vtable == vtable_vt`, so the Machine send would run the override | Require `vtable_vt`'s direct `lookup` entry to be the floor primitive. |
-| 2.5 | `vtable_vt` itself given a private vtable | `ensure_private_vtable(vtable_vt)` | Covered by 2.4's verification reading through `dispatch_vtable_of(vtable_vt)`; require it to be `vtable_vt`. |
+| 2.5 | `vtable_vt` itself given a non-canonical metavtable | Bootstrap or image code only (see the 2.3 amendment) | Covered by 2.4's verification reading through `dispatch_vtable_of(vtable_vt)`; require it to be `vtable_vt`. |
 | 2.6 | Parent-chain edits | `set_parent` on the canonical Machine vtable | Irrelevant while 2.2 holds (direct entries are found before any parent walk); bump the epoch anyway for simplicity. |
 | 2.7 | Raw memory writes | `word_vt` `poke` (Design 41 §F4) can rewrite a vtable header or dictionary word | Untracked in the baseline too: it can already corrupt ordinary dispatch. The header read in 2.1 is re-done per access; dictionary poke is accepted residual risk identical to today's, stated in the eligibility rules rather than hidden. |
 | 2.8 | Custom lookup that returns the same Method but logs or mutates | Same as 2.3/2.4 | Ineligible by construction: the guard never inspects the *result* of a custom lookup; any non-primitive lookup fails 2.3/2.4 and the ordinary send runs (Design 74 §6.2). |

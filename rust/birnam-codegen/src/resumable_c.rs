@@ -628,6 +628,16 @@ fn emit_store_prefix(output: &mut Emitter, id: u32, slot: u32) {
 }
 
 fn emit_store_suffix(output: &mut Emitter, id: u32) {
+    if guarded_slots_selected() {
+        output.push(b";\n(void)__birnam_dev_put(machine,__birnam_put_selector_");
+        decimal(output, id);
+        output.push(b",__birnam_put_slot_");
+        decimal(output, id);
+        output.push(b",__birnam_value_");
+        decimal(output, id);
+        output.push(b");\n");
+        return;
+    }
     output.push(b";\nvoid* __birnam_put_args_");
     decimal(output, id);
     output.push(b"[]={__birnam_put_slot_");
@@ -641,7 +651,49 @@ fn emit_store_suffix(output: &mut Emitter, id: u32) {
     output.push(b",2L);\n");
 }
 
+/// Design 74 E1: is the development-only guarded slot-access emission
+/// selected for this process? Requires the `dev-guarded-slots` feature and
+/// `BIRNAM_DEV_GUARDED_SLOTS=1`; ordinary builds always answer false.
+pub fn guarded_slots_selected() -> bool {
+    #[cfg(feature = "dev-guarded-slots")]
+    {
+        static SELECTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *SELECTED.get_or_init(|| {
+            std::env::var_os("BIRNAM_DEV_GUARDED_SLOTS").is_some_and(|value| value == "1")
+        })
+    }
+    #[cfg(not(feature = "dev-guarded-slots"))]
+    {
+        false
+    }
+}
+
+/// C helpers for the selected emission, appended after the runtime prelude.
+/// The slot box is created once and shared by the direct and fallback paths;
+/// the fallback is the baseline send with that same box, exactly once.
+pub const GUARDED_SLOT_PRELUDE: &[u8] = br#"extern unsigned int birnam_dev_frame_oop_at_v1(void* machine, void* operand, void** out);
+extern unsigned int birnam_dev_frame_oop_at_put_v1(void* machine, void* operand, void* value, void** out);
+static inline void* __birnam_dev_get(void* machine, long slot){
+void* box=MKV(slot);
+void* value;
+if(birnam_dev_frame_oop_at_v1(machine,box,&value)) return value;
+return birnam_send(machine,birnam_intern("oopAt:"),(void*[]){box},1L);
+}
+static inline void* __birnam_dev_put(void* machine, void* selector, void* box, void* value){
+void* stored;
+if(birnam_dev_frame_oop_at_put_v1(machine,box,value,&stored)) return stored;
+void* args[]={box,value};
+return birnam_send(machine,selector,args,2L);
+}
+"#;
+
 fn emit_get(output: &mut Emitter, slot: u32) {
+    if guarded_slots_selected() {
+        output.push(b"__birnam_dev_get(machine,");
+        decimal(output, slot);
+        output.push(b"L)");
+        return;
+    }
     output.push(b"birnam_send(machine,birnam_intern(\"oopAt:\"),(void*[]){MKV(");
     decimal(output, slot);
     output.push(b"L)},1L)");
