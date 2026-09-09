@@ -59,15 +59,39 @@ struct VtableRecord {
     layout_set: bool,
 }
 
+/// Dictionaries at or below this size answer lookups by scanning the ordered
+/// keys; the derived index exists only for larger dictionaries. Most vtables
+/// hold a handful of methods, and allocating and growing a hash table for each
+/// of them measured +4.5 ms on every stdlib boot (epic as7 acceptance repeat,
+/// 2026-09-09) without any lookup benefit at that size.
+const KEY_INDEX_THRESHOLD: usize = 16;
+
 impl VtableRecord {
+    // Invariant: `key_indices` is either empty (scan the ordered keys) or a
+    // complete map of every key to its position. It is never partially stale.
     fn key_index(&self, key: Oop) -> Option<usize> {
+        if self.key_indices.is_empty() {
+            return self.keys.iter().position(|candidate| *candidate == key);
+        }
         self.key_indices.get(&key.addr()).copied()
     }
 
     fn rebuild_key_indices(&mut self) {
         self.key_indices.clear();
-        for (index, key) in self.keys.iter().enumerate() {
-            self.key_indices.insert(key.addr(), index);
+        if self.keys.len() > KEY_INDEX_THRESHOLD {
+            for (index, key) in self.keys.iter().enumerate() {
+                self.key_indices.insert(key.addr(), index);
+            }
+        }
+    }
+
+    /// Record that a key was just pushed at the end of `keys`.
+    fn index_appended_key(&mut self) {
+        if !self.key_indices.is_empty() {
+            let last = self.keys.len() - 1;
+            self.key_indices.insert(self.keys[last].addr(), last);
+        } else if self.keys.len() > KEY_INDEX_THRESHOLD {
+            self.rebuild_key_indices();
         }
     }
 
@@ -486,12 +510,10 @@ impl Vtables {
         if record.keys.len() == record.logical_capacity {
             record.grow_dictionary();
         }
-        record
-            .key_indices
-            .insert(selector.addr(), record.keys.len());
         record.keys.push(selector);
         record.values.push(method.as_oop());
         record.weak_keys.push(false);
+        record.index_appended_key();
         record.sync_raw_view();
         AddMethod::Added
     }
@@ -510,10 +532,10 @@ impl Vtables {
         if record.keys.len() == record.logical_capacity {
             record.grow_dictionary();
         }
-        record.key_indices.insert(key.addr(), record.keys.len());
         record.keys.push(key);
         record.values.push(value);
         record.weak_keys.push(true);
+        record.index_appended_key();
         record.sync_raw_view();
     }
 

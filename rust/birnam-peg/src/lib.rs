@@ -93,12 +93,39 @@ struct MemoEntry {
     in_progress: bool,
 }
 
+/// Hashing for the parse-local tables keyed by pattern/rule addresses and
+/// memo positions. These keys are process-local integers; the default SipHash
+/// cost per pattern visit measured +6.5 ms on every stdlib boot (Design 71
+/// acceptance repeat, 2026-09-09). The tables are discarded after each parse,
+/// so no cross-process hash stability is needed.
+#[derive(Default)]
+struct KeyHasher(u64);
+
+impl std::hash::Hasher for KeyHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x100000001b3);
+        }
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        let mixed = (self.0.rotate_left(29) ^ value as u64).wrapping_mul(0x9e3779b97f4a7c15);
+        self.0 = mixed ^ (mixed >> 29);
+    }
+}
+
+type KeyMap<Key, Value> = HashMap<Key, Value, std::hash::BuildHasherDefault<KeyHasher>>;
+
 struct Matcher {
     source: Vec<u8>,
-    rules: HashMap<usize, Oop>,
-    patterns: HashMap<usize, std::rc::Rc<PatternState>>,
+    rules: KeyMap<usize, Oop>,
+    patterns: KeyMap<usize, std::rc::Rc<PatternState>>,
     nodes: Vec<TempNode>,
-    memo: HashMap<(usize, usize), MemoEntry>,
+    memo: KeyMap<(usize, usize), MemoEntry>,
     furthest: usize,
     undefined_rule: Oop,
     left_recursive_rule: Oop,
@@ -359,15 +386,15 @@ fn note(matcher: &mut Matcher, position: usize) {
     matcher.furthest = matcher.furthest.max(position);
 }
 
-fn index_rules(rules: impl IntoIterator<Item = (Oop, Oop)>) -> HashMap<usize, Oop> {
-    let mut index = HashMap::new();
+fn index_rules(rules: impl IntoIterator<Item = (Oop, Oop)>) -> KeyMap<usize, Oop> {
+    let mut index = KeyMap::default();
     for (name, pattern) in rules {
         index.entry(name as usize).or_insert(pattern);
     }
     index
 }
 
-fn named_rule(rules: &HashMap<usize, Oop>, name: Oop) -> Option<Oop> {
+fn named_rule(rules: &KeyMap<usize, Oop>, name: Oop) -> Option<Oop> {
     rules.get(&(name as usize)).copied()
 }
 
@@ -670,9 +697,9 @@ unsafe fn parse_grammar(grammar: Oop, source_object: Oop, root_object: Oop) -> O
     let mut matcher = Matcher {
         source,
         rules,
-        patterns: HashMap::new(),
+        patterns: KeyMap::default(),
         nodes: Vec::new(),
-        memo: HashMap::new(),
+        memo: KeyMap::default(),
         furthest: 0,
         undefined_rule: ptr::null_mut(),
         left_recursive_rule: ptr::null_mut(),

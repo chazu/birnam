@@ -234,9 +234,9 @@ fn matcher(source: &[u8], rules: &[(Oop, Oop)]) -> Matcher {
     Matcher {
         source: source.to_vec(),
         rules: index_rules(rules.iter().copied()),
-        patterns: HashMap::new(),
+        patterns: super::KeyMap::default(),
         nodes: Vec::new(),
-        memo: HashMap::new(),
+        memo: super::KeyMap::default(),
         furthest: 0,
         undefined_rule: ptr::null_mut(),
         left_recursive_rule: ptr::null_mut(),
