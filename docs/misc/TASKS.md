@@ -24,7 +24,11 @@ execution experiment. On 2026-09-09 the user authorized its E0 legality proof
 and accepted the same day), then authorized E1, delivered as
 [Design 74B](../design/74b-e1-guarded-slot-access-implementation.md)
 (`birnam-e1-hyz`): a feature-gated dev prefix, explicit emission selection,
-fixture and driver. E2's remaining rows and E3 remain proposed. The prior implementation
+fixture and driver. E2 and E3 followed the same day as
+[Design 74C](../design/74c-e2-matrix-and-e3-measurement.md): E2 identical in
+every row; E3's frozen 20% criterion not met (13–20% real gain; allocation
+dominant). The next hypothesis, slot-index box elision on the guard's hit
+path, is proposed (`birnam-e4`) and awaits the user's decision. The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 

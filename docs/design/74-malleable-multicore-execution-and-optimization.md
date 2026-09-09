@@ -664,7 +664,7 @@ must not embed Darwin assumptions into portable executable meaning.
 | Guarded execution before restricting Machine reflection | Recommended investigation |
 | E0 legality proof for guarded slot access | Delivered as [Design 74A](74a-e0-guarded-slot-access-legality.md); reviewed and accepted by the user on 2026-09-09 |
 | E1 baseline and one guarded path | Authorized and delivered 2026-09-09 as [Design 74B](74b-e1-guarded-slot-access-implementation.md): feature-gated dev prefix, explicit emission selection, fixture and driver; first diagnostic −15% to −23% with every guard hit |
-| E2–E3 and the 20% continuation threshold | Proposed; E2 runs on the E1 artifact, E3's criterion is frozen before measurement |
+| E2–E3 and the 20% continuation threshold | Delivered 2026-09-09 as [Design 74C](74c-e2-matrix-and-e3-measurement.md): E2 identical in every row; E3 criterion frozen then measured and **not met** (13–20% real gain, allocation dominant); next hypothesis (slot-index box elision on the hit path) proposed, not authorized |
 | General deoptimization, inlining, or unboxing | Future possibilities requiring separate proof and implementation review |
 | Objective-C execution comparison | Comparative evidence, not promised parity or a runtime dependency |
 

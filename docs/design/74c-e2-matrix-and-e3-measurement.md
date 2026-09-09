@@ -1,8 +1,9 @@
 # 74C — E2 matrix and E3 measurement of guarded Machine slot access
 
-> **Status: E2 delivered and E3 protocol frozen 2026-09-09 under the user's
-> authorization of both; the E3 measurements in §3 were taken only after the
-> commit that froze §2. Development-only throughout: the E1
+> **Status: E2 delivered, E3 protocol frozen and measured 2026-09-09 under the
+> user's authorization of both; the §3 measurements were taken only after the
+> commit that froze §2. E3 verdict: the frozen 20% criterion is not met (13–20%
+> real improvement, every guard hit); the next hypothesis in §3.5 is a proposal. Development-only throughout: the E1
 > artifact ([Design 74B](74b-e1-guarded-slot-access-implementation.md)) is
 > unchanged by this document. A production slot-access slice is not proposed
 > here; Design 74 §7.6 governs what a positive result may lead to.**
@@ -107,7 +108,98 @@ the numbers.
 
 ## 3. E3 measurements
 
-E3_RESULTS_PLACEHOLDER
+Taken 2026-09-09 after commit `228b85fa` froze §2, on `Mac15,12`, both
+prefixes from that commit's tree (source manifest `8217f70ef39f…`, rustc
+1.95.0, release profile), the candidate built with the three
+`dev-guarded-slots` features and run with `BIRNAM_DEV_GUARDED_SLOTS=1`, the
+control being the same dev prefix without the variable. Five alternating
+fresh-process pairs per size after a `bench-host-check` preflight; every
+sample, receipt, counter and inspection is in
+[`74c-e3-record.json`](../measurements/74c-e3-record.json). Every run's
+receiver answer and checksum matched; every guarded access hit.
+
+### 3.1 Warm medians (microseconds for the whole loop; spread = max − min of five)
+
+| n | body | baseline | candidate | control | Δ | Δ exceeds spread | ≥20% |
+| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 0 | empty | 16 (3) | 12 (2) | 15 | −25.0% | yes | reported only |
+| 0 | step | 22 (4) | 18 (4) | 21 | −18.2% | no | reported only |
+| 1 | empty | 41 (6) | 35 (13) | 40 | −14.6% | no | reported only |
+| 1 | step | 55 (6) | 46 (12) | 53 | −16.4% | no | reported only |
+| 32 | empty | 778 (61) | 605 (52) | 808 | −22.2% | yes | reported only |
+| 32 | step | 1,016 (79) | 796 (59) | 1,051 | −21.7% | yes | reported only |
+| 1,024 | empty | 25,545 (650) | 21,183 (2,427) | 25,383 | −17.1% | yes | **no** |
+| 1,024 | step | 32,628 (917) | 25,989 (3,390) | 32,058 | −20.3% | yes | yes |
+| 16,384 | empty | 499,236 (41,356) | 433,231 (43,335) | 487,800 | −13.2% | yes | **no** |
+| 16,384 | step | 698,875 (45,626) | 602,785 (10,358) | 701,657 | −13.7% | yes | **no** |
+
+Cold first runs and compile-and-activate times track the warm figures
+(compile ≈ 0.52–0.55 s in every configuration). The control matches the
+baseline within spread at every size, so the feature's presence costs nothing.
+
+### 3.2 Verdict against the frozen criterion
+
+**Not met.** The guarded candidate is faster at every size and every
+improvement at 32, 1,024 and 16,384 iterations exceeds the run-to-run spread,
+so the gain is real, but only the `step:` body at 1,024 reaches the frozen 20%
+and the 16,384 cases sit at 13%. No reported case regressed. Under Design 74
+§7.6 this is the "report the outcome and review the next hypothesis
+separately" branch, not authorization for anything further.
+
+### 3.3 Why the gain is bounded
+
+Guard counters show 24,478,438 guarded accesses for 16,384 iterations, about
+1,494 checked slot operations per loop iteration, on top of the source sends,
+action publications and driver transitions. Each of those operations still
+allocates a boxed Integer for its slot index (`MKV`) and interns its selector,
+exactly as the baseline does, because E1 deliberately preserved operand boxing
+to isolate dispatch savings. Removing dispatch saved 4–6 µs of a 26–37 µs
+iteration; the remainder is allocation, collection, publication and driver
+work that the guard does not touch. That is the "allocation remains the
+dominant cost" outcome §7.6 anticipated.
+
+Instrumentation overhead is not measurable (counting on: 25.4–26.0 ms at
+1,024 and 603–606 ms at 16,384 for the step body; counting off: 26.2–27.9 ms
+and 599–617 ms). Peak RSS moves within ±6% across configurations with no
+direction (baseline 245 MB, candidate 253 MB, control 256 MB at 16,384). The
+retained no-auto-GC control probe, which drives the production AOT control
+unit in both prefixes, measured 5.08–5.15 s baseline and 4.94–5.08 s candidate
+for its 100,000 iterations, as expected for an artifact that carries the
+baseline emission in both. Inspection: the candidate unit imports both dev
+symbols and `birnam_send`; the baseline unit imports neither dev symbol.
+
+### 3.4 Objective-C distance
+
+Same host, Apple clang 16.0.0, `-O2 -fobjc-arc`, five runs, medians, for
+16,384 iterations:
+
+| Reference | empty µs | step µs | Birnam candidate ÷ reference (step) |
+| --- | ---: | ---: | ---: |
+| Objective-C message version (three `objc_msgSend` per iteration, unboxed longs) | 26 | 96 | ≈ 6,300× |
+| Same with `NSNumber` boxing of every step result | 26 | 309 | ≈ 1,950× |
+| Primitive-integer C loop, opaque step function | 4 | 13 | ≈ 46,000× |
+
+Representation differences: the Birnam iteration performs roughly 1,500
+checked frame-slot operations, about ten late-bound sends, action publication
+and driver transitions, and allocates a box per slot operation; the
+Objective-C loop performs three dynamic dispatches on a C stack with no frame
+machine, no reflection, and (unboxed variant) no allocation. `objc_msgSend` is
+the actual dispatch in the reference binary (verified with `otool`, nine call
+sites); no IMP was cached by hand. These are comparative evidence for the
+size of the gap, not a promise of parity.
+
+### 3.5 Next hypothesis (proposal, not authorized)
+
+Elide the slot-index box on the guard's hit path: the index is a compile-time
+constant that only ever reaches `oopAt:` as an argument, the guarded direct
+path decodes it back to an integer immediately, and the box cannot escape or
+be observed on that path. Creating the box only on a miss (before the
+fallback send, so the send's operands are unchanged) preserves every 74A
+argument while removing ~1,500 allocations per iteration in the fixture. It is
+precisely the allocation question §7.1 set aside, so it needs its own short
+legality note and measurement under this same protocol before anything else.
+Selector interning per access (74A §6.2) is the second, smaller candidate.
+
 
 ## 4. Findings to route
 
