@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Release acceptance for v0.15 judges `vector.includes-miss` by its raw
+  per-operation median (Design 60HC): the case got faster while its
+  empty-loop-subtracted net rose, because the subtracted loop baseline halved.
+  Every other case keeps the ordinary comparator threshold; v0.16 returns to
+  the ordinary comparison.
+
 - CodeProgram objects retain checked immutable layouts, so Block construction
   and reflection reuse validated views. Global imports and method dictionaries
   use derived identity indexes while preserving ordered enumeration, current

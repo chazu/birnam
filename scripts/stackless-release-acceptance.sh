@@ -99,6 +99,8 @@ PY
 )
 if [[ $candidate_version == 0.14.0 ]]; then
   run_gate performance_compare python3 scripts/v014-performance-acceptance.py "$baseline" "$benchmark"
+elif [[ $candidate_version == 0.15.0 ]]; then
+  run_gate performance_compare env BENCH_BIN="$prefix/bin/birnam" python3 scripts/v015-performance-acceptance.py "$baseline" "$benchmark"
 else
   run_gate performance_compare env BENCH_BIN="$prefix/bin/birnam" scripts/bench-compare.sh "$baseline" "$benchmark"
 fi
