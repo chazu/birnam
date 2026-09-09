@@ -1,0 +1,126 @@
+// selfhost-probe.birnam — timing probes for the Design 68/71 and epic as7
+// initial-implementation acceptance (Beads birnam-epic-as7.20): repeated Block
+// creation, CodeObject/CodeProgram reflection and traversal, method-dictionary
+// lookup scaling, inheritance-depth lookup, and global import/rebinding.
+//
+// Runs through the canonical driver's measurement/monitoring functions
+// (scripts/bench.sh) as one more suite process. Same conventions as
+// bench/micro.birnam: setup here, outside every timed window; case bodies
+// unroll K copies of the op per to:do: iteration; case names are a contract
+// (retire + add, never rename). The loaded-module set is bench+os only.
+//
+//   "$HOME/.local/bin/birnam" bench/selfhost-probe.birnam
+//   BENCH_QUICK=1 "$HOME/.local/bin/birnam" bench/selfhost-probe.birnam
+
+[System load: "modules/bench.birnam"];
+[System load: "modules/os.birnam"];
+
+// ---------------------------------------------------------------------------
+// Setup (untimed)
+// ---------------------------------------------------------------------------
+
+// A block whose portable program is traversed: five statements.
+let BLK5 := [:x | [x + 1]; [x + 2]; [x + 3]; [x + 4]; [x + 5]];
+
+// Method-dictionary scaling: one prototype carrying 256 methods; the first and
+// the last defined selector are the two ends of any ordered scan.
+let P256 := [Object clone];
+[Reflect defineMethod: #probeFirst on: P256 as: [:self | 0]];
+[1 to: 254 do: [:i |
+  [Reflect defineMethod: [["probeFill" , [i printString]] asSymbol] on: P256 as: [:self | i]]]];
+[Reflect defineMethod: #probeLast on: P256 as: [:self | 255]];
+
+// Inheritance depth: the method lives on the root; the receiver is 16 clones down.
+let ROOT := [Object clone];
+[Reflect defineMethod: #probeInherited on: ROOT as: [:self | 7]];
+let chain := [ROOT asCell];
+[16 timesRepeat: [| [chain set: [[chain value] clone]]]];
+let LEAF := [chain value];
+
+// Globals: 512 bindings; the probes read and rebind the last one defined.
+[1 to: 511 do: [:i |
+  [Globals at: [["ProbeGlobal" , [i printString]] asSymbol] put: i]]];
+[Globals at: #ProbeGlobal512 put: 512];
+
+let s := [BenchSuite named: "selfhost"];
+
+// ---------------------------------------------------------------------------
+// Cases
+// ---------------------------------------------------------------------------
+
+// Fresh Block objects from one literal (the CodeProgram-metadata reuse path).
+[s case: "blocks.create" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    let b1 := [:x | x]; let b2 := [:x | x]; let b3 := [:x | x]; let b4 := [:x | x];
+    let b5 := [:x | x]; let b6 := [:x | x]; let b7 := [:x | x]; let b8 := [:x | x];
+    nil]]]];
+
+// CodeObject -> CodeProgram reflection on an existing Block.
+[s case: "code.reflect-program" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [[BLK5 codeObject] program]; [[BLK5 codeObject] program];
+    [[BLK5 codeObject] program]; [[BLK5 codeObject] program];
+    [[BLK5 codeObject] program]; [[BLK5 codeObject] program];
+    [[BLK5 codeObject] program]; [[BLK5 codeObject] program]]]]];
+
+// Traverse every statement of a five-statement program (one traversal per op;
+// unrolled so no inner control loop rides inside the timed window).
+[s case: "code.traverse-statements" opsPerIter: 1 do: [:n |
+  [1 to: n do: [:i |
+    let p := [[BLK5 codeObject] program];
+    [p statementCount];
+    [[p statementAt: 0] expression]; [[p statementAt: 1] expression];
+    [[p statementAt: 2] expression]; [[p statementAt: 3] expression];
+    [[p statementAt: 4] expression]]]]];
+
+// Method-dictionary lookup at both ends of a 256-entry dictionary.
+[s case: "lookup.dict256-first" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [P256 probeFirst]; [P256 probeFirst]; [P256 probeFirst]; [P256 probeFirst];
+    [P256 probeFirst]; [P256 probeFirst]; [P256 probeFirst]; [P256 probeFirst]]]]];
+
+[s case: "lookup.dict256-last" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [P256 probeLast]; [P256 probeLast]; [P256 probeLast]; [P256 probeLast];
+    [P256 probeLast]; [P256 probeLast]; [P256 probeLast]; [P256 probeLast]]]]];
+
+// Inherited lookup 16 vtables deep.
+[s case: "lookup.inherit-depth16" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [LEAF probeInherited]; [LEAF probeInherited]; [LEAF probeInherited]; [LEAF probeInherited];
+    [LEAF probeInherited]; [LEAF probeInherited]; [LEAF probeInherited]; [LEAF probeInherited]]]]];
+
+// Compiled global import (bare identifier read) among 512 bindings.
+[s case: "globals.import-512" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    let g1 := ProbeGlobal512; let g2 := ProbeGlobal512; let g3 := ProbeGlobal512; let g4 := ProbeGlobal512;
+    let g5 := ProbeGlobal512; let g6 := ProbeGlobal512; let g7 := ProbeGlobal512; let g8 := ProbeGlobal512;
+    nil]]]];
+
+// Reflective global read and rebinding among 512 bindings.
+[s case: "globals.at-512" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [Globals at: #ProbeGlobal512]; [Globals at: #ProbeGlobal512];
+    [Globals at: #ProbeGlobal512]; [Globals at: #ProbeGlobal512];
+    [Globals at: #ProbeGlobal512]; [Globals at: #ProbeGlobal512];
+    [Globals at: #ProbeGlobal512]; [Globals at: #ProbeGlobal512]]]]];
+
+[s case: "globals.rebind-512" opsPerIter: 8 do: [:n |
+  [1 to: n do: [:i |
+    [Globals at: #ProbeGlobal512 put: i]; [Globals at: #ProbeGlobal512 put: i];
+    [Globals at: #ProbeGlobal512 put: i]; [Globals at: #ProbeGlobal512 put: i];
+    [Globals at: #ProbeGlobal512 put: i]; [Globals at: #ProbeGlobal512 put: i];
+    [Globals at: #ProbeGlobal512 put: i]; [Globals at: #ProbeGlobal512 put: i]]]]];
+
+// ---------------------------------------------------------------------------
+// Run + write + gate
+// ---------------------------------------------------------------------------
+[Bench runSuite: s];
+let written := [Bench writeResults: "bench/results/dev/selfhost-probe.json"];
+
+let ok := [[[[[Bench results] size] = 9]
+           & [[Bench failures] = 0]]
+           & [[written isError] ifTrue: [| false] ifFalse: [| true]]];
+[ok
+  ifTrue:  [| [OS exit: 0]]
+  ifFalse: [| [OS exit: 1]]]
