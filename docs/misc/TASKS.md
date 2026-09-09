@@ -20,7 +20,9 @@ not the unrelated home-directory Maggie tracker.
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),
 malleable multicore execution, guarded optimization/deoptimization, and a bounded
 execution experiment. On 2026-09-09 the user authorized its E0 legality proof
-only (a document, no execution change); the rest remains proposed. The prior implementation
+only (a document, no execution change); the proof is
+[Design 74A](../design/74a-e0-guarded-slot-access-legality.md), awaiting the
+user's review (`birnam-ryg`). The rest remains proposed. The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 

@@ -511,6 +511,9 @@ Do not obtain a faster number by removing malformed-state rejection.
 If the proof requires silently narrowing a current contract, stop this candidate
 and report the conflict. Writing this design does not authorize that narrowing.
 An already-reviewed proof is required before an experimental bypass is enabled.
+The E0 proof is [Design 74A](74a-e0-guarded-slot-access-legality.md)
+(2026-09-09): legal under a four-condition guard plus a dictionary-mutation
+epoch, with two documentation/code discrepancies reported for separate review.
 
 ### 7.3 E1 — baseline and one guarded path
 
@@ -658,7 +661,7 @@ must not embed Darwin assumptions into portable executable meaning.
 | Parallel owners with local synchronous sends | Preferred candidate, subject to workload and cross-owner live-change semantics |
 | Cross-owner activation scope | Open: independent versus coordinated publication |
 | Guarded execution before restricting Machine reflection | Recommended investigation |
-| E0 legality proof for guarded slot access | Authorized by the user on 2026-09-09; a proof document, no execution change |
+| E0 legality proof for guarded slot access | Authorized by the user on 2026-09-09; delivered as [Design 74A](74a-e0-guarded-slot-access-legality.md) the same day, awaiting review |
 | E1–E3 slot-access experiment and its 20% continuation threshold | Proposed; not authorized until E0 is reviewed |
 | General deoptimization, inlining, or unboxing | Future possibilities requiring separate proof and implementation review |
 | Objective-C execution comparison | Comparative evidence, not promised parity or a runtime dependency |
