@@ -22,20 +22,32 @@ unsafe extern "C" {
 }
 
 extern "C" fn report_counters() {
+    use std::io::Write;
     let attempts = ATTEMPTS.load(Ordering::Relaxed);
     let hits = HITS.load(Ordering::Relaxed);
-    eprintln!(
-        "birnam-dev-guarded-slots attempts={attempts} hits={hits} misses={}",
+    let line = format!(
+        "birnam-dev-guarded-slots attempts={attempts} hits={hits} misses={}\n",
         attempts.saturating_sub(hits)
     );
+    // "1" reports on stderr; any other value names a file the line is appended
+    // to, so multi-process harnesses that own stderr can still be counted.
+    match std::env::var_os("BIRNAM_DEV_GUARDED_SLOTS_COUNT") {
+        Some(target) if target != "1" => {
+            if let Ok(mut file) = std::fs::OpenOptions::new().append(true).create(true).open(target) {
+                let _ = file.write_all(line.as_bytes());
+            }
+        }
+        _ => eprint!("{line}"),
+    }
 }
 
-/// Counting is an instrumented mode selected by `BIRNAM_DEV_GUARDED_SLOTS_COUNT=1`
-/// and reported once at process exit; timing runs leave it off (Design 74 §7.3).
+/// Counting is an instrumented mode selected by `BIRNAM_DEV_GUARDED_SLOTS_COUNT`
+/// (`1` for stderr, otherwise a file path to append to) and reported once at
+/// process exit; timing runs leave it off (Design 74 §7.3).
 fn counting() -> bool {
     if !COUNTING_DECIDED.load(Ordering::Relaxed) {
         let enabled = std::env::var_os("BIRNAM_DEV_GUARDED_SLOTS_COUNT")
-            .is_some_and(|value| value == "1");
+            .is_some_and(|value| !value.is_empty());
         if enabled && !COUNTING.swap(true, Ordering::Relaxed) {
             // SAFETY: registering a plain extern "C" callback with libc.
             unsafe { atexit(report_counters) };

@@ -34,6 +34,7 @@ let source := "[Module named: #e1SlotAccess requires: #[]]; [Reflect defineMetho
 // its successor candidate (the same setup modules/compiled-unit-test uses).
 [Codegen recordModuleSource: "[Module named: #e1SlotAccess requires: #[]]" named: #e1SlotAccess];
 [DispatchGeneration initializeCurrent];
+let c0 := [Time monotonicMicros];
 let compiled := [CompiledUnit compile: source named: #e1SlotAccess output: unitPath selection: #resumableRequired];
 [[[compiled isError] | [compiled isNil]]
   ifTrue: [| [System println: "e1-compile-failed"]; [System println: [[Codegen lastError] printString]]; [OS exit: 1]]
@@ -44,8 +45,11 @@ let mapped := [unit map];
 [[mapped isError] ifTrue: [| [System println: ["e1-map-failed " , [[mapped kind] printString] , " " , [[mapped message] printString] , " " , [[Codegen lastError] printString]]]; [OS exit: 1]] ifFalse: [| nil]];
 let activated := [[unit activate] fulfill];
 [[activated isError] ifTrue: [| [System println: ["e1-activate-failed " , [[activated kind] printString] , " " , [[activated message] printString] , " " , [[Codegen lastError] printString]]]; [OS exit: 1]] ifFalse: [| nil]];
+[System println: ["compile-us " , [[[Time monotonicMicros] - c0] printString]]];
 [System println: "e1-ready"];
 
+// Phases (Design 74 §7.5): compile-and-activate above, then a cold first run
+// of each body, then the median of five warm repetitions of each body.
 let t0 := [Time monotonicMicros];
 let emptyAnswer := [7 e1RunEmpty: count];
 let t1 := [Time monotonicMicros];
@@ -55,3 +59,16 @@ let t2 := [Time monotonicMicros];
 [System println: ["step-us " , [[t2 - t1] printString]]];
 [System println: ["empty-answer " , [emptyAnswer printString]]];
 [System println: ["checksum " , [checksum printString]]];
+let warmEmpty := [#[] asCell];
+let warmStep := [#[] asCell];
+[1 to: 5 do: [:rep |
+  let w0 := [Time monotonicMicros];
+  let a := [7 e1RunEmpty: count];
+  let w1 := [Time monotonicMicros];
+  let c := [7 e1RunStep: count];
+  let w2 := [Time monotonicMicros];
+  [[[a = emptyAnswer] & [c = checksum]] ifTrue: [| nil] ifFalse: [| [System println: "e1-warm-mismatch"]; [OS exit: 1]]];
+  [warmEmpty set: [[warmEmpty value] add: [w1 - w0]]];
+  [warmStep set: [[warmStep value] add: [w2 - w1]]]]];
+[System println: ["warm-empty-us " , [[[[warmEmpty value] sortBy: [:x | x]] at: 2] printString]]];
+[System println: ["warm-step-us " , [[[[warmStep value] sortBy: [:x | x]] at: 2] printString]]];

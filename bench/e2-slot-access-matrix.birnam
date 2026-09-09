@@ -1,0 +1,95 @@
+// e2-slot-access-matrix.birnam — Design 74 E2 adversarial cases (one per process).
+// E2_CASE selects the case; E2_UNIT_PATH the candidate dylib path. Every case
+// prints deterministic lines; scripts/e2-slot-access-matrix.py requires the
+// baseline and guarded processes to print identical output.
+[System load: "modules/time.birnam"];
+[System load: "modules/os.birnam"];
+[Alien wrap: "getenv" signature: "s s" as: #e2Getenv on: String];
+let caseName := ["E2_CASE" e2Getenv];
+let unitPath := ["E2_UNIT_PATH" e2Getenv];
+let source := "[Module named: #e2SlotAccess requires: #[]]; [Reflect defineMethod: #e2Step: on: Integer as: [:self :index | [E2Calls set: [[E2Calls value] + 1]]; [self + index]]]; [Reflect defineMethod: #e2To:do:answer: on: Integer as: [:self :last :body :answer | [[self > last] ifTrue: [| answer] ifFalse: [| [self e2ToBody: last do: body answer: answer]]]]]; [Reflect defineMethod: #e2ToBody:do:answer: on: Integer as: [:self :last :body :answer | let eachResult := [body value: self]; [[eachResult isError] ifTrue: [| eachResult] ifFalse: [| [self e2ToContinue: last do: body answer: answer]]]]]; [Reflect defineMethod: #e2ToContinue:do:answer: on: Integer as: [:self :last :body :answer | [[self + 1] e2To: last do: body answer: answer]]]; [Reflect defineMethod: #e2Run:with: on: Integer as: [:self :count :body | let acc := [0 asCell]; let outcome := [1 e2To: count do: [:index | let step := [body value: index]; [[step isError] ifTrue: [| step] ifFalse: [| [acc set: [[acc value] + step]]]]] answer: self]; [[outcome isError] ifTrue: [| outcome] ifFalse: [| [acc value]]]]]";
+[Globals at: #E2Calls put: [0 asCell]];
+[Codegen recordModuleSource: "[Module named: #e2SlotAccess requires: #[]]" named: #e2SlotAccess];
+[DispatchGeneration initializeCurrent];
+let compiled := [CompiledUnit compile: source named: #e2SlotAccess output: unitPath selection: #resumableRequired];
+[[[compiled isError] | [compiled isNil]] ifTrue: [| [System println: "e2-compile-failed"]; [OS exit: 1]] ifFalse: [| nil]];
+let unit := [CompiledUnit open: unitPath];
+[[[unit map] isError] ifTrue: [| [System println: "e2-map-failed"]; [OS exit: 1]] ifFalse: [| nil]];
+[[[[unit activate] fulfill] isError] ifTrue: [| [System println: "e2-activate-failed"]; [OS exit: 1]] ifFalse: [| nil]];
+[System println: ["e2-ready " , caseName]];
+
+let show := [:label :value | [System println: [label , " " , [[value isError] ifTrue: [| ["error:" , [[value kind] printString]]] ifFalse: [| [value printString]]]]]];
+
+[[caseName = "ordinary-error"] ifTrue: [|
+  let r := [7 e2Run: 20 with: [:index | [[index = 3] ifTrue: [| [Error kind: #e2Stop message: "stop"]] ifFalse: [| [7 e2Step: index]]]]];
+  [show value: "result" value: r];
+  [show value: "calls" value: [E2Calls value]]] ifFalse: [| nil]];
+
+[[caseName = "replace-step"] ifTrue: [|
+  let r := [7 e2Run: 20 with: [:index |
+    [[index = 5] ifTrue: [| [Reflect defineMethod: #e2Step: on: Integer as: [:self :i | [E2Calls set: [[E2Calls value] + 1]]; [self + [i * 100]]]]] ifFalse: [| nil]];
+    [7 e2Step: index]]];
+  [show value: "checksum" value: r];
+  [show value: "calls" value: [E2Calls value]]] ifFalse: [| nil]];
+
+[[caseName = "replace-during-argument"] ifTrue: [|
+  [Reflect defineMethod: #e2Redefine: on: Integer as: [:self :index |
+    [[index = 5] ifTrue: [| [Reflect defineMethod: #e2Step: on: Integer as: [:s :i | [E2Calls set: [[E2Calls value] + 1]]; [s + [i * 100]]]]] ifFalse: [| nil]];
+    index]];
+  let r := [7 e2Run: 20 with: [:index | [7 e2Step: [7 e2Redefine: index]]]];
+  [show value: "checksum" value: r];
+  [show value: "calls" value: [E2Calls value]]] ifFalse: [| nil]];
+
+[[caseName = "override-oopat-before"] ifTrue: [|
+  [Reflect defineMethod: #oopAt: on: Machine as: [:self :index | 42]];
+  let r := [7 e2Run: 20 with: [:index | [7 e2Step: index]]];
+  [show value: "result" value: r]] ifFalse: [| nil]];
+
+[[caseName = "override-oopat-during"] ifTrue: [|
+  let r := [7 e2Run: 20 with: [:index |
+    [[index = 5] ifTrue: [| [Reflect defineMethod: #oopAt: on: Machine as: [:self :slot | 42]]] ifFalse: [| nil]];
+    [7 e2Step: index]]];
+  [show value: "result" value: r]] ifFalse: [| nil]];
+
+[[caseName = "activate-rollback"] ifTrue: [|
+  let before := [7 e2Run: 20 with: [:index | [7 e2Step: index]]];
+  [show value: "before" value: before];
+  let successorSource := "[Module named: #e2SlotAccess requires: #[]]; [Reflect defineMethod: #e2Step: on: Integer as: [:self :index | [E2Calls set: [[E2Calls value] + 1]]; [[self + index] + 1000]]]";
+  let successorPath := [unitPath , "-successor.dylib"];
+  let successor := [CompiledUnit compile: successorSource named: #e2SlotAccess output: successorPath selection: #resumableRequired];
+  [show value: "successor-compiled" value: [[successor isError] | [successor isNil]]];
+  let unit2 := [CompiledUnit open: successorPath];
+  [show value: "successor-mapped" value: [[unit2 map] isError]];
+  [show value: "successor-activated" value: [[[unit2 activate] fulfill] isError]];
+  [show value: "during" value: [7 e2Run: 20 with: [:index | [7 e2Step: index]]]];
+  [show value: "rolled-back" value: [[[unit2 rollback] fulfill] isError]];
+  [show value: "after" value: [7 e2Run: 20 with: [:index | [7 e2Step: index]]]]] ifFalse: [| nil]];
+
+[[caseName = "gc-nested"] ifTrue: [|
+  let r := [7 e2Run: 200 with: [:index |
+    [[[index mod: 7] = 0] ifTrue: [| [System gc]] ifFalse: [| nil]];
+    let sorted := [#[3 1 2] sortBy: [:x | x]];
+    [[[sorted at: 0] = 1] ifTrue: [| [7 e2Step: index]] ifFalse: [| [Error kind: #e2SortWrong message: "sort"]]]]];
+  [show value: "checksum" value: r];
+  [show value: "calls" value: [E2Calls value]]] ifFalse: [| nil]];
+
+[[caseName = "churn"] ifTrue: [|
+  let started := [Time monotonicMicros];
+  let r := [7 e2Run: 2000 with: [:index |
+    [[[index mod: 2] = 0]
+      ifTrue: [| [Reflect defineMethod: #e2Step: on: Integer as: [:self :i | [E2Calls set: [[E2Calls value] + 1]]; [self + i]]]]
+      ifFalse: [| [Reflect defineMethod: #e2Step: on: Integer as: [:self :i | [E2Calls set: [[E2Calls value] + 1]]; [[self + i] + 0]]]]];
+    [7 e2Step: index]]];
+  let elapsed := [[Time monotonicMicros] - started];
+  [show value: "checksum" value: r];
+  [show value: "calls" value: [E2Calls value]];
+  [System println: ["churn-us " , [elapsed printString]]]] ifFalse: [| nil]];
+
+[[caseName = "invalid-body"] ifTrue: [|
+  let r := [7 e2Run: 20 with: 5];
+  [show value: "result" value: r]] ifFalse: [| nil]];
+
+[[caseName = "empty"] ifTrue: [|
+  [show value: "zero" value: [7 e2Run: 0 with: [:index | [7 e2Step: index]]]];
+  [show value: "calls" value: [E2Calls value]]] ifFalse: [| nil]];
+[System println: "e2-done"];
