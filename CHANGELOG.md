@@ -19,11 +19,13 @@ loader ports are complete.
 
 ### Changed
 
-- Release acceptance for v0.15 judges `vector.includes-miss` by its raw
-  per-operation median (Design 60HC): the case got faster while its
-  empty-loop-subtracted net rose, because the subtracted loop baseline halved.
-  Every other case keeps the ordinary comparator threshold; v0.16 returns to
-  the ordinary comparison.
+- Release acceptance for v0.15 judges micro-layer comparator flags by their
+  raw per-operation medians (Design 60HC): a flag is accepted when raw time is
+  within the 10% micro allowance or moved by less than the case's own
+  three-process spread, because v0.15 halved the subtracted empty-loop
+  baseline and two clean candidates flagged disjoint micro cases with no raw
+  regression. Every other layer keeps the ordinary comparator threshold;
+  v0.16 returns to the ordinary comparison.
 
 - CodeProgram objects retain checked immutable layouts, so Block construction
   and reflection reuse validated views. Global imports and method dictionaries

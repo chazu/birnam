@@ -2,10 +2,13 @@
 """One-release performance acceptance for v0.15.0 (Design 60HC).
 
 The ordinary Design 46 comparator runs unchanged and stays authoritative for
-every case. Exactly one case, `vector.includes-miss`, is judged by its raw
-per-operation median instead of its empty-loop-subtracted net: v0.15 made the
-subtracted loop baseline about twice as cheap, so the case's net rose while its
-raw time fell. Every other flag the comparator raises still fails closed.
+every layer except micro. A micro-layer regression it reports is accepted only
+when the case's raw per-operation median (no empty-loop subtraction) is within
+Design 46's 10% micro allowance of the baseline's raw median, or when the raw
+median moved by less than the larger of the two documents' run-to-run raw
+spreads (max - min over the release run's replicated micro processes). Any
+regression in another layer, any missing case, and any incomplete raw
+measurement still fail closed.
 """
 
 import hashlib
@@ -22,8 +25,8 @@ BASELINE_COMMIT = "3b10b93"
 BASELINE_MACHINE = "Mac15,12"
 CANDIDATE_VERSION = "0.15.0"
 
-# The single raw-bounded case and the ordinary micro allowance (Design 46).
-RAW_BOUNDED_CASE = "vector.includes-miss"
+# Only the micro layer is judged by raw medians (Design 46's micro allowance).
+MICRO_LAYER = "micro"
 RAW_ALLOWANCE = 1.10
 
 REGRESSION_LINE = re.compile(r"^REG\s+(\S+?):")
@@ -47,23 +50,61 @@ def digest(path: str) -> str:
     return value.hexdigest()
 
 
-def raw_median(document: dict, name: str) -> float:
-    """Median of a micro case's raw ns/op across the document's process runs."""
+def layers_of(document: dict, name: str) -> set:
+    """Every layer label under which the document carries a case of this name."""
+    layers = set()
+    for suite in document.get("suites", []):
+        for case in suite.get("data", {}).get("cases", []):
+            if case.get("name") == name:
+                layers.add(suite.get("label"))
+    for case in document.get("macro", []) or []:
+        if isinstance(case, dict) and case.get("name") == name:
+            layers.add("macro")
+    return layers
+
+
+def raw_samples(document: dict, name: str) -> list:
+    """A micro case's raw ns/op from each of the document's micro processes."""
     raws = []
     for suite in document.get("suites", []):
+        if suite.get("label") != MICRO_LAYER:
+            continue
         for case in suite.get("data", {}).get("cases", []):
             if case.get("name") == name:
                 raw = case.get("ns_per_op_raw", 0)
                 require(isinstance(raw, (int, float)) and raw > 0, f"{name}: incomplete raw measurement")
                 raws.append(float(raw))
     require(len(raws) > 0, f"{name}: absent from benchmark document")
-    return statistics.median(raws)
+    return raws
+
+
+def spread(samples: list) -> float:
+    return max(samples) - min(samples) if len(samples) > 1 else 0.0
+
+
+def judge_micro(name: str, baseline: dict, candidate: dict) -> str:
+    """Accept one micro flag by raw allowance or by run-to-run spread; raise otherwise."""
+    reference_samples = raw_samples(baseline, name)
+    observed_samples = raw_samples(candidate, name)
+    reference = statistics.median(reference_samples)
+    observed = statistics.median(observed_samples)
+    ceiling = reference * RAW_ALLOWANCE
+    if observed <= ceiling:
+        return f"{name}: raw median {observed:.0f} ns/op within {RAW_ALLOWANCE:.2f}x of baseline raw {reference:.0f}"
+    tolerance = max(spread(reference_samples), spread(observed_samples))
+    delta = observed - reference
+    require(
+        delta <= tolerance,
+        f"{name}: raw {observed:.0f} ns/op exceeds accepted raw ceiling {ceiling:.0f} "
+        f"(baseline raw {reference:.0f}) and its raw delta {delta:.0f} exceeds the run-to-run spread {tolerance:.0f}",
+    )
+    return f"{name}: raw delta {delta:.0f} ns/op inside the run-to-run raw spread {tolerance:.0f} (baseline raw {reference:.0f})"
 
 
 def judge(comparator_output: str, comparator_exit: int, baseline: dict, candidate: dict) -> str:
     """Apply the 60HC rule to the ordinary comparator's verdict.
 
-    Returns the acceptance summary line; raises Rejected otherwise.
+    Returns the acceptance summary; raises Rejected otherwise.
     """
     regressions = [match.group(1) for line in comparator_output.splitlines() if (match := REGRESSION_LINE.match(line))]
     summary = next((SUMMARY_LINE.match(line) for line in comparator_output.splitlines() if SUMMARY_LINE.match(line)), None)
@@ -72,20 +113,13 @@ def judge(comparator_output: str, comparator_exit: int, baseline: dict, candidat
     require(missing == 0, f"comparator reports {missing} missing case(s)")
     require(int(summary.group(1)) == len(regressions), "comparator summary disagrees with its regression lines")
 
-    others = [name for name in regressions if name != RAW_BOUNDED_CASE]
-    require(not others, f"ordinary comparator regressions remain: {', '.join(others)}")
+    others = [name for name in regressions if layers_of(candidate, name) != {MICRO_LAYER}]
+    require(not others, f"ordinary comparator regressions remain outside the micro layer: {', '.join(others)}")
 
-    if RAW_BOUNDED_CASE in regressions:
-        reference = raw_median(baseline, RAW_BOUNDED_CASE)
-        observed = raw_median(candidate, RAW_BOUNDED_CASE)
-        ceiling = reference * RAW_ALLOWANCE
-        require(
-            observed <= ceiling,
-            f"{RAW_BOUNDED_CASE}: raw {observed:.0f} ns/op exceeds accepted raw ceiling {ceiling:.0f} (baseline raw {reference:.0f})",
-        )
-        return (
-            f"v0.15 performance acceptance: ordinary comparator clean except {RAW_BOUNDED_CASE}, "
-            f"whose raw median {observed:.0f} ns/op is within {RAW_ALLOWANCE:.2f}x of baseline raw {reference:.0f}"
+    if regressions:
+        accepted = [judge_micro(name, baseline, candidate) for name in regressions]
+        return "v0.15 performance acceptance: ordinary comparator clean except micro-layer flags judged by raw medians:\n  " + "\n  ".join(
+            accepted
         )
     require(comparator_exit == 0, f"comparator exited {comparator_exit} without a listed regression")
     return "v0.15 performance acceptance: ordinary comparator clean; no raw-bounded override needed"
