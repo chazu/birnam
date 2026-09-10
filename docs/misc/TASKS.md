@@ -32,8 +32,10 @@ changes, so E3 is met as amended. The next hypothesis, slot-index box elision
 on the guard's hit path, was authorized, reviewed, implemented and measured as
 [Design 74D](../design/74d-e4-slot-index-box-elision.md) (`birnam-e4-gvm`,
 closed): about 50% faster than the baseline on the fixture, 34–43% faster
-than E1, every access hitting, E2 identical. Next is one production
-slot-access slice proposal (Design 74 §7.6) that includes the elision. The prior implementation
+than E1, every access hitting, E2 identical. The production slice,
+[Design 74E](../design/74e-production-slot-access-slice.md), was landed and
+reverted the same day: it needs a runtime ABI cut (two new shim names), which
+the user declined. The dev-feature form stays available. The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 
