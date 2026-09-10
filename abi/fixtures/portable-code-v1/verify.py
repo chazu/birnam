@@ -51,12 +51,12 @@ SELECTIONS = {
     "selection-shared-cyclic.bin": (363, "b5d5554a58ead5f26d884c515806a647909a937bb9a7dc0bc6c56f924699680b"),
 }
 IMAGES = {
-    "image-block-binding-stripped.bin": (2617, "0b3c4d355294fdea30f2da99a1b59f95b80fef38f4f6b5560708b7464d0496fc"),
-    "image-empty-stripped.bin": (740, "8966e6e31955536cad4a5a2ef74261ad715c465ee55ed4cdf326338c831d8bd3"),
-    "image-mixed-stripped.bin": (2617, "5e00da92ea15ea417e9bba8635ac772947832bf5cdbfa61765b9e033694c5b5b"),
-    "image-mixed-code.bin": (2722, "cf16209202ec625cc57cd8e25381040d662880e101fb55d4d69c779289b24974"),
-    "image-mixed-facts-stripped.bin": (2694, "676be25eb81cb0f7ae954c11273e82e1057c5124fc91b73cef17877479e10c30"),
-    "image-shared-cyclic-stripped.bin": (2495, "01d1fc92d072b13a9d49d523dc93ba24c166b8f637316748cd97e55c1ea6416a"),
+    "image-block-binding-stripped.bin": (2617, "7456ffc6a1c20b19839fbe966c5413dc448a3909259196f50fabd4ea7a8f4bc7"),
+    "image-empty-stripped.bin": (740, "14612bb39cf197be3f304996431b85534927e19934f6bd79de224e2aa57f6097"),
+    "image-mixed-stripped.bin": (2617, "57c23b8e2f848d52403d2d9fe0fdf2bf2fae751276d4dbf477b71ccdbaadb6ac"),
+    "image-mixed-code.bin": (2722, "ff1a05c75ab7232c8e5de1b741ff69fc1b81403522417e15b91ef24d274e213e"),
+    "image-mixed-facts-stripped.bin": (2694, "652fc3d59db0713f11136dd22c34e9be522ac190a0e9031f934d1960cc6b12a5"),
+    "image-shared-cyclic-stripped.bin": (2495, "e6b03ccd40fb8b0a77519dc189f117bd661ebe0a9924e44d884f603db77f954d"),
 }
 
 
@@ -748,7 +748,7 @@ def parse_image(data: bytes) -> tuple[int, bool]:
         and u32(data, 8, "image-header") == 8
         and u32(data, 12, "image-header") == 0x01020304
         and u32(data, 16, "image-header") == 1
-        and u64(data, 20, "image-header") == 0x26FD5AE57990A0F3,
+        and u64(data, 20, "image-header") == 0xCDB641F978540D45,
         "image-header",
         "header",
     )

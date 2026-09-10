@@ -240,7 +240,6 @@ pub enum ImageError {
     MissingSystem,
     InvalidHeader,
     VersionMismatch { expected: u32, observed: u32 },
-    RuntimeAbiMismatch { expected: u64, observed: u64 },
     LoadRejected,
     UnexpectedStatus,
 }
@@ -825,7 +824,7 @@ pub unsafe fn compile_module(
 }
 
 fn validate_image_header(fixed_header: &[u8]) -> Result<(), ImageError> {
-    if fixed_header.len() < 28 || fixed_header[..8] != *b"BIRNAMIM" {
+    if fixed_header.len() < 12 || fixed_header[..8] != *b"BIRNAMIM" {
         return Err(ImageError::InvalidHeader);
     }
     let observed = u32::from_le_bytes(
@@ -838,17 +837,6 @@ fn validate_image_header(fixed_header: &[u8]) -> Result<(), ImageError> {
             expected: 8,
             observed,
         });
-    }
-    // The runtime ABI identity at offset 20 (Design 74E §3.1): an image saved
-    // under another runtime ABI is named as such, not as a corrupt header.
-    let expected = birnam_image::support::runtime_abi_hash();
-    let observed = u64::from_le_bytes(
-        fixed_header[20..28]
-            .try_into()
-            .expect("validated fixed runtime ABI"),
-    );
-    if observed != expected {
-        return Err(ImageError::RuntimeAbiMismatch { expected, observed });
     }
     Ok(())
 }
@@ -866,7 +854,7 @@ pub unsafe fn load_image(
     path: &Path,
     rebuild: bool,
 ) -> Result<ImageLoadOutcome, ImageError> {
-    let mut fixed_header = [0u8; 28];
+    let mut fixed_header = [0u8; 12];
     std::fs::File::open(path)
         .and_then(|mut file| file.read_exact(&mut fixed_header))
         .map_err(|_| ImageError::InvalidHeader)?;

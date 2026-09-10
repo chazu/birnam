@@ -19,7 +19,6 @@ path = "src/bin/birnam-build.rs"
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { path = "../birnam-artifact" }
-birnam-image = { path = "../birnam-image" }
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true

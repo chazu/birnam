@@ -701,8 +701,6 @@ extern void* birnam_global(const char* name);
 extern void* birnam_global_b(void* sym);
 extern void* birnam_global_set(const char* name, void* value);
 extern void* birnam_ensurePrivateVtable(void* obj);
-extern void* birnam_frame_slot_get_v1(void* machine, long index);
-extern void* birnam_frame_slot_put_v1(void* machine, long index, void* value);
 extern void* birnam_install_method(void* vt, void* sel, void* method, const char* src, long n);
 extern void* birnam_remove_method(void* target, void* sel, const char* src, long n);
 extern void* birnam_candidate_root_get(unsigned long long salt, long index);
@@ -761,6 +759,12 @@ impl TranslationUnit {
                 + if self.artifact { 64 } else { 0 },
         );
         output.extend_from_slice(C_RUNTIME_PRELUDE);
+        if resumable_c::guarded_slots_selected() {
+            output.extend_from_slice(resumable_c::GUARDED_SLOT_PRELUDE);
+        }
+        if resumable_c::slot_box_elision_selected() {
+            output.extend_from_slice(resumable_c::ELIDED_SLOT_PRELUDE);
+        }
         for (index, _name) in self.baked_globals.iter().enumerate() {
             if self.artifact {
                 output.extend_from_slice(b"static void* __g");

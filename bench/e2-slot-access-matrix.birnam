@@ -1,8 +1,7 @@
-// slot-access-matrix.birnam — Design 74 E2 adversarial cases (one per process),
-// retained as the guarded slot-access smoke (Design 74E §3.7). E2_CASE selects
-// the case; E2_UNIT_PATH the unit dylib path. Every case prints deterministic
-// lines that scripts/slot-access-matrix-smoke.py checks against the recorded
-// expectations (74C §1).
+// e2-slot-access-matrix.birnam — Design 74 E2 adversarial cases (one per process).
+// E2_CASE selects the case; E2_UNIT_PATH the candidate dylib path. Every case
+// prints deterministic lines; scripts/e2-slot-access-matrix.py requires the
+// baseline and guarded processes to print identical output.
 [System load: "modules/time.birnam"];
 [System load: "modules/os.birnam"];
 [Alien wrap: "getenv" signature: "s s" as: #e2Getenv on: String];

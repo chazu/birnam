@@ -386,27 +386,6 @@ successor which does not root a still-live result. This is an implementation
 obligation of the existing synchronous send boundary, not a new IdApi field or
 a no-GC region.
 
-*Amended 2026-09-09 by [Design 74E](74e-production-slot-access-slice.md).*
-Generated code no longer performs the `oopAt:` / `oopAt:put:` sends itself.
-A slot read is `birnam_frame_slot_get_v1(machine, index)` and a store produces
-its value into a generated local and passes it to
-`birnam_frame_slot_put_v1(machine, index, value)` in the next statement, with
-the same no-safepoint obligation between producer and ingress as before. The
-floor answers directly from the Frame when the Design 74A guard holds (no
-allocation, no dispatch) and otherwise performs the ordinary late-bound send
-once with the operands generated code used to produce: the boxed index, the
-canonical selector, the value. On that miss path the floor roots the value
-and the fresh index box on the scoped host-root stack before allocating or
-sending. Note that `IdApi.send` itself does not copy its argument buffer into
-Runtime-owned storage as the paragraph above describes; the caller-owned
-buffer is covered by the conservative native-stack scan, which is what
-protected the old emission's boxed index as well. The explicit roots on the
-miss path are therefore stronger than the baseline's, not equal to it, and
-the paragraph above records an intended rather than an implemented rule.
-Automatic collection timing changes as a consequence of the elided
-allocations; it is unspecified (the safepoint list above and Design 49), and
-`System liveObjects` / `System gc` are diagnostics, not semantics.
-
 ### 7.2 PC root maps are step-safepoint unions
 
 Descriptor layout v2 has one immutable root bitmap per PC. It is not merely the

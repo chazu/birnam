@@ -1,6 +1,6 @@
 # 74B — E1: guarded Machine slot access, development-only artifact
 
-> **Status: delivered 2026-09-09 for review, under the user's E1 authorization; superseded the same day by [Design 74E](74e-production-slot-access-slice.md), which made the guarded access (unboxed, per 74D) the only emission and removed the development feature described here
+> **Status: delivered 2026-09-09 for review, under the user's E1 authorization
 > of the same day (Design 74 §7.3). Development-only: nothing here changes an
 > ordinary build, an admitted artifact, the frozen IdApi, or the runtime ABI
 > hash. E2's remaining matrix rows and the formal E3 measurement with its

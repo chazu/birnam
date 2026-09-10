@@ -681,9 +681,7 @@ impl Runtime {
         };
         let epoch = state.vtables.mutation_epoch();
         let (verified_epoch, verified) = self.slot_guard_cache.get();
-        // A saturated epoch can no longer move, so it always re-verifies
-        // (Design 74A §3.2).
-        let verified = if verified_epoch == epoch && epoch != u64::MAX {
+        let verified = if verified_epoch == epoch {
             verified
         } else {
             let verdict = Self::slot_guard_conditions_hold(state, &objects);
@@ -693,14 +691,6 @@ impl Runtime {
         verified && Vtables::checked_vtable_of(&state.heap, machine) == objects.machine_vtable
     }
 
-    /// Conditions 2–4 of Design 74A §3.1. Two of them read heap header words
-    /// (the metavtables of the Machine vtable and of `vtable_vt`) and are
-    /// cached behind the vtable-registry mutation epoch. That is sound only
-    /// while `Runtime::ensure_private_vtable` (which moves the epoch) is the
-    /// sole production path that re-points a live object's vtable header;
-    /// every other `Heap::set_vtable` caller writes a freshly allocated
-    /// object. Any new caller that re-points a live header must move the
-    /// epoch, or this cache goes stale and a hit can bypass an override.
     fn slot_guard_conditions_hold(
         state: &RuntimeState,
         objects: &crate::execution::ExecutionObjects,
@@ -720,11 +710,43 @@ impl Runtime {
             && state.vtables.direct_lookup(globals.vtable_vt, globals.lookup) == Some(floor_lookup)
     }
 
-    /// Guarded direct slot read (Design 74A §3, 74D): `None` when ineligible,
-    /// so the caller performs the ordinary send exactly once; otherwise
-    /// exactly what the canonical `oopAt:` Method would answer for a boxed
-    /// Integer carrying `index`, including nil on every failure, without
-    /// creating that box.
+    /// Guarded direct slot read: `None` when ineligible (the caller performs
+    /// the ordinary send exactly once); otherwise exactly what the canonical
+    /// `oopAt:` Method would have answered, including nil on every failure.
+    pub(crate) fn guarded_frame_oop_at(&self, machine: Oop, operand: Oop) -> Option<Oop> {
+        if !self.guarded_slot_access_eligible(machine) {
+            return None;
+        }
+        let nil = self.canonical().nil;
+        let Some(index) = crate::execution::nonnegative_index(self, operand) else {
+            return Some(nil);
+        };
+        Some(self.stackless_oop_at(machine, index).unwrap_or(nil))
+    }
+
+    /// Guarded direct slot write; same contract as `guarded_frame_oop_at`.
+    pub(crate) fn guarded_frame_oop_at_put(
+        &self,
+        machine: Oop,
+        operand: Oop,
+        value: Oop,
+    ) -> Option<Oop> {
+        if !self.guarded_slot_access_eligible(machine) {
+            return None;
+        }
+        let nil = self.canonical().nil;
+        let Some(index) = crate::execution::nonnegative_index(self, operand) else {
+            return Some(nil);
+        };
+        Some(
+            self.stackless_oop_at_put(machine, index, value)
+                .unwrap_or(nil),
+        )
+    }
+
+    /// Design 74D (E4): guarded direct slot read with an unboxed index. `None`
+    /// when ineligible; otherwise exactly what `guarded_frame_oop_at` answers
+    /// for a boxed Integer carrying `index`, without creating that box.
     pub(crate) fn guarded_frame_slot_at(&self, machine: Oop, index: i64) -> Option<Oop> {
         if !self.guarded_slot_access_eligible(machine) {
             return None;
@@ -736,7 +758,7 @@ impl Runtime {
         Some(self.stackless_oop_at(machine, index).unwrap_or(nil))
     }
 
-    /// Write form of `guarded_frame_slot_at`; same contract.
+    /// Design 74D (E4): write form of `guarded_frame_slot_at`.
     pub(crate) fn guarded_frame_slot_at_put(
         &self,
         machine: Oop,
@@ -767,15 +789,14 @@ impl Runtime {
         }
     }
 
-    /// Design 74D §2.2: the ordinary `oopAt:` send performed inside the floor
-    /// on a guard miss, with the operands generated code once produced itself:
-    /// the index boxed immediately before the send and rooted across it.
-    /// `send_abi` does not root its argument buffer (the conservative native
-    /// scan covered it historically), so the explicit root is the argument.
+    /// Design 74D §2.2: the ordinary `oopAt:` send with the baseline's
+    /// operands, performed inside the floor on a guard miss. The box is created
+    /// from the same constant generated code would have boxed, immediately
+    /// before the send, and reaches the send's argument buffer as the
+    /// baseline's `MKV` result does.
     pub(crate) fn fallback_frame_oop_at(&self, machine: Oop, index: i64) -> Oop {
         let selector = self.slot_access_selector(false);
         let operand = self.make_integer(index);
-        let _operand_root = ScopedOopRootGuard::new(self, operand);
         self.send_slice(machine, selector, &[operand])
     }
 
@@ -9791,10 +9812,12 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "dev-guarded-slots")]
     thread_local! {
         static GUARD_PROBE_FAILURES: Cell<u32> = const { Cell::new(0) };
     }
 
+    #[cfg(feature = "dev-guarded-slots")]
     fn guard_check(condition: bool, what: &str) {
         if !condition {
             eprintln!("guarded slot probe: {what}");
@@ -9802,6 +9825,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "dev-guarded-slots")]
     unsafe extern "C" fn guarded_probe_step(machine: Oop, _: *const Oop, count: usize) -> Oop {
         with_active_if_present(|runtime| {
             if count != 0 {
@@ -9816,24 +9840,34 @@ mod tests {
             let machine_vt = objects.machine_vtable;
             let vtable_vt = runtime.globals().vtable_vt;
 
-            // Hits answer exactly what the send answers, including nil
-            // failures: live slots, the raw slot (3), out of range (9), and a
-            // negative index (the boxed path's non-Integer / negative case).
-            for index in [0i64, 1, 2, 3, 9, -1] {
+            // Hits answer exactly what the send answers, including nil failures.
+            for index in 0..2 {
                 let operand = runtime.make_integer(index);
-                let direct = runtime.guarded_frame_slot_at(machine, index);
+                let direct = runtime.guarded_frame_oop_at(machine, operand);
                 let sent = runtime.send_slice(machine, oop_at, &[operand]);
                 guard_check(direct == Some(sent), "read agrees with send");
             }
-            guard_check(
-                runtime.send_slice(machine, oop_at, &[nil]) == nil,
-                "non-Integer operand answers nil through the send",
-            );
             let raw_slot = runtime.make_integer(3);
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, raw_slot) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[raw_slot]) == nil,
+                "raw slot answers nil on both paths",
+            );
+            let beyond = runtime.make_integer(9);
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, beyond) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[beyond]) == nil,
+                "out-of-range slot answers nil on both paths",
+            );
+            guard_check(
+                runtime.guarded_frame_oop_at(machine, nil) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[nil]) == nil,
+                "non-Integer operand answers nil on both paths",
+            );
             let value_slot = runtime.make_integer(2);
             let fifty_five = runtime.make_integer(55);
             guard_check(
-                runtime.guarded_frame_slot_at_put(machine, 2, fifty_five) == Some(fifty_five),
+                runtime.guarded_frame_oop_at_put(machine, value_slot, fifty_five) == Some(fifty_five),
                 "guarded write answers the stored value",
             );
             guard_check(
@@ -9843,17 +9877,46 @@ mod tests {
             let sixty_six = runtime.make_integer(66);
             let _ = runtime.send_slice(machine, oop_at_put, &[value_slot, sixty_six]);
             guard_check(
-                runtime.guarded_frame_slot_at(machine, 2) == Some(sixty_six),
+                runtime.guarded_frame_oop_at(machine, value_slot) == Some(sixty_six),
                 "the guarded read observes the sent write",
             );
             guard_check(
-                runtime.guarded_frame_slot_at_put(machine, 3, sixty_six) == Some(nil)
-                    && runtime.guarded_frame_slot_at_put(machine, -1, sixty_six) == Some(nil)
+                runtime.guarded_frame_oop_at_put(machine, raw_slot, sixty_six) == Some(nil)
                     && runtime.send_slice(machine, oop_at_put, &[raw_slot, sixty_six]) == nil,
-                "raw-slot and negative writes are rejected identically",
+                "raw-slot write is rejected identically",
             );
 
-            // Miss path: the floor performs the ordinary send once
+            // Design 74D: the unboxed entry points agree with the boxed ones
+            // and with the send on hits, including every nil case.
+            for index in [0i64, 1, 2, 3, 9] {
+                let operand = runtime.make_integer(index);
+                guard_check(
+                    runtime.guarded_frame_slot_at(machine, index)
+                        == runtime.guarded_frame_oop_at(machine, operand)
+                        && runtime.guarded_frame_slot_at(machine, index)
+                            == Some(runtime.send_slice(machine, oop_at, &[operand])),
+                    "unboxed read agrees with the boxed read and the send",
+                );
+            }
+            guard_check(
+                runtime.guarded_frame_slot_at(machine, -1) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[runtime.make_integer(-1)]) == nil,
+                "negative unboxed index answers nil as the send does",
+            );
+            let seventy_seven = runtime.make_integer(77);
+            guard_check(
+                runtime.guarded_frame_slot_at_put(machine, 2, seventy_seven) == Some(seventy_seven)
+                    && runtime.send_slice(machine, oop_at, &[value_slot]) == seventy_seven
+                    && runtime.guarded_frame_slot_at(machine, 2) == Some(seventy_seven),
+                "unboxed write is visible to the send and the reads",
+            );
+            guard_check(
+                runtime.guarded_frame_slot_at_put(machine, 3, seventy_seven) == Some(nil)
+                    && runtime.guarded_frame_slot_at_put(machine, -1, seventy_seven) == Some(nil),
+                "unboxed raw-slot and negative writes answer nil",
+            );
+
+            // Design 74D miss path: the floor performs the ordinary send once
             // with the boxed index, so a counting replacement sees exactly one
             // send with the right operand.
             let _ = runtime.add_method(machine_vt, oop_at, synchronous_increment);
@@ -9893,7 +9956,7 @@ mod tests {
             let _ = runtime.add_method(machine_vt, oop_at, synchronous_increment);
             guard_check(!runtime.guarded_slot_access_eligible(machine), "redefined oopAt: misses");
             guard_check(
-                runtime.guarded_frame_slot_at(machine, 2).is_none(),
+                runtime.guarded_frame_oop_at(machine, value_slot).is_none(),
                 "miss answers None for the caller's fallback",
             );
             let _ = runtime.add_method(machine_vt, oop_at, crate::execution::machine_oop_at);
@@ -9948,6 +10011,7 @@ mod tests {
         .unwrap_or(core::ptr::null_mut())
     }
 
+    #[cfg(feature = "dev-guarded-slots")]
     #[test]
     fn guarded_slot_access_agrees_with_the_canonical_send_and_misses_on_overrides() {
         let bootstrap = build_bootstrap();
@@ -9967,7 +10031,7 @@ mod tests {
         );
         runtime.enter(|| {
             assert_eq!(
-                runtime.guarded_frame_slot_at(machine, 0),
+                runtime.guarded_frame_oop_at(machine, zero),
                 Some(nil),
                 "outside a drive the guarded read fails to nil exactly as the send does"
             );

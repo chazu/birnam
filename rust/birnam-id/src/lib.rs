@@ -8,7 +8,8 @@ compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
 
 pub(crate) use birnam_abi as abi;
 mod boundary;
-mod slot_access;
+#[cfg(feature = "dev-guarded-slots")]
+mod dev_slot_access;
 mod dispatch;
 mod env;
 mod execution;

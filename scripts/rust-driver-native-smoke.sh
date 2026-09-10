@@ -33,8 +33,6 @@ scripts/portable-resumable-lifecycle-smoke.sh "$prefix"
 scripts/portable-code-binding-lifecycle-smoke.sh "$prefix"
 scripts/portable-image-v8-smoke.sh "$prefix"
 scripts/stackless-control-smoke.sh "$prefix"
-BIRNAM_RUST_TCC_DYLIB="$prefix/lib/libbirnam_id_tcc.dylib" scripts/rust-tcc-dylib-audit.sh
-scripts/slot-access-matrix-smoke.sh "$prefix"
 
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
 import json

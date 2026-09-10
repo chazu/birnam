@@ -11,8 +11,7 @@
 //   E1_ITERATIONS=1024 E1_UNIT_PATH=/tmp/e1.dylib birnam bench/e1-slot-access.birnam
 //
 // Output lines: e1-ready, empty-us, step-us, empty-answer, checksum. Driven by
-// the retired Design 74 drivers (74B–74D); kept as a retained probe of the
-// guarded slot-access loop cost. Design 66's control probe stays unchanged.
+// scripts/e1-slot-access.py. Design 66's control probe stays unchanged.
 
 [System load: "modules/time.birnam"];
 [System load: "modules/os.birnam"];
