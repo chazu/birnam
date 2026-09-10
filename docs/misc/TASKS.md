@@ -26,9 +26,14 @@ and accepted the same day), then authorized E1, delivered as
 (`birnam-e1-hyz`): a feature-gated dev prefix, explicit emission selection,
 fixture and driver. E2 and E3 followed the same day as
 [Design 74C](../design/74c-e2-matrix-and-e3-measurement.md): E2 identical in
-every row; E3's frozen 20% criterion not met (13–20% real gain; allocation
-dominant). The next hypothesis, slot-index box elision on the guard's hit
-path, is proposed (`birnam-e4`) and awaits the user's decision. The prior implementation
+every row; E3's frozen 20% criterion not met (13–20% real gain), after which
+the user withdrew percentage thresholds for proven-equivalent, non-regressing
+changes, so E3 is met as amended. The next hypothesis, slot-index box elision
+on the guard's hit path, was authorized, reviewed, implemented and measured as
+[Design 74D](../design/74d-e4-slot-index-box-elision.md) (`birnam-e4-gvm`,
+closed): about 50% faster than the baseline on the fixture, 34–43% faster
+than E1, every access hitting, E2 identical. Next is one production
+slot-access slice proposal (Design 74 §7.6) that includes the elision. The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 
