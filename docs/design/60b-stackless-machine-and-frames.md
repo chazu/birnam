@@ -39,7 +39,12 @@ Concretely:
   a StepAction, because that would recurse through the mechanism being driven.
 
 Generated native code receives the Machine Oop as its existing Method receiver
-and uses ordinary IdApi sends to this frozen, primitive-backed S1 protocol:
+and uses this frozen, primitive-backed S1 protocol. Since
+[Design 74E](74e-production-slot-access-slice.md) the two slot accessors are
+reached through guarded floor entry points that answer directly when the
+canonical Machine vtable and lookup are in force and otherwise perform the
+ordinary send, so the protocol stays late-bound and overridable; the
+publishers remain ordinary IdApi sends:
 
 | Selector | S1 meaning |
 |---|---|

@@ -17,9 +17,11 @@ pub mod support {
     } else {
         0
     };
-    const RUNTIME_ABI_VERSION: u32 = 4;
-    const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
+    const RUNTIME_ABI_VERSION: u32 = 5;
+    pub(crate) const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
         b"birnam_send",
+        b"birnam_frame_slot_get_v1",
+        b"birnam_frame_slot_put_v1",
         b"birnam_intern",
         b"birnam_mkSmallInt",
         b"birnam_smallIntValue",
@@ -3173,5 +3175,18 @@ mod runtime {
             unsafe { bring_up(api) };
         }
         ptr::null_mut()
+    }
+}
+
+#[cfg(test)]
+mod runtime_abi_tests {
+    /// The runtime ABI identity every image header carries. A change to
+    /// `RUNTIME_SHIM_NAMES`, the registration ABI or `RUNTIME_ABI_VERSION`
+    /// must move this literal deliberately (Design 74E §3.1).
+    #[test]
+    fn runtime_abi_hash_is_the_recorded_identity() {
+        assert_eq!(super::support::runtime_abi_hash(), 0x26fd_5ae5_7990_a0f3);
+        assert!(super::support::RUNTIME_SHIM_NAMES.contains(&&b"birnam_frame_slot_get_v1"[..]));
+        assert!(super::support::RUNTIME_SHIM_NAMES.contains(&&b"birnam_frame_slot_put_v1"[..]));
     }
 }

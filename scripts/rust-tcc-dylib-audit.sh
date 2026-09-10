@@ -18,6 +18,8 @@ birnam_ensurePrivateVtable
 birnam_false
 birnam_floatValue
 birnam_foreignAddressValue
+birnam_frame_slot_get_v1
+birnam_frame_slot_put_v1
 birnam_free_cstr
 birnam_intern
 birnam_isForeignAddress

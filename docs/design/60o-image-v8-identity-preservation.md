@@ -140,7 +140,7 @@ IdApi is unchanged: one shared Rust helper builds this family through its
 ordinary `proto`, `alloc`, layout, ancestry, and export operations.
 
 These additions define Runtime ABI v4 with exact hash
-`0xcdb641f978540d45`; image-v8 headers carry that hash.
+`0x26fd5ae57990a0f3` (runtime ABI version 5, Design 74E); image-v8 headers carry that hash.
 
 ## 6. Acceptance
 

@@ -31,6 +31,24 @@ PY
   grep -Fq "VersionMismatch { expected: 8, observed: $version }" "$root/version-${version}.err"
 done
 
+# Runtime ABI identity (offset 20): an image saved under another runtime ABI
+# is rejected by name before load (Design 74E §3.1).
+abi="$root/runtime-abi.image"
+cp "$current" "$abi"
+python3 - "$abi" <<'PY'
+import struct
+import sys
+with open(sys.argv[1], "r+b") as image:
+    image.seek(20)
+    image.write(struct.pack("<Q", 0))
+PY
+if printf ':quit\n' | "$bin" "$abi" >"$root/abi.out" 2>"$root/abi.err"; then
+  printf 'image with a foreign runtime ABI hash was accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'RuntimeAbiMismatch {' "$root/abi.err"
+grep -Fq 'observed: 0 }' "$root/abi.err"
+
 invalid="$root/invalid-magic.image"
 cp "$current" "$invalid"
 printf X | dd of="$invalid" bs=1 seek=0 conv=notrunc status=none
@@ -40,4 +58,4 @@ if printf ':quit\n' | "$bin" "$invalid" >"$root/invalid.out" 2>"$root/invalid.er
 fi
 grep -Fq 'InvalidHeader' "$root/invalid.err"
 
-printf 'exact-current-rejection-smoke: v4, v5, v6, v7, future, and invalid images rejected before load\n'
+printf 'exact-current-rejection-smoke: v4, v5, v6, v7, future, foreign-runtime-ABI, and invalid images rejected before load\n'

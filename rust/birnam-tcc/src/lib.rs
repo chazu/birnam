@@ -11,9 +11,7 @@ use birnam_abi::{
     IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
     foreign_address::{self, KIND_BORROWED},
 };
-use core::ffi::{c_char, c_int, c_void};
-#[cfg(feature = "dev-guarded-slots")]
-use core::ffi::c_long;
+use core::ffi::{c_char, c_int, c_long, c_void};
 use core::mem::size_of;
 use core::ptr::{self, NonNull};
 use std::ffi::{CStr, CString};
@@ -179,14 +177,8 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
         (b"strlen", validation_strlen as *const c_void),
         (b"birnam_send", validation_send as *const c_void),
         (b"birnam_intern", validation_intern as *const c_void),
-        #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_oop_at_v1", validation_pointer as *const c_void),
-        #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_oop_at_put_v1", validation_pointer as *const c_void),
-        #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_slot_get_v1", validation_pointer as *const c_void),
-        #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_slot_put_v1", validation_pointer as *const c_void),
+        (b"birnam_frame_slot_get_v1", validation_pointer as *const c_void),
+        (b"birnam_frame_slot_put_v1", validation_pointer as *const c_void),
     ];
     symbols.push((
         b"__vecFactory",
@@ -881,101 +873,47 @@ pub unsafe extern "C" fn rt_register_resumable_v1(envelope: *mut c_void) -> u32 
     unsafe { register(envelope) }
 }
 
-/// Design 74 E1 (development-only): forward the guarded direct slot read to
-/// the selected floor. Answers 0 (ineligible) when the floor export is absent,
-/// so a candidate unit always still has its ordinary send fallback.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_oop_at_v1")]
-pub unsafe extern "C" fn rt_dev_frame_oop_at_v1(machine: Oop, operand: Oop, out: *mut Oop) -> u32 {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_oop_at_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        return 0;
-    }
+/// Frame slot read for generated StepMethods (Designs 74A–74E): forwarded to
+/// the selected floor's `birnam_frame_slot_get_v1`, resolved once at rung
+/// bring-up so a missing floor symbol fails at initialization with a named
+/// component rather than at the first slot access.
+#[unsafe(export_name = "birnam_frame_slot_get_v1")]
+pub unsafe extern "C" fn rt_frame_slot_get_v1(machine: Oop, index: c_long) -> Oop {
     let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, *mut Oop) -> u32>(address)
-    };
-    unsafe { forward(machine, operand, out) }
-}
-
-/// Design 74 E1 (development-only): write form of `birnam_dev_frame_oop_at_v1`.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_oop_at_put_v1")]
-pub unsafe extern "C" fn rt_dev_frame_oop_at_put_v1(
-    machine: Oop,
-    operand: Oop,
-    value: Oop,
-    out: *mut Oop,
-) -> u32 {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_oop_at_put_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        return 0;
-    }
-    let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, Oop, *mut Oop) -> u32>(
-            address,
+        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long) -> Oop>(
+            *FRAME_SLOT_GET.get().unwrap_or_else(|| abort("TCC runtime was not initialized")),
         )
     };
-    unsafe { forward(machine, operand, value, out) }
-}
-
-/// Design 74D E4 (development-only): unboxed-index slot read; the floor
-/// performs the fallback send itself, so this always answers an Oop.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_slot_get_v1")]
-pub unsafe extern "C" fn rt_dev_frame_slot_get_v1(machine: Oop, index: c_long) -> Oop {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_slot_get_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        abort("dev slot access floor symbol unavailable");
-    }
-    let forward =
-        unsafe { core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long) -> Oop>(address) };
     unsafe { forward(machine, index) }
 }
 
-/// Design 74D E4 (development-only): write form of `birnam_dev_frame_slot_get_v1`.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_slot_put_v1")]
-pub unsafe extern "C" fn rt_dev_frame_slot_put_v1(machine: Oop, index: c_long, value: Oop) -> Oop {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_slot_put_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        abort("dev slot access floor symbol unavailable");
-    }
+/// Write form of `birnam_frame_slot_get_v1`.
+#[unsafe(export_name = "birnam_frame_slot_put_v1")]
+pub unsafe extern "C" fn rt_frame_slot_put_v1(machine: Oop, index: c_long, value: Oop) -> Oop {
     let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long, Oop) -> Oop>(address)
+        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long, Oop) -> Oop>(
+            *FRAME_SLOT_PUT.get().unwrap_or_else(|| abort("TCC runtime was not initialized")),
+        )
     };
     unsafe { forward(machine, index, value) }
+}
+
+static FRAME_SLOT_GET: OnceLock<usize> = OnceLock::new();
+static FRAME_SLOT_PUT: OnceLock<usize> = OnceLock::new();
+
+/// Resolve the floor's slot-access entry points at bring-up (Design 74E §3.2).
+fn resolve_frame_slot_access(api: &IdApi) {
+    for (symbol, slot) in [
+        (c"birnam_frame_slot_get_v1", &FRAME_SLOT_GET),
+        (c"birnam_frame_slot_put_v1", &FRAME_SLOT_PUT),
+    ] {
+        if floor_symbol_address(api, symbol, slot) == 0 {
+            abort(&format!(
+                "TCC rung bring-up: floor symbol {} is unavailable (runtime ABI version mismatch between the floor and the TCC rung)",
+                symbol.to_str().unwrap_or("?")
+            ));
+        }
+    }
 }
 
 /// Append-only registration-v2 forwarding for portable Block capture layout.
@@ -1243,25 +1181,13 @@ struct RuntimeSymbol {
 unsafe impl Sync for RuntimeSymbol {}
 
 static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
-    #[cfg(feature = "dev-guarded-slots")]
     RuntimeSymbol {
-        name: b"birnam_dev_frame_oop_at_v1\0",
-        address: rt_dev_frame_oop_at_v1 as *const c_void,
+        name: b"birnam_frame_slot_get_v1\0",
+        address: rt_frame_slot_get_v1 as *const c_void,
     },
-    #[cfg(feature = "dev-guarded-slots")]
     RuntimeSymbol {
-        name: b"birnam_dev_frame_oop_at_put_v1\0",
-        address: rt_dev_frame_oop_at_put_v1 as *const c_void,
-    },
-    #[cfg(feature = "dev-guarded-slots")]
-    RuntimeSymbol {
-        name: b"birnam_dev_frame_slot_get_v1\0",
-        address: rt_dev_frame_slot_get_v1 as *const c_void,
-    },
-    #[cfg(feature = "dev-guarded-slots")]
-    RuntimeSymbol {
-        name: b"birnam_dev_frame_slot_put_v1\0",
-        address: rt_dev_frame_slot_put_v1 as *const c_void,
+        name: b"birnam_frame_slot_put_v1\0",
+        address: rt_frame_slot_put_v1 as *const c_void,
     },
     RuntimeSymbol {
         name: b"birnam_send\0",
@@ -1394,6 +1320,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     if unsafe { foreign_address::ensure_family(api) }.is_none() {
         abort("ForeignAddress exports were incomplete");
     }
+    resolve_frame_slot_access(api);
     let runtime = *RUNTIME.get_or_init(|| {
         let reloading = unsafe { (api.isExported)(TCC_NAME.as_ptr().cast()) != 0 };
         let (tcc_vt, unit_vt, tcc) = if reloading {

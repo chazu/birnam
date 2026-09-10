@@ -10,19 +10,23 @@ loader ports are complete.
 
 ### Added
 
-- Design 74 E1 (development-only): a `dev-guarded-slots` cargo feature on the
-  floor, TCC rung and emitter adds guarded direct Machine slot access for
-  generated StepMethods, selected per compiling process by
-  `BIRNAM_DEV_GUARDED_SLOTS=1`, with a resumable loop fixture and driver.
-  Ordinary builds are unchanged; the runtime ABI hash and export surfaces are
-  untouched. Every vtable now carries a dictionary-mutation epoch.
-- Development-only slot-index box elision on the guarded path (Design 74D,
-  `BIRNAM_DEV_ELIDE_SLOT_BOX=1` on top of the E1 selection): the floor
-  answers slot accesses from an unboxed index on a guard hit and performs
-  the ordinary send itself, with the store value rooted, on a miss. Measured
-  at about half the baseline loop time on the Design 74 fixture.
+- Guarded, unboxed Frame slot access for every generated StepMethod
+  (Designs 74A–74E): generated code reads and writes its Frame slots through
+  `birnam_frame_slot_get_v1` / `birnam_frame_slot_put_v1`, which answer
+  directly from the Frame when the canonical Machine vtable and lookup are in
+  force and otherwise perform the ordinary late-bound `oopAt:` / `oopAt:put:`
+  send once, so Machine microcode stays overridable. Measured at about half
+  the baseline loop time on the Design 74 fixture (74D §7). The experiment's
+  development-only feature and counters are gone.
 
 ### Changed
+
+- Runtime ABI version 5: the two slot-access shims join the runtime ABI
+  identity that every image-v8 header and install receipt carries. Images
+  saved by earlier runtimes are rejected by name (`RuntimeAbiMismatch`)
+  before load, as the exact-current cut (Design 60H) requires; the install
+  receipt's `runtime_abi_hash` is now derived, not hardcoded, and the
+  rejection smoke covers the ABI field.
 
 - Release acceptance for v0.15 judges micro-layer comparator flags by their
   raw per-operation medians (Design 60HC): a flag is accepted when raw time is

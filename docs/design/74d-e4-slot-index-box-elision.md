@@ -1,6 +1,9 @@
 # 74D — E4: elide the slot-index box on the guarded hit path
 
 > **Status: written, reviewed, implemented and measured 2026-09-09 under the
+> user's authorization; promoted to production the same day by
+> [Design 74E](74e-production-slot-access-slice.md), which removed the
+> development feature. Originally: under the
 > user's authorization to run the experiment (Design 74C §3.5's hypothesis).
 > Result (§7): the continuation test is met at every size; the elided
 > emission halves the fixture's warm time against the baseline and is 34–43%
@@ -112,7 +115,7 @@ Two consequences need stating:
 
 ### 2.4 The store path's rooting obligation
 
-This is the one place a naive version is wrong. Design 60F §9's ingress
+This is the one place a naive version is wrong. Design 60F §7.1's ingress
 exception lets a producer hand a fresh Oop to its storage send through a
 generated C local only when nothing between them can allocate. That is why
 `emit_store_prefix` allocates the box **before** the value expression today.

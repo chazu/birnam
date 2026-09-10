@@ -262,7 +262,7 @@ def image_v8(
     def hashed(kind: int, value: bytes) -> bytes:
         return record(kind, hashlib.sha256(value).digest() + struct.pack("<Q", len(value)) + value)
 
-    out = bytearray(b"BIRNAMIM" + struct.pack("<IIIQ", 8, 0x01020304, 1, 0xCDB641F978540D45))
+    out = bytearray(b"BIRNAMIM" + struct.pack("<IIIQ", 8, 0x01020304, 1, 0x26FD5AE57990A0F3))
     out.extend(record(5, authority))
     out.extend(hashed(7, programs))
     out.extend(hashed(8, bindings))

@@ -564,9 +564,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     } else {
         Vec::new()
     };
-    // Development-only cargo features (for example Design 74 E1's
-    // `birnam-id/dev-guarded-slots,...`). Recorded in the receipt's cargo
-    // invocation so a dev prefix is never mistaken for an ordinary build.
+    // Optional cargo features for development prefixes. Recorded in the
+    // receipt's cargo invocation so such a prefix is never mistaken for an
+    // ordinary build.
     let cargo_features = env::var("BIRNAM_BUILD_CARGO_FEATURES")
         .ok()
         .filter(|value| !value.trim().is_empty());
@@ -695,7 +695,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             "id_api_descriptor_version": birnam_abi::ABI_DESCRIPTOR_V1.descriptor_version,
             "id_api_schema_version": birnam_abi::ABI_DESCRIPTOR_V1.schema_version,
             "id_api_fingerprint": hex::encode(birnam_abi::ABI_DESCRIPTOR_V1.fingerprint),
-            "runtime_abi_hash": "cdb641f978540d45",
+            "runtime_abi_hash": format!("{:016x}", birnam_image::support::runtime_abi_hash()),
             "portable_code_api_versions": [1, 2, 3],
             "portable_program_view_api_version": 1,
         },

@@ -11,9 +11,6 @@ birnam-abi = { path = "../birnam-abi" }
 [build-dependencies]
 cc.workspace = true
 
-[features]
-# Design 74 E1: development-only guarded slot-access shims for generated code.
-dev-guarded-slots = []
 
 [lib]
 name = "birnam_tcc"

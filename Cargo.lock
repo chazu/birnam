@@ -67,6 +67,7 @@ version = "0.0.0"
 dependencies = [
  "birnam-abi",
  "birnam-artifact",
+ "birnam-image",
  "hex",
  "serde",
  "serde_json",

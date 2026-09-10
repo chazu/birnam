@@ -12,10 +12,6 @@ sha2.workspace = true
 
 [features]
 ffi-test-hooks = []
-# Design 74 E1: development-only guarded Machine slot access exports. Never
-# enabled by ordinary builds; a dev artifact that binds them cannot load on an
-# ordinary runtime.
-dev-guarded-slots = []
 
 [lib]
 name = "birnam_id"

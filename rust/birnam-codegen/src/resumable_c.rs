@@ -163,13 +163,13 @@ fn emit_step_method_with_literal_specs<'a>(
                 OperationKind::EntryCapture { .. } => {}
                 OperationKind::Literal(literal) => {
                     let destination = value_slot(layout, operation.result)?;
-                    emit_store_prefix(&mut output, operation.result.0, destination);
+                    emit_store_prefix(&mut output, operation.result.0);
                     emit_literal(&mut output, literal);
                     emit_store_suffix(&mut output, operation.result.0, destination);
                 }
                 OperationKind::GlobalLookup(name) => {
                     let destination = value_slot(layout, operation.result)?;
-                    emit_store_prefix(&mut output, operation.result.0, destination);
+                    emit_store_prefix(&mut output, operation.result.0);
                     output.emit_global(name);
                     emit_store_suffix(&mut output, operation.result.0, destination);
                 }
@@ -214,7 +214,7 @@ fn emit_step_method_with_literal_specs<'a>(
                 }
                 OperationKind::Bind { source, .. } => {
                     let destination = value_slot(layout, operation.result)?;
-                    emit_store_prefix(&mut output, operation.result.0, destination);
+                    emit_store_prefix(&mut output, operation.result.0);
                     emit_get(&mut output, value_slot(layout, *source)?);
                     emit_store_suffix(&mut output, operation.result.0, destination);
                 }
@@ -440,7 +440,7 @@ fn emit_block_literal(
     retain_materialization_owner: bool,
 ) -> Result<(), Error> {
     let destination = value_slot(layout, result)?;
-    emit_store_prefix(output, result.0, destination);
+    emit_store_prefix(output, result.0);
     output.push(b"({void* __birnam_block_vt_");
     decimal(output, result.0);
     output.push(b"=");
@@ -613,137 +613,32 @@ fn emit_literal(output: &mut Emitter, literal: &Literal<'_>) {
     }
 }
 
-/// Prepare every potentially allocating store operand before evaluating the
-/// new value. The only operation after value production is the rooted send.
-fn emit_store_prefix(output: &mut Emitter, id: u32, slot: u32) {
-    if slot_box_elision_selected() {
-        // Design 74D: nothing allocating precedes the value; the floor boxes
-        // the index only on a guard miss, after rooting the value.
-        output.push(b"void* __birnam_value_");
-        decimal(output, id);
-        output.push(b"=");
-        return;
-    }
-    output.push(b"void* __birnam_put_selector_");
-    decimal(output, id);
-    output.push(b"=birnam_intern(\"oopAt:put:\");\nvoid* __birnam_put_slot_");
-    decimal(output, id);
-    output.push(b"=MKV(");
-    decimal(output, slot);
-    output.push(b"L);\nvoid* __birnam_value_");
+/// A store produces its value into a named local and hands it to the floor's
+/// slot-access entry point in the next statement, with nothing that can
+/// allocate in between (Design 60F §7.1's ingress exception, restated by
+/// Design 74E §3.4). The floor writes directly on a guard hit and performs
+/// the ordinary `oopAt:put:` send, with the value rooted, on a miss.
+fn emit_store_prefix(output: &mut Emitter, id: u32) {
+    output.push(b"void* __birnam_value_");
     decimal(output, id);
     output.push(b"=");
 }
 
 fn emit_store_suffix(output: &mut Emitter, id: u32, slot: u32) {
-    if slot_box_elision_selected() {
-        output.push(b";\n(void)birnam_dev_frame_slot_put_v1(machine,");
-        decimal(output, slot);
-        output.push(b"L,__birnam_value_");
-        decimal(output, id);
-        output.push(b");\n");
-        return;
-    }
-    if guarded_slots_selected() {
-        output.push(b";\n(void)__birnam_dev_put(machine,__birnam_put_selector_");
-        decimal(output, id);
-        output.push(b",__birnam_put_slot_");
-        decimal(output, id);
-        output.push(b",__birnam_value_");
-        decimal(output, id);
-        output.push(b");\n");
-        return;
-    }
-    output.push(b";\nvoid* __birnam_put_args_");
-    decimal(output, id);
-    output.push(b"[]={__birnam_put_slot_");
-    decimal(output, id);
-    output.push(b",__birnam_value_");
-    decimal(output, id);
-    output.push(b"};\n(void)birnam_send(machine,__birnam_put_selector_");
-    decimal(output, id);
-    output.push(b",__birnam_put_args_");
-    decimal(output, id);
-    output.push(b",2L);\n");
-}
-
-/// Design 74 E1: is the development-only guarded slot-access emission
-/// selected for this process? Requires the `dev-guarded-slots` feature and
-/// `BIRNAM_DEV_GUARDED_SLOTS=1`; ordinary builds always answer false.
-pub fn guarded_slots_selected() -> bool {
-    #[cfg(feature = "dev-guarded-slots")]
-    {
-        static SELECTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *SELECTED.get_or_init(|| {
-            std::env::var_os("BIRNAM_DEV_GUARDED_SLOTS").is_some_and(|value| value == "1")
-        })
-    }
-    #[cfg(not(feature = "dev-guarded-slots"))]
-    {
-        false
-    }
-}
-
-/// C helpers for the selected emission, appended after the runtime prelude.
-/// The slot box is created once and shared by the direct and fallback paths;
-/// the fallback is the baseline send with that same box, exactly once.
-pub const GUARDED_SLOT_PRELUDE: &[u8] = br#"extern unsigned int birnam_dev_frame_oop_at_v1(void* machine, void* operand, void** out);
-extern unsigned int birnam_dev_frame_oop_at_put_v1(void* machine, void* operand, void* value, void** out);
-static inline void* __birnam_dev_get(void* machine, long slot){
-void* box=MKV(slot);
-void* value;
-if(birnam_dev_frame_oop_at_v1(machine,box,&value)) return value;
-return birnam_send(machine,birnam_intern("oopAt:"),(void*[]){box},1L);
-}
-static inline void* __birnam_dev_put(void* machine, void* selector, void* box, void* value){
-void* stored;
-if(birnam_dev_frame_oop_at_put_v1(machine,box,value,&stored)) return stored;
-void* args[]={box,value};
-return birnam_send(machine,selector,args,2L);
-}
-"#;
-
-/// Design 74D E4: is the slot-index box elision selected for this process?
-/// Requires the guarded emission (`BIRNAM_DEV_GUARDED_SLOTS=1`) and
-/// `BIRNAM_DEV_ELIDE_SLOT_BOX=1`; ordinary builds always answer false.
-pub fn slot_box_elision_selected() -> bool {
-    #[cfg(feature = "dev-guarded-slots")]
-    {
-        static SELECTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *SELECTED.get_or_init(|| {
-            guarded_slots_selected()
-                && std::env::var_os("BIRNAM_DEV_ELIDE_SLOT_BOX").is_some_and(|value| value == "1")
-        })
-    }
-    #[cfg(not(feature = "dev-guarded-slots"))]
-    {
-        false
-    }
-}
-
-/// Declarations for the Design 74D emission: the floor answers every slot
-/// access itself (direct on a hit, the ordinary send on a miss), so generated
-/// code carries no box and no fallback of its own.
-pub const ELIDED_SLOT_PRELUDE: &[u8] = br#"extern void* birnam_dev_frame_slot_get_v1(void* machine, long index);
-extern void* birnam_dev_frame_slot_put_v1(void* machine, long index, void* value);
-"#;
-
-fn emit_get(output: &mut Emitter, slot: u32) {
-    if slot_box_elision_selected() {
-        output.push(b"birnam_dev_frame_slot_get_v1(machine,");
-        decimal(output, slot);
-        output.push(b"L)");
-        return;
-    }
-    if guarded_slots_selected() {
-        output.push(b"__birnam_dev_get(machine,");
-        decimal(output, slot);
-        output.push(b"L)");
-        return;
-    }
-    output.push(b"birnam_send(machine,birnam_intern(\"oopAt:\"),(void*[]){MKV(");
+    output.push(b";\n(void)birnam_frame_slot_put_v1(machine,");
     decimal(output, slot);
-    output.push(b"L)},1L)");
+    output.push(b"L,__birnam_value_");
+    decimal(output, id);
+    output.push(b");\n");
+}
+
+/// A slot read is one call into the floor with the constant index; the floor
+/// answers directly on a guard hit and through the ordinary `oopAt:` send on
+/// a miss (Designs 74A–74E).
+fn emit_get(output: &mut Emitter, slot: u32) {
+    output.push(b"birnam_frame_slot_get_v1(machine,");
+    decimal(output, slot);
+    output.push(b"L)");
 }
 
 fn emit_call_staging(
@@ -755,7 +650,7 @@ fn emit_call_staging(
     first_staging_id: u32,
 ) -> Result<(), Error> {
     let window = layout.call_window_start.ok_or(Error::InvalidProgram)?;
-    emit_store_prefix(output, first_staging_id, window);
+    emit_store_prefix(output, first_staging_id);
     emit_get(output, value_slot(layout, receiver)?);
     emit_store_suffix(output, first_staging_id, window);
 
@@ -763,7 +658,7 @@ fn emit_call_staging(
         .checked_add(1)
         .ok_or(Error::QuantityOverflow)?;
     let selector_slot = window.checked_add(1).ok_or(Error::QuantityOverflow)?;
-    emit_store_prefix(output, selector_id, selector_slot);
+    emit_store_prefix(output, selector_id);
     output.emit_symbol(selector);
     emit_store_suffix(output, selector_id, selector_slot);
 
@@ -777,7 +672,7 @@ fn emit_call_staging(
             .checked_add(2)
             .and_then(|slot| slot.checked_add(index))
             .ok_or(Error::QuantityOverflow)?;
-        emit_store_prefix(output, id, slot);
+        emit_store_prefix(output, id);
         emit_get(output, value_slot(layout, *argument)?);
         emit_store_suffix(output, id, slot);
     }
@@ -826,13 +721,13 @@ mod tests {
         assert!(source.contains("long pc=birnam_smallIntValue(args[0]);"));
         let first_stage = program.value_count;
         let receiver = source
-            .find(&format!("__birnam_put_selector_{first_stage}="))
+            .find(&format!("void* __birnam_value_{first_stage}="))
             .unwrap();
         let selector = source
-            .find(&format!("__birnam_put_selector_{}=", first_stage + 1))
+            .find(&format!("void* __birnam_value_{}=", first_stage + 1))
             .unwrap();
         let argument = source
-            .find(&format!("__birnam_put_selector_{}=", first_stage + 2))
+            .find(&format!("void* __birnam_value_{}=", first_stage + 2))
             .unwrap();
         let publish = source.find("birnam_intern(\"tailCallSite:\")").unwrap();
         assert!(receiver < selector && selector < argument && argument < publish);
@@ -908,9 +803,11 @@ mod tests {
         assert!(emitted.contains("__birnam_resolve_block_vtable_v1(7U)"));
         assert!(emitted.contains("birnam_portable_code_admit_v1"));
         assert!(emitted.contains("birnam_portable_block_new_v1"));
-        assert!(emitted.contains("[0]=birnam_send(machine"));
-        assert!(!emitted.contains(")[0]=birnam_send(machine"));
+        assert!(emitted.contains("[0]=birnam_frame_slot_get_v1(machine"));
+        assert!(!emitted.contains(")[0]=birnam_frame_slot_get_v1(machine"));
         assert!(!emitted.contains("birnam_alloc(__birnam_block_vt_"));
-        assert!(emitted.contains("birnam_intern(\"oopAt:\")"));
+        assert!(emitted.contains("birnam_frame_slot_get_v1(machine,"));
+        assert!(emitted.contains("birnam_frame_slot_put_v1(machine,"));
+        assert!(!emitted.contains("oopAt:"));
     }
 }
