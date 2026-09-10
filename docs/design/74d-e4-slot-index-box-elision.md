@@ -1,8 +1,11 @@
 # 74D — E4: elide the slot-index box on the guarded hit path
 
-> **Status: written 2026-09-09 under the user's authorization to run the
-> experiment (Design 74C §3.5's hypothesis), for adversarial review before
-> implementation. Development-only: it extends the `dev-guarded-slots`
+> **Status: written, reviewed, implemented and measured 2026-09-09 under the
+> user's authorization to run the experiment (Design 74C §3.5's hypothesis).
+> Result (§7): the continuation test is met at every size; the elided
+> emission halves the fixture's warm time against the baseline and is 34–43%
+> faster than E1 at the judged sizes, with every access hitting and nothing
+> regressing. Development-only: it extends the `dev-guarded-slots`
 > feature ([74B](74b-e1-guarded-slot-access-implementation.md)) and changes
 > nothing in an ordinary build, an admitted artifact, the frozen IdApi, or
 > the runtime ABI hash. Continuation test (Design 74 §7.5 as amended): E2
@@ -265,4 +268,89 @@ only the median of its five warm repetitions; order balance across four
 configurations with five pairs favors E1 slightly; peak RSS is a single
 sample; the empty-body case has no checksum-style validity check; the two
 bodies share one process's collection budget.
+
+## 7. Measurement record
+
+Taken 2026-09-09 on `Mac15,12` (AC power, `bench-host-check` preflight
+before every quad), both prefixes built from the tree committed as
+`07e6a181` (the receipts record the parent commit with a dirty tree because
+the prefixes were built minutes before that commit; both carry the same
+source manifest digest), rustc 1.95.0, release profile. Five alternating
+fresh-process quads per size: ordinary baseline, E1 candidate
+(`BIRNAM_DEV_GUARDED_SLOTS=1`), E4 candidate (both variables), control (dev
+prefix, no variable). Every run's receiver answer and checksum matched.
+Everything is in [`74d-e4-record.json`](../measurements/74d-e4-record.json).
+
+### 7.1 Warm medians (microseconds for the whole loop; spread = max − min of five)
+
+| n | body | baseline | E1 | E4 | control | E4 vs baseline | E4 vs E1 | E1−E4 exceeds larger spread |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 0 | empty | 15 (1) | 13 (2) | 9 (3) | 15 | −40.0% | −30.8% | yes (reported only) |
+| 0 | step | 20 (1) | 19 (4) | 14 (2) | 21 | −30.0% | −26.3% | yes (reported only) |
+| 1 | empty | 38 (2) | 32 (3) | 22 (2) | 41 | −42.1% | −31.2% | yes (reported only) |
+| 1 | step | 52 (6) | 43 (4) | 31 (2) | 55 | −40.4% | −27.9% | yes (reported only) |
+| 32 | empty | 775 (126) | 607 (55) | 403 (21) | 770 | −48.0% | −33.6% | yes (reported only) |
+| 32 | step | 1,009 (205) | 778 (68) | 532 (26) | 984 | −47.3% | −31.6% | yes (reported only) |
+| 1,024 | empty | 25,298 (895) | 20,878 (1,370) | 12,645 (1,729) | 24,800 | −50.0% | **−39.4%** | **yes** |
+| 1,024 | step | 32,030 (2,419) | 26,276 (1,446) | 17,255 (2,059) | 32,099 | −46.1% | **−34.3%** | **yes** |
+| 16,384 | empty | 488,634 (45,777) | 428,253 (68,424) | 246,106 (37,473) | 488,782 | −49.6% | **−42.5%** | **yes** |
+| 16,384 | step | 682,552 (36,833) | 592,847 (52,328) | 337,973 (52,184) | 691,994 | −50.5% | **−43.0%** | **yes** |
+
+Per iteration at 16,384 with the `step:` body: baseline 41.7 µs, E1 36.2 µs,
+E4 20.6 µs. The E1 column reproduces E3's figures within spread (E3: 433,231
+and 602,785 at 16,384), and the control matches the baseline within spread at
+every size, so the dev prefix's presence still costs nothing.
+
+### 7.2 Verdict against the continuation test
+
+**Met.** Every E2 row is identical in the E4 mode (§4, rerun on the rebuilt
+prefix in both modes); no reported case regressed; and at both judged sizes
+and both bodies the E4 candidate beats the E1 candidate by more than the
+larger of the two spreads, by a factor of two to four. The reported sizes
+show the same direction. Under Design 74 §7.5 as amended and §7.6, the
+production slot-access slice proposal that E3 already earned now includes
+the elision.
+
+### 7.3 Activation and inspection
+
+For every size the E4 candidate's instrumented run reports `unboxed` equal
+to `attempts` (742 / 2,236 / 48,550 / 1,530,598 / 24,478,438), every attempt
+a hit, and `boxes = 0`; the E1 candidate's run at the same size reports the
+same attempts with `unboxed = 0`. The inspected E4 unit imports exactly
+`birnam_dev_frame_slot_get_v1` and `birnam_dev_frame_slot_put_v1` (neither
+`oop_at` symbol) plus `birnam_send`, and its text has 82 slot-read and 105
+slot-write call sites and 35 `birnam_mkSmallInt` call sites, against 222 in
+the baseline unit (each slot access boxed inline) and 141 in the E1 unit (the
+reads' boxing inside the un-inlined C helper). The 35 remaining are
+source-level literals and the block-terminator program-counter boxes §2.3
+notes.
+
+### 7.4 Diagnostics
+
+Counting overhead is not measurable (E1 candidate, `step:` body: counting
+25.7–26.2 ms against 27.1–28.1 ms plain at 1,024; 572–645 ms against 572–601
+ms at 16,384). Peak RSS is one sample per configuration: at 1,024 the E4
+process stays at 146 MB where the others reach 224–254 MB, consistent with
+never crossing the 16 MiB automatic-collection threshold during the process;
+at 16,384 all four sit at 271–283 MB. The retained no-auto-GC control probe
+(production AOT unit, baseline emission in both prefixes) measured 4.62–5.33 s
+baseline and 4.49–4.70 s dev prefix. Objective-C references on the same host
+(five runs, 16,384 iterations): message version 27 / 99 µs (empty / step),
+boxed variant 27 / 334 µs, primitive C loop 5 / 14 µs, so the E4 candidate's
+`step:` loop is about 3,400× the unboxed message version, down from 6,300×
+for E1.
+
+### 7.5 What this says and does not say
+
+The fixture is the best case §1 describes: slot boxes were about 97% of its
+heap allocation, so halving its time is the ceiling for this change, not a
+forecast for programs that allocate for their own reasons. What carries
+over to any resumable code is the per-access saving itself, about 126 ns per
+slot operation on this host (15.6 µs over 124.5 operations), which every
+StepMethod pays on every slot read and write today. The remaining per
+iteration cost (20.6 µs for roughly ten sends, 124 slot operations, action
+publications and driver transitions) is now dominated by the driver and
+dispatch machinery again, not by allocation; the block-terminator boxes
+(one per executed basic block) are the obvious next allocation to look at,
+and are the same kind of change as this one.
 

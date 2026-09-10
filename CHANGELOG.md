@@ -16,6 +16,11 @@ loader ports are complete.
   `BIRNAM_DEV_GUARDED_SLOTS=1`, with a resumable loop fixture and driver.
   Ordinary builds are unchanged; the runtime ABI hash and export surfaces are
   untouched. Every vtable now carries a dictionary-mutation epoch.
+- Development-only slot-index box elision on the guarded path (Design 74D,
+  `BIRNAM_DEV_ELIDE_SLOT_BOX=1` on top of the E1 selection): the floor
+  answers slot accesses from an unboxed index on a guard hit and performs
+  the ordinary send itself, with the store value rooted, on a miss. Measured
+  at about half the baseline loop time on the Design 74 fixture.
 
 ### Changed
 

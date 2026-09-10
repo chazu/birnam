@@ -206,7 +206,7 @@ the actual dispatch in the reference binary (verified with `otool`, nine call
 sites); no IMP was cached by hand. These are comparative evidence for the
 size of the gap, not a promise of parity.
 
-### 3.5 Next hypothesis (proposal, not authorized)
+### 3.5 Next hypothesis (proposal; authorized, measured and met as [Design 74D](74d-e4-slot-index-box-elision.md))
 
 Elide the slot-index box on the guard's hit path: the index is a compile-time
 constant that only ever reaches `oopAt:` as an argument, the guarded direct
