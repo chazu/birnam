@@ -12,6 +12,8 @@ use birnam_abi::{
     foreign_address::{self, KIND_BORROWED},
 };
 use core::ffi::{c_char, c_int, c_void};
+#[cfg(feature = "dev-guarded-slots")]
+use core::ffi::c_long;
 use core::mem::size_of;
 use core::ptr::{self, NonNull};
 use std::ffi::{CStr, CString};
@@ -181,6 +183,10 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
         (b"birnam_dev_frame_oop_at_v1", validation_pointer as *const c_void),
         #[cfg(feature = "dev-guarded-slots")]
         (b"birnam_dev_frame_oop_at_put_v1", validation_pointer as *const c_void),
+        #[cfg(feature = "dev-guarded-slots")]
+        (b"birnam_dev_frame_slot_get_v1", validation_pointer as *const c_void),
+        #[cfg(feature = "dev-guarded-slots")]
+        (b"birnam_dev_frame_slot_put_v1", validation_pointer as *const c_void),
     ];
     symbols.push((
         b"__vecFactory",
@@ -928,6 +934,50 @@ pub unsafe extern "C" fn rt_dev_frame_oop_at_put_v1(
     unsafe { forward(machine, operand, value, out) }
 }
 
+/// Design 74D E4 (development-only): unboxed-index slot read; the floor
+/// performs the fallback send itself, so this always answers an Oop.
+#[cfg(feature = "dev-guarded-slots")]
+#[unsafe(export_name = "birnam_dev_frame_slot_get_v1")]
+pub unsafe extern "C" fn rt_dev_frame_slot_get_v1(machine: Oop, index: c_long) -> Oop {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let address = floor_symbol_address(
+        unsafe { api_ref(runtime) },
+        c"birnam_dev_frame_slot_get_v1",
+        &ADDRESS,
+    );
+    if address == 0 {
+        abort("dev slot access floor symbol unavailable");
+    }
+    let forward =
+        unsafe { core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long) -> Oop>(address) };
+    unsafe { forward(machine, index) }
+}
+
+/// Design 74D E4 (development-only): write form of `birnam_dev_frame_slot_get_v1`.
+#[cfg(feature = "dev-guarded-slots")]
+#[unsafe(export_name = "birnam_dev_frame_slot_put_v1")]
+pub unsafe extern "C" fn rt_dev_frame_slot_put_v1(machine: Oop, index: c_long, value: Oop) -> Oop {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let runtime = RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let address = floor_symbol_address(
+        unsafe { api_ref(runtime) },
+        c"birnam_dev_frame_slot_put_v1",
+        &ADDRESS,
+    );
+    if address == 0 {
+        abort("dev slot access floor symbol unavailable");
+    }
+    let forward = unsafe {
+        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long, Oop) -> Oop>(address)
+    };
+    unsafe { forward(machine, index, value) }
+}
+
 /// Append-only registration-v2 forwarding for portable Block capture layout.
 #[unsafe(export_name = "birnam_register_resumable_v2")]
 pub unsafe extern "C" fn rt_register_resumable_v2(envelope: *mut c_void) -> u32 {
@@ -1202,6 +1252,16 @@ static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
     RuntimeSymbol {
         name: b"birnam_dev_frame_oop_at_put_v1\0",
         address: rt_dev_frame_oop_at_put_v1 as *const c_void,
+    },
+    #[cfg(feature = "dev-guarded-slots")]
+    RuntimeSymbol {
+        name: b"birnam_dev_frame_slot_get_v1\0",
+        address: rt_dev_frame_slot_get_v1 as *const c_void,
+    },
+    #[cfg(feature = "dev-guarded-slots")]
+    RuntimeSymbol {
+        name: b"birnam_dev_frame_slot_put_v1\0",
+        address: rt_dev_frame_slot_put_v1 as *const c_void,
     },
     RuntimeSymbol {
         name: b"birnam_send\0",

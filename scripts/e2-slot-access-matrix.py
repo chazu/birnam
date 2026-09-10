@@ -26,11 +26,16 @@ def run(binary, root, case, guarded, workdir):
     if guarded:
         env["BIRNAM_DEV_GUARDED_SLOTS"] = "1"
         env["BIRNAM_DEV_GUARDED_SLOTS_COUNT"] = "1"
+        # Design 74D: E2_CANDIDATE_ENV="K=V,K=V" adds candidate-only settings
+        # (BIRNAM_DEV_ELIDE_SLOT_BOX=1 selects the elided emission).
+        for pair in filter(None, os.environ.get("E2_CANDIDATE_ENV", "").split(",")):
+            key, _, value = pair.partition("=")
+            env[key] = value
     result = subprocess.run([str(binary), "bench/e2-slot-access-matrix.birnam"], cwd=root, env=env,
                             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=600)
     stdout = [line for line in result.stdout.splitlines() if not line.startswith("churn-us")]
     churn = next((line for line in result.stdout.splitlines() if line.startswith("churn-us")), "")
-    counters = next((line for line in result.stderr.splitlines() if line.startswith("birnam-dev-guarded-slots")), "")
+    counters = " ".join(line for line in result.stderr.splitlines() if line.startswith("birnam-dev-"))
     return result.returncode, stdout, churn, counters, result.stderr
 
 

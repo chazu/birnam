@@ -165,13 +165,13 @@ fn emit_step_method_with_literal_specs<'a>(
                     let destination = value_slot(layout, operation.result)?;
                     emit_store_prefix(&mut output, operation.result.0, destination);
                     emit_literal(&mut output, literal);
-                    emit_store_suffix(&mut output, operation.result.0);
+                    emit_store_suffix(&mut output, operation.result.0, destination);
                 }
                 OperationKind::GlobalLookup(name) => {
                     let destination = value_slot(layout, operation.result)?;
                     emit_store_prefix(&mut output, operation.result.0, destination);
                     output.emit_global(name);
-                    emit_store_suffix(&mut output, operation.result.0);
+                    emit_store_suffix(&mut output, operation.result.0, destination);
                 }
                 OperationKind::BlockLiteral { block, captures } => {
                     let spec = source_block_literals
@@ -216,7 +216,7 @@ fn emit_step_method_with_literal_specs<'a>(
                     let destination = value_slot(layout, operation.result)?;
                     emit_store_prefix(&mut output, operation.result.0, destination);
                     emit_get(&mut output, value_slot(layout, *source)?);
-                    emit_store_suffix(&mut output, operation.result.0);
+                    emit_store_suffix(&mut output, operation.result.0, destination);
                 }
             }
         }
@@ -568,7 +568,7 @@ fn emit_block_literal(
     output.push(b"__birnam_block_oop_");
     decimal(output, result.0);
     output.push(b";})");
-    emit_store_suffix(output, result.0);
+    emit_store_suffix(output, result.0, destination);
     Ok(())
 }
 
@@ -616,6 +616,14 @@ fn emit_literal(output: &mut Emitter, literal: &Literal<'_>) {
 /// Prepare every potentially allocating store operand before evaluating the
 /// new value. The only operation after value production is the rooted send.
 fn emit_store_prefix(output: &mut Emitter, id: u32, slot: u32) {
+    if slot_box_elision_selected() {
+        // Design 74D: nothing allocating precedes the value; the floor boxes
+        // the index only on a guard miss, after rooting the value.
+        output.push(b"void* __birnam_value_");
+        decimal(output, id);
+        output.push(b"=");
+        return;
+    }
     output.push(b"void* __birnam_put_selector_");
     decimal(output, id);
     output.push(b"=birnam_intern(\"oopAt:put:\");\nvoid* __birnam_put_slot_");
@@ -627,7 +635,15 @@ fn emit_store_prefix(output: &mut Emitter, id: u32, slot: u32) {
     output.push(b"=");
 }
 
-fn emit_store_suffix(output: &mut Emitter, id: u32) {
+fn emit_store_suffix(output: &mut Emitter, id: u32, slot: u32) {
+    if slot_box_elision_selected() {
+        output.push(b";\n(void)birnam_dev_frame_slot_put_v1(machine,");
+        decimal(output, slot);
+        output.push(b"L,__birnam_value_");
+        decimal(output, id);
+        output.push(b");\n");
+        return;
+    }
     if guarded_slots_selected() {
         output.push(b";\n(void)__birnam_dev_put(machine,__birnam_put_selector_");
         decimal(output, id);
@@ -687,7 +703,38 @@ return birnam_send(machine,selector,args,2L);
 }
 "#;
 
+/// Design 74D E4: is the slot-index box elision selected for this process?
+/// Requires the guarded emission (`BIRNAM_DEV_GUARDED_SLOTS=1`) and
+/// `BIRNAM_DEV_ELIDE_SLOT_BOX=1`; ordinary builds always answer false.
+pub fn slot_box_elision_selected() -> bool {
+    #[cfg(feature = "dev-guarded-slots")]
+    {
+        static SELECTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *SELECTED.get_or_init(|| {
+            guarded_slots_selected()
+                && std::env::var_os("BIRNAM_DEV_ELIDE_SLOT_BOX").is_some_and(|value| value == "1")
+        })
+    }
+    #[cfg(not(feature = "dev-guarded-slots"))]
+    {
+        false
+    }
+}
+
+/// Declarations for the Design 74D emission: the floor answers every slot
+/// access itself (direct on a hit, the ordinary send on a miss), so generated
+/// code carries no box and no fallback of its own.
+pub const ELIDED_SLOT_PRELUDE: &[u8] = br#"extern void* birnam_dev_frame_slot_get_v1(void* machine, long index);
+extern void* birnam_dev_frame_slot_put_v1(void* machine, long index, void* value);
+"#;
+
 fn emit_get(output: &mut Emitter, slot: u32) {
+    if slot_box_elision_selected() {
+        output.push(b"birnam_dev_frame_slot_get_v1(machine,");
+        decimal(output, slot);
+        output.push(b"L)");
+        return;
+    }
     if guarded_slots_selected() {
         output.push(b"__birnam_dev_get(machine,");
         decimal(output, slot);
@@ -710,7 +757,7 @@ fn emit_call_staging(
     let window = layout.call_window_start.ok_or(Error::InvalidProgram)?;
     emit_store_prefix(output, first_staging_id, window);
     emit_get(output, value_slot(layout, receiver)?);
-    emit_store_suffix(output, first_staging_id);
+    emit_store_suffix(output, first_staging_id, window);
 
     let selector_id = first_staging_id
         .checked_add(1)
@@ -718,7 +765,7 @@ fn emit_call_staging(
     let selector_slot = window.checked_add(1).ok_or(Error::QuantityOverflow)?;
     emit_store_prefix(output, selector_id, selector_slot);
     output.emit_symbol(selector);
-    emit_store_suffix(output, selector_id);
+    emit_store_suffix(output, selector_id, selector_slot);
 
     for (index, argument) in arguments.iter().enumerate() {
         let index = u32::try_from(index).map_err(|_| Error::QuantityOverflow)?;
@@ -732,7 +779,7 @@ fn emit_call_staging(
             .ok_or(Error::QuantityOverflow)?;
         emit_store_prefix(output, id, slot);
         emit_get(output, value_slot(layout, *argument)?);
-        emit_store_suffix(output, id);
+        emit_store_suffix(output, id, slot);
     }
     Ok(())
 }

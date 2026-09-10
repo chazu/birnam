@@ -223,6 +223,26 @@ struct StacklessDriveRootGuard<'a> {
     machine: Oop,
 }
 
+/// Design 74D: one Oop held on the scoped host-root stack for a dynamic
+/// extent, popped in LIFO order on drop even if the extent unwinds.
+struct ScopedOopRootGuard<'a> {
+    runtime: &'a Runtime,
+    oop: Oop,
+}
+
+impl<'a> ScopedOopRootGuard<'a> {
+    fn new(runtime: &'a Runtime, oop: Oop) -> Self {
+        runtime.push_stackless_scoped_root(oop);
+        Self { runtime, oop }
+    }
+}
+
+impl Drop for ScopedOopRootGuard<'_> {
+    fn drop(&mut self) {
+        self.runtime.pop_stackless_scoped_root(self.oop);
+    }
+}
+
 struct StacklessEntryScopeGuard<'a> {
     runtime: &'a Runtime,
     capability: MachineCapability,
@@ -722,6 +742,79 @@ impl Runtime {
             self.stackless_oop_at_put(machine, index, value)
                 .unwrap_or(nil),
         )
+    }
+
+    /// Design 74D (E4): guarded direct slot read with an unboxed index. `None`
+    /// when ineligible; otherwise exactly what `guarded_frame_oop_at` answers
+    /// for a boxed Integer carrying `index`, without creating that box.
+    pub(crate) fn guarded_frame_slot_at(&self, machine: Oop, index: i64) -> Option<Oop> {
+        if !self.guarded_slot_access_eligible(machine) {
+            return None;
+        }
+        let nil = self.canonical().nil;
+        let Ok(index) = usize::try_from(index) else {
+            return Some(nil);
+        };
+        Some(self.stackless_oop_at(machine, index).unwrap_or(nil))
+    }
+
+    /// Design 74D (E4): write form of `guarded_frame_slot_at`.
+    pub(crate) fn guarded_frame_slot_at_put(
+        &self,
+        machine: Oop,
+        index: i64,
+        value: Oop,
+    ) -> Option<Oop> {
+        if !self.guarded_slot_access_eligible(machine) {
+            return None;
+        }
+        let nil = self.canonical().nil;
+        let Ok(index) = usize::try_from(index) else {
+            return Some(nil);
+        };
+        Some(self.stackless_oop_at_put(machine, index, value).unwrap_or(nil))
+    }
+
+    /// The canonical `oopAt:` / `oopAt:put:` selectors: the execution objects'
+    /// Symbols (strong roots) when installed, else the interned name.
+    fn slot_access_selector(&self, write: bool) -> Oop {
+        // SAFETY: owner-thread serialization and immutable access only.
+        let objects = unsafe { (*self.state.get()).execution.objects() };
+        match objects {
+            Some(objects) if write => objects.oop_at_put,
+            Some(objects) => objects.oop_at,
+            None => self
+                .intern(if write { b"oopAt:put:" } else { b"oopAt:" })
+                .unwrap_or_else(|_| boundary::fatal_invariant("static selector interns")),
+        }
+    }
+
+    /// Design 74D §2.2: the ordinary `oopAt:` send with the baseline's
+    /// operands, performed inside the floor on a guard miss. The box is created
+    /// from the same constant generated code would have boxed, immediately
+    /// before the send, and reaches the send's argument buffer as the
+    /// baseline's `MKV` result does.
+    pub(crate) fn fallback_frame_oop_at(&self, machine: Oop, index: i64) -> Oop {
+        let selector = self.slot_access_selector(false);
+        let operand = self.make_integer(index);
+        self.send_slice(machine, selector, &[operand])
+    }
+
+    /// Design 74D §2.4: the ordinary `oopAt:put:` send on a guard miss. The
+    /// incoming value is only a generated-code local, so it is rooted on the
+    /// scoped host-root stack before anything here can allocate; the fresh
+    /// index box is rooted the same way across the send. Both roots unwind
+    /// through `Drop`, as every other user of that stack does.
+    pub(crate) fn fallback_frame_oop_at_put(&self, machine: Oop, index: i64, value: Oop) -> Oop {
+        let _value_root = ScopedOopRootGuard::new(self, value);
+        #[cfg(test)]
+        if FORCE_COLLECT_IN_SLOT_FALLBACK.with(|flag| flag.replace(false)) {
+            let _ = self.gc_collect_active();
+        }
+        let selector = self.slot_access_selector(true);
+        let operand = self.make_integer(index);
+        let _operand_root = ScopedOopRootGuard::new(self, operand);
+        self.send_slice(machine, selector, &[operand, value])
     }
 
     pub(crate) fn allocate_empty(&self, vtable: Oop, permanence: Permanence) -> Oop {
@@ -4476,6 +4569,13 @@ impl Drop for ActiveRuntimeGuard<'_> {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Design 74D test hook: force one collection inside the store fallback
+    /// after the value is rooted and before the index box is allocated.
+    pub(crate) static FORCE_COLLECT_IN_SLOT_FALLBACK: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
 pub(crate) fn with_active<R>(operation: impl FnOnce(&Runtime) -> R) -> R {
     ACTIVE_RUNTIME.with(|active| {
         let runtime = active.get();
@@ -5068,6 +5168,16 @@ mod tests {
         }
         // SAFETY: the probe requires one argument.
         unsafe { args.read() }
+    }
+
+    /// Design 74D probe: an `oopAt:put:` replacement that answers its value
+    /// argument, so a store miss can be seen to deliver the rooted value.
+    unsafe extern "C" fn synchronous_second_argument(_: Oop, args: *const Oop, count: usize) -> Oop {
+        if count != 2 || args.is_null() {
+            return core::ptr::null_mut();
+        }
+        // SAFETY: the probe requires two arguments.
+        unsafe { args.add(1).read() }
     }
 
     fn late_bound_return(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -9775,6 +9885,71 @@ mod tests {
                     && runtime.send_slice(machine, oop_at_put, &[raw_slot, sixty_six]) == nil,
                 "raw-slot write is rejected identically",
             );
+
+            // Design 74D: the unboxed entry points agree with the boxed ones
+            // and with the send on hits, including every nil case.
+            for index in [0i64, 1, 2, 3, 9] {
+                let operand = runtime.make_integer(index);
+                guard_check(
+                    runtime.guarded_frame_slot_at(machine, index)
+                        == runtime.guarded_frame_oop_at(machine, operand)
+                        && runtime.guarded_frame_slot_at(machine, index)
+                            == Some(runtime.send_slice(machine, oop_at, &[operand])),
+                    "unboxed read agrees with the boxed read and the send",
+                );
+            }
+            guard_check(
+                runtime.guarded_frame_slot_at(machine, -1) == Some(nil)
+                    && runtime.send_slice(machine, oop_at, &[runtime.make_integer(-1)]) == nil,
+                "negative unboxed index answers nil as the send does",
+            );
+            let seventy_seven = runtime.make_integer(77);
+            guard_check(
+                runtime.guarded_frame_slot_at_put(machine, 2, seventy_seven) == Some(seventy_seven)
+                    && runtime.send_slice(machine, oop_at, &[value_slot]) == seventy_seven
+                    && runtime.guarded_frame_slot_at(machine, 2) == Some(seventy_seven),
+                "unboxed write is visible to the send and the reads",
+            );
+            guard_check(
+                runtime.guarded_frame_slot_at_put(machine, 3, seventy_seven) == Some(nil)
+                    && runtime.guarded_frame_slot_at_put(machine, -1, seventy_seven) == Some(nil),
+                "unboxed raw-slot and negative writes answer nil",
+            );
+
+            // Design 74D miss path: the floor performs the ordinary send once
+            // with the boxed index, so a counting replacement sees exactly one
+            // send with the right operand.
+            let _ = runtime.add_method(machine_vt, oop_at, synchronous_increment);
+            guard_check(
+                runtime.guarded_frame_slot_at(machine, 41).is_none(),
+                "unboxed read misses under a redefined oopAt:",
+            );
+            let answered = runtime.fallback_frame_oop_at(machine, 41);
+            guard_check(
+                runtime.is_integer(answered) && runtime.integer_value(answered) == 42,
+                "the miss fallback sent oopAt: once with the boxed index",
+            );
+            let _ = runtime.add_method(machine_vt, oop_at, crate::execution::machine_oop_at);
+            let _ = runtime.add_method(machine_vt, oop_at_put, synchronous_second_argument);
+            let fresh = runtime.make_integer(4242);
+            guard_check(
+                runtime.guarded_frame_slot_at_put(machine, 2, fresh).is_none(),
+                "unboxed write misses under a redefined oopAt:put:",
+            );
+            // Precise collection, so the value's survival is owed to the scoped
+            // root and not to the conservative native-stack scan.
+            let was_precise = unsafe { (*runtime.state.get()).metadata.precise() };
+            runtime.gc_set_precise(true);
+            crate::runtime::FORCE_COLLECT_IN_SLOT_FALLBACK.with(|flag| flag.set(true));
+            let delivered = runtime.fallback_frame_oop_at_put(machine, 2, fresh);
+            runtime.gc_set_precise(was_precise);
+            guard_check(
+                delivered == fresh && runtime.is_integer(delivered) && runtime.integer_value(delivered) == 4242,
+                "the store miss delivers the rooted value across a forced collection",
+            );
+            let _ = runtime.add_method(machine_vt, oop_at_put, crate::execution::machine_oop_at_put);
+            guard_check(runtime.guarded_slot_access_eligible(machine), "canonical entries restored hit again");
+            let _ = runtime.guarded_frame_slot_at_put(machine, 2, sixty_six);
 
             // Redefining the canonical entry makes the guard miss; restoring it
             // re-verifies at the new epoch.

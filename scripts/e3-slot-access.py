@@ -31,18 +31,22 @@ def preflight(context):
 
 
 def fixture_env(iterations, unit, guarded, counting):
+    """`guarded` is False (baseline emission), True (E1 guarded emission) or
+    "elided" (Design 74D: guarded emission with the slot-index box elided)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("BIRNAM_DEV_")}
     env["E1_ITERATIONS"] = str(iterations)
     env["E1_UNIT_PATH"] = str(unit)
     if guarded:
         env["BIRNAM_DEV_GUARDED_SLOTS"] = "1"
+    if guarded == "elided":
+        env["BIRNAM_DEV_ELIDE_SLOT_BOX"] = "1"
     if counting:
         env["BIRNAM_DEV_GUARDED_SLOTS_COUNT"] = "1"
     return env
 
 
 def run_fixture(binary, iterations, guarded, counting, workdir, keep_unit=False):
-    unit = Path(workdir) / f"e3-{os.getpid()}-{'g' if guarded else 'b'}-{iterations}.dylib"
+    unit = Path(workdir) / f"e3-{os.getpid()}-{'e' if guarded == 'elided' else 'g' if guarded else 'b'}-{iterations}.dylib"
     if unit.exists():
         unit.unlink()
     result = subprocess.run([str(binary), "bench/e1-slot-access.birnam"], cwd=ROOT,
@@ -52,7 +56,7 @@ def run_fixture(binary, iterations, guarded, counting, workdir, keep_unit=False)
     if result.returncode != 0 or "e1-ready" not in lines:
         raise RuntimeError(f"fixture failed ({result.returncode}): {result.stdout!r} {result.stderr!r}")
     values = {k: int(v) for k, v in (line.split(" ", 1) for line in lines if " " in line) if k in KEYS}
-    values["counters"] = next((l for l in result.stderr.splitlines() if l.startswith("birnam-dev-guarded-slots")), None)
+    values["counters"] = " ".join(l for l in result.stderr.splitlines() if l.startswith("birnam-dev-")) or None
     if not keep_unit and unit.exists():
         unit.unlink()
     values["unit"] = str(unit) if keep_unit else None
@@ -90,9 +94,17 @@ def reference(binary, iterations):
 
 def inspect_unit(unit):
     imports = subprocess.run(["nm", "-u", str(unit)], capture_output=True, text=True).stdout.split()
+    # Design 74D: count call sites of the box constructor in the unit's text so
+    # an elided unit can be shown to box nothing at slot accesses (source-level
+    # integer literals still box; the fixture has a handful).
+    text = subprocess.run(["otool", "-tV", str(unit)], capture_output=True, text=True).stdout
     return {"dev_symbols": sorted(s for s in imports if "dev_frame" in s),
             "imports_birnam_send": any(s.endswith("birnam_send") for s in imports),
-            "import_count": len(imports)}
+            "imports_mk_small_int": any(s.endswith("birnam_mkSmallInt") for s in imports),
+            "import_count": len(imports),
+            "mk_small_int_call_sites": sum(1 for line in text.splitlines() if "birnam_mkSmallInt" in line),
+            "slot_get_call_sites": sum(1 for line in text.splitlines() if "dev_frame_slot_get" in line),
+            "slot_put_call_sites": sum(1 for line in text.splitlines() if "dev_frame_slot_put" in line)}
 
 
 def receipt(prefix):
@@ -106,6 +118,7 @@ def main():
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--candidate", required=True)
     parser.add_argument("--control")
+    parser.add_argument("--elided-candidate", help="dev prefix run with the Design 74D elided emission")
     parser.add_argument("--sizes", default="0,1,32,1024,16384")
     parser.add_argument("--pairs", type=int, default=5)
     parser.add_argument("--objc-dir")
@@ -116,7 +129,9 @@ def main():
                "candidate": (Path(args.candidate) / "bin/birnam", True)}
     if args.control:
         configs["control"] = (Path(args.control) / "bin/birnam", False)
-    record = {"schema": "birnam-design-74c-e3-v1", "sizes": sizes, "pairs": args.pairs,
+    if args.elided_candidate:
+        configs["elided"] = (Path(args.elided_candidate) / "bin/birnam", "elided")
+    record = {"schema": "birnam-design-74d-e4-v1" if args.elided_candidate else "birnam-design-74c-e3-v1", "sizes": sizes, "pairs": args.pairs,
               "commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip(),
               "machine": subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip(),
               "prefixes": {name: {"path": str(Path(p).parent.parent), "receipt": receipt(Path(p).parent.parent)} for name, (p, _) in configs.items()},
@@ -126,7 +141,7 @@ def main():
         for size in sizes:
             expected = 7 * size + size * (size + 1) // 2
             samples = {name: [] for name in configs}
-            order_names = [n for n in ("baseline", "candidate", "control") if n in configs]
+            order_names = [n for n in ("baseline", "candidate", "elided", "control") if n in configs]
             for pair in range(args.pairs):
                 preflight(f"e3 n={size} pair {pair + 1}")
                 order = order_names if pair % 2 == 0 else list(reversed(order_names))
@@ -143,6 +158,8 @@ def main():
             record["rss"][str(size)] = {name: peak_rss(configs[name][0], size, configs[name][1], workdir) for name in configs}
             counted = run_fixture(configs["candidate"][0], size, True, True, workdir)
             record["counters"][str(size)] = counted["counters"]
+            if "elided" in configs:
+                record["counters"][f"{size}-elided"] = run_fixture(configs["elided"][0], size, "elided", True, workdir)["counters"]
             if size in (1024, 16384):
                 on = [run_fixture(configs["candidate"][0], size, True, True, workdir)["warm-step-us"] for _ in range(3)]
                 off = [run_fixture(configs["candidate"][0], size, True, False, workdir)["warm-step-us"] for _ in range(3)]
@@ -152,6 +169,9 @@ def main():
         record["inspection"]["candidate_unit"] = inspect_unit(kept["unit"])
         kept_base = run_fixture(configs["baseline"][0], 32, False, False, workdir, keep_unit=True)
         record["inspection"]["baseline_unit"] = inspect_unit(kept_base["unit"])
+        if "elided" in configs:
+            kept_elided = run_fixture(configs["elided"][0], 32, "elided", False, workdir, keep_unit=True)
+            record["inspection"]["elided_unit"] = inspect_unit(kept_elided["unit"])
         for name in ("baseline", "candidate"):
             preflight(f"e3 control probe {name}")
             record["control_probe"][name] = [control_probe(configs[name][0]) for _ in range(3)]

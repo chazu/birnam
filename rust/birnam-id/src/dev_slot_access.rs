@@ -49,8 +49,11 @@ fn counting() -> bool {
         let enabled = std::env::var_os("BIRNAM_DEV_GUARDED_SLOTS_COUNT")
             .is_some_and(|value| !value.is_empty());
         if enabled && !COUNTING.swap(true, Ordering::Relaxed) {
-            // SAFETY: registering a plain extern "C" callback with libc.
-            unsafe { atexit(report_counters) };
+            // SAFETY: registering plain extern "C" callbacks with libc.
+            unsafe {
+                atexit(report_counters);
+                atexit(report_box_counter);
+            }
         }
         COUNTING_DECIDED.store(true, Ordering::Relaxed);
     }
@@ -130,4 +133,93 @@ pub unsafe extern "C" fn birnam_dev_frame_oop_at_put_v1(
             0
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Design 74D (E4): unboxed slot index. These entry points always answer: the
+// direct result on a guard hit, and on a miss the ordinary send's result, with
+// the index boxed inside the floor immediately before that send (74D §2.2,
+// §2.4). Generated code selected for E4 therefore never allocates for a slot
+// index on the hit path and never allocates after producing a store's value.
+
+static UNBOXED: AtomicU64 = AtomicU64::new(0);
+static BOXES: AtomicU64 = AtomicU64::new(0);
+
+/// One counting check per access, as the E1 entry points pay: attempts and
+/// hits share the E1 counters, `unboxed` proves the unboxed entry points ran,
+/// and `boxes` counts miss-path boxes created inside the floor.
+fn record_unboxed(hit: bool) {
+    if counting() {
+        ATTEMPTS.fetch_add(1, Ordering::Relaxed);
+        UNBOXED.fetch_add(1, Ordering::Relaxed);
+        if hit {
+            HITS.fetch_add(1, Ordering::Relaxed);
+        } else {
+            BOXES.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+extern "C" fn report_box_counter() {
+    use std::io::Write;
+    let unboxed = UNBOXED.load(Ordering::Relaxed);
+    let boxes = BOXES.load(Ordering::Relaxed);
+    let line = format!("birnam-dev-elided-slots unboxed={unboxed} boxes={boxes}\n");
+    match std::env::var_os("BIRNAM_DEV_GUARDED_SLOTS_COUNT") {
+        Some(target) if target != "1" => {
+            if let Ok(mut file) = std::fs::OpenOptions::new().append(true).create(true).open(target) {
+                let _ = file.write_all(line.as_bytes());
+            }
+        }
+        _ => eprint!("{line}"),
+    }
+}
+
+/// Read the current Frame slot `index` of `machine`: the guarded direct value
+/// on a hit, otherwise the ordinary `oopAt:` send's answer.
+///
+/// # Safety
+///
+/// `machine` is a live value copied from generated code's rooted locals and
+/// the call is made inside an active owner-thread runtime, as every
+/// StepMethod call is.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_dev_frame_slot_get_v1(machine: Oop, index: core::ffi::c_long) -> Oop {
+    crate::runtime::with_active(|runtime| match runtime.guarded_frame_slot_at(machine, index as i64) {
+        Some(value) => {
+            record_unboxed(true);
+            value
+        }
+        None => {
+            record_unboxed(false);
+            runtime.fallback_frame_oop_at(machine, index as i64)
+        }
+    })
+}
+
+/// Write form of `birnam_dev_frame_slot_get_v1`; answers the stored value on a
+/// hit and the ordinary `oopAt:put:` send's answer on a miss.
+///
+/// # Safety
+///
+/// Same contract as `birnam_dev_frame_slot_get_v1`; `value` is the store's
+/// freshly produced value, which the miss path roots before allocating.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_dev_frame_slot_put_v1(
+    machine: Oop,
+    index: core::ffi::c_long,
+    value: Oop,
+) -> Oop {
+    crate::runtime::with_active(|runtime| {
+        match runtime.guarded_frame_slot_at_put(machine, index as i64, value) {
+            Some(stored) => {
+                record_unboxed(true);
+                stored
+            }
+            None => {
+                record_unboxed(false);
+                runtime.fallback_frame_oop_at_put(machine, index as i64, value)
+            }
+        }
+    })
 }

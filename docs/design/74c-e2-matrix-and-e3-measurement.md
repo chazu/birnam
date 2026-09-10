@@ -163,8 +163,11 @@ proposal is deferred behind it.
 
 ### 3.3 Why the gain is bounded
 
-Guard counters show 24,478,438 guarded accesses for 16,384 iterations, about
-1,494 checked slot operations per loop iteration, on top of the source sends,
+Guard counters show 24,478,438 guarded accesses for a 16,384-iteration
+process. *Erratum (74D review, 2026-09-09): that counter is a process total
+over the fixture's twelve loop runs, so it is about 124.5 checked slot
+operations per loop iteration, not 1,494; the per-iteration cost attribution
+below stands, the operation count does not.* Those operations run on top of the source sends,
 action publications and driver transitions. Each of those operations still
 allocates a boxed Integer for its slot index (`MKV`) and interns its selector,
 exactly as the baseline does, because E1 deliberately preserved operand boxing
@@ -194,8 +197,8 @@ Same host, Apple clang 16.0.0, `-O2 -fobjc-arc`, five runs, medians, for
 | Same with `NSNumber` boxing of every step result | 26 | 309 | ≈ 1,950× |
 | Primitive-integer C loop, opaque step function | 4 | 13 | ≈ 46,000× |
 
-Representation differences: the Birnam iteration performs roughly 1,500
-checked frame-slot operations, about ten late-bound sends, action publication
+Representation differences: the Birnam iteration performs roughly 125
+checked frame-slot operations (corrected from 1,500, see §3.3), about ten late-bound sends, action publication
 and driver transitions, and allocates a box per slot operation; the
 Objective-C loop performs three dynamic dispatches on a C stack with no frame
 machine, no reflection, and (unboxed variant) no allocation. `objc_msgSend` is
@@ -210,7 +213,8 @@ constant that only ever reaches `oopAt:` as an argument, the guarded direct
 path decodes it back to an integer immediately, and the box cannot escape or
 be observed on that path. Creating the box only on a miss (before the
 fallback send, so the send's operands are unchanged) preserves every 74A
-argument while removing ~1,500 allocations per iteration in the fixture. It is
+argument while removing ~125 allocations per iteration in the fixture (corrected
+from ~1,500, see §3.3). It is
 precisely the allocation question §7.1 set aside, so it needs its own short
 legality note and measurement under this same protocol before anything else.
 Selector interning per access (74A §6.2) is the second, smaller candidate.

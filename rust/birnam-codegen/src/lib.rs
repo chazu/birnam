@@ -762,6 +762,9 @@ impl TranslationUnit {
         if resumable_c::guarded_slots_selected() {
             output.extend_from_slice(resumable_c::GUARDED_SLOT_PRELUDE);
         }
+        if resumable_c::slot_box_elision_selected() {
+            output.extend_from_slice(resumable_c::ELIDED_SLOT_PRELUDE);
+        }
         for (index, _name) in self.baked_globals.iter().enumerate() {
             if self.artifact {
                 output.extend_from_slice(b"static void* __g");
