@@ -15,6 +15,7 @@ sha2.workspace = true
 [features]
 # Design 74G: an experimental per-PC entry; ordinary emission is unchanged.
 dev-pc-specialization = []
+dev-frame-read-reuse = ["dev-pc-specialization"]
 # Design 74 E1: guarded slot-access emission, selected only when this feature
 # is built AND BIRNAM_DEV_GUARDED_SLOTS=1 is set in the compiling process.
 dev-guarded-slots = []

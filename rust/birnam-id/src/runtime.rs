@@ -197,6 +197,8 @@ pub(crate) struct Runtime {
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
     #[cfg(all(test, target_os = "macos"))]
     generated_deopt_trial: core::cell::RefCell<Option<generated_deopt_experiment::Trial>>,
+    #[cfg(all(test, target_os = "macos"))]
+    read_reuse_gc_epoch: Cell<u64>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -372,6 +374,8 @@ impl Runtime {
             deopt_trial: core::cell::RefCell::new(None),
             #[cfg(all(test, target_os = "macos"))]
             generated_deopt_trial: core::cell::RefCell::new(None),
+            #[cfg(all(test, target_os = "macos"))]
+            read_reuse_gc_epoch: Cell::new(0),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
                 values,
@@ -4212,6 +4216,11 @@ impl Runtime {
     }
 
     fn run_mark_phase(&self, mut marker: Marker) {
+        // 74H: invalidate native-local read caches before any foreign root or
+        // finalizer callback. This includes retirement reachability traversals.
+        #[cfg(all(test, target_os = "macos"))]
+        self.read_reuse_gc_epoch
+            .set(self.read_reuse_gc_epoch.get().saturating_add(1));
         let state_pointer = self.state.get();
         // Copy callback authority and raw owner pointers, then end the state
         // borrow before the first foreign call.

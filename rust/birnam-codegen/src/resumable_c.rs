@@ -9,6 +9,7 @@ use crate::resumable::{
     Literal, LogicalProgram, OperationKind, PhysicalLayout, Terminator, ValueId,
 };
 use crate::{Block, Emitter};
+use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -95,6 +96,7 @@ pub fn emit_step_method_with_blocks<'a>(
         block_literals,
         &[],
         None,
+        false,
     )
 }
 
@@ -115,6 +117,7 @@ pub fn emit_step_method_with_portable_blocks(
         &[],
         block_literals,
         None,
+        false,
     )
 }
 
@@ -136,8 +139,44 @@ pub fn emit_pc_specialized_step(
         &[],
         &[],
         Some(program_counter),
+        false,
     )
 }
+
+/// 74H experiment: preserve operands and reuse guarded reads within one PC.
+#[cfg(feature = "dev-frame-read-reuse")]
+pub fn emit_pc_step_with_read_reuse(
+    symbol_index: u32,
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    program_counter: u32,
+) -> Result<Vec<u8>, Error> {
+    if guarded_slots_selected() {
+        // This experiment preserves the ordinary operands and call ordering.
+        // Combining it with 74B/74D would be a different experiment.
+        return Err(Error::Unsupported);
+    }
+    emit_step_method_with_literal_specs(
+        symbol_index,
+        program,
+        layout,
+        1,
+        &[],
+        &[],
+        Some(program_counter),
+        true,
+    )
+}
+
+/// Artifact-local experimental transport. The owning test loader initializes
+/// it before entry; this does not add a symbol to the floor/runtime ABI.
+#[cfg(feature = "dev-frame-read-reuse")]
+pub const READ_REUSE_PRELUDE: &[u8] = br#"
+typedef struct { void* value; unsigned long dictionary_epoch, gc_epoch, state; } __BirnamReadCache;
+typedef void* (*__BirnamReadReuse)(void*,void*,void*,__BirnamReadCache*);
+static __BirnamReadReuse __birnam_read_reuse;
+void __birnam_read_cache_init(__BirnamReadReuse fn){__birnam_read_reuse=fn;}
+"#;
 
 fn emit_step_method_with_literal_specs<'a>(
     symbol_index: u32,
@@ -147,6 +186,7 @@ fn emit_step_method_with_literal_specs<'a>(
     source_block_literals: &[BlockLiteralSpec<'a>],
     portable_block_literals: &[PortableBlockLiteralSpec],
     selected_pc: Option<u32>,
+    reuse_reads: bool,
 ) -> Result<Vec<u8>, Error> {
     validate(
         program,
@@ -183,6 +223,16 @@ fn emit_step_method_with_literal_specs<'a>(
             output.push(b"L:{\n");
         } else {
             output.push(b"{\n");
+        }
+        let cached_slots = if reuse_reads {
+            reusable_slots(block, layout)?
+        } else {
+            BTreeSet::new()
+        };
+        for slot in &cached_slots {
+            output.push(b"__BirnamReadCache __birnam_read_cache_");
+            decimal(&mut output, *slot);
+            output.push(b"={0};\n");
         }
 
         for operation in &block.operations {
@@ -245,9 +295,22 @@ fn emit_step_method_with_literal_specs<'a>(
                 OperationKind::Bind { source, .. } => {
                     let destination = value_slot(layout, operation.result)?;
                     emit_store_prefix(&mut output, operation.result.0, destination);
-                    emit_get(&mut output, value_slot(layout, *source)?);
+                    emit_get_with_reuse(&mut output, value_slot(layout, *source)?, &cached_slots);
                     emit_store_suffix(&mut output, operation.result.0, destination);
                 }
+            }
+            if !matches!(
+                operation.kind,
+                OperationKind::EntryReceiver
+                    | OperationKind::EntryImplementation
+                    | OperationKind::EntryArgument { .. }
+                    | OperationKind::EntryCapture { .. }
+            ) {
+                invalidate_read_cache(
+                    &mut output,
+                    value_slot(layout, operation.result)?,
+                    &cached_slots,
+                );
             }
         }
 
@@ -259,13 +322,14 @@ fn emit_step_method_with_literal_specs<'a>(
                 arguments,
                 ..
             } => {
-                emit_call_staging(
+                emit_call_staging_with_reuse(
                     &mut output,
                     layout,
                     *receiver,
                     selector,
                     arguments,
                     program.value_count,
+                    &cached_slots,
                 )?;
                 emit_publish(&mut output, b"callSite:", call_site.0);
             }
@@ -276,13 +340,14 @@ fn emit_step_method_with_literal_specs<'a>(
                 arguments,
                 ..
             } => {
-                emit_call_staging(
+                emit_call_staging_with_reuse(
                     &mut output,
                     layout,
                     *receiver,
                     selector,
                     arguments,
                     program.value_count,
+                    &cached_slots,
                 )?;
                 emit_publish(&mut output, b"tailCallSite:", call_site.0);
             }
@@ -303,6 +368,88 @@ fn emit_step_method_with_literal_specs<'a>(
     // for a corrupt control value at the trusted Runtime boundary.
     output.push(b"return birnam_nil();\n}\n");
     Ok(output.finish())
+}
+
+/// Track physical-slot reads and writes in the same order as emission. A
+/// write kills availability even when it produces the same logical value.
+fn reusable_slots(
+    block: &crate::resumable::BasicBlock<'_>,
+    layout: &PhysicalLayout,
+) -> Result<BTreeSet<u32>, Error> {
+    let mut events = Vec::new();
+    for operation in &block.operations {
+        match &operation.kind {
+            OperationKind::EntryReceiver
+            | OperationKind::EntryImplementation
+            | OperationKind::EntryArgument { .. }
+            | OperationKind::EntryCapture { .. } => continue,
+            OperationKind::Bind { source, .. } => {
+                events.push((value_slot(layout, *source)?, false))
+            }
+            OperationKind::BlockLiteral { .. } | OperationKind::PortableBlockLiteral { .. } => {
+                return Err(Error::Unsupported);
+            }
+            _ => {}
+        }
+        events.push((value_slot(layout, operation.result)?, true));
+    }
+    if let Terminator::Call {
+        receiver,
+        arguments,
+        ..
+    }
+    | Terminator::TailCall {
+        receiver,
+        arguments,
+        ..
+    } = &block.terminator
+    {
+        let window = layout.call_window_start.ok_or(Error::InvalidProgram)?;
+        events.extend([
+            (value_slot(layout, *receiver)?, false),
+            (window, true),
+            (window + 1, true),
+        ]);
+        for (index, argument) in arguments.iter().enumerate() {
+            events.extend([
+                (value_slot(layout, *argument)?, false),
+                (window + 2 + index as u32, true),
+            ]);
+        }
+    }
+    let mut available = BTreeSet::new();
+    let mut reusable = BTreeSet::new();
+    for (slot, write) in events {
+        if write {
+            available.remove(&slot);
+        } else if !available.insert(slot) {
+            reusable.insert(slot);
+        }
+    }
+    Ok(reusable)
+}
+
+fn invalidate_read_cache(output: &mut Emitter, slot: u32, cached: &BTreeSet<u32>) {
+    if cached.contains(&slot) {
+        output.push(b"__birnam_read_cache_");
+        decimal(output, slot);
+        // Once disabled by a failed guard, a compiler store cannot re-arm it.
+        output.push(b".state=__birnam_read_cache_");
+        decimal(output, slot);
+        output.push(b".state==2UL?2UL:0UL;\n");
+    }
+}
+
+fn emit_get_with_reuse(output: &mut Emitter, slot: u32, cached: &BTreeSet<u32>) {
+    if !cached.contains(&slot) {
+        emit_get(output, slot);
+        return;
+    }
+    output.push(b"__birnam_read_reuse(machine,birnam_intern(\"oopAt:\"),MKV(");
+    decimal(output, slot);
+    output.push(b"L),&__birnam_read_cache_");
+    decimal(output, slot);
+    output.push(b")");
 }
 
 fn validate(
@@ -777,18 +924,20 @@ fn emit_get(output: &mut Emitter, slot: u32) {
     output.push(b"L)},1L)");
 }
 
-fn emit_call_staging(
+fn emit_call_staging_with_reuse(
     output: &mut Emitter,
     layout: &PhysicalLayout,
     receiver: ValueId,
     selector: &[u8],
     arguments: &[ValueId],
     first_staging_id: u32,
+    cached: &BTreeSet<u32>,
 ) -> Result<(), Error> {
     let window = layout.call_window_start.ok_or(Error::InvalidProgram)?;
     emit_store_prefix(output, first_staging_id, window);
-    emit_get(output, value_slot(layout, receiver)?);
+    emit_get_with_reuse(output, value_slot(layout, receiver)?, cached);
     emit_store_suffix(output, first_staging_id, window);
+    invalidate_read_cache(output, window, cached);
 
     let selector_id = first_staging_id
         .checked_add(1)
@@ -797,6 +946,7 @@ fn emit_call_staging(
     emit_store_prefix(output, selector_id, selector_slot);
     output.emit_symbol(selector);
     emit_store_suffix(output, selector_id, selector_slot);
+    invalidate_read_cache(output, selector_slot, cached);
 
     for (index, argument) in arguments.iter().enumerate() {
         let index = u32::try_from(index).map_err(|_| Error::QuantityOverflow)?;
@@ -809,8 +959,9 @@ fn emit_call_staging(
             .and_then(|slot| slot.checked_add(index))
             .ok_or(Error::QuantityOverflow)?;
         emit_store_prefix(output, id, slot);
-        emit_get(output, value_slot(layout, *argument)?);
+        emit_get_with_reuse(output, value_slot(layout, *argument)?, cached);
         emit_store_suffix(output, id, slot);
+        invalidate_read_cache(output, slot, cached);
     }
     Ok(())
 }

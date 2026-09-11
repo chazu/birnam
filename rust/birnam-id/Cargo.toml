@@ -11,7 +11,7 @@ birnam-artifact = { path = "../birnam-artifact", default-features = false }
 sha2.workspace = true
 
 [dev-dependencies]
-birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization"] }
+birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]
 ffi-test-hooks = []

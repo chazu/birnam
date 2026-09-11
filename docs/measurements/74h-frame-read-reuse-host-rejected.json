@@ -1,0 +1,2592 @@
+{
+  "schema": "birnam-frame-read-reuse-v1",
+  "design": "74H",
+  "correctness": "passed",
+  "baseline_commit": "a10d1b55d6f7c557804a2947b75b3704d0990323",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cc": "Apple clang version 16.0.0 (clang-1600.0.26.3)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "profiles": {
+    "debug": {
+      "cases": [
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 0,
+          "reads": 6,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 0,
+          "reads": 6,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 0,
+          "reads": 6,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 28,
+          "reads": 8,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 28,
+          "reads": 8,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 28,
+          "reads": 7,
+          "reuses": 1,
+          "misses": 1,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 56,
+          "reads": 10,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 56,
+          "reads": 10,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 56,
+          "reads": 7,
+          "reuses": 3,
+          "misses": 1,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 7,
+          "reuses": 15,
+          "misses": 1,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "before-entry",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "before-entry",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "before-entry",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "read-override",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "read-override",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "read-override",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "write-override",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "write-override",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "write-override",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "lookup-override",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "lookup-override",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "lookup-override",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-between-reads",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-between-reads",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-between-reads",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-slot-write",
+          "mode": "baseline",
+          "answer": 119,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-slot-write",
+          "mode": "control",
+          "answer": 119,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-slot-write",
+          "mode": "reuse",
+          "answer": 119,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "saturated-gc-epoch",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "saturated-gc-epoch",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "saturated-gc-epoch",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        }
+      ],
+      "repeated": [
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        }
+      ],
+      "costs": [
+        {
+          "repeats": 0,
+          "mode": "baseline",
+          "source_bytes": 5243,
+          "native_bytes": 33632,
+          "compile_ns": 46134792
+        },
+        {
+          "repeats": 0,
+          "mode": "control",
+          "source_bytes": 5543,
+          "native_bytes": 33728,
+          "compile_ns": 41959500
+        },
+        {
+          "repeats": 0,
+          "mode": "reuse",
+          "source_bytes": 5543,
+          "native_bytes": 33720,
+          "compile_ns": 44424041
+        },
+        {
+          "repeats": 2,
+          "mode": "baseline",
+          "source_bytes": 5921,
+          "native_bytes": 33632,
+          "compile_ns": 55844292
+        },
+        {
+          "repeats": 2,
+          "mode": "control",
+          "source_bytes": 6221,
+          "native_bytes": 33728,
+          "compile_ns": 61081792
+        },
+        {
+          "repeats": 2,
+          "mode": "reuse",
+          "source_bytes": 6668,
+          "native_bytes": 33832,
+          "compile_ns": 49821416
+        },
+        {
+          "repeats": 4,
+          "mode": "baseline",
+          "source_bytes": 6603,
+          "native_bytes": 33632,
+          "compile_ns": 46596292
+        },
+        {
+          "repeats": 4,
+          "mode": "control",
+          "source_bytes": 6903,
+          "native_bytes": 33728,
+          "compile_ns": 49059584
+        },
+        {
+          "repeats": 4,
+          "mode": "reuse",
+          "source_bytes": 7384,
+          "native_bytes": 33832,
+          "compile_ns": 54478208
+        },
+        {
+          "repeats": 16,
+          "mode": "baseline",
+          "source_bytes": 10707,
+          "native_bytes": 33632,
+          "compile_ns": 70456583
+        },
+        {
+          "repeats": 16,
+          "mode": "control",
+          "source_bytes": 11007,
+          "native_bytes": 33728,
+          "compile_ns": 83339541
+        },
+        {
+          "repeats": 16,
+          "mode": "reuse",
+          "source_bytes": 11692,
+          "native_bytes": 33832,
+          "compile_ns": 74522792
+        }
+      ]
+    },
+    "release": {
+      "cases": [
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 0,
+          "reads": 6,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 0,
+          "reads": 6,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 0,
+          "reads": 6,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 28,
+          "reads": 8,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 28,
+          "reads": 8,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 28,
+          "reads": 7,
+          "reuses": 1,
+          "misses": 1,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 56,
+          "reads": 10,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 56,
+          "reads": 10,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 56,
+          "reads": 7,
+          "reuses": 3,
+          "misses": 1,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 7,
+          "reuses": 15,
+          "misses": 1,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "before-entry",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "before-entry",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "before-entry",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "read-override",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "read-override",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "read-override",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "write-override",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "write-override",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "write-override",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "lookup-override",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "lookup-override",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "lookup-override",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 2,
+          "fallback_entries": 1,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-between-reads",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-between-reads",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-between-reads",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-slot-write",
+          "mode": "baseline",
+          "answer": 119,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-slot-write",
+          "mode": "control",
+          "answer": 119,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "gc-slot-write",
+          "mode": "reuse",
+          "answer": 119,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "saturated-gc-epoch",
+          "mode": "baseline",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 0,
+          "fallback_entries": 3,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "saturated-gc-epoch",
+          "mode": "control",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 0,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        },
+        {
+          "repeats": 16,
+          "scenario": "saturated-gc-epoch",
+          "mode": "reuse",
+          "answer": 224,
+          "reads": 22,
+          "reuses": 0,
+          "misses": 16,
+          "optimized_entries": 3,
+          "fallback_entries": 0,
+          "unloads": 2
+        }
+      ],
+      "repeated": [
+        {
+          "repeats": 0,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 2,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 4,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 16,
+          "scenario": "ordinary",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        },
+        {
+          "repeats": 16,
+          "scenario": "invalidate-between-reads",
+          "calls": 64,
+          "unloads": 2,
+          "live_frames": 0,
+          "live_registrations": 0
+        }
+      ],
+      "costs": [
+        {
+          "repeats": 0,
+          "mode": "baseline",
+          "source_bytes": 5243,
+          "native_bytes": 33632,
+          "compile_ns": 37130125
+        },
+        {
+          "repeats": 0,
+          "mode": "control",
+          "source_bytes": 5543,
+          "native_bytes": 33728,
+          "compile_ns": 36292542
+        },
+        {
+          "repeats": 0,
+          "mode": "reuse",
+          "source_bytes": 5543,
+          "native_bytes": 33720,
+          "compile_ns": 36893333
+        },
+        {
+          "repeats": 2,
+          "mode": "baseline",
+          "source_bytes": 5921,
+          "native_bytes": 33632,
+          "compile_ns": 36365416
+        },
+        {
+          "repeats": 2,
+          "mode": "control",
+          "source_bytes": 6221,
+          "native_bytes": 33728,
+          "compile_ns": 38018375
+        },
+        {
+          "repeats": 2,
+          "mode": "reuse",
+          "source_bytes": 6668,
+          "native_bytes": 33832,
+          "compile_ns": 39738084
+        },
+        {
+          "repeats": 4,
+          "mode": "baseline",
+          "source_bytes": 6603,
+          "native_bytes": 33632,
+          "compile_ns": 37937542
+        },
+        {
+          "repeats": 4,
+          "mode": "control",
+          "source_bytes": 6903,
+          "native_bytes": 33728,
+          "compile_ns": 38443334
+        },
+        {
+          "repeats": 4,
+          "mode": "reuse",
+          "source_bytes": 7384,
+          "native_bytes": 33832,
+          "compile_ns": 38211250
+        },
+        {
+          "repeats": 16,
+          "mode": "baseline",
+          "source_bytes": 10707,
+          "native_bytes": 33632,
+          "compile_ns": 42577667
+        },
+        {
+          "repeats": 16,
+          "mode": "control",
+          "source_bytes": 11007,
+          "native_bytes": 33728,
+          "compile_ns": 41927708
+        },
+        {
+          "repeats": 16,
+          "mode": "reuse",
+          "source_bytes": 11692,
+          "native_bytes": 33832,
+          "compile_ns": 40915625
+        }
+      ]
+    }
+  },
+  "compatibility_authorities_unchanged": {
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-id/src/execution.rs": "0d484e3be16f9418b2209762b616647e6ad23a99ab840cdbe757e7221ff42cc6",
+    "rust/birnam-id/src/registration.rs": "788ef52702a12cf27280f9e1cc181992d825f6d67d1508d4e0cfa7661447bf77",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb"
+  },
+  "source_sha256": {
+    "rust/birnam-codegen/Cargo.toml": "9e14ca825667a297f3cf480b592ffd5a98c6fe40524eafe9651069d777604ca3",
+    "rust/birnam-codegen/src/resumable_c.rs": "668dfa18d6bc8c1bc2da0b08ece9025de308f50c22bc113bf2ac34734fd517db",
+    "rust/birnam-id/Cargo.toml": "619642b9d1840d6b1f584867e0efc6cb2d42a0a371eecda51a469ad4d7344acd",
+    "rust/birnam-id/src/runtime.rs": "40e7627ca8f5506d44acf9e5120ddf1e4c8a8f44b11d9c0158f68039233380db",
+    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "6aee35e3c587e8cf43e78f634039cb4a96504139355df48c49aa680ff783528d",
+    "rust/birnam-id/src/runtime/generated_deopt_adapter.c": "beffc686a0d16aaebf346fe6ec71ac9d141409b676b49d1294202d311cf25cff",
+    "rust/birnam-id/src/runtime/read_reuse_experiment.rs": "8050985e2fe61459c40409cab8417399895967c5d79575dc7bfb3fd2f4784a3b",
+    "scripts/frame-read-reuse.py": "4f2bb87481353381fe43577e356713830c1957bb7d9d60fad27e7939490c8bea"
+  },
+  "scope": "test-local generated PC entries; repeated argument staging; counters compiled out of timed reads; no production performance claim",
+  "measurement": {
+    "status": "unqualified",
+    "pairs": [
+      {
+        "pair": 1,
+        "order": [
+          "control",
+          "reuse"
+        ],
+        "host_preflight": "bench-host-check: 74H pair 1 stable on AC power; idle 76.42 75.23 68.87%, median 75.23%, spread 7.55 points, hottest 69.2%",
+        "runs": [
+          {
+            "mode": "control",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19325416,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17937875,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17457500,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19355834,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20141875,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19350333,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21123500,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 22236375,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21118375,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35551208,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 37322375,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34162083,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          },
+          {
+            "mode": "reuse",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17643000,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16703417,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16563458,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19042042,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20521458,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18960917,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20804667,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 22433750,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21599375,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33919750,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 37812583,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35456042,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          }
+        ],
+        "host_samples": "Processes: 723 total, 3 running, 720 sleeping, 6123 threads \n2026/09/10 22:00:22\nLoad Avg: 5.09, 4.16, 4.03 \nCPU usage: 24.65% user, 13.48% sys, 61.86% idle \nSharedLibs: 568M resident, 116M data, 47M linkedit.\nMemRegions: 362474 total, 6976M resident, 289M private, 2198M shared.\nPhysMem: 22G used (3445M wired, 3600M compressor), 1344M unused.\nVM: 293T vsize, 4915M framework vsize, 669661(0) swapins, 1217431(0) swapouts.\nNetworks: packets: 31453235/21G in, 26727785/17G out.\nDisks: 58274775/1032G read, 45342926/1286G written.\n\n\n",
+        "host_interval_gate": "bench-host-check: 74H pair 1 completed before one interval sample; preflight applies"
+      },
+      {
+        "pair": 2,
+        "order": [
+          "reuse",
+          "control"
+        ],
+        "host_preflight": "bench-host-check: 74H pair 2 stable on AC power; idle 80.45 75.46 77.75%, median 77.75%, spread 4.99 points, hottest 29.4%",
+        "runs": [
+          {
+            "mode": "reuse",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18324958,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17700875,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16844791,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18959333,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19997167,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18404583,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20282417,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 22623500,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21274209,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33011791,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 37199000,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33735125,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          },
+          {
+            "mode": "control",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17905583,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17711958,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16729125,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18186958,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20085000,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18213458,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20126792,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21542417,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20686625,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34214292,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35608083,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34238792,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          }
+        ],
+        "host_samples": "Processes: 723 total, 3 running, 720 sleeping, 6132 threads \n2026/09/10 22:00:26\nLoad Avg: 5.01, 4.16, 4.02 \nCPU usage: 19.43% user, 14.21% sys, 66.35% idle \nSharedLibs: 568M resident, 116M data, 47M linkedit.\nMemRegions: 362551 total, 6979M resident, 289M private, 2239M shared.\nPhysMem: 22G used (3480M wired, 3582M compressor), 1285M unused.\nVM: 293T vsize, 4915M framework vsize, 669665(0) swapins, 1217431(0) swapouts.\nNetworks: packets: 31453626/21G in, 26728210/17G out.\nDisks: 58274955/1032G read, 45343187/1286G written.\n\n\n",
+        "host_interval_gate": "bench-host-check: 74H pair 2 completed before one interval sample; preflight applies"
+      },
+      {
+        "pair": 3,
+        "order": [
+          "control",
+          "reuse"
+        ],
+        "host_preflight": "bench-host-check: 74H pair 3 stable on AC power; idle 80.13 77.68 72.41%, median 77.68%, spread 7.72 points, hottest 27.2%",
+        "runs": [
+          {
+            "mode": "control",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18045917,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17884708,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16568334,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19202417,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19868209,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19092458,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20677709,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21800250,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20865167,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35183541,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 36147958,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33673708,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          },
+          {
+            "mode": "reuse",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17546167,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16738250,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16383875,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17957083,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19794875,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18865250,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19548625,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21324125,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20285542,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 31978667,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35497375,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33637792,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          }
+        ],
+        "host_samples": "Processes: 722 total, 3 running, 719 sleeping, 6087 threads \n2026/09/10 22:00:30\nLoad Avg: 4.92, 4.15, 4.02 \nCPU usage: 21.15% user, 14.90% sys, 63.94% idle \nSharedLibs: 568M resident, 116M data, 47M linkedit.\nMemRegions: 362194 total, 6991M resident, 289M private, 2238M shared.\nPhysMem: 22G used (3527M wired, 3569M compressor), 1284M unused.\nVM: 292T vsize, 4915M framework vsize, 669693(0) swapins, 1217431(0) swapouts.\nNetworks: packets: 31454172/21G in, 26728696/17G out.\nDisks: 58275185/1032G read, 45343433/1286G written.\n\n\n",
+        "host_interval_gate": "bench-host-check: 74H pair 3 completed before one interval sample; preflight applies"
+      },
+      {
+        "pair": 4,
+        "order": [
+          "reuse",
+          "control"
+        ],
+        "host_preflight": "bench-host-check: 74H pair 4 stable on AC power; idle 77.96 69.94 77.62%, median 77.62%, spread 8.02 points, hottest 26.2%",
+        "runs": [
+          {
+            "mode": "reuse",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18466667,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17777500,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16970083,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18441667,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20227666,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18838667,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20758958,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21900792,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20670875,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33256125,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 37047917,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34288208,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          },
+          {
+            "mode": "control",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17690333,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16621125,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16491291,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19134750,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19404875,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18136250,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20074875,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21535083,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20571958,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34967042,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35547000,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34198583,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          }
+        ],
+        "host_samples": "Processes: 722 total, 7 running, 715 sleeping, 6066 threads \n2026/09/10 22:00:34\nLoad Avg: 5.25, 4.23, 4.05 \nCPU usage: 19.52% user, 13.80% sys, 66.66% idle \nSharedLibs: 568M resident, 116M data, 47M linkedit.\nMemRegions: 362170 total, 6995M resident, 289M private, 2240M shared.\nPhysMem: 22G used (3487M wired, 3568M compressor), 1263M unused.\nVM: 292T vsize, 4915M framework vsize, 669697(0) swapins, 1217431(0) swapouts.\nNetworks: packets: 31454479/21G in, 26728993/17G out.\nDisks: 58275491/1032G read, 45343693/1286G written.\n\n\n",
+        "host_interval_gate": "bench-host-check: 74H pair 4 completed before one interval sample; preflight applies"
+      },
+      {
+        "pair": 5,
+        "order": [
+          "control",
+          "reuse"
+        ],
+        "host_preflight": "bench-host-check: 74H pair 5 stable on AC power; idle 76.91 76.9 72.9%, median 76.9%, spread 4.01 points, hottest 56.9%",
+        "runs": [
+          {
+            "mode": "control",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18273041,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17946791,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17923250,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19559334,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20619166,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19240291,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21684083,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 23129791,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21493083,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 36052958,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 37174666,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "control",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 34273125,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          },
+          {
+            "mode": "reuse",
+            "samples": [
+              {
+                "repeats": 0,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17578375,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 17236375,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 0,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 16647667,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 2,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18278750,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 2,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19360959,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 2,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 18339541,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 4,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 19811709,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 4,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 21249333,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 4,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 20471625,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              },
+              {
+                "repeats": 16,
+                "scenario": "ordinary",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 31832542,
+                "optimized_entries": 12288,
+                "fallback_entries": 0
+              },
+              {
+                "repeats": 16,
+                "scenario": "invalidate-between-reads",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 35604666,
+                "optimized_entries": 8192,
+                "fallback_entries": 4096
+              },
+              {
+                "repeats": 16,
+                "scenario": "before-entry",
+                "mode": "reuse",
+                "iterations": 4096,
+                "warmup": 64,
+                "elapsed_ns": 33806958,
+                "optimized_entries": 0,
+                "fallback_entries": 12288
+              }
+            ]
+          }
+        ],
+        "host_samples": "Processes: 725 total, 3 running, 722 sleeping, 6046 threads \n2026/09/10 22:00:39\nLoad Avg: 5.25, 4.23, 4.05 \nCPU usage: 28.31% user, 18.72% sys, 52.96% idle \nSharedLibs: 568M resident, 116M data, 47M linkedit.\nMemRegions: 362352 total, 7007M resident, 289M private, 2242M shared.\nPhysMem: 22G used (3493M wired, 3555M compressor), 1260M unused.\nVM: 294T vsize, 4915M framework vsize, 669709(0) swapins, 1217431(0) swapouts.\nNetworks: packets: 31454918/21G in, 26729552/17G out.\nDisks: 58275686/1032G read, 45343937/1286G written.\n\n\n",
+        "host_interval_gate": "bench-host-check: 74H pair 5 completed before one interval sample; preflight applies"
+      }
+    ],
+    "classifications": [],
+    "iterations": 4096,
+    "warmup": 64,
+    "preparation_costs": [
+      {
+        "repeats": 0,
+        "mode": "baseline",
+        "source_bytes": 5243,
+        "native_bytes": 33632,
+        "compile_ns": 36620917
+      },
+      {
+        "repeats": 0,
+        "mode": "control",
+        "source_bytes": 5543,
+        "native_bytes": 33728,
+        "compile_ns": 39004125
+      },
+      {
+        "repeats": 0,
+        "mode": "reuse",
+        "source_bytes": 5543,
+        "native_bytes": 33720,
+        "compile_ns": 38079083
+      },
+      {
+        "repeats": 2,
+        "mode": "baseline",
+        "source_bytes": 5921,
+        "native_bytes": 33632,
+        "compile_ns": 38042875
+      },
+      {
+        "repeats": 2,
+        "mode": "control",
+        "source_bytes": 6221,
+        "native_bytes": 33728,
+        "compile_ns": 37734500
+      },
+      {
+        "repeats": 2,
+        "mode": "reuse",
+        "source_bytes": 6668,
+        "native_bytes": 33832,
+        "compile_ns": 39044041
+      },
+      {
+        "repeats": 4,
+        "mode": "baseline",
+        "source_bytes": 6603,
+        "native_bytes": 33632,
+        "compile_ns": 38810500
+      },
+      {
+        "repeats": 4,
+        "mode": "control",
+        "source_bytes": 6903,
+        "native_bytes": 33728,
+        "compile_ns": 38898000
+      },
+      {
+        "repeats": 4,
+        "mode": "reuse",
+        "source_bytes": 7384,
+        "native_bytes": 33832,
+        "compile_ns": 40071375
+      },
+      {
+        "repeats": 16,
+        "mode": "baseline",
+        "source_bytes": 10707,
+        "native_bytes": 33632,
+        "compile_ns": 42573333
+      },
+      {
+        "repeats": 16,
+        "mode": "control",
+        "source_bytes": 11007,
+        "native_bytes": 33728,
+        "compile_ns": 41141833
+      },
+      {
+        "repeats": 16,
+        "mode": "reuse",
+        "source_bytes": 11692,
+        "native_bytes": 33832,
+        "compile_ns": 41177208
+      }
+    ],
+    "prepared_sha256": {
+      "0-baseline.c": "0f282b5c44867deadfd6e7afaf79d513a8729a22fbcf8366f22b6213a91648c0",
+      "0-baseline.dylib": "ad36c80fd418d3c838e81c86f6d5381afd54b6ab43d4323645213662706fa6da",
+      "0-control.c": "2529f50624e5c193444d4db3f2af0c6b7c3273fa65b9f229f2c1fcb6cc7ec5b6",
+      "0-control.dylib": "2f8aa8e4b82175d1ae05677d0d9c241250d49dcf78c9a2a4a46334b1a38acb17",
+      "0-reuse.c": "2529f50624e5c193444d4db3f2af0c6b7c3273fa65b9f229f2c1fcb6cc7ec5b6",
+      "0-reuse.dylib": "7d1dcd6585fb10b8a3c13eb7aac1518563fa9d8e3971d6e601cb8c8db3f4a189",
+      "16-baseline.c": "4d602154133a230312c309a5cdc3ecd7cedfbc291abafb0acab29400dedf3c3a",
+      "16-baseline.dylib": "13b05f37f491ab7791f4c07e359b5f32261049b147a99abf9afaca8d62bf5789",
+      "16-control.c": "9aa11abefbb1c47f2630544b809edc71b38397583daf2b1ddb66e5d0c44e2cb9",
+      "16-control.dylib": "5a68fd8735b37611cbaa6800c16a2854b5f10608cf0e5f2f276242d2664f3671",
+      "16-reuse.c": "e775b21b5867b7d112fefb5cdf8f058eea50b11e3d879b7702a984ee38b3e8dd",
+      "16-reuse.dylib": "c5b1acf01fe1e995ee1d05a7bd9f86c4a33a4414cdcae322dae5f33edc65c303",
+      "2-baseline.c": "c0bd650eb4486aea37f88536dcf589b8e2f5e0c5ebe3c0e0983c517e651c2161",
+      "2-baseline.dylib": "dd3ca4fc73f3c60951dcb27829f6f3867e251b8fd2787ed0db82855117f71b53",
+      "2-control.c": "1db94131845abc80cb6599705ffe245c3540a8928da3e27c5d2ef501c37a5cbd",
+      "2-control.dylib": "c1eab65693507cb7ff903d4540b8e6839f460d2c126fd6f93b4a37ba7497cf56",
+      "2-reuse.c": "443eb50bebbf04f2f4e5914ddccdb7654750cd3831b45f52d02e6dff6d5e9c57",
+      "2-reuse.dylib": "50940a641f33b0adf2c792b1fa27dadbba53205afb2ea4605bb33ef97a0810c6",
+      "4-baseline.c": "f4994a4c25c6740d3a1caa2680f560d309befdf2b7aed8b7ba039b2fb71277df",
+      "4-baseline.dylib": "d9ff0e062034a737c51d02e18d3320e404614021a1c369801d122e22d0f5b11f",
+      "4-control.c": "af7107e88c89c88add7d06c0c209a1f3a1e272668e8d1e6ee4da21c3dbf8b35e",
+      "4-control.dylib": "54d81dc14eeccfe97ff4e7fe2da5ebcf8f9aaf9e9b485335ce27f81e64a04c94",
+      "4-reuse.c": "c08c89a19b4d810a65c348849168d759ab1f2eef2e586375e0f9beb01a47d577",
+      "4-reuse.dylib": "cd8e0111df9467b03fea52a136134fc909094ecbd6c65ca5911b4f27806b1498"
+    },
+    "failure": "command failed (1): bash scripts/bench-host-check.sh 74H pair 6\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: 74H pair 6 host is not stable enough for tracked timing\n  idle samples: 66.3 67.18 62.21% (minimum 62.21%, median 66.3%, spread 4.97 points)\n  required: median 50% (two of three samples), hottest process <= 80% of one core\n  hottest process: 54476 123.6 /Users/chazu/.local/bin/rk (limit 80% of one core)\n54476 123.6 /Users/chazu/.local/bin/rk\n51309  76.4 /Users/chazu/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustfmt\n  755  16.0 /Applications/Ghostty.app/Contents/MacOS/ghostty\n    1   8.2 /sbin/launchd\n31625   6.4 ./batcave-monitor\n 1175   4.1 /Applications/Spotify.app/Contents/MacOS/Spotify\n68725   4.0 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  597   3.0 /System/Library/CoreServices/WindowManager.app/Contents/MacOS/WindowManager\n"
+  }
+}

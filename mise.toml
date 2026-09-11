@@ -43,6 +43,10 @@ run = "python3 scripts/same-frame-deopt.py"
 description = "Run Design 74G generated same-frame recovery and native unload checks"
 run = "python3 scripts/generated-frame-deopt.py"
 
+[tasks.read-reuse-experiment]
+description = "Run Design 74H guarded Frame read reuse correctness checks"
+run = "python3 scripts/frame-read-reuse.py"
+
 [tasks.rust-dylib-audit]
 description = "Audit Rust floor dependencies, install name, paths, and exports"
 run = "bash scripts/rust-dylib-audit.sh"

@@ -17,6 +17,8 @@ use std::time::Instant;
 
 #[path = "generated_deopt_program.rs"]
 mod input;
+#[path = "read_reuse_experiment.rs"]
+mod read_reuse;
 
 // Darwin constants. This native experiment is intentionally macOS-only.
 const RTLD_NOW: c_int = 2;
@@ -227,6 +229,7 @@ pub(super) struct Trial {
     optimized: usize,
     fallback: usize,
     deoptimizations: usize,
+    observe: fn(&Runtime, Oop, [usize; 3], usize, bool),
 }
 
 impl Trial {
@@ -326,10 +329,15 @@ pub(super) fn select(
             ),
         }
     };
+    (trial.observe)(runtime, machine, frame.words().unwrap(), pc, optimized);
+    Ok(result)
+}
+
+fn observe_entry(runtime: &Runtime, machine: Oop, frame: [usize; 3], pc: usize, optimized: bool) {
     PROBE.with_borrow_mut(|probe| {
         probe.machine = machine;
         probe.selected = optimized;
-        probe.visits.push((frame.words().unwrap(), pc, optimized));
+        probe.visits.push((frame, pc, optimized));
         if pc == 2 {
             assert_eq!(
                 runtime
@@ -343,7 +351,6 @@ pub(super) fn select(
             );
         }
     });
-    Ok(result)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -815,6 +822,7 @@ fn run(
         optimized: 0,
         fallback: 0,
         deoptimizations: 0,
+        observe: observe_entry,
     });
     let _scope = Scope(runtime);
     if repetitions > 1 {

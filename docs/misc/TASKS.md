@@ -49,6 +49,14 @@ Both forms use one canonical CodeProgram and descriptor; candidate entries
 omit PC decoding. The compiler feature and test-only driver retain the current
 ABI/image contract. Full repository verification passes, including native-prefix,
 cold-archive and relocation checks; no production speedup is claimed.
+After committing 74G as `a10d1b55`, the user authorized
+[Design 74H](../design/74h-guarded-frame-read-reuse.md)
+(`birnam-read-reuse-2ce`): guarded reuse of repeated Frame reads in one PC.
+The 36 baseline/control/candidate observations and 320 additional calls agree
+in debug/release, including GC slot mutation without dictionary invalidation.
+Seven host-gated timing pairs are inconclusive in every row; normal-path
+integration is deferred by the experiment's predeclared criterion. Full
+repository verification passes; ABI/image authorities remain unchanged.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

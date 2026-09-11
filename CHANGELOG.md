@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Added
 
+- `mise run read-reuse-experiment` runs Design 74H's development-only guarded
+  Frame-read reuse experiment. Debug/release cases include GC callbacks that
+  mutate cached slots without dictionary changes. Seven controlled timing
+  pairs were inconclusive, so the experiment is not integrated into normal
+  compilation. Runtime ABI and image contracts remain unchanged.
 - `mise run generated-deopt-experiment` runs Design 74G: compiler-generated
   per-PC entries recover to their original baseline through the real driver.
   The test checks colored Frame state, precise GC, invalidation and actual
