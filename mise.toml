@@ -35,6 +35,10 @@ run = "CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline"
 description = "Run the pure-Rust floor tests under nightly Miri"
 run = "cargo +nightly miri test --workspace --locked --offline"
 
+[tasks.deopt-experiment]
+description = "Run the test-only Design 74F same-frame recovery experiment"
+run = "python3 scripts/same-frame-deopt.py"
+
 [tasks.rust-dylib-audit]
 description = "Audit Rust floor dependencies, install name, paths, and exports"
 run = "bash scripts/rust-dylib-audit.sh"

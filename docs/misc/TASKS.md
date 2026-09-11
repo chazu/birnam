@@ -35,7 +35,13 @@ closed): about 50% faster than the baseline on the fixture, 34–43% faster
 than E1, every access hitting, E2 identical. The production slice,
 [Design 74E](../design/74e-production-slot-access-slice.md), was landed and
 reverted the same day: it needs a runtime ABI cut (two new shim names), which
-the user declined. The dev-feature form stays available. The prior implementation
+the user declined. The dev-feature form stays available. On 2026-09-10 the user
+authorized an ABI-preserving same-frame recovery experiment, delivered as
+[Design 74F](../design/74f-same-frame-deoptimization-experiment.md)
+(`birnam-deopt-same-frame-738`): ten real-driver baseline/candidate cases and
+256 repeated trials pass in debug and release. It uses test-only static native
+entries with existing descriptor-v2 Frames; no production tier or speedup is
+claimed. The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 

@@ -29,6 +29,9 @@ use crate::symbol::{EmbeddedNul, Symbols};
 use crate::values::Values;
 use crate::vtable::{AddMethod, Vtables};
 
+#[cfg(test)]
+mod deopt_experiment;
+
 static FRAME_VIEW_LAYOUT: [u8; 1] = [SLOT_OOP];
 
 #[derive(Clone, Copy)]
@@ -188,6 +191,8 @@ pub(crate) struct Runtime {
     // Design 74A §3.2: the vtable mutation epoch at which the guarded-slot
     // conditions 2–4 were last verified, and their verdict at that epoch.
     slot_guard_cache: Cell<(u64, bool)>,
+    #[cfg(test)]
+    deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -359,6 +364,8 @@ impl Runtime {
             collection_phase: Cell::new(CollectionPhase::Idle),
             entry_scopes: UnsafeCell::new(Vec::new()),
             slot_guard_cache: Cell::new((u64::MAX, false)),
+            #[cfg(test)]
+            deopt_trial: core::cell::RefCell::new(None),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
                 values,
@@ -3463,6 +3470,11 @@ impl Runtime {
             } else {
                 None
             };
+            // Design 74F: selection is test-only and happens after the resume
+            // token allocation, which may collect and invalidate dependencies.
+            // Both entries use the unchanged descriptor and committed Frame.
+            #[cfg(test)]
+            let method = deopt_experiment::select(self, capability, owner, machine, method)?;
             let action = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {

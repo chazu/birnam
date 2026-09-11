@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Added
 
+- `mise run deopt-experiment` runs Design 74F's test-only same-frame recovery
+  experiment in debug and release. The real Runtime driver switches from a
+  static optimized entry to its original baseline on invalidation, preserving
+  the active Frame, values, aliases and effects. The experiment adds no runtime
+  exports and changes no image ABI or Frame layout.
 - Design 74 E1 (development-only): a `dev-guarded-slots` cargo feature on the
   floor, TCC rung and emitter adds guarded direct Machine slot access for
   generated StepMethods, selected per compiling process by
