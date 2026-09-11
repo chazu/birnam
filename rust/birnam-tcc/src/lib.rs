@@ -11,6 +11,11 @@ use birnam_abi::{
     IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
     foreign_address::{self, KIND_BORROWED},
 };
+use birnam_native_compiler::{
+    TccState, tcc_add_file, tcc_add_library, tcc_add_library_path, tcc_add_symbol,
+    tcc_compile_string, tcc_delete, tcc_get_symbol, tcc_new, tcc_output_file, tcc_relocate,
+    tcc_set_error_func, tcc_set_output_type,
+};
 use core::ffi::{c_char, c_int, c_void};
 #[cfg(feature = "dev-guarded-slots")]
 use core::ffi::c_long;
@@ -30,28 +35,6 @@ const TCC_OUTPUT_EXE: c_int = 2;
 const TCC_OUTPUT_OBJ: c_int = 3;
 const TCC_OUTPUT_DLL: c_int = 4;
 static LIVE_UNIT_STATES: AtomicUsize = AtomicUsize::new(0);
-
-#[repr(C)]
-struct TccState {
-    _private: [u8; 0],
-}
-
-type TccErrorFunc = unsafe extern "C" fn(*mut c_void, *const c_char);
-
-unsafe extern "C" {
-    fn tcc_new() -> *mut TccState;
-    fn tcc_delete(state: *mut TccState);
-    fn tcc_set_error_func(state: *mut TccState, opaque: *mut c_void, func: Option<TccErrorFunc>);
-    fn tcc_set_output_type(state: *mut TccState, output_type: c_int) -> c_int;
-    fn tcc_compile_string(state: *mut TccState, source: *const c_char) -> c_int;
-    fn tcc_add_library(state: *mut TccState, name: *const c_char) -> c_int;
-    fn tcc_add_library_path(state: *mut TccState, path: *const c_char) -> c_int;
-    fn tcc_add_file(state: *mut TccState, path: *const c_char) -> c_int;
-    fn tcc_add_symbol(state: *mut TccState, name: *const c_char, value: *const c_void) -> c_int;
-    fn tcc_output_file(state: *mut TccState, path: *const c_char) -> c_int;
-    fn tcc_relocate(state: *mut TccState) -> c_int;
-    fn tcc_get_symbol(state: *mut TccState, name: *const c_char) -> *mut c_void;
-}
 
 static VALIDATION_VEC_FACTORY: u8 = 0;
 

@@ -80,6 +80,7 @@ dependencies = [
  "birnam-abi",
  "birnam-artifact",
  "birnam-codegen",
+ "birnam-native-compiler",
  "sha2",
 ]
 
@@ -104,6 +105,13 @@ name = "birnam-lang"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+]
+
+[[package]]
+name = "birnam-native-compiler"
+version = "0.0.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -148,7 +156,7 @@ name = "birnam-tcc"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "cc",
+ "birnam-native-compiler",
 ]
 
 [[package]]

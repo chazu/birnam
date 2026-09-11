@@ -57,6 +57,31 @@ in debug/release, including GC slot mutation without dictionary invalidation.
 Seven host-gated timing pairs are inconclusive in every row; normal-path
 integration is deferred by the experiment's predeclared criterion. Full
 repository verification passes; ABI/image authorities remain unchanged.
+74H is committed as `5e242e70`. The follow-up
+[Design 74I](../design/74i-public-api-guard-boundary.md)
+(`birnam-deopt-api-boundary-75r`) confirms eight guard-boundary cases in twelve
+fresh C-client processes against ordinary debug/release floor builds. Vtable
+identity, overwrite callbacks and reflective lookup do not substitute for
+the private guard authority. The original stop was superseded on 2026-09-11:
+the user permits runtime-internal changes while preserving API/ABI, full
+malleability and expressibility in Id semantics.
+[Design 74J](../design/74j-internal-guarded-machine-sends.md)
+(`birnam-internal-guarded-sends-xpn`) implements guarded canonical Machine access
+inside the existing send implementation. Its two longer E1 timing attempts were
+rejected by host-load gates. [Design 74K](../design/74k-runtime-owned-native-tier.md)
+(`birnam-runtime-owned-native-tier-nqd`) implements native PC entries for eligible
+portable Blocks through existing staging and registration. Twelve paired
+debug/release cases prove activation and same-Frame recovery, including mutation,
+precise GC, nested entry, active replacement and executable-owner eviction.
+[Design 74L](../design/74l-guarded-default-lookup.md)
+(`birnam-guarded-default-lookup-d2e`) preserves current method dictionaries and
+custom lookup effects while optimizing canonical lookup. Full verification and
+compatibility gates pass. Seven controlled comparison groups qualify a 17.3%
+combined improvement on the smaller warm portable fixture, without an
+above-spread regression; the larger, fallback and control rows and incremental
+74K/74L gains remain inconclusive. The first production same-Frame tier is
+implemented; general inlining, unboxing, read caching and multicore work remain
+outside this slice. The floor gains about 603 KB from the native compiler.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

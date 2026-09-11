@@ -1,0 +1,480 @@
+{
+  "schema": "birnam-generated-frame-deopt-v1",
+  "design": "74G",
+  "result": "passed",
+  "baseline_commit": "439350920c1b674ea3301409cf908ef855304079",
+  "tested_head": "5e242e70400bfe4f52ccc5c1326cd2553130061b",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cc": "Apple clang version 16.0.0 (clang-1600.0.26.3)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "native_compile_flags": [
+    "-dynamiclib",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-function"
+  ],
+  "scope": "canonical CodeProgram; generated per-PC entries; real Runtime driver; test-local dylib adapter",
+  "performance_claim": null,
+  "host_gates_run": false,
+  "timing_scope": "single diagnostic sample per variant; includes instrumentation; no speedup qualification",
+  "compatibility_authorities_unchanged_from_baseline": {
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-id/src/registration.rs": "788ef52702a12cf27280f9e1cc181992d825f6d67d1508d4e0cfa7661447bf77",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb"
+  },
+  "source_sha256": {
+    "rust/birnam-id/src/runtime/guarded_lookup.rs": "0579635d703b9e2e1f7da538ad62c7a699a1aa061d36cd3f7e30584816a1f6d7",
+    "rust/birnam-id/src/runtime/guarded_lookup/tests.rs": "d9d39b0aa49c0914bd69fa552e938843ee4bbfea405bcbe860ee3d82f372a5d8",
+    "rust/birnam-id/src/runtime/native_tier.rs": "920ad681cc483d3410057f98416a769f0d184ade718f7b855753ff6f6e050097",
+    "rust/birnam-id/src/runtime/native_tier/shims.c": "306d091702a96093016c662c57012ff139ff9e53768fec9cd8e697413a0c6ca2",
+    "rust/birnam-id/src/runtime/native_tier/tests.rs": "95996162fda8a9d311c50e1a56634b3d26bbfdb5e6d012abf4771d60a521ba70",
+    "rust/birnam-native-compiler/Cargo.toml": "f1e6e5fee5d09013598ce4701731813ab48047d06ef072473a9143c6829f0963",
+    "rust/birnam-native-compiler/build.rs": "a9d3a2ef4902fbf5a8c9b6725602ea38913ad6bf21e81469564dcb60f72e68ff",
+    "rust/birnam-native-compiler/src/lib.rs": "e48ab670a2a7017ff75bec459cf8d18e270af2899d48a38122cc5290c18ec53c",
+    "rust/birnam-native-compiler/src/unit.rs": "bfec74d074778d72bffc934c21592c7f0f6c5ab672f402ccd3759c35870a6d2b",
+    "rust/birnam-id/src/execution.rs": "076368d06f438bf940026494e2975c7ab66f1163985d63f4c278b38e3ef1a771",
+    "rust/birnam-id/src/dispatch.rs": "f6f386a4c3c12f937103205011021b6cead1d55c0030637f2582f5a750cf8c2e",
+    "rust/birnam-id/src/vtable.rs": "af5fc093689cafcaef01577e29ff633b2b1e6d062f12b054eea4a5a04e05a5b7",
+    "rust/birnam-id/src/runtime/guarded_dispatch.rs": "90d63da78baf88a4260b700d26502169b38cf63c712aa0beb2cc1153a01aae6d",
+    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs": "e281de4834d3fa7881360d7125a99fd249ae6cbd68f093bf084d5dc2d3468fe7",
+    "Cargo.lock": "e9f7db63973423d9bca6c121b8fb4105829e4c5408d029e201dee2cafae690e5",
+    "rust/birnam-id/Cargo.toml": "41327174ba6e7ee4ef8bcfa065d1ffc3e60ecc5377873a0559ad61aa4a3f7fb3",
+    "rust/birnam-codegen/Cargo.toml": "9e14ca825667a297f3cf480b592ffd5a98c6fe40524eafe9651069d777604ca3",
+    "rust/birnam-codegen/src/resumable_c.rs": "668dfa18d6bc8c1bc2da0b08ece9025de308f50c22bc113bf2ac34734fd517db",
+    "rust/birnam-id/src/runtime.rs": "561fae14b14abe8b5d3780be63aeff1cba95ba16b834d7b56029b82db351b41e",
+    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "6aee35e3c587e8cf43e78f634039cb4a96504139355df48c49aa680ff783528d",
+    "rust/birnam-id/src/runtime/generated_deopt_program.rs": "2a0a2c8424ad29cfcc6d6687659befd70a78df876d1be6a05209d8d4bcea0fc9",
+    "rust/birnam-id/src/runtime/generated_deopt_adapter.c": "beffc686a0d16aaebf346fe6ec71ac9d141409b676b49d1294202d311cf25cff",
+    "rust/birnam-id/src/runtime/generated_deopt_baseline.c": "7e79b08acb8182559427600a0b6faa3e827de54c0f51b6fac74a59d3187e9730",
+    "scripts/generated-frame-deopt.py": "f5a27a819c81d276f62be1f40114239965536725f2b3f97b72924e8ee86d98cb"
+  },
+  "profiles": {
+    "debug": {
+      "cases": [
+        {
+          "case": "canonical",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 3,
+          "baseline_entries": 0,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalidate",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "replace-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "custom-lookup",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "precise-gc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-mismatch",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-collision",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalid-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "duplicate-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "missing-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-candidate-on-stack",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 1,
+          "baseline_entries": 2,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-baseline-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "repeated-load-retire",
+          "cycles": 16,
+          "unloads": 32,
+          "leaked_frames": 0,
+          "leaked_native_leases": 0
+        }
+      ],
+      "shape": {
+        "pcs": 3,
+        "slots": 9,
+        "carried_slot": 0,
+        "alias_slot": 1,
+        "root_words": [
+          103,
+          511,
+          503
+        ],
+        "descriptor_bytes": 1840,
+        "program_bytes": 970
+      },
+      "diagnostic_costs": [
+        {
+          "unit": "baseline",
+          "source_bytes": 6252,
+          "native_bytes": 33632,
+          "compile_ns": 117268750
+        },
+        {
+          "unit": "candidate",
+          "source_bytes": 6334,
+          "native_bytes": 33680,
+          "compile_ns": 54504542
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": false,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 15723375,
+          "optimized_entries": 0
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": true,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 23302334,
+          "optimized_entries": 384
+        }
+      ]
+    },
+    "release": {
+      "cases": [
+        {
+          "case": "canonical",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 3,
+          "baseline_entries": 0,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalidate",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "replace-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "custom-lookup",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "precise-gc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-mismatch",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-collision",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalid-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "duplicate-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "missing-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-candidate-on-stack",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 1,
+          "baseline_entries": 2,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-baseline-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "repeated-load-retire",
+          "cycles": 16,
+          "unloads": 32,
+          "leaked_frames": 0,
+          "leaked_native_leases": 0
+        }
+      ],
+      "shape": {
+        "pcs": 3,
+        "slots": 9,
+        "carried_slot": 0,
+        "alias_slot": 1,
+        "root_words": [
+          103,
+          511,
+          503
+        ],
+        "descriptor_bytes": 1840,
+        "program_bytes": 970
+      },
+      "diagnostic_costs": [
+        {
+          "unit": "baseline",
+          "source_bytes": 6252,
+          "native_bytes": 33632,
+          "compile_ns": 52116709
+        },
+        {
+          "unit": "candidate",
+          "source_bytes": 6334,
+          "native_bytes": 33680,
+          "compile_ns": 50858125
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": false,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 958000,
+          "optimized_entries": 0
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": true,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 606375,
+          "optimized_entries": 384
+        }
+      ]
+    }
+  }
+}

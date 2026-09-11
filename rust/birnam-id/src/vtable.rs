@@ -169,6 +169,11 @@ impl Vtables {
         self.mutation_epoch
     }
 
+    #[cfg(test)]
+    pub(crate) fn exhaust_mutation_epoch_for_test(&mut self) {
+        self.mutation_epoch = u64::MAX;
+    }
+
     pub(crate) fn note_mutation(&mut self) {
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
     }

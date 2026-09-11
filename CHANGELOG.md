@@ -10,6 +10,14 @@ loader ports are complete.
 
 ### Added
 
+- Eligible portable Blocks can use runtime-owned native PC entries and recover
+  through their original active Frame after invalidation (Design 74K).
+  Ordinary staging and registration remain unchanged. Native code stays alive
+  through GC, nested calls, active replacement and cache eviction.
+  `mise run native-tier-test` checks recovery and guarded lookup in debug/release.
+- `mise run deopt-api-experiment` checks Design 74I's guard substitutes through
+  the frozen IdApi against ordinary floor builds. Native mutation and custom
+  lookup counterexamples identify the guard-authority boundary for promotion.
 - `mise run read-reuse-experiment` runs Design 74H's development-only guarded
   Frame-read reuse experiment. Debug/release cases include GC callbacks that
   mutate cached slots without dictionary changes. Seven controlled timing
@@ -18,9 +26,9 @@ loader ports are complete.
 - `mise run generated-deopt-experiment` runs Design 74G: compiler-generated
   per-PC entries recover to their original baseline through the real driver.
   The test checks colored Frame state, precise GC, invalidation and actual
-  native-library retirement in debug and release. PC specialization is a
-  development compiler feature; runtime selection is test-only, with the
-  existing ABI and image contract preserved.
+  native-library retirement in debug and release. This experiment retains its
+  test-only selector; Design 74K separately admits eligible portable programs
+  in ordinary execution, with the existing ABI and image contract preserved.
 - `mise run deopt-experiment` runs Design 74F's test-only same-frame recovery
   experiment in debug and release. The real Runtime driver switches from a
   static optimized entry to its original baseline on invalidation, preserving
@@ -30,8 +38,9 @@ loader ports are complete.
   floor, TCC rung and emitter adds guarded direct Machine slot access for
   generated StepMethods, selected per compiling process by
   `BIRNAM_DEV_GUARDED_SLOTS=1`, with a resumable loop fixture and driver.
-  Ordinary builds are unchanged; the runtime ABI hash and export surfaces are
-  untouched. Every vtable now carries a dictionary-mutation epoch.
+  These development shims remain absent from ordinary builds; the runtime ABI
+  hash and export surfaces are untouched. Every vtable now carries a
+  dictionary-mutation epoch.
 - Development-only slot-index box elision on the guarded path (Design 74D,
   `BIRNAM_DEV_ELIDE_SLOT_BOX=1` on top of the E1 selection): the floor
   answers slot accesses from an unboxed index on a guard hit and performs
@@ -40,6 +49,13 @@ loader ports are complete.
 
 ### Changed
 
+- Ordinary sends guard canonical Machine slot access and default lookup inside
+  the runtime (Designs 74J/74L). Current methods, inheritance, custom lookup and
+  native/resumable overrides retain their effects. IdApi, exported functions,
+  primitive semantics and Frame/image formats remain unchanged. Seven controlled
+  groups qualify a 17.3% combined improvement on the smaller warm portable
+  fixture, with no above-spread regression; other rows and separate PC/lookup
+  gains are inconclusive. The native compiler adds about 603 KB to the floor.
 - Release acceptance for v0.15 judges micro-layer comparator flags by their
   raw per-operation medians (Design 60HC): a flag is accepted when raw time is
   within the 10% micro allowance or moved by less than the case's own

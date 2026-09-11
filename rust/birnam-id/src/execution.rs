@@ -2741,6 +2741,12 @@ impl ExecutionState {
         Ok(true)
     }
 
+    /// Non-effectful guard query. Presence includes unpublished and retiring
+    /// entries: their normal classification may fail or require a lease.
+    pub(crate) fn has_resumable_thunk(&self, method: MethodAddress) -> bool {
+        self.resumable_by_thunk.contains_key(&method.as_oop().addr())
+    }
+
     pub(crate) fn classify_resumable(
         &mut self,
         method: MethodAddress,

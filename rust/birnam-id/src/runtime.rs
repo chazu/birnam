@@ -33,6 +33,9 @@ use crate::vtable::{AddMethod, Vtables};
 mod deopt_experiment;
 #[cfg(all(test, target_os = "macos"))]
 mod generated_deopt_experiment;
+mod guarded_dispatch;
+mod guarded_lookup;
+mod native_tier;
 
 static FRAME_VIEW_LAYOUT: [u8; 1] = [SLOT_OOP];
 
@@ -193,6 +196,8 @@ pub(crate) struct Runtime {
     // Design 74A §3.2: the vtable mutation epoch at which the guarded-slot
     // conditions 2–4 were last verified, and their verdict at that epoch.
     slot_guard_cache: Cell<(u64, bool)>,
+    lookup_guard_cache: Cell<(u64, bool)>,
+    native_tier: core::cell::RefCell<native_tier::Registry>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
     #[cfg(all(test, target_os = "macos"))]
@@ -370,6 +375,8 @@ impl Runtime {
             collection_phase: Cell::new(CollectionPhase::Idle),
             entry_scopes: UnsafeCell::new(Vec::new()),
             slot_guard_cache: Cell::new((u64::MAX, false)),
+            lookup_guard_cache: Cell::new((u64::MAX, false)),
+            native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
             #[cfg(all(test, target_os = "macos"))]
@@ -696,16 +703,32 @@ impl Runtime {
         let Some(objects) = state.execution.objects() else {
             return false;
         };
+        if Vtables::checked_vtable_of(&state.heap, machine) != objects.machine_vtable {
+            return false;
+        }
+        // Native registration can change invocation classification without a
+        // dictionary mutation. Never bypass a registered resumable carrier,
+        // including one using a canonical floor function's address.
+        if [
+            crate::execution::machine_oop_at as Method,
+            crate::execution::machine_oop_at_put as Method,
+            crate::dispatch::vtable_lookup_method as Method,
+        ]
+        .iter()
+        .any(|method| state.execution.has_resumable_thunk(MethodAddress::from_method(*method)))
+        {
+            return false;
+        }
         let epoch = state.vtables.mutation_epoch();
         let (verified_epoch, verified) = self.slot_guard_cache.get();
-        let verified = if verified_epoch == epoch {
+        let verified = if epoch != u64::MAX && verified_epoch == epoch {
             verified
         } else {
             let verdict = Self::slot_guard_conditions_hold(state, &objects);
             self.slot_guard_cache.set((epoch, verdict));
             verdict
         };
-        verified && Vtables::checked_vtable_of(&state.heap, machine) == objects.machine_vtable
+        verified
     }
 
     fn slot_guard_conditions_hold(
@@ -2458,6 +2481,7 @@ impl Runtime {
         state.staged_resumable_publications = Some(Vec::new());
         state.staged_resumable_claims = Some(vec![None; staged.entry_count()]);
         state.staged_resumable_unit = Some(staged);
+        self.native_tier.borrow_mut().end_stage();
         true
     }
 
@@ -2508,6 +2532,7 @@ impl Runtime {
         state.staged_resumable_publications = Some(Vec::new());
         state.staged_resumable_claims = Some(vec![None; staged.entry_count()]);
         state.staged_resumable_unit = Some(staged);
+        self.native_tier.borrow_mut().stage(programs, bindings, selection, manifest, authority);
         true
     }
 
@@ -2521,6 +2546,7 @@ impl Runtime {
 
     fn close_staged_resumable_unit(&self, commit: bool) -> bool {
         self.assert_owner();
+        self.native_tier.borrow_mut().end_stage();
         // SAFETY: owner-thread point mutation with no callback.
         let state = unsafe { &mut *self.state.get() };
         let Some(staged) = state.staged_resumable_unit.take() else {
@@ -2712,7 +2738,7 @@ impl Runtime {
         self.assert_owner();
         match envelope.operation() {
             PREPARE_V1 => {
-                let descriptor = {
+                let (descriptor, optimizer_descriptor_bytes) = {
                     // SAFETY: immutable owner-thread access. The returned
                     // descriptor borrow is bounded by this synchronous call.
                     let state = unsafe { &*self.state.get() };
@@ -2744,8 +2770,9 @@ impl Runtime {
                     let Ok(descriptor) = descriptor else {
                         return crate::registration::REJECTED_V1;
                     };
-                    descriptor
+                    (descriptor, bytes.to_vec())
                 };
+                let optimizer_descriptor = descriptor.clone();
                 let Some(binding) = descriptor.v2_entry_binding() else {
                     return crate::registration::REJECTED_V1;
                 };
@@ -2838,6 +2865,11 @@ impl Runtime {
                     code_generation_identity: envelope.code_generation_identity(),
                 });
                 envelope.set_registration_token(token);
+                self.native_tier.borrow_mut().register(
+                    envelope.manifest_entry_index() as usize,
+                    &optimizer_descriptor_bytes,
+                    &optimizer_descriptor,
+                );
                 crate::registration::OK_V1
             }
             ABORT_V1 => {
@@ -3458,7 +3490,7 @@ impl Runtime {
     ) -> Result<Oop, ExecutionError> {
         loop {
             // Copy all invocation inputs before crossing into generated code.
-            let (method, program_counter, argument_count) = unsafe {
+            let (method, program_counter, argument_count, descriptor_key) = unsafe {
                 let state = &*self.state.get();
                 let machine_state = state.execution.machine(owner, capability)?;
                 let frame = machine_state
@@ -3470,6 +3502,7 @@ impl Runtime {
                     descriptor.step_method(),
                     machine_state.arena().program_counter(frame)?,
                     descriptor.driver_argument_count(),
+                    descriptor as *const FrameDescriptor as usize,
                 )
             };
             let resume_token = if argument_count == 1 {
@@ -3490,6 +3523,8 @@ impl Runtime {
                 generated_deopt_experiment::select(self, capability, owner, machine, method)?;
             #[cfg(all(test, target_os = "macos"))]
             let method = selected.method;
+            let native_selected = native_tier::select(self, machine, descriptor_key, program_counter);
+            let method = native_selected.as_ref().map_or(method, |selected| selected.method);
             let action = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {
@@ -3506,6 +3541,7 @@ impl Runtime {
             // The selected executable must stay mapped until native return.
             #[cfg(all(test, target_os = "macos"))]
             drop(selected);
+            drop(native_selected);
 
             let decoded = unsafe {
                 let state = &*self.state.get();
@@ -4200,6 +4236,7 @@ impl Runtime {
             heap.reset_allocation_bytes();
         }
         drop(collection_guard);
+        self.native_tier.borrow_mut().prune();
         reclaimed
     }
 

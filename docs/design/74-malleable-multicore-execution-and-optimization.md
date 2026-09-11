@@ -23,6 +23,24 @@
 > [74H](74h-guarded-frame-read-reuse.md) then implements guarded repeated-read
 > reuse within a PC, including GC invalidation. Correctness passes; seven
 > host-gated timing pairs are inconclusive, so normal integration is deferred.
+> 74H is committed as `5e242e70`. [74I](74i-public-api-guard-boundary.md) checks
+> guard substitutes through the frozen IdApi against ordinary floor builds.
+> Eight cases agree across twelve fresh processes. The original stop treated
+> all runtime-internal changes as forbidden. On 2026-09-11 the user clarified
+> that internals may change while API/ABI, full malleability and expressibility
+> in Id semantics remain intact. [74J](74j-internal-guarded-machine-sends.md)
+> implements guarded execution inside ordinary sends under that constraint.
+> [74K](74k-runtime-owned-native-tier.md) adds runtime-owned native PC entries
+> for eligible portable Blocks through unchanged staging and registration.
+> Same-Frame fallback, mutation, precise GC, active replacement, nested entry
+> and native-owner eviction pass in debug and release. [74L](74l-guarded-default-lookup.md)
+> adds guarded canonical lookup with a fresh dictionary read on every send.
+> The combined ordinary release candidate is 17.3% faster than `5e242e70` on
+> the 1,024-iteration warm portable fixture, above observed variation, with no
+> above-spread regression. Other candidate comparisons and the incremental
+> 74K/74L gains are inconclusive. All compatibility and full-prefix gates pass.
+> This completes the first production same-Frame tier; general inlining,
+> unboxing, 74H read caching and multicore execution remain unimplemented or deferred.
 
 ## 1. Decision criteria and direction
 
@@ -690,7 +708,8 @@ must not embed Darwin assumptions into portable executable meaning.
 | Same-frame deoptimization at existing boundaries | Authorized and executed 2026-09-10 as [Design 74F](74f-same-frame-deoptimization-experiment.md): ten baseline/candidate cases and 256 repeated trials pass in debug and release; test-only static entries, unchanged ABI and descriptor-v2 Frames |
 | Compiler-generated same-frame deoptimization | Authorized and executed 2026-09-10 as [Design 74G](74g-generated-same-frame-deoptimization.md): per-PC specialization from one CodeProgram, colored Frame recovery, precise GC and native unload checks; debug/release observations agree and the full repository gate passes |
 | Guarded repeated Frame reads within a PC | Authorized and executed as [Design 74H](74h-guarded-frame-read-reuse.md): debug/release semantics agree, including GC slot mutation without dictionary invalidation; seven controlled timing pairs are inconclusive, so integration is deferred |
-| Inlining, unboxing, or production optimized-tier admission | Future possibilities requiring separate proof and implementation review |
+| Runtime-owned optimized-tier admission | Implemented as [74K](74k-runtime-owned-native-tier.md) for eligible portable Blocks; unchanged registration, exact baseline descriptor and same-Frame recovery. Combined ordinary-prefix qualification and guarded canonical lookup are recorded in [74L](74l-guarded-default-lookup.md); no independent PC-specialization speedup is claimed |
+| Inlining or unboxing | Future possibilities requiring separate proof and implementation review |
 | Objective-C execution comparison | Comparative evidence, not promised parity or a runtime dependency |
 
 This inquiry pauses implementation selection from the earlier performance

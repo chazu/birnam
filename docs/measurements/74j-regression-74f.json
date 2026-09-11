@@ -1,0 +1,270 @@
+{
+  "schema": "birnam-same-frame-deopt-v1",
+  "design": "74F",
+  "baseline_commit": "5e242e70400bfe4f52ccc5c1326cd2553130061b",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "scope": "test-only static native entries; real Runtime driver; descriptor-v2",
+  "result": "passed",
+  "performance_claim": null,
+  "compatibility_authorities_unchanged_from_head": {
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-id/src/registration.rs": "788ef52702a12cf27280f9e1cc181992d825f6d67d1508d4e0cfa7661447bf77",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb"
+  },
+  "source_sha256": {
+    "rust/birnam-id/src/execution.rs": "076368d06f438bf940026494e2975c7ab66f1163985d63f4c278b38e3ef1a771",
+    "rust/birnam-id/src/dispatch.rs": "9b0c9f163e8819377e3f5afe5489f79f932addfcfdeaec918937a275309144ab",
+    "rust/birnam-id/src/vtable.rs": "af5fc093689cafcaef01577e29ff633b2b1e6d062f12b054eea4a5a04e05a5b7",
+    "rust/birnam-id/src/runtime/guarded_dispatch.rs": "90d63da78baf88a4260b700d26502169b38cf63c712aa0beb2cc1153a01aae6d",
+    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs": "e281de4834d3fa7881360d7125a99fd249ae6cbd68f093bf084d5dc2d3468fe7",
+    "rust/birnam-id/src/runtime.rs": "480f25d1e4819d79e79e7c168f82e0b0eaf4dff7c9a60dfd16521ec5b9e9bed8",
+    "rust/birnam-id/src/runtime/deopt_experiment.rs": "1457bd8cd9e0dc607022c39a561d235fedd9626c77a7bb4533eb25388f7436cb",
+    "scripts/same-frame-deopt.py": "40fb259e6e91c2cc58753726e22d548deb923f875d62b0a0c9ad591f185e674d"
+  },
+  "profiles": {
+    "debug": [
+      {
+        "case": "canonical",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 2,
+        "deoptimizations": 0,
+        "candidate_reads": 2,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "before-entry",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 0,
+        "deoptimizations": 0,
+        "candidate_reads": 4,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "mutation-restored",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "custom-lookup",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "machine-override",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "replace-active",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "precise-gc",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "nested-entry",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "missing-recovery-pc",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "descriptor-collision",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 0,
+        "deoptimizations": 0,
+        "candidate_reads": 4,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "repeated-trials",
+        "trials": 256,
+        "pins_after": 0,
+        "trial_records_after": 0,
+        "descriptor_references_balanced": true
+      }
+    ],
+    "release": [
+      {
+        "case": "canonical",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 2,
+        "deoptimizations": 0,
+        "candidate_reads": 2,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "before-entry",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 0,
+        "deoptimizations": 0,
+        "candidate_reads": 4,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "mutation-restored",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "custom-lookup",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "machine-override",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "replace-active",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "precise-gc",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "nested-entry",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "missing-recovery-pc",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 1,
+        "deoptimizations": 1,
+        "candidate_reads": 3,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "descriptor-collision",
+        "answer": 28,
+        "effects_equal": true,
+        "optimized_entries": 0,
+        "deoptimizations": 0,
+        "candidate_reads": 4,
+        "baseline_reads": 4,
+        "same_frame": true,
+        "pins_after": 0
+      },
+      {
+        "case": "repeated-trials",
+        "trials": 256,
+        "pins_after": 0,
+        "trial_records_after": 0,
+        "descriptor_references_balanced": true
+      }
+    ]
+  }
+}

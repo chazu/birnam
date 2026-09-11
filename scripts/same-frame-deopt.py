@@ -27,13 +27,24 @@ CONTRACTS = [
     "rust/birnam-abi/src/lib.rs",
     "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs",
-    "rust/birnam-id/src/execution.rs",
     "rust/birnam-id/src/registration.rs",
     "rust/birnam-artifact/src/frame_descriptor.rs",
 ]
 # 74G changes the development emitter. Its ordinary output is checked against
 # the committed C golden by the generated experiment; it is not an ABI authority.
+# 74J permits internal runtime changes. Frozen ABI/image/descriptor authorities
+# remain above; execution implementation is recorded as source evidence below.
 SOURCES = [
+    "rust/birnam-id/src/runtime/guarded_lookup.rs",
+    "rust/birnam-id/src/runtime/guarded_lookup/tests.rs",
+    "rust/birnam-id/src/runtime/native_tier.rs",
+    "rust/birnam-id/src/runtime/native_tier/shims.c",
+    "rust/birnam-id/src/runtime/native_tier/tests.rs",
+    "rust/birnam-native-compiler/Cargo.toml", "rust/birnam-native-compiler/build.rs",
+    "rust/birnam-native-compiler/src/lib.rs", "rust/birnam-native-compiler/src/unit.rs",
+    "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/dispatch.rs",
+    "rust/birnam-id/src/vtable.rs", "rust/birnam-id/src/runtime/guarded_dispatch.rs",
+    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs",
     "rust/birnam-id/src/runtime.rs",
     "rust/birnam-id/src/runtime/deopt_experiment.rs",
     "scripts/same-frame-deopt.py",

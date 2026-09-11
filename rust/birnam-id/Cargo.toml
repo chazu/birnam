@@ -8,6 +8,8 @@ publish = false
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { path = "../birnam-artifact", default-features = false }
+birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization"] }
+birnam-native-compiler = { path = "../birnam-native-compiler" }
 sha2.workspace = true
 
 [dev-dependencies]

@@ -7,9 +7,7 @@ publish = false
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
-
-[build-dependencies]
-cc.workspace = true
+birnam-native-compiler = { path = "../birnam-native-compiler" }
 
 [features]
 # Design 74 E1: development-only guarded slot-access shims for generated code.

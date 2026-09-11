@@ -1,0 +1,55 @@
+// 74K: normal portable materialization, warm calls and subsequent mutation.
+[System load: "modules/time.birnam"];
+[System load: "modules/os.birnam"];
+[Alien wrap: "getenv" signature: "s s" as: #tierGetenv on: String];
+let text := ["NATIVE_TIER_ITERATIONS" tierGetenv];
+let parsed := [0 asCell];
+[0 to: [[text size] - 1] do: [:i |
+  [parsed set: [[[parsed value] * 10] + [[text byteAt: i] - 48]]]]];
+let count := [parsed value];
+[Reflect defineMethod: #tierAdvance: on: Integer as: [:self :amount | [self + amount]]];
+let sourced := [:input |
+  let first := [input tierAdvance: 1];
+  let second := [first tierAdvance: 2];
+  [second tierAdvance: 3]];
+let object := [[sourced codeObject] withoutSourceProvenance];
+let start := [Time monotonicMicros];
+let block := [Codegen materializeResumable: object captures: #[]];
+let materialize := [[Time monotonicMicros] - start];
+[[block isError] ifTrue: [| [System println: "tier-materialization-failed"]; [OS exit: 1]] ifFalse: [| nil]];
+[[[block codeObject] == object] ifTrue: [| nil] ifFalse: [| [OS exit: 2]]];
+let firstStart := [Time monotonicMicros];
+let firstAnswer := [block value: 7];
+let firstTime := [[Time monotonicMicros] - firstStart];
+let warmStart := [Time monotonicMicros];
+[32 timesRepeat: [| [block value: 7]]];
+let warmupTime := [[Time monotonicMicros] - warmStart];
+let answer := [0 asCell];
+let samples := [#[] asCell];
+[5 timesRepeat: [|
+  let before := [Time monotonicMicros];
+  [count timesRepeat: [| [answer set: [block value: 7]]]];
+  [samples set: [[samples value] add: [[Time monotonicMicros] - before]]]]];
+[[[[answer value] = 13] & [firstAnswer = 13]] ifTrue: [| nil] ifFalse: [| [OS exit: 3]]];
+[System println: "tier-ready"];
+[System println: ["materialize-us " , [materialize printString]]];
+[System println: ["first-us " , [firstTime printString]]];
+[System println: ["warmup-us " , [warmupTime printString]]];
+[System println: ["warm-us " , [[[[samples value] sortBy: [:x | x]] at: 2] printString]]];
+[Reflect defineMethod: #tierAdvance: on: Integer as: [:self :amount | [[self + amount] + 100]]];
+let after := [block value: 7];
+[[after = 313] ifTrue: [| nil] ifFalse: [| [OS exit: 4]]];
+let helper := ["BIRNAM_74J_HELPER" tierGetenv];
+[[helper isNil] ifTrue: [| nil] ifFalse: [| [System loadModule: helper]]];
+[32 timesRepeat: [| [block value: 7]]];
+let fallback := [#[] asCell];
+[5 timesRepeat: [|
+  let before := [Time monotonicMicros];
+  [count timesRepeat: [| [answer set: [block value: 7]]]];
+  [fallback set: [[fallback value] add: [[Time monotonicMicros] - before]]]]];
+[[[answer value] = 313] ifTrue: [| nil] ifFalse: [| [OS exit: 6]]];
+[System println: ["fallback-us " , [[[[fallback value] sortBy: [:x | x]] at: 2] printString]]];
+[Codegen evictMaterializations];
+[System gc];
+[[[block value: 7] = 313] ifTrue: [| nil] ifFalse: [| [OS exit: 5]]];
+[System println: "tier-mutation-and-eviction-ok"];

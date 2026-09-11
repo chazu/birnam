@@ -47,6 +47,14 @@ run = "python3 scripts/generated-frame-deopt.py"
 description = "Run Design 74H guarded Frame read reuse correctness checks"
 run = "python3 scripts/frame-read-reuse.py"
 
+[tasks.deopt-api-experiment]
+description = "Run Design 74I guard-boundary checks through the frozen IdApi"
+run = "python3 scripts/deopt-public-api.py"
+
+[tasks.native-tier-test]
+description = "Check portable native-tier recovery and guarded lookup in debug and release"
+run = "python3 scripts/runtime-native-tier.py --design 74L --output .cargo-target/native-tier-correctness.json"
+
 [tasks.rust-dylib-audit]
 description = "Audit Rust floor dependencies, install name, paths, and exports"
 run = "bash scripts/rust-dylib-audit.sh"

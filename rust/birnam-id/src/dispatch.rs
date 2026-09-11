@@ -34,6 +34,13 @@ impl Runtime {
             return unsafe { self.lookup_method_active(globals.vtable_vt, globals.lookup) };
         }
 
+        if self.guarded_default_lookup_eligible(receiver_vtable) {
+            // The canonical lookup Method performs precisely this lookup.
+            // No callback or allocation separates the guard from the read;
+            // ordinary target classification and invocation still follow.
+            return unsafe { self.lookup_method_active(receiver_vtable, selector) };
+        }
+
         let lookup_args = [selector];
         // SAFETY: the one-element buffer is live for the synchronous send.
         let encoded_method = unsafe {
@@ -72,6 +79,13 @@ impl Runtime {
             // SAFETY: send_abi requires count live Oops when count is nonzero.
             unsafe { core::slice::from_raw_parts(args, count) }
         };
+
+        // The original operands and outer dispatch lease are already live.
+        // An ineligible access continues through the unmodified metacircular
+        // resolver, including native/resumable overrides and their effects.
+        if let Some(answer) = self.try_guarded_machine_send(receiver, selector, arguments) {
+            return answer;
+        }
 
         let target = self
             .resolve_stackless_target(receiver, selector)

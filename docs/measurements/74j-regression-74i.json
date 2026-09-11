@@ -1,0 +1,1009 @@
+{
+  "schema": "birnam-deopt-public-api-v1",
+  "design": "74I",
+  "baseline_commit": "5e242e70400bfe4f52ccc5c1326cd2553130061b",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cc": "Apple clang version 16.0.0 (clang-1600.0.26.3)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "compatibility_authorities_unchanged": {
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "abi/idapi-v1.json": "259ed86dad175a31602cae07bf37fb2433e7e419710e224586f1808d4ec2615c",
+    "abi/fixtures/idapi-v1/idapi_v1.h": "2bde843b9ba54dabeec4be229ae374f7062b6ef7e8a734714aa9eab22d23cc12",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-id/src/registration.rs": "788ef52702a12cf27280f9e1cc181992d825f6d67d1508d4e0cfa7661447bf77",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb"
+  },
+  "source_sha256": {
+    "Cargo.lock": "cd0104090e7ac35ed327135f33b4589e174654e236e5142e93a2a203b8ca5a7c",
+    "Cargo.toml": "bcbb39502e83b02b63abbc599e262568bce722b08ce0f05f407792f44da74fe6",
+    "rust/birnam-abi/Cargo.toml": "7b11d1c250613d3181cc6255bdc9ecdd3231a487864d7a0e5878e8d07e864e3b",
+    "rust/birnam-abi/src/foreign_address.rs": "d57b6d0e04a47e915bab097891923bc4852e9ede062c7f56c436b362134df716",
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-abi/src/private.rs": "151cc74cfef9cf25244b040258e840cef7157827b7ac91924d983ea4629c5ffd",
+    "rust/birnam-artifact/Cargo.toml": "8371c97b9802d33acbae2d6e7d818777823d1991c42c5fd23a3e5abac68b7b93",
+    "rust/birnam-artifact/src/candidate.rs": "8072654bc78f418e5883bfb471a50bf7a32f5174268f123af4540e077fc3332c",
+    "rust/birnam-artifact/src/code_binding_inventory.rs": "48c0b7debbdfde0669409d35a6b389d641b6441c2c5800a4cd636436fc260e13",
+    "rust/birnam-artifact/src/digest.rs": "2635c31eb297bfe1e624d1fb7d2a8bc91e6983f506dd13879ce9ea6d1c685cf9",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb",
+    "rust/birnam-artifact/src/lib.rs": "c9dc8e1ba5bd26f36340b48cc68a9923009a15aed2d1f09f840bbfd25abf390f",
+    "rust/birnam-artifact/src/materialization_selection.rs": "b09137d633714e50611dd93fde98258b09e20ff3285ef10e2fac4cc5f7126d71",
+    "rust/birnam-artifact/src/module.rs": "2aa33ef2a4ac24ee8660f825f38d10707d79c71a465cf79bab96f96144916557",
+    "rust/birnam-artifact/src/portable_inventory.rs": "8f2ec3347ab3b29bd7425929f43d59e26e8107bc54ff1be089d8bd920cc67ad2",
+    "rust/birnam-artifact/src/portable_program.rs": "77fce44ef44b09e230003d74f1a41925d4e3ef807a4c373c570149a781cfba5b",
+    "rust/birnam-artifact/src/portable_resumable_manifest.rs": "e4feb032843a2aa96ed8a1469f0e915d534e7a2f2dfd69cd7ab34c659d9a22f0",
+    "rust/birnam-artifact/src/resumable_manifest.rs": "3d287cb7f51da5611734ac521ca95303e15d3aaaf9ce29b804a375d26dba67b8",
+    "rust/birnam-artifact/src/stackless_selection.rs": "0ececcd4d8b03135523a058dff60399cad1aa3bbcba6a03c2a9945079e914f2e",
+    "rust/birnam-artifact/src/wire.rs": "054e10ed96d5e5ced9f9f29043c2053ab2c482cc7c71b801e0fd20ecbbb9963b",
+    "rust/birnam-id/Cargo.toml": "619642b9d1840d6b1f584867e0efc6cb2d42a0a371eecda51a469ad4d7344acd",
+    "rust/birnam-id/build.rs": "dcf4ab7621a178d5aea01a09e834895f954afdcd43de5aea6074f3f391a235d1",
+    "rust/birnam-id/src/boundary.rs": "72751545ba223655cdf4d93f56329d4bc219c17ba06aa1f673f2bcc4fc4edee2",
+    "rust/birnam-id/src/dev_slot_access.rs": "157a15ca77f9d740315a134f5b379ab38efb3a6f6ab0c45f2b5bfd4436498427",
+    "rust/birnam-id/src/dispatch.rs": "9b0c9f163e8819377e3f5afe5489f79f932addfcfdeaec918937a275309144ab",
+    "rust/birnam-id/src/env.rs": "cce4ddf7bb50c4bf3effccc2c1974d8bcdfdc720df54eac2a83a29ac66c3e11c",
+    "rust/birnam-id/src/execution.rs": "076368d06f438bf940026494e2975c7ab66f1163985d63f4c278b38e3ef1a771",
+    "rust/birnam-id/src/gc.rs": "6d777d58d7112d75fe36051bb8412f8363ebf0130ab3e5159e0c3a644f0e0a97",
+    "rust/birnam-id/src/heap.rs": "8b835839b17508c45778d1758dcd57f691d949cb07bf304356e2078dc03c8e8e",
+    "rust/birnam-id/src/lib.rs": "f6d99630137ab94f268a0de4ddde7d77db700cca60bf380db720f2ccd0f5087a",
+    "rust/birnam-id/src/loader.rs": "fe36b2710c74e7ee603e4af71c935bb1442cc3f0219382ac71faf44385d40c60",
+    "rust/birnam-id/src/membership_bench.rs": "4b91fa5a6de233c48bf35a40bcc206e932a37c2c51a09ed49473248d702cdace",
+    "rust/birnam-id/src/public_api.rs": "cc6dcf287a308e31210f4e9b13fa85313bb0b7b5c8f288821c63c539fa5b6fe4",
+    "rust/birnam-id/src/raw.rs": "f300afefda63ab7800b57c6dc0fbe1f84e94327927aa589c937d47b39ccad092",
+    "rust/birnam-id/src/registration.rs": "788ef52702a12cf27280f9e1cc181992d825f6d67d1508d4e0cfa7661447bf77",
+    "rust/birnam-id/src/runtime.rs": "480f25d1e4819d79e79e7c168f82e0b0eaf4dff7c9a60dfd16521ec5b9e9bed8",
+    "rust/birnam-id/src/runtime/deopt_experiment.rs": "1457bd8cd9e0dc607022c39a561d235fedd9626c77a7bb4533eb25388f7436cb",
+    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "6aee35e3c587e8cf43e78f634039cb4a96504139355df48c49aa680ff783528d",
+    "rust/birnam-id/src/runtime/generated_deopt_program.rs": "2a0a2c8424ad29cfcc6d6687659befd70a78df876d1be6a05209d8d4bcea0fc9",
+    "rust/birnam-id/src/runtime/guarded_dispatch.rs": "90d63da78baf88a4260b700d26502169b38cf63c712aa0beb2cc1153a01aae6d",
+    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs": "e281de4834d3fa7881360d7125a99fd249ae6cbd68f093bf084d5dc2d3468fe7",
+    "rust/birnam-id/src/runtime/read_reuse_experiment.rs": "8050985e2fe61459c40409cab8417399895967c5d79575dc7bfb3fd2f4784a3b",
+    "rust/birnam-id/src/symbol.rs": "2f274a7a8f65c96fe3f71cb5f8c6f73c46c7af32d74aa4d58f18afa090079099",
+    "rust/birnam-id/src/values.rs": "03e582c22c286ea4553e83dae0630c4dd679798c285a3dc49148b01069047df3",
+    "rust/birnam-id/src/vtable.rs": "af5fc093689cafcaef01577e29ff633b2b1e6d062f12b054eea4a5a04e05a5b7",
+    "scripts/deopt-public-api.py": "6ed05c3c519ac0044e6630756b7965992ed16036faa50a1823ec0c455cd64d74",
+    "scripts/fixtures/deopt-public-api.c": "1ed58d9e8af265963e14e1764144bc7d3ee311cdc9d0424383a552be148f652e"
+  },
+  "scope": "external frozen-IdApi C client; ordinary floor; no optimizer integration or timing claim",
+  "runs": [
+    {
+      "floor_profile": "debug",
+      "c_optimization": "-O0",
+      "repetition": 1,
+      "floor_sha256": "2cf15143ccdc5b1723085353dda8f11d5cdc279b326f35b0b7c48fd7cd55e602",
+      "client_sha256": "f6f6450d0578f4adcd90ae20f54d3095b4e9e1ce45d0b683d42153c1c34d6c45",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "debug",
+      "c_optimization": "-O0",
+      "repetition": 2,
+      "floor_sha256": "2cf15143ccdc5b1723085353dda8f11d5cdc279b326f35b0b7c48fd7cd55e602",
+      "client_sha256": "f6f6450d0578f4adcd90ae20f54d3095b4e9e1ce45d0b683d42153c1c34d6c45",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "debug",
+      "c_optimization": "-O0",
+      "repetition": 3,
+      "floor_sha256": "2cf15143ccdc5b1723085353dda8f11d5cdc279b326f35b0b7c48fd7cd55e602",
+      "client_sha256": "f6f6450d0578f4adcd90ae20f54d3095b4e9e1ce45d0b683d42153c1c34d6c45",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "debug",
+      "c_optimization": "-O2",
+      "repetition": 1,
+      "floor_sha256": "2cf15143ccdc5b1723085353dda8f11d5cdc279b326f35b0b7c48fd7cd55e602",
+      "client_sha256": "0837d1a41d0c9382dd36be6ef26ad52d4a404b35b00ebb8af1ff9663e31814e3",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "debug",
+      "c_optimization": "-O2",
+      "repetition": 2,
+      "floor_sha256": "2cf15143ccdc5b1723085353dda8f11d5cdc279b326f35b0b7c48fd7cd55e602",
+      "client_sha256": "0837d1a41d0c9382dd36be6ef26ad52d4a404b35b00ebb8af1ff9663e31814e3",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "debug",
+      "c_optimization": "-O2",
+      "repetition": 3,
+      "floor_sha256": "2cf15143ccdc5b1723085353dda8f11d5cdc279b326f35b0b7c48fd7cd55e602",
+      "client_sha256": "0837d1a41d0c9382dd36be6ef26ad52d4a404b35b00ebb8af1ff9663e31814e3",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "release",
+      "c_optimization": "-O0",
+      "repetition": 1,
+      "floor_sha256": "ab9d6d3a41de7e73a8bed4bf306db5987bd99abbbe92c83f1c19abab51673f2d",
+      "client_sha256": "45533b8d27f7d11b8ad23f7d9590aaec65346ca3c55227b3f11c9e4bba57ab98",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "release",
+      "c_optimization": "-O0",
+      "repetition": 2,
+      "floor_sha256": "ab9d6d3a41de7e73a8bed4bf306db5987bd99abbbe92c83f1c19abab51673f2d",
+      "client_sha256": "45533b8d27f7d11b8ad23f7d9590aaec65346ca3c55227b3f11c9e4bba57ab98",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "release",
+      "c_optimization": "-O0",
+      "repetition": 3,
+      "floor_sha256": "ab9d6d3a41de7e73a8bed4bf306db5987bd99abbbe92c83f1c19abab51673f2d",
+      "client_sha256": "45533b8d27f7d11b8ad23f7d9590aaec65346ca3c55227b3f11c9e4bba57ab98",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "release",
+      "c_optimization": "-O2",
+      "repetition": 1,
+      "floor_sha256": "ab9d6d3a41de7e73a8bed4bf306db5987bd99abbbe92c83f1c19abab51673f2d",
+      "client_sha256": "92a840e81d12f3b8cb2b505eb0ef33e4195cf18d135651fe5e9d42d76f50c6ce",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "release",
+      "c_optimization": "-O2",
+      "repetition": 2,
+      "floor_sha256": "ab9d6d3a41de7e73a8bed4bf306db5987bd99abbbe92c83f1c19abab51673f2d",
+      "client_sha256": "92a840e81d12f3b8cb2b505eb0ef33e4195cf18d135651fe5e9d42d76f50c6ce",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    },
+    {
+      "floor_profile": "release",
+      "c_optimization": "-O2",
+      "repetition": 3,
+      "floor_sha256": "ab9d6d3a41de7e73a8bed4bf306db5987bd99abbbe92c83f1c19abab51673f2d",
+      "client_sha256": "92a840e81d12f3b8cb2b505eb0ef33e4195cf18d135651fe5e9d42d76f50c6ce",
+      "floor_exports": [
+        "_birnam_id_begin_portable_resumable_unit_v1",
+        "_birnam_id_begin_resumable_unit_v1",
+        "_birnam_id_cancel_resumable_unit_v1",
+        "_birnam_id_export_count_v1",
+        "_birnam_id_export_name_at_v1",
+        "_birnam_id_finish_resumable_unit_v1",
+        "_birnam_id_floor_identity",
+        "_birnam_id_live_heap_bytes_v1",
+        "_birnam_id_live_symbol_count_v1",
+        "_birnam_id_live_symbol_name_bytes_v1",
+        "_birnam_id_release_stackless_generation_lease_v1",
+        "_birnam_id_retire_stackless_code_generation_v1",
+        "_birnam_id_rust_abi_descriptor_v1",
+        "_birnam_id_rust_crate_identity",
+        "_birnam_id_stackless_block_vtable_image_reference_v1",
+        "_birnam_id_stackless_block_vtable_matches_v1",
+        "_birnam_id_stackless_resumable_manifest_matches_v1",
+        "_birnam_id_staged_portable_block_vtable_v1",
+        "_birnam_id_symbol_compaction_configure_v1",
+        "_birnam_id_try_acquire_stackless_generation_lease_v1",
+        "_birnam_register_resumable_v1",
+        "_birnam_register_resumable_v2",
+        "_id_init"
+      ],
+      "observations": [
+        {
+          "case": "ordinary_floor",
+          "unavailable_guard_helpers": 6
+        },
+        {
+          "case": "gc_observation",
+          "payload_changed": true,
+          "same_vtable": true,
+          "same_live_count": true,
+          "provider_notifications": 1
+        },
+        {
+          "case": "parent_change",
+          "answer_changed": true,
+          "same_vtable": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "shadow_addition",
+          "answer_changed": true,
+          "hook_calls": 0
+        },
+        {
+          "case": "method_replacement",
+          "answer_changed": true,
+          "same_vtable": true,
+          "same_selectors": true,
+          "hook_calls": 1
+        },
+        {
+          "case": "observer_replaced",
+          "old_observer_additional_calls": 0,
+          "new_observer_calls": 1
+        },
+        {
+          "case": "reflective_guard",
+          "same_answer": true,
+          "ordinary_effects": 1,
+          "guard_then_send_effects": 2
+        },
+        {
+          "case": "metatable_lookup",
+          "replacement_effects": 1
+        }
+      ]
+    }
+  ],
+  "status": "boundary-cases-confirmed"
+}
