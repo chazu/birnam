@@ -16,7 +16,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parent.parent
-FILTER = "same_frame_deopt_experiment"
+FILTER = "runtime::deopt_experiment::same_frame_deopt_experiment"
 CASES = {
     "canonical", "before-entry", "mutation-restored", "custom-lookup",
     "machine-override", "replace-active", "precise-gc", "nested-entry",
@@ -30,8 +30,9 @@ CONTRACTS = [
     "rust/birnam-id/src/execution.rs",
     "rust/birnam-id/src/registration.rs",
     "rust/birnam-artifact/src/frame_descriptor.rs",
-    "rust/birnam-codegen/src/resumable_c.rs",
 ]
+# 74G changes the development emitter. Its ordinary output is checked against
+# the committed C golden by the generated experiment; it is not an ABI authority.
 SOURCES = [
     "rust/birnam-id/src/runtime.rs",
     "rust/birnam-id/src/runtime/deopt_experiment.rs",

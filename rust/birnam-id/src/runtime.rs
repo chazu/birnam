@@ -31,6 +31,8 @@ use crate::vtable::{AddMethod, Vtables};
 
 #[cfg(test)]
 mod deopt_experiment;
+#[cfg(all(test, target_os = "macos"))]
+mod generated_deopt_experiment;
 
 static FRAME_VIEW_LAYOUT: [u8; 1] = [SLOT_OOP];
 
@@ -193,6 +195,8 @@ pub(crate) struct Runtime {
     slot_guard_cache: Cell<(u64, bool)>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
+    #[cfg(all(test, target_os = "macos"))]
+    generated_deopt_trial: core::cell::RefCell<Option<generated_deopt_experiment::Trial>>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -366,6 +370,8 @@ impl Runtime {
             slot_guard_cache: Cell::new((u64::MAX, false)),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
+            #[cfg(all(test, target_os = "macos"))]
+            generated_deopt_trial: core::cell::RefCell::new(None),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
                 values,
@@ -3475,6 +3481,11 @@ impl Runtime {
             // Both entries use the unchanged descriptor and committed Frame.
             #[cfg(test)]
             let method = deopt_experiment::select(self, capability, owner, machine, method)?;
+            #[cfg(all(test, target_os = "macos"))]
+            let selected =
+                generated_deopt_experiment::select(self, capability, owner, machine, method)?;
+            #[cfg(all(test, target_os = "macos"))]
+            let method = selected.method;
             let action = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {
@@ -3487,6 +3498,10 @@ impl Runtime {
                     unsafe { method(machine, arguments, count) }
                 })
             };
+
+            // The selected executable must stay mapped until native return.
+            #[cfg(all(test, target_os = "macos"))]
+            drop(selected);
 
             let decoded = unsafe {
                 let state = &*self.state.get();

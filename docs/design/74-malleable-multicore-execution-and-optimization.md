@@ -16,6 +16,10 @@
 > authorized the same-frame recovery experiment in [74F](74f-same-frame-deoptimization-experiment.md).
 > Its real-driver tests pass in debug and release without changing the ABI or
 > Frame representation. The entries are hand-authored, static, and test-only.
+> The subsequent [74G](74g-generated-same-frame-deoptimization.md) experiment
+> generates both forms from one CodeProgram and verifies recovery, precise GC
+> and actual native-library retirement in debug and release. It remains a
+> development compiler feature with test-only Runtime selection.
 
 ## 1. Decision criteria and direction
 
@@ -681,7 +685,8 @@ must not embed Darwin assumptions into portable executable meaning.
 | E1 baseline and one guarded path | Authorized and delivered 2026-09-09 as [Design 74B](74b-e1-guarded-slot-access-implementation.md): feature-gated dev prefix, explicit emission selection, fixture and driver; first diagnostic −15% to −23% with every guard hit |
 | E2–E3 and the 20% continuation threshold | Delivered 2026-09-09 as [Design 74C](74c-e2-matrix-and-e3-measurement.md): E2 identical in every row; E3 criterion frozen then measured and **not met at 20%** (13–20% real gain, allocation dominant). Same day the operator **withdrew the percentage threshold** (§7.5 amendment: proven-equivalent, non-regressing, above-spread improvements are accepted at any size): E3 is met as amended, the production slice proposal is deferred behind the box-elision hypothesis ([74D](74d-e4-slot-index-box-elision.md)), which was then authorized, reviewed, implemented and measured as [Design 74D](74d-e4-slot-index-box-elision.md): **continuation test met** (E4 34–43% faster than E1 and about 50% faster than baseline at 1,024 and 16,384, every access hitting, E2 identical); the production slot-access slice was worked through as [Design 74E](74e-production-slot-access-slice.md), landed and **reverted the same day by operator decision** because it requires a runtime ABI cut (two new shim names) the operator does not want; the guarded access remains available only behind the development feature |
 | Same-frame deoptimization at existing boundaries | Authorized and executed 2026-09-10 as [Design 74F](74f-same-frame-deoptimization-experiment.md): ten baseline/candidate cases and 256 repeated trials pass in debug and release; test-only static entries, unchanged ABI and descriptor-v2 Frames |
-| Compiler-generated deoptimization, inlining, or unboxing | Future possibilities requiring separate proof and implementation review |
+| Compiler-generated same-frame deoptimization | Authorized and executed 2026-09-10 as [Design 74G](74g-generated-same-frame-deoptimization.md): per-PC specialization from one CodeProgram, colored Frame recovery, precise GC and native unload checks; debug/release observations agree and the full repository gate passes |
+| Inlining, unboxing, or production optimized-tier admission | Future possibilities requiring separate proof and implementation review |
 | Objective-C execution comparison | Comparative evidence, not promised parity or a runtime dependency |
 
 This inquiry pauses implementation selection from the earlier performance

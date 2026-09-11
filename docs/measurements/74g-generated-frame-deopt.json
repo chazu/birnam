@@ -1,0 +1,467 @@
+{
+  "schema": "birnam-generated-frame-deopt-v1",
+  "design": "74G",
+  "result": "passed",
+  "baseline_commit": "439350920c1b674ea3301409cf908ef855304079",
+  "tested_head": "439350920c1b674ea3301409cf908ef855304079",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cc": "Apple clang version 16.0.0 (clang-1600.0.26.3)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "native_compile_flags": [
+    "-dynamiclib",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-function"
+  ],
+  "scope": "canonical CodeProgram; generated per-PC entries; real Runtime driver; test-local dylib adapter",
+  "performance_claim": null,
+  "host_gates_run": false,
+  "timing_scope": "single diagnostic sample per variant; includes instrumentation; no speedup qualification",
+  "compatibility_authorities_unchanged_from_baseline": {
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-id/src/execution.rs": "0d484e3be16f9418b2209762b616647e6ad23a99ab840cdbe757e7221ff42cc6",
+    "rust/birnam-id/src/registration.rs": "788ef52702a12cf27280f9e1cc181992d825f6d67d1508d4e0cfa7661447bf77",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb"
+  },
+  "source_sha256": {
+    "Cargo.lock": "cd0104090e7ac35ed327135f33b4589e174654e236e5142e93a2a203b8ca5a7c",
+    "rust/birnam-id/Cargo.toml": "91ea425e500287e0159bdcad218e06749845862e3dc8749bc4f2047de975cee0",
+    "rust/birnam-codegen/Cargo.toml": "3fb4d6023087e6bf8fa561b42226208e636d3e438e712479ea41e021dc3943a8",
+    "rust/birnam-codegen/src/resumable_c.rs": "448584631d2ce5bba554acbda5b04ea74c1ee31b9c999d4c0f4faf20a83c8459",
+    "rust/birnam-id/src/runtime.rs": "bf48fed2c4b3c7917ff9a3457cc3088adb3fe4bacd884b0f2e2f4eddcffdaafd",
+    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "ef44c0b506fabf25d962479315bfc78bc6368f34721f5b9e9d7a972c23634c44",
+    "rust/birnam-id/src/runtime/generated_deopt_program.rs": "2a0a2c8424ad29cfcc6d6687659befd70a78df876d1be6a05209d8d4bcea0fc9",
+    "rust/birnam-id/src/runtime/generated_deopt_adapter.c": "beffc686a0d16aaebf346fe6ec71ac9d141409b676b49d1294202d311cf25cff",
+    "rust/birnam-id/src/runtime/generated_deopt_baseline.c": "7e79b08acb8182559427600a0b6faa3e827de54c0f51b6fac74a59d3187e9730",
+    "scripts/generated-frame-deopt.py": "7946077f7761f9ac2f7a26c1ac6320c8f685cf03f86b236fefb108b729525b8e"
+  },
+  "profiles": {
+    "debug": {
+      "cases": [
+        {
+          "case": "canonical",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 3,
+          "baseline_entries": 0,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalidate",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "replace-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "custom-lookup",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "precise-gc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-mismatch",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-collision",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalid-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "duplicate-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "missing-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-candidate-on-stack",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 1,
+          "baseline_entries": 2,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-baseline-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "repeated-load-retire",
+          "cycles": 16,
+          "unloads": 32,
+          "leaked_frames": 0,
+          "leaked_native_leases": 0
+        }
+      ],
+      "shape": {
+        "pcs": 3,
+        "slots": 9,
+        "carried_slot": 0,
+        "alias_slot": 1,
+        "root_words": [
+          103,
+          511,
+          503
+        ],
+        "descriptor_bytes": 1840,
+        "program_bytes": 970
+      },
+      "diagnostic_costs": [
+        {
+          "unit": "baseline",
+          "source_bytes": 6252,
+          "native_bytes": 33632,
+          "compile_ns": 49649167
+        },
+        {
+          "unit": "candidate",
+          "source_bytes": 6334,
+          "native_bytes": 33680,
+          "compile_ns": 52731416
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": false,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 15955042,
+          "optimized_entries": 0
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": true,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 20403834,
+          "optimized_entries": 384
+        }
+      ]
+    },
+    "release": {
+      "cases": [
+        {
+          "case": "canonical",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 3,
+          "baseline_entries": 0,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalidate",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "replace-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "custom-lookup",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "precise-gc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-mismatch",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "descriptor-collision",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "invalid-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "duplicate-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 0,
+          "baseline_entries": 3,
+          "deoptimizations": 0,
+          "unloads": 4
+        },
+        {
+          "case": "missing-pc",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-candidate-on-stack",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 1,
+          "baseline_entries": 2,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "retire-baseline-active",
+          "answer": 28,
+          "effects": [
+            "double",
+            "effect",
+            "finish"
+          ],
+          "optimized_entries": 2,
+          "baseline_entries": 1,
+          "deoptimizations": 1,
+          "unloads": 4
+        },
+        {
+          "case": "repeated-load-retire",
+          "cycles": 16,
+          "unloads": 32,
+          "leaked_frames": 0,
+          "leaked_native_leases": 0
+        }
+      ],
+      "shape": {
+        "pcs": 3,
+        "slots": 9,
+        "carried_slot": 0,
+        "alias_slot": 1,
+        "root_words": [
+          103,
+          511,
+          503
+        ],
+        "descriptor_bytes": 1840,
+        "program_bytes": 970
+      },
+      "diagnostic_costs": [
+        {
+          "unit": "baseline",
+          "source_bytes": 6252,
+          "native_bytes": 33632,
+          "compile_ns": 44743833
+        },
+        {
+          "unit": "candidate",
+          "source_bytes": 6334,
+          "native_bytes": 33680,
+          "compile_ns": 43527500
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": false,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 761875,
+          "optimized_entries": 0
+        },
+        {
+          "unit": "warm-execution",
+          "optimized": true,
+          "warmup_iterations": 16,
+          "iterations": 128,
+          "elapsed_ns": 650125,
+          "optimized_entries": 384
+        }
+      ]
+    }
+  }
+}

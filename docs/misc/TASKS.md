@@ -41,7 +41,15 @@ authorized an ABI-preserving same-frame recovery experiment, delivered as
 (`birnam-deopt-same-frame-738`): ten real-driver baseline/candidate cases and
 256 repeated trials pass in debug and release. It uses test-only static native
 entries with existing descriptor-v2 Frames; no production tier or speedup is
-claimed. The prior implementation
+claimed. The user then authorized compiler-generated recovery, delivered as
+[Design 74G](../design/74g-generated-same-frame-deoptimization.md)
+(`birnam-generated-deopt-g6l`): twelve paired cases, sixteen repeated native
+load/retire cycles, precise GC and real unload checks pass in debug and release.
+Both forms use one canonical CodeProgram and descriptor; candidate entries
+omit PC decoding. The compiler feature and test-only driver retain the current
+ABI/image contract. Full repository verification passes, including native-prefix,
+cold-archive and relocation checks; no production speedup is claimed.
+The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
 

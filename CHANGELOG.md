@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Added
 
+- `mise run generated-deopt-experiment` runs Design 74G: compiler-generated
+  per-PC entries recover to their original baseline through the real driver.
+  The test checks colored Frame state, precise GC, invalidation and actual
+  native-library retirement in debug and release. PC specialization is a
+  development compiler feature; runtime selection is test-only, with the
+  existing ABI and image contract preserved.
 - `mise run deopt-experiment` runs Design 74F's test-only same-frame recovery
   experiment in debug and release. The real Runtime driver switches from a
   static optimized entry to its original baseline on invalidation, preserving

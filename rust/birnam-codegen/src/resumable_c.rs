@@ -94,6 +94,7 @@ pub fn emit_step_method_with_blocks<'a>(
         driver_argument_count,
         block_literals,
         &[],
+        None,
     )
 }
 
@@ -113,6 +114,28 @@ pub fn emit_step_method_with_portable_blocks(
         driver_argument_count,
         &[],
         block_literals,
+        None,
+    )
+}
+
+/// Development-only entry for one committed PC in the same canonical layout.
+/// The caller must validate the PC before entry and retain executable ownership
+/// through return. All body operations keep the ordinary Machine protocol.
+#[cfg(feature = "dev-pc-specialization")]
+pub fn emit_pc_specialized_step(
+    symbol_index: u32,
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    program_counter: u32,
+) -> Result<Vec<u8>, Error> {
+    emit_step_method_with_literal_specs(
+        symbol_index,
+        program,
+        layout,
+        1,
+        &[],
+        &[],
+        Some(program_counter),
     )
 }
 
@@ -123,6 +146,7 @@ fn emit_step_method_with_literal_specs<'a>(
     driver_argument_count: u32,
     source_block_literals: &[BlockLiteralSpec<'a>],
     portable_block_literals: &[PortableBlockLiteralSpec],
+    selected_pc: Option<u32>,
 ) -> Result<Vec<u8>, Error> {
     validate(
         program,
@@ -131,6 +155,9 @@ fn emit_step_method_with_literal_specs<'a>(
         source_block_literals,
         portable_block_literals,
     )?;
+    if selected_pc.is_some_and(|pc| pc as usize >= program.blocks.len()) {
+        return Err(Error::InvalidProgram);
+    }
 
     let mut output = Emitter::with_capacity(4096);
     output.push(b"static void* __birnam_resumable_step_");
@@ -139,7 +166,7 @@ fn emit_step_method_with_literal_specs<'a>(
     output.push(b"if(n!=");
     decimal(&mut output, driver_argument_count);
     output.push(b"UL)return birnam_nil();\n");
-    if driver_argument_count == 1 {
+    if driver_argument_count == 1 && selected_pc.is_none() {
         output.push(b"long pc=birnam_smallIntValue(args[0]);\n");
         output.push(b"switch(pc){\n");
     } else {
@@ -147,7 +174,10 @@ fn emit_step_method_with_literal_specs<'a>(
     }
 
     for block in &program.blocks {
-        if driver_argument_count == 1 {
+        if selected_pc.is_some_and(|pc| pc != block.pc.0) {
+            continue;
+        }
+        if driver_argument_count == 1 && selected_pc.is_none() {
             output.push(b"case ");
             decimal(&mut output, block.pc.0);
             output.push(b"L:{\n");
@@ -266,7 +296,7 @@ fn emit_step_method_with_literal_specs<'a>(
         output.push(b"}\n");
     }
 
-    if driver_argument_count == 1 {
+    if driver_argument_count == 1 && selected_pc.is_none() {
         output.push(b"default:return birnam_nil();\n}\n");
     }
     // Every admitted terminator returns. This is only a C compiler fallback
@@ -724,7 +754,8 @@ pub fn slot_box_elision_selected() -> bool {
 /// Declarations for the Design 74D emission: the floor answers every slot
 /// access itself (direct on a hit, the ordinary send on a miss), so generated
 /// code carries no box and no fallback of its own.
-pub const ELIDED_SLOT_PRELUDE: &[u8] = br#"extern void* birnam_dev_frame_slot_get_v1(void* machine, long index);
+pub const ELIDED_SLOT_PRELUDE: &[u8] =
+    br#"extern void* birnam_dev_frame_slot_get_v1(void* machine, long index);
 extern void* birnam_dev_frame_slot_put_v1(void* machine, long index, void* value);
 "#;
 
