@@ -14,6 +14,7 @@ use birnam_codegen::{
 mod discarded_clone;
 mod fused_numeric;
 mod regions;
+mod virtual_aggregate;
 use birnam_native_compiler::Unit;
 use core::ffi::{c_char, c_void};
 use std::collections::BTreeMap;
@@ -53,11 +54,13 @@ struct Prepared {
     leaf: Option<Rc<small_callee::Plan>>,
     numeric: Option<Rc<numeric_chain::Template>>,
     discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
+    virtual_aggregate: Option<Rc<birnam_codegen::virtual_aggregate::Plan>>,
 }
 
 struct Candidate {
     numeric: bool,
     discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
+    virtual_aggregate: Option<virtual_aggregate::Compiled>,
     entries: Vec<Method>,
     regions: Vec<Option<regions::Compiled>>,
     _unit: Unit,
@@ -71,6 +74,24 @@ enum SelectedKind {
     Region(Rc<Candidate>, usize, Method, usize),
 }
 impl Selected {
+    pub(super) unsafe fn try_virtual_aggregate(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        key: usize,
+        pc: usize,
+        args: *const Oop,
+        count: usize,
+    ) -> Option<Result<Oop, super::ExecutionError>> {
+        if pc != 0 || count != 1 {
+            return None;
+        }
+        let candidate = match &self.kind {
+            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
+        };
+        let compiled = candidate.virtual_aggregate.as_ref()?;
+        unsafe { virtual_aggregate::execute(runtime, machine, key, candidate, compiled, args) }
+    }
     pub(super) unsafe fn try_discarded_clone(
         &self,
         runtime: &Runtime,
@@ -290,6 +311,7 @@ impl Prepared {
                 leaf: Some(Rc::new(plan)),
                 numeric: None,
                 discarded_clone: None,
+                virtual_aggregate: None,
             });
         }
         let regions_enabled = true;
@@ -339,6 +361,8 @@ impl Prepared {
             leaf: None,
             numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
             discarded_clone: birnam_codegen::discarded_clone::Plan::derive(&program, &layout)
+                .map(Rc::new),
+            virtual_aggregate: birnam_codegen::virtual_aggregate::Plan::derive(&program, &layout)
                 .map(Rc::new),
         })
     }
@@ -390,6 +414,10 @@ impl Prepared {
         Some(Candidate {
             numeric: self.numeric.is_some(),
             discarded_clone: self.discarded_clone.clone(),
+            virtual_aggregate: self
+                .virtual_aggregate
+                .clone()
+                .map(virtual_aggregate::Compiled::new),
             entries,
             regions,
             _unit: unit,

@@ -133,10 +133,12 @@ pub(crate) struct Heap {
     blocks: AddressMap<Block>,
     bytes_since_collection: usize,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
+    deferred_allocations: Vec<(DeferredAllocation, usize)>,
+    next_deferred_id: u64,
 }
 
 mod dead_allocations;
-pub(crate) use dead_allocations::DeadAllocation;
+pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation};
 
 impl Heap {
     pub(crate) fn new() -> Self {
@@ -144,6 +146,8 @@ impl Heap {
             blocks: AddressMap::default(),
             bytes_since_collection: 0,
             dead_allocations: Vec::new(),
+            deferred_allocations: Vec::new(),
+            next_deferred_id: 0,
         }
     }
 

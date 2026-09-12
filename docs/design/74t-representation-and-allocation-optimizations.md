@@ -640,3 +640,56 @@ including mixed-prototype admission cost. The next aggregate work must replace
 private live fields and materialize shared identity before exposure; discarded
 objects alone do not discharge that requirement. Direct closure/environment
 substitution and the remaining full-family acceptance obligations are also open.
+
+## Live aggregate field replacement and recovery
+
+The next consumer analyzes a bounded prefix of ordinary Calls. Clone identities
+are virtual values; an admitted native field projection substitutes the existing
+Oop in that private payload. Registered method names do not establish projection
+semantics. The [optional native declaration](../../abi/native-field-projection-v1.md)
+comes from and pins the actual loaded Method image, and is revalidated against
+the current floor before use. Relational declares its existing LogicVar name
+getter; its cached factory, ordinary Store attributes, and Cell operations are
+not treated as private-field operations.
+
+The compiler tracks every physical Frame slot containing a virtual call result,
+including aliases and call staging. The maps follow actual V2 edge copies,
+result initialization and clearing. Unsupported operations end the prefix before
+that PC executes. Runtime eligibility additionally stops at unknown or replaced
+native Methods. The complete allocation budget excludes collection and callbacks
+while virtual identities are live. At least one clone and one field projection
+must be eliminated; this does not replace the earlier discarded-clone policy.
+
+A private, single-use allocation capability allows physical materialization of
+an already charged clone without changing live counts, bytes or the collection
+threshold. Distinct capabilities remain distinct even if their payload snapshots
+are shared. Materialization order does not invalidate other capabilities;
+collection makes all outstanding capabilities stale, and identifier exhaustion
+refuses before charging. The existing dead-only journal carries no extra
+per-record identity overhead; only live virtual consumers retain capability maps.
+
+Before an observing PC or an escaping Return, every virtual identity still in
+the Frame is materialized once and all physical aliases are restored. This is a
+bounded allocation-free *logical* transition: physical storage realizes charges
+already made at the original clone Calls, without inserting a collection point.
+The original PC token and generated entry then run normally, so any collection,
+native observation or stackless control sees ordinary rooted objects and the
+original pending/control state. Returning a projected field can leave its now-
+dead clone unmaterialized. Shared Store/Cell input identities are never copied.
+
+The live consumer is experimental and disabled in normal builds until integrated
+correctness, recovery and profitability evidence support promotion. Field writes,
+cyclic virtual graphs, raw/custom-traced storage and closure substitution remain
+outside this initial prefix implementation, and remain explicit broader work.
+
+The [first live-field correctness receipt](../measurements/74t-virtual-fields.json)
+passes focused debug/release checks and full production verification: 513 tests,
+18 ignored diagnostics, installed runtime, image, archive and relocation gates.
+Registered-driver comparisons cover returning a field without constructing its
+clone, escaping Return, two distinct clones sharing payload values, collecting
+native observers, complete physical alias locations, replaced projection Methods,
+withdrawn cached declarations, and automatic-collection boundaries that mutate
+the original prototype. Observable counts/bytes and effect results agree with
+ordinary execution. This is correctness evidence for the experimental consumer,
+not a performance or full-family completion claim. Forced recovery at every
+prefix boundary and explicit continuation-capture coverage remain next checks.

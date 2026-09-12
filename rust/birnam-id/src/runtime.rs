@@ -3611,6 +3611,18 @@ impl Runtime {
                                 })
                             {
                                 (core::ptr::null_mut(), Some(result))
+                            } else if let Some(result) = selected.try_virtual_aggregate(
+                                self,
+                                machine,
+                                descriptor_key,
+                                program_counter,
+                                arguments,
+                                count,
+                            ) {
+                                match result {
+                                    Ok(action) => (action, None),
+                                    Err(error) => (core::ptr::null_mut(), Some(Err(error))),
+                                }
                             } else {
                                 (selected.invoke(self, machine, arguments, count), None)
                             }

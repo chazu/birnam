@@ -2,6 +2,11 @@
 //! No Oop is published for a journal entry; payload bits are intentionally not roots.
 use super::*;
 
+/// A process-local, single-use identity for an already charged allocation.
+/// Never an Oop; collection or materialization makes the capability stale.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DeferredAllocation(u64);
+
 pub(crate) const MAX_DEAD_ALLOCATIONS: usize = 4096;
 pub(crate) const MAX_DEAD_PAYLOAD_BYTES: usize = 1024;
 
@@ -44,7 +49,7 @@ impl Heap {
         &mut self,
         allocation: std::rc::Rc<DeadAllocation>,
     ) -> bool {
-        if self.dead_allocations.len() >= MAX_DEAD_ALLOCATIONS {
+        if !self.admits_dead_allocations(1) {
             return false;
         }
         self.bytes_since_collection = self
@@ -55,6 +60,69 @@ impl Heap {
         true
     }
 
+    /// Charge a private virtual clone at its original allocation position.
+    /// Until it is materialized or proven dead, the caller must exclude every
+    /// observation/collection and retain the payload's input identities.
+    pub(crate) fn record_virtual_clone(
+        &mut self,
+        allocation: std::rc::Rc<DeadAllocation>,
+    ) -> Option<DeferredAllocation> {
+        let next = self.next_deferred_id.checked_add(1)?;
+        let index = self.dead_allocations.len();
+        if !self.record_dead_allocation(allocation) {
+            return None;
+        }
+        let identity = DeferredAllocation(self.next_deferred_id);
+        self.next_deferred_id = next;
+        self.deferred_allocations.push((identity, index));
+        Some(identity)
+    }
+
+    /// Publish physical storage for one already charged identity. No callback
+    /// or collection runs here; the caller roots the answer before exposure.
+    pub(crate) fn materialize_recorded_clone(
+        &mut self,
+        identity: DeferredAllocation,
+    ) -> Option<Oop> {
+        let position = self
+            .deferred_allocations
+            .iter()
+            .position(|(key, _)| *key == identity)?;
+        let (_, index) = self.deferred_allocations.swap_remove(position);
+        let displaced = self.dead_allocations.len() - 1;
+        let snapshot = self.dead_allocations.swap_remove(index);
+        for (_, recorded_index) in &mut self.deferred_allocations {
+            if *recorded_index == displaced {
+                *recorded_index = index;
+            }
+        }
+        Some(self.materialize_snapshot(&snapshot))
+    }
+
+    fn materialize_snapshot(&mut self, allocation: &DeadAllocation) -> Oop {
+        let allocation_bytes = self.bytes_since_collection;
+        // Construction realizes a previously charged allocation; it must not
+        // overflow by charging that allocation for a second time.
+        self.bytes_since_collection = 0;
+        let object = self.allocate(allocation.payload.len(), Permanence::Collectable);
+        boundary::require_invariant(
+            self.set_vtable(
+                object,
+                core::ptr::with_exposed_provenance_mut(allocation.vtable),
+            ),
+            "materialized allocation missing from heap",
+        );
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                allocation.payload.as_ptr(),
+                object.cast::<u8>(),
+                allocation.payload.len(),
+            )
+        };
+        self.bytes_since_collection = allocation_bytes;
+        object
+    }
+
     pub(crate) fn has_dead_allocations(&self) -> bool {
         !self.dead_allocations.is_empty()
     }
@@ -63,35 +131,20 @@ impl Heap {
         count <= MAX_DEAD_ALLOCATIONS.saturating_sub(self.dead_allocations.len())
     }
 
+    pub(crate) fn admits_virtual_allocations(&self, count: usize) -> bool {
+        self.admits_dead_allocations(count)
+            && self.next_deferred_id.checked_add(count as u64).is_some()
+    }
+
     /// Realize already-charged garbage before an observing sweep. This is not
     /// a new Id allocation: no callback runs and all accounting is unchanged.
     /// The caller must be between marking and the dead-object snapshot.
     pub(crate) fn settle_dead_allocations(&mut self) {
         let allocations = core::mem::take(&mut self.dead_allocations);
-        let allocation_bytes = self.bytes_since_collection;
-        // These blocks were charged already. Use a bounded scratch counter so
-        // physical settlement cannot overflow by temporarily charging twice.
-        // No callback can observe it before the original counter is restored.
-        self.bytes_since_collection = 0;
-        for allocation in allocations {
-            let object = self.allocate(allocation.payload.len(), Permanence::Collectable);
-            boundary::require_invariant(
-                self.set_vtable(
-                    object,
-                    core::ptr::with_exposed_provenance_mut(allocation.vtable),
-                ),
-                "settled dead allocation missing from heap",
-            );
-            // The new exact-size payload cannot alias the owned snapshot.
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    allocation.payload.as_ptr(),
-                    object.cast::<u8>(),
-                    allocation.payload.len(),
-                )
-            };
+        self.deferred_allocations.clear();
+        for snapshot in allocations {
+            self.materialize_snapshot(&snapshot);
         }
-        self.bytes_since_collection = allocation_bytes;
     }
 
     /// Use only after proving that the sweep cannot observe these missing
@@ -99,6 +152,7 @@ impl Heap {
     pub(crate) fn reclaim_dead_allocations(&mut self) -> usize {
         let count = self.dead_allocations.len();
         self.dead_allocations.clear();
+        self.deferred_allocations.clear();
         count
     }
 
@@ -124,7 +178,8 @@ impl Heap {
     #[cfg(test)]
     pub(crate) fn dead_allocation_storage_bytes(&self) -> usize {
         let mut seen = std::collections::HashSet::new();
-        self.dead_allocations.capacity() * core::mem::size_of::<std::rc::Rc<DeadAllocation>>()
+        self.deferred_allocations.capacity() * core::mem::size_of::<(DeferredAllocation, usize)>()
+            + self.dead_allocations.capacity() * core::mem::size_of::<std::rc::Rc<DeadAllocation>>()
             + self
                 .dead_allocations
                 .iter()
@@ -235,5 +290,73 @@ mod tests {
         heap.settle_dead_allocations();
         assert_eq!(heap.bytes_since_collection(), usize::MAX);
         assert_eq!(heap.physical_allocation_count(), 2);
+    }
+
+    #[test]
+    fn virtual_clone_materialization_is_once_per_identity_and_does_not_recharge() {
+        let mut heap = Heap::new();
+        let prototype = heap.allocate(16, Permanence::Permanent);
+        heap.set_vtable(prototype, prototype);
+        heap.write_payload_word(prototype, 0, 23);
+        heap.write_payload_word(prototype, 1, 23);
+        let snapshot = heap.prepare_dead_clone(prototype).unwrap();
+        let first = heap.record_virtual_clone(snapshot.clone()).unwrap();
+        assert!(heap.record_dead_allocation(snapshot.clone()));
+        let second = heap.record_virtual_clone(snapshot.clone()).unwrap();
+        let third = heap.record_virtual_clone(snapshot).unwrap();
+        let before = (
+            heap.allocation_count(),
+            heap.allocated_bytes(),
+            heap.bytes_since_collection(),
+        );
+        // Out-of-order settlement moves the last record. Its identity must
+        // remain valid; the anonymous dead allocation must remain anonymous.
+        let a = heap.materialize_recorded_clone(first).unwrap();
+        let b = heap.materialize_recorded_clone(third).unwrap();
+        let c = heap.materialize_recorded_clone(second).unwrap();
+        assert_ne!(a, b);
+        assert_ne!(b, c);
+        for object in [a, b, c] {
+            assert_eq!(heap.vtable_of(object), Some(prototype));
+            assert_eq!(heap.read_payload_word(object, 0), Some(23));
+            assert_eq!(heap.read_payload_word(object, 1), Some(23));
+        }
+        assert_eq!(heap.materialize_recorded_clone(first), None);
+        assert_eq!(
+            (
+                heap.allocation_count(),
+                heap.allocated_bytes(),
+                heap.bytes_since_collection()
+            ),
+            before
+        );
+        assert_eq!(heap.physical_allocation_count(), 4);
+        assert_eq!(heap.reclaim_dead_allocations(), 1);
+    }
+
+    #[test]
+    fn collection_and_exhaustion_cannot_reuse_a_virtual_identity() {
+        let mut heap = Heap::new();
+        let prototype = heap.allocate(0, Permanence::Permanent);
+        heap.set_vtable(prototype, prototype);
+        let snapshot = heap.prepare_dead_clone(prototype).unwrap();
+        let stale = heap.record_virtual_clone(snapshot.clone()).unwrap();
+        heap.reclaim_dead_allocations();
+        let current = heap.record_virtual_clone(snapshot.clone()).unwrap();
+        assert_ne!(current, stale);
+        assert!(heap.materialize_recorded_clone(stale).is_none());
+        heap.settle_dead_allocations();
+        assert!(heap.materialize_recorded_clone(current).is_none());
+        heap.next_deferred_id = u64::MAX;
+        let before = (heap.allocation_count(), heap.bytes_since_collection());
+        assert!(heap.record_virtual_clone(snapshot.clone()).is_none());
+        assert_eq!(
+            (heap.allocation_count(), heap.bytes_since_collection()),
+            before
+        );
+        assert!(
+            heap.record_dead_allocation(snapshot),
+            "dead allocations need no materialization capability"
+        );
     }
 }

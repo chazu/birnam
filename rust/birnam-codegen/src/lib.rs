@@ -22,6 +22,7 @@ pub mod resumable_registration_c;
 pub mod resumable_resolver_c;
 pub mod small_callee;
 pub mod tail_entry;
+pub mod virtual_aggregate;
 pub use birnam_artifact::stackless_selection as artifact_stackless_selection;
 
 /// A bounded-independent byte emitter. Callers retain ownership of the returned

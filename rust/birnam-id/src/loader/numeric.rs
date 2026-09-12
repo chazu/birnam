@@ -17,13 +17,38 @@ unsafe extern "C" {
     fn dlclose(handle: *mut c_void) -> c_int;
 }
 
-struct ImagePin(NonNull<c_void>);
+pub(super) struct ImagePin(NonNull<c_void>);
 impl Drop for ImagePin {
     fn drop(&mut self) {
         // Every successful NOLOAD acquisition owns one reference. A selected
         // summary retains this pin even when its cache entry is evicted.
         unsafe { dlclose(self.0.as_ptr()) };
     }
+}
+
+pub(super) fn resident_declaration(
+    method: crate::abi::Method,
+    name: &std::ffi::CStr,
+) -> Option<(ImagePin, *mut c_void)> {
+    let mut owner = DlInfo::default();
+    if unsafe { dladdr(method as *const c_void, &mut owner) } == 0
+        || owner.filename.is_null()
+        || owner.base.is_null()
+    {
+        return None;
+    }
+    let image = ImagePin(NonNull::new(unsafe {
+        system_dlopen(owner.filename, 0x1 | 0x4 | 0x10)
+    })?);
+    let declaration = unsafe { system_dlsym(image.0.as_ptr(), name.as_ptr()) };
+    if declaration.is_null() {
+        return None;
+    }
+    let mut declared_by = DlInfo::default();
+    if unsafe { dladdr(declaration, &mut declared_by) } == 0 || declared_by.base != owner.base {
+        return None;
+    }
+    Some((image, declaration))
 }
 
 pub(crate) struct NumericSummary {
@@ -40,30 +65,8 @@ impl NumericSummary {
         integer_vtable: crate::abi::Oop,
     ) -> Option<Self> {
         let address = method as *const c_void;
-        let mut owner = DlInfo::default();
-        if unsafe { dladdr(address, &mut owner) } == 0
-            || owner.filename.is_null()
-            || owner.base.is_null()
-        {
-            return None;
-        }
-        // Darwin dlfcn.h: RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD.
-        let image = ImagePin(NonNull::new(unsafe {
-            system_dlopen(owner.filename, 0x1 | 0x4 | 0x10)
-        })?);
-        let declaration = unsafe {
-            system_dlsym(
-                image.0.as_ptr(),
-                c"birnam_native_numeric_semantics_v1".as_ptr(),
-            )
-        };
-        if declaration.is_null() {
-            return None;
-        }
-        let mut declared_by = DlInfo::default();
-        if unsafe { dladdr(declaration, &mut declared_by) } == 0 || declared_by.base != owner.base {
-            return None; // dlsym may otherwise find a dependency's declaration.
-        }
+        let (image, declaration) =
+            resident_declaration(method, c"birnam_native_numeric_semantics_v1")?;
         // A native image exporting this optional symbol promises the versioned
         // pure query contract, just as it promises its Method/TraceHook ABI.
         let query: unsafe extern "C" fn(*const c_void, crate::abi::Oop, *const usize) -> u32 =

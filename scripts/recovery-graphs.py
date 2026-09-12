@@ -32,6 +32,7 @@ def sources():
         "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",
         "scripts/fixtures/numeric-specialization.birnam",
         "scripts/fixtures/native-numeric-api-context.c",
+        "abi/native-field-projection-v1.md", "scripts/fixtures/field-projection.c",
     )]
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
@@ -45,8 +46,11 @@ def main():
     parser.add_argument("--chains", action="store_true", help="production raw-chain verification")
     parser.add_argument("--tails", action="store_true", help="registered tail-loop entry verification")
     parser.add_argument("--allocations", action="store_true", help="discarded aggregate allocation and GC verification")
+    parser.add_argument("--fields", action="store_true", help="live aggregate projection and physical recovery verification")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.fields:
+        args.allocations = True
     if args.allocations:
         args.tails = True
     if args.tails:
@@ -55,6 +59,7 @@ def main():
         args.numeric = True
     if args.output is None:
         args.output = ROOT / "docs/measurements" / (
+            "74t-virtual-fields.json" if args.fields else
             "74t-discarded-clones.json" if args.allocations else
             "74t-tail-entry.json" if args.tails else
             "74t-numeric-chains.json" if args.chains else
@@ -65,7 +70,8 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
+        "scope": ("Experimental live aggregate field projection and identity recovery at observation boundaries; disabled pending broader acceptance"
+                  if args.fields else "Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
                   if args.allocations else "Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"
                   if args.tails else "Production raw chains with per-call operand and implementation revalidation; profitability and remaining families in progress"
                   if args.chains else "Numeric declarations, guarded boxed calls and raw kernel preparation"
@@ -101,7 +107,7 @@ def main():
             receipt["authorities"][name] = sha(ROOT / name)
         for profile in ("debug", "release"):
             output = run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
-                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-prelude", "--no-run", "--message-format=json"]
+                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")
             binaries = {}
             for line in output.splitlines():
@@ -137,6 +143,12 @@ def main():
                     ("birnam_codegen", "discarded-clone-plan", "discarded_clone::tests"),
                     ("birnam_id", "dead-allocation-journal", "heap::dead_allocations::tests"),
                     ("birnam_id", "discarded-clone-driver", "runtime::native_tier::leaf_tests::discarded_clone_tests"),
+                ]
+            if args.fields:
+                checks += [
+                    ("birnam_codegen", "virtual-field-plan", "virtual_aggregate::tests"),
+                    ("birnam_id", "virtual-field-driver", "runtime::native_tier::leaf_tests::virtual_aggregate_tests"),
+                    ("birnam_relational", "native-field-declaration", "native_field_projection_declares_only_the_exact_pure_getter"),
                 ]
             for package, label, test_filter in checks:
                 output = run([binaries[package], test_filter, "--nocapture"], profile + "-" + label)

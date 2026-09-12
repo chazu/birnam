@@ -186,6 +186,49 @@ unsafe extern "C" fn rust_logicvar_name(self_object: Oop, _args: *const Oop, cou
     unsafe { *self_object.cast::<Oop>() }
 }
 
+/// Exact native fact; selector names and factory caching confer no authority.
+/// See abi/native-field-projection-v1.md.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_field_projection_v1(method: *const c_void, nil: Oop) -> u32 {
+    let Some(api_address) = API.get() else {
+        return 0;
+    };
+    let api = unsafe { &*(*api_address as *const IdApi) };
+    field_projection_declaration(method, api.nilObj, nil)
+}
+
+fn field_projection_declaration(
+    method: *const c_void,
+    initialized_nil: Oop,
+    supplied_nil: Oop,
+) -> u32 {
+    u32::from(initialized_nil == supplied_nil && method == rust_logicvar_name as *const c_void)
+}
+
+#[cfg(test)]
+#[test]
+fn native_field_projection_declares_only_the_exact_pure_getter() {
+    let nil = core::ptr::with_exposed_provenance_mut(8);
+    let other = core::ptr::with_exposed_provenance_mut(16);
+    assert_eq!(
+        field_projection_declaration(rust_logicvar_name as *const c_void, nil, nil),
+        1
+    );
+    assert_eq!(
+        field_projection_declaration(rust_logicvar_name as *const c_void, nil, other),
+        0
+    );
+    assert_eq!(
+        field_projection_declaration(rust_logicvar_named as *const c_void, nil, nil),
+        0
+    );
+    assert_eq!(
+        field_projection_declaration(rust_logicvar_print_string as *const c_void, nil, nil),
+        0
+    );
+    assert_eq!(field_projection_declaration(core::ptr::null(), nil, nil), 0);
+}
+
 unsafe extern "C" fn rust_logicvar_print_string(
     self_object: Oop,
     _args: *const Oop,
