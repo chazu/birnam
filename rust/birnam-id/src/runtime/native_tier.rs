@@ -11,6 +11,7 @@ use birnam_artifact::{
 use birnam_codegen::{
     frame_region, numeric_chain, resumable, resumable_c, resumable_descriptor, small_callee,
 };
+mod discarded_clone;
 mod fused_numeric;
 mod regions;
 use birnam_native_compiler::Unit;
@@ -51,10 +52,12 @@ struct Prepared {
     regions: Vec<Option<Rc<frame_region::Plan>>>,
     leaf: Option<Rc<small_callee::Plan>>,
     numeric: Option<Rc<numeric_chain::Template>>,
+    discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
 }
 
 struct Candidate {
     numeric: bool,
+    discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
     entries: Vec<Method>,
     regions: Vec<Option<regions::Compiled>>,
     _unit: Unit,
@@ -68,6 +71,24 @@ enum SelectedKind {
     Region(Rc<Candidate>, usize, Method, usize),
 }
 impl Selected {
+    pub(super) unsafe fn try_discarded_clone(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        key: usize,
+        pc: usize,
+        args: *const Oop,
+        count: usize,
+    ) -> Option<Result<Oop, super::ExecutionError>> {
+        if pc != 0 || count != 1 {
+            return None;
+        }
+        let candidate = match &self.kind {
+            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
+        };
+        let plan = candidate.discarded_clone.as_ref()?;
+        unsafe { discarded_clone::execute(runtime, machine, key, candidate, plan, args) }
+    }
     pub(super) unsafe fn try_numeric(
         &self,
         runtime: &Runtime,
@@ -268,6 +289,7 @@ impl Prepared {
                 regions: Vec::new(),
                 leaf: Some(Rc::new(plan)),
                 numeric: None,
+                discarded_clone: None,
             });
         }
         let regions_enabled = true;
@@ -316,6 +338,8 @@ impl Prepared {
             regions,
             leaf: None,
             numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
+            discarded_clone: birnam_codegen::discarded_clone::Plan::derive(&program, &layout)
+                .map(Rc::new),
         })
     }
 
@@ -365,6 +389,7 @@ impl Prepared {
         regions::COMPILE_NS.set(regions::COMPILE_NS.get() + compile_start.elapsed().as_nanos());
         Some(Candidate {
             numeric: self.numeric.is_some(),
+            discarded_clone: self.discarded_clone.clone(),
             entries,
             regions,
             _unit: unit,

@@ -20,7 +20,9 @@ in the enabled production-source matrix (see 74T for both qualified matrices).
 A registered tail-loop entry consumer is also enabled, preserving every lookup
 and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
 Application/cold/metadata acceptance and broader loop dataflow remain open.
-Aggregate and closure allocation-elimination consumers are still outstanding.
+Discarded-clone elimination is implemented as a disabled aggregate experiment,
+with original allocation accounting and collector observations retained. Live
+aggregate scalar replacement and closure elimination are still outstanding.
 None of those four full families is complete yet.
 
 ## Direction

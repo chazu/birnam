@@ -3579,7 +3579,7 @@ impl Runtime {
             let method = selected.method;
             let native_selected =
                 native_tier::select(self, machine, descriptor_key, program_counter);
-            let (action, numeric_return) = {
+            let (action, optimized_return) = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {
                     let (arguments, count) = match &resume_token {
@@ -3590,14 +3590,26 @@ impl Runtime {
                     // the optional one-Oop argument buffer lives through the call.
                     unsafe {
                         if let Some(selected) = &native_selected {
-                            if let Some(result) = selected.try_numeric(
-                                self,
-                                machine,
-                                descriptor_key,
-                                program_counter,
-                                arguments,
-                                count,
-                            ) {
+                            if let Some(result) = selected
+                                .try_numeric(
+                                    self,
+                                    machine,
+                                    descriptor_key,
+                                    program_counter,
+                                    arguments,
+                                    count,
+                                )
+                                .or_else(|| {
+                                    selected.try_discarded_clone(
+                                        self,
+                                        machine,
+                                        descriptor_key,
+                                        program_counter,
+                                        arguments,
+                                        count,
+                                    )
+                                })
+                            {
                                 (core::ptr::null_mut(), Some(result))
                             } else {
                                 (selected.invoke(self, machine, arguments, count), None)
@@ -3613,7 +3625,7 @@ impl Runtime {
             #[cfg(all(test, target_os = "macos"))]
             drop(selected);
             drop(native_selected);
-            if let Some(result) = numeric_return {
+            if let Some(result) = optimized_return {
                 numeric = None;
                 if let Some(answer) = self.finish_stackless_return(owner, capability, result?)? {
                     return Ok(answer);
@@ -4291,6 +4303,19 @@ impl Runtime {
         unsafe {
             let state = &mut *self.state.get();
             let dead_bindings = state.vtables.dead_collectable_bindings(&state.heap);
+            if state.heap.has_dead_allocations()
+                && (!dead_bindings.is_empty()
+                    || state.heap.dead_finalizers().any(|(object, finalizer)| {
+                        !state
+                            .execution
+                            .inert_machine_finalizer(&state.heap, object, finalizer)
+                    }))
+            {
+                // Realize already-charged, unreachable identities before weak
+                // retirement or a foreign finalizer can observe the sweep.
+                // No new logical allocation, mark callback or collection occurs.
+                state.heap.settle_dead_allocations();
+            }
             for (_, methods) in &dead_bindings {
                 for method in methods {
                     state
@@ -4341,6 +4366,7 @@ impl Runtime {
         // access to the registry.
         unsafe {
             let heap = &mut (&mut *self.state.get()).heap;
+            reclaimed += heap.reclaim_dead_allocations();
             heap.clear_marks();
             heap.reset_allocation_bytes();
         }

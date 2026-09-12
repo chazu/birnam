@@ -235,7 +235,7 @@ unsafe extern "C" fn object_does_not_understand(_: Oop, _: *const Oop, _: usize)
     boundary::fatal_invariant("doesNotUnderstand:")
 }
 
-unsafe extern "C" fn object_clone(receiver: Oop, _: *const Oop, _: usize) -> Oop {
+pub(crate) unsafe extern "C" fn object_clone(receiver: Oop, _: *const Oop, _: usize) -> Oop {
     with_active(|runtime| runtime.clone_object(receiver))
 }
 

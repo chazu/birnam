@@ -9,6 +9,7 @@ use birnam_artifact::code_binding_inventory;
 use birnam_codegen::{Block, Expr, Statement, portable};
 use core::cell::Cell;
 use std::borrow::Cow;
+mod discarded_clone_tests;
 mod fused_numeric_tests;
 mod graph_tests;
 mod numeric_tests;

@@ -10,7 +10,7 @@ thread_local! {
     pub(in crate::runtime) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
-fn controls(runtime: &Runtime, machine: Oop) -> bool {
+pub(super) fn controls(runtime: &Runtime, machine: Oop) -> bool {
     if !runtime.guarded_slot_access_eligible(machine) {
         return false;
     }

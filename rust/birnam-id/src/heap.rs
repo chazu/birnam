@@ -132,13 +132,18 @@ unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop {
 pub(crate) struct Heap {
     blocks: AddressMap<Block>,
     bytes_since_collection: usize,
+    dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
 }
+
+mod dead_allocations;
+pub(crate) use dead_allocations::DeadAllocation;
 
 impl Heap {
     pub(crate) fn new() -> Self {
         Self {
             blocks: AddressMap::default(),
             bytes_since_collection: 0,
+            dead_allocations: Vec::new(),
         }
     }
 
@@ -190,13 +195,18 @@ impl Heap {
     }
 
     pub(crate) fn allocation_count(&self) -> usize {
-        self.blocks.len()
+        self.blocks.len() + self.dead_allocations.len()
     }
 
     pub(crate) fn allocated_bytes(&self) -> usize {
-        self.blocks.values().fold(0usize, |total, block| {
+        let physical = self.blocks.values().fold(0usize, |total, block| {
             total.saturating_add(block.total_size)
-        })
+        });
+        self.dead_allocations
+            .iter()
+            .fold(physical, |total, allocation| {
+                total.saturating_add(allocation.total_size())
+            })
     }
 
     pub(crate) fn bytes_since_collection(&self) -> usize {

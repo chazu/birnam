@@ -3946,6 +3946,36 @@ impl ExecutionState {
         }
     }
 
+    /// A destroyed Machine's exact floor finalizer cannot call code or change
+    /// registry state. Unknown finalizers always retain ordinary physical sweep.
+    pub(crate) fn inert_machine_finalizer(
+        &self,
+        heap: &Heap,
+        object: Oop,
+        finalizer: crate::abi::Finalizer,
+    ) -> bool {
+        if finalizer as usize != machine_finalizer as *const () as usize
+            || heap.payload_size(object) != Some(3 * size_of::<usize>())
+        {
+            return false;
+        }
+        if heap.read_payload_word(object, 0) != Some(MACHINE_CAPABILITY_KIND_V1) {
+            return true;
+        }
+        let Some(index) = heap.read_payload_word(object, 1) else {
+            return false;
+        };
+        let Some(generation) = heap
+            .read_payload_word(object, 2)
+            .and_then(|word| u64::try_from(word).ok())
+        else {
+            return false;
+        };
+        !self
+            .machine(self.owner, MachineCapability { index, generation })
+            .is_ok_and(|machine| machine.machine == object)
+    }
+
     pub(crate) fn read_current_oop(
         &self,
         owner: u64,

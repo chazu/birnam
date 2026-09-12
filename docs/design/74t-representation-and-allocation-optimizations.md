@@ -486,3 +486,83 @@ for these measurements, and all measurement processes have completed.
 This delivers the first loop-entry consumer; general loop dataflow and broader
 application/cold/memory acceptance are still open. Aggregate and closure object
 elimination are not supplied by removing these private host scratch lists.
+
+## Allocation-elimination implementation contract
+
+The first experimental aggregate consumer removes a discarded clone of a proven all-Oop
+aggregate in a bounded, observation-free body. Eligibility follows the actual
+floor clone Method and canonical generated dataflow, not the selector's name.
+An escaping clone, an observing lookup/control method, unsupported storage or a
+possible collection inside the body executes the ordinary code instead.
+
+Removing a physical block cannot remove its observable allocation charge.
+A private dead-allocation journal therefore retains the original vtable and
+payload bits without publishing an Oop. Entries count toward the same live-object,
+live-byte and automatic-collection accounting until the next collection. They
+are deliberately untraced: admission must prove that no identity escapes and
+that the object is dead before any observation/collection is possible. These
+records cannot represent a live virtual value or a closure still being used.
+Their storage and count are bounded; refusal keeps ordinary allocation.
+
+At collection, foreign finalizers and weak-binding retirement require physical
+settlement before the observable sweep: recreate the already-charged, unreachable
+blocks from their saved bits, without charging a second allocation or allowing
+reentrant collection. Ordinary mark callbacks still see the original logical
+counts. Where the sweep has no observing finalizer/retirement, reclaim the dead
+journal entries directly and include them in the usual reclaimed-object result.
+A destroyed Machine's exact floor finalizer may be recognized as inert; arbitrary
+finalizers do not inherit that permission. Sweep order and addresses remain
+implementation details; no new ordering guarantee is introduced.
+
+This requires direct tests of logical counts versus physical allocation savings,
+collection thresholds, observer-triggered settlement, exact saved payloads,
+bounded refusal, and existing roots/identity. The integrated consumer must keep
+all normal PC/index/result-box accounting, preserve synchronous-boundary counters,
+and retire its Frame before the omitted identity could be observed. This work
+remains in progress; it does not yet enable aggregate or closure elimination.
+
+The compiler derives a bounded whole-body no-escape plan from canonical portable
+lowering and slot coloring. It accepts at most 32 zero-argument clone sends, 128
+Frame slots and 64 operations per PC. Clone receivers must come from entry values;
+local aliases are allowed, but returning a clone or sending to one refuses the
+plan. Runtime admission verifies the actual floor clone Method, current lookup
+and Machine controls, all-Oop storage without finalizers or trace hooks, and the
+complete original allocation budget through Return. Payload snapshots are bounded
+to 1,024 bytes and the journal to 4,096 logical allocations. Repeated clones of
+the same prototype within one body share an immutable snapshot; each retains its
+own allocation charge and would become a distinct object on settlement.
+
+Source-derived registered-driver tests compare the consumer off and on for one,
+three and sixteen clones. They check exact returned identity, logical counts and
+bytes, fewer physical blocks, synchronous-boundary diagnostics, zero retained
+Frame pins, mark-time observations and equal collection results. Escaping aliases,
+replaced clone/lookup/control Methods, exhausted mutation epochs, raw storage,
+finalizers, trace hooks, oversized objects and a full journal all retain baseline
+execution. Separate collection tests show that saved bits do not keep an otherwise
+unreachable child alive, that foreign finalizers see settled physical allocation,
+and that collection-triggered input mutation happens at the same allocation
+thresholds. Exact floor Machine-finalizer admission distinguishes active,
+destroyed, stale-generation and malformed capabilities.
+
+`recovery-graphs.py --allocations --verify` includes these tests and the journal
+and compiler proofs in debug/release before the full production gates. The
+`discarded-clone-timing.py` driver requires that source-matched correctness receipt
+and unchanged host admission. It measures four alternating pairs for all six
+combinations of 1/3/16 clones and 16/1,024-byte payloads, retaining execution time,
+collection time, cold preparation, physical block/byte savings and peak owned
+journal storage. The journal estimate excludes allocator bookkeeping and is not
+a claim about process RSS. Small snapshots can cost more host storage than the
+object payloads they replace; measurements must retain this tradeoff.
+
+This consumer remains disabled in normal builds pending performance acceptance.
+Dead-result elimination does not complete scalar replacement of live aggregate
+fields, materialization on exposure, or closure/environment substitution. Those
+remain part of the full implementation obligation.
+
+The [correctness receipt](../measurements/74t-discarded-clones.json) records passing
+debug/release focused checks and full production verification: 506 workspace
+tests, 18 ignored diagnostics, installed runtime, image, archive and relocation
+gates. Physical settlement uses a private bounded scratch counter before restoring
+the already-charged allocation total; a regression test verifies that settlement
+does not overflow by charging an allocation twice. No public ABI or canonical
+descriptor/image authority changed. Qualified performance is still pending.
