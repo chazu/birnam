@@ -623,3 +623,20 @@ passes debug/release checks and full production verification: 507 workspace
 tests and 18 ignored diagnostics, plus installed runtime, image, archive and
 relocation gates. Normal builds now use this bounded policy. Its exact-source
 qualified timing repeat remains a separate acceptance step.
+
+The [enabled-source timing matrix](../measurements/74t-discarded-clone-production-timings.json)
+passed both host gates and every allocation/hit check. Four alternating pairs
+again used 64,000 calls per row. Median execution gains were **4.23%/8.52%** for
+3/16 clones at 16 bytes and **3.43%/11.42%** at 1,024 bytes. Every eligible pair
+improved. Including collection gives **3.62%/9.28%** and **4.17%/12.48%**.
+The excluded single-clone controls recorded zero optimization hits and zero
+omitted objects; their execution medians were −0.04% and +1.32%, with mixed pairs.
+No speedup is claimed for these controls. No process was paused, and the timing
+process completed normally.
+
+This establishes the bounded consumer's correctness and warm fixture benefit.
+Broader application, cold/refusal and total-memory acceptance remain open,
+including mixed-prototype admission cost. The next aggregate work must replace
+private live fields and materialize shared identity before exposure; discarded
+objects alone do not discharge that requirement. Direct closure/environment
+substitution and the remaining full-family acceptance obligations are also open.

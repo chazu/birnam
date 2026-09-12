@@ -22,8 +22,9 @@ and control boundary; its enabled-source matrix shows a 2.18% median fixture gai
 Application/cold/metadata acceptance and broader loop dataflow remain open.
 Discarded-clone elimination is enabled for bounded bodies cloning the same
 prototype at least three times, with original allocation accounting and collector
-observations retained. Qualified experimental gains and the enabled-source
-verification are recorded in 74T; broader acceptance remains open. Live
+observations retained. Its enabled-source matrix shows 3.4–11.4% median fixture
+gains, with zero hits for excluded single-clone controls. Correctness and qualified
+timings are recorded in 74T; broader acceptance remains open. Live
 aggregate scalar replacement and closure elimination are still outstanding.
 None of those four full families is complete yet.
 
