@@ -79,7 +79,11 @@ impl Fixture {
         unsafe { core::mem::transmute(self.symbol(&name)) }
     }
 
-    fn calls(&self) -> usize {
+    pub(in crate::runtime) fn declaration_toggle(&self) -> unsafe extern "C" fn(u32) {
+        unsafe { core::mem::transmute(self.symbol(c"numeric_declarations_enabled")) }
+    }
+
+    pub(in crate::runtime) fn calls(&self) -> usize {
         let calls: unsafe extern "C" fn() -> usize =
             unsafe { core::mem::transmute(self.symbol(c"numeric_calls")) };
         unsafe { calls() }
@@ -163,7 +167,10 @@ fn native_numeric_declarations_pin_the_actual_image_and_reject_unknown_methods()
     let mut fixture = Fixture::load(r);
     let add = fixture.method(1);
     let summary = NumericSummary::discover(add, r.canonical().smallint_vt).unwrap();
-    assert_eq!(summary.operator(r.canonical().smallint_vt), Some(Operator::Add));
+    assert_eq!(
+        summary.operator(r.canonical().smallint_vt),
+        Some(Operator::Add)
+    );
     let unknown: Method = unsafe { core::mem::transmute(fixture.symbol(c"numeric_unknown")) };
     assert!(NumericSummary::discover(unknown, r.canonical().smallint_vt).is_none());
     assert!(

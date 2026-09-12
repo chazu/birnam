@@ -113,6 +113,8 @@ def main():
                     ("birnam_id", "numeric-driver", "runtime::native_tier::leaf_tests::numeric_tests"),
                     ("birnam_prelude", "numeric-declarations", "numeric_declarations_name_exact_implementations"),
                 ]
+            if args.chains:
+                checks.append(("birnam_id", "numeric-chain-storage", "runtime::numeric::chain::tests"))
             for package, label, test_filter in checks:
                 output = run([binaries[package], test_filter, "--nocapture"], profile + "-" + label)
                 match = re.search(r"test result: ok\. (\d+) passed; 0 failed", output)

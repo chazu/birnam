@@ -168,18 +168,27 @@ impl Registry {
             .retain(|_, record| record.descriptor.strong_count() != 0);
     }
 
-    pub(super) fn numeric_template(&self, key: usize) -> Option<Rc<numeric_chain::Template>> {
+    pub(super) fn numeric_template(
+        &self,
+        key: usize,
+    ) -> Option<(
+        Rc<numeric_chain::Template>,
+        Option<Rc<super::numeric::CompiledChain>>,
+    )> {
         let record = self.records.get(&key)?;
         if record.disabled || record.candidate.is_none() || record.descriptor.upgrade().is_none() {
             return None;
         }
-        record.numeric.clone()
+        if record.numeric_tried && record.numeric_candidate.is_none() {
+            return None;
+        }
+        Some((record.numeric.clone()?, record.numeric_candidate.clone()))
     }
 
     pub(super) fn numeric_chain(
         &mut self,
         key: usize,
-        operators: &[numeric_chain::Operator],
+        bindings: Vec<super::numeric::Binding>,
     ) -> Option<Rc<super::numeric::CompiledChain>> {
         let record = self.records.get_mut(&key)?;
         if record.disabled || record.candidate.is_none() || record.descriptor.upgrade().is_none() {
@@ -188,13 +197,9 @@ impl Registry {
         if !record.numeric_tried {
             record.numeric_tried = true;
             record.numeric_candidate =
-                super::numeric::CompiledChain::new(record.numeric.clone()?, operators).map(Rc::new);
+                super::numeric::CompiledChain::new(record.numeric.clone()?, bindings).map(Rc::new);
         }
-        record
-            .numeric_candidate
-            .as_ref()
-            .filter(|candidate| candidate.operators() == operators)
-            .cloned()
+        record.numeric_candidate.clone()
     }
 }
 

@@ -101,23 +101,31 @@ enum Change {
     Operator,
     Error,
     Collect,
+    Declaration,
 }
 thread_local! {
     static CHANGE: Cell<(usize, Change)> = const { Cell::new((usize::MAX, Change::Operand)) };
     static REPLACEMENT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static INPUT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static SUBTRACT: Cell<Option<Method>> = const { Cell::new(None) };
+    static DECLARATION: Cell<Option<unsafe extern "C" fn(u32)>> = const { Cell::new(None) };
     static TRACE: core::cell::RefCell<Vec<(usize, i64, i64)>> = const { core::cell::RefCell::new(Vec::new()) };
+    static CHAIN_OWNER: core::cell::RefCell<std::rc::Weak<numeric::CompiledChain>> = const { core::cell::RefCell::new(std::rc::Weak::new()) };
 }
 
 unsafe extern "C" fn chain_collection(mark: crate::abi::MarkFn) {
     with_active(|r| {
         let input = INPUT.get();
         assert!(unsafe { (*r.state.get()).heap.write_payload_word(input, 0, 10) });
-        // Active raw predictions may outlive both caches and the executable
-        // that produced them. Neither a cached Oop nor native address survives.
+        // Active predictions own their metadata/declarations independently of
+        // both caches. Cache clearing must not free an active owner or leave a
+        // dangling native declaration for subsequent validation.
         *r.numeric.borrow_mut() = Default::default();
         *r.native_tier.borrow_mut() = Default::default();
+        assert_eq!(
+            CHAIN_OWNER.with_borrow(|owner| owner.upgrade().is_some()),
+            numeric::ENABLED.get() && CHANGE.get().0 > 0
+        );
         unsafe { mark(input) };
     });
 }
@@ -159,6 +167,7 @@ fn before_publication(machine: Oop, operand: Oop) {
                 Change::Collect => {
                     r.gc_collect_from_native_range(0, 0);
                 }
+                Change::Declaration => unsafe { DECLARATION.get().unwrap()(0) },
             }
         }
         let cap = r.stackless_machine_capability(machine).unwrap();
@@ -219,6 +228,7 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
         Change::Operator,
         Change::Error,
         Change::Collect,
+        Change::Declaration,
     ] {
         for cut in 0..3 {
             let mut evidence = Vec::new();
@@ -260,19 +270,40 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
                 INPUT.set(input);
                 REPLACEMENT.set(replacement);
                 SUBTRACT.set(Some(native.method(2)));
+                DECLARATION.set(Some(native.declaration_toggle()));
                 TRACE.with_borrow_mut(Vec::clear);
                 if matches!(change, Change::Collect) {
+                    let key = Arc::as_ptr(&block.descriptor) as usize;
+                    CHAIN_OWNER.with_borrow_mut(|owner| {
+                        *owner = r
+                            .native_tier
+                            .borrow()
+                            .records
+                            .get(&key)
+                            .and_then(|record| record.numeric_candidate.as_ref())
+                            .map(Rc::downgrade)
+                            .unwrap_or_default();
+                    });
                     r.gc_register_root_provider(chain_collection);
                 }
                 numeric::CHAIN_HITS.set(0);
                 let before = r.gc_live_bytes();
+                let native_before = native.calls();
                 let result = invoke();
+                if matches!(change, Change::Declaration) {
+                    assert_eq!(
+                        native.calls() - native_before,
+                        if enabled { 3 - cut } else { 3 },
+                        "withdrawn declarations must execute the original native calls"
+                    );
+                }
                 let answer = r.integer_value(result);
                 let expected = match change {
                     Change::Operand => [19, 16, 13][cut],
                     Change::Operator => [-6, 0, 6][cut],
                     Change::Error => 3,
                     Change::Collect => [40, 26, 19][cut],
+                    Change::Declaration => 12,
                 };
                 assert_eq!(answer, expected);
                 assert_eq!(numeric::CHAIN_HITS.get(), if enabled { cut } else { 0 });
@@ -284,7 +315,23 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
                 };
                 evidence.push((answer, TRACE.with_borrow(Clone::clone), allocation));
                 assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+                if matches!(change, Change::Collect) {
+                    assert!(
+                        CHAIN_OWNER.with_borrow(|owner| owner.upgrade().is_none()),
+                        "evicted metadata and native pins are released after the drive"
+                    );
+                }
                 CHANGE.set((usize::MAX, Change::Operand));
+                if matches!(change, Change::Declaration) {
+                    unsafe { native.declaration_toggle()(1) };
+                    numeric::CHAIN_HITS.set(0);
+                    assert_eq!(r.integer_value(invoke()), 12);
+                    assert_eq!(
+                        numeric::CHAIN_HITS.get(),
+                        if enabled { 3 } else { 0 },
+                        "restoring a declaration can reuse its guarded cached plan"
+                    );
+                }
             }
             assert_eq!(
                 evidence[0], evidence[1],
@@ -303,6 +350,14 @@ fn production_numeric_chain_timing() {
             numeric::CHAIN_ENABLED.set(self.0);
         }
     }
+    let batches = std::env::var("BENCH_NUMERIC_BATCHES")
+        .ok()
+        .map(|value| value.parse::<usize>().unwrap())
+        .unwrap_or(1);
+    assert!((1..=500).contains(&batches));
+    let operator = std::env::var("BENCH_NUMERIC_OPERATOR").unwrap_or_else(|_| "add".to_owned());
+    assert!(matches!(operator.as_str(), "add" | "divide"));
+    let varying = std::env::var("BENCH_NUMERIC_VARYING").is_ok_and(|value| value == "1");
     for length in [3, 16] {
         let mut body = Vec::new();
         for i in 0..length {
@@ -340,29 +395,51 @@ fn production_numeric_chain_timing() {
                 r.add_method(
                     r.canonical().smallint_vt,
                     r.intern(b"blend:").unwrap(),
-                    native.method(1),
+                    native.method(if operator == "divide" { 4 } else { 1 }),
                 );
                 let block = install(r, &bytes, 741502, None);
                 let _block = ScopedOopRootGuard::new(r, block.receiver);
                 let input = r.make_integer(1);
                 let _input = ScopedOopRootGuard::new(r, input);
                 let invoke = || r.enter(|| r.send_slice(block.receiver, block.selector, &[input]));
+                let expected = |value| {
+                    if operator == "divide" {
+                        i64::from(value == 1)
+                    } else {
+                        value * i64::from(length + 1)
+                    }
+                };
                 for _ in 0..256 {
-                    assert_eq!(r.integer_value(invoke()), length + 1);
+                    assert_eq!(r.integer_value(invoke()), expected(1));
                 }
                 r.enter(|| r.gc_collect_from_native_range(0, 0));
                 numeric::CHAIN_HITS.set(0);
-                let before = r.gc_live_bytes();
-                let start = std::time::Instant::now();
-                for _ in 0..2000 {
-                    assert_eq!(r.integer_value(invoke()), length + 1);
+                let mut ns = 0;
+                let mut allocations = 0;
+                for _ in 0..batches {
+                    let before = r.gc_live_bytes();
+                    let start = std::time::Instant::now();
+                    for iteration in 0..2000 {
+                        let value = if varying { 1 + iteration % 32 } else { 1 };
+                        assert!(unsafe {
+                            (*r.state.get())
+                                .heap
+                                .write_payload_word(input, 0, value as usize)
+                        });
+                        assert_eq!(r.integer_value(invoke()), expected(value));
+                    }
+                    ns += start.elapsed().as_nanos();
+                    allocations += r.gc_live_bytes() - before;
+                    // Keep each measured batch below the collection threshold.
+                    // Collection is outside the measured arithmetic interval;
+                    // application/automatic-GC measurements remain separate.
+                    r.enter(|| r.gc_collect_from_native_range(0, 0));
                 }
-                let ns = start.elapsed().as_nanos();
-                let allocations = r.gc_live_bytes() - before;
                 let hits = numeric::CHAIN_HITS.get();
-                assert_eq!(hits, if enabled { length as usize * 2000 } else { 0 });
+                let calls = batches * 2000;
+                assert_eq!(hits, if enabled { length as usize * calls } else { 0 });
                 println!(
-                    "numeric-chain length={length} pair={pair} enabled={enabled} calls=2000 ns={ns} allocation_bytes={allocations} hits={hits}"
+                    "numeric-chain length={length} pair={pair} enabled={enabled} calls={calls} ns={ns} allocation_bytes={allocations} hits={hits} operator={operator} varying={varying} collection=outside-batch"
                 );
             }
         }

@@ -156,10 +156,25 @@ Machine publication method, or collector changes execution between operations.
 
 Every baseline Frame, index box, numeric result box and transition remains in
 place. Result allocation still performs its original GC check after reading
-operands. Tickets contain only integers and can survive cache eviction or
-collection without holding unrooted Oops or executable addresses. The compiler
-owner survives the synchronous raw-kernel invocation; no executable lease is
-needed for its completed output data.
+operands. Tickets contain raw integers and owned compiler/declaration metadata,
+with no borrowed Frame words or unrooted Oops. The current cache refinement
+retains these owners through the drive, including a collecting cache eviction,
+and releases the final active owners when the drive ends.
+
+Cached chains now reuse their original binding predictions and pinned native
+declarations. They do not repeat dictionary lookup or consult the numeric-method
+registry for an actual target that matches a cached binding. Every use still
+queries the declaration's current floor/API context and validates both actual
+operands and ErrorVt behavior. A stale binding takes the existing method-registry
+path; a stale numeric prediction recomputes the current operation normally.
+This removes repeated preparation without weakening any observation guard.
+
+A per-runtime pool retains at most four free pairs of temporary raw buffers.
+Each active drive leases distinct storage and owns the pool independently of
+the caches. Nested drives cannot overwrite an outer drive's intermediates;
+clearing the registry releases an old pool after its final lease ends. Raw
+future results stay in untraced host buffers rather than native stack arrays,
+where conservative collection could mistake their bits for Oop roots.
 
 This replaces the initially proposed requirement for an observation-free whole
 chain with independent validation at every actual call. A future faster mode
@@ -190,7 +205,78 @@ admission/validation cost before promotion, rather than enabling a slower pass.
 The [follow-up diagnostic receipt](../measurements/74t-numeric-chain-pilot.json)
 binds the measured release binary to the correctness receipt below. Median paired
 overhead was 9.53% for three operations and 7.14% for sixteen. This remains an
-unqualified warm constant-input pilot, not a whole-application performance result.
+unqualified warm constant-input pilot of the initial integration, not a
+whole-application performance result or a measurement of the cache refinement.
+
+The timing fixture also accepts `BENCH_NUMERIC_BATCHES` (1–500),
+`BENCH_NUMERIC_OPERATOR` (`add` or `divide`) and `BENCH_NUMERIC_VARYING=1`.
+Each batch measures 2,000 invocations, with collection outside its timed interval.
+Multiple batches lengthen the sample without silently changing its allocation
+or collection regime. Varying-input cases cycle through 1–32; all predicted-call
+hits and allocation totals are checked. Automatic-GC and whole-application
+profitability remain separate acceptance obligations.
+
+The cache refinement's [initial longer matrix](../measurements/74t-numeric-chain-cache-timings.json)
+completed the constant-input addition case under the unchanged host gate:
+median regressions were 3.30% for three operations and 1.26% for sixteen, using
+100,000 invocations per sample. The next case failed interval admission (47.7%
+median idle against the required 50%), so the full matrix is **not qualified**.
+These results do not justify enabling the pass. The reusable timing controller
+is `scripts/numeric-chain-timing.py --receipt <passed-correctness-receipt>
+--output <new-timing-receipt>`; it verifies source and release-binary hashes,
+waits for unchanged host admission, monitors intervals and records partial cases.
+
+The [complete follow-up matrix](../measurements/74t-numeric-chain-cache-rk-timings.json)
+passed every preflight and interval gate. It used four alternating-order pairs
+of 100,000 invocations for each row/length below. Positive percentages mean a
+speedup over the existing boxed numeric consumer; negative values mean overhead.
+
+| Operation and inputs | Three operations | Sixteen operations |
+| --- | ---: | ---: |
+| Addition, constant | +1.32% | -0.54% |
+| Addition, varying | -3.56% | -0.91% |
+| Division, constant | +2.08% | -1.72% |
+| Division, varying | -4.19% | -1.06% |
+
+All allocations matched and every enabled numeric call used its raw result.
+The user-authorized `rk` pause ended with verified resumption. These are
+qualified warm arithmetic measurements, with GC outside the timed batches;
+they do not establish cold amortization or application profitability. The
+changing-input regressions keep this implementation disabled in normal builds.
+
+### Next: bounded driver fusion
+
+The next consumer should execute the admitted private PC entries as one bounded
+numeric region, retaining their ordinary Frame writes and all original boxes.
+It can commit numeric call results through the existing V2 transition methods
+locally, avoiding repeated operand copying, lookup and driver dispatch between
+arithmetic operations. Explicit returns and terminal numeric tail calls must
+both reach the existing outer `finish_stackless_return`; a tail-call PC cannot
+be relabeled as a Return PC in its descriptor.
+
+Admission must precede the first body effect and prove all of the following:
+
+- The current Frame/descriptor and every private PC entry match the canonical
+  lowering. The straight-line region remains bounded to 32 numeric sends.
+- Machine slot and control methods and metacircular lookup are their current
+  canonical floor implementations, with no resumable registration for a method
+  the region bypasses. Every numeric target matches its live pinned declaration
+  and initialized API context; ErrorVt does not alias Integer.
+- All selectors already exist and the full region's allocation budget fits
+  before the next automatic collection. Count all PC tokens, literal/index
+  boxes, publication operands and numeric result boxes; only the entry PC token
+  has already been allocated when native selection runs.
+- There are no pending stackless code retirements. Dropping an ordinary
+  dispatch-read guard calls `drain_pending_stackless_retirements`, which can
+  collect and invoke observers. An arithmetic-only effect summary is therefore
+  insufficient to remove that dispatch boundary.
+- The complete raw kernel succeeds. Faulting arithmetic, unknown semantics,
+  insufficient room or any failed guard executes the ordinary first PC, before
+  speculative work has published a Frame change or allocated a Birnam object.
+
+This requires no public IdApi, Method ABI, descriptor or image-format change.
+The existing fully checked driver integration remains the differential reference
+for forced refusal, allocation order, Frame state, malleability and ownership.
 
 
 ## Progress
@@ -231,3 +317,10 @@ unqualified warm constant-input pilot, not a whole-application performance resul
 - No remaining optimization family is complete yet. Next: reduce chain
   admission/validation overhead and establish profitable production behavior,
   then implement loop analysis and both allocation-elimination consumers.
+- The cache/buffer refinement passed debug/release differential checks and full
+  production verification: 491 workspace tests, 16 ignored diagnostics, installed
+  Prelude/API-context probes, image/lifetime, cold archives and relocation.
+  `docs/measurements/74t-numeric-chain-cache.json` records this checkpoint.
+  Cached declaration withdrawal/restoration and active-owner release after
+  collecting cache eviction have explicit coverage. The complete qualified
+  matrix above establishes that driver fusion is still needed before promotion.

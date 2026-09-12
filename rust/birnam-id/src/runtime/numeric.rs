@@ -11,6 +11,7 @@ const MAX_RECORDS: usize = 256;
 #[derive(Default)]
 pub(super) struct Registry {
     records: BTreeMap<usize, Record>,
+    buffers: Option<chain::Pool>,
 }
 
 #[derive(Default)]
@@ -100,14 +101,23 @@ impl Runtime {
                 error_argument,
             )
         };
-        let summary = self.numeric_summary(method)?;
+        let predicted_summary = prediction.as_ref().and_then(|p| p.summary(method));
+        let fallback_summary = if predicted_summary.is_none() {
+            self.numeric_summary(method)
+        } else {
+            None
+        };
+        let summary = predicted_summary.or(fallback_summary.as_deref())?;
         let operator = summary.operator(self.canonical().smallint_vt)?;
         if error_argument {
             #[cfg(test)]
             HITS.set(HITS.get() + 1);
             return Some(argument);
         }
-        let value = match prediction.filter(|p| p.matches(operator, left, right)) {
+        let value = match prediction
+            .as_ref()
+            .filter(|p| p.matches(operator, left, right))
+        {
             Some(prediction) => {
                 #[cfg(test)]
                 CHAIN_HITS.set(CHAIN_HITS.get() + 1);
@@ -121,7 +131,8 @@ impl Runtime {
         // can collect, observe the Frame or retire bindings. The summary's Rc
         // still pins its native image through this potentially observing call.
         let result = self.make_integer(value);
-        drop(summary);
+        drop(prediction);
+        drop(fallback_summary);
         Some(result)
     }
 }
@@ -138,4 +149,4 @@ thread_local! {
 pub(super) mod tests;
 
 mod chain;
-pub(super) use chain::{CompiledChain, Ticket};
+pub(super) use chain::{Binding, CompiledChain, Ticket};
