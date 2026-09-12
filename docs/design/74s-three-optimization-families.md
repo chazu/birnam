@@ -329,3 +329,14 @@ Two additional application attempts were rejected by interval load
 attempt holds only the authorized rk process paused through a sustained cooldown
 and the full matrix, with a separate pause owner responsible for resuming it in
 all exit paths. Application acceptance remains pending that complete matrix.
+
+
+The [sustained-cooldown attempt](../measurements/74s-applications-settled-rejected.json)
+passed six consecutive preflights after 34 checks, then the production matrix was
+rejected during the third group's chain workload: the monitored interval had
+38.97% idle CPU. It remains unqualified. The externally paused rk PID exited
+during this attempt; subsequent process inspection verified current rk processes
+running with none left stopped. This is recorded as process exit, not falsely as
+resumption of the old PID. Combined application performance acceptance is still
+incomplete. There are no active measurement jobs from this attempt, and no code
+changes are awaiting correctness verification.
