@@ -13,8 +13,12 @@ Selective native copy propagation is implemented in 74S; combined production
 performance acceptance and broader continuation shapes remain pending.
 [74T](74t-representation-and-allocation-optimizations.md) tracks the full
 implementation of numeric, loop, temporary-object and closure/capture
-optimization. Its first dependency is identity-preserving graph recovery;
-none of those four families is complete yet.
+optimization. Identity-preserving graph recovery and a bounded production
+numeric-chain consumer are implemented. Qualified warm arithmetic gains are
+6.8–10.8% for three-operation chains and 20.5–22.8% for sixteen-operation chains
+in the enabled production-source matrix (see 74T for both qualified matrices).
+Application/cold/metadata acceptance remains open; loop and allocation-elimination
+consumers are still outstanding. None of those four full families is complete yet.
 
 ## Direction
 

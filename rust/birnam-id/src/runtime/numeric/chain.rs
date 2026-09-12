@@ -2,10 +2,11 @@
 //!
 //! A ticket holds raw integers and owned compiler/declaration metadata, never
 //! borrowed Frame words or unrooted Oops.
-//! Every original send and allocation still runs at its ordinary boundary.
-//! Even an intervening collector or observing lookup may change execution:
-//! the next call must independently match its current native declaration and
-//! both current operands before a predicted result can replace arithmetic.
+//! The per-call experiment retains each original send and allocation boundary;
+//! its next prediction must match current operands and native declarations after
+//! any observing lookup or collection. Production driver fusion instead admits
+//! a whole bounded region before its first effect, retaining all allocations
+//! while proving that no observation can intervene between numeric operations.
 use super::*;
 use birnam_codegen::numeric_chain::{Input, Operator, Template, Value};
 use birnam_native_compiler::Unit;

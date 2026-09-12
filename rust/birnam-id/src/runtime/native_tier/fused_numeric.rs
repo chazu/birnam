@@ -6,7 +6,7 @@ use crate::runtime::current_thread_token;
 
 #[cfg(test)]
 thread_local! {
-    pub(in crate::runtime) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(in crate::runtime) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(in crate::runtime) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
@@ -59,7 +59,7 @@ pub(super) unsafe fn execute(
     entry_args: *const Oop,
 ) -> Option<Result<Oop, ExecutionError>> {
     #[cfg(not(test))]
-    let enabled = false;
+    let enabled = true;
     #[cfg(test)]
     let enabled = ENABLED.get() && super::super::numeric::ENABLED.get();
     if !enabled || !controls(runtime, machine) {

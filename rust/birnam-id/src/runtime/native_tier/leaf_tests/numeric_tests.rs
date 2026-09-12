@@ -8,10 +8,21 @@ unsafe extern "C" fn observing_lookup(receiver: Oop, args: *const Oop, count: us
     unsafe { crate::dispatch::vtable_lookup_method(receiver, args, count) }
 }
 
-struct Mode(bool);
+struct Mode(bool, bool, bool);
+impl Mode {
+    fn set(enabled: bool) -> Self {
+        Self(
+            numeric::ENABLED.replace(enabled),
+            super::super::fused_numeric::ENABLED.replace(false),
+            numeric::CHAIN_ENABLED.replace(true),
+        )
+    }
+}
 impl Drop for Mode {
     fn drop(&mut self) {
         numeric::ENABLED.set(self.0);
+        super::super::fused_numeric::ENABLED.set(self.1);
+        numeric::CHAIN_ENABLED.set(self.2);
     }
 }
 
@@ -44,7 +55,7 @@ fn production_numeric_calls_use_current_targets_and_preserve_observing_lookup() 
     let mut evidence = Vec::new();
     for observing in [false, true] {
         for enabled in [false, true] {
-            let _mode = Mode(numeric::ENABLED.replace(enabled));
+            let _mode = Mode::set(enabled);
             numeric::HITS.set(0);
             let bootstrap = crate::dispatch::build_bootstrap();
             let r = &bootstrap.runtime;
@@ -233,7 +244,7 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
         for cut in 0..3 {
             let mut evidence = Vec::new();
             for enabled in [false, true] {
-                let _mode = Mode(numeric::ENABLED.replace(enabled));
+                let _mode = Mode::set(enabled);
                 let bootstrap = crate::dispatch::build_bootstrap();
                 let r = &bootstrap.runtime;
                 r.publish_canonical_exports();

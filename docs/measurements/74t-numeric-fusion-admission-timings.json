@@ -1,0 +1,864 @@
+{
+  "batches": 50,
+  "binary": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+    "sha256": "6d154e3f95f40fefa2f6dcb34b68f8d0249927783dc0170cd07a9440bac3c6a2"
+  },
+  "cases": [
+    {
+      "command": {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+          "production_numeric_chain_timing",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "environment": {
+          "BENCH_NUMERIC_OPERATOR": "add",
+          "BENCH_NUMERIC_VARYING": "0"
+        },
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest runtime::native_tier::leaf_tests::numeric_tests::production_numeric_chain_timing ... numeric-chain length=3 pair=0 enabled=false calls=100000 ns=283746252 allocation_bytes=103200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=0 enabled=true calls=100000 ns=266598711 allocation_bytes=103200000 hits=300000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=true calls=100000 ns=260823504 allocation_bytes=103200000 hits=300000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=false calls=100000 ns=277425670 allocation_bytes=103200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=false calls=100000 ns=275991331 allocation_bytes=103200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=true calls=100000 ns=268998497 allocation_bytes=103200000 hits=300000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=true calls=100000 ns=276131544 allocation_bytes=103200000 hits=300000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=false calls=100000 ns=299333458 allocation_bytes=103200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=false calls=100000 ns=1221459539 allocation_bytes=311200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=true calls=100000 ns=954864159 allocation_bytes=311200000 hits=1600000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=true calls=100000 ns=858207167 allocation_bytes=311200000 hits=1600000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=false calls=100000 ns=1079339748 allocation_bytes=311200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=false calls=100000 ns=1088546913 allocation_bytes=311200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=true calls=100000 ns=876530793 allocation_bytes=311200000 hits=1600000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=true calls=100000 ns=864819088 allocation_bytes=311200000 hits=1600000 operator=add varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=false calls=100000 ns=1090772090 allocation_bytes=311200000 hits=0 operator=add varying=false collection=outside-batch fused=true\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 179 filtered out; finished in 15.46s\n\n"
+      },
+      "interval": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--samples",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/74t-recovery/chain-interval-add-0.log",
+          "add-0"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: add-0 stayed quiet for 14 intervals; median 65.71%, low intervals 0\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+        "samples": "Processes: 623 total, 4 running, 619 sleeping, 6115 threads \n2026/09/12 16:03:01\nLoad Avg: 12.85, 8.56, 7.33 \nCPU usage: 25.12% user, 16.41% sys, 58.46% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 321884 total, 4500M resident, 126M private, 1347M shared.\nPhysMem: 23G used (3232M wired, 10G compressor), 80M unused.\nVM: 252T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49818698/32G in, 45080706/30G out.\nDisks: 134362074/2374G read, 81681835/2108G written.\n\n\nProcesses: 623 total, 3 running, 620 sleeping, 6118 threads \n2026/09/12 16:03:02\nLoad Avg: 12.85, 8.56, 7.33 \nCPU usage: 25.76% user, 8.3% sys, 66.19% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 321883 total, 4500M resident, 126M private, 1347M shared.\nPhysMem: 23G used (3384M wired, 10G compressor), 112M unused.\nVM: 252T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49818717/32G in, 45080729/30G out.\nDisks: 134362204/2374G read, 81681998/2108G written.\n\n\nProcesses: 626 total, 5 running, 621 sleeping, 6072 threads \n2026/09/12 16:03:03\nLoad Avg: 11.98, 8.45, 7.29 \nCPU usage: 28.18% user, 6.42% sys, 65.39% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322123 total, 4501M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3234M wired, 10G compressor), 73M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49818743/32G in, 45080772/30G out.\nDisks: 134362302/2374G read, 81682158/2108G written.\n\n\nProcesses: 623 total, 6 running, 617 sleeping, 6070 threads \n2026/09/12 16:03:04\nLoad Avg: 11.98, 8.45, 7.29 \nCPU usage: 33.37% user, 10.60% sys, 56.1% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 321883 total, 4500M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3381M wired, 10G compressor), 112M unused.\nVM: 252T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49818806/32G in, 45080835/30G out.\nDisks: 134363794/2374G read, 81682179/2108G written.\n\n\nProcesses: 626 total, 4 running, 622 sleeping, 6071 threads \n2026/09/12 16:03:05\nLoad Avg: 11.98, 8.45, 7.29 \nCPU usage: 41.0% user, 16.32% sys, 42.66% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322123 total, 4501M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3233M wired, 10G compressor), 107M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49819822/32G in, 45081818/30G out.\nDisks: 134364046/2374G read, 81682336/2108G written.\n\n\nProcesses: 623 total, 4 running, 619 sleeping, 6049 threads \n2026/09/12 16:03:06\nLoad Avg: 11.98, 8.45, 7.29 \nCPU usage: 32.77% user, 12.63% sys, 54.58% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 321883 total, 4500M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3233M wired, 10G compressor), 102M unused.\nVM: 252T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49819826/32G in, 45081822/30G out.\nDisks: 134364159/2374G read, 81682346/2108G written.\n\n\nProcesses: 622 total, 4 running, 618 sleeping, 6050 threads \n2026/09/12 16:03:08\nLoad Avg: 11.98, 8.45, 7.29 \nCPU usage: 35.80% user, 22.15% sys, 42.3% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 321855 total, 4500M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3383M wired, 10G compressor), 90M unused.\nVM: 252T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49819870/32G in, 45081874/30G out.\nDisks: 134364477/2374G read, 81682510/2108G written.\n\n\nProcesses: 626 total, 4 running, 622 sleeping, 6052 threads \n2026/09/12 16:03:09\nLoad Avg: 11.50, 8.41, 7.29 \nCPU usage: 26.45% user, 7.82% sys, 65.71% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322032 total, 4503M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3232M wired, 10G compressor), 75M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820218/32G in, 45081964/30G out.\nDisks: 134364939/2374G read, 81682522/2108G written.\n\n\nProcesses: 626 total, 3 running, 623 sleeping, 6053 threads \n2026/09/12 16:03:10\nLoad Avg: 11.50, 8.41, 7.29 \nCPU usage: 24.43% user, 8.14% sys, 67.42% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322032 total, 4503M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3381M wired, 10G compressor), 93M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820233/32G in, 45081978/30G out.\nDisks: 134365203/2374G read, 81682699/2108G written.\n\n\nProcesses: 629 total, 5 running, 624 sleeping, 6048 threads \n2026/09/12 16:03:11\nLoad Avg: 11.50, 8.41, 7.29 \nCPU usage: 22.9% user, 8.31% sys, 69.59% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322272 total, 4504M resident, 126M private, 1352M shared.\nPhysMem: 23G used (3234M wired, 10G compressor), 99M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820283/32G in, 45082014/30G out.\nDisks: 134365322/2374G read, 81683290/2108G written.\n\n\nProcesses: 626 total, 3 running, 623 sleeping, 6112 threads \n2026/09/12 16:03:12\nLoad Avg: 11.50, 8.41, 7.29 \nCPU usage: 26.95% user, 7.83% sys, 65.20% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322037 total, 4506M resident, 129M private, 1353M shared.\nPhysMem: 23G used (3234M wired, 10G compressor), 61M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820389/32G in, 45082138/30G out.\nDisks: 134365533/2374G read, 81683470/2108G written.\n\n\nProcesses: 627 total, 5 running, 1 stuck, 621 sleeping, 6145 threads \n2026/09/12 16:03:13\nLoad Avg: 10.74, 8.30, 7.26 \nCPU usage: 26.3% user, 8.52% sys, 65.44% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322244 total, 4516M resident, 129M private, 1353M shared.\nPhysMem: 23G used (3384M wired, 10G compressor), 69M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820417/32G in, 45082180/30G out.\nDisks: 134365667/2374G read, 81683912/2108G written.\n\n\nProcesses: 626 total, 3 running, 623 sleeping, 6141 threads \n2026/09/12 16:03:14\nLoad Avg: 10.74, 8.30, 7.26 \nCPU usage: 21.71% user, 4.77% sys, 73.50% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322216 total, 4516M resident, 129M private, 1353M shared.\nPhysMem: 23G used (3232M wired, 10G compressor), 91M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820471/32G in, 45082230/30G out.\nDisks: 134366146/2374G read, 81683916/2108G written.\n\n\nProcesses: 627 total, 3 running, 624 sleeping, 6145 threads \n2026/09/12 16:03:15\nLoad Avg: 10.74, 8.30, 7.26 \nCPU usage: 25.29% user, 7.63% sys, 67.6% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322244 total, 4516M resident, 129M private, 1353M shared.\nPhysMem: 23G used (3234M wired, 10G compressor), 68M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820519/32G in, 45082294/30G out.\nDisks: 134366506/2374G read, 81684240/2108G written.\n\n\nProcesses: 630 total, 3 running, 627 sleeping, 6144 threads \n2026/09/12 16:03:16\nLoad Avg: 10.74, 8.30, 7.26 \nCPU usage: 24.1% user, 7.13% sys, 68.84% idle \nSharedLibs: 544M resident, 123M data, 39M linkedit.\nMemRegions: 322484 total, 4517M resident, 129M private, 1353M shared.\nPhysMem: 23G used (3383M wired, 10G compressor), 79M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820568/32G in, 45082348/30G out.\nDisks: 134366777/2374G read, 81684403/2108G written.\n\n\n"
+      },
+      "operator": "add",
+      "preflight": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--wait",
+          "add-0"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: add-0 stable on AC power; idle 64.61 73.51 71.67%, median 71.67%, spread 8.90 points, hottest 25.1%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+      },
+      "qualified": true,
+      "rows": [
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 283746252,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 266598711,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 260823504,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 277425670,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 275991331,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 268998497,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 276131544,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 299333458,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1221459539,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 954864159,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 858207167,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1079339748,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1088546913,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 876530793,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 864819088,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1090772090,
+          "pair": 3
+        }
+      ],
+      "summary": [
+        {
+          "length": 3,
+          "median_improvement_percent": 6.0138157748603485,
+          "paired_improvement_percent": [
+            6.043266079863496,
+            5.984365469857201,
+            2.533715089768529,
+            7.751192985583321
+          ]
+        },
+        {
+          "length": 16,
+          "median_improvement_percent": 20.601362024937124,
+          "paired_improvement_percent": [
+            21.825968973009104,
+            20.487764062220005,
+            19.476985095267086,
+            20.714959987654247
+          ]
+        }
+      ],
+      "varying": false
+    },
+    {
+      "command": {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+          "production_numeric_chain_timing",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "environment": {
+          "BENCH_NUMERIC_OPERATOR": "add",
+          "BENCH_NUMERIC_VARYING": "1"
+        },
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest runtime::native_tier::leaf_tests::numeric_tests::production_numeric_chain_timing ... numeric-chain length=3 pair=0 enabled=false calls=100000 ns=299013709 allocation_bytes=103200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=0 enabled=true calls=100000 ns=262018543 allocation_bytes=103200000 hits=300000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=true calls=100000 ns=261588876 allocation_bytes=103200000 hits=300000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=false calls=100000 ns=274853627 allocation_bytes=103200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=false calls=100000 ns=280092332 allocation_bytes=103200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=true calls=100000 ns=262981829 allocation_bytes=103200000 hits=300000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=true calls=100000 ns=269831580 allocation_bytes=103200000 hits=300000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=false calls=100000 ns=279104912 allocation_bytes=103200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=false calls=100000 ns=1103053535 allocation_bytes=311200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=true calls=100000 ns=866784290 allocation_bytes=311200000 hits=1600000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=true calls=100000 ns=855819546 allocation_bytes=311200000 hits=1600000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=false calls=100000 ns=1085826878 allocation_bytes=311200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=false calls=100000 ns=1091820581 allocation_bytes=311200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=true calls=100000 ns=869904078 allocation_bytes=311200000 hits=1600000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=true calls=100000 ns=867313208 allocation_bytes=311200000 hits=1600000 operator=add varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=false calls=100000 ns=1203282125 allocation_bytes=311200000 hits=0 operator=add varying=true collection=outside-batch fused=true\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 179 filtered out; finished in 15.23s\n\n"
+      },
+      "interval": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--samples",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/74t-recovery/chain-interval-add-1.log",
+          "add-1"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: add-1 stayed quiet for 14 intervals; median 67.82%, low intervals 0\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+        "samples": "Processes: 628 total, 6 running, 622 sleeping, 6115 threads \n2026/09/12 16:03:20\nLoad Avg: 10.28, 8.25, 7.24 \nCPU usage: 30.88% user, 27.45% sys, 41.66% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322288 total, 4693M resident, 134M private, 1273M shared.\nPhysMem: 23G used (3380M wired, 10G compressor), 69M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820721/32G in, 45082483/30G out.\nDisks: 134367781/2374G read, 81685176/2108G written.\n\n\nProcesses: 628 total, 3 running, 625 sleeping, 6110 threads \n2026/09/12 16:03:21\nLoad Avg: 10.28, 8.25, 7.24 \nCPU usage: 25.85% user, 9.32% sys, 64.81% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322287 total, 4693M resident, 134M private, 1273M shared.\nPhysMem: 23G used (3382M wired, 10G compressor), 109M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820738/32G in, 45082502/30G out.\nDisks: 134367859/2374G read, 81685341/2108G written.\n\n\nProcesses: 632 total, 4 running, 628 sleeping, 6095 threads \n2026/09/12 16:03:22\nLoad Avg: 10.28, 8.25, 7.24 \nCPU usage: 23.74% user, 5.1% sys, 71.24% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322595 total, 4695M resident, 134M private, 1277M shared.\nPhysMem: 23G used (3233M wired, 10G compressor), 60M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820759/32G in, 45082528/30G out.\nDisks: 134368013/2374G read, 81685473/2108G written.\n\n\nProcesses: 628 total, 4 running, 624 sleeping, 6076 threads \n2026/09/12 16:03:23\nLoad Avg: 9.85, 8.19, 7.23 \nCPU usage: 24.4% user, 7.50% sys, 68.45% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322287 total, 4693M resident, 134M private, 1277M shared.\nPhysMem: 23G used (3380M wired, 10G compressor), 53M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820785/32G in, 45082562/30G out.\nDisks: 134368092/2374G read, 81685523/2108G written.\n\n\nProcesses: 627 total, 4 running, 623 sleeping, 6065 threads \n2026/09/12 16:03:24\nLoad Avg: 9.85, 8.19, 7.23 \nCPU usage: 24.88% user, 7.29% sys, 67.82% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322259 total, 4692M resident, 134M private, 1277M shared.\nPhysMem: 23G used (3233M wired, 10G compressor), 73M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820798/32G in, 45082576/30G out.\nDisks: 134368272/2374G read, 81685679/2108G written.\n\n\nProcesses: 628 total, 3 running, 625 sleeping, 6062 threads \n2026/09/12 16:03:26\nLoad Avg: 9.85, 8.19, 7.23 \nCPU usage: 20.92% user, 4.4% sys, 75.2% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322287 total, 4693M resident, 134M private, 1277M shared.\nPhysMem: 23G used (3233M wired, 10G compressor), 54M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820859/32G in, 45082645/30G out.\nDisks: 134368346/2374G read, 81685681/2108G written.\n\n\nProcesses: 627 total, 3 running, 624 sleeping, 6059 threads \n2026/09/12 16:03:27\nLoad Avg: 9.85, 8.19, 7.23 \nCPU usage: 27.6% user, 8.74% sys, 64.19% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322044 total, 4687M resident, 134M private, 1277M shared.\nPhysMem: 23G used (3380M wired, 10G compressor), 86M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49820933/32G in, 45082683/30G out.\nDisks: 134368466/2374G read, 81685843/2108G written.\n\n\nProcesses: 630 total, 2 running, 628 sleeping, 6065 threads \n2026/09/12 16:03:28\nLoad Avg: 9.85, 8.19, 7.23 \nCPU usage: 22.64% user, 6.67% sys, 70.67% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322284 total, 4689M resident, 134M private, 1277M shared.\nPhysMem: 23G used (3232M wired, 10G compressor), 47M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821039/32G in, 45082707/30G out.\nDisks: 134368611/2374G read, 81685999/2108G written.\n\n\nProcesses: 627 total, 5 running, 622 sleeping, 6058 threads \n2026/09/12 16:03:29\nLoad Avg: 9.39, 8.12, 7.21 \nCPU usage: 22.88% user, 7.27% sys, 69.84% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322044 total, 4687M resident, 134M private, 1278M shared.\nPhysMem: 23G used (3378M wired, 10G compressor), 78M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821061/32G in, 45082740/30G out.\nDisks: 134368726/2374G read, 81686003/2108G written.\n\n\nProcesses: 627 total, 3 running, 624 sleeping, 6041 threads \n2026/09/12 16:03:30\nLoad Avg: 9.39, 8.12, 7.21 \nCPU usage: 24.70% user, 7.87% sys, 67.42% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322044 total, 4687M resident, 134M private, 1278M shared.\nPhysMem: 23G used (3232M wired, 10G compressor), 64M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821076/32G in, 45082756/30G out.\nDisks: 134368797/2374G read, 81686161/2108G written.\n\n\nProcesses: 629 total, 3 running, 626 sleeping, 6059 threads \n2026/09/12 16:03:31\nLoad Avg: 9.39, 8.12, 7.21 \nCPU usage: 23.5% user, 4.42% sys, 72.52% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322217 total, 4688M resident, 133M private, 1278M shared.\nPhysMem: 23G used (3230M wired, 10G compressor), 68M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821110/32G in, 45082802/30G out.\nDisks: 134368890/2374G read, 81686236/2108G written.\n\n\nProcesses: 627 total, 3 running, 624 sleeping, 6043 threads \n2026/09/12 16:03:32\nLoad Avg: 9.39, 8.12, 7.21 \nCPU usage: 24.94% user, 7.52% sys, 67.52% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322044 total, 4687M resident, 133M private, 1278M shared.\nPhysMem: 23G used (3380M wired, 10G compressor), 85M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821124/32G in, 45082821/30G out.\nDisks: 134368971/2374G read, 81686683/2108G written.\n\n\nProcesses: 630 total, 3 running, 627 sleeping, 6056 threads \n2026/09/12 16:03:33\nLoad Avg: 8.79, 8.02, 7.18 \nCPU usage: 26.0% user, 8.15% sys, 65.83% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322284 total, 4689M resident, 133M private, 1278M shared.\nPhysMem: 23G used (3229M wired, 10G compressor), 70M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821183/32G in, 45082885/30G out.\nDisks: 134369170/2374G read, 81687186/2108G written.\n\n\nProcesses: 627 total, 4 running, 1 stuck, 622 sleeping, 6053 threads \n2026/09/12 16:03:34\nLoad Avg: 8.79, 8.02, 7.18 \nCPU usage: 22.97% user, 9.64% sys, 67.38% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322044 total, 4687M resident, 133M private, 1278M shared.\nPhysMem: 23G used (3376M wired, 10G compressor), 64M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49821210/32G in, 45082922/30G out.\nDisks: 134370045/2374G read, 81687202/2108G written.\n\n\nProcesses: 627 total, 8 running, 619 sleeping, 6061 threads \n2026/09/12 16:03:35\nLoad Avg: 8.79, 8.02, 7.18 \nCPU usage: 37.84% user, 16.96% sys, 45.19% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322044 total, 4687M resident, 133M private, 1278M shared.\nPhysMem: 23G used (3229M wired, 10G compressor), 74M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822022/32G in, 45083727/30G out.\nDisks: 134370209/2374G read, 81687358/2108G written.\n\n\n"
+      },
+      "operator": "add",
+      "preflight": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--wait",
+          "add-1"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: add-1 stable on AC power; idle 67.31 76.25 67.10%, median 67.31%, spread 9.15 points, hottest 21.9%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+      },
+      "qualified": true,
+      "rows": [
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 299013709,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 262018543,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 261588876,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 274853627,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 280092332,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 262981829,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 269831580,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 279104912,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1103053535,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 866784290,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 855819546,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1085826878,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1091820581,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 869904078,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 867313208,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1203282125,
+          "pair": 3
+        }
+      ],
+      "summary": [
+        {
+          "length": 3,
+          "median_improvement_percent": 5.4674970370931835,
+          "paired_improvement_percent": [
+            12.372397949152225,
+            4.826114592258957,
+            6.10887948192741,
+            3.3225255455196057
+          ]
+        },
+        {
+          "length": 16,
+          "median_improvement_percent": 21.3011259783915,
+          "paired_improvement_percent": [
+            21.419562832007067,
+            21.182689124775933,
+            20.32536360477345,
+            27.921042789528684
+          ]
+        }
+      ],
+      "varying": true
+    },
+    {
+      "command": {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+          "production_numeric_chain_timing",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "environment": {
+          "BENCH_NUMERIC_OPERATOR": "divide",
+          "BENCH_NUMERIC_VARYING": "0"
+        },
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest runtime::native_tier::leaf_tests::numeric_tests::production_numeric_chain_timing ... numeric-chain length=3 pair=0 enabled=false calls=100000 ns=286120828 allocation_bytes=103200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=0 enabled=true calls=100000 ns=266608419 allocation_bytes=103200000 hits=300000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=true calls=100000 ns=262759876 allocation_bytes=103200000 hits=300000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=false calls=100000 ns=281476669 allocation_bytes=103200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=false calls=100000 ns=274767625 allocation_bytes=103200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=true calls=100000 ns=268047206 allocation_bytes=103200000 hits=300000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=true calls=100000 ns=256805166 allocation_bytes=103200000 hits=300000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=false calls=100000 ns=277011833 allocation_bytes=103200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=false calls=100000 ns=1087279542 allocation_bytes=311200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=true calls=100000 ns=856097831 allocation_bytes=311200000 hits=1600000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=true calls=100000 ns=865473085 allocation_bytes=311200000 hits=1600000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=false calls=100000 ns=1072464755 allocation_bytes=311200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=false calls=100000 ns=1104908377 allocation_bytes=311200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=true calls=100000 ns=902224502 allocation_bytes=311200000 hits=1600000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=true calls=100000 ns=858778043 allocation_bytes=311200000 hits=1600000 operator=divide varying=false collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=false calls=100000 ns=1098767294 allocation_bytes=311200000 hits=0 operator=divide varying=false collection=outside-batch fused=true\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 179 filtered out; finished in 15.13s\n\n"
+      },
+      "interval": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--samples",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/74t-recovery/chain-interval-divide-0.log",
+          "divide-0"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: divide-0 stayed quiet for 14 intervals; median 65.31%, low intervals 0\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+        "samples": "Processes: 627 total, 5 running, 1 stuck, 621 sleeping, 6033 threads \n2026/09/12 16:03:39\nLoad Avg: 8.65, 8.00, 7.18 \nCPU usage: 29.10% user, 20.63% sys, 50.26% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321907 total, 4508M resident, 123M private, 1277M shared.\nPhysMem: 23G used (3224M wired, 10G compressor), 68M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822711/32G in, 45084185/30G out.\nDisks: 134370836/2374G read, 81687702/2108G written.\n\n\nProcesses: 627 total, 5 running, 622 sleeping, 6037 threads \n2026/09/12 16:03:40\nLoad Avg: 8.65, 8.00, 7.18 \nCPU usage: 28.82% user, 10.0% sys, 61.17% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321906 total, 4508M resident, 123M private, 1277M shared.\nPhysMem: 23G used (3376M wired, 10G compressor), 85M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822733/32G in, 45084284/30G out.\nDisks: 134370967/2374G read, 81687867/2108G written.\n\n\nProcesses: 629 total, 4 running, 625 sleeping, 6065 threads \n2026/09/12 16:03:41\nLoad Avg: 8.65, 8.00, 7.18 \nCPU usage: 23.56% user, 11.12% sys, 65.31% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321913 total, 4505M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3224M wired, 10G compressor), 82M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822862/32G in, 45084332/30G out.\nDisks: 134371116/2374G read, 81688467/2108G written.\n\n\nProcesses: 626 total, 3 running, 1 stuck, 622 sleeping, 6061 threads \n2026/09/12 16:03:42\nLoad Avg: 8.65, 8.00, 7.18 \nCPU usage: 23.48% user, 7.38% sys, 69.12% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321673 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3371M wired, 10G compressor), 45M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822873/32G in, 45084346/30G out.\nDisks: 134371237/2374G read, 81688473/2108G written.\n\n\nProcesses: 626 total, 4 running, 622 sleeping, 6060 threads \n2026/09/12 16:03:43\nLoad Avg: 8.28, 7.94, 7.16 \nCPU usage: 26.4% user, 8.36% sys, 65.59% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321673 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3223M wired, 10G compressor), 68M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822891/32G in, 45084366/30G out.\nDisks: 134371303/2374G read, 81688629/2108G written.\n\n\nProcesses: 626 total, 5 running, 1 stuck, 620 sleeping, 6058 threads \n2026/09/12 16:03:44\nLoad Avg: 8.28, 7.94, 7.16 \nCPU usage: 29.16% user, 5.59% sys, 65.23% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321673 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3370M wired, 10G compressor), 67M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822922/32G in, 45084400/30G out.\nDisks: 134371784/2374G read, 81688638/2108G written.\n\n\nProcesses: 626 total, 3 running, 623 sleeping, 6059 threads \n2026/09/12 16:03:45\nLoad Avg: 8.28, 7.94, 7.16 \nCPU usage: 26.97% user, 8.27% sys, 64.74% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321673 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3221M wired, 10G compressor), 53M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822936/32G in, 45084410/30G out.\nDisks: 134371866/2374G read, 81688800/2108G written.\n\n\nProcesses: 629 total, 3 running, 626 sleeping, 6046 threads \n2026/09/12 16:03:46\nLoad Avg: 8.28, 7.94, 7.16 \nCPU usage: 25.14% user, 7.35% sys, 67.49% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321913 total, 4505M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3222M wired, 10G compressor), 54M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49822970/32G in, 45084449/30G out.\nDisks: 134371987/2374G read, 81688962/2108G written.\n\n\nProcesses: 626 total, 5 running, 621 sleeping, 6033 threads \n2026/09/12 16:03:47\nLoad Avg: 8.28, 7.94, 7.16 \nCPU usage: 23.59% user, 7.38% sys, 69.1% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321673 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3369M wired, 10G compressor), 75M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823194/32G in, 45084513/30G out.\nDisks: 134372104/2374G read, 81688969/2108G written.\n\n\nProcesses: 626 total, 5 running, 621 sleeping, 6009 threads \n2026/09/12 16:03:49\nLoad Avg: 8.17, 7.92, 7.16 \nCPU usage: 27.2% user, 9.4% sys, 63.92% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321673 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3222M wired, 10G compressor), 81M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823202/32G in, 45084536/30G out.\nDisks: 134372192/2374G read, 81689128/2108G written.\n\n\nProcesses: 626 total, 4 running, 622 sleeping, 6008 threads \n2026/09/12 16:03:50\nLoad Avg: 8.17, 7.92, 7.16 \nCPU usage: 24.97% user, 9.51% sys, 65.51% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321712 total, 4504M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3221M wired, 10G compressor), 69M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823255/32G in, 45084565/30G out.\nDisks: 134372597/2374G read, 81689131/2108G written.\n\n\nProcesses: 624 total, 4 running, 620 sleeping, 6020 threads \n2026/09/12 16:03:51\nLoad Avg: 8.17, 7.92, 7.16 \nCPU usage: 32.86% user, 15.37% sys, 51.76% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321573 total, 4503M resident, 123M private, 1281M shared.\nPhysMem: 23G used (3366M wired, 10G compressor), 76M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823265/32G in, 45084577/30G out.\nDisks: 134372763/2374G read, 81689290/2108G written.\n\n\nProcesses: 627 total, 4 running, 623 sleeping, 6019 threads \n2026/09/12 16:03:52\nLoad Avg: 8.17, 7.92, 7.16 \nCPU usage: 25.17% user, 7.63% sys, 67.18% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321813 total, 4504M resident, 123M private, 1282M shared.\nPhysMem: 23G used (3217M wired, 10G compressor), 58M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823282/32G in, 45084599/30G out.\nDisks: 134372845/2374G read, 81689462/2108G written.\n\n\nProcesses: 624 total, 3 running, 621 sleeping, 6011 threads \n2026/09/12 16:03:53\nLoad Avg: 8.17, 7.92, 7.16 \nCPU usage: 30.52% user, 8.19% sys, 61.28% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321573 total, 4503M resident, 123M private, 1282M shared.\nPhysMem: 23G used (3363M wired, 10G compressor), 115M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823303/32G in, 45084622/30G out.\nDisks: 134372975/2374G read, 81689492/2108G written.\n\n\nProcesses: 624 total, 4 running, 620 sleeping, 6011 threads \n2026/09/12 16:03:54\nLoad Avg: 7.60, 7.81, 7.12 \nCPU usage: 30.63% user, 9.65% sys, 59.71% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321575 total, 4503M resident, 123M private, 1282M shared.\nPhysMem: 23G used (3215M wired, 10G compressor), 83M unused.\nVM: 253T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823331/32G in, 45084662/30G out.\nDisks: 134373352/2374G read, 81689656/2108G written.\n\n\n"
+      },
+      "operator": "divide",
+      "preflight": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--wait",
+          "divide-0"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: divide-0 stable on AC power; idle 53.88 61.12 68.52%, median 61.12%, spread 14.64 points, hottest 54.1%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+      },
+      "qualified": true,
+      "rows": [
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 286120828,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 266608419,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 262759876,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 281476669,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 274767625,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 268047206,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 256805166,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 277011833,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1087279542,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 856097831,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 865473085,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1072464755,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1104908377,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 902224502,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 858778043,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1098767294,
+          "pair": 3
+        }
+      ],
+      "summary": [
+        {
+          "length": 3,
+          "median_improvement_percent": 6.73457008588843,
+          "paired_improvement_percent": [
+            6.819639498596731,
+            6.649500673180131,
+            2.445855475149228,
+            7.294514021716902
+          ]
+        },
+        {
+          "length": 16,
+          "median_improvement_percent": 20.28147777799365,
+          "paired_improvement_percent": [
+            21.26239868127676,
+            19.30055687471054,
+            18.343953147528723,
+            21.841681337850225
+          ]
+        }
+      ],
+      "varying": false
+    },
+    {
+      "command": {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+          "production_numeric_chain_timing",
+          "--ignored",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "environment": {
+          "BENCH_NUMERIC_OPERATOR": "divide",
+          "BENCH_NUMERIC_VARYING": "1"
+        },
+        "exit_code": 0,
+        "output": "\nrunning 1 test\ntest runtime::native_tier::leaf_tests::numeric_tests::production_numeric_chain_timing ... numeric-chain length=3 pair=0 enabled=false calls=100000 ns=281999048 allocation_bytes=103200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=0 enabled=true calls=100000 ns=259507374 allocation_bytes=103200000 hits=300000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=true calls=100000 ns=265633919 allocation_bytes=103200000 hits=300000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=1 enabled=false calls=100000 ns=276177831 allocation_bytes=103200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=false calls=100000 ns=276959460 allocation_bytes=103200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=2 enabled=true calls=100000 ns=257381507 allocation_bytes=103200000 hits=300000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=true calls=100000 ns=267376501 allocation_bytes=103200000 hits=300000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=3 pair=3 enabled=false calls=100000 ns=280041750 allocation_bytes=103200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=false calls=100000 ns=1107332257 allocation_bytes=311200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=0 enabled=true calls=100000 ns=861776002 allocation_bytes=311200000 hits=1600000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=true calls=100000 ns=969188459 allocation_bytes=311200000 hits=1600000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=1 enabled=false calls=100000 ns=1240458001 allocation_bytes=311200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=false calls=100000 ns=1163641834 allocation_bytes=311200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=2 enabled=true calls=100000 ns=878161456 allocation_bytes=311200000 hits=1600000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=true calls=100000 ns=887893540 allocation_bytes=311200000 hits=1600000 operator=divide varying=true collection=outside-batch fused=true\nnumeric-chain length=16 pair=3 enabled=false calls=100000 ns=1097238747 allocation_bytes=311200000 hits=0 operator=divide varying=true collection=outside-batch fused=true\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 179 filtered out; finished in 15.69s\n\n"
+      },
+      "interval": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--samples",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/74t-recovery/chain-interval-divide-1.log",
+          "divide-1"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: divide-1 stayed quiet for 14 intervals; median 56.32%, low intervals 1\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+        "samples": "Processes: 627 total, 4 running, 623 sleeping, 6033 threads \n2026/09/12 16:03:58\nLoad Avg: 7.60, 7.81, 7.12 \nCPU usage: 25.66% user, 15.50% sys, 58.82% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321765 total, 4374M resident, 93M private, 1283M shared.\nPhysMem: 23G used (3215M wired, 10G compressor), 82M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823730/32G in, 45084800/30G out.\nDisks: 134373640/2374G read, 81690015/2108G written.\n\n\nProcesses: 630 total, 4 running, 626 sleeping, 6019 threads \n2026/09/12 16:03:59\nLoad Avg: 7.47, 7.77, 7.11 \nCPU usage: 31.30% user, 9.26% sys, 59.43% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322004 total, 4375M resident, 93M private, 1287M shared.\nPhysMem: 23G used (3362M wired, 10G compressor), 71M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823770/32G in, 45084856/30G out.\nDisks: 134373719/2374G read, 81690183/2108G written.\n\n\nProcesses: 627 total, 4 running, 623 sleeping, 6031 threads \n2026/09/12 16:04:00\nLoad Avg: 7.47, 7.77, 7.11 \nCPU usage: 22.19% user, 4.65% sys, 73.15% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321764 total, 4374M resident, 93M private, 1287M shared.\nPhysMem: 23G used (3209M wired, 10G compressor), 85M unused.\nVM: 254T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823810/32G in, 45084877/30G out.\nDisks: 134373803/2374G read, 81690192/2108G written.\n\n\nProcesses: 630 total, 7 running, 623 sleeping, 6037 threads \n2026/09/12 16:04:01\nLoad Avg: 7.47, 7.77, 7.11 \nCPU usage: 26.54% user, 9.52% sys, 63.92% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321911 total, 4377M resident, 93M private, 1288M shared.\nPhysMem: 23G used (3362M wired, 10G compressor), 44M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823878/32G in, 45084893/30G out.\nDisks: 134373921/2374G read, 81690354/2108G written.\n\n\nProcesses: 633 total, 4 running, 629 sleeping, 6041 threads \n2026/09/12 16:04:02\nLoad Avg: 7.47, 7.77, 7.11 \nCPU usage: 27.25% user, 7.81% sys, 64.92% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322151 total, 4378M resident, 93M private, 1288M shared.\nPhysMem: 23G used (3211M wired, 10G compressor), 65M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823896/32G in, 45084917/30G out.\nDisks: 134374013/2374G read, 81690513/2108G written.\n\n\nProcesses: 630 total, 4 running, 626 sleeping, 6033 threads \n2026/09/12 16:04:03\nLoad Avg: 7.03, 7.68, 7.08 \nCPU usage: 23.54% user, 5.58% sys, 70.86% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321911 total, 4377M resident, 93M private, 1288M shared.\nPhysMem: 23G used (3210M wired, 10G compressor), 68M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823920/32G in, 45084943/30G out.\nDisks: 134374143/2374G read, 81690524/2108G written.\n\n\nProcesses: 633 total, 6 running, 627 sleeping, 6037 threads \n2026/09/12 16:04:04\nLoad Avg: 7.03, 7.68, 7.08 \nCPU usage: 31.26% user, 12.41% sys, 56.32% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322151 total, 4378M resident, 93M private, 1288M shared.\nPhysMem: 23G used (3360M wired, 10G compressor), 65M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49823985/32G in, 45084990/30G out.\nDisks: 134375297/2374G read, 81691161/2108G written.\n\n\nProcesses: 631 total, 5 running, 1 stuck, 625 sleeping, 6110 threads \n2026/09/12 16:04:05\nLoad Avg: 7.03, 7.68, 7.08 \nCPU usage: 48.5% user, 18.61% sys, 33.33% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321655 total, 4379M resident, 93M private, 1292M shared.\nPhysMem: 23G used (3207M wired, 10G compressor), 102M unused.\nVM: 255T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49824974/32G in, 45085987/30G out.\nDisks: 134376631/2374G read, 81691580/2108G written.\n\n\nProcesses: 632 total, 6 running, 626 sleeping, 6133 threads \n2026/09/12 16:04:06\nLoad Avg: 7.03, 7.68, 7.08 \nCPU usage: 52.8% user, 22.76% sys, 25.14% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321862 total, 4389M resident, 93M private, 1292M shared.\nPhysMem: 23G used (3358M wired, 10G compressor), 190M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825007/32G in, 45086018/30G out.\nDisks: 134383602/2374G read, 81691739/2108G written.\n\n\nProcesses: 632 total, 5 running, 627 sleeping, 6144 threads \n2026/09/12 16:04:07\nLoad Avg: 7.03, 7.68, 7.08 \nCPU usage: 42.97% user, 21.90% sys, 35.11% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321883 total, 4389M resident, 93M private, 1292M shared.\nPhysMem: 23G used (3206M wired, 10G compressor), 317M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825065/32G in, 45086083/30G out.\nDisks: 134389905/2374G read, 81691753/2108G written.\n\n\nProcesses: 632 total, 7 running, 625 sleeping, 6124 threads \n2026/09/12 16:04:08\nLoad Avg: 6.95, 7.65, 7.08 \nCPU usage: 37.5% user, 16.30% sys, 46.64% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321858 total, 4388M resident, 109M private, 1292M shared.\nPhysMem: 23G used (3204M wired, 10G compressor), 302M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825085/32G in, 45086100/30G out.\nDisks: 134391436/2374G read, 81691914/2108G written.\n\n\nProcesses: 636 total, 4 running, 632 sleeping, 6131 threads \n2026/09/12 16:04:09\nLoad Avg: 6.95, 7.65, 7.08 \nCPU usage: 40.35% user, 9.12% sys, 50.52% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 322147 total, 4391M resident, 109M private, 1293M shared.\nPhysMem: 23G used (3356M wired, 10G compressor), 300M unused.\nVM: 257T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825121/32G in, 45086144/30G out.\nDisks: 134391712/2374G read, 81692083/2108G written.\n\n\nProcesses: 633 total, 4 running, 629 sleeping, 6108 threads \n2026/09/12 16:04:10\nLoad Avg: 6.95, 7.65, 7.08 \nCPU usage: 36.96% user, 8.85% sys, 54.18% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321907 total, 4389M resident, 109M private, 1293M shared.\nPhysMem: 23G used (3204M wired, 10G compressor), 315M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825168/32G in, 45086190/30G out.\nDisks: 134394257/2374G read, 81692092/2108G written.\n\n\nProcesses: 633 total, 3 running, 1 stuck, 629 sleeping, 6060 threads \n2026/09/12 16:04:12\nLoad Avg: 6.95, 7.65, 7.08 \nCPU usage: 34.52% user, 10.23% sys, 55.23% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321907 total, 4389M resident, 109M private, 1293M shared.\nPhysMem: 23G used (3312M wired, 10G compressor), 214M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825208/32G in, 45086228/30G out.\nDisks: 134395035/2374G read, 81692667/2108G written.\n\n\nProcesses: 632 total, 7 running, 625 sleeping, 6059 threads \n2026/09/12 16:04:13\nLoad Avg: 6.95, 7.65, 7.08 \nCPU usage: 31.90% user, 5.57% sys, 62.51% idle \nSharedLibs: 545M resident, 123M data, 39M linkedit.\nMemRegions: 321879 total, 4389M resident, 109M private, 1293M shared.\nPhysMem: 23G used (3353M wired, 10G compressor), 209M unused.\nVM: 256T vsize, 4915M framework vsize, 1325240(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49825254/32G in, 45086280/30G out.\nDisks: 134395757/2374G read, 81692670/2108G written.\n\n\n"
+      },
+      "operator": "divide",
+      "preflight": {
+        "argv": [
+          "bash",
+          "scripts/bench-host-check.sh",
+          "--wait",
+          "divide-1"
+        ],
+        "environment": {},
+        "exit_code": 0,
+        "output": "bench-host-check: divide-1 stable on AC power; idle 73.17 71.60 62.8%, median 71.60%, spread 10.37 points, hottest 72.7%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+      },
+      "qualified": true,
+      "rows": [
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 281999048,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 259507374,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 265633919,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 276177831,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 276959460,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 257381507,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 300000,
+          "length": 3,
+          "ns": 267376501,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 103200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 3,
+          "ns": 280041750,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1107332257,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 861776002,
+          "pair": 0
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 969188459,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1240458001,
+          "pair": 1
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1163641834,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 878161456,
+          "pair": 2
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": true,
+          "hits": 1600000,
+          "length": 16,
+          "ns": 887893540,
+          "pair": 3
+        },
+        {
+          "allocation_bytes": 311200000,
+          "calls": 100000,
+          "enabled": false,
+          "hits": 0,
+          "length": 16,
+          "ns": 1097238747,
+          "pair": 3
+        }
+      ],
+      "summary": [
+        {
+          "length": 3,
+          "median_improvement_percent": 5.795758242555099,
+          "paired_improvement_percent": [
+            7.975797847374288,
+            3.8177981055981247,
+            7.068887627091702,
+            4.522628858018496
+          ]
+        },
+        {
+          "length": 16,
+          "median_improvement_percent": 22.021989890653487,
+          "paired_improvement_percent": [
+            22.175481067016367,
+            21.868498714290606,
+            24.533354650774786,
+            19.079275825099895
+          ]
+        }
+      ],
+      "varying": true
+    }
+  ],
+  "correctness_receipt": "/Users/chazu/dev/zig/birnam/docs/measurements/74t-numeric-fusion-admission.json",
+  "correctness_receipt_sha256": "22664b182a6402defe00f807706e74690c51e66679fd95306d755554c8f79092",
+  "driver_sha256": "183a9bffd3cd3bd98cdf1fa35d39c7a3524a2da9425ea159726c3f764c4f2ee3",
+  "mode": "fused",
+  "qualified": true,
+  "scope": "Paired warm arithmetic intervals with collection between batches; application and cold-start acceptance remain separate.",
+  "status": "passed"
+}

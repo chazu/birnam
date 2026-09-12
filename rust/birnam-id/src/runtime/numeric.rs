@@ -140,7 +140,7 @@ impl Runtime {
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: Cell<bool> = const { Cell::new(true) };
-    pub(super) static CHAIN_ENABLED: Cell<bool> = const { Cell::new(true) };
+    pub(super) static CHAIN_ENABLED: Cell<bool> = const { Cell::new(false) };
     pub(super) static CHAIN_HITS: Cell<usize> = const { Cell::new(0) };
     pub(super) static HITS: Cell<usize> = const { Cell::new(0) };
 }

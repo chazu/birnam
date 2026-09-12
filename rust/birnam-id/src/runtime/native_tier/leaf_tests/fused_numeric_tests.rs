@@ -411,3 +411,91 @@ fn fused_numeric_faults_leave_error_effects_at_their_original_calls() {
         assert_eq!(evidence[0], evidence[1]);
     }
 }
+
+#[test]
+fn fused_numeric_preparation_waits_for_hot_chain_starts() {
+    for length in [3usize, 16] {
+        let mut body = Vec::new();
+        for index in 0..length {
+            body.push(Statement::Let {
+                name: b"v",
+                value: Expr::Send {
+                    receiver: Box::new(Expr::Global(if index == 0 { b"a" } else { b"v" })),
+                    selector: Cow::Borrowed(b"blend:"),
+                    args: vec![Expr::Global(b"a")],
+                    source: b"",
+                },
+            });
+        }
+        body.push(Statement::Expr(Expr::Global(b"v")));
+        let bytes = portable::encode_block(
+            &Block {
+                params: vec![b"a"],
+                body,
+            },
+            &[],
+        )
+        .unwrap();
+        let mut allocation_totals = Vec::new();
+        for enabled in [false, true] {
+            let _mode = Mode::set(enabled);
+            let bootstrap = crate::dispatch::build_bootstrap();
+            let r = &bootstrap.runtime;
+            r.publish_canonical_exports();
+            r.install_execution_objects();
+            let native = Fixture::load(r);
+            r.add_method(
+                r.canonical().smallint_vt,
+                r.intern(b"blend:").unwrap(),
+                native.method(1),
+            );
+            let block = install(r, &bytes, 741506, None);
+            let _block = ScopedOopRootGuard::new(r, block.receiver);
+            let input = r.make_integer(1);
+            let _input = ScopedOopRootGuard::new(r, input);
+            let key = Arc::as_ptr(&block.descriptor) as usize;
+            let mut first_fused_call = 0;
+            let mut compilation_call_ns = 0;
+            let mut cold_calls_ns = 0;
+            let mut prepared = false;
+            let before = r.gc_live_bytes();
+            for call in 1..=128 {
+                fused_numeric::HITS.set(0);
+                let start = std::time::Instant::now();
+                let answer = r.enter(|| r.send_slice(block.receiver, block.selector, &[input]));
+                let elapsed = start.elapsed().as_nanos();
+                cold_calls_ns += elapsed;
+                assert_eq!(r.integer_value(answer), length as i64 + 1);
+                let registry = r.native_tier.borrow();
+                let record = registry.records.get(&key).unwrap();
+                let compiled = record.numeric_candidate.is_some();
+                if compiled && !prepared {
+                    assert!(enabled && call >= HOT_ENTRIES);
+                    assert_eq!(
+                        record.numeric_starts, HOT_ENTRIES,
+                        "long chains must not count individual PCs toward preparation"
+                    );
+                    compilation_call_ns = elapsed;
+                }
+                if !compiled {
+                    assert_eq!(fused_numeric::HITS.get(), 0);
+                }
+                if fused_numeric::HITS.get() != 0 {
+                    assert_eq!(fused_numeric::HITS.get(), length);
+                    if first_fused_call == 0 {
+                        first_fused_call = call;
+                    }
+                }
+                prepared = compiled;
+            }
+            assert_eq!(prepared, enabled);
+            assert_eq!(first_fused_call != 0, enabled);
+            let allocation_bytes = r.gc_live_bytes() - before;
+            allocation_totals.push(allocation_bytes);
+            println!(
+                "numeric-preparation length={length} enabled={enabled} calls=128 first_fused_call={first_fused_call} compilation_call_ns={compilation_call_ns} cold_calls_ns={cold_calls_ns} allocation_bytes={allocation_bytes} qualification=diagnostic"
+            );
+        }
+        assert_eq!(allocation_totals[0], allocation_totals[1]);
+    }
+}

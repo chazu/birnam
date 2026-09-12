@@ -244,9 +244,9 @@ qualified warm arithmetic measurements, with GC outside the timed batches;
 they do not establish cold amortization or application profitability. The
 changing-input regressions keep this implementation disabled in normal builds.
 
-### Bounded driver fusion (verified experiment)
+### Bounded driver fusion (production consumer)
 
-The experimental consumer executes the admitted private PC entries as one bounded
+The production consumer executes the admitted private PC entries as one bounded
 numeric region, retaining their ordinary Frame writes and all original boxes.
 It commits numeric call results through the existing V2 transition methods
 locally, avoiding repeated operand copying, lookup and driver dispatch between
@@ -289,9 +289,10 @@ saturated mutation epochs, operator replacement, ErrorVt aliasing and native
 declaration withdrawal. Actual automatic-collection tests place the threshold
 before, inside and after the region and mutate an input during collection.
 Arithmetic-fault tests retain the original sequence of later observing sends.
-The experiment remains disabled in normal builds until its performance and
-production admission are accepted. `numeric-chain-timing.py --fused` measures
-this implementation independently from the prior per-call prediction experiment.
+Fusion is enabled in normal builds after the qualified arithmetic matrix below.
+The per-call prediction experiment remains disabled.
+`numeric-chain-timing.py --fused` measures this implementation independently
+from the prior per-call prediction experiment.
 
 
 ## Progress
@@ -329,9 +330,9 @@ this implementation independently from the prior per-call prediction experiment.
   differential checks and full verification passed: 490 workspace tests,
   16 ignored diagnostics, installed-prefix, image, cold-archive and relocation
   checks. Normal-build arithmetic remains on the prior boxed consumer.
-- No remaining optimization family is complete yet. Next: reduce chain
-  admission/validation overhead and establish profitable production behavior,
-  then implement loop analysis and both allocation-elimination consumers.
+- At the raw-chain checkpoint, admission/validation overhead still needed
+  reduction. The cache and production fusion work below address that step;
+  loop analysis and both allocation-elimination consumers remain outstanding.
 - The cache/buffer refinement passed debug/release differential checks and full
   production verification: 491 workspace tests, 16 ignored diagnostics, installed
   Prelude/API-context probes, image/lifetime, cold archives and relocation.
@@ -345,11 +346,67 @@ this implementation independently from the prior per-call prediction experiment.
   installed-prefix, image/lifetime, cold-archive and relocation checks.
   `docs/measurements/74t-numeric-fusion.json` records this source checkpoint.
   Whole-body admission, exact allocation budgeting and existing V2 transitions
-  retain the baseline Frame and all object identities. The experiment remains
-  disabled in normal builds while its qualified timing and admission costs are
-  measured; this checkpoint does not complete the numeric family.
+  retain the baseline Frame and all object identities. At that checkpoint it remained
+  disabled while qualified timing and admission costs were measured. The
+  production enablement and evidence follow below.
 
 - The first fused timing attempt did not pass preflight within 120 seconds:
   Firefox exceeded the unchanged 80% per-process CPU limit. No arithmetic rows
   were timed and no speedup is inferred from that attempt. The retained receipt
   is `docs/measurements/74t-numeric-fusion-timings.json`; no process was paused.
+
+- A preparation regression now checks three- and sixteen-operation bodies
+  through 128 real registered calls. Neither body compiles a numeric candidate
+  until 64 eligible chain starts have occurred; the initial native-tier warmup
+  makes the first fused invocations calls 80 and 68 respectively. Both retain
+  exactly the pass-off allocation total. The probe reports the entire compiling
+  call and cumulative cold-call duration as diagnostic data, separately from
+  host-qualified steady execution. The first release probe observed about
+  0.19–0.21 ms for the compiling call; this is neither isolated compiler cost
+  nor a qualified latency claim. The follow-up receipt is
+  `docs/measurements/74t-numeric-fusion-admission.json`.
+
+### Qualified arithmetic and production enablement
+
+The follow-up [complete matrix](../measurements/74t-numeric-fusion-admission-timings.json)
+passed all unchanged AC/CPU preflight and interval gates. Each cell comprises
+four alternating pairs of 100,000 calls, with automatic collection kept outside
+2,000-call arithmetic batches. Every enabled arithmetic call fused; every
+allocation total matched its paired baseline. No process was paused.
+
+| Input/operator | Three operations | Sixteen operations |
+| --- | ---: | ---: |
+| Constant addition | 6.01% faster | 20.60% faster |
+| Changing-input addition | 5.47% faster | 21.30% faster |
+| Constant division | 6.73% faster | 20.28% faster |
+| Changing-input division | 5.80% faster | 22.02% faster |
+
+Every individual pair improved. These are warm arithmetic fixture results,
+not application-wide or allocation-elimination gains. Together with the actual
+collection/mutation differential tests and delayed preparation evidence, they
+support enabling bounded fusion under the existing guards. All original boxes,
+physical Frames and public compatibility contracts remain intact.
+
+Normal builds now select fusion for admitted hot numeric chains. Test defaults
+also select fusion; the older per-call experiment explicitly opts into its own
+mode. `74t-numeric-fusion-production.json` records verification of the enabled
+configuration, including installed Prelude arithmetic, mixed/error fallbacks,
+API-context withdrawal and image/retirement checks. Application and full cold/
+metadata profitability measurements remain separate outstanding acceptance work.
+The loop, aggregate-elimination and closure-elimination consumers remain required.
+
+The enabled production configuration passed the full gate: **495 workspace tests,
+16 ignored diagnostics**, including the installed numeric fixture. Its exact
+source/binary [qualified timing matrix](../measurements/74t-numeric-fusion-production-timings.json)
+also passed all four cases and all allocation/hit checks:
+
+| Input/operator | Three operations | Sixteen operations |
+| --- | ---: | ---: |
+| Constant addition | 6.84% faster | 20.50% faster |
+| Changing-input addition | 10.84% faster | 21.06% faster |
+| Constant division | 9.74% faster | 22.79% faster |
+| Changing-input division | 9.39% faster | 21.77% faster |
+
+All individual pairs improved again. Variation between the two complete matrices
+is retained rather than attributed solely to enablement. No process was paused
+for either matrix, and no benchmark process remains running after completion.
