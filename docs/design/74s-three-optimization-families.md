@@ -1,6 +1,6 @@
 # 74S — Dispatch specialization, redundant work and native optimization
 
-Status: all three families implemented; combined performance acceptance in progress.
+Status: all three families implemented; combined performance acceptance blocked by host load.
 Authorized goal: implement the next three
 optimization families after the first inlining batch and measure each separately.
 The starting checkpoint is `d06f7558` (74R). This document records the concrete
@@ -340,3 +340,21 @@ running with none left stopped. This is recorded as process exit, not falsely as
 resumption of the old PID. Combined application performance acceptance is still
 incomplete. There are no active measurement jobs from this attempt, and no code
 changes are awaiting correctness verification.
+
+
+### Blocked acceptance audit
+
+The production sources, helper and both measurement binary closures were
+revalidated without rebuilding. A further application attempt could not admit
+its first paired workload. [The blocked receipt](../measurements/74s-applications-blocked.json)
+retains every rejected preflight and the fresh audit (6.93% median idle CPU,
+versus the unchanged 50% requirement). The blocker persisted across three goal
+turns. The controller interrupted only its own measurement runner; terminal exit
+was verified and current rk processes were confirmed not stopped.
+
+The three-family implementation, full correctness verification and per-family
+qualified measurements are complete. The goal is blocked, not complete: combined
+production performance acceptance still requires a full host-qualified matrix
+and assessment of any repeatable regression it reveals. Resume that matrix when
+the host is sufficiently quiet; existing builds remain valid while their stored
+source and binary hashes match. No measurement job remains active from this attempt.
