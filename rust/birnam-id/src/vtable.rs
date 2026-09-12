@@ -509,6 +509,18 @@ impl Vtables {
             .and_then(|index| unsafe { MethodAddress::from_oop(record.values[index]) })
     }
 
+    /// Resolve one dictionary, returning its delegation edge on a miss.
+    /// The caller may continue without reading this dictionary a second time.
+    #[inline]
+    pub(crate) fn lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<MethodAddress>, Oop> {
+        let record = self.record(vtable);
+        if let Some(index) = record.key_index(selector) {
+            // SAFETY: same method-dictionary contract as lookup/direct_lookup.
+            return Ok(unsafe { MethodAddress::from_oop(record.values[index]) });
+        }
+        Err(record.parent)
+    }
+
     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         while !vtable.is_null() {
             let record = self.record(vtable);

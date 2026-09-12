@@ -35,10 +35,10 @@ impl Runtime {
         }
 
         if self.guarded_default_lookup_eligible(receiver_vtable) {
-            // The canonical lookup Method performs precisely this lookup.
-            // No callback or allocation separates the guard from the read;
-            // ordinary target classification and invocation still follow.
-            return unsafe { self.lookup_method_active(receiver_vtable, selector) };
+            // Canonical lookup may reuse an epoch-guarded dictionary answer.
+            // No callback/allocation separates this guard from the cache read;
+            // ordinary target classification and acquisition still follow.
+            return self.cached_default_lookup(receiver_vtable, selector);
         }
 
         let lookup_args = [selector];

@@ -37,6 +37,7 @@ mod deopt_experiment;
 mod generated_deopt_experiment;
 mod guarded_dispatch;
 mod guarded_lookup;
+mod dispatch_cache;
 mod native_tier;
 mod recovery;
 #[cfg(all(test, target_os = "macos"))]
@@ -202,6 +203,7 @@ pub(crate) struct Runtime {
     // conditions 2–4 were last verified, and their verdict at that epoch.
     slot_guard_cache: Cell<(u64, bool)>,
     lookup_guard_cache: Cell<(u64, bool)>,
+    dispatch_cache: dispatch_cache::Cache,
     native_tier: core::cell::RefCell<native_tier::Registry>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
@@ -382,6 +384,7 @@ impl Runtime {
             entry_scopes: UnsafeCell::new(Vec::new()),
             slot_guard_cache: Cell::new((u64::MAX, false)),
             lookup_guard_cache: Cell::new((u64::MAX, false)),
+            dispatch_cache: dispatch_cache::Cache::default(),
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
             #[cfg(test)]
@@ -4298,6 +4301,8 @@ impl Runtime {
     }
 
     fn run_mark_phase(&self, mut marker: Marker) {
+        // Address-only dispatch metadata must not survive collection/retirement.
+        self.dispatch_cache.clear();
         // 74H: invalidate native-local read caches before any foreign root or
         // finalizer callback. This includes retirement reachability traversals.
         #[cfg(all(test, target_os = "macos"))]

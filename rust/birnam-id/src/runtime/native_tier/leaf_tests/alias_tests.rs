@@ -374,6 +374,10 @@ fn timing_body(case: &str) -> Vec<u8> {
 #[test]
 #[ignore = "74R paired timing; run scripts/small-callee.py"]
 fn small_callee_timing() {
+    // 74S isolates dispatch specialization while retaining identical 74R code.
+    if let Ok(mode) = std::env::var("BIRNAM_74S_DISPATCH") {
+        crate::runtime::dispatch_cache::ENABLED.set(mode == "on");
+    }
     let mode = std::env::var("BIRNAM_74R_MODE").unwrap();
     let case = std::env::var("BIRNAM_74R_CASE").unwrap();
     let count: usize = std::env::var("BIRNAM_74R_COUNT")
