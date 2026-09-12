@@ -864,3 +864,34 @@ The [pooled-region verification receipt](../measurements/74t-virtual-fields-pool
 passes focused debug/release checks and full production verification: 516 tests,
 19 ignored diagnostics, installed runtime, image, archive and relocation gates.
 Live-field execution remains disabled pending the expanded timing matrix.
+
+
+The [qualified pooled-region matrix](../measurements/74t-virtual-field-pooled-region-timings.json)
+passes host admission and 36 interval samples (median idle 65.42%, no low-idle
+intervals). Four alternating pairs run 32,000 calls per sample for all 18 shapes.
+For 3 and 16 projections, every field-only and escaping-clone execution pair is
+positive. Median execution gains are 4.09–5.58% for field-only Return and
+2.33–6.46% for escaping clones. Including separately timed collection, those
+medians are 1.84–3.30% and 1.00–5.83%, respectively. Logical allocation charges
+agree in all pairs; field-only calls omit one physical clone, escaping calls
+materialize one original identity, and all warm scratch-pool miss counts are zero.
+
+The single-projection small-payload case remains mixed (0.07% median execution,
+2.85% regression including collection); escaping single-projection medians are
+negative. Withdrawal controls still regress by roughly 3–5% in most rows, with
+mixed pairs at 16 projections. No gain is claimed for these refusal controls or
+for noisy first-128-call activation timings. Retained field-plan/cache/scratch
+storage for the 16-byte field-only fixture is 1488/2142/7161 bytes at 1/3/16
+projections, compared with 856/1510/5537 bytes when execution is disabled; journal
+storage remains additional. These figures exclude allocator/loader overhead and
+active nested scratch, and do not establish a total process memory saving.
+
+Promotion should admit at least three actual declared projections, cheaply
+exclude plans too short to contain them, and reduce repeated work for persistently
+refused regions. A bounded refusal retry interval must still fall back to ordinary
+execution on every skipped attempt and retry immediately when current lookup
+bindings change; declarations changing without an epoch update need bounded
+reconsideration too. Verify this policy against the same successful, escaping,
+withdrawn, mutation, capture and forced-recovery cases before an enabled-source
+qualified matrix. Closure substitution and broader family/application acceptance
+remain part of the original full objective.
