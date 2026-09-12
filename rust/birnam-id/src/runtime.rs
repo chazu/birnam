@@ -3812,6 +3812,21 @@ impl Runtime {
                     }?;
                     match target {
                         StacklessTarget::Registered { entry } => {
+                            let restarted = unsafe {
+                                let state = &mut *self.state.get();
+                                state.execution.try_restart_registered_tail(
+                                    &state.heap,
+                                    owner,
+                                    capability,
+                                    entry,
+                                    operands.receiver,
+                                    &operands.arguments,
+                                    nil,
+                                )
+                            }?;
+                            if restarted {
+                                continue;
+                            }
                             let MaterializedEntry {
                                 descriptor,
                                 initial_oops,

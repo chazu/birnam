@@ -12,6 +12,7 @@ use std::borrow::Cow;
 mod fused_numeric_tests;
 mod graph_tests;
 mod numeric_tests;
+mod tail_entry_tests;
 
 thread_local! {
     static DECODES: Cell<usize> = const { Cell::new(0) };

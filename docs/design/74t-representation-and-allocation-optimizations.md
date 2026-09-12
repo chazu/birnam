@@ -410,3 +410,50 @@ also passed all four cases and all allocation/hit checks:
 All individual pairs improved again. Variation between the two complete matrices
 is retained rather than attributed solely to enablement. No process was paused
 for either matrix, and no benchmark process remains running after completion.
+
+## Tail-loop entry transfer experiment
+
+The loop consumer targets an invariant of each registered implementation: its
+entry layout. Recursive and mutually recursive Id loops repeatedly rebuild the
+same receiver/argument/capture destination list at tail transitions. A pure
+compiler plan derives the entry bindings and disjoint nil-fill ranges once from
+validated V2 metadata. It supports at most 128 Oop slots; larger layouts use the
+ordinary path. The plan is process-local and contains no Oops or code addresses.
+
+The driver still publishes and decodes the actual TailCall action, performs
+ordinary current lookup, and acquires the resolved registered implementation.
+Only then can the plan replace entry-list construction and arena pop/push. Every
+argument is copied from the actual call, missing arguments receive canonical nil,
+extra arguments remain ignored, and captures are reread from the current exact
+receiver payload. There is no selector-name or presumed loop-control intrinsic.
+The transfer writes every new Frame slot once, advances its handle generation,
+preserves its return destination and stack-depth diagnostics, resets its V2
+transition/root state and transfers the same code pins as the baseline.
+
+One optimized interval is one existing tail transition, bounded by 128 slots.
+No lookup, callback, publication, iteration or suspension boundary is removed.
+The consumer adds no polling operation. Its only eliminated allocations are
+private host scratch lists; it does not claim Birnam object-allocation savings.
+Plans are initialized lazily through an optional-plan cell in each descriptor;
+the four-argument/one-capture fixture then owns 104 bytes of additional plan data.
+Unsupported plans are cached as refusal, without changing canonical descriptors,
+the public floor table, Method ABI or image encoding.
+
+The complete-state differential test compares all Frame words, pending/root
+state, return destinations, scratch contents, generation changes and code pins.
+Malformed captures and exhausted generations must reject before publication.
+The source-derived registered loop rotates equal-valued but distinct arguments,
+changes its capture and method target, installs observing lookup, collects,
+and suspends/captures after three optimized transitions. Restoration after GC
+must preserve the next result and effect sequence. No later loop callback can run
+across that suspension/capture boundary.
+
+The experiment is disabled in normal builds pending correctness and performance
+acceptance. `recovery-graphs.py --tails --verify` adds its compiler, arena and real
+loop tests to the existing debug/release and full production gates.
+`tail-entry-timing.py` checks the passed receipt's source and binary hashes,
+uses unchanged host gates, and compares four alternating pairs. Its 1,000-tail
+batches retain all ordinary callback work and collect outside the timed region;
+hit counts, allocation totals, cold duration and plan metadata are recorded.
+Loop optimization beyond this entry-transfer consumer and both Id allocation-
+elimination families remain outstanding.

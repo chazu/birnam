@@ -22,6 +22,8 @@ use crate::raw::{AddressMap, MethodAddress};
 mod inline_recovery_experiment;
 #[path = "execution/recovery.rs"]
 mod recovery;
+#[path = "execution/tail_entry.rs"]
+pub(crate) mod tail_entry;
 #[cfg(test)]
 pub(crate) use recovery::InlineRecovery;
 pub(crate) use recovery::RecoveryAuthority;
@@ -215,6 +217,7 @@ pub(crate) struct FrameDescriptor {
     max_edge_copy_count: usize,
     v2_entry_binding: Option<V2EntryBinding>,
     entry_capture_slots: Box<[usize]>,
+    tail_entry_plan: std::sync::OnceLock<Option<Box<birnam_codegen::tail_entry::Plan>>>,
     step_method: Method,
 }
 
@@ -265,6 +268,11 @@ impl FrameDescriptor {
                 })
                 .sum::<usize>()
             + core::mem::size_of_val(self.entry_capture_slots.as_ref())
+            + self
+                .tail_entry_plan
+                .get()
+                .and_then(Option::as_ref)
+                .map_or(0, |plan| plan.owned_bytes())
     }
 
     /// Admit canonical descriptor-v2 bytes, copy only Runtime execution
@@ -578,6 +586,7 @@ impl FrameDescriptor {
                 implementation_slot: spec.implementation_slot,
             }),
             entry_capture_slots: spec.entry_capture_slots.into_boxed_slice(),
+            tail_entry_plan: std::sync::OnceLock::new(),
             step_method: spec.step_method,
         }))
     }

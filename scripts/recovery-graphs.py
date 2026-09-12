@@ -43,12 +43,16 @@ def main():
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--numeric", action="store_true")
     parser.add_argument("--chains", action="store_true", help="production raw-chain verification")
+    parser.add_argument("--tails", action="store_true", help="registered tail-loop entry verification")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.tails:
+        args.chains = True
     if args.chains:
         args.numeric = True
     if args.output is None:
         args.output = ROOT / "docs/measurements" / (
+            "74t-tail-entry.json" if args.tails else
             "74t-numeric-chains.json" if args.chains else
             "74t-numeric-preparation.json" if args.numeric else "74t-recovery-graphs.json")
     work = ROOT / ".cargo-target/74t-recovery"
@@ -57,7 +61,8 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Production raw chains with per-call operand and implementation revalidation; profitability and remaining families in progress"
+        "scope": ("Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"
+                  if args.tails else "Production raw chains with per-call operand and implementation revalidation; profitability and remaining families in progress"
                   if args.chains else "Numeric declarations, guarded boxed calls and raw kernel preparation"
                   if args.numeric else "Recovery graph infrastructure; four optimizing families remain in progress"),
         "timing_qualification": "not measured", "authorities": {}, "binaries": {},
@@ -116,6 +121,12 @@ def main():
             if args.chains:
                 checks.append(("birnam_id", "numeric-chain-storage", "runtime::numeric::chain::tests"))
                 checks.append(("birnam_id", "numeric-fusion", "runtime::native_tier::leaf_tests::fused_numeric_tests"))
+            if args.tails:
+                checks += [
+                    ("birnam_codegen", "tail-entry-plan", "tail_entry::tests"),
+                    ("birnam_id", "tail-entry-arena", "execution::tail_entry::tests"),
+                    ("birnam_id", "tail-entry-loop", "runtime::native_tier::leaf_tests::tail_entry_tests"),
+                ]
             for package, label, test_filter in checks:
                 output = run([binaries[package], test_filter, "--nocapture"], profile + "-" + label)
                 match = re.search(r"test result: ok\. (\d+) passed; 0 failed", output)
