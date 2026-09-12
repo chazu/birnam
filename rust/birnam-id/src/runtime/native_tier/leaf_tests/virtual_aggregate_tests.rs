@@ -4,6 +4,18 @@ use core::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+struct ForcedExit(Option<usize>);
+impl ForcedExit {
+    fn set(value: Option<usize>) -> Self {
+        Self(virtual_aggregate::FORCE_EXIT.replace(value))
+    }
+}
+impl Drop for ForcedExit {
+    fn drop(&mut self) {
+        virtual_aggregate::FORCE_EXIT.set(self.0);
+    }
+}
+
 struct Mode(bool);
 impl Mode {
     fn set(value: bool) -> Self {
@@ -83,6 +95,8 @@ enum Case {
     Rebind,
     Withdraw,
     Twins,
+    Capture,
+    Suspend,
 }
 fn program(case: Case) -> Vec<u8> {
     let send = |receiver, selector, args| Expr::Send {
@@ -114,7 +128,10 @@ fn program(case: Case) -> Vec<u8> {
             },
         );
     }
-    if matches!(case, Case::Observe | Case::Twins) {
+    if matches!(
+        case,
+        Case::Observe | Case::Twins | Case::Capture | Case::Suspend
+    ) {
         body.push(Statement::Let {
             name: b"observed",
             value: send(
@@ -136,8 +153,27 @@ fn program(case: Case) -> Vec<u8> {
             ),
         });
     }
+    if matches!(case, Case::Capture | Case::Suspend) {
+        // The first observer changes the next publication into a control
+        // action. Resume supplies that Call's result; the final observer must
+        // see the same clone and aliases without replaying the first effect.
+        body.push(Statement::Expr(send(
+            b"observer",
+            b"inspect:alias:",
+            vec![Expr::Global(b"copy"), Expr::Global(b"alias")],
+        )));
+        body.push(Statement::Let {
+            name: b"resumed",
+            value: send(
+                b"observer",
+                b"inspect:alias:",
+                vec![Expr::Global(b"copy"), Expr::Global(b"alias")],
+            ),
+        });
+    }
     body.push(Statement::Expr(Expr::Global(match case {
         Case::Object => b"alias",
+        Case::Capture | Case::Suspend => b"resumed",
         Case::Observe | Case::Twins => b"observed",
         _ => b"field",
     })));
@@ -152,6 +188,8 @@ fn program(case: Case) -> Vec<u8> {
 }
 
 thread_local! {
+    static PAUSE: Cell<Option<bool>> = const { Cell::new(None) };
+    static RECOVERED_IDENTITY: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static PROTOTYPE: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static OBSERVED: Cell<usize> = const { Cell::new(0) };
     static ALIASES: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
@@ -174,8 +212,20 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
         assert_ne!(copy, second);
         assert_ne!(second, PROTOTYPE.get());
     }
+    if !RECOVERED_IDENTITY.get().is_null() {
+        assert_eq!(copy, RECOVERED_IDENTITY.get());
+    }
     OBSERVED.set(OBSERVED.get() + 1);
     with_active(|r| {
+        if let Some(capture) = PAUSE.take() {
+            RECOVERED_IDENTITY.set(copy);
+            let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
+            r.add_method(
+                objects.machine_vtable,
+                objects.call_site,
+                if capture { capture_call } else { suspend_call },
+            );
+        }
         let cap = unsafe { (&*r.entry_scopes.get()).last().copied() }.unwrap();
         let aliases = || unsafe {
             let arena = (*r.state.get())
@@ -208,8 +258,41 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
     })
 }
 
+unsafe extern "C" fn suspend_call(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    let action = unsafe { crate::execution::machine_call_site(machine, args, count) };
+    with_active(|r| {
+        let cap = r.stackless_machine_capability(machine).unwrap();
+        let (result, pc) = unsafe {
+            let state = &*r.state.get();
+            let arena = state
+                .execution
+                .machine(current_thread_token(), cap)
+                .unwrap()
+                .arena();
+            (
+                state.heap.read_payload_word(action, 8).unwrap(),
+                arena
+                    .program_counter(arena.current_handle().unwrap())
+                    .unwrap(),
+            )
+        };
+        r.stackless_suspend_current(machine, result, pc).unwrap()
+    })
+}
+
 #[test]
 fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers() {
+    compare_recovery(None);
+}
+
+#[test]
+fn virtual_fields_force_recovery_at_every_admitted_call_boundary() {
+    for stop in 1..=3 {
+        compare_recovery(Some(stop));
+    }
+}
+
+fn compare_recovery(forced_exit: Option<usize>) {
     for case in [
         Case::Field,
         Case::Object,
@@ -217,10 +300,14 @@ fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers
         Case::Rebind,
         Case::Withdraw,
         Case::Twins,
+        Case::Capture,
+        Case::Suspend,
     ] {
         let mut evidence = Vec::new();
         for enabled in [false, true] {
             let _mode = Mode::set(false);
+            RECOVERED_IDENTITY.set(core::ptr::null_mut());
+            PAUSE.set(None);
             let bootstrap = crate::dispatch::build_bootstrap();
             let r = &bootstrap.runtime;
             r.publish_canonical_exports();
@@ -277,8 +364,73 @@ fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers
             virtual_aggregate::MATERIALIZED.set(0);
             OBSERVED.set(0);
             ALIASES.with_borrow_mut(Vec::clear);
+            let controlled = matches!(case, Case::Capture | Case::Suspend);
+            let machine = controlled.then(|| r.create_stackless_machine().unwrap());
+            let _machine = machine.map(|machine| ScopedOopRootGuard::new(r, machine));
             let before = (r.gc_live_count(), r.gc_live_bytes());
-            let answer = invoke();
+            let _forced = ForcedExit::set(forced_exit);
+            let answer = if let Some(machine) = machine {
+                let capture = matches!(case, Case::Capture);
+                PAUSE.set(Some(capture));
+                let binding = block.descriptor.v2_entry_binding().unwrap();
+                let StacklessTarget::Registered { entry } = r
+                    .enter(|| r.resolve_stackless_target(block.receiver, block.selector))
+                    .unwrap()
+                else {
+                    panic!("registered entry");
+                };
+                let paused = r
+                    .enter(|| {
+                        r.drive_stackless_with_resolver(
+                            machine,
+                            block.descriptor.clone(),
+                            &[
+                                (binding.receiver_slot, block.receiver),
+                                (binding.argument_start, prototype),
+                                (binding.argument_start + 1, observer),
+                            ],
+                            Some(entry),
+                            |runtime, receiver, selector, _| {
+                                runtime.resolve_stackless_target(receiver, selector)
+                            },
+                        )
+                    })
+                    .unwrap();
+                let _paused = ScopedOopRootGuard::new(r, paused);
+                assert_eq!(OBSERVED.get(), 1, "no later effect before resume");
+                let pins = r.stackless_registration_diagnostics();
+                assert_eq!(pins.active_frame_pins, usize::from(!capture));
+                assert_eq!(pins.continuation_frame_pins, usize::from(capture));
+                let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
+                r.add_method(
+                    objects.machine_vtable,
+                    objects.call_site,
+                    crate::execution::machine_call_site,
+                );
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                assert!(unsafe { (*r.state.get()).heap.contains(RECOVERED_IDENTITY.get()) });
+                let answer = if capture {
+                    r.enter(|| r.restore_stackless_continuation(machine, paused, field))
+                        .unwrap()
+                } else {
+                    assert_eq!(paused, machine);
+                    r.enter(|| r.resume_stackless_machine(machine, field))
+                        .unwrap()
+                };
+                assert_eq!(
+                    OBSERVED.get(),
+                    2,
+                    "resume neither replays nor skips effects"
+                );
+                assert_eq!(
+                    r.stackless_registration_diagnostics()
+                        .continuation_frame_pins,
+                    0
+                );
+                answer
+            } else {
+                invoke()
+            };
             let _answer = ScopedOopRootGuard::new(r, answer);
             if matches!(case, Case::Object) {
                 assert_ne!(answer, prototype);
@@ -302,6 +454,7 @@ fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers
             }
             let optimized = enabled && !matches!(case, Case::Rebind | Case::Withdraw);
             let identities = if matches!(case, Case::Twins) { 2 } else { 1 };
+            let identities = identities.min(forced_exit.unwrap_or(usize::MAX));
             assert_eq!(
                 virtual_aggregate::HITS.get(),
                 if optimized { identities } else { 0 },
@@ -309,7 +462,17 @@ fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers
             );
             assert_eq!(
                 virtual_aggregate::MATERIALIZED.get(),
-                if optimized && matches!(case, Case::Object | Case::Observe | Case::Twins) {
+                if optimized
+                    && (forced_exit == Some(1)
+                        || matches!(
+                            case,
+                            Case::Object
+                                | Case::Observe
+                                | Case::Twins
+                                | Case::Capture
+                                | Case::Suspend
+                        ))
+                {
                     identities
                 } else {
                     0
@@ -318,7 +481,7 @@ fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers
             );
             assert_eq!(
                 r.gc_live_count() - unsafe { (*r.state.get()).heap.physical_allocation_count() },
-                usize::from(optimized && matches!(case, Case::Field))
+                usize::from(optimized && forced_exit != Some(1) && matches!(case, Case::Field))
             );
             assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
             evidence.push((

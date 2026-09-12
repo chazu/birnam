@@ -11,6 +11,7 @@ use core::cell::RefCell;
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(super) static FORCE_EXIT: core::cell::Cell<Option<usize>> = const { core::cell::Cell::new(None) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static MATERIALIZED: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
@@ -122,8 +123,6 @@ pub(super) unsafe fn execute(
     let mut operations = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
     let mut summaries = Vec::new();
-    let mut boxes = 0;
-    let mut clone_bytes = 0usize;
     let mut projections = 0;
     for step in &plan.steps {
         let Exit::Call {
@@ -182,7 +181,6 @@ pub(super) unsafe fn execute(
                 }
                 snapshot
             };
-            clone_bytes = clone_bytes.checked_add(snapshot.total_size())?;
             results.push(Computed::Virtual(nodes.len()));
             operations.push(Operation::Clone(nodes.len()));
             nodes.push(Node {
@@ -207,12 +205,33 @@ pub(super) unsafe fn execute(
             operations.push(Operation::Projection(value));
             results.push(Computed::Real(value));
         }
-        boxes += step.integer_boxes;
     }
     if nodes.is_empty() || projections == 0 {
         return None;
     }
+    // Test exits use the same admitted region, but recover before an earlier
+    // Call. In particular, an exit after the first clone must really recover
+    // that identity, rather than simply refusing for lack of a projection.
+    #[cfg(test)]
+    if let Some(stop) = FORCE_EXIT.get() {
+        assert!(stop > 0);
+        operations.truncate(stop);
+    }
     let stop = operations.len();
+    let (clone_count, clone_bytes) = operations.iter().try_fold(
+        (0usize, 0usize),
+        |(count, bytes), operation| match operation {
+            Operation::Clone(index) => Some((
+                count + 1,
+                bytes.checked_add(nodes[*index].snapshot.total_size())?,
+            )),
+            Operation::Projection(_) => Some((count, bytes)),
+        },
+    )?;
+    let mut boxes = plan.steps[..stop]
+        .iter()
+        .map(|step| step.integer_boxes)
+        .sum::<usize>();
     let boundary = plan.steps.get(stop)?;
     // A canonical Return can finish without materializing dead virtual values,
     // but then its original token/bind/publication boxes must also exclude GC.
@@ -227,7 +246,7 @@ pub(super) unsafe fn execute(
     }
     {
         let state = unsafe { &*runtime.state.get() };
-        if !state.heap.admits_virtual_allocations(nodes.len())
+        if !state.heap.admits_virtual_allocations(clone_count)
             || state
                 .metadata
                 .automatic_collection_due(state.heap.bytes_since_collection().checked_add(budget)?)
@@ -285,6 +304,8 @@ pub(super) unsafe fn execute(
             Exit::Return(Value::Result(index)) => matches!(results[index], Computed::Virtual(_)),
             _ => true,
         };
+        #[cfg(test)]
+        let materialize = materialize || FORCE_EXIT.get().is_some();
         if materialize {
             let mut physical = vec![None; nodes.len()];
             for (slot, result) in boundary.before.iter().enumerate() {
@@ -318,7 +339,7 @@ pub(super) unsafe fn execute(
             }
         }
         #[cfg(test)]
-        HITS.set(HITS.get() + nodes.len());
+        HITS.set(HITS.get() + clone_count);
         // These original token/PC operations can now observe or collect: every
         // virtual identity they could expose is an ordinary rooted Frame value.
         let token = runtime.make_integer(stop as i64);

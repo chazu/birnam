@@ -693,3 +693,34 @@ the original prototype. Observable counts/bytes and effect results agree with
 ordinary execution. This is correctness evidence for the experimental consumer,
 not a performance or full-family completion claim. Forced recovery at every
 prefix boundary and explicit continuation-capture coverage remain next checks.
+
+
+### Forced prefix recovery and stackless control
+
+The live-field consumer now supports test-only forced exits after each admitted
+Call. Admission still proves the complete clone/projection region before choosing
+the earlier test exit; an exit immediately after a clone therefore exercises
+actual materialization, rather than falling back for lack of a field projection.
+Allocation admission charges only the executed prefix. Physical slot maps restore
+all still-live aliases, including a first clone used to create a second distinct
+clone after recovery. A clone already dead at a field-only Return need not be
+materialized.
+
+The differential driver matrix also covers suspension and continuation capture
+after recovering a live clone. An ordinary observing Method replaces the next
+Machine Call publication; the driver then suspends or captures at the original
+V2 boundary. The fixture enters with an acquired registered entry, verifies its
+active/continuation pin transfer, collects while paused, and resumes with the
+pending Call result. A later native observer verifies the original clone identity
+and aliases across another collection. Exactly one observation occurs before
+pausing and one after resumption: no effect is replayed or skipped. These cases
+also run with forced recovery after the earlier admitted Calls.
+
+The live-field consumer remains experimental and disabled. Profitability, cold
+preparation, metadata/storage cost and refusal cost remain promotion obligations;
+closure substitution and the broader four-family requirements remain open.
+
+The [recovery verification receipt](../measurements/74t-virtual-fields-recovery.json)
+passes focused debug/release comparisons and full production verification:
+514 workspace tests, 18 ignored diagnostics, installed runtime, image, archive
+and relocation gates. No live-field timing claim follows from this receipt.

@@ -24,8 +24,9 @@ Discarded-clone elimination is enabled for bounded bodies cloning the same
 prototype at least three times, with original allocation accounting and collector
 observations retained. Its enabled-source matrix shows 3.4–11.4% median fixture
 gains, with zero hits for excluded single-clone controls. Correctness and qualified
-timings are recorded in 74T; broader acceptance remains open. Live
-aggregate scalar replacement and closure elimination are still outstanding.
+timings are recorded in 74T; broader acceptance remains open. A live aggregate
+field-replacement consumer is implemented experimentally and remains disabled
+pending performance acceptance. Closure elimination is still outstanding.
 None of those four full families is complete yet.
 
 ## Direction
