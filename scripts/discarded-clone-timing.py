@@ -98,7 +98,7 @@ def main():
                     on = next(r for r in selected if r["pair"] == pair and r["enabled"])
                     assert on["calls"] == off["calls"] == args.batches * 128
                     assert on["allocation_bytes"] == off["allocation_bytes"]
-                    assert on["hits"] == on["physical_saved"] == on["calls"] * clones
+                    assert on["hits"] == on["physical_saved"] == (on["calls"] * clones if clones >= 3 else 0)
                     assert off["hits"] == off["physical_saved"] == off["physical_saved_bytes"] == 0
                     execution.append(100 * (1 - on["ns"] / off["ns"]))
                     including_gc.append(100 * (1 - (on["ns"] + on["gc_ns"]) / (off["ns"] + off["gc_ns"])))

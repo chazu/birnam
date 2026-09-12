@@ -65,7 +65,7 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Experimental discarded-clone consumer and dead-allocation accounting; disabled pending performance acceptance and broader aggregate implementation"
+        "scope": ("Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
                   if args.allocations else "Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"
                   if args.tails else "Production raw chains with per-call operand and implementation revalidation; profitability and remaining families in progress"
                   if args.chains else "Numeric declarations, guarded boxed calls and raw kernel preparation"

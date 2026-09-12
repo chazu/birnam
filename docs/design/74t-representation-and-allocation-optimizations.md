@@ -554,7 +554,7 @@ journal storage. The journal estimate excludes allocator bookkeeping and is not
 a claim about process RSS. Small snapshots can cost more host storage than the
 object payloads they replace; measurements must retain this tradeoff.
 
-This consumer remains disabled in normal builds pending performance acceptance.
+At this first checkpoint the consumer remained disabled pending performance acceptance.
 Dead-result elimination does not complete scalar replacement of live aggregate
 fields, materialization on exposure, or closure/environment substitution. Those
 remain part of the full implementation obligation.
@@ -597,3 +597,29 @@ the complete body must then use ordinary execution even after earlier sites have
 already established the same prototype's storage proof.
 The [revised correctness receipt](../measurements/74t-discarded-clones-cached-storage.json)
 passes the same debug/release and full production gates (506 tests, 18 ignored).
+
+The [cached-storage matrix](../measurements/74t-discarded-clone-cached-storage-timings.json)
+also qualified, with the same 64,000 calls per row and four alternating pairs.
+For 3/16 clones, execution medians improved by **6.32%/6.93%** at 16 bytes and
+**2.38%/13.81%** at 1,024 bytes. Every pair improved for these four shapes.
+Including GC gives **5.45%/7.80%** and **2.81%/15.43%**, respectively. Single-clone
+cases still regressed: −4.04% and −15.12% execution medians. Physical savings and
+journal storage match the first matrix; no process was paused.
+
+Production admission now requires at least three clone sites and one actual
+prototype identity shared across the body. Equal payloads in distinct prototypes
+do not qualify. The storage proof is reused only within callback-free admission,
+and each selector binding is still checked. This leaves isolated clones and
+mixed-prototype bodies on ordinary execution; the timing driver now treats the
+single-clone rows as ineligible controls. A registered-driver test checks both
+equal-but-distinct prototypes and the same object supplied through different
+arguments, retaining identical logical allocation totals and returned identity.
+Enabled-source verification and timing follow below. This policy promotes only
+the bounded discarded-result consumer; live aggregate scalar replacement and
+closure/capture elimination remain unfinished.
+
+The [enabled-source correctness receipt](../measurements/74t-discarded-clones-production.json)
+passes debug/release checks and full production verification: 507 workspace
+tests and 18 ignored diagnostics, plus installed runtime, image, archive and
+relocation gates. Normal builds now use this bounded policy. Its exact-source
+qualified timing repeat remains a separate acceptance step.

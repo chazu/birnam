@@ -6,7 +6,7 @@ use crate::runtime::current_thread_token;
 
 #[cfg(test)]
 thread_local! {
-    pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
@@ -19,10 +19,13 @@ pub(super) unsafe fn execute(
     entry_args: *const Oop,
 ) -> Option<Result<Oop, ExecutionError>> {
     #[cfg(not(test))]
-    let enabled = false;
+    let enabled = true;
     #[cfg(test)]
     let enabled = ENABLED.get();
     if !enabled
+        // Qualified measurements show that a single clone does not amortize
+        // admission and journal preparation. Require repeated reuse instead.
+        || plan.sites().len() < 3
         || !fused_numeric::controls(runtime, machine)
         || candidate.entries.len() != plan.sites().len() + 1
     {
@@ -49,6 +52,12 @@ pub(super) unsafe fn execute(
             crate::heap::Heap::allocation_total_size(8)?.checked_mul(plan.integer_boxes())?;
         for site in plan.sites() {
             let prototype = arena.read_oop(frame, site.source_slot).ok()?;
+            if cache
+                .first()
+                .is_some_and(|(address, _)| *address != prototype.addr())
+            {
+                return None;
+            }
             let vt = state.heap.vtable_of(prototype)?;
             let selector = state.symbols.existing(&site.selector)?;
             let method = MethodAddress::from_method(crate::dispatch::object_clone);

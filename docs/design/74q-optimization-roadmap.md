@@ -20,8 +20,10 @@ in the enabled production-source matrix (see 74T for both qualified matrices).
 A registered tail-loop entry consumer is also enabled, preserving every lookup
 and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
 Application/cold/metadata acceptance and broader loop dataflow remain open.
-Discarded-clone elimination is implemented as a disabled aggregate experiment,
-with original allocation accounting and collector observations retained. Live
+Discarded-clone elimination is enabled for bounded bodies cloning the same
+prototype at least three times, with original allocation accounting and collector
+observations retained. Qualified experimental gains and the enabled-source
+verification are recorded in 74T; broader acceptance remains open. Live
 aggregate scalar replacement and closure elimination are still outstanding.
 None of those four full families is complete yet.
 

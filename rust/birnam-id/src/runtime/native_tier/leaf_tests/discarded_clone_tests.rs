@@ -235,7 +235,7 @@ fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
                 } else {
                     assert_eq!(result, answer);
                 }
-                let hits = if enabled && matches!(case, Case::Canonical) {
+                let hits = if enabled && clones >= 3 && matches!(case, Case::Canonical) {
                     clones
                 } else {
                     0
@@ -494,6 +494,94 @@ fn discarded_clone_machine_finalizer_admission_requires_exact_inert_capability()
 }
 
 #[test]
+fn discarded_clone_profitability_uses_actual_prototype_identity() {
+    let mut body: Vec<_> = [b"left".as_slice(), b"left", b"right"]
+        .into_iter()
+        .map(|receiver| Statement::Let {
+            name: b"copy",
+            value: Expr::Send {
+                receiver: Box::new(Expr::Global(receiver)),
+                selector: Cow::Borrowed(b"duplicatePrivately"),
+                args: vec![],
+                source: b"",
+            },
+        })
+        .collect();
+    body.push(Statement::Expr(Expr::Global(b"answer")));
+    let bytes = portable::encode_block(
+        &Block {
+            params: vec![b"left", b"right", b"answer"],
+            body,
+        },
+        &[],
+    )
+    .unwrap();
+    for aliases in [false, true] {
+        let mut evidence = Vec::new();
+        for enabled in [false, true] {
+            let _mode = Mode::set(false);
+            let bootstrap = crate::dispatch::build_bootstrap();
+            let r = &bootstrap.runtime;
+            r.publish_canonical_exports();
+            r.install_execution_objects();
+            let block = install(r, &bytes, 741604, None);
+            let _block = ScopedOopRootGuard::new(r, block.receiver);
+            let vt = r.create_vtable(r.globals().object_vt);
+            r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+            r.add_method(
+                vt,
+                r.intern(b"duplicatePrivately").unwrap(),
+                crate::dispatch::object_clone,
+            );
+            let left = r.allocate_instance(vt, 16);
+            let _left = ScopedOopRootGuard::new(r, left);
+            let right = r.allocate_instance(vt, 16);
+            let _right = ScopedOopRootGuard::new(r, right);
+            let answer = r.make_integer(71);
+            let _answer = ScopedOopRootGuard::new(r, answer);
+            for object in [left, right] {
+                for slot in 0..2 {
+                    assert!(unsafe {
+                        (*r.state.get())
+                            .heap
+                            .write_payload_word(object, slot, answer.addr())
+                    });
+                }
+            }
+            let invoke = || {
+                r.enter(|| {
+                    r.send_slice(
+                        block.receiver,
+                        block.selector,
+                        &[left, if aliases { left } else { right }, answer],
+                    )
+                })
+            };
+            for _ in 0..128 {
+                assert_eq!(invoke(), answer);
+            }
+            r.enter(|| r.gc_collect_from_native_range(0, 0));
+            discarded_clone::HITS.set(0);
+            discarded_clone::ENABLED.set(enabled);
+            let before = (r.gc_live_count(), r.gc_live_bytes());
+            assert_eq!(invoke(), answer);
+            let hits = if aliases && enabled { 3 } else { 0 };
+            assert_eq!(discarded_clone::HITS.get(), hits);
+            assert_eq!(
+                r.gc_live_count() - unsafe { (*r.state.get()).heap.physical_allocation_count() },
+                hits
+            );
+            assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+            evidence.push((r.gc_live_count() - before.0, r.gc_live_bytes() - before.1));
+        }
+        assert_eq!(
+            evidence[0], evidence[1],
+            "equal payloads are not identical prototypes; aliases={aliases}"
+        );
+    }
+}
+
+#[test]
 #[ignore = "paired allocation timing; host qualification is external"]
 fn discarded_clone_timing() {
     let batches = std::env::var("BENCH_CLONE_BATCHES")
@@ -562,7 +650,14 @@ fn discarded_clone_timing() {
                         allocation_bytes += r.gc_live_bytes() - before;
                         let heap = unsafe { &(*r.state.get()).heap };
                         let missing = heap.allocation_count() - heap.physical_allocation_count();
-                        assert_eq!(missing, if enabled { clones * 128 } else { 0 });
+                        assert_eq!(
+                            missing,
+                            if enabled && clones >= 3 {
+                                clones * 128
+                            } else {
+                                0
+                            }
+                        );
                         physical_saved += missing;
                         journal_peak_bytes =
                             journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
@@ -575,7 +670,14 @@ fn discarded_clone_timing() {
                     }
                     let calls = batches * 128;
                     let hits = discarded_clone::HITS.get();
-                    assert_eq!(hits, if enabled { calls * clones } else { 0 });
+                    assert_eq!(
+                        hits,
+                        if enabled && clones >= 3 {
+                            calls * clones
+                        } else {
+                            0
+                        }
+                    );
                     assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
                     let physical_saved_bytes =
                         physical_saved * crate::heap::Heap::allocation_total_size(payload).unwrap();
