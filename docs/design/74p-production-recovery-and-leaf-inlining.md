@@ -175,7 +175,8 @@ completion without qualified timings; `birnam-06p` is closed on that basis. The
 seven paired projection/fallback/control measurements remain a future performance
 follow-up, with no speedup claim. Run
 `python3 scripts/production-recovery.py --measure --verify` on a qualified host
-before broadening the optimizer. Changes are not committed or pushed by this task.
+before broadening the optimizer. This implementation and the 74Q roadmap were
+subsequently committed as `d15a40ce` before beginning Stage 1; no push was requested.
 
 ## Follow-on roadmap
 

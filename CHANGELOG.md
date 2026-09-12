@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Added
 
+- Compiler-generated small-callee plans extend guarded inlining through local
+  aliases (Design 74R). Entry recovery, exact index-box order, captured identity
+  and GC/observation boundaries remain checked against canonical execution.
 - Design 74P adds checked production recovery of a registered callee from an
   Id-described slot recipe, with atomic Frame/root and generation-pin transfer.
   Hot portable argument/capture projections inline their return under canonical

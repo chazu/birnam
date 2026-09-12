@@ -5,6 +5,10 @@ implement or promote another optimization. It follows the user's request for a
 plan covering the opportunities beyond 74P, including transformations for which
 deoptimization cannot undo an observable change.
 
+Implementation progress: [74R](74r-small-callee-recovery-plans.md) delivers the
+first bounded Stage 1 batch (single-PC entry values, local aliases and Return).
+Later stages and broader continuation shapes remain proposed.
+
 ## Direction
 
 Build a selective optimizing compiler around ordinary Id semantics. Start by

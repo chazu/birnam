@@ -61,7 +61,7 @@ def main():
             assert unchanged_authority(name, data, subprocess.check_output(["git","show",f"{BASE}:{name}"],cwd=ROOT)), name
             result["authorities"][name] = sha(data)
         for profile in ("debug", "release"):
-            output = run(["cargo","test","-p","birnam-id","--locked","--offline"] + (["--release"] if profile == "release" else []) + ["production_","--","--nocapture"],profile)
+            output = run(["cargo","test","-p","birnam-id","--locked","--offline"] + (["--release"] if profile == "release" else []) + ["runtime::native_tier::leaf_tests::production_","--","--nocapture"],profile)
             rows = [{"kind":prefix.strip(),"data":json.loads(line[len(prefix):])} for line in output.splitlines() for prefix in PREFIXES if line.startswith(prefix)]
             assert len(rows) == 10 and "3 passed; 0 failed" in output
             result["profiles"][profile] = sorted(rows, key=lambda row:json.dumps(row,sort_keys=True))

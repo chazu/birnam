@@ -1,0 +1,28 @@
+// 74R installed/source-independent aliases, captured identity and effect boundary.
+[System load: "modules/os.birnam"];
+let input := [73 asCell];
+let effects := [0 asCell];
+let aliasSource := [:value | let first := value; let second := first; let third := second; third];
+let alias := [Codegen materializeResumable: [[aliasSource codeObject] withoutSourceProvenance] captures: #[]];
+let captureSource := [:unused | let first := input; let second := first; second];
+let captured := [Codegen materializeResumable: [[captureSource codeObject] withoutSourceProvenance] captures: [#[] add: input]];
+let effectSource := [:value | let first := value; [effects inc]; first];
+let effect := [Codegen materializeResumable: [[effectSource codeObject] withoutSourceProvenance] captures: [#[] add: effects]];
+let callerSource := [:target :value | let answer := [target value: value]; answer];
+let caller := [Codegen materializeResumable: [[callerSource codeObject] withoutSourceProvenance] captures: #[]];
+[[alias isError] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];
+[[captured isError] ifTrue: [| [OS exit: 2]] ifFalse: [| nil]];
+[[effect isError] ifTrue: [| [OS exit: 3]] ifFalse: [| nil]];
+[[caller isError] ifTrue: [| [OS exit: 4]] ifFalse: [| nil]];
+[128 timesRepeat: [|
+  [[[caller value: alias value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 5]]];
+  [[[caller value: captured value: nil] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 6]]];
+  [[[caller value: effect value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 7]]]]];
+[[[effects value] = 128] ifTrue: [| nil] ifFalse: [| [OS exit: 8]]];
+[Codegen evictMaterializations];
+[System gc];
+[[[caller value: alias value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 9]]];
+[[[caller value: captured value: nil] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 10]]];
+[[[caller value: effect value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 11]]];
+[[[effects value] = 129] ifTrue: [| nil] ifFalse: [| [OS exit: 12]]];
+[System println: "small-callee-recovery: aliases, captures, effects, eviction and GC passed"];

@@ -8,7 +8,7 @@ use birnam_artifact::{
     materialization_selection as selection, portable_inventory,
     portable_resumable_manifest as manifest,
 };
-use birnam_codegen::{resumable, resumable_c, resumable_descriptor};
+use birnam_codegen::{resumable, resumable_c, resumable_descriptor, small_callee};
 use birnam_native_compiler::Unit;
 use core::ffi::{c_char, c_void};
 use std::collections::BTreeMap;
@@ -32,7 +32,7 @@ struct Record {
     candidate: Option<Rc<Candidate>>,
     visits: usize,
     disabled: bool,
-    leaf: Option<usize>,
+    leaf: Option<Rc<small_callee::Plan>>,
     leaf_miss_epoch: Option<u64>,
 }
 
@@ -40,7 +40,7 @@ struct Prepared {
     descriptor: Vec<u8>,
     source: CString,
     pcs: usize,
-    leaf: Option<usize>,
+    leaf: Option<Rc<small_callee::Plan>>,
 }
 
 struct Candidate {
@@ -119,7 +119,7 @@ impl Registry {
             Arc::as_ptr(descriptor) as usize,
             Record {
                 descriptor: Arc::downgrade(descriptor),
-                leaf: prepared.leaf,
+                leaf: prepared.leaf.clone(),
                 leaf_miss_epoch: None,
                 pending: Some(prepared),
                 candidate: None,
@@ -161,25 +161,12 @@ impl Prepared {
         let descriptor =
             resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 1).ok()?;
         if program.blocks.len() == 1 {
-            if !program.blocks[0].operations.iter().all(|op| {
-                matches!(
-                    op.kind,
-                    resumable::OperationKind::EntryReceiver
-                        | resumable::OperationKind::EntryArgument { .. }
-                        | resumable::OperationKind::EntryCapture { .. }
-                )
-            }) {
-                return None;
-            }
-            let resumable::Terminator::Return(value) = program.blocks[0].terminator else {
-                return None;
-            };
-            let slot = *layout.value_slots.get(value.0 as usize)? as usize;
+            let plan = small_callee::compile(&program, &layout).ok()?;
             return Some(Self {
                 descriptor,
                 source: CString::new("").ok()?,
                 pcs: 1,
-                leaf: Some(slot),
+                leaf: Some(Rc::new(plan)),
             });
         }
         let mut source = include_bytes!("native_tier/shims.c").to_vec();
@@ -296,6 +283,8 @@ unsafe extern "C" fn shim_intern(name: *const c_char) -> Oop {
     })
 }
 unsafe extern "C" fn shim_integer(value: i64) -> Oop {
+    #[cfg(test)]
+    leaf_tests::record_box(value);
     with_active(|runtime| runtime.make_integer(value))
 }
 unsafe extern "C" fn shim_nil() -> Oop {
@@ -333,13 +322,17 @@ fn leaf_control_guard(runtime: &Runtime, machine: Oop) -> bool {
     true
 }
 
-fn leaf_allocation_guard(runtime: &Runtime, descriptor: &FrameDescriptor) -> bool {
+fn leaf_allocation_guard(
+    runtime: &Runtime,
+    descriptor: &FrameDescriptor,
+    plan: &small_callee::Plan,
+) -> bool {
     let state = unsafe { &*runtime.state.get() };
     // Preserve the baseline's housekeeping boxes and its collection boundary.
     // If any of those allocations could collect, create the callee first.
     let bytes = crate::heap::Heap::allocation_total_size(core::mem::size_of::<i64>())
         .unwrap()
-        .saturating_mul(1 + descriptor.driver_argument_count());
+        .saturating_mul(plan.boxed_indices().len() + descriptor.driver_argument_count());
     !state
         .metadata
         .automatic_collection_due(state.heap.bytes_since_collection().saturating_add(bytes))
@@ -369,7 +362,7 @@ pub(super) fn inline_call(
         else {
             return Ok(false);
         };
-        let Some(slot) = record.leaf else {
+        let Some(plan) = record.leaf.as_ref() else {
             return Ok(false);
         };
         if record.disabled
@@ -385,7 +378,7 @@ pub(super) fn inline_call(
         if record.visits < HOT_ENTRIES {
             return Ok(false);
         }
-        slot
+        Rc::clone(plan)
     };
     let nil = runtime.canonical().nil;
     let owner = super::current_thread_token();
@@ -396,7 +389,7 @@ pub(super) fn inline_call(
             .inline_return_storage_valid(&state.heap, owner, capability)
     };
     let controls = leaf_control_guard(runtime, machine);
-    if !valid_return || !controls || !leaf_allocation_guard(runtime, descriptor) {
+    if !valid_return || !controls || !leaf_allocation_guard(runtime, descriptor, &leaf) {
         if !controls {
             // Recover this activation once; use ordinary entry thereafter until
             // dictionary mutation gives this optional optimization another chance.
@@ -409,14 +402,23 @@ pub(super) fn inline_call(
                 record.leaf_miss_epoch = Some(epoch);
             }
         }
-        // The acquisition still owns the exact originally resolved generation.
-        // Nil-fill non-entry locations, including live root slots, explicitly.
-        let mut slots = vec![nil; descriptor.slot_count()];
-        for &(slot, value) in initial {
-            slots[slot] = value;
-        }
+        // Apply the compiler's explicit baseline entry recipe before any body
+        // operation. Alias destinations are not prematurely populated.
+        let slots: Vec<_> = leaf
+            .recovery_sources()
+            .iter()
+            .map(|source| {
+                source
+                    .and_then(|source| {
+                        initial
+                            .iter()
+                            .find_map(|&(slot, value)| (slot == source as usize).then_some(value))
+                    })
+                    .unwrap_or(nil)
+            })
+            .collect();
         runtime.with_recovery_request(capability, entry, result_slot, || {
-            runtime.recover_slots(capability, 0, &slots)
+            runtime.recover_slots(capability, leaf.recovery_pc(), &slots)
         })?;
         #[cfg(test)]
         INLINE_RECOVERIES.set(INLINE_RECOVERIES.get() + 1);
@@ -427,10 +429,14 @@ pub(super) fn inline_call(
     if descriptor.driver_argument_count() == 1 {
         runtime.make_integer(0);
     }
-    runtime.make_integer(leaf as i64);
+    for &index in leaf.boxed_indices() {
+        #[cfg(test)]
+        leaf_tests::record_box(index as i64);
+        runtime.make_integer(index as i64);
+    }
     let value = initial
         .iter()
-        .find_map(|(slot, value)| (*slot == leaf).then_some(*value))
+        .find_map(|(slot, value)| (*slot == leaf.return_entry_slot()).then_some(*value))
         .unwrap_or(nil);
     let result = unsafe {
         let state = &mut *runtime.state.get();
@@ -439,7 +445,7 @@ pub(super) fn inline_call(
             owner,
             capability,
             result_slot,
-            leaf,
+            leaf.return_slot(),
             nil,
             value,
         )

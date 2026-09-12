@@ -36,6 +36,9 @@ scripts/stackless-control-smoke.sh "$prefix"
 "$prefix/bin/birnam" scripts/fixtures/projection-recovery.birnam >"$prefix_parent/projection.out"
 grep -Fxq "production-recovery: portable projections, captures, identity, eviction and GC passed" "$prefix_parent/projection.out"
 cat "$prefix_parent/projection.out"
+"$prefix/bin/birnam" scripts/fixtures/small-callee-recovery.birnam >"$prefix_parent/small-callee.out"
+grep -Fxq "small-callee-recovery: aliases, captures, effects, eviction and GC passed" "$prefix_parent/small-callee.out"
+cat "$prefix_parent/small-callee.out"
 
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
 import json

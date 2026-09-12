@@ -62,6 +62,9 @@
 > [74Q](74q-optimization-roadmap.md) proposes the dependency-ordered roadmap
 > for broader inlining, dispatch specialization, dataflow/loop optimization and
 > representation changes, with explicit limits on irreversible effects.
+> [74R](74r-small-callee-recovery-plans.md) implements the first bounded batch:
+> compiler-generated entry recovery plans and local-alias inlining. Its document
+> records correctness gates and isolated performance comparisons.
 
 ## 1. Decision criteria and direction
 

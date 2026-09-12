@@ -114,6 +114,10 @@ projection-call benefit; they are not qualified performance acceptance.
 [Design 74Q](../design/74q-optimization-roadmap.md) proposes the next optimization
 roadmap, starting with compiler-generated recovery for one small callee. It does
 not implement or promote the proposed passes.
+[Design 74R](../design/74r-small-callee-recovery-plans.md) (`birnam-svi`)
+implements its first bounded batch: compiler-generated small-callee recovery
+plans and alias inlining. All 463 workspace tests and full production gates pass;
+measurement evidence and qualification are recorded in that document.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
