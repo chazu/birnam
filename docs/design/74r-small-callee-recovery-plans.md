@@ -1,7 +1,8 @@
 # 74R — Compiler-generated small-callee recovery plans
 
-Status: implemented and correctness-verified, 2026-09-12. Qualified performance
-acceptance remains a follow-up because competing host load failed admission.
+Status: implemented and correctness-verified, 2026-09-12. Qualified timing
+completed after checkpoint `fbe7a566`; alias benefits are supported, while small
+regression and incremental cold-preparation acceptance remain open.
 
 ## Authorized batch
 
@@ -50,8 +51,9 @@ the same one-shot checked recovery transfer.
 - Measure baseline, 74P-only admission and the new pass separately, with
   projection, alias, ineligible and persistent-guard-miss controls. Report cold
   preparation/warmup, steady time, allocations and actual hits/recoveries.
-- Use qualified host gates when available. The user permits unqualified battery
-  measurements; label those receipts explicitly and retain the measured spread.
+- Earlier exploratory measurements were permitted without qualification. The
+  subsequent user request requires waiting for qualified host gates; keep those
+  thresholds intact and retain the measured spread.
   Pause the previously authorized `rk` process only during timing and resume it
   with guaranteed cleanup. No speedup is assumed before measurement.
 
@@ -154,15 +156,83 @@ Consequently it does not isolate incremental startup cost. Recipes retain 2/3/5
 slot sources and 1/3/7 boxed indices for these cases. No application-wide timing
 or retained-memory improvement is established.
 
+## Qualified rerun after checkpoint
+
+The implementation was committed as `fbe7a566` before timing, as requested.
+[One further attempt](../measurements/74r-host-rejected-load-third.json) passed
+three pairs but stopped when the next preflight had 49.29% median idle against
+the unchanged 50% requirement. Its partial samples are excluded from the results
+below. After waiting, two complete matrices passed:
+
+- [Seven pairs of 10,000 calls](../measurements/74r-qualified-timing.json), with
+  133 samples and all seven preflights passing. Each pair finished before a
+  second CPU monitor sample, so the existing gate relied on immediate preflight.
+- [Seven pairs of 100,000 calls](../measurements/74r-qualified-long-timing.json),
+  with 133 samples and all seven preflight and interval gates passing. This
+  longer repeat checks the short run's control outliers and supplies actual
+  during-measurement samples: 55 intervals, median idle per pair 59.20–63.22%,
+  none below 30%. Preflight medians were 56.27–77.10%, on AC power.
+
+Both runs passed the debug/release compiler and production tests, all sample
+assertions and source-hash checks. Both used the exact same release binary and
+179-file source manifest as the preceding verified implementation. The saved
+74P reference binary matched its historical receipt hash. CPU logs are embedded
+in the receipts. The authorized `rk` process was resumed after each attempt,
+including the rejected attempt, and verified running after the final run.
+
+All percentages below are median **paired elapsed-time reductions** against
+current-binary 74P eligibility. Negative values mean slower. These compare the
+same compiler/runtime binary with different admission, not old versus new cold
+compilation.
+
+| Case | 10,000-call median | 100,000-call median | 100,000-call paired range |
+| --- | ---: | ---: | ---: |
+| Three aliases | 20.47% | 18.93% | 13.70% to 26.27% |
+| One alias | 11.85% | 9.09% | 3.50% to 15.85% |
+| Projection (same eligible behavior) | -1.46% | -4.63% | -10.08% to 6.67% |
+| Ineligible literal control | 3.20% | 0.26% | -7.97% to 7.66% |
+| Persistent return-guard miss | -1.98% | -1.50% | -5.85% to 8.05% |
+
+Each alias case improves in every pair in both runs. In the longer run, even the
+smallest three-alias reduction exceeds the observed ineligible-control variation.
+This supports a repeatable benefit for that fixture. The one-alias improvement is
+consistent in direction, though its smaller pairs overlap control variation.
+Against disabled optimization, longer-run median reductions are 19.43% for three
+aliases and 12.57% for one alias. Against the actual saved 74P binary's enabled
+mode, one alias improves 9.61% at median (4.32–18.91% across pairs).
+
+Small regressions are not cleared. Persistent fallback is 1.50% slower at median
+versus prior eligibility, or 4.07% versus disabled optimization, with mixed-sign
+pairs. The unchanged projection admission also moves by several percent; its
+old-binary enabled comparison is 4.23% slower at median. Those results and the
+controls leave order/host variation and small implementation costs unresolved;
+they do not establish a particular regression. No application-wide speedup is
+claimed.
+
+Allocations agree exactly across every compared mode and reference: 100,000
+calls allocate 72,800,000 bytes for projection, 76,000,000 for one alias,
+82,400,000 for three aliases/fallback and 79,200,000 for the ineligible control.
+Eligible optimized samples record 100,000 hits; controls have none. Persistent
+misses recover during warmup, with zero steady-state recoveries. Identity,
+active-pin and acquired-entry checks pass throughout.
+
+Longer-run median plan-build costs are 43/55/95 ns for projection/one/three
+aliases, with the same 2/3/5 recovery slots and 1/3/7 boxed indices. These remain
+warmed builds on lowered/colored IR. Median preparation is approximately
+0.53–0.56 ms including native baseline compilation, paid by every current mode.
+Warmup medians over 80 calls span approximately 0.21–0.27 ms. Neither these
+numbers nor the cross-binary steady-state references isolate incremental cold
+preparation or retained-memory cost.
+
 ## Disposition and next step
 
-The authorized first implementation batch and its correctness/measurement work
-are complete (`birnam-svi`). The alias result is promising, but qualified
-performance acceptance is unresolved, including persistent-fallback cost.
-`birnam-sc7` tracks repeating the comparisons on a qualified idle host before
-expanding to Stage 2. Do not represent these results as cleared performance
-regressions or a production-wide speedup.
+The first implementation batch (`birnam-svi`) and qualified rerun/assessment
+(`birnam-sc7`) are complete. The host qualification blocker is resolved, and the
+alias fixture benefit is supported. `birnam-bew` retains the remaining fallback,
+control-variation and incremental preparation questions before broader
+optimization. This is not blanket no-regression acceptance or promotion of
+Stage 2.
 
-The earlier implementation and roadmap checkpoint is committed as `d15a40ce`.
-The user requested this batch be checkpointed before repeating qualified timing.
-No push or user installation was requested.
+The earlier implementation/roadmap checkpoint is `d15a40ce`; this batch's
+implementation checkpoint is `fbe7a566`. The rerun changes receipts, documentation
+and tracker state only. No push or user installation was requested.

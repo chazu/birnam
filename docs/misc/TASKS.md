@@ -117,7 +117,8 @@ not implement or promote the proposed passes.
 [Design 74R](../design/74r-small-callee-recovery-plans.md) (`birnam-svi`)
 implements its first bounded batch: compiler-generated small-callee recovery
 plans and alias inlining. All 463 workspace tests and full production gates pass;
-measurement evidence and qualification are recorded in that document.
+qualified timing now supports the alias fixture benefit. Remaining small-cost
+acceptance is tracked by `birnam-bew`; receipts and limits are in that document.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
