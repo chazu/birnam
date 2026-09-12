@@ -362,8 +362,7 @@ impl Prepared {
             numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
             discarded_clone: birnam_codegen::discarded_clone::Plan::derive(&program, &layout)
                 .map(Rc::new),
-            virtual_aggregate: birnam_codegen::virtual_aggregate::Plan::derive(&program, &layout)
-                .map(Rc::new),
+            virtual_aggregate: virtual_aggregate::prepare(&program, &layout).map(Rc::new),
         })
     }
 

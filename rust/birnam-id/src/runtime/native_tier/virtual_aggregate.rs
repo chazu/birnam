@@ -6,21 +6,50 @@ use crate::loader::FieldSummary;
 use crate::raw::MethodAddress;
 use crate::runtime::current_thread_token;
 use birnam_codegen::virtual_aggregate::{Exit, Plan, Value};
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
+
+pub(super) const MIN_PROJECTIONS: usize = 3;
+pub(super) const RETRY_INTERVAL: usize = 64;
+
+pub(super) fn prepare(
+    program: &resumable::LogicalProgram<'_>,
+    layout: &resumable::PhysicalLayout,
+) -> Option<Plan> {
+    // One clone and the required projections each need their own Call PC,
+    // followed by a continuation. Reject shorter programs before allocating
+    // a symbolic plan or physical-slot maps.
+    if program.blocks.len() <= MIN_PROJECTIONS + 1 {
+        return None;
+    }
+    Plan::derive(program, layout).filter(worthwhile)
+}
+
+fn worthwhile(plan: &Plan) -> bool {
+    plan.steps
+        .iter()
+        .take_while(
+            |step| matches!(&step.exit, Exit::Call { arguments, .. } if arguments.is_empty()),
+        )
+        .count()
+        > MIN_PROJECTIONS
+}
 
 #[cfg(test)]
 thread_local! {
-    pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static FORCE_EXIT: core::cell::Cell<Option<usize>> = const { core::cell::Cell::new(None) };
     pub(super) static SCRATCH_MISSES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    pub(super) static ATTEMPTS: Cell<usize> = const { Cell::new(0) };
+    pub(super) static RETRY_SKIPS: Cell<usize> = const { Cell::new(0) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static MATERIALIZED: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
 pub(super) struct Compiled {
     plan: Rc<Plan>,
-    fields: RefCell<Vec<(usize, Option<Rc<FieldSummary>>)>>,
+    fields: RefCell<Vec<(usize, Rc<FieldSummary>)>>,
     scratch: RefCell<Option<Box<Scratch>>>,
+    retry: Cell<(u64, usize)>,
 }
 impl Compiled {
     pub(super) fn new(plan: Rc<Plan>) -> Self {
@@ -28,6 +57,7 @@ impl Compiled {
             plan,
             fields: RefCell::new(Vec::new()),
             scratch: RefCell::new(None),
+            retry: Cell::new((0, 0)),
         }
     }
     /// Retained field-plan/cache storage, excluding allocator and loader costs.
@@ -60,9 +90,8 @@ impl Compiled {
                         }
                 })
                 .sum::<usize>()
-            + fields.capacity() * size_of::<(usize, Option<Rc<FieldSummary>>)>()
-            + fields.iter().filter(|(_, value)| value.is_some()).count()
-                * (2 * size_of::<usize>() + size_of::<FieldSummary>())
+            + fields.capacity() * size_of::<(usize, Rc<FieldSummary>)>()
+            + fields.len() * (2 * size_of::<usize>() + size_of::<FieldSummary>())
     }
     fn acquire_scratch(&self) -> ScratchLease<'_> {
         let scratch = self.scratch.borrow_mut().take().unwrap_or_else(|| {
@@ -98,14 +127,17 @@ impl Compiled {
             value
         } else {
             // No cache or RuntimeState borrow crosses the pure native query.
-            let value = FieldSummary::discover(method, nil).map(Rc::new);
+            // Do not permanently cache an absent declaration: a later retry
+            // must rediscover declarations that become available without an
+            // Id binding mutation.
+            let value = FieldSummary::discover(method, nil).map(Rc::new)?;
             let mut fields = self.fields.borrow_mut();
             if fields.len() == 32 {
                 fields.clear();
             }
             fields.push((method as usize, value.clone()));
             value
-        }?;
+        };
         let field = summary.field(nil)?;
         Some((summary, field))
     }
@@ -205,12 +237,46 @@ pub(super) unsafe fn execute(
     entry_args: *const Oop,
 ) -> Option<Result<Oop, ExecutionError>> {
     #[cfg(not(test))]
-    let enabled = false;
+    let enabled = true;
     #[cfg(test)]
     let enabled = ENABLED.get();
     if !enabled {
         return None;
     }
+    let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
+    let (failed_epoch, remaining) = compiled.retry.get();
+    if epoch != u64::MAX && epoch == failed_epoch && remaining != 0 {
+        compiled.retry.set((epoch, remaining - 1));
+        #[cfg(test)]
+        RETRY_SKIPS.set(RETRY_SKIPS.get() + 1);
+        return None;
+    }
+    #[cfg(test)]
+    ATTEMPTS.set(ATTEMPTS.get() + 1);
+    let result = unsafe { execute_now(runtime, machine, key, candidate, compiled, entry_args) };
+    // Only a refusal skips future attempts. Successful execution and execution
+    // errors retain normal driver handling. A binding epoch change retries at
+    // once; pure declaration changes without an epoch are reconsidered within
+    // RETRY_INTERVAL invocations. Every skipped attempt runs ordinary Id code.
+    compiled.retry.set((
+        epoch,
+        if result.is_none() {
+            RETRY_INTERVAL - 1
+        } else {
+            0
+        },
+    ));
+    result
+}
+
+unsafe fn execute_now(
+    runtime: &Runtime,
+    machine: Oop,
+    key: usize,
+    candidate: &Rc<Candidate>,
+    compiled: &Compiled,
+    entry_args: *const Oop,
+) -> Option<Result<Oop, ExecutionError>> {
     let owner = current_thread_token();
     let capability = runtime.stackless_machine_capability(machine).ok()?;
     let plan = &compiled.plan;
@@ -300,7 +366,7 @@ pub(super) unsafe fn execute(
             results.push(Computed::Real(value));
         }
     }
-    if nodes.is_empty() || summaries.is_empty() {
+    if nodes.is_empty() || summaries.len() < MIN_PROJECTIONS {
         return None;
     }
     // Pure preflight reads may have inspected payload bits, but no result is

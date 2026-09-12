@@ -895,3 +895,37 @@ reconsideration too. Verify this policy against the same successful, escaping,
 withdrawn, mutation, capture and forced-recovery cases before an enabled-source
 qualified matrix. Closure substitution and broader family/application acceptance
 remain part of the original full objective.
+
+
+### Bounded production admission and refusal retries
+
+The live-field consumer is enabled in normal builds with a minimum of three
+actual, currently declared field projections. Programs too short to contain a
+clone plus those Calls are rejected before allocating symbolic plans or physical
+slot maps; remaining plans must contain a sufficiently long zero-argument Call
+prefix. Runtime admission still classifies actual Methods and requires the three
+projections before preparing snapshots. These checks are profitability policy,
+not intrinsic meaning attached to a selector or class name.
+
+A refused candidate skips the next 63 optimization attempts at the same vtable
+mutation epoch. Every skipped invocation executes ordinary Id code. A binding
+change forces an immediate retry; a declaration changing without a binding change
+is reconsidered within 64 invocations. Saturated epochs do not use the retry
+shortcut. Initially absent declarations are not permanently negative-cached;
+previously admitted summaries remain pinned and are queried again on retry.
+Successful execution and execution errors do not enter refusal backoff.
+
+A registered-driver test verifies both initial declaration absence and withdrawal
+of a cached declaration, then restores each without an epoch change and checks
+the exact retry bound. Method replacement during backoff immediately runs all
+three replacement sends; restoring the getter immediately resumes optimization.
+Short regions remain in the differential and timing matrices as excluded controls,
+with zero live-field metadata and zero attempts/hits. Timing records include
+attempt and retry-skip counts, bounding refusal attempts per collection-separated
+batch while successful regions still check every invocation.
+
+The [enabled-source verification receipt](../measurements/74t-virtual-fields-production.json)
+passes focused debug/release checks and full production verification: 517 tests,
+19 ignored diagnostics, installed runtime, image, archive and relocation gates.
+The enabled-source qualified matrix is the next promotion check; broader aggregate,
+closure, numeric, loop and application acceptance obligations remain open.

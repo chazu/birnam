@@ -321,19 +321,19 @@ unsafe extern "C" fn suspend_call(machine: Oop, args: *const Oop, count: usize) 
 
 #[test]
 fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers() {
-    compare_recovery(None, 1, CASES);
+    compare_recovery(None, 3, CASES);
 }
 
 #[test]
 fn virtual_fields_force_recovery_at_every_admitted_call_boundary() {
-    for stop in 1..=3 {
-        compare_recovery(Some(stop), 1, CASES);
+    for stop in 1..=5 {
+        compare_recovery(Some(stop), 3, CASES);
     }
 }
 
 #[test]
 fn longer_virtual_field_regions_recover_at_every_call_and_preserve_reentry() {
-    for projections in [3, 16] {
+    for projections in [1, 3, 16] {
         compare_recovery(None, projections, CASES);
         for stop in 1..=projections + 2 {
             compare_recovery(Some(stop), projections, &[Case::Twins]);
@@ -536,7 +536,10 @@ fn compare_recovery(forced_exit: Option<usize>, projections: usize, cases: &[Cas
                     0
                 );
                 answer
-            } else if enabled && matches!(case, Case::Reenter) {
+            } else if enabled
+                && projections >= virtual_aggregate::MIN_PROJECTIONS
+                && matches!(case, Case::Reenter)
+            {
                 // Keep one checkout live while the real driver and a collecting
                 // nested observer use this same compiled candidate.
                 let candidate = r
@@ -579,6 +582,7 @@ fn compare_recovery(forced_exit: Option<usize>, projections: usize, cases: &[Cas
                 );
             }
             let optimized = enabled
+                && projections >= virtual_aggregate::MIN_PROJECTIONS
                 && !matches!(
                     case,
                     Case::Rebind
@@ -672,12 +676,12 @@ unsafe extern "C" fn mutate_prototype(mark: crate::abi::MarkFn) {
 
 #[test]
 fn virtual_field_budget_preserves_collection_before_clone_and_after_recovery() {
-    let bytes = program(Case::Observe);
+    let bytes = program_with_fields(Case::Observe, 3);
     let logical = resumable::lower_portable_block(&bytes).unwrap();
     let layout = resumable::color_slots(&logical).unwrap();
     let plan = birnam_codegen::virtual_aggregate::Plan::derive(&logical, &layout).unwrap();
     let box_size = crate::heap::Heap::allocation_total_size(8).unwrap();
-    let prefix_bytes = (1 + plan.steps[..2]
+    let prefix_bytes = (1 + plan.steps[..4]
         .iter()
         .map(|step| step.integer_boxes)
         .sum::<usize>())
@@ -773,6 +777,106 @@ fn virtual_field_budget_preserves_collection_before_clone_and_after_recovery() {
 }
 
 #[test]
+fn virtual_field_refusals_retry_after_binding_changes_and_without_epoch_changes() {
+    let _mode = Mode::set(false);
+    let bootstrap = crate::dispatch::build_bootstrap();
+    let r = &bootstrap.runtime;
+    r.publish_canonical_exports();
+    r.install_execution_objects();
+    let native = Native::load(r);
+    let block = install(r, &program_with_fields(Case::Field, 3), 741804, None);
+    let _block = ScopedOopRootGuard::new(r, block.receiver);
+    let vt = r.create_vtable(r.globals().object_vt);
+    r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+    let project = r.intern(b"project").unwrap();
+    r.add_method(vt, project, native.method());
+    r.add_method(
+        vt,
+        r.intern(b"duplicate").unwrap(),
+        crate::dispatch::object_clone,
+    );
+    let prototype = r.allocate_instance(vt, 16);
+    let _prototype = ScopedOopRootGuard::new(r, prototype);
+    let field = r.make_integer(71);
+    for slot in 0..2 {
+        assert!(unsafe {
+            (*r.state.get())
+                .heap
+                .write_payload_word(prototype, slot, field.addr())
+        });
+    }
+    let invoke = || r.enter(|| r.send_slice(block.receiver, block.selector, &[prototype, field]));
+    for _ in 0..128 {
+        assert_eq!(invoke(), field);
+    }
+    r.enter(|| r.gc_collect_from_native_range(0, 0));
+    native.enable(false); // First attempted discovery declines, without a cache entry.
+    virtual_aggregate::ENABLED.set(true);
+    virtual_aggregate::HITS.set(0);
+    virtual_aggregate::ATTEMPTS.set(0);
+    virtual_aggregate::RETRY_SKIPS.set(0);
+    let epoch = unsafe { (*r.state.get()).vtables.mutation_epoch() };
+    assert_eq!(invoke(), field);
+    assert_eq!(virtual_aggregate::ATTEMPTS.get(), 1);
+    native.enable(true);
+    for _ in 1..virtual_aggregate::RETRY_INTERVAL {
+        assert_eq!(invoke(), field);
+    }
+    assert_eq!(unsafe { (*r.state.get()).vtables.mutation_epoch() }, epoch);
+    assert_eq!(virtual_aggregate::HITS.get(), 0);
+    assert_eq!(
+        virtual_aggregate::RETRY_SKIPS.get(),
+        virtual_aggregate::RETRY_INTERVAL - 1
+    );
+    assert_eq!(invoke(), field);
+    assert_eq!(
+        virtual_aggregate::HITS.get(),
+        1,
+        "rediscover initially absent declaration"
+    );
+    assert_eq!(virtual_aggregate::ATTEMPTS.get(), 2);
+
+    native.enable(false); // The now-cached summary must also be revalidated.
+    assert_eq!(invoke(), field);
+    assert_eq!(virtual_aggregate::HITS.get(), 1);
+    assert_eq!(virtual_aggregate::ATTEMPTS.get(), 3);
+    native.enable(true);
+    for _ in 1..virtual_aggregate::RETRY_INTERVAL {
+        assert_eq!(invoke(), field);
+    }
+    assert_eq!(virtual_aggregate::HITS.get(), 1);
+    assert_eq!(invoke(), field);
+    assert_eq!(
+        virtual_aggregate::HITS.get(),
+        2,
+        "cached declaration is reconsidered"
+    );
+    assert_eq!(virtual_aggregate::ATTEMPTS.get(), 4);
+
+    native.enable(false);
+    assert_eq!(invoke(), field);
+    let attempts = virtual_aggregate::ATTEMPTS.get();
+    let skips = virtual_aggregate::RETRY_SKIPS.get();
+    r.add_method(vt, project, redefined);
+    OBSERVED.set(0);
+    assert_eq!(invoke(), r.canonical().true_object);
+    assert_eq!(OBSERVED.get(), 3, "all original sends observe replacement");
+    assert_eq!(virtual_aggregate::ATTEMPTS.get(), attempts + 1);
+    assert_eq!(virtual_aggregate::RETRY_SKIPS.get(), skips);
+    native.enable(true);
+    r.add_method(vt, project, native.method());
+    assert_eq!(invoke(), field);
+    assert_eq!(
+        virtual_aggregate::HITS.get(),
+        3,
+        "binding replacement retries immediately"
+    );
+    assert_eq!(virtual_aggregate::ATTEMPTS.get(), attempts + 2);
+    assert_eq!(virtual_aggregate::RETRY_SKIPS.get(), skips);
+    assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+}
+
+#[test]
 #[ignore = "paired live-field timing; host qualification is external"]
 fn virtual_field_timing() {
     let batches = std::env::var("BENCH_FIELD_BATCHES")
@@ -788,7 +892,11 @@ fn virtual_field_timing() {
     {
         assert!([1, 3, 16].contains(&projections));
         for (shape, case) in [(0, Case::Field), (1, Case::Object), (2, Case::Withdraw)] {
-            let bytes = program_with_fields(case, projections);
+            let bytes = if projections == 1 {
+                program(case)
+            } else {
+                program_with_fields(case, projections)
+            };
             for payload in [16, 1024] {
                 for pair in 0..4 {
                     for enabled in if pair % 2 == 0 {
@@ -801,6 +909,7 @@ fn virtual_field_timing() {
                         let r = &bootstrap.runtime;
                         r.publish_canonical_exports();
                         r.install_execution_objects();
+                        let eligible = enabled && projections >= virtual_aggregate::MIN_PROJECTIONS;
                         let native = Native::load(r);
                         let block = install(r, &bytes, 741803, None);
                         let _block = ScopedOopRootGuard::new(r, block.receiver);
@@ -850,6 +959,8 @@ fn virtual_field_timing() {
                         invoke();
                         r.enter(|| r.gc_collect_from_native_range(0, 0));
                         virtual_aggregate::SCRATCH_MISSES.set(0);
+                        virtual_aggregate::ATTEMPTS.set(0);
+                        virtual_aggregate::RETRY_SKIPS.set(0);
                         virtual_aggregate::HITS.set(0);
                         virtual_aggregate::MATERIALIZED.set(0);
                         let mut ns = 0;
@@ -868,7 +979,7 @@ fn virtual_field_timing() {
                             let heap = unsafe { &(*r.state.get()).heap };
                             let missing =
                                 heap.allocation_count() - heap.physical_allocation_count();
-                            assert_eq!(missing, if enabled && shape == 0 { 128 } else { 0 });
+                            assert_eq!(missing, if eligible && shape == 0 { 128 } else { 0 });
                             physical_saved += missing;
                             journal_peak_bytes =
                                 journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
@@ -883,10 +994,21 @@ fn virtual_field_timing() {
                         let calls = batches * 128;
                         let scratch_misses = virtual_aggregate::SCRATCH_MISSES.get();
                         assert_eq!(scratch_misses, 0);
+                        let attempts = virtual_aggregate::ATTEMPTS.get();
+                        let retry_skips = virtual_aggregate::RETRY_SKIPS.get();
+                        assert_eq!(attempts + retry_skips, if eligible { calls } else { 0 });
+                        if eligible && shape == 2 {
+                            assert!(
+                                attempts
+                                    <= calls.div_ceil(virtual_aggregate::RETRY_INTERVAL) + batches
+                            );
+                        } else {
+                            assert_eq!(retry_skips, 0);
+                        }
                         let hits = virtual_aggregate::HITS.get();
                         let materialized = virtual_aggregate::MATERIALIZED.get();
-                        assert_eq!(hits, if enabled && shape != 2 { calls } else { 0 });
-                        assert_eq!(materialized, if enabled && shape == 1 { calls } else { 0 });
+                        assert_eq!(hits, if eligible && shape != 2 { calls } else { 0 });
+                        assert_eq!(materialized, if eligible && shape == 1 { calls } else { 0 });
                         assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
                         let metadata_bytes = r
                             .native_tier
@@ -897,10 +1019,13 @@ fn virtual_field_timing() {
                             .filter_map(|candidate| candidate.virtual_aggregate.as_ref())
                             .map(|compiled| compiled.storage_bytes())
                             .sum::<usize>();
+                        if projections == 1 {
+                            assert_eq!(metadata_bytes, 0);
+                        }
                         let physical_saved_bytes = physical_saved
                             * crate::heap::Heap::allocation_total_size(payload).unwrap();
                         println!(
-                            "virtual-field shape={shape} projections={projections} scratch_misses={scratch_misses} payload={payload} pair={pair} enabled={enabled} calls={calls} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} physical_saved_bytes={physical_saved_bytes} journal_peak_bytes={journal_peak_bytes} metadata_bytes={metadata_bytes} hits={hits} materialized={materialized} cold_ns={cold_ns}"
+                            "virtual-field shape={shape} projections={projections} scratch_misses={scratch_misses} attempts={attempts} retry_skips={retry_skips} payload={payload} pair={pair} enabled={enabled} calls={calls} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} physical_saved_bytes={physical_saved_bytes} journal_peak_bytes={journal_peak_bytes} metadata_bytes={metadata_bytes} hits={hits} materialized={materialized} cold_ns={cold_ns}"
                         );
                     }
                 }

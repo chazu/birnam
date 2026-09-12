@@ -47,7 +47,7 @@ def main():
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS="10",
                BENCH_FIELD_BATCHES=str(args.batches), BENCH_FIELD_PROJECTIONS=",".join(map(str, args.projections)))
     result = {"status": "running", "qualified": False, "batches": args.batches, "projections": args.projections,
-              "scope": "Live clone/field bodies with selected counts of 1/3/16 field projections: shape 0 field return, shape 1 escaping clone, shape 2 withdrawn cached projection declaration. Payloads 16/1024 bytes; GC separately timed after 128 calls. Cold time covers first 128 calls including candidate preparation, before declaration withdrawal. Retained journal/plan/cache storage includes cached untraced scratch buffers and excludes allocator/loader bookkeeping and active nested scratch; physical bytes include heap headers. Native fixture compile and setup excluded from timed samples.",
+              "scope": "Live clone/field bodies with selected counts of 1/3/16 field projections (minimum 3 for eligibility; shorter plans carry no live-field metadata; refusals retry within 64 invocations or immediately after an epoch change): shape 0 field return, shape 1 escaping clone, shape 2 withdrawn cached projection declaration. Payloads 16/1024 bytes; GC separately timed after 128 calls. Cold time covers first 128 calls including candidate preparation, before declaration withdrawal. Retained journal/plan/cache storage includes cached untraced scratch buffers and excludes allocator/loader bookkeeping and active nested scratch; physical bytes include heap headers. Native fixture compile and setup excluded from timed samples.",
               "correctness_receipt": str(args.receipt.resolve()),
               "correctness_receipt_sha256": sha(args.receipt), "binary": binary,
               "driver_sha256": sha(Path(__file__))}
@@ -102,9 +102,17 @@ def main():
                         assert on["calls"] == off["calls"] == args.batches * 128
                         assert on["allocation_bytes"] == off["allocation_bytes"]
                         assert on["scratch_misses"] == off["scratch_misses"] == 0
-                        assert on["hits"] == (on["calls"] if shape != 2 else 0)
-                        assert on["materialized"] == (on["calls"] if shape == 1 else 0)
-                        assert on["physical_saved"] == (on["calls"] if shape == 0 else 0)
+                        assert on["hits"] == (on["calls"] if projections >= 3 and shape != 2 else 0)
+                        assert on["materialized"] == (on["calls"] if projections >= 3 and shape == 1 else 0)
+                        assert on["physical_saved"] == (on["calls"] if projections >= 3 and shape == 0 else 0)
+                        assert off["attempts"] == off["retry_skips"] == 0
+                        assert on["attempts"] + on["retry_skips"] == (on["calls"] if projections >= 3 else 0)
+                        if projections == 1:
+                            assert on["metadata_bytes"] == off["metadata_bytes"] == 0
+                        elif shape == 2:
+                            assert on["attempts"] <= (on["calls"] + 63) // 64 + args.batches
+                        else:
+                            assert on["retry_skips"] == 0
                         assert off["materialized"] == 0
                         assert off["hits"] == off["physical_saved"] == off["physical_saved_bytes"] == 0
                         cold.append(100 * (1 - on["cold_ns"] / off["cold_ns"]))
