@@ -20,11 +20,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--receipt", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--projections", type=int, choices=(1, 3, 16), nargs="+", default=[1, 3, 16])
     parser.add_argument("--batches", type=int, default=100)
     parser.add_argument("--wait-seconds", type=int, default=120)
     args = parser.parse_args()
     if not 1 <= args.batches <= 500 or args.wait_seconds < 0:
         parser.error("batches must be 1-500 and wait-seconds nonnegative")
+    args.projections = sorted(set(args.projections))
     proof = json.loads(args.receipt.read_text())
     if proof["status"] != "passed" or proof["production_verification"] != "passed":
         parser.error("full verification must pass first")
@@ -43,9 +45,9 @@ def main():
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("BIRNAM_", "DYLD_", "BENCH_HOST_", "BENCH_FIELD_"))}
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS="10",
-               BENCH_FIELD_BATCHES=str(args.batches))
-    result = {"status": "running", "qualified": False, "batches": args.batches,
-              "scope": "Live clone/field bodies: shape 0 field return, shape 1 escaping clone, shape 2 withdrawn cached projection declaration. Payloads 16/1024 bytes; GC separately timed after 128 calls. Cold time covers first 128 calls including candidate preparation, before declaration withdrawal. Retained journal/plan/cache storage excludes allocator/loader bookkeeping and transient admission scratch; physical bytes include heap headers. Native fixture compile and setup excluded from timed samples.",
+               BENCH_FIELD_BATCHES=str(args.batches), BENCH_FIELD_PROJECTIONS=",".join(map(str, args.projections)))
+    result = {"status": "running", "qualified": False, "batches": args.batches, "projections": args.projections,
+              "scope": "Live clone/field bodies with selected counts of 1/3/16 field projections: shape 0 field return, shape 1 escaping clone, shape 2 withdrawn cached projection declaration. Payloads 16/1024 bytes; GC separately timed after 128 calls. Cold time covers first 128 calls including candidate preparation, before declaration withdrawal. Retained journal/plan/cache storage includes cached untraced scratch buffers and excludes allocator/loader bookkeeping and active nested scratch; physical bytes include heap headers. Native fixture compile and setup excluded from timed samples.",
               "correctness_receipt": str(args.receipt.resolve()),
               "correctness_receipt_sha256": sha(args.receipt), "binary": binary,
               "driver_sha256": sha(Path(__file__))}
@@ -68,7 +70,7 @@ def main():
             result["status"] = "not_qualified"
             return 2
         log = ROOT / ".cargo-target/74t-recovery/virtual-field-interval.log"
-        print("virtual-field: measuring six shapes, four alternating pairs each", flush=True)
+        print(f"virtual-field: measuring {6 * len(args.projections)} shapes, four alternating pairs each", flush=True)
         with log.open("w") as stream:
             monitor = subprocess.Popen(["top", "-l", "0", "-s", "1", "-n", "0", "-stats", "pid"],
                                        stdout=stream, stderr=subprocess.DEVNULL)
@@ -86,33 +88,35 @@ def main():
             values = dict(re.findall(r"(\w+)=(\w+)", line))
             rows.append({key: (value == "true" if key == "enabled" else int(value)) for key, value in values.items()})
         result["rows"] = rows
-        if result["command"]["exit_code"] or len(rows) != 48:
+        if result["command"]["exit_code"] or len(rows) != 48 * len(args.projections):
             raise RuntimeError("allocation timing did not complete all pairs")
         result["shapes"] = []
-        for shape in (0, 1, 2):
-            for payload in (16, 1024):
-                selected = [r for r in rows if r["shape"] == shape and r["payload"] == payload]
-                execution, including_gc, cold = [], [], []
-                for pair in range(4):
-                    off = next(r for r in selected if r["pair"] == pair and not r["enabled"])
-                    on = next(r for r in selected if r["pair"] == pair and r["enabled"])
-                    assert on["calls"] == off["calls"] == args.batches * 128
-                    assert on["allocation_bytes"] == off["allocation_bytes"]
-                    assert on["hits"] == (on["calls"] if shape != 2 else 0)
-                    assert on["materialized"] == (on["calls"] if shape == 1 else 0)
-                    assert on["physical_saved"] == (on["calls"] if shape == 0 else 0)
-                    assert off["materialized"] == 0
-                    assert off["hits"] == off["physical_saved"] == off["physical_saved_bytes"] == 0
-                    cold.append(100 * (1 - on["cold_ns"] / off["cold_ns"]))
-                    execution.append(100 * (1 - on["ns"] / off["ns"]))
-                    including_gc.append(100 * (1 - (on["ns"] + on["gc_ns"]) / (off["ns"] + off["gc_ns"])))
-                result["shapes"].append({"shape": shape, "payload": payload,
-                                         "paired_cold_improvement_percent": cold,
-                                         "median_cold_improvement_percent": statistics.median(cold),
-                                         "paired_execution_improvement_percent": execution,
-                                         "median_execution_improvement_percent": statistics.median(execution),
-                                         "paired_including_gc_improvement_percent": including_gc,
-                                         "median_including_gc_improvement_percent": statistics.median(including_gc)})
+        for projections in args.projections:
+            for shape in (0, 1, 2):
+                for payload in (16, 1024):
+                    selected = [r for r in rows if r["projections"] == projections and r["shape"] == shape and r["payload"] == payload]
+                    execution, including_gc, cold = [], [], []
+                    for pair in range(4):
+                        off = next(r for r in selected if r["pair"] == pair and not r["enabled"])
+                        on = next(r for r in selected if r["pair"] == pair and r["enabled"])
+                        assert on["calls"] == off["calls"] == args.batches * 128
+                        assert on["allocation_bytes"] == off["allocation_bytes"]
+                        assert on["scratch_misses"] == off["scratch_misses"] == 0
+                        assert on["hits"] == (on["calls"] if shape != 2 else 0)
+                        assert on["materialized"] == (on["calls"] if shape == 1 else 0)
+                        assert on["physical_saved"] == (on["calls"] if shape == 0 else 0)
+                        assert off["materialized"] == 0
+                        assert off["hits"] == off["physical_saved"] == off["physical_saved_bytes"] == 0
+                        cold.append(100 * (1 - on["cold_ns"] / off["cold_ns"]))
+                        execution.append(100 * (1 - on["ns"] / off["ns"]))
+                        including_gc.append(100 * (1 - (on["ns"] + on["gc_ns"]) / (off["ns"] + off["gc_ns"])))
+                    result["shapes"].append({"shape": shape, "payload": payload, "projections": projections,
+                                             "paired_cold_improvement_percent": cold,
+                                             "median_cold_improvement_percent": statistics.median(cold),
+                                             "paired_execution_improvement_percent": execution,
+                                             "median_execution_improvement_percent": statistics.median(execution),
+                                             "paired_including_gc_improvement_percent": including_gc,
+                                             "median_including_gc_improvement_percent": statistics.median(including_gc)})
         check_sources()
         result["qualified"] = result["interval"]["exit_code"] == 0
         result["status"] = "passed" if result["qualified"] else "not_qualified"

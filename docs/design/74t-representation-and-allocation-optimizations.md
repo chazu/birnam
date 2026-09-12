@@ -830,3 +830,37 @@ reentry ownership. Keep escaping and withdrawn-declaration controls alongside
 those regions. These remaining profitability obligations do not complete the
 aggregate family or replace the outstanding closure, numeric, loop and broader
 application/metadata/refusal acceptance requirements.
+
+
+### Reusable untraced scratch and longer field regions
+
+Each compiled live-field candidate now retains at most one cleared scratch set.
+An invocation takes ownership of its boxed vector headers and untraced vector
+storage without keeping a pool borrow across native queries, generated PCs or
+observations. An owner-thread reentry while a set is in use can obtain a separate set; cleanup
+releases all snapshot/declaration references and logical values before returning
+one set to the pool. Refusal and execution-error returns use the same cleanup.
+The scratch box is lazy, so an inactive candidate does not inline all eight vector
+headers or allocate backing buffers. Oop-valued storage remains off the native
+stack and outside the collector's root graph.
+
+The source-derived comparisons now include 3 and 16 projections. They retain
+escaping identities, ordinary lookup/Call overrides, declaration withdrawal,
+raw/oversized refusals and capture/suspend behavior. Every supported Call boundary
+in the longer two-clone case is forced to recover. A collecting native observer
+reenters the same registered block with a different prototype and field value.
+The test also holds a scratch checkout live around this real driver execution,
+verifies that its original value is unchanged, and checks that the driver obtains
+a separate set; subsequent ordinary warm admissions reuse the cached set.
+
+The timing matrix accepts `--projections 1 3 16` (the default) and measures all
+three result/refusal shapes at both payload sizes for each selected projection
+count. It asserts zero warm scratch-pool misses. Retained plan/cache bytes now
+include the lazy scratch box and cached vector capacities, while active nested
+scratch and allocator/loader overhead remain excluded. Existing two-Call receipts
+remain historical evidence and use their original driver/source hashes.
+
+The [pooled-region verification receipt](../measurements/74t-virtual-fields-pooled-regions.json)
+passes focused debug/release checks and full production verification: 516 tests,
+19 ignored diagnostics, installed runtime, image, archive and relocation gates.
+Live-field execution remains disabled pending the expanded timing matrix.

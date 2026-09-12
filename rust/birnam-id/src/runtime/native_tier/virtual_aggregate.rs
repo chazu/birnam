@@ -12,6 +12,7 @@ use core::cell::RefCell;
 thread_local! {
     pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
     pub(super) static FORCE_EXIT: core::cell::Cell<Option<usize>> = const { core::cell::Cell::new(None) };
+    pub(super) static SCRATCH_MISSES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static MATERIALIZED: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
@@ -19,12 +20,14 @@ thread_local! {
 pub(super) struct Compiled {
     plan: Rc<Plan>,
     fields: RefCell<Vec<(usize, Option<Rc<FieldSummary>>)>>,
+    scratch: RefCell<Option<Box<Scratch>>>,
 }
 impl Compiled {
     pub(super) fn new(plan: Rc<Plan>) -> Self {
         Self {
             plan,
             fields: RefCell::new(Vec::new()),
+            scratch: RefCell::new(None),
         }
     }
     /// Retained field-plan/cache storage, excluding allocator and loader costs.
@@ -33,6 +36,11 @@ impl Compiled {
         use core::mem::size_of;
         let fields = self.fields.borrow();
         size_of::<Self>()
+            + self
+                .scratch
+                .borrow()
+                .as_ref()
+                .map_or(0, |scratch| size_of::<Scratch>() + scratch.storage_bytes())
             + 2 * size_of::<usize>()
             + size_of::<Plan>()
             + self.plan.steps.capacity() * size_of::<birnam_codegen::virtual_aggregate::Step>()
@@ -55,6 +63,29 @@ impl Compiled {
             + fields.capacity() * size_of::<(usize, Option<Rc<FieldSummary>>)>()
             + fields.iter().filter(|(_, value)| value.is_some()).count()
                 * (2 * size_of::<usize>() + size_of::<FieldSummary>())
+    }
+    fn acquire_scratch(&self) -> ScratchLease<'_> {
+        let scratch = self.scratch.borrow_mut().take().unwrap_or_else(|| {
+            #[cfg(test)]
+            SCRATCH_MISSES.set(SCRATCH_MISSES.get() + 1);
+            Box::default()
+        });
+        ScratchLease {
+            scratch: Some(scratch),
+            pool: &self.scratch,
+        }
+    }
+    #[cfg(test)]
+    pub(super) fn with_held_scratch(&self, value: Oop, body: impl FnOnce() -> Oop) -> Oop {
+        let mut held = self.acquire_scratch();
+        held.scratch.as_mut().unwrap().inputs.push(value);
+        let answer = body();
+        assert_eq!(
+            held.scratch.as_ref().unwrap().inputs,
+            [value],
+            "live checkout survives collecting reentry"
+        );
+        answer
     }
     fn field(&self, method: Method, nil: Oop) -> Option<(Rc<FieldSummary>, usize)> {
         let cached = self
@@ -89,6 +120,61 @@ enum Computed {
 enum Operation {
     Clone(usize),
     Projection(Oop),
+}
+
+/// Only vector headers live on the native stack. Payload Oops are untraced.
+#[derive(Default)]
+struct Scratch {
+    inputs: Vec<Oop>,
+    results: Vec<Computed>,
+    operations: Vec<Operation>,
+    nodes: Vec<Oop>,
+    summaries: Vec<Rc<FieldSummary>>,
+    snapshots: Vec<Option<Rc<DeadAllocation>>>,
+    identities: Vec<Option<DeferredAllocation>>,
+    physical: Vec<Option<Oop>>,
+}
+impl Scratch {
+    fn clear(&mut self) {
+        self.inputs.clear();
+        self.results.clear();
+        self.operations.clear();
+        self.nodes.clear();
+        self.summaries.clear();
+        self.snapshots.clear();
+        self.identities.clear();
+        self.physical.clear();
+    }
+    #[cfg(test)]
+    fn storage_bytes(&self) -> usize {
+        use core::mem::size_of;
+        self.inputs.capacity() * size_of::<Oop>()
+            + self.results.capacity() * size_of::<Computed>()
+            + self.operations.capacity() * size_of::<Operation>()
+            + self.nodes.capacity() * size_of::<Oop>()
+            + self.summaries.capacity() * size_of::<Rc<FieldSummary>>()
+            + self.snapshots.capacity() * size_of::<Option<Rc<DeadAllocation>>>()
+            + self.identities.capacity() * size_of::<Option<DeferredAllocation>>()
+            + self.physical.capacity() * size_of::<Option<Oop>>()
+    }
+}
+/// An invocation owns its buffers through the observing boundary. Reentry can
+/// obtain another set without sharing live values or holding a RefCell borrow.
+/// At most one cleared set remains cached per compiled candidate.
+struct ScratchLease<'a> {
+    scratch: Option<Box<Scratch>>,
+    pool: &'a RefCell<Option<Box<Scratch>>>,
+}
+impl Drop for ScratchLease<'_> {
+    fn drop(&mut self) {
+        // Release pins/snapshots before borrowing the pool, including on refusal
+        // or execution error. No stale values are part of a later invocation.
+        self.scratch.as_mut().unwrap().clear();
+        let mut pool = self.pool.borrow_mut();
+        if pool.is_none() {
+            *pool = self.scratch.take();
+        }
+    }
 }
 
 unsafe fn invoke(
@@ -129,7 +215,18 @@ pub(super) unsafe fn execute(
     let capability = runtime.stackless_machine_capability(machine).ok()?;
     let plan = &compiled.plan;
     let nil = runtime.canonical().nil;
-    let (frame, inputs) = {
+    let mut lease = compiled.acquire_scratch();
+    let Scratch {
+        inputs,
+        results,
+        operations,
+        nodes,
+        summaries,
+        snapshots,
+        identities,
+        physical,
+    } = lease.scratch.as_deref_mut().unwrap();
+    let frame = {
         let state = unsafe { &*runtime.state.get() };
         let arena = state.execution.machine(owner, capability).ok()?.arena();
         let frame = arena.current_handle()?;
@@ -139,18 +236,12 @@ pub(super) unsafe fn execute(
         {
             return None;
         }
-        let inputs = (0..plan.slot_count)
-            .map(|slot| arena.read_oop(frame, slot))
-            .collect::<Result<Vec<_>, _>>()
-            .ok()?;
-        (frame, inputs)
+        inputs.resize(plan.slot_count, nil);
+        for (slot, value) in inputs.iter_mut().enumerate() {
+            *value = arena.read_oop(frame, slot).ok()?;
+        }
+        frame
     };
-    // Oop-valued scratch stays in untraced host allocations. Native stack
-    // arrays could conservatively retain dead inputs when the boundary collects.
-    let mut results = Vec::new();
-    let mut operations = Vec::new();
-    let mut nodes = Vec::new();
-    let mut summaries = Vec::new();
     for step in &plan.steps {
         let Exit::Call {
             receiver,
@@ -214,7 +305,7 @@ pub(super) unsafe fn execute(
     }
     // Pure preflight reads may have inspected payload bits, but no result is
     // executed or published until every cloned payload has passed this proof.
-    let mut snapshots: Vec<Option<Rc<DeadAllocation>>> = vec![None; nodes.len()];
+    snapshots.resize(nodes.len(), None);
     {
         let state = unsafe { &*runtime.state.get() };
         for index in 0..nodes.len() {
@@ -289,7 +380,7 @@ pub(super) unsafe fn execute(
     // All declarations are pure, all current binding reads precede this body,
     // and the complete budget excludes observation until physical recovery.
     Some((|| {
-        let mut identities: Vec<Option<DeferredAllocation>> = vec![None; nodes.len()];
+        identities.resize(nodes.len(), None);
         for (pc, operation) in operations.iter().enumerate() {
             let token;
             let args = if pc == 0 {
@@ -342,7 +433,7 @@ pub(super) unsafe fn execute(
         #[cfg(test)]
         let materialize = materialize || FORCE_EXIT.get().is_some();
         if materialize {
-            let mut physical = vec![None; nodes.len()];
+            physical.resize(nodes.len(), None);
             for (slot, result) in boundary.before.iter().enumerate() {
                 let Some(result) = result else {
                     continue;
@@ -388,7 +479,6 @@ pub(super) unsafe fn execute(
                 core::ptr::from_ref(&token),
             )
         };
-        drop(summaries);
         Ok(action)
     })())
 }

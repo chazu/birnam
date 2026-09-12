@@ -102,8 +102,13 @@ enum Case {
     Oversized,
     CallControl,
     Lookup,
+    Reenter,
 }
 fn program(case: Case) -> Vec<u8> {
+    program_with_fields(case, 1)
+}
+fn program_with_fields(case: Case, projections: usize) -> Vec<u8> {
+    assert!((1..=16).contains(&projections));
     let send = |receiver, selector, args| Expr::Send {
         receiver: Box::new(Expr::Global(receiver)),
         selector: Cow::Borrowed(selector),
@@ -124,6 +129,12 @@ fn program(case: Case) -> Vec<u8> {
             value: send(b"copy", b"project", vec![]),
         },
     ];
+    for _ in 1..projections {
+        body.insert(
+            body.len() - 1,
+            Statement::Expr(send(b"copy", b"project", vec![])),
+        );
+    }
     if matches!(case, Case::Twins) {
         body.insert(
             2,
@@ -135,7 +146,7 @@ fn program(case: Case) -> Vec<u8> {
     }
     if matches!(
         case,
-        Case::Observe | Case::Twins | Case::Capture | Case::Suspend
+        Case::Observe | Case::Twins | Case::Capture | Case::Suspend | Case::Reenter
     ) {
         body.push(Statement::Let {
             name: b"observed",
@@ -179,7 +190,7 @@ fn program(case: Case) -> Vec<u8> {
     body.push(Statement::Expr(Expr::Global(match case {
         Case::Object => b"alias",
         Case::Capture | Case::Suspend => b"resumed",
-        Case::Observe | Case::Twins => b"observed",
+        Case::Observe | Case::Twins | Case::Reenter => b"observed",
         _ => b"field",
     })));
     portable::encode_block(
@@ -193,6 +204,7 @@ fn program(case: Case) -> Vec<u8> {
 }
 
 thread_local! {
+    static REENTER: Cell<Option<(Oop, Oop, Oop)>> = const { Cell::new(None) };
     static PAUSE: Cell<Option<bool>> = const { Cell::new(None) };
     static RECOVERED_IDENTITY: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static PROTOTYPE: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
@@ -203,7 +215,7 @@ unsafe extern "C" fn redefined(_: Oop, _: *const Oop, _: usize) -> Oop {
     OBSERVED.set(OBSERVED.get() + 1);
     with_active(|r| r.canonical().true_object)
 }
-unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
+unsafe extern "C" fn observe(observer: Oop, args: *const Oop, count: usize) -> Oop {
     assert!((2..=3).contains(&count));
     let copy = unsafe { *args };
     assert_eq!(copy, unsafe { *args.add(1) });
@@ -245,6 +257,23 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
         };
         let before = aliases();
         assert!(before.len() >= 2);
+        if let Some((block, selector, prototype)) = REENTER.take() {
+            let expected = unsafe {
+                (*r.state.get())
+                    .heap
+                    .read_payload_word(prototype, 0)
+                    .unwrap()
+            };
+            assert_eq!(
+                r.send_slice(block, selector, &[prototype, observer]).addr(),
+                expected
+            );
+            assert_eq!(
+                aliases(),
+                before,
+                "nested entry preserves outer Frame aliases"
+            );
+        }
         r.gc_collect_from_native_range(0, 0);
         assert_eq!(aliases(), before);
         ALIASES.replace(before);
@@ -292,43 +321,56 @@ unsafe extern "C" fn suspend_call(machine: Oop, args: *const Oop, count: usize) 
 
 #[test]
 fn virtual_fields_recover_identity_and_frame_aliases_before_collecting_observers() {
-    compare_recovery(None);
+    compare_recovery(None, 1, CASES);
 }
 
 #[test]
 fn virtual_fields_force_recovery_at_every_admitted_call_boundary() {
     for stop in 1..=3 {
-        compare_recovery(Some(stop));
+        compare_recovery(Some(stop), 1, CASES);
     }
 }
 
-fn compare_recovery(forced_exit: Option<usize>) {
-    for case in [
-        Case::Field,
-        Case::Object,
-        Case::Observe,
-        Case::Rebind,
-        Case::Withdraw,
-        Case::Twins,
-        Case::Capture,
-        Case::Suspend,
-        Case::MixedLayout,
-        Case::RawTail,
-        Case::Oversized,
-        Case::CallControl,
-        Case::Lookup,
-    ] {
+#[test]
+fn longer_virtual_field_regions_recover_at_every_call_and_preserve_reentry() {
+    for projections in [3, 16] {
+        compare_recovery(None, projections, CASES);
+        for stop in 1..=projections + 2 {
+            compare_recovery(Some(stop), projections, &[Case::Twins]);
+        }
+    }
+}
+
+const CASES: &[Case] = &[
+    Case::Field,
+    Case::Object,
+    Case::Observe,
+    Case::Rebind,
+    Case::Withdraw,
+    Case::Twins,
+    Case::Capture,
+    Case::Suspend,
+    Case::MixedLayout,
+    Case::RawTail,
+    Case::Oversized,
+    Case::CallControl,
+    Case::Lookup,
+    Case::Reenter,
+];
+fn compare_recovery(forced_exit: Option<usize>, projections: usize, cases: &[Case]) {
+    for &case in cases {
         let mut evidence = Vec::new();
         for enabled in [false, true] {
             let _mode = Mode::set(false);
             RECOVERED_IDENTITY.set(core::ptr::null_mut());
             PAUSE.set(None);
+            REENTER.set(None);
             let bootstrap = crate::dispatch::build_bootstrap();
             let r = &bootstrap.runtime;
             r.publish_canonical_exports();
             r.install_execution_objects();
             let native = Native::load(r);
-            let block = install(r, &program(case), 741801, None);
+            let block = install(r, &program_with_fields(case, projections), 741801, None);
             let _block = ScopedOopRootGuard::new(r, block.receiver);
             let vt = r.create_vtable(r.globals().object_vt);
             r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
@@ -414,6 +456,25 @@ fn compare_recovery(forced_exit: Option<usize>) {
             let controlled = matches!(case, Case::Capture | Case::Suspend);
             let machine = controlled.then(|| r.create_stackless_machine().unwrap());
             let _machine = machine.map(|machine| ScopedOopRootGuard::new(r, machine));
+            let secondary = if matches!(case, Case::Reenter) {
+                let prototype = r.allocate_instance(vt, 16);
+                let marker = r.make_integer(92);
+                for slot in 0..2 {
+                    assert!(unsafe {
+                        (*r.state.get())
+                            .heap
+                            .write_payload_word(prototype, slot, marker.addr())
+                    });
+                }
+                Some(prototype)
+            } else {
+                None
+            };
+            let _secondary = secondary.map(|value| ScopedOopRootGuard::new(r, value));
+            if let Some(prototype) = secondary {
+                REENTER.set(Some((block.receiver, block.selector, prototype)));
+            }
+            virtual_aggregate::SCRATCH_MISSES.set(0);
             let before = (r.gc_live_count(), r.gc_live_bytes());
             let _forced = ForcedExit::set(forced_exit);
             let answer = if let Some(machine) = machine {
@@ -475,6 +536,24 @@ fn compare_recovery(forced_exit: Option<usize>) {
                     0
                 );
                 answer
+            } else if enabled && matches!(case, Case::Reenter) {
+                // Keep one checkout live while the real driver and a collecting
+                // nested observer use this same compiled candidate.
+                let candidate = r
+                    .native_tier
+                    .borrow()
+                    .records
+                    .get(&(Arc::as_ptr(&block.descriptor) as usize))
+                    .unwrap()
+                    .candidate
+                    .as_ref()
+                    .unwrap()
+                    .clone();
+                candidate
+                    .virtual_aggregate
+                    .as_ref()
+                    .unwrap()
+                    .with_held_scratch(field, invoke)
             } else {
                 invoke()
             };
@@ -512,6 +591,8 @@ fn compare_recovery(forced_exit: Option<usize>) {
                 );
             let identities = if matches!(case, Case::Twins) { 2 } else { 1 };
             let identities = identities.min(forced_exit.unwrap_or(usize::MAX));
+            let identities = identities * if matches!(case, Case::Reenter) { 2 } else { 1 };
+            let force_live_field = forced_exit.is_some_and(|stop| stop <= projections);
             assert_eq!(
                 virtual_aggregate::HITS.get(),
                 if optimized { identities } else { 0 },
@@ -520,7 +601,7 @@ fn compare_recovery(forced_exit: Option<usize>) {
             assert_eq!(
                 virtual_aggregate::MATERIALIZED.get(),
                 if optimized
-                    && (forced_exit == Some(1)
+                    && (force_live_field
                         || matches!(
                             case,
                             Case::Object
@@ -528,6 +609,7 @@ fn compare_recovery(forced_exit: Option<usize>) {
                                 | Case::Twins
                                 | Case::Capture
                                 | Case::Suspend
+                                | Case::Reenter
                         ))
                 {
                     identities
@@ -538,9 +620,23 @@ fn compare_recovery(forced_exit: Option<usize>) {
             );
             assert_eq!(
                 r.gc_live_count() - unsafe { (*r.state.get()).heap.physical_allocation_count() },
-                usize::from(optimized && forced_exit != Some(1) && matches!(case, Case::Field))
+                usize::from(optimized && !force_live_field && matches!(case, Case::Field))
             );
             assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+            if matches!(case, Case::Reenter) {
+                assert_eq!(OBSERVED.get(), 2);
+                assert_eq!(
+                    virtual_aggregate::SCRATCH_MISSES.get(),
+                    usize::from(optimized),
+                    "nested invocation owns separate scratch"
+                );
+            } else {
+                assert_eq!(
+                    virtual_aggregate::SCRATCH_MISSES.get(),
+                    0,
+                    "warm admission reuses scratch"
+                );
+            }
             evidence.push((
                 r.gc_live_count() as isize - before.0 as isize,
                 r.gc_live_bytes() as isize - before.1 as isize,
@@ -684,114 +780,129 @@ fn virtual_field_timing() {
         .map(|value| value.parse::<usize>().unwrap())
         .unwrap_or(1);
     assert!((1..=500).contains(&batches));
-    for (shape, case) in [(0, Case::Field), (1, Case::Object), (2, Case::Withdraw)] {
-        let bytes = program(case);
-        for payload in [16, 1024] {
-            for pair in 0..4 {
-                for enabled in if pair % 2 == 0 {
-                    [false, true]
-                } else {
-                    [true, false]
-                } {
-                    let _mode = Mode::set(enabled);
-                    let bootstrap = crate::dispatch::build_bootstrap();
-                    let r = &bootstrap.runtime;
-                    r.publish_canonical_exports();
-                    r.install_execution_objects();
-                    let native = Native::load(r);
-                    let block = install(r, &bytes, 741803, None);
-                    let _block = ScopedOopRootGuard::new(r, block.receiver);
-                    let vt = r.create_vtable(r.globals().object_vt);
-                    r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
-                    r.add_method(
-                        vt,
-                        r.intern(b"duplicate").unwrap(),
-                        crate::dispatch::object_clone,
-                    );
-                    r.add_method(vt, r.intern(b"project").unwrap(), native.method());
-                    let prototype = r.allocate_instance(vt, payload);
-                    let _prototype = ScopedOopRootGuard::new(r, prototype);
-                    let field = r.make_integer(71);
-                    let _field = ScopedOopRootGuard::new(r, field);
-                    for slot in 0..payload / core::mem::size_of::<Oop>() {
-                        assert!(unsafe {
-                            (*r.state.get())
-                                .heap
-                                .write_payload_word(prototype, slot, field.addr())
-                        });
-                    }
-                    let invoke = || {
-                        let answer = r.enter(|| {
-                            r.send_slice(block.receiver, block.selector, &[prototype, field])
-                        });
-                        if shape == 1 {
-                            assert_ne!(answer, prototype);
-                            assert_eq!(
-                                unsafe { (*r.state.get()).heap.read_payload_word(answer, 0) },
-                                Some(field.addr())
-                            );
-                        } else {
-                            assert_eq!(answer, field);
+    let projection_counts =
+        std::env::var("BENCH_FIELD_PROJECTIONS").unwrap_or_else(|_| "1,3,16".into());
+    for projections in projection_counts
+        .split(',')
+        .map(|value| value.parse::<usize>().unwrap())
+    {
+        assert!([1, 3, 16].contains(&projections));
+        for (shape, case) in [(0, Case::Field), (1, Case::Object), (2, Case::Withdraw)] {
+            let bytes = program_with_fields(case, projections);
+            for payload in [16, 1024] {
+                for pair in 0..4 {
+                    for enabled in if pair % 2 == 0 {
+                        [false, true]
+                    } else {
+                        [true, false]
+                    } {
+                        let _mode = Mode::set(enabled);
+                        let bootstrap = crate::dispatch::build_bootstrap();
+                        let r = &bootstrap.runtime;
+                        r.publish_canonical_exports();
+                        r.install_execution_objects();
+                        let native = Native::load(r);
+                        let block = install(r, &bytes, 741803, None);
+                        let _block = ScopedOopRootGuard::new(r, block.receiver);
+                        let vt = r.create_vtable(r.globals().object_vt);
+                        r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+                        r.add_method(
+                            vt,
+                            r.intern(b"duplicate").unwrap(),
+                            crate::dispatch::object_clone,
+                        );
+                        r.add_method(vt, r.intern(b"project").unwrap(), native.method());
+                        let prototype = r.allocate_instance(vt, payload);
+                        let _prototype = ScopedOopRootGuard::new(r, prototype);
+                        let field = r.make_integer(71);
+                        let _field = ScopedOopRootGuard::new(r, field);
+                        for slot in 0..payload / core::mem::size_of::<Oop>() {
+                            assert!(unsafe {
+                                (*r.state.get()).heap.write_payload_word(
+                                    prototype,
+                                    slot,
+                                    field.addr(),
+                                )
+                            });
                         }
-                    };
-                    let start = std::time::Instant::now();
-                    for _ in 0..128 {
-                        invoke();
-                    }
-                    let cold_ns = start.elapsed().as_nanos();
-                    if shape == 2 {
-                        native.enable(false);
-                    }
-                    invoke();
-                    r.enter(|| r.gc_collect_from_native_range(0, 0));
-                    virtual_aggregate::HITS.set(0);
-                    virtual_aggregate::MATERIALIZED.set(0);
-                    let mut ns = 0;
-                    let mut gc_ns = 0;
-                    let mut allocation_bytes = 0;
-                    let mut physical_saved = 0;
-                    let mut journal_peak_bytes = 0;
-                    for _ in 0..batches {
-                        let before = r.gc_live_bytes();
+                        let invoke = || {
+                            let answer = r.enter(|| {
+                                r.send_slice(block.receiver, block.selector, &[prototype, field])
+                            });
+                            if shape == 1 {
+                                assert_ne!(answer, prototype);
+                                assert_eq!(
+                                    unsafe { (*r.state.get()).heap.read_payload_word(answer, 0) },
+                                    Some(field.addr())
+                                );
+                            } else {
+                                assert_eq!(answer, field);
+                            }
+                        };
                         let start = std::time::Instant::now();
                         for _ in 0..128 {
                             invoke();
                         }
-                        ns += start.elapsed().as_nanos();
-                        allocation_bytes += r.gc_live_bytes() - before;
-                        let heap = unsafe { &(*r.state.get()).heap };
-                        let missing = heap.allocation_count() - heap.physical_allocation_count();
-                        assert_eq!(missing, if enabled && shape == 0 { 128 } else { 0 });
-                        physical_saved += missing;
-                        journal_peak_bytes =
-                            journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
-                        assert!(
-                            heap.bytes_since_collection() < crate::gc::AUTO_COLLECTION_THRESHOLD
-                        );
-                        let start = std::time::Instant::now();
+                        let cold_ns = start.elapsed().as_nanos();
+                        if shape == 2 {
+                            native.enable(false);
+                        }
+                        invoke();
                         r.enter(|| r.gc_collect_from_native_range(0, 0));
-                        gc_ns += start.elapsed().as_nanos();
+                        virtual_aggregate::SCRATCH_MISSES.set(0);
+                        virtual_aggregate::HITS.set(0);
+                        virtual_aggregate::MATERIALIZED.set(0);
+                        let mut ns = 0;
+                        let mut gc_ns = 0;
+                        let mut allocation_bytes = 0;
+                        let mut physical_saved = 0;
+                        let mut journal_peak_bytes = 0;
+                        for _ in 0..batches {
+                            let before = r.gc_live_bytes();
+                            let start = std::time::Instant::now();
+                            for _ in 0..128 {
+                                invoke();
+                            }
+                            ns += start.elapsed().as_nanos();
+                            allocation_bytes += r.gc_live_bytes() - before;
+                            let heap = unsafe { &(*r.state.get()).heap };
+                            let missing =
+                                heap.allocation_count() - heap.physical_allocation_count();
+                            assert_eq!(missing, if enabled && shape == 0 { 128 } else { 0 });
+                            physical_saved += missing;
+                            journal_peak_bytes =
+                                journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
+                            assert!(
+                                heap.bytes_since_collection()
+                                    < crate::gc::AUTO_COLLECTION_THRESHOLD
+                            );
+                            let start = std::time::Instant::now();
+                            r.enter(|| r.gc_collect_from_native_range(0, 0));
+                            gc_ns += start.elapsed().as_nanos();
+                        }
+                        let calls = batches * 128;
+                        let scratch_misses = virtual_aggregate::SCRATCH_MISSES.get();
+                        assert_eq!(scratch_misses, 0);
+                        let hits = virtual_aggregate::HITS.get();
+                        let materialized = virtual_aggregate::MATERIALIZED.get();
+                        assert_eq!(hits, if enabled && shape != 2 { calls } else { 0 });
+                        assert_eq!(materialized, if enabled && shape == 1 { calls } else { 0 });
+                        assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+                        let metadata_bytes = r
+                            .native_tier
+                            .borrow()
+                            .records
+                            .values()
+                            .filter_map(|record| record.candidate.as_ref())
+                            .filter_map(|candidate| candidate.virtual_aggregate.as_ref())
+                            .map(|compiled| compiled.storage_bytes())
+                            .sum::<usize>();
+                        let physical_saved_bytes = physical_saved
+                            * crate::heap::Heap::allocation_total_size(payload).unwrap();
+                        println!(
+                            "virtual-field shape={shape} projections={projections} scratch_misses={scratch_misses} payload={payload} pair={pair} enabled={enabled} calls={calls} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} physical_saved_bytes={physical_saved_bytes} journal_peak_bytes={journal_peak_bytes} metadata_bytes={metadata_bytes} hits={hits} materialized={materialized} cold_ns={cold_ns}"
+                        );
                     }
-                    let calls = batches * 128;
-                    let hits = virtual_aggregate::HITS.get();
-                    let materialized = virtual_aggregate::MATERIALIZED.get();
-                    assert_eq!(hits, if enabled && shape != 2 { calls } else { 0 });
-                    assert_eq!(materialized, if enabled && shape == 1 { calls } else { 0 });
-                    assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
-                    let metadata_bytes = r
-                        .native_tier
-                        .borrow()
-                        .records
-                        .values()
-                        .filter_map(|record| record.candidate.as_ref())
-                        .filter_map(|candidate| candidate.virtual_aggregate.as_ref())
-                        .map(|compiled| compiled.storage_bytes())
-                        .sum::<usize>();
-                    let physical_saved_bytes =
-                        physical_saved * crate::heap::Heap::allocation_total_size(payload).unwrap();
-                    println!(
-                        "virtual-field shape={shape} payload={payload} pair={pair} enabled={enabled} calls={calls} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} physical_saved_bytes={physical_saved_bytes} journal_peak_bytes={journal_peak_bytes} metadata_bytes={metadata_bytes} hits={hits} materialized={materialized} cold_ns={cold_ns}"
-                    );
                 }
             }
         }
