@@ -27,6 +27,35 @@ impl Compiled {
             fields: RefCell::new(Vec::new()),
         }
     }
+    /// Retained field-plan/cache storage, excluding allocator and loader costs.
+    #[cfg(test)]
+    pub(super) fn storage_bytes(&self) -> usize {
+        use core::mem::size_of;
+        let fields = self.fields.borrow();
+        size_of::<Self>()
+            + 2 * size_of::<usize>()
+            + size_of::<Plan>()
+            + self.plan.steps.capacity() * size_of::<birnam_codegen::virtual_aggregate::Step>()
+            + self
+                .plan
+                .steps
+                .iter()
+                .map(|step| {
+                    step.before.capacity() * size_of::<Option<usize>>()
+                        + match &step.exit {
+                            Exit::Call {
+                                selector,
+                                arguments,
+                                ..
+                            } => selector.capacity() + arguments.capacity() * size_of::<Value>(),
+                            _ => 0,
+                        }
+                })
+                .sum::<usize>()
+            + fields.capacity() * size_of::<(usize, Option<Rc<FieldSummary>>)>()
+            + fields.iter().filter(|(_, value)| value.is_some()).count()
+                * (2 * size_of::<usize>() + size_of::<FieldSummary>())
+    }
     fn field(&self, method: Method, nil: Oop) -> Option<(Rc<FieldSummary>, usize)> {
         let cached = self
             .fields

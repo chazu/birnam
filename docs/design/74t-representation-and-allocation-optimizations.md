@@ -724,3 +724,25 @@ The [recovery verification receipt](../measurements/74t-virtual-fields-recovery.
 passes focused debug/release comparisons and full production verification:
 514 workspace tests, 18 ignored diagnostics, installed runtime, image, archive
 and relocation gates. No live-field timing claim follows from this receipt.
+
+
+### Live-field performance matrix
+
+`scripts/virtual-field-timing.py` checks a full `--fields --verify` receipt and
+matching release binary/source hashes before timing. It measures four alternating
+on/off pairs for field-only Return, escaping clone Return and withdrawal of a
+previously cached field declaration, at 16- and 1024-byte payloads. Each row runs
+128 calls per batch with collection separately timed between batches, retaining
+the ordinary logical allocation charges and collection threshold. The harness
+asserts one omitted physical clone per successful field-only call, one recovered
+identity per escaping call, and zero optimized calls after declaration withdrawal.
+
+The receipt records warm execution, execution plus collection, the first 128
+calls including candidate preparation, physical savings, peak retained journal
+storage and retained field-plan/cache storage. The latter quantities exclude
+allocator/loader overhead and transient admission scratch; they do not establish
+total process memory savings. Both modes retain existing candidate/plan preparation,
+so the first-128-call comparison measures activation cost, not the incremental
+cost of adding the pass to a compiler that does not prepare it at all. Native
+fixture compilation, setup and correctness assertions outside the invocation are
+excluded from each timed batch. The existing AC/host-idle gates remain unchanged.

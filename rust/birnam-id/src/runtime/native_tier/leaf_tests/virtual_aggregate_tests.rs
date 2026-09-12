@@ -617,3 +617,125 @@ fn virtual_field_budget_preserves_collection_before_clone_and_after_recovery() {
         assert_eq!(evidence[0], evidence[1], "allocation gap={gap}");
     }
 }
+
+#[test]
+#[ignore = "paired live-field timing; host qualification is external"]
+fn virtual_field_timing() {
+    let batches = std::env::var("BENCH_FIELD_BATCHES")
+        .ok()
+        .map(|value| value.parse::<usize>().unwrap())
+        .unwrap_or(1);
+    assert!((1..=500).contains(&batches));
+    for (shape, case) in [(0, Case::Field), (1, Case::Object), (2, Case::Withdraw)] {
+        let bytes = program(case);
+        for payload in [16, 1024] {
+            for pair in 0..4 {
+                for enabled in if pair % 2 == 0 {
+                    [false, true]
+                } else {
+                    [true, false]
+                } {
+                    let _mode = Mode::set(enabled);
+                    let bootstrap = crate::dispatch::build_bootstrap();
+                    let r = &bootstrap.runtime;
+                    r.publish_canonical_exports();
+                    r.install_execution_objects();
+                    let native = Native::load(r);
+                    let block = install(r, &bytes, 741803, None);
+                    let _block = ScopedOopRootGuard::new(r, block.receiver);
+                    let vt = r.create_vtable(r.globals().object_vt);
+                    r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+                    r.add_method(
+                        vt,
+                        r.intern(b"duplicate").unwrap(),
+                        crate::dispatch::object_clone,
+                    );
+                    r.add_method(vt, r.intern(b"project").unwrap(), native.method());
+                    let prototype = r.allocate_instance(vt, payload);
+                    let _prototype = ScopedOopRootGuard::new(r, prototype);
+                    let field = r.make_integer(71);
+                    let _field = ScopedOopRootGuard::new(r, field);
+                    for slot in 0..payload / core::mem::size_of::<Oop>() {
+                        assert!(unsafe {
+                            (*r.state.get())
+                                .heap
+                                .write_payload_word(prototype, slot, field.addr())
+                        });
+                    }
+                    let invoke = || {
+                        let answer = r.enter(|| {
+                            r.send_slice(block.receiver, block.selector, &[prototype, field])
+                        });
+                        if shape == 1 {
+                            assert_ne!(answer, prototype);
+                            assert_eq!(
+                                unsafe { (*r.state.get()).heap.read_payload_word(answer, 0) },
+                                Some(field.addr())
+                            );
+                        } else {
+                            assert_eq!(answer, field);
+                        }
+                    };
+                    let start = std::time::Instant::now();
+                    for _ in 0..128 {
+                        invoke();
+                    }
+                    let cold_ns = start.elapsed().as_nanos();
+                    if shape == 2 {
+                        native.enable(false);
+                    }
+                    invoke();
+                    r.enter(|| r.gc_collect_from_native_range(0, 0));
+                    virtual_aggregate::HITS.set(0);
+                    virtual_aggregate::MATERIALIZED.set(0);
+                    let mut ns = 0;
+                    let mut gc_ns = 0;
+                    let mut allocation_bytes = 0;
+                    let mut physical_saved = 0;
+                    let mut journal_peak_bytes = 0;
+                    for _ in 0..batches {
+                        let before = r.gc_live_bytes();
+                        let start = std::time::Instant::now();
+                        for _ in 0..128 {
+                            invoke();
+                        }
+                        ns += start.elapsed().as_nanos();
+                        allocation_bytes += r.gc_live_bytes() - before;
+                        let heap = unsafe { &(*r.state.get()).heap };
+                        let missing = heap.allocation_count() - heap.physical_allocation_count();
+                        assert_eq!(missing, if enabled && shape == 0 { 128 } else { 0 });
+                        physical_saved += missing;
+                        journal_peak_bytes =
+                            journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
+                        assert!(
+                            heap.bytes_since_collection() < crate::gc::AUTO_COLLECTION_THRESHOLD
+                        );
+                        let start = std::time::Instant::now();
+                        r.enter(|| r.gc_collect_from_native_range(0, 0));
+                        gc_ns += start.elapsed().as_nanos();
+                    }
+                    let calls = batches * 128;
+                    let hits = virtual_aggregate::HITS.get();
+                    let materialized = virtual_aggregate::MATERIALIZED.get();
+                    assert_eq!(hits, if enabled && shape != 2 { calls } else { 0 });
+                    assert_eq!(materialized, if enabled && shape == 1 { calls } else { 0 });
+                    assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+                    let metadata_bytes = r
+                        .native_tier
+                        .borrow()
+                        .records
+                        .values()
+                        .filter_map(|record| record.candidate.as_ref())
+                        .filter_map(|candidate| candidate.virtual_aggregate.as_ref())
+                        .map(|compiled| compiled.storage_bytes())
+                        .sum::<usize>();
+                    let physical_saved_bytes =
+                        physical_saved * crate::heap::Heap::allocation_total_size(payload).unwrap();
+                    println!(
+                        "virtual-field shape={shape} payload={payload} pair={pair} enabled={enabled} calls={calls} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} physical_saved_bytes={physical_saved_bytes} journal_peak_bytes={journal_peak_bytes} metadata_bytes={metadata_bytes} hits={hits} materialized={materialized} cold_ns={cold_ns}"
+                    );
+                }
+            }
+        }
+    }
+}
