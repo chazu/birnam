@@ -100,6 +100,8 @@ enum Case {
     MixedLayout,
     RawTail,
     Oversized,
+    CallControl,
+    Lookup,
 }
 fn program(case: Case) -> Vec<u8> {
     let send = |receiver, selector, args| Expr::Send {
@@ -261,6 +263,11 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
     })
 }
 
+unsafe extern "C" fn observing_call_control(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    OBSERVED.set(OBSERVED.get() + 1);
+    unsafe { crate::execution::machine_call_site(machine, args, count) }
+}
+
 unsafe extern "C" fn suspend_call(machine: Oop, args: *const Oop, count: usize) -> Oop {
     let action = unsafe { crate::execution::machine_call_site(machine, args, count) };
     with_active(|r| {
@@ -308,6 +315,8 @@ fn compare_recovery(forced_exit: Option<usize>) {
         Case::MixedLayout,
         Case::RawTail,
         Case::Oversized,
+        Case::CallControl,
+        Case::Lookup,
     ] {
         let mut evidence = Vec::new();
         for enabled in [false, true] {
@@ -385,6 +394,18 @@ fn compare_recovery(forced_exit: Option<usize>) {
             if matches!(case, Case::Withdraw) {
                 native.enable(false);
             }
+            if matches!(case, Case::CallControl) {
+                let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
+                r.add_method(
+                    objects.machine_vtable,
+                    objects.call_site,
+                    observing_call_control,
+                );
+            }
+            if matches!(case, Case::Lookup) {
+                r.add_method(r.globals().vtable_vt, r.globals().lookup, lookup_override);
+            }
+            LOOKUPS.set(0);
             virtual_aggregate::ENABLED.set(enabled);
             virtual_aggregate::HITS.set(0);
             virtual_aggregate::MATERIALIZED.set(0);
@@ -486,6 +507,8 @@ fn compare_recovery(forced_exit: Option<usize>) {
                         | Case::MixedLayout
                         | Case::RawTail
                         | Case::Oversized
+                        | Case::CallControl
+                        | Case::Lookup
                 );
             let identities = if matches!(case, Case::Twins) { 2 } else { 1 };
             let identities = identities.min(forced_exit.unwrap_or(usize::MAX));
@@ -522,6 +545,7 @@ fn compare_recovery(forced_exit: Option<usize>) {
                 r.gc_live_count() as isize - before.0 as isize,
                 r.gc_live_bytes() as isize - before.1 as isize,
                 OBSERVED.get(),
+                LOOKUPS.get(),
                 ALIASES.with_borrow(Clone::clone),
             ));
             r.enter(|| r.gc_collect_from_native_range(0, 0));

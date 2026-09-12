@@ -787,3 +787,28 @@ clone regression from 17.11% to 8.74%, and withdrawal regression from 24.48% to
 10.90%. Small-payload medians remain negative (4.06%, 8.42% and 11.56%). This
 supports removing the payload-dependent admission overhead, but still does not
 justify enabling the consumer. Both qualified receipts retain every paired row.
+
+
+The next revision removes the duplicate canonical-control check at entry. Pure
+preflight may inspect private Frame/payload data and query pinned declarations,
+but the existing full control/retirement/epoch guard still runs before the first
+original PC and before any logical allocation charge. Unsupported declarations
+therefore return to ordinary execution without paying that execution guard.
+Added differential cases replace ordinary lookup and Machine Call publication;
+both preserve their observation counts and have zero live-field optimization hits,
+including under forced-exit test settings. Existing collection and recovery
+requirements still apply unchanged.
+
+
+Review rejected the native-stack scratch representation despite the passing
+focused/production gates: conservative native-stack scanning can treat dead
+Oop-valued array entries as roots at a later observation. Scratch inputs, values,
+nodes and recovery aliases therefore remain in untraced host vectors. The
+single layout query, deferred/shared snapshots and final-only execution guard
+remain; no timing of the rejected stack representation supports promotion.
+Future scratch reuse must retain untraced storage and handle reentry/lifetime.
+
+The [untraced admission receipt](../measurements/74t-virtual-fields-untraced-admission.json)
+passes focused debug/release checks and full production verification: 515 tests,
+19 ignored diagnostics, installed runtime, image, archive and relocation gates.
+It supersedes the stack-scratch implementation for subsequent timing decisions.
