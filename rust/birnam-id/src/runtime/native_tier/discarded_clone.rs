@@ -55,17 +55,6 @@ pub(super) unsafe fn execute(
             if state.heap.vtable_of(vt) != Some(state.globals.vtable_vt)
                 || state.vtables.lookup(vt, selector) != Some(method)
                 || state.execution.has_resumable_thunk(method)
-                || state.heap.has_finalizer(prototype) != Some(false)
-                || !state.vtables.has_layout(vt)
-                || state.vtables.trace_hook(vt).is_some()
-                || state.vtables.slot_kind(vt, 0) != crate::abi::SLOT_OOP
-            {
-                return None;
-            }
-            let payload = state.heap.payload_size(prototype)?;
-            if !payload.is_multiple_of(core::mem::size_of::<Oop>())
-                || (0..payload / core::mem::size_of::<Oop>())
-                    .any(|slot| state.vtables.slot_kind(vt, slot) != crate::abi::SLOT_OOP)
             {
                 return None;
             }
@@ -73,9 +62,28 @@ pub(super) unsafe fn execute(
                 .iter()
                 .find(|(address, _)| *address == prototype.addr())
             {
+                // No Id callback or collection runs during admission. The
+                // snapshot's storage proof remains valid here, while each
+                // site's possibly different selector still needs its guard.
                 snapshot.clone()
             } else {
+                if state.heap.has_finalizer(prototype) != Some(false)
+                    || !state.vtables.has_layout(vt)
+                    || state.vtables.trace_hook(vt).is_some()
+                    || state.vtables.slot_kind(vt, 0) != crate::abi::SLOT_OOP
+                {
+                    return None;
+                }
+                // Preparation checks the payload bound before copying or
+                // walking its slots, keeping admission work bounded too.
                 let snapshot = state.heap.prepare_dead_clone(prototype)?;
+                let payload = state.heap.payload_size(prototype)?;
+                if !payload.is_multiple_of(core::mem::size_of::<Oop>())
+                    || (0..payload / core::mem::size_of::<Oop>())
+                        .any(|slot| state.vtables.slot_kind(vt, slot) != crate::abi::SLOT_OOP)
+                {
+                    return None;
+                }
                 cache.push((prototype.addr(), snapshot.clone()));
                 snapshot
             };

@@ -565,4 +565,35 @@ tests, 18 ignored diagnostics, installed runtime, image, archive and relocation
 gates. Physical settlement uses a private bounded scratch counter before restoring
 the already-charged allocation total; a regression test verifies that settlement
 does not overflow by charging an allocation twice. No public ABI or canonical
-descriptor/image authority changed. Qualified performance is still pending.
+descriptor/image authority changed. Timings followed this correctness checkpoint.
+
+The first [qualified matrix](../measurements/74t-discarded-clone-timings.json)
+completed four alternating pairs of 64,000 calls for each of six shapes. Median
+execution changes (positive means faster) were:
+
+| Clones per call | 16-byte payload | 1,024-byte payload |
+| --- | --- | --- |
+| 1 | −2.09% | −14.02% |
+| 3 | +4.74% | −8.25% |
+| 16 | +5.95% | −8.40% |
+
+Including collection gives −3.74%, +3.44%, +6.56% for the three small-payload
+shapes and −12.66%, −5.30%, −4.66% for the large ones. All allocation/hit checks
+passed. Peak journal storage per 128-call batch was 10,240/13,312/25,600 bytes
+for small payloads and 139,264/142,336/154,624 bytes for large payloads, respectively.
+The physical bytes omitted were 3,072/9,216/49,152 and
+132,096/396,288/2,113,536 bytes per batch. These numbers exclude heap-registry
+and allocator overhead and do not by themselves establish total-memory savings.
+The host passed both gates without pausing another process.
+
+These mixed results do not justify general enablement. Inspection identifies a
+specific repeated cost: admission revalidates every payload slot at every clone
+site even when the prototype was already validated earlier in the same callback-
+free admission. The next experiment reuses that storage proof within the body
+while retaining each site's actual Method guard and original allocation charge.
+It also checks the snapshot's payload bound before scanning slot metadata. A
+mixed-selector regression case changes only the final clone site's implementation;
+the complete body must then use ordinary execution even after earlier sites have
+already established the same prototype's storage proof.
+The [revised correctness receipt](../measurements/74t-discarded-clones-cached-storage.json)
+passes the same debug/release and full production gates (506 tests, 18 ignored).

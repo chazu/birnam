@@ -14,13 +14,25 @@ impl Drop for Mode {
 }
 
 fn program(clones: usize, escape: bool) -> Vec<u8> {
+    program_with_last_selector(clones, escape, b"duplicatePrivately")
+}
+
+fn program_with_last_selector(
+    clones: usize,
+    escape: bool,
+    last_selector: &'static [u8],
+) -> Vec<u8> {
     let mut body = Vec::new();
-    for _ in 0..clones {
+    for site in 0..clones {
         body.push(Statement::Let {
             name: b"copy",
             value: Expr::Send {
                 receiver: Box::new(Expr::Global(b"prototype")),
-                selector: Cow::Borrowed(b"duplicatePrivately"),
+                selector: Cow::Borrowed(if site + 1 == clones {
+                    last_selector
+                } else {
+                    b"duplicatePrivately"
+                }),
                 args: vec![],
                 source: b"",
             },
@@ -92,6 +104,7 @@ enum Case {
     Trace,
     Large,
     JournalFull,
+    MixedMethod,
 }
 
 #[test]
@@ -109,8 +122,17 @@ fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
             Case::Trace,
             Case::Large,
             Case::JournalFull,
+            Case::MixedMethod,
         ] {
-            let bytes = program(clones, matches!(case, Case::Escape));
+            let bytes = program_with_last_selector(
+                clones,
+                matches!(case, Case::Escape),
+                if matches!(case, Case::MixedMethod) {
+                    b"anotherDuplicate"
+                } else {
+                    b"duplicatePrivately"
+                },
+            );
             let mut evidence = Vec::new();
             for enabled in [false, true] {
                 let _mode = Mode::set(false);
@@ -124,6 +146,8 @@ fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
                 r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
                 let selector = r.intern(b"duplicatePrivately").unwrap();
                 r.add_method(vt, selector, crate::dispatch::object_clone);
+                let another = r.intern(b"anotherDuplicate").unwrap();
+                r.add_method(vt, another, crate::dispatch::object_clone);
                 let prototype = r.allocate_instance(
                     vt,
                     if matches!(case, Case::Large) {
@@ -148,6 +172,9 @@ fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
                 }
                 r.enter(|| r.gc_collect_from_native_range(0, 0));
                 match case {
+                    Case::MixedMethod => {
+                        r.add_method(vt, another, clone_observer);
+                    }
                     Case::Method => {
                         r.add_method(vt, selector, clone_observer);
                     }
