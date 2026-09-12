@@ -47,8 +47,11 @@ def main():
     parser.add_argument("--tails", action="store_true", help="registered tail-loop entry verification")
     parser.add_argument("--allocations", action="store_true", help="discarded aggregate allocation and GC verification")
     parser.add_argument("--fields", action="store_true", help="live aggregate projection and physical recovery verification")
+    parser.add_argument("--closures", action="store_true", help="source closure provenance and literal PC emission; runtime elimination still pending")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.closures:
+        args.fields = True
     if args.fields:
         args.allocations = True
     if args.allocations:
@@ -59,6 +62,7 @@ def main():
         args.numeric = True
     if args.output is None:
         args.output = ROOT / "docs/measurements" / (
+            "74t-closure-plans.json" if args.closures else
             "74t-virtual-fields.json" if args.fields else
             "74t-discarded-clones.json" if args.allocations else
             "74t-tail-entry.json" if args.tails else
@@ -70,7 +74,8 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Experimental live aggregate field projection and identity recovery at observation boundaries; disabled pending broader acceptance"
+        "scope": ("Source-created closure provenance, canonical capture/argument substitution and literal-aware PC emission; runtime closure elimination not implemented"
+                  if args.closures else "Bounded production live aggregate field projection and identity recovery; broader acceptance remains open"
                   if args.fields else "Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
                   if args.allocations else "Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"
                   if args.tails else "Production raw chains with per-call operand and implementation revalidation; profitability and remaining families in progress"
@@ -122,6 +127,8 @@ def main():
                 ("birnam_id", "id-producer", "runtime::native_tier::leaf_tests::graph_tests"),
                 ("birnam_id", "dense-recovery", "production_recovery_admits_id_recipe"),
             ]
+            if args.closures:
+                checks.append(("birnam_codegen", "closure-plan", "closure_elision::tests"))
             if args.numeric:
                 checks += [
                     ("birnam_codegen", "numeric-plan", "numeric_chain::"),

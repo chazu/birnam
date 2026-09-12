@@ -132,7 +132,10 @@ discarded-clone elimination and live aggregate field replacement are implemented
 These bounded consumers are enabled, with correctness and qualified fixture
 measurements recorded in 74T. Live-field admission requires three current declared
 projections and uses untraced scratch plus bounded refusal retries; its enabled
-source passes 517 tests and the production gates. Closure/capture elimination
+source passes 517 tests and the production gates. The next closure compiler
+checkpoint adds source capture/argument provenance and literal-aware PC emission,
+with 522 tests and production gates passing; runtime closure elimination is
+still outstanding. Closure/capture elimination
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.
 The prior implementation

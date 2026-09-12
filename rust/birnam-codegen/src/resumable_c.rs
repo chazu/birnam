@@ -143,6 +143,30 @@ pub fn emit_pc_specialized_step(
     )
 }
 
+/// 74T: specialize a canonical PC while retaining the exact literal occurrence,
+/// nested program, constructor and materialization-owner disposition. The unit
+/// integrating this entry must provide the same resolver, caches and ownership
+/// as baseline emission; specialization supplies no new construction authority.
+#[cfg(feature = "dev-pc-specialization")]
+pub fn emit_pc_specialized_step_with_portable_blocks(
+    symbol_index: u32,
+    program: &LogicalProgram<'_>,
+    layout: &PhysicalLayout,
+    program_counter: u32,
+    block_literals: &[PortableBlockLiteralSpec],
+) -> Result<Vec<u8>, Error> {
+    emit_step_method_with_literal_specs(
+        symbol_index,
+        program,
+        layout,
+        1,
+        &[],
+        block_literals,
+        Some(program_counter),
+        false,
+    )
+}
+
 /// 74H experiment: preserve operands and reuse guarded reads within one PC.
 #[cfg(feature = "dev-frame-read-reuse")]
 pub fn emit_pc_step_with_read_reuse(

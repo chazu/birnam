@@ -979,3 +979,44 @@ use, multiple-use/escaping fallbacks, shared Cell mutation, current method and
 constructor changes, forced recovery, collecting observers, continuation capture
 and generation retirement before promotion. This is the next part of the full
 four-family objective; broader numeric, loop and aggregate obligations stay open.
+
+### Source closure compiler plan and literal-aware PC emission
+
+`birnam-codegen::closure_elision::Plan` now derives an immediate invocation from
+canonical PortableProgram lowering and coloring. It retains the literal's Node
+occurrence and nested bytes, ordered capture sources, argument sources and the
+original entry Oop returned by the small-callee entry/alias/Return proof. Shared
+capture aliases remain references to the same input; the plan never copies a
+Cell or infers invocation authority from selector spelling. Observing callee
+bodies, wrong arity and passing the virtual closure as an argument decline.
+
+The plan records every physical closure alias at call publication, including
+staging scratch, and follows the canonical V2 parallel copies, result
+initialization and clear bitmap. A closure retained after the first invocation
+is represented for recovery rather than silently treated as dead. Tail
+invocations have no caller successor. Original index-box sequences are separated
+at construction and checked against actual baseline C output for both ordinary
+generation-owned and materialization-owned constructors.
+
+The additive `emit_pc_specialized_step_with_portable_blocks` entry emits one
+literal-aware PC with the original constructor and ownership disposition. Tests
+compare its body bytes with baseline emission and reject missing, duplicate,
+wrong-occurrence and wrong-program literal specifications. The existing emitter
+and existing entry functions remain byte-identical. The compatibility checker
+excludes only the added development entry from its historical file comparison;
+mutation controls confirm changes to the original emitter still fail admission.
+No IdApi field, Method signature, descriptor or image format changes.
+
+Verification: [closure-plan receipt](../measurements/74t-closure-plans.json),
+generated with `python3 scripts/recovery-graphs.py --closures --verify`, passes
+all five new checks in debug and release, the existing numeric/loop/aggregate
+checks, and full production verification (522 tests passed, 19 ignored),
+including installed-prefix, image, cold-archive and relocation gates.
+
+This is compiler support, not a runtime allocation-saving consumer. Native-tier
+`Prepared::new` still refuses Block literals. Next connect the literal to its
+original resolver, CodeObject cache, generation/materialization owner and
+registered callee; preserve cold setup, prove warm constructor admission, and
+charge or recover the exact fresh Block before any observer. Source-created
+closure allocation savings and the remaining full-family acceptance obligations
+are still outstanding. No new performance claim accompanies this checkpoint.
