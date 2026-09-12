@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Added
 
+- Design 74P adds checked production recovery of a registered callee from an
+  Id-described slot recipe, with atomic Frame/root and generation-pin transfer.
+  Hot portable argument/capture projections inline their return under canonical
+  Machine guards; observation or GC boundaries recover the original callee.
+  Public ABI, descriptor encoding and image formats remain unchanged.
 - V2 Frames support suspension and one-shot capture/restore through ordinary
   Machine operations (Design 60P). Resume commits the pending Call edge, including
   parallel copies, cleared slots and precise successor roots. Frame layout V1
@@ -122,6 +127,9 @@ loader ports are complete.
 
 ### Fixed
 
+- JIT generation keys no longer equal Unit object addresses, preventing pending
+  retirement metadata on the native stack from retaining an otherwise dead Unit.
+  Production recovery integration exposed this GC lifetime issue (Design 74P).
 - Native-tier admission revalidates its actual Machine/lookup dependencies after
   dictionary mutation (Design 74N). Unrelated symbols, exports and ordinary method
   replacement retain valid native entries; real guard changes still resume the

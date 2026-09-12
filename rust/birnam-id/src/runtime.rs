@@ -38,6 +38,7 @@ mod generated_deopt_experiment;
 mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
+mod recovery;
 #[cfg(all(test, target_os = "macos"))]
 mod v2_control_tests;
 
@@ -202,6 +203,7 @@ pub(crate) struct Runtime {
     slot_guard_cache: Cell<(u64, bool)>,
     lookup_guard_cache: Cell<(u64, bool)>,
     native_tier: core::cell::RefCell<native_tier::Registry>,
+    recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
     #[cfg(all(test, target_os = "macos"))]
@@ -381,6 +383,7 @@ impl Runtime {
             slot_guard_cache: Cell::new((u64::MAX, false)),
             lookup_guard_cache: Cell::new((u64::MAX, false)),
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
+            recovery_requests: core::cell::RefCell::new(Vec::new()),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
             #[cfg(all(test, target_os = "macos"))]
@@ -1375,6 +1378,10 @@ impl Runtime {
             (
                 new_selector,
                 crate::execution::machine_new as crate::abi::Method,
+            ),
+            (
+                self.intern(b"recoverAt:with:").expect("static selector"),
+                recovery::machine_recover as crate::abi::Method,
             ),
             (
                 self.intern(b"suspendAt:continueAt:")
@@ -3632,6 +3639,17 @@ impl Runtime {
                                 operands.receiver,
                                 &operands.arguments,
                             )?;
+                            if native_tier::inline_call(
+                                self,
+                                machine,
+                                capability,
+                                entry,
+                                result_slot,
+                                &descriptor,
+                                &initial_oops,
+                            )? {
+                                continue;
+                            }
                             unsafe {
                                 let state = &mut *self.state.get();
                                 state.execution.transfer_acquired_entry_to_frame(entry)?;

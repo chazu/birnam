@@ -55,9 +55,13 @@
 > recovery policy and continuation storage pass in debug/release and full
 > verification. Counterexamples establish identity/effect/observation limits;
 > [60P](60p-v2-control-completion.md) completes V2 capture/suspend publication
-> and removes Frame layout V1. Production recovery admission remains a gap.
-> The next recommended architectural step is a checked Id-facing recovery
-> contract. Hotness tuning remains a separate performance follow-up.
+> and removes Frame layout V1.
+> [74P](74p-production-recovery-and-leaf-inlining.md) implements the checked
+> Id-facing recovery contract and guarded projection inlining. Validation and
+> performance qualification are recorded in that implementation document.
+> [74Q](74q-optimization-roadmap.md) proposes the dependency-ordered roadmap
+> for broader inlining, dispatch specialization, dataflow/loop optimization and
+> representation changes, with explicit limits on irreversible effects.
 
 ## 1. Decision criteria and direction
 

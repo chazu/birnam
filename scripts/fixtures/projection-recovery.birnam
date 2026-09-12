@@ -1,0 +1,21 @@
+// 74P normal installation: source-independent projection bodies and callers.
+[System load: "modules/os.birnam"];
+let input := [73 asCell];
+let projectionSource := [:value | value];
+let projection := [Codegen materializeResumable: [[projectionSource codeObject] withoutSourceProvenance] captures: #[]];
+let capturedSource := [:unused | input];
+let captured := [Codegen materializeResumable: [[capturedSource codeObject] withoutSourceProvenance] captures: [#[] add: input]];
+let callerSource := [:target :value | let answer := [target value: value]; answer];
+let caller := [Codegen materializeResumable: [[callerSource codeObject] withoutSourceProvenance] captures: #[]];
+[[projection isError] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];
+[[captured isError] ifTrue: [| [OS exit: 2]] ifFalse: [| nil]];
+[[caller isError] ifTrue: [| [OS exit: 3]] ifFalse: [| nil]];
+[128 timesRepeat: [|
+  [[[caller value: projection value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 4]]];
+  [[[caller value: captured value: nil] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 5]]]]];
+[Codegen evictMaterializations];
+[System gc];
+[[[caller value: projection value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 6]]];
+[[[caller value: captured value: nil] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 7]]];
+[[[Machine recoverAt: 0 with: #[]] isNil] ifTrue: [| nil] ifFalse: [| [OS exit: 8]]];
+[System println: "production-recovery: portable projections, captures, identity, eviction and GC passed"];

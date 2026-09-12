@@ -1626,6 +1626,14 @@ unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
     unsafe { foreign_address::value(api, object) }.map(|(address, _kind)| address)
 }
 
+// JIT identities are scalar registry keys, not roots. Payload addresses are
+// pointer-aligned; tagging the otherwise unique Unit address prevents a pending
+// retirement ID on the conservative native stack from retaining its own Unit.
+// Actual ownership remains in explicit Unit Oops, carriers and generation pins.
+fn jit_code_generation_identity(unit: Oop) -> u64 {
+    (unit as usize as u64) | 1
+}
+
 unsafe fn bind_jit_code_generation_identity(api: &IdApi, unit: Oop) -> bool {
     let name = unsafe {
         (api.mkString)(
@@ -1642,7 +1650,7 @@ unsafe fn bind_jit_code_generation_identity(api: &IdApi, unit: Oop) -> bool {
     }
     // SAFETY: the generated translation unit exports one writable u64 carrier
     // and TCC keeps it mapped while the Unit object owns the generation.
-    unsafe { ptr::write(address as *mut u64, unit as usize as u64) };
+    unsafe { ptr::write(address as *mut u64, jit_code_generation_identity(unit)) };
     true
 }
 
@@ -6220,7 +6228,7 @@ fn remove_materialization(unit: Oop) {
         false
     };
     if removed {
-        let _ = take_vtable_cache_roots(unit as usize as u64);
+        let _ = take_vtable_cache_roots(jit_code_generation_identity(unit));
     }
 }
 
@@ -6616,7 +6624,7 @@ unsafe fn begin_portable_image_stage(
         return None;
     }
     let generation = match carrier_kind {
-        PortableImageCarrierKind::Rebuilt => u64::try_from(unit as usize).ok()?,
+        PortableImageCarrierKind::Rebuilt => jit_code_generation_identity(unit),
         PortableImageCarrierKind::Mapped => u64::try_from(handle).ok()?,
     };
     if generation == 0 || generation > i64::MAX as u64 {
@@ -7715,7 +7723,7 @@ unsafe fn compile_portable_named_materialization(
     if unit.is_null() || unit == api.nilObj {
         return None;
     }
-    let generation = u64::try_from(unit as usize).ok()?;
+    let generation = jit_code_generation_identity(unit);
     if generation == 0 || generation > i64::MAX as u64 {
         unsafe { dispose_unit(api, unit) };
         return None;
@@ -7883,11 +7891,7 @@ unsafe fn compile_resumable_materialized_block(
         unsafe { dispose_unit(api, unit) };
         return None;
     }
-    let Ok(code_generation_identity) = u64::try_from(unit as usize) else {
-        remove_materialization(unit);
-        unsafe { dispose_unit(api, unit) };
-        return None;
-    };
+    let code_generation_identity = jit_code_generation_identity(unit);
     let Some(code_generation_lease) = issue_code_generation_lease() else {
         remove_materialization(unit);
         unsafe { dispose_unit(api, unit) };
@@ -8324,7 +8328,10 @@ unsafe extern "C" fn rust_codegen_evict_materializations(
             let mut generations = Vec::new();
             entries.retain(|entry| {
                 if entry.ready {
-                    generations.push((entry.disposition, entry.unit as u64));
+                    generations.push((
+                        entry.disposition,
+                        jit_code_generation_identity(entry.unit as Oop),
+                    ));
                     false
                 } else {
                     true

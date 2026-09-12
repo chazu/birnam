@@ -32,12 +32,15 @@ struct Record {
     candidate: Option<Rc<Candidate>>,
     visits: usize,
     disabled: bool,
+    leaf: Option<usize>,
+    leaf_miss_epoch: Option<u64>,
 }
 
 struct Prepared {
     descriptor: Vec<u8>,
     source: CString,
     pcs: usize,
+    leaf: Option<usize>,
 }
 
 struct Candidate {
@@ -116,6 +119,8 @@ impl Registry {
             Arc::as_ptr(descriptor) as usize,
             Record {
                 descriptor: Arc::downgrade(descriptor),
+                leaf: prepared.leaf,
+                leaf_miss_epoch: None,
                 pending: Some(prepared),
                 candidate: None,
                 visits: 0,
@@ -133,7 +138,7 @@ impl Registry {
 impl Prepared {
     fn new(bytes: &[u8], row: selection::Row<'_>) -> Option<Self> {
         let program = resumable::lower_portable_block(bytes).ok()?;
-        if program.blocks.len() < 2 || program.blocks.len() > 4096 {
+        if program.blocks.is_empty() || program.blocks.len() > 4096 {
             return None;
         }
         for block in &program.blocks {
@@ -155,6 +160,28 @@ impl Prepared {
         let layout = resumable::color_slots(&program).ok()?;
         let descriptor =
             resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 1).ok()?;
+        if program.blocks.len() == 1 {
+            if !program.blocks[0].operations.iter().all(|op| {
+                matches!(
+                    op.kind,
+                    resumable::OperationKind::EntryReceiver
+                        | resumable::OperationKind::EntryArgument { .. }
+                        | resumable::OperationKind::EntryCapture { .. }
+                )
+            }) {
+                return None;
+            }
+            let resumable::Terminator::Return(value) = program.blocks[0].terminator else {
+                return None;
+            };
+            let slot = *layout.value_slots.get(value.0 as usize)? as usize;
+            return Some(Self {
+                descriptor,
+                source: CString::new("").ok()?,
+                pcs: 1,
+                leaf: Some(slot),
+            });
+        }
         let mut source = include_bytes!("native_tier/shims.c").to_vec();
         for pc in 0..program.blocks.len() {
             source.extend(
@@ -175,6 +202,7 @@ impl Prepared {
             descriptor,
             source: CString::new(source).ok()?,
             pcs: program.blocks.len(),
+            leaf: None,
         })
     }
 
@@ -216,7 +244,10 @@ pub(super) fn select(
     let mut registry = runtime.native_tier.borrow_mut();
     let record = registry.records.get_mut(&descriptor_key)?;
     let descriptor = record.descriptor.upgrade()?;
-    if Arc::as_ptr(&descriptor) as usize != descriptor_key || record.disabled {
+    if Arc::as_ptr(&descriptor) as usize != descriptor_key
+        || record.disabled
+        || record.leaf.is_some()
+    {
         return None;
     }
     let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
@@ -279,3 +310,150 @@ unsafe extern "C" fn shim_false() -> Oop {
 
 #[cfg(test)]
 mod tests;
+
+/// Native projection inline over compiler-owned entry locations. No language
+/// observation occurs between successful guard and Call result publication.
+fn leaf_control_guard(runtime: &Runtime, machine: Oop) -> bool {
+    if !runtime.guarded_slot_access_eligible(machine) {
+        return false;
+    }
+    let state = unsafe { &*runtime.state.get() };
+    let Some(objects) = state.execution.objects() else {
+        return false;
+    };
+    let method = crate::raw::MethodAddress::from_method(crate::execution::machine_return_at);
+    if state.execution.has_resumable_thunk(method)
+        || state
+            .vtables
+            .direct_lookup(objects.machine_vtable, objects.return_at)
+            != Some(method)
+    {
+        return false;
+    }
+    true
+}
+
+fn leaf_allocation_guard(runtime: &Runtime, descriptor: &FrameDescriptor) -> bool {
+    let state = unsafe { &*runtime.state.get() };
+    // Preserve the baseline's housekeeping boxes and its collection boundary.
+    // If any of those allocations could collect, create the callee first.
+    let bytes = crate::heap::Heap::allocation_total_size(core::mem::size_of::<i64>())
+        .unwrap()
+        .saturating_mul(1 + descriptor.driver_argument_count());
+    !state
+        .metadata
+        .automatic_collection_due(state.heap.bytes_since_collection().saturating_add(bytes))
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static INLINE_HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    pub(super) static INLINE_RECOVERIES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+pub(super) fn inline_call(
+    runtime: &Runtime,
+    machine: Oop,
+    capability: crate::execution::MachineCapability,
+    entry: crate::execution::ResumableEntryCapability,
+    result_slot: usize,
+    descriptor: &Arc<FrameDescriptor>,
+    initial: &[(usize, Oop)],
+) -> Result<bool, crate::execution::ExecutionError> {
+    let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
+    let leaf = {
+        let mut registry = runtime.native_tier.borrow_mut();
+        let Some(record) = registry
+            .records
+            .get_mut(&(Arc::as_ptr(descriptor) as usize))
+        else {
+            return Ok(false);
+        };
+        let Some(slot) = record.leaf else {
+            return Ok(false);
+        };
+        if record.disabled
+            || record.leaf_miss_epoch == Some(epoch)
+            || !record
+                .descriptor
+                .upgrade()
+                .is_some_and(|owned| Arc::ptr_eq(&owned, descriptor))
+        {
+            return Ok(false);
+        }
+        record.visits = record.visits.saturating_add(1);
+        if record.visits < HOT_ENTRIES {
+            return Ok(false);
+        }
+        slot
+    };
+    let nil = runtime.canonical().nil;
+    let owner = super::current_thread_token();
+    let valid_return = unsafe {
+        let state = &*runtime.state.get();
+        state
+            .execution
+            .inline_return_storage_valid(&state.heap, owner, capability)
+    };
+    let controls = leaf_control_guard(runtime, machine);
+    if !valid_return || !controls || !leaf_allocation_guard(runtime, descriptor) {
+        if !controls {
+            // Recover this activation once; use ordinary entry thereafter until
+            // dictionary mutation gives this optional optimization another chance.
+            if let Some(record) = runtime
+                .native_tier
+                .borrow_mut()
+                .records
+                .get_mut(&(Arc::as_ptr(descriptor) as usize))
+            {
+                record.leaf_miss_epoch = Some(epoch);
+            }
+        }
+        // The acquisition still owns the exact originally resolved generation.
+        // Nil-fill non-entry locations, including live root slots, explicitly.
+        let mut slots = vec![nil; descriptor.slot_count()];
+        for &(slot, value) in initial {
+            slots[slot] = value;
+        }
+        runtime.with_recovery_request(capability, entry, result_slot, || {
+            runtime.recover_slots(capability, 0, &slots)
+        })?;
+        #[cfg(test)]
+        INLINE_RECOVERIES.set(INLINE_RECOVERIES.get() + 1);
+        return Ok(true);
+    }
+    // The guarded region cannot callback or collect. Keep the same allocation
+    // count/values as baseline PC-token and return-index preparation.
+    if descriptor.driver_argument_count() == 1 {
+        runtime.make_integer(0);
+    }
+    runtime.make_integer(leaf as i64);
+    let value = initial
+        .iter()
+        .find_map(|(slot, value)| (*slot == leaf).then_some(*value))
+        .unwrap_or(nil);
+    let result = unsafe {
+        let state = &mut *runtime.state.get();
+        state.execution.commit_inlined_return(
+            &mut state.heap,
+            owner,
+            capability,
+            result_slot,
+            leaf,
+            nil,
+            value,
+        )
+    };
+    unsafe {
+        (*runtime.state.get())
+            .execution
+            .release_acquired_entry(entry)?;
+    }
+    result?;
+    #[cfg(test)]
+    INLINE_HITS.set(INLINE_HITS.get() + 1);
+    Ok(true)
+}
+
+#[cfg(test)]
+mod leaf_tests;

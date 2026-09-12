@@ -20,8 +20,11 @@ use crate::raw::{AddressMap, MethodAddress};
 #[cfg(test)]
 #[path = "execution/inline_recovery_experiment.rs"]
 mod inline_recovery_experiment;
+#[path = "execution/recovery.rs"]
+mod recovery;
 #[cfg(test)]
-pub(crate) use inline_recovery_experiment::InlineRecovery;
+pub(crate) use recovery::InlineRecovery;
+pub(crate) use recovery::RecoveryAuthority;
 #[cfg(test)]
 #[path = "execution/probe_descriptor.rs"]
 mod probe_descriptor;

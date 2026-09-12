@@ -105,9 +105,15 @@ Missing-callee reconstruction and an Id-authored recovery policy work within
 the tested bounds. Identity/effect counterexamples impose semantic limits;
 [Design 60P](../design/60p-v2-control-completion.md) (`birnam-3jm`) completes the
 subsequently requested V2 suspend/capture/resume implementation and removes Frame
-layout V1. Production reconstruction admission remains an implementation gap.
-A checked Id-facing recovery contract is the next architectural step before
-general inlining; hotness tuning remains a separate follow-up.
+layout V1. General inlining and hotness tuning remain separate follow-ups.
+[Design 74P](../design/74p-production-recovery-and-leaf-inlining.md)
+(`birnam-06p`) implements production recovery and its first consumer: guarded
+projection inlining. Implementation and production verification are complete;
+qualified timing is deferred by user. Later exploratory timings suggest a local
+projection-call benefit; they are not qualified performance acceptance.
+[Design 74Q](../design/74q-optimization-roadmap.md) proposes the next optimization
+roadmap, starting with compiler-generated recovery for one small callee. It does
+not implement or promote the proposed passes.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
