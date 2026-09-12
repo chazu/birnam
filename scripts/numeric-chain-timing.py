@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--batches", type=int, default=50)
     parser.add_argument("--wait-seconds", type=int, default=120)
+    parser.add_argument("--fused", action="store_true", help="measure whole-driver fusion instead of per-call prediction")
     args = parser.parse_args()
     if not 1 <= args.batches <= 500 or args.wait_seconds < 0:
         parser.error("batches must be 1-500 and wait-seconds nonnegative")
@@ -39,8 +40,11 @@ def main():
            if not key.startswith(("BIRNAM_", "DYLD_", "BENCH_NUMERIC_", "BENCH_HOST_"))}
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds),
                BENCH_HOST_RETRY_SECONDS="10", BENCH_NUMERIC_BATCHES=str(args.batches))
+    if args.fused:
+        env["BENCH_NUMERIC_FUSED"] = "1"
     result = {
         "status": "running", "qualified": False,
+        "mode": "fused" if args.fused else "per-call-prediction",
         "scope": "Paired warm arithmetic intervals with collection between batches; application and cold-start acceptance remain separate.",
         "correctness_receipt": str(args.receipt.resolve()),
         "correctness_receipt_sha256": sha(args.receipt),

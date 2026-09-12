@@ -3579,7 +3579,7 @@ impl Runtime {
             let method = selected.method;
             let native_selected =
                 native_tier::select(self, machine, descriptor_key, program_counter);
-            let action = {
+            let (action, numeric_return) = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {
                     let (arguments, count) = match &resume_token {
@@ -3590,9 +3590,20 @@ impl Runtime {
                     // the optional one-Oop argument buffer lives through the call.
                     unsafe {
                         if let Some(selected) = &native_selected {
-                            selected.invoke(self, machine, arguments, count)
+                            if let Some(result) = selected.try_numeric(
+                                self,
+                                machine,
+                                descriptor_key,
+                                program_counter,
+                                arguments,
+                                count,
+                            ) {
+                                (core::ptr::null_mut(), Some(result))
+                            } else {
+                                (selected.invoke(self, machine, arguments, count), None)
+                            }
                         } else {
-                            method(machine, arguments, count)
+                            (method(machine, arguments, count), None)
                         }
                     }
                 })
@@ -3602,6 +3613,13 @@ impl Runtime {
             #[cfg(all(test, target_os = "macos"))]
             drop(selected);
             drop(native_selected);
+            if let Some(result) = numeric_return {
+                numeric = None;
+                if let Some(answer) = self.finish_stackless_return(owner, capability, result?)? {
+                    return Ok(answer);
+                }
+                continue;
+            }
 
             let decoded = unsafe {
                 let state = &*self.state.get();

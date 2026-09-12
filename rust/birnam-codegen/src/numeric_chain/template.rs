@@ -215,4 +215,13 @@ impl Template {
     pub fn remaining_boxes(&self) -> usize {
         self.step_boxes.iter().skip(1).sum::<usize>() + self.sends.len()
     }
+
+    /// Whole-body admission follows allocation of the entry PC token only.
+    pub fn body_boxes(&self) -> usize {
+        self.step_boxes.iter().sum::<usize>() + self.sends.len() - 1
+    }
+
+    pub fn step_count(&self) -> usize {
+        self.step_boxes.len()
+    }
 }

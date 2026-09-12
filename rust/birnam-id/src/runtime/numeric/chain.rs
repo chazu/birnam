@@ -138,6 +138,40 @@ pub(in crate::runtime) struct Ticket {
     next: usize,
 }
 impl Ticket {
+    pub(in crate::runtime) fn fusion_template(&self) -> &Template {
+        &self.chain.template
+    }
+
+    pub(in crate::runtime) fn fusion_result(&self, index: usize, pc: usize) -> Option<i64> {
+        (self.chain.template.sends().get(index)?.pc as usize == pc)
+            .then(|| self.buffers.values.outputs[index])
+    }
+
+    pub(in crate::runtime) fn fusion_bindings_current(&self, runtime: &Runtime) -> bool {
+        {
+            let state = unsafe { &*runtime.state.get() };
+            let vt = runtime.canonical().smallint_vt;
+            if Vtables::checked_vtable_of(&state.heap, vt) != state.globals.vtable_vt {
+                return false;
+            }
+            for (send, binding) in self.chain.template.sends().iter().zip(&self.chain.bindings) {
+                let Some(symbol) = state.symbols.existing(&send.selector) else {
+                    return false;
+                };
+                let method = MethodAddress::from_method(binding.method);
+                if state.vtables.lookup(vt, symbol) != Some(method)
+                    || state.execution.has_resumable_thunk(method)
+                {
+                    return false;
+                }
+            }
+        }
+        // Pure native queries must not run under a RuntimeState borrow.
+        self.chain.bindings.iter().all(|binding| {
+            binding.summary.operator(runtime.canonical().smallint_vt) == Some(binding.operator)
+        })
+    }
+
     pub(in crate::runtime) fn take(&mut self, key: usize, pc: usize) -> Option<Prediction> {
         let send = self.chain.template.sends().get(self.next)?;
         if self.key != key || send.pc as usize != pc {
@@ -179,7 +213,16 @@ impl Runtime {
         if !enabled {
             return None;
         }
-        let (template, compiled) = self.native_tier.borrow().numeric_template(key)?;
+        self.prepare_numeric_chain_candidate(capability, owner, key)
+    }
+
+    pub(in crate::runtime) fn prepare_numeric_chain_candidate(
+        &self,
+        capability: MachineCapability,
+        owner: u64,
+        key: usize,
+    ) -> Option<Ticket> {
+        let (template, compiled) = self.native_tier.borrow_mut().numeric_template(key)?;
         let mut buffers = self
             .numeric
             .borrow_mut()

@@ -115,6 +115,7 @@ def main():
                 ]
             if args.chains:
                 checks.append(("birnam_id", "numeric-chain-storage", "runtime::numeric::chain::tests"))
+                checks.append(("birnam_id", "numeric-fusion", "runtime::native_tier::leaf_tests::fused_numeric_tests"))
             for package, label, test_filter in checks:
                 output = run([binaries[package], test_filter, "--nocapture"], profile + "-" + label)
                 match = re.search(r"test result: ok\. (\d+) passed; 0 failed", output)

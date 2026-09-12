@@ -344,10 +344,13 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
 #[test]
 #[ignore = "diagnostic paired production-chain timing; qualification is external"]
 fn production_numeric_chain_timing() {
-    struct ChainMode(bool);
+    use crate::runtime::native_tier::fused_numeric;
+    let fused = std::env::var("BENCH_NUMERIC_FUSED").is_ok_and(|value| value == "1");
+    struct ChainMode(bool, bool);
     impl Drop for ChainMode {
         fn drop(&mut self) {
             numeric::CHAIN_ENABLED.set(self.0);
+            fused_numeric::ENABLED.set(self.1);
         }
     }
     let batches = std::env::var("BENCH_NUMERIC_BATCHES")
@@ -386,7 +389,10 @@ fn production_numeric_chain_timing() {
             } else {
                 [true, false]
             } {
-                let _mode = ChainMode(numeric::CHAIN_ENABLED.replace(enabled));
+                let _mode = ChainMode(
+                    numeric::CHAIN_ENABLED.replace(enabled && !fused),
+                    fused_numeric::ENABLED.replace(enabled && fused),
+                );
                 let bootstrap = crate::dispatch::build_bootstrap();
                 let r = &bootstrap.runtime;
                 r.publish_canonical_exports();
@@ -414,6 +420,7 @@ fn production_numeric_chain_timing() {
                 }
                 r.enter(|| r.gc_collect_from_native_range(0, 0));
                 numeric::CHAIN_HITS.set(0);
+                fused_numeric::HITS.set(0);
                 let mut ns = 0;
                 let mut allocations = 0;
                 for _ in 0..batches {
@@ -435,11 +442,15 @@ fn production_numeric_chain_timing() {
                     // application/automatic-GC measurements remain separate.
                     r.enter(|| r.gc_collect_from_native_range(0, 0));
                 }
-                let hits = numeric::CHAIN_HITS.get();
+                let hits = if fused {
+                    fused_numeric::HITS.get()
+                } else {
+                    numeric::CHAIN_HITS.get()
+                };
                 let calls = batches * 2000;
                 assert_eq!(hits, if enabled { length as usize * calls } else { 0 });
                 println!(
-                    "numeric-chain length={length} pair={pair} enabled={enabled} calls={calls} ns={ns} allocation_bytes={allocations} hits={hits} operator={operator} varying={varying} collection=outside-batch"
+                    "numeric-chain length={length} pair={pair} enabled={enabled} calls={calls} ns={ns} allocation_bytes={allocations} hits={hits} operator={operator} varying={varying} collection=outside-batch fused={fused}"
                 );
             }
         }

@@ -244,17 +244,17 @@ qualified warm arithmetic measurements, with GC outside the timed batches;
 they do not establish cold amortization or application profitability. The
 changing-input regressions keep this implementation disabled in normal builds.
 
-### Next: bounded driver fusion
+### Bounded driver fusion (verified experiment)
 
-The next consumer should execute the admitted private PC entries as one bounded
+The experimental consumer executes the admitted private PC entries as one bounded
 numeric region, retaining their ordinary Frame writes and all original boxes.
-It can commit numeric call results through the existing V2 transition methods
+It commits numeric call results through the existing V2 transition methods
 locally, avoiding repeated operand copying, lookup and driver dispatch between
 arithmetic operations. Explicit returns and terminal numeric tail calls must
 both reach the existing outer `finish_stackless_return`; a tail-call PC cannot
 be relabeled as a Return PC in its descriptor.
 
-Admission must precede the first body effect and prove all of the following:
+Admission precedes the first body effect and checks all of the following:
 
 - The current Frame/descriptor and every private PC entry match the canonical
   lowering. The straight-line region remains bounded to 32 numeric sends.
@@ -277,6 +277,21 @@ Admission must precede the first body effect and prove all of the following:
 This requires no public IdApi, Method ABI, descriptor or image-format change.
 The existing fully checked driver integration remains the differential reference
 for forced refusal, allocation order, Frame state, malleability and ownership.
+The consumer reuses the already-enabled guarded Frame regions inside each PC;
+bypassing those regions would make the comparison worse than the existing
+production baseline. Synchronous boundary depth and high-water accounting remain
+identical to ordinary numeric calls. Numeric preparation requires 64 admitted
+chain starts, independently of how many PCs each body contains.
+
+End-to-end tests compare explicit Return and terminal TailCall bodies under
+replacement of each of the four Machine control methods, observing lookup,
+saturated mutation epochs, operator replacement, ErrorVt aliasing and native
+declaration withdrawal. Actual automatic-collection tests place the threshold
+before, inside and after the region and mutate an input during collection.
+Arithmetic-fault tests retain the original sequence of later observing sends.
+The experiment remains disabled in normal builds until its performance and
+production admission are accepted. `numeric-chain-timing.py --fused` measures
+this implementation independently from the prior per-call prediction experiment.
 
 
 ## Progress
@@ -324,3 +339,17 @@ for forced refusal, allocation order, Frame state, malleability and ownership.
   Cached declaration withdrawal/restoration and active-owner release after
   collecting cache eviction have explicit coverage. The complete qualified
   matrix above establishes that driver fusion is still needed before promotion.
+
+- Bounded numeric driver fusion now passes focused debug/release checks and full
+  production verification: 494 workspace tests, 16 ignored diagnostics, with
+  installed-prefix, image/lifetime, cold-archive and relocation checks.
+  `docs/measurements/74t-numeric-fusion.json` records this source checkpoint.
+  Whole-body admission, exact allocation budgeting and existing V2 transitions
+  retain the baseline Frame and all object identities. The experiment remains
+  disabled in normal builds while its qualified timing and admission costs are
+  measured; this checkpoint does not complete the numeric family.
+
+- The first fused timing attempt did not pass preflight within 120 seconds:
+  Firefox exceeded the unchanged 80% per-process CPU limit. No arithmetic rows
+  were timed and no speedup is inferred from that attempt. The retained receipt
+  is `docs/measurements/74t-numeric-fusion-timings.json`; no process was paused.

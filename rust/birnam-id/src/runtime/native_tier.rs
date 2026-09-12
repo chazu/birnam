@@ -11,6 +11,7 @@ use birnam_artifact::{
 use birnam_codegen::{
     frame_region, numeric_chain, resumable, resumable_c, resumable_descriptor, small_callee,
 };
+mod fused_numeric;
 mod regions;
 use birnam_native_compiler::Unit;
 use core::ffi::{c_char, c_void};
@@ -39,6 +40,7 @@ struct Record {
     leaf_miss_epoch: Option<u64>,
     numeric: Option<Rc<numeric_chain::Template>>,
     numeric_tried: bool,
+    numeric_starts: usize,
     numeric_candidate: Option<Rc<super::numeric::CompiledChain>>,
 }
 
@@ -52,6 +54,7 @@ struct Prepared {
 }
 
 struct Candidate {
+    numeric: bool,
     entries: Vec<Method>,
     regions: Vec<Option<regions::Compiled>>,
     _unit: Unit,
@@ -65,6 +68,27 @@ enum SelectedKind {
     Region(Rc<Candidate>, usize, Method, usize),
 }
 impl Selected {
+    pub(super) unsafe fn try_numeric(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        key: usize,
+        pc: usize,
+        args: *const Oop,
+        count: usize,
+    ) -> Option<Result<Oop, super::ExecutionError>> {
+        if pc != 0 || count != 1 {
+            return None;
+        }
+        let candidate = match &self.kind {
+            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
+        };
+        if !candidate.numeric {
+            return None;
+        }
+        unsafe { fused_numeric::execute(runtime, machine, key, candidate, args) }
+    }
+
     pub(super) unsafe fn invoke(
         &self,
         runtime: &Runtime,
@@ -154,6 +178,7 @@ impl Registry {
                 leaf_miss_epoch: None,
                 numeric: prepared.numeric.clone(),
                 numeric_tried: false,
+                numeric_starts: 0,
                 numeric_candidate: None,
                 pending: Some(prepared),
                 candidate: None,
@@ -169,17 +194,22 @@ impl Registry {
     }
 
     pub(super) fn numeric_template(
-        &self,
+        &mut self,
         key: usize,
     ) -> Option<(
         Rc<numeric_chain::Template>,
         Option<Rc<super::numeric::CompiledChain>>,
     )> {
-        let record = self.records.get(&key)?;
+        let record = self.records.get_mut(&key)?;
         if record.disabled || record.candidate.is_none() || record.descriptor.upgrade().is_none() {
             return None;
         }
         if record.numeric_tried && record.numeric_candidate.is_none() {
+            return None;
+        }
+        // Count actual chain starts, not individual PCs in a long body.
+        record.numeric_starts = record.numeric_starts.saturating_add(1);
+        if record.numeric_starts < HOT_ENTRIES {
             return None;
         }
         Some((record.numeric.clone()?, record.numeric_candidate.clone()))
@@ -334,6 +364,7 @@ impl Prepared {
         #[cfg(test)]
         regions::COMPILE_NS.set(regions::COMPILE_NS.get() + compile_start.elapsed().as_nanos());
         Some(Candidate {
+            numeric: self.numeric.is_some(),
             entries,
             regions,
             _unit: unit,
