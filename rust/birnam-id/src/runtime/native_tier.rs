@@ -8,7 +8,8 @@ use birnam_artifact::{
     materialization_selection as selection, portable_inventory,
     portable_resumable_manifest as manifest,
 };
-use birnam_codegen::{resumable, resumable_c, resumable_descriptor, small_callee};
+use birnam_codegen::{frame_region, resumable, resumable_c, resumable_descriptor, small_callee};
+mod regions;
 use birnam_native_compiler::Unit;
 use core::ffi::{c_char, c_void};
 use std::collections::BTreeMap;
@@ -40,17 +41,41 @@ struct Prepared {
     descriptor: Vec<u8>,
     source: CString,
     pcs: usize,
+    regions: Vec<Option<Rc<frame_region::Plan>>>,
     leaf: Option<Rc<small_callee::Plan>>,
 }
 
 struct Candidate {
     entries: Vec<Method>,
+    regions: Vec<Option<regions::Compiled>>,
     _unit: Unit,
 }
 
 pub(super) struct Selected {
-    pub(super) method: Method,
-    _candidate: Rc<Candidate>,
+    kind: SelectedKind,
+}
+enum SelectedKind {
+    Native(Method, Rc<Candidate>),
+    Region(Rc<Candidate>, usize, Method, usize),
+}
+impl Selected {
+    pub(super) unsafe fn invoke(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        match &self.kind {
+            SelectedKind::Native(method, _owner) => unsafe { method(machine, args, count) },
+            SelectedKind::Region(candidate, pc, baseline, key) => unsafe {
+                candidate.regions[*pc]
+                    .as_ref()
+                    .expect("selected region")
+                    .invoke(runtime, machine, *key, *baseline, args, count)
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -160,14 +185,33 @@ impl Prepared {
         let layout = resumable::color_slots(&program).ok()?;
         let descriptor =
             resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 1).ok()?;
-        if program.blocks.len() == 1 {
-            let plan = small_callee::compile(&program, &layout).ok()?;
+        if program.blocks.len() == 1
+            && let Ok(plan) = small_callee::compile(&program, &layout)
+        {
             return Some(Self {
                 descriptor,
                 source: CString::new("").ok()?,
                 pcs: 1,
+                regions: Vec::new(),
                 leaf: Some(Rc::new(plan)),
             });
+        }
+        let regions_enabled = true;
+        #[cfg(test)]
+        let regions_enabled = regions_enabled && regions::ENABLED.get();
+        let regions: Vec<_> = if regions_enabled {
+            (0..program.blocks.len().min(16))
+                .map(|pc| {
+                    frame_region::compile(&program, &layout, pc as u32)
+                        .ok()
+                        .map(Rc::new)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if program.blocks.len() == 1 && regions.iter().all(Option::is_none) {
+            return None;
         }
         let mut source = include_bytes!("native_tier/shims.c").to_vec();
         for pc in 0..program.blocks.len() {
@@ -175,6 +219,17 @@ impl Prepared {
                 resumable_c::emit_pc_specialized_step(pc as u32, &program, &layout, pc as u32)
                     .ok()?,
             );
+            if source.len() > MAX_CANDIDATE_BYTES {
+                return None;
+            }
+        }
+        for plan in regions.iter().flatten() {
+            // The isolated 74S timings favor guard hoisting without a native
+            // read cache. Keep read reuse available only for paired experiments.
+            let reuse = false;
+            #[cfg(test)]
+            let reuse = reuse || regions::REUSE.get();
+            source.extend(plan.emit(reuse).0);
             if source.len() > MAX_CANDIDATE_BYTES {
                 return None;
             }
@@ -189,11 +244,14 @@ impl Prepared {
             descriptor,
             source: CString::new(source).ok()?,
             pcs: program.blocks.len(),
+            regions,
             leaf: None,
         })
     }
 
     fn compile(&self) -> Option<Candidate> {
+        #[cfg(test)]
+        let compile_start = std::time::Instant::now();
         let bindings = [
             (c"birnam_send", shim_send as *const c_void),
             (c"birnam_intern", shim_intern as *const c_void),
@@ -215,8 +273,28 @@ impl Prepared {
             }
             entries.push(unsafe { core::mem::transmute::<*mut c_void, Method>(address) });
         }
+        let mut regions = Vec::with_capacity(self.regions.len());
+        for plan in &self.regions {
+            regions.push(if let Some(plan) = plan {
+                let name = CString::new(format!("region_{}", plan.pc)).ok()?;
+                let kernel = unsafe {
+                    core::mem::transmute::<*mut c_void, unsafe extern "C" fn(*mut usize, usize)>(
+                        unit.symbol(&name)?.as_ptr(),
+                    )
+                };
+                let loads = 0;
+                #[cfg(test)]
+                let loads = loads + plan.emit(regions::REUSE.get()).1;
+                Some(regions::Compiled::new(plan.clone(), kernel, loads))
+            } else {
+                None
+            });
+        }
+        #[cfg(test)]
+        regions::COMPILE_NS.set(regions::COMPILE_NS.get() + compile_start.elapsed().as_nanos());
         Some(Candidate {
             entries,
+            regions,
             _unit: unit,
         })
     }
@@ -258,11 +336,18 @@ pub(super) fn select(
         record.candidate = prepared.compile().map(Rc::new);
     }
     let candidate = record.candidate.as_ref()?.clone();
+    let regions_enabled = true;
+    #[cfg(test)]
+    let regions_enabled = regions_enabled && regions::ENABLED.get();
+    if regions_enabled && candidate.regions.get(pc).is_some_and(Option::is_some) {
+        return Some(Selected {
+            kind: SelectedKind::Region(candidate, pc, descriptor.step_method(), descriptor_key),
+        });
+    }
     #[cfg(test)]
     HITS.set(HITS.get() + 1);
     Some(Selected {
-        method: *candidate.entries.get(pc)?,
-        _candidate: candidate,
+        kind: SelectedKind::Native(*candidate.entries.get(pc)?, candidate),
     })
 }
 

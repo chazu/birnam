@@ -7,7 +7,9 @@ deoptimization cannot undo an observable change.
 
 Implementation progress: [74R](74r-small-callee-recovery-plans.md) delivers the
 first bounded Stage 1 batch (single-PC entry values, local aliases and Return).
-Later stages and broader continuation shapes remain proposed.
+[74S](74s-three-optimization-families.md) implements inherited dispatch caching
+and guarded native Frame regions, with separate profitability experiments.
+Further native optimization and broader continuation shapes remain pending.
 
 ## Direction
 

@@ -78,6 +78,12 @@ impl Symbols {
         Ok(self.intern_hashed(heap, symbol_vtable, bytes, hash))
     }
 
+    /// Non-allocating identity query for a guarded native region. A missing
+    /// symbol requires ordinary interning at its baseline observation boundary.
+    pub(crate) fn existing(&self, bytes: &[u8]) -> Option<Oop> {
+        self.find_hashed(bytes, self.name_hasher.hash_one(bytes))
+    }
+
     fn find_hashed(&self, bytes: &[u8], hash: u64) -> Option<Oop> {
         let mut index = self.by_name_hash.get(&hash).copied();
         while let Some(current) = index {

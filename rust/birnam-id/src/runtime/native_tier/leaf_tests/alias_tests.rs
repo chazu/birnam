@@ -3,7 +3,7 @@ use super::*;
 use core::cell::RefCell;
 
 thread_local! {
-    static BOXES: RefCell<Option<Vec<i64>>> = const { RefCell::new(None) };
+    pub(super) static BOXES: RefCell<Option<Vec<i64>>> = const { RefCell::new(None) };
     static EFFECTS: RefCell<Vec<(u8, usize)>> = const { RefCell::new(Vec::new()) };
     static SUBSTITUTE: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
 }
@@ -197,7 +197,11 @@ fn production_alias_inline_matches_canonical_boxes_identity_and_effects() {
 }
 
 // Leave room for the old projection's two boxes, but not for the alias body.
-unsafe extern "C" fn alias_boundary_call(machine: Oop, args: *const Oop, count: usize) -> Oop {
+pub(super) unsafe extern "C" fn alias_boundary_call(
+    machine: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
     let action = unsafe { crate::execution::machine_call_site(machine, args, count) };
     with_active(|r| {
         if BOUNDARY.replace(0) == 0 {
@@ -335,7 +339,7 @@ fn production_alias_call_boundary_preserves_source_effects() {
     );
 }
 
-fn timing_body(case: &str) -> Vec<u8> {
+pub(super) fn timing_body(case: &str) -> Vec<u8> {
     match case {
         "projection" => leaf(false),
         "alias" | "fallback" => aliases(false),

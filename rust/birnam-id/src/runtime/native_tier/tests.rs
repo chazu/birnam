@@ -364,6 +364,9 @@ fn check_registration_dependency(runtime: &Runtime, case: Case) {
 }
 
 fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
+    // These probes inject events through the PC-specialized C shims and count
+    // that path's entries. Whole-PC regions have independent boundary probes.
+    regions::ENABLED.set(false);
     CASE.set(Case::Canonical);
     NESTED.set(false);
     OUTER_FRAME.set(None);

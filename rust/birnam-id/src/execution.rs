@@ -1399,6 +1399,31 @@ impl FrameArena {
         Ok(self.require_live(handle)?.root_state_program_counter)
     }
 
+    /// Private no-callback kernel boundary. Validate the complete Frame shape
+    /// before handing the existing storage to an owned compiler-produced kernel.
+    pub(crate) fn with_native_words(
+        &mut self,
+        handle: FrameHandle,
+        descriptor_key: usize,
+        pc: usize,
+        slot_count: usize,
+        body: impl FnOnce(&mut [usize]),
+    ) -> Result<(), FrameError> {
+        let slot = self.require_live_mut(handle)?;
+        let descriptor = slot.descriptor.as_deref().ok_or(FrameError::StaleHandle)?;
+        if descriptor as *const FrameDescriptor as usize != descriptor_key
+            || slot.program_counter != pc
+            || slot.root_state_program_counter != pc
+            || slot.pending_edge.is_some()
+            || slot.words.len() != slot_count
+            || (0..slot_count).any(|i| descriptor.slot_kind(i) != Some(SlotKind::Oop))
+        {
+            return Err(FrameError::InvalidSlot);
+        }
+        body(&mut slot.words);
+        Ok(())
+    }
+
     pub(crate) fn read_oop(&self, handle: FrameHandle, index: usize) -> Result<Oop, FrameError> {
         let slot = self.require_live(handle)?;
         match slot

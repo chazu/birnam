@@ -54,47 +54,51 @@ final retained receipts will identify the corrected implementation. The correcti
 keeps direct dictionary hits outside the cache. Added inherited-churn measurement
 ensures frequent invalidation of the actual admitted path remains visible.
 
-## Next-family mechanism under evaluation
+## Family two: guarded Frame regions
 
-The next producer will consider whole existing PCs containing only entry values
-and Bind operations, ending in Return or Continue. Use a bound of 64 operations
-and 128 physical slots; long alias bodies exceed 74R's one-callee limit and expose
-repeated reads inside actual framed execution. Unknown sends, literals, captures
-constructed in the region and other observing operations are excluded. Entry
-captures already held in the Frame remain ordinary Oops.
+The compiler derives whole existing PCs containing entry values and Bind
+operations, ending in Return, Continue, Call or TailCall. Admission is bounded
+by 64 operations, 128 physical slots and the first 16 PCs per candidate. Call
+staging remains an exact ordered copy of receiver, selector and arguments into
+the descriptor's existing call window. Ordinary target resolution follows at the
+publication boundary. Literals, other observing body operations, absent selectors
+and unsupported layouts decline before body effects.
 
-The proposed consumer retains the existing Frame and descriptor throughout.
-After the normal PC-token allocation, prove canonical Machine read/write/lookup
-semantics and enough GC budget for the entire region's baseline index boxes.
-Allocate those boxes in their exact canonical order, then run a bounded private
-native kernel over validated current Frame words, with no allocation or callback
-inside it. Publish the unchanged ordinary Return/Continue operation only after
-all final Frame values are present. A guard miss runs the original PC before any
-body effect. This needs no new absent-Frame recipe, ABI field or artifact encoding.
-Moving housekeeping boxes before writes is permitted only while the complete
-allocation budget proves no collection/observer can intervene; otherwise decline.
+The consumer retains the existing Frame and descriptor. After the normal PC-token
+allocation it proves canonical Machine read/write/lookup semantics and enough GC
+budget for every baseline body index box. It allocates those boxes in canonical
+order, then runs a private native kernel over validated Frame words. The kernel
+has no allocation or callback. Every final Frame word exists before ordinary
+Return/Continue/Call/TailCall publication. Guard failure runs the original PC.
+Moving boxes before writes is admitted only when no collection or observer can
+intervene. Source allocations, public ABI, descriptors and image formats are
+unchanged. Candidate kernels share one owned native unit with their fallback PCs;
+an executing selection retains that unit through publication and native reentry.
 
-Family two will use a compiler effect/availability analysis to cache repeated
-physical reads and forward known writes within that kernel. Family three will
-separately propagate entry-source identities through native copies and remove
-intermediate native temporaries. All required final Frame writes remain. The
-native emitter will keep individual switches so family two, family three and
-combined execution can be measured against identical canonical input; neither
-family may claim a gain from omitted Id allocations. These concrete choices
-still require static/runtime profiling, counterexamples and independent timings
-before acceptance.
+The retained optimization removes repeated Machine dispatch, index decoding and
+Frame validation from the region. The additional physical-read cache is an
+experimental test mode: qualified measurement did not justify enabling it.
+Production uses the simpler kernel with ordinary loads and every baseline store.
+Family three's copy propagation and native-store optimization remain pending.
 
+Correctness probes compare every final Frame word, exact box order and bytes,
+argument and capture identity, Continue/Return boundaries, Call/TailCall staging,
+late target replacement, missing-selector allocation, Machine overrides, GC
+admission and candidate eviction. The older PC-specialized tests explicitly
+select their original path because their event injection is in that path's C
+shims; region boundary probes exercise the new path independently. The installed
+fixture adds source-independent materialization, hot calls, eviction and GC.
 
-A standalone native-kernel probe has now validated the proposed family-two
-producer on a 100-alias body spanning two canonical PCs and 64 physical slots.
-Both emitted variants preserve every final word. Reusing one unchanged input
-reduces generated loads from 62/38 to 1/1 across the PCs, and C source size from
-2,675/1,642 bytes to 924/587 bytes. A chained-alias control correctly retains
-62/38 loads in this pass; removing those dependencies belongs to the separately
-measured propagation pass. This is compiler/kernel evidence only, not production
-Frame admission or timing acceptance. Draft source and probe output are currently
-in `/tmp/birnam-74s-frame-region.rs` and `/tmp/birnam-74s-region-probe.log`.
-
+The [initial six-pair qualified matrix](../measurements/74s-regions-initial-timing.json)
+compared regions off, plain regions and regions with read reuse at 10,000 calls
+per sample. Plain regions reduced median paired time by 54.07% for repeated-source
+aliases, 53.64% for chained aliases and 25.54% for repeated call arguments. The
+fallback median was essentially unchanged. Extra read reuse provided no median
+benefit and regressed the repeated-source fixture relative to plain regions.
+These are focused fixture measurements, not whole-program speedup estimates.
+This receipt predates the production-default choice, refined metadata accounting,
+installed fixture and explicit old-path test selection; final reruns retain their
+own source and binary hashes.
 
 ## Family one: retained implementation and measurements
 
@@ -142,8 +146,10 @@ correctness/control receipts. Their separate source and binary hashes are retain
 these are not falsely described as one identical test binary. Initial/failed
 iterations remain local under `.cargo-target/74s` unless explicitly linked above.
 
-Family two is being implemented in the isolated `/tmp/birnam-74s-next` checkout,
-which began with exactly this dispatch implementation. This protects the main
-checkout's timing sources while implementation proceeds. Family three remains
-pending. `birnam-kwr` owns the complete three-family goal; `birnam-bew` remains open
+Family two was developed in an isolated checkout and is now integrated for full
+verification and a committed-source timing rerun.
+[Integrated correctness](../measurements/74s-regions-correctness.json) passes
+focused debug/release checks and full production verification, including the
+installed native-region fixture, clean archives and relocation. Family three
+remains pending. `birnam-kwr` owns the complete three-family goal; `birnam-bew` remains open
 for the prior and continuing small-cost acceptance questions.

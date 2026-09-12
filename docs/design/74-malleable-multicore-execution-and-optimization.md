@@ -65,6 +65,9 @@
 > [74R](74r-small-callee-recovery-plans.md) implements the first bounded batch:
 > compiler-generated entry recovery plans and local-alias inlining. Its document
 > records correctness gates and isolated performance comparisons.
+> [74S](74s-three-optimization-families.md) continues with inherited dispatch
+> specialization and guarded native Frame regions. Its per-family receipts
+> retain controls, rejected variants and remaining acceptance questions.
 
 ## 1. Decision criteria and direction
 

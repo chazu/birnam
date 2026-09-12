@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Added
 
+- Design 74S adds bounded inherited-dispatch caching and guarded native Frame
+  regions for local copies and call staging. Ordinary target lookup, exact Id
+  allocation order and observable Frame contents remain authoritative.
+
 - Compiler-generated small-callee plans extend guarded inlining through local
   aliases (Design 74R). Entry recovery, exact index-box order, captured identity
   and GC/observation boundaries remain checked against canonical execution.

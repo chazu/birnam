@@ -11,6 +11,7 @@ import signal
 import statistics
 import subprocess
 import time
+import itertools
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("prior", ROOT / "scripts/production-recovery.py")
@@ -21,23 +22,27 @@ BASE = "d06f7558"
 
 def sources():
     result = prior.sources()
-    for name in ("scripts/optimization-families.py", "scripts/bench-host-check.sh"):
+    for name in ("scripts/optimization-families.py", "scripts/bench-host-check.sh", "scripts/fixtures/native-regions.birnam"):
         result[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
     return result
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--family", choices=["dispatch"], default="dispatch")
+    p.add_argument("--family", choices=["dispatch", "reads"], default="dispatch")
     p.add_argument("--measure", action="store_true")
-    p.add_argument("--matrix", choices=["dispatch", "native-controls"], default="dispatch")
+    p.add_argument("--matrix", choices=["focused", "dispatch", "native-controls"], default="focused")
     p.add_argument("--verify", action="store_true")
     p.add_argument("--pairs", type=int, default=8)
-    p.add_argument("--count", type=int, default=1000000)
+    p.add_argument("--count", type=int)
     p.add_argument("--pause-rk-pid", type=int)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--work-dir", type=Path, required=True)
     args = p.parse_args()
+    if args.matrix == "dispatch": args.matrix = "focused"
+    assert args.family == "dispatch" or args.matrix == "focused"
+    modes = ["off", "on"] if args.family == "dispatch" else ["off", "plain", "reuse"]
+    if args.count is None: args.count = 1000000 if args.family == "dispatch" else 10000
     assert args.pairs > 0 and args.count > 0
     args.work_dir.mkdir(parents=True, exist_ok=True)
     env = {k:v for k,v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_", "BENCH_HOST_"))}
@@ -65,6 +70,13 @@ def main():
             receipt['authorities'][name] = hashlib.sha256(data).hexdigest()
         for profile in ["debug", "release"]:
             flags = ["--release"] if profile == "release" else []
+            if args.family == "reads":
+                out = run(["cargo", "test", "-p", "birnam-codegen", "--locked", "--offline", *flags,
+                           "native_region", "--", "--nocapture"], profile + "-region-compiler")
+                assert "1 passed; 0 failed" in out
+                out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
+                           "native_region_", "--", "--nocapture"], profile + "-regions")
+                assert "3 passed; 0 failed" in out
             out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
                        "dispatch_specialization", "--", "--nocapture"], profile)
             assert "2 passed; 0 failed" in out
@@ -117,11 +129,17 @@ def main():
                         monitor = subprocess.Popen(["top", "-l", "0", "-s", "1", "-n", "0", "-stats", "pid"], stdout=log, stderr=subprocess.DEVNULL)
                         try:
                             cases = (["inherited", "direct", "lookup", "churn", "inherited-churn"]
-                                     if args.matrix == "dispatch" else ["projection", "alias1", "alias", "fallback", "control"])
+                                     if args.matrix == "focused" else ["projection", "alias1", "alias", "fallback", "control"])
+                            if args.family == "reads": cases = ["repeat", "chain", "arguments", "fallback", "control"]
                             cases = cases[pair%len(cases):] + cases[:pair%len(cases)]
                             for case in cases:
-                                for mode in (["off", "on"] if pair%2 == 0 else ["on", "off"]):
-                                    if args.matrix == "dispatch":
+                                order = list(itertools.permutations(modes))[pair % len(list(itertools.permutations(modes)))]
+                                for mode in order:
+                                    if args.family == "reads":
+                                        name = "runtime::native_tier::leaf_tests::region_tests::native_region_timing"
+                                        extra = dict(BIRNAM_74S_MODE=mode, BIRNAM_74S_CASE=case, BIRNAM_74S_COUNT=str(args.count))
+                                        prefix = 'REGION_TIMING '
+                                    elif args.matrix == "focused":
                                         name = "runtime::dispatch_cache::tests::dispatch_specialization_timing"
                                         extra = dict(BIRNAM_74S_MODE=mode, BIRNAM_74S_CASE=case, BIRNAM_74S_COUNT=str(args.count))
                                         prefix = 'DISPATCH_TIMING '
@@ -131,7 +149,7 @@ def main():
                                         prefix = 'SMALL_CALLEE_TIMING '
                                     out = run([binary, name, "--exact", "--ignored", "--nocapture"], f"pair-{pair}-{case}-{mode}", extra)
                                     sample = next(json.loads(line.removeprefix(prefix)) for line in out.splitlines() if line.startswith(prefix))
-                                    sample.update(mode=mode, counter_kind="dispatch" if args.matrix=="dispatch" else "small-callee")
+                                    sample.update(mode=mode, counter_kind="region" if args.family=="reads" else "dispatch" if args.matrix=="focused" else "small-callee")
                                     receipt['samples'].append(dict(pair=pair, **sample))
                         finally:
                             monitor.terminate()
@@ -140,14 +158,17 @@ def main():
                 receipt['timing_summary'] = {}
                 for case in sorted({r['case'] for r in receipt['samples']}):
                     rows = [r for r in receipt['samples'] if r['case'] == case]
-                    off = [r for r in rows if r['mode'] == 'off']
-                    on = [r for r in rows if r['mode'] == 'on']
-                    assert len(off) == len(on) == args.pairs
                     assert len({r['bytes'] for r in rows}) == 1
-                    reductions = [100*(1-b['elapsed_ns']/a['elapsed_ns']) for a,b in zip(off,on)]
-                    receipt['timing_summary'][case] = dict(median_time_reduction_percent=statistics.median(reductions), paired_percent=reductions,
+                    comparisons = {}
+                    for first, last in ([('off','on')] if args.family=='dispatch' else [('off','plain'),('plain','reuse'),('off','reuse')]):
+                        left = sorted((r for r in rows if r['mode']==first), key=lambda r:r['pair'])
+                        right = sorted((r for r in rows if r['mode']==last), key=lambda r:r['pair'])
+                        assert len(left) == len(right) == args.pairs
+                        reductions = [100*(1-b['elapsed_ns']/a['elapsed_ns']) for a,b in zip(left,right)]
+                        comparisons[first+'->'+last] = dict(median_time_reduction_percent=statistics.median(reductions), paired_percent=reductions)
+                    receipt['timing_summary'][case] = dict(comparisons=comparisons,
                         modes={mode:{key:statistics.median(r[key] for r in rows if r['mode']==mode)
-                                    for key in ('elapsed_ns','prepare_ns','warm_ns','bytes','hits','misses','recoveries','metadata_bytes') if key in rows[0]} for mode in ('off','on')})
+                                    for key in ('elapsed_ns','prepare_ns','warm_ns','bytes','hits','misses','loads','recoveries','source_bytes','metadata_bytes','plan_storage_bytes','compile_ns') if key in rows[0]} for mode in modes})
                 receipt['timing_qualification'] = 'host-gated'
             finally:
                 if paused:

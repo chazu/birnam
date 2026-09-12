@@ -119,6 +119,10 @@ implements its first bounded batch: compiler-generated small-callee recovery
 plans and alias inlining. All 463 workspace tests and full production gates pass;
 qualified timing now supports the alias fixture benefit. Remaining small-cost
 acceptance is tracked by `birnam-bew`; receipts and limits are in that document.
+[Design 74S](../design/74s-three-optimization-families.md) (`birnam-kwr`)
+continues with inherited-dispatch specialization and guarded native Frame regions.
+Per-family measurements and controls are recorded there; conventional native
+optimization remains pending.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

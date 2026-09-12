@@ -1,0 +1,23 @@
+// 74S installed regions: native copies, ordinary calls, identities and GC.
+[System load: "modules/os.birnam"];
+let input := [73 asCell];
+let source := [:value | let alias0 := value; let alias1 := alias0; let alias2 := alias1; let alias3 := alias2; let alias4 := alias3; let alias5 := alias4; let alias6 := alias5; let alias7 := alias6; let alias8 := alias7; let alias9 := alias8; let alias10 := alias9; let alias11 := alias10; let alias12 := alias11; let alias13 := alias12; let alias14 := alias13; let alias15 := alias14; let alias16 := alias15; let alias17 := alias16; let alias18 := alias17; let alias19 := alias18; let alias20 := alias19; let alias21 := alias20; let alias22 := alias21; let alias23 := alias22; let alias24 := alias23; let alias25 := alias24; let alias26 := alias25; let alias27 := alias26; let alias28 := alias27; let alias29 := alias28; let alias30 := alias29; let alias31 := alias30; let alias32 := alias31; let alias33 := alias32; let alias34 := alias33; let alias35 := alias34; let alias36 := alias35; let alias37 := alias36; let alias38 := alias37; let alias39 := alias38; let alias40 := alias39; let alias41 := alias40; let alias42 := alias41; let alias43 := alias42; let alias44 := alias43; let alias45 := alias44; let alias46 := alias45; let alias47 := alias46; let alias48 := alias47; let alias49 := alias48; let alias50 := alias49; let alias51 := alias50; let alias52 := alias51; let alias53 := alias52; let alias54 := alias53; let alias55 := alias54; let alias56 := alias55; let alias57 := alias56; let alias58 := alias57; let alias59 := alias58; let alias60 := alias59; let alias61 := alias60; let alias62 := alias61; let alias63 := alias62; let alias64 := alias63; let alias65 := alias64; let alias66 := alias65; let alias67 := alias66; let alias68 := alias67; let alias69 := alias68; let alias70 := alias69; let alias71 := alias70; let alias72 := alias71; let alias73 := alias72; let alias74 := alias73; let alias75 := alias74; let alias76 := alias75; let alias77 := alias76; let alias78 := alias77; let alias79 := alias78; let alias80 := alias79; let alias81 := alias80; let alias82 := alias81; let alias83 := alias82; let alias84 := alias83; let alias85 := alias84; let alias86 := alias85; let alias87 := alias86; let alias88 := alias87; let alias89 := alias88; let alias90 := alias89; let alias91 := alias90; let alias92 := alias91; let alias93 := alias92; let alias94 := alias93; let alias95 := alias94; let alias96 := alias95; let alias97 := alias96; let alias98 := alias97; let alias99 := alias98; alias99];
+let copies := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+let targetSource := [:a :b :c :d | a];
+let target := [Codegen materializeResumable: [[targetSource codeObject] withoutSourceProvenance] captures: #[]];
+let callerSource := [:target :value | [target value: value value: value value: value value: value]];
+let caller := [Codegen materializeResumable: [[callerSource codeObject] withoutSourceProvenance] captures: #[]];
+[[copies isError] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];
+[[target isError] ifTrue: [| [OS exit: 2]] ifFalse: [| nil]];
+[[caller isError] ifTrue: [| [OS exit: 3]] ifFalse: [| nil]];
+[128 timesRepeat: [|
+  [[[copies value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 4]]];
+  [[[caller value: target value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 5]]]]];
+let replacementSource := [:a :b :c :d | nil];
+let replacement := [Codegen materializeResumable: [[replacementSource codeObject] withoutSourceProvenance] captures: #[]];
+[[[caller value: replacement value: input] isNil] ifTrue: [| nil] ifFalse: [| [OS exit: 6]]];
+[Codegen evictMaterializations];
+[System gc];
+[[[copies value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 7]]];
+[[[caller value: target value: input] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 8]]];
+[System println: "native-regions: copies, argument identity, replacement, eviction and GC passed"];

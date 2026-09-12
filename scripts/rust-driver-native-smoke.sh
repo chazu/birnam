@@ -39,6 +39,9 @@ cat "$prefix_parent/projection.out"
 "$prefix/bin/birnam" scripts/fixtures/small-callee-recovery.birnam >"$prefix_parent/small-callee.out"
 grep -Fxq "small-callee-recovery: aliases, captures, effects, eviction and GC passed" "$prefix_parent/small-callee.out"
 cat "$prefix_parent/small-callee.out"
+"$prefix/bin/birnam" scripts/fixtures/native-regions.birnam >"$prefix_parent/native-regions.out"
+grep -Fxq "native-regions: copies, argument identity, replacement, eviction and GC passed" "$prefix_parent/native-regions.out"
+cat "$prefix_parent/native-regions.out"
 
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
 import json

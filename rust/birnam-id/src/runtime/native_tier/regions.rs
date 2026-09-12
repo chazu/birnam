@@ -1,0 +1,133 @@
+//! Whole-PC native regions. Frames and every baseline index box are retained.
+use super::*;
+use birnam_codegen::frame_region;
+
+pub(super) struct Compiled {
+    plan: Rc<frame_region::Plan>,
+    kernel: unsafe extern "C" fn(*mut usize, usize),
+    #[cfg(test)]
+    loads: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
+    pub(super) static REUSE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(super) static COMPILE_NS: core::cell::Cell<u128> = const { core::cell::Cell::new(0) };
+    pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    pub(super) static LOADS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    pub(super) static MISSES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+impl Compiled {
+    pub(super) fn new(
+        plan: Rc<frame_region::Plan>,
+        kernel: unsafe extern "C" fn(*mut usize, usize),
+        _loads: usize,
+    ) -> Self {
+        Self {
+            plan,
+            kernel,
+            #[cfg(test)]
+            loads: _loads,
+        }
+    }
+
+    fn words(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        descriptor_key: usize,
+        body: impl FnOnce(&mut [usize]),
+    ) -> Option<()> {
+        let capability = runtime.stackless_machine_capability(machine).ok()?;
+        let state = unsafe { &mut *runtime.state.get() };
+        let arena = state
+            .execution
+            .machine_mut(super::super::current_thread_token(), capability)
+            .ok()?
+            .arena_mut();
+        let frame = arena.current_handle()?;
+        arena
+            .with_native_words(
+                frame,
+                descriptor_key,
+                self.plan.pc as usize,
+                self.plan.slot_count as usize,
+                body,
+            )
+            .ok()
+    }
+
+    pub(super) unsafe fn invoke(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        descriptor_key: usize,
+        baseline: Method,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
+        let symbol = {
+            let state = unsafe { &*runtime.state.get() };
+            match &self.plan.selector_store {
+                Some((_, _, name)) => state.symbols.existing(name),
+                None => Some(core::ptr::null_mut()),
+            }
+        };
+        let room = {
+            let state = unsafe { &*runtime.state.get() };
+            let bytes = crate::heap::Heap::allocation_total_size(core::mem::size_of::<i64>())
+                .unwrap()
+                .saturating_mul(self.plan.boxed_indices.len());
+            !state
+                .metadata
+                .automatic_collection_due(state.heap.bytes_since_collection().saturating_add(bytes))
+        };
+        // Admission precedes the first body allocation or write. The existing
+        // PC token has already been allocated by the driver.
+        if symbol.is_none()
+            || !room
+            || !runtime.guarded_slot_access_eligible(machine)
+            || self
+                .words(runtime, machine, descriptor_key, |_| {})
+                .is_none()
+        {
+            #[cfg(test)]
+            MISSES.set(MISSES.get() + 1);
+            return unsafe { baseline(machine, args, count) };
+        }
+        for &index in &self.plan.boxed_indices {
+            #[cfg(test)]
+            super::leaf_tests::record_box(index as i64);
+            runtime.make_integer(index as i64);
+        }
+        // No callback/collection can occur between admission and this kernel.
+        // All source operations are canonical, non-observing local copies.
+        self.words(runtime, machine, descriptor_key, |words| unsafe {
+            (self.kernel)(words.as_mut_ptr(), symbol.expect("admitted symbol").addr())
+        })
+        .expect("admitted Frame cannot change inside a no-observation region");
+        #[cfg(test)]
+        {
+            HITS.set(HITS.get() + 1);
+            LOADS.set(LOADS.get() + self.loads);
+        }
+        // Publication remains an ordinary Id send; native observers see the
+        // completed baseline Frame, including every intermediate alias slot.
+        let (selector, operand) = {
+            let state = unsafe { &*runtime.state.get() };
+            let objects = state.execution.objects().expect("admitted Machine");
+            match self.plan.exit {
+                frame_region::Exit::Return(slot) => (objects.return_at, slot),
+                frame_region::Exit::Continue(pc) => (objects.continue_at, pc),
+                frame_region::Exit::Call(site) => (objects.call_site, site),
+                frame_region::Exit::TailCall(site) => (objects.tail_call_site, site),
+            }
+        };
+        #[cfg(test)]
+        super::leaf_tests::record_box(operand as i64);
+        let index = runtime.make_integer(operand as i64);
+        runtime.send_slice(machine, selector, &[index])
+    }
+}

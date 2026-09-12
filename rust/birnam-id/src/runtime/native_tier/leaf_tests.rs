@@ -571,15 +571,16 @@ fn projection_timing() {
     let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
     let caller = install(r, &caller(), 740200, None);
     let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-    r.native_tier
-        .borrow_mut()
-        .records
-        .retain(|key, record| {
-            // Preserve 74P eligibility for its historical timing control;
-            // alias inlining has its own 74R measurement and refusal controls.
-            optimized && *key == Arc::as_ptr(&leaf.descriptor) as usize
-                && record.leaf.as_ref().is_some_and(|plan| plan.alias_count() == 0)
-        });
+    r.native_tier.borrow_mut().records.retain(|key, record| {
+        // Preserve 74P eligibility for its historical timing control;
+        // alias inlining has its own 74R measurement and refusal controls.
+        optimized
+            && *key == Arc::as_ptr(&leaf.descriptor) as usize
+            && record
+                .leaf
+                .as_ref()
+                .is_some_and(|plan| plan.alias_count() == 0)
+    });
     if case == "fallback" {
         let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
         r.add_method(objects.machine_vtable, objects.return_at, return_override);
@@ -732,3 +733,5 @@ fn production_projection_recovers_before_gc_and_preserves_current_targets() {
 
 mod alias_tests;
 pub(super) use alias_tests::record_box;
+
+mod region_tests;

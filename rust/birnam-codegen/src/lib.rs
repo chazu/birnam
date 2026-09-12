@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 mod c_string;
+pub mod frame_region;
 pub mod portable;
 pub mod portable_c;
 pub mod resumable;

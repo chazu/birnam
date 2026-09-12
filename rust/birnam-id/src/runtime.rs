@@ -33,11 +33,11 @@ use crate::vtable::{AddMethod, Vtables};
 mod architectural_fit_experiment;
 #[cfg(test)]
 mod deopt_experiment;
+mod dispatch_cache;
 #[cfg(all(test, target_os = "macos"))]
 mod generated_deopt_experiment;
 mod guarded_dispatch;
 mod guarded_lookup;
-mod dispatch_cache;
 mod native_tier;
 mod recovery;
 #[cfg(all(test, target_os = "macos"))]
@@ -3558,9 +3558,6 @@ impl Runtime {
             let method = selected.method;
             let native_selected =
                 native_tier::select(self, machine, descriptor_key, program_counter);
-            let method = native_selected
-                .as_ref()
-                .map_or(method, |selected| selected.method);
             let action = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {
@@ -3570,7 +3567,13 @@ impl Runtime {
                     };
                     // SAFETY: descriptor validation freezes a Method-shaped entry;
                     // the optional one-Oop argument buffer lives through the call.
-                    unsafe { method(machine, arguments, count) }
+                    unsafe {
+                        if let Some(selected) = &native_selected {
+                            selected.invoke(self, machine, arguments, count)
+                        } else {
+                            method(machine, arguments, count)
+                        }
+                    }
                 })
             };
 
