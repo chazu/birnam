@@ -812,3 +812,21 @@ The [untraced admission receipt](../measurements/74t-virtual-fields-untraced-adm
 passes focused debug/release checks and full production verification: 515 tests,
 19 ignored diagnostics, installed runtime, image, archive and relocation gates.
 It supersedes the stack-scratch implementation for subsequent timing decisions.
+
+
+The [qualified untraced-scratch matrix](../measurements/74t-virtual-field-untraced-timings.json)
+uses the current implementation and all six medians remain negative: enabled
+execution is 4.00%/2.48% slower for field-only Return, 7.35%/8.13% slower for
+escaping clones, and 9.61%/10.10% slower after declaration withdrawal (16/1024
+bytes). Including collection, the corresponding regressions are 5.00%/3.21%,
+5.18%/6.24% and 7.99%/7.47%. All four execution pairs in each case are negative.
+The host gates passed. The declaration/layout changes reduce the original
+large-payload cost, but the two-Call clone/projection shape is still insufficient
+for promotion. Cold activation is variable and supports no gain claim.
+
+The next performance work is longer field-reading regions with one admission
+covering several eliminated sends, and reusable untraced scratch with explicit
+reentry ownership. Keep escaping and withdrawn-declaration controls alongside
+those regions. These remaining profitability obligations do not complete the
+aggregate family or replace the outstanding closure, numeric, loop and broader
+application/metadata/refusal acceptance requirements.
