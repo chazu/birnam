@@ -779,3 +779,11 @@ The [revised admission receipt](../measurements/74t-virtual-fields-admission.jso
 passes focused debug/release comparisons and full production verification:
 515 workspace tests, 19 ignored diagnostics, installed runtime, image, archive
 and relocation gates. The consumer remains disabled pending repeat measurements.
+
+
+The [qualified admission repeat](../measurements/74t-virtual-field-admission-timings.json)
+reduces the large-payload field-only regression from 12.95% to 1.36%, escaping
+clone regression from 17.11% to 8.74%, and withdrawal regression from 24.48% to
+10.90%. Small-payload medians remain negative (4.06%, 8.42% and 11.56%). This
+supports removing the payload-dependent admission overhead, but still does not
+justify enabling the consumer. Both qualified receipts retain every paired row.
