@@ -1,6 +1,7 @@
 # 74S — Dispatch specialization, redundant work and native optimization
 
-Status: implementation in progress. Authorized goal: implement the next three
+Status: all three families implemented; combined performance acceptance in progress.
+Authorized goal: implement the next three
 optimization families after the first inlining batch and measure each separately.
 The starting checkpoint is `d06f7558` (74R). This document records the concrete
 contracts before implementation; passing experiments do not imply whole-program
@@ -79,7 +80,9 @@ The retained optimization removes repeated Machine dispatch, index decoding and
 Frame validation from the region. The additional physical-read cache is an
 experimental test mode: qualified measurement did not justify enabling it.
 Production uses the simpler kernel with ordinary loads and every baseline store.
-Family three's copy propagation and native-store optimization remain pending.
+Family three selectively propagates dependent copies and groups native stores,
+as described below; its final timings do not establish an independent steady
+execution gain.
 
 Correctness probes compare every final Frame word, exact box order and bytes,
 argument and capture identity, Continue/Return boundaries, Call/TailCall staging,
@@ -151,7 +154,7 @@ verification and a committed-source timing rerun.
 [Integrated correctness](../measurements/74s-regions-correctness.json) passes
 focused debug/release checks and full production verification, including the
 installed native-region fixture, clean archives and relocation. Family three
-remains pending. `birnam-kwr` owns the complete three-family goal; `birnam-bew` remains open
+was still pending at that checkpoint; its implementation and receipts follow. `birnam-kwr` owns the complete three-family goal; `birnam-bew` remains open
 for the prior and continuing small-cost acceptance questions.
 
 
@@ -200,7 +203,7 @@ mixed-sign pairs. Persistent dispatch fallback's roughly 3% median cost repeats
 the earlier run; this remains a possible regression, not a cleared control.
 The region fallback also varies from -14.06% to +7.44%, with a -2.50% median.
 `birnam-bew` remains open for these small costs. These fixture gains do not establish
-whole-program profitability or complete the pending third optimization family.
+whole-program profitability. The third family was still pending at that checkpoint.
 
 ## Family three implementation contract
 
@@ -226,7 +229,7 @@ now pass focused debug/release and full production verification. The native
 kernel differential probe covers 256 ordered physical-copy sequences including
 selector insertion, slot reuse, cycles, dead stores and canaries around storage.
 The existing production boundary probes additionally run the propagated mode.
-Profitability is pending its independent plain-versus-propagated timing matrix.
+The subsequent matrices below measure profitability independently against plain regions.
 The production application runner builds original 74R and current floors, then
 composes two explicitly labelled experimental prefixes with an identical binary
 closure except for `libbirnam_id.dylib`. It measures eval, ordinary collections,
@@ -301,3 +304,28 @@ debug/release and full production checks after removing admission heap work.
 [The installed fallback fixture](../measurements/74s-final-fallback-smoke.json)
 passes through both floors, including mutation, forced lookup fallback, eviction
 and GC.
+
+
+### Final focused matrix
+
+The [final twelve-pair matrix](../measurements/74s-copies-final-timing.json), at
+30,000 calls per sample, passes every host gate. The six mode orderings each occur
+twice. Chained-copy propagation has a -0.16% median incremental time reduction,
+so the earlier small positive medians do not establish a reliable execution gain.
+Repeated-input and argument controls retain identical emitted C in both modes;
+their median reductions are +0.31% and -0.78%. Incremental persistent fallback is
++0.61%. These controls do not show the earlier repeated-input slowdown after the
+admission allocation was removed. The chained candidate's C source is reduced
+from 39,231 to 35,187 bytes; compiler-cost measurements remain in the receipt.
+The pass is bounded and reduces generated native work, but no independent steady
+execution-speed gain is claimed for family three.
+
+Combined region/propagation reductions versus regions off are 54.76% for chains,
+54.66% for repeated inputs and 22.37% for arguments. This confirms the substantial
+family-two fixture gain while keeping the small third-family result separate.
+Two additional application attempts were rejected by interval load
+([first](../measurements/74s-applications-final-rejected.json),
+[second](../measurements/74s-applications-final-rejected-retry.json)). The next
+attempt holds only the authorized rk process paused through a sustained cooldown
+and the full matrix, with a separate pause owner responsible for resuming it in
+all exit paths. Application acceptance remains pending that complete matrix.
