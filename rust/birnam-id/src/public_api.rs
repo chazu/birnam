@@ -394,6 +394,19 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
     }
 }
 
+/// Process-local comparison operands for an optional native declaration. This
+/// does not publish another IdApi entry or call any of these functions.
+pub(crate) fn numeric_functions() -> [usize; 6] {
+    [
+        api_is_smallint as *const () as usize,
+        api_smallint_value as *const () as usize,
+        api_is_exported as *const () as usize,
+        api_import as *const () as usize,
+        api_vtable_of as *const () as usize,
+        api_make_smallint as *const () as usize,
+    ]
+}
+
 fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [

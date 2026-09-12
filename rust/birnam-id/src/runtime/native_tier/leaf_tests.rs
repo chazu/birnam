@@ -10,6 +10,7 @@ use birnam_codegen::{Block, Expr, Statement, portable};
 use core::cell::Cell;
 use std::borrow::Cow;
 mod graph_tests;
+mod numeric_tests;
 
 thread_local! {
     static DECODES: Cell<usize> = const { Cell::new(0) };

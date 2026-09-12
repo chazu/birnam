@@ -42,6 +42,11 @@ cat "$prefix_parent/small-callee.out"
 "$prefix/bin/birnam" scripts/fixtures/native-regions.birnam >"$prefix_parent/native-regions.out"
 grep -Fxq "native-regions: copies, argument identity, replacement, eviction and GC passed" "$prefix_parent/native-regions.out"
 cat "$prefix_parent/native-regions.out"
+"$prefix/bin/birnam" scripts/fixtures/numeric-specialization.birnam >"$prefix_parent/numeric-specialization.out"
+grep -Fxq "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed" "$prefix_parent/numeric-specialization.out"
+cat "$prefix_parent/numeric-specialization.out"
+cc -Iabi/fixtures/idapi-v1 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
+"$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
 
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
 import json

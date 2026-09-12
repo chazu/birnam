@@ -8,6 +8,7 @@ use std::borrow::Cow;
 
 mod c_string;
 pub mod frame_region;
+pub mod numeric_chain;
 pub mod portable;
 pub mod portable_c;
 pub mod recovery_graph;

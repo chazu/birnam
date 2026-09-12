@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Added
 
+- Prelude can declare exact native integer semantics for guarded stackless calls.
+  The floor checks current targets and native API context, preserves allocation
+  and error behavior, and pins the declaring library. Design 74T also adds checked
+  raw numeric-chain kernels; production multi-call integration remains pending.
 - Design 74T adds checked identity-graph recovery through ordinary Id recipes,
   including exact numeric values and shared acyclic aggregates. Construction is
   rooted across GC and revalidates storage and recovery authority before atomic

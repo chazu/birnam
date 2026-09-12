@@ -129,6 +129,9 @@ acceptance remains in progress.
 loop optimization, temporary-object elimination and closure/capture elimination.
 Work is in progress, beginning with checked identity-graph recovery and rooted
 materialization. These prerequisites do not complete any optimizing family.
+The recovery foundation and native numeric declarations/guarded boxed calls are
+verified. Raw integer-chain kernels pass differential checks; production chain
+integration remains next, followed by loop and allocation-elimination consumers.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

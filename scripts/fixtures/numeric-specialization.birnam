@@ -1,0 +1,15 @@
+"Actual Prelude arithmetic through a hot portable, stackless body.";
+let source := [:a :b | let sum := [a + b]; let product := [sum * b]; [product - a]];
+let numeric := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+[[numeric isError] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];
+[256 timesRepeat: [|
+  [[[numeric value: 11 value: 3] = 31] ifTrue: [| nil] ifFalse: [| [OS exit: 2]]]]];
+[[[numeric value: 1.5 value: 2] = 5.5] ifTrue: [| nil] ifFalse: [| [OS exit: 3]]];
+[[[numeric value: 9223372036854775807 value: 1] isError] ifTrue: [| nil] ifFalse: [| [OS exit: 4]]];
+[[[-9223372036854775808 mod: -1] = 0] ifTrue: [| nil] ifFalse: [| [OS exit: 5]]];
+let boxed := 11;
+[[[boxed + 0] == boxed] ifTrue: [| [OS exit: 6]] ifFalse: [| nil]];
+[Codegen evictMaterializations];
+[System gc];
+[[[numeric value: 11 value: 3] = 31] ifTrue: [| nil] ifFalse: [| [OS exit: 7]]];
+[System println: "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed"];

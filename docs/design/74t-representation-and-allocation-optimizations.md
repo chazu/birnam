@@ -101,6 +101,67 @@ size and preparation cost, plus paired cold/warm/steady timings. Host qualificat
 uses the existing thresholds. A noisy host can delay qualified timing but does
 not justify dropping implementation or correctness obligations.
 
+## Numeric implementation preparation
+
+Prelude now supplies an [optional native declaration](../../abi/native-numeric-semantics-v1.md)
+for its exact add, subtract, multiply, divide and remainder implementations.
+The declaration is an unsafe native-module contract, comparable to native Method
+and trace-hook contracts. Arbitrary Id annotations cannot attest opaque native
+code. The floor queries the Method's actual resident image, checks that the
+declaration is in that same image, and retains a loader reference for its lifetime.
+There is no IdApi field or Method calling-convention change, and modules without
+declarations continue normally.
+
+The declaration also checks the initialized floor's Integer identity and the
+current API functions used for type checks, payload reads, ErrorVt imports and
+boxing. Each use revalidates this context. An instrumented/copied API table can
+withdraw optimization; restoring its functions can restore eligibility. This
+prevents silently bypassing a native boxing or import wrapper.
+
+The first production consumer specializes a successful boxed numeric call inside
+the existing stackless synchronous boundary. It retains every ordinary lookup,
+Frame transition and result allocation. Both actual operands must have canonical
+Integer storage. The ErrorVt symbol must already exist so its first interning is
+not omitted. Current ErrorVt rebinding preserves the original argument identity;
+overflow, zero division and other operands invoke the original Method. Each
+method becomes eligible for declaration discovery after 64 calls, with at most
+256 cached method records. A selected summary retains its image through GC even
+if its record is evicted.
+
+`numeric_chain::Plan` separately compiles bounded raw integer dataflow: up to
+64 inputs and 32 operations. The C kernel retains all intermediate raw results
+and returns the first failing operation without allocating or invoking Id.
+Checked range predicates avoid C signed-overflow and division undefined behavior,
+including MIN remainder -1. Differential tests compile 96 real TinyCC kernels
+and compare 49,152 executions with the Prelude's i128 arithmetic rule, checking
+partial results and surrounding canaries.
+
+These raw kernels are not yet connected to production multi-call execution.
+The boxed-call consumer does not establish completion of unboxed arithmetic.
+
+### Next: connect a whole numeric chain
+
+Derive straight-line call chains from canonical lowering, preserving aliases and
+physical input locations. Resolve each admitted numeric implementation by its
+actual current target, then instantiate and compile the raw plan only for hot
+code. Record every original PC, index-box allocation, numeric-result allocation
+and observation boundary. Literal and alias identities remain explicit.
+
+The initial production chain should retain existing Frames and result boxes.
+Within a proven bounded interval without observation or collection, compute the
+raw chain and reuse its intermediate raw results while the ordinary driver
+publishes the original boxed results and transitions in order. This avoids making
+Frame reconstruction or allocation elimination prerequisites for arithmetic
+specialization. Admission must cover all Machine methods used in that interval,
+lookup/implementation dependencies and the complete allocation budget, including
+PC tokens and publication operands. No callback or collection may invalidate a
+precomputed value without discarding the remaining raw results and executing the
+canonical operations. All errors and unsupported paths retain baseline behavior.
+
+Prove forced withdrawal at each operation, exact allocation/identity/effect parity,
+current target replacement and continuation behavior before performance
+acceptance. Do not promote a compiler-only kernel as this production consumer.
+
 ## Progress
 
 - Implementation contracts checked against current lowering, numeric primitives,
@@ -119,6 +180,15 @@ not justify dropping implementation or correctness obligations.
   The initial run passed: nine new focused tests plus the prior dense-recovery
   test in each profile, and 479 workspace tests with 15 diagnostic tests ignored.
   Installed-prefix, image, cold-archive and relocation checks also passed.
-- No remaining optimization family is complete yet. Next: guarded implementation
-  summaries and numeric chain lowering, with allocation observations preserved;
-  then loop analysis and the two allocation-elimination consumers.
+- Native implementation declarations, guarded boxed numeric calls and raw integer
+  kernel generation are implemented. Their tests include current target changes,
+  observing lookup, actual collection at result allocation, operand mutation
+  during that collection, native image pinning and API-wrapper rejection.
+  `python3 scripts/recovery-graphs.py --numeric --verify` records this checkpoint
+  separately in `docs/measurements/74t-numeric-preparation.json`.
+  Debug/release checks and full production verification passed: 487 workspace
+  tests, 15 ignored diagnostics, installed Prelude arithmetic and API-context
+  probes, image/lifetime, cold archives and relocation. No timings are claimed.
+- No remaining optimization family is complete yet. Next: connect the raw chain
+  kernels to production execution as above, then implement loop analysis and the
+  two allocation-elimination consumers.

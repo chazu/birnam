@@ -1,6 +1,8 @@
 //! Thin pass-through to the platform dynamic loader.
 
 use core::ffi::{c_char, c_int, c_void};
+mod numeric;
+pub(crate) use numeric::NumericSummary;
 
 unsafe extern "C" {
     #[link_name = "dlopen"]

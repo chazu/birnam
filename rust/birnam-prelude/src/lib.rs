@@ -19,6 +19,54 @@ use std::{env, str};
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
 
+/// Optional native implementation declaration, independent of selector names.
+/// See abi/native-numeric-semantics-v1.md. This pure query never enters Id.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_numeric_semantics_v1(
+    method: *const c_void,
+    integer_vtable: Oop,
+    functions: *const usize,
+) -> u32 {
+    let Some(runtime) = RUNTIME.get() else {
+        return 0;
+    };
+    if functions.is_null() {
+        return 0;
+    }
+    let api = unsafe { &*(runtime.api as *const IdApi) };
+    // A module initialized against another floor cannot attest this floor's
+    // canonical operands or allocation/error behavior.
+    if api.smallint_vt != integer_vtable
+        || unsafe { core::slice::from_raw_parts(functions, 6) }
+            != [
+                api.isSmallInt as usize,
+                api.smallIntValue as usize,
+                api.isExported as usize,
+                api.import as usize,
+                api.vtableOf as usize,
+                api.mkSmallInt as usize,
+            ]
+    {
+        return 0;
+    }
+    declared_numeric_operator(method)
+}
+
+fn declared_numeric_operator(method: *const c_void) -> u32 {
+    for (implementation, code) in [
+        (integer_add as birnam_abi::Method, 1),
+        (integer_sub as birnam_abi::Method, 2),
+        (integer_mul as birnam_abi::Method, 3),
+        (integer_div as birnam_abi::Method, 4),
+        (integer_mod as birnam_abi::Method, 5),
+    ] {
+        if method == implementation as *const c_void {
+            return code;
+        }
+    }
+    0
+}
+
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
@@ -1546,6 +1594,32 @@ mod tests {
     struct FlushProbe {
         bytes: Vec<u8>,
         flushed: bool,
+    }
+
+    #[test]
+    fn numeric_declarations_name_exact_implementations_and_reject_another_floor() {
+        use super::*;
+        for (method, code) in [
+            (integer_add as birnam_abi::Method, 1),
+            (integer_sub, 2),
+            (integer_mul, 3),
+            (integer_div, 4),
+            (integer_mod, 5),
+        ] {
+            assert_eq!(declared_numeric_operator(method as *const c_void), code);
+            assert_eq!(
+                unsafe {
+                    birnam_native_numeric_semantics_v1(
+                        method as *const c_void,
+                        ptr::null_mut(),
+                        ptr::null(),
+                    )
+                },
+                0
+            );
+        }
+        assert_eq!(declared_numeric_operator(float_add as *const c_void), 0);
+        assert_eq!(declared_numeric_operator(ptr::null()), 0);
     }
 
     impl Write for FlushProbe {

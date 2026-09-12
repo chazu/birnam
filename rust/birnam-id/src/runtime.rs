@@ -39,6 +39,7 @@ mod generated_deopt_experiment;
 mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
+mod numeric;
 mod recovery;
 #[cfg(all(test, target_os = "macos"))]
 mod v2_control_tests;
@@ -205,6 +206,7 @@ pub(crate) struct Runtime {
     lookup_guard_cache: Cell<(u64, bool)>,
     dispatch_cache: dispatch_cache::Cache,
     native_tier: core::cell::RefCell<native_tier::Registry>,
+    numeric: core::cell::RefCell<numeric::Registry>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
@@ -386,6 +388,7 @@ impl Runtime {
             lookup_guard_cache: Cell::new((u64::MAX, false)),
             dispatch_cache: dispatch_cache::Cache::default(),
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
+            numeric: core::cell::RefCell::new(numeric::Registry::default()),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
@@ -3216,6 +3219,9 @@ impl Runtime {
         let _boundary = self.enter_stackless_boundary(owner, capability)?;
         let _scope = self.enter_stackless_scope(capability);
         Ok(self.enter(|| {
+            if let Some(result) = self.try_numeric_call(method, receiver, arguments) {
+                return result;
+            }
             let args = if arguments.is_empty() {
                 core::ptr::null()
             } else {
