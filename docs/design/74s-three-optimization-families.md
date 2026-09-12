@@ -231,3 +231,22 @@ The production application runner builds original 74R and current floors, then
 composes two explicitly labelled experimental prefixes with an identical binary
 closure except for `libbirnam_id.dylib`. It measures eval, ordinary collections,
 portable collections and cold materialization separately from kernel fixtures.
+
+
+### Third-family profitability iteration
+
+The [first qualified eight-pair matrix](../measurements/74s-copies-initial-timing.json)
+found median plain-to-propagated reductions of +1.90% for chained copies, -3.37%
+for repeated-input copies and -0.19% for repeated arguments. The cold compiler
+cost fell, but that does not justify regressing the repeated-input workload.
+The revised policy admits propagation only when an ordered copy reads a previously
+written slot or overwrites a prior destination. Straight repeated-input copies
+and ordinary argument staging retain the plain region kernel. The general pass
+remains differential-tested for all copy shapes. Retained-policy measurements
+and the production application comparison follow separately; these first results
+are not presented as acceptance of the unrestricted variant.
+
+[Selective-policy correctness](../measurements/74s-copies-selective-correctness.json)
+passes focused debug/release checks and full production verification. Production
+application prefixes have built successfully and their binary comparison confirms
+that only the floor differs.

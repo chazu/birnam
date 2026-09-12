@@ -33,6 +33,25 @@ pub struct Plan {
 }
 
 impl Plan {
+    /// Straight repeated-input stores were not profitable in the isolated
+    /// runtime matrix. Admit propagation when it can remove a dependency on a
+    /// prior copy or an overwritten destination, rather than just reuse reads.
+    pub fn benefits_from_propagation(&self) -> bool {
+        let mut written = vec![false; self.slot_count as usize];
+        for (index, &(destination, source)) in self.copies.iter().enumerate() {
+            if let Some((after, slot, _)) = &self.selector_store
+                && *after == index
+            {
+                written[*slot as usize] = true;
+            }
+            if written[source as usize] || written[destination as usize] {
+                return true;
+            }
+            written[destination as usize] = true;
+        }
+        false
+    }
+
     /// Copy propagation and dead-store elimination over physical identities.
     /// Preloading the surviving inputs makes parallel final stores safe even
     /// when the original sequence reuses slots or contains copy cycles.
@@ -282,6 +301,7 @@ mod tests {
             assert_eq!(logical.blocks.len(), 2);
             for pc in 0..2 {
                 let plan = compile(&logical, &layout, pc).unwrap();
+                assert_eq!(plan.benefits_from_propagation(), chained);
                 assert_eq!(plan.emit(false).1, plan.copies.len());
                 assert_eq!(
                     plan.emit(true).1,

@@ -223,7 +223,7 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                     regions::LOADS.get(),
                     if mode == "off" {
                         0
-                    } else if mode == "propagate" || (mode == "reuse" && !chained) {
+                    } else if (mode == "propagate" && chained) || (mode == "reuse" && !chained) {
                         16
                     } else {
                         800
@@ -405,7 +405,7 @@ fn native_region_timing() {
         regions::LOADS.get(),
         if !eligible {
             0
-        } else if mode == "propagate" || (mode == "reuse" && case != "chain") {
+        } else if (mode == "propagate" && case == "chain") || (mode == "reuse" && case != "chain") {
             pcs * count
         } else {
             plain_loads * count
@@ -538,7 +538,7 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
                 regions::LOADS.get(),
                 if mode == "off" {
                     0
-                } else if mode == "plain" {
+                } else if mode == "plain" || mode == "propagate" {
                     40
                 } else {
                     8

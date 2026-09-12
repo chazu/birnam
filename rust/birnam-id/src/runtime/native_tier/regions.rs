@@ -12,7 +12,7 @@ pub(super) fn emit(plan: &frame_region::Plan) -> (Vec<u8>, usize) {
     let propagate = true;
     #[cfg(test)]
     let propagate = propagate && PROPAGATE.get();
-    if propagate {
+    if propagate && plan.benefits_from_propagation() {
         return plan.emit_propagated();
     }
     let reuse = false;
