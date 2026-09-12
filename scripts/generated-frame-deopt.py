@@ -14,6 +14,8 @@ import platform
 import subprocess
 import sys
 
+from compatibility_authority import unchanged_authority
+
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "43935092"
 CASES = {
@@ -72,7 +74,7 @@ def main():
     contracts = {}
     for name in CONTRACTS:
         current = (ROOT / name).read_bytes()
-        if command(["git", "show", f"{BASELINE}:{name}"]) != current:
+        if not unchanged_authority(name, current, command(["git", "show", f"{BASELINE}:{name}"])):
             raise RuntimeError(f"compatibility authority changed: {name}")
         contracts[name] = digest(current)
     if command(["git", "diff", BASELINE, "--name-only", "--", "abi/fixtures"]).strip():

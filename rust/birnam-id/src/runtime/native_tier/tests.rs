@@ -1,5 +1,6 @@
 use super::*;
 use crate::dispatch::build_bootstrap;
+use crate::execution::{FrameDescriptorV2Spec, probe_spec};
 use crate::registration::{BirnamResumableRegistrationV2, CARRIER_VERSION_V2, PREPARE_V1};
 use crate::runtime::{ScopedOopRootGuard, current_thread_token};
 use birnam_artifact::code_binding_inventory;
@@ -21,6 +22,12 @@ enum Case {
     FailedCompile,
     DescriptorMismatch,
     Abort,
+    NewSymbol,
+    Export,
+    ReplaceTarget,
+    RegisterRead,
+    RegisterWrite,
+    RegisterLookup,
 }
 
 #[derive(Default)]
@@ -231,6 +238,28 @@ unsafe extern "C" fn effect(_: Oop, args: *const Oop, count: usize) -> Oop {
                     crate::runtime::CodeGenerationRetirement::Deferred
                 );
             }
+            Case::NewSymbol | Case::Export | Case::ReplaceTarget => {
+                let before = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
+                match CASE.get() {
+                    Case::NewSymbol => {
+                        runtime.intern(b"unrelatedNativeTierSymbol74N").unwrap();
+                    }
+                    Case::Export => {
+                        runtime
+                            .export(b"unrelatedNativeTierExport74N", runtime.canonical().nil)
+                            .unwrap();
+                    }
+                    Case::ReplaceTarget => {
+                        runtime.add_method(
+                            runtime.globals().object_vt,
+                            runtime.intern(b"tierFinish:alias:").unwrap(),
+                            changed_finish,
+                        );
+                    }
+                    _ => unreachable!(),
+                }
+                assert!(unsafe { (*runtime.state.get()).vtables.mutation_epoch() } > before);
+            }
             Case::Nested if !NESTED.get() => {
                 NESTED.set(true);
                 let receiver = runtime
@@ -275,6 +304,63 @@ unsafe extern "C" fn finish(_: Oop, args: *const Oop, count: usize) -> Oop {
         assert_eq!(left, right);
         runtime.make_integer(runtime.integer_value(left) + runtime.integer_value(right))
     })
+}
+
+unsafe extern "C" fn changed_finish(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    // Preserve the effect/alias observation and change the current send's answer.
+    unsafe { finish(receiver, args, count) };
+    with_active(|runtime| runtime.make_integer(99))
+}
+
+fn check_registration_dependency(runtime: &Runtime, case: Case) {
+    use crate::execution::{DescriptorIdentity, SemanticRegistrationV1};
+    let method = match case {
+        Case::RegisterRead => crate::execution::machine_oop_at as Method,
+        Case::RegisterWrite => crate::execution::machine_oop_at_put as Method,
+        Case::RegisterLookup => crate::dispatch::vtable_lookup_method as Method,
+        _ => return,
+    };
+    let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+        identity: DescriptorIdentity {
+            implementation: 749,
+            generation: 749,
+            source_map: 749,
+        },
+        program_counter_count: 1,
+        driver_argument_count: 0,
+        call_sites: Vec::new(),
+        step_method: replacement,
+        edges: vec![],
+        ..probe_spec(3, 1)
+    })
+    .unwrap();
+    let before = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
+    let registration = runtime
+        .register_stackless_resumable(SemanticRegistrationV1::new(method, descriptor, 1, 0, 1))
+        .unwrap();
+    assert_eq!(
+        unsafe { (*runtime.state.get()).vtables.mutation_epoch() },
+        before
+    );
+    let key = runtime.native_tier.borrow().records.keys().next().copied();
+    if let Some(key) = key {
+        assert!(
+            runtime.native_tier.borrow().records[&key]
+                .candidate
+                .is_some()
+        );
+        assert!(select(runtime, MACHINE.get(), key, 0).is_none());
+        assert!(runtime.native_tier.borrow().records[&key].disabled);
+    }
+    runtime
+        .unregister_unpublished_stackless_resumable(registration)
+        .unwrap();
+    assert_eq!(
+        unsafe { (*runtime.state.get()).vtables.mutation_epoch() },
+        before
+    );
+    // Restoring the dependency does not resurrect a withdrawn candidate. The
+    // next ordinary invocation below must run all three baseline PCs correctly.
 }
 
 fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
@@ -463,10 +549,18 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
     HITS.set(0);
     DECODES.set(0);
     OBS.set(Observations::default());
+    check_registration_dependency(runtime, case);
     CASE.set(case);
     let answer = runtime.enter(|| runtime.send_slice(receiver, selector, &[receiver, input]));
     let value = runtime.integer_value(answer);
-    assert_eq!(value, if case == Case::Collection { 44 } else { 28 });
+    assert_eq!(
+        value,
+        match case {
+            Case::Collection => 44,
+            Case::ReplaceTarget => 99,
+            _ => 28,
+        }
+    );
     OBS.with_borrow(|obs| {
         assert_eq!(obs.effects, ["double", "effect", "finish"]);
         // Call edges commit the successor PC before invoking the native
@@ -485,9 +579,18 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
         assert_eq!(
             counts,
             match case {
-                Case::Canonical | Case::Collection => (3, 0),
+                Case::Canonical
+                | Case::Collection
+                | Case::ReplaceActive
+                | Case::NewSymbol
+                | Case::Export
+                | Case::ReplaceTarget => (3, 0),
                 Case::Nested => (6, 0),
-                Case::FailedCompile | Case::DescriptorMismatch => (0, 3),
+                Case::FailedCompile
+                | Case::DescriptorMismatch
+                | Case::RegisterRead
+                | Case::RegisterWrite
+                | Case::RegisterLookup => (0, 3),
                 Case::Eviction => (1, 2),
                 _ => (2, 1),
             }
@@ -510,11 +613,38 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
     assert!(runtime.retire_stackless_code_generation(101));
     runtime.native_tier.borrow_mut().prune();
     assert!(runtime.native_tier.borrow().records.is_empty());
+    let marker = if matches!(
+        case,
+        Case::NewSymbol
+            | Case::Export
+            | Case::ReplaceTarget
+            | Case::RegisterRead
+            | Case::RegisterWrite
+            | Case::RegisterLookup
+    ) {
+        "NATIVE_TIER_REVALIDATION_CASE"
+    } else {
+        "NATIVE_TIER_CASE"
+    };
     println!(
-        "NATIVE_TIER_CASE {{\"case\":\"{case:?}\",\"optimized\":{optimized},\"answer\":{value},\"entries\":{},\"baseline_entries\":{},\"lookup_effects\":{},\"read_override_effects\":{}}}",
+        "{marker} {{\"case\":\"{case:?}\",\"optimized\":{optimized},\"answer\":{value},\"entries\":{},\"baseline_entries\":{},\"lookup_effects\":{},\"read_override_effects\":{}}}",
         counts.0, counts.1, observed.2, observed.3
     );
     observed
+}
+
+#[test]
+fn revalidates_actual_dependencies_without_caching_ordinary_targets() {
+    for case in [
+        Case::NewSymbol,
+        Case::Export,
+        Case::ReplaceTarget,
+        Case::RegisterRead,
+        Case::RegisterWrite,
+        Case::RegisterLookup,
+    ] {
+        assert_eq!(run(case, false), run(case, true), "{case:?}");
+    }
 }
 
 #[test]

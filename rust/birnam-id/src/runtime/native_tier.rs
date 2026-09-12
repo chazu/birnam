@@ -31,7 +31,6 @@ struct Record {
     pending: Option<Rc<Prepared>>,
     candidate: Option<Rc<Candidate>>,
     visits: usize,
-    epoch: Option<u64>,
     disabled: bool,
 }
 
@@ -120,7 +119,6 @@ impl Registry {
                 pending: Some(prepared),
                 candidate: None,
                 visits: 0,
-                epoch: None,
                 disabled: false,
             },
         );
@@ -222,10 +220,11 @@ pub(super) fn select(
         return None;
     }
     let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
-    if epoch == u64::MAX
-        || record.epoch.is_some_and(|previous| previous != epoch)
-        || !runtime.guarded_slot_access_eligible(machine)
-    {
+    // The slot guard revalidates canonical Machine/lookup bindings after
+    // dictionary mutation, and checks receiver/registration state every time.
+    // Ordinary targets remain late-bound sends, so unrelated epoch changes do
+    // not invalidate this descriptor's PC-specialized body.
+    if epoch == u64::MAX || !runtime.guarded_slot_access_eligible(machine) {
         record.disabled |= record.candidate.is_some();
         // A selected activation owns its own Rc, including during nested
         // entry. Withdrawing admission never frees executing native code.
@@ -239,7 +238,6 @@ pub(super) fn select(
     if record.candidate.is_none() {
         let prepared = record.pending.take()?;
         record.candidate = prepared.compile().map(Rc::new);
-        record.epoch = Some(epoch);
     }
     let candidate = record.candidate.as_ref()?.clone();
     #[cfg(test)]

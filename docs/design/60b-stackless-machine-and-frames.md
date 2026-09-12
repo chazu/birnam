@@ -49,6 +49,8 @@ and uses ordinary IdApi sends to this frozen, primitive-backed S1 protocol:
 | `callSite:` | Validate an immutable Call call-site descriptor, install its caller continuation PC, then publish its expanded CallAction. |
 | `tailCallSite:` | Validate an immutable TailCall call-site descriptor, then publish its expanded TailCallAction. |
 | `returnAt:` | Validate an Oop result slot, then publish ReturnAction. |
+| `suspendAt:continueAt:` | Stage the matching result-bearing Call edge and publish SuspendAction; commit when resumed with its answer (60P). |
+| `captureAt:continueAt:` | Stage the matching Call edge and publish CaptureAction; restore supplies its answer and commits the edge (60P). |
 | `abortAt:` | Validate an Oop reason slot, then publish AbortAction. |
 
 Descriptor layout v2 preserves these publisher meanings. Because Continue and
@@ -56,10 +58,11 @@ Call install their successor PC before the driver has copied slot-referenced
 action operands or committed colored-slot ownership, their checked publishers
 also create a short Runtime-private pending-transition record. The Frame keeps
 tracing its predecessor root-state PC until the driver validates the exact
-returned action and commits 60F's edge plan. Further Frame mutation or action
-publication while pending fails before touching storage. This adds no selector
-or StepAction field; [60F §10](60f-resumable-compiler-lowering.md) defines the
-ordering.
+returned action and commits 60F's edge plan. A second edge cannot be staged
+while one is pending. [60P](60p-v2-control-completion.md) permits converting the
+same pending Call to Suspend or Capture with the exact same result slot and
+successor PC; resume/restore commits it once. No StepAction field is added.
+[60F §10](60f-resumable-compiler-lowering.md) defines the transfer ordering.
 
 A Continue PC may have multiple statically admitted successors. Its descriptor
 edges form one contiguous group ordered by target PC; `continueAt:` must select
@@ -71,9 +74,8 @@ Slot, call-site, and program-counter operands are nonnegative SmallInts. The
 StepMethod receives its current program counter as the descriptor-declared
 resume token, so S1 exposes no separate program-counter getter or setter. Each
 operation performs its own complete validation before mutation, so there is no
-standalone `validateSlot:` message. S1 and S2 expose only Oop slots; raw slots
-remain Runtime-private unless later compiler evidence justifies a separately
-reviewed protocol addition. A descriptor declaring no resume-token argument is
+standalone `validateSlot:` message. Frame slots are all Oops; layout V1 and its
+private raw Frame slots were removed by 60P. A descriptor declaring no resume-token argument is
 therefore valid only for a single-entry StepMethod that never needs to inspect
 its current PC; a multi-PC StepMethod declares the one-argument form.
 
@@ -267,16 +269,13 @@ Every resumable implementation has an immutable FrameDescriptor:
       program-counter range
       slot count
       Oop-slot bitmap
-      raw-slot metadata
       return-slot policy
       call-site descriptor table
       source-map identity
 
-S1 hand-written StepMethods use descriptor layout v1. In layout v1 the Oop-slot
-bitmap is static: every Oop slot is traced for the complete lifetime of a live
-Frame.
-
-S2 compiler artifacts use descriptor layout v2. Layout v2 adds:
+As of [60P](60p-v2-control-completion.md), descriptor layout v2 is the only
+Frame representation, including handwritten StepMethods. Layout v1 and raw
+Frame slots have been removed. V2 provides:
 
     entry receiver slot and contiguous entry-argument range
     per-PC root bitmap table
@@ -449,13 +448,13 @@ backed objects trace their Rust-owned state:
 4. FrameView traces its owning Machine through its declared Oop field and does
    not trace frame storage independently.
 
-For each Frame, tracing consults the immutable FrameDescriptor. Layout v1 marks
-every Oop slot. Layout v2 marks only the Oop slots selected by the Frame's
+For each Frame, tracing consults the immutable V2 FrameDescriptor and marks
+only the Oop slots selected by the Frame's
 committed root-state PC. During action publication that root-state PC may
 temporarily remain at the predecessor after `continueAt:` or `callSite:` has
 installed the semantic successor PC; the pending-transition record prevents
-StepMethod re-entry or further Frame mutation in that interval. Raw slots are
-never interpreted as Oop candidates.
+StepMethod re-entry in that interval. Suspension and capture retain this
+pending state until a supplied answer commits the Call edge (60P).
 
 During a layout-v2 edge transition, the driver first validates the returned
 action against the pending record and roots every copied action operand it still
@@ -469,11 +468,10 @@ successor state.
 
 The private Rust substrate implements this order as of 2026-08-22. Layout-v2
 descriptors own dense root maps, validated canonical edge plans, and maximum-
-copy-sized scratch reserved when the Frame is pushed. Direct layout-v1 PC
-mutation rejects a layout-v2 Frame; only begin/commit edge operations can move
-its semantic and root-state PCs. Artifact registration does not expose this
-substrate until canonical descriptor admission and generated-code integration
-are connected.
+copy-sized scratch reserved when the Frame is pushed. Only begin/commit edge
+operations can move its semantic and root-state PCs. Canonical descriptor
+admission and generated-code integration use this substrate; 60P completes
+suspend/capture publication and removes the old direct-PC mutation path.
 
 The Runtime root provider is limited to scoped host ownership that is not
 already represented by a reachable heap Oop: a Machine while a host drive is in

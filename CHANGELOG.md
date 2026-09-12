@@ -10,6 +10,25 @@ loader ports are complete.
 
 ### Added
 
+- V2 Frames support suspension and one-shot capture/restore through ordinary
+  Machine operations (Design 60P). Resume commits the pending Call edge, including
+  parallel copies, cleared slots and precise successor roots. Frame layout V1
+  and raw Frame slots are removed; handwritten probes now use genuine V2 layouts.
+  Public IdApi/Method ABIs and canonical descriptor bytes are unchanged.
+- Design 74O's test-only feasibility experiments reconstruct an absent callee
+  using production compiler layouts, consume an Id-authored recovery recipe,
+  and test identity, native observation, GC and continuation boundaries.
+  Debug/release and full verification pass. V2 continuation storage works in
+  the bounded probe; the publication gap found there is resolved by 60P.
+  No general reconstruction admission or performance benefit is claimed.
+- Design 74N repeats isolated native-tier testing after dependency revalidation.
+  Eighteen paired cases and increased native coverage pass; seven controlled
+  timing groups find no independent speedup beyond variation and measure about
+  0.30–0.35 ms extra warmup cost in both chain sizes.
+- Design 74M's focused performance runner isolates native-tier execution,
+  compilation and memory costs from dispatch changes. Seven controlled pairs
+  find no independent speedup beyond variation; separate diagnostics identify
+  unused cold preparation and invalidation caused by unrelated symbol interning.
 - Eligible portable Blocks can use runtime-owned native PC entries and recover
   through their original active Frame after invalidation (Design 74K).
   Ordinary staging and registration remain unchanged. Native code stays alive
@@ -103,6 +122,10 @@ loader ports are complete.
 
 ### Fixed
 
+- Native-tier admission revalidates its actual Machine/lookup dependencies after
+  dictionary mutation (Design 74N). Unrelated symbols, exports and ordinary method
+  replacement retain valid native entries; real guard changes still resume the
+  original Frame through its baseline. IdApi and language semantics are unchanged.
 - Stdlib boot regained the ~10 ms that the PEG pattern-snapshot tables and
   per-vtable method indexes had added: parse-local PEG tables now hash
   integer keys with an address hasher, and method dictionaries of at most 16

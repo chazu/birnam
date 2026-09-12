@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 
+from compatibility_authority import unchanged_authority
+
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "5e242e70"
 CLIENT = "scripts/fixtures/deopt-public-api.c"
@@ -48,7 +50,7 @@ def main():
     for name in AUTHORITIES:
         current = (ROOT / name).read_bytes()
         baseline = subprocess.check_output(["git", "show", f"{BASELINE}:{name}"], cwd=ROOT)
-        if current != baseline:
+        if not unchanged_authority(name, current, baseline):
             raise RuntimeError(f"compatibility authority changed: {name}")
         authorities[name] = digest(ROOT / name)
     if run(["git", "diff", BASELINE, "--name-only", "--", "abi/fixtures"]).strip():

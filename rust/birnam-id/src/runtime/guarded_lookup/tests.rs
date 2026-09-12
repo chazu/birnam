@@ -1,9 +1,7 @@
 use super::*;
 use crate::dispatch::build_bootstrap;
-use crate::execution::{
-    DescriptorIdentity, FRAME_LAYOUT_VERSION_V1, FrameDescriptor, FrameDescriptorSpec,
-    SemanticRegistrationV1, SlotKind,
-};
+use crate::execution::{DescriptorIdentity, FrameDescriptor, SemanticRegistrationV1};
+use crate::execution::{FrameDescriptorV2Spec, probe_spec};
 use crate::runtime::with_active;
 use core::cell::{Cell, RefCell};
 use std::sync::Arc;
@@ -186,18 +184,18 @@ unsafe extern "C" fn lookup_step(machine: Oop, _: *const Oop, count: usize) -> O
 }
 
 fn descriptor() -> Arc<FrameDescriptor> {
-    FrameDescriptor::validate(FrameDescriptorSpec {
-        layout_version: FRAME_LAYOUT_VERSION_V1,
+    FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
         identity: DescriptorIdentity {
             implementation: 700,
             generation: 701,
             source_map: 0,
         },
-        slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
         program_counter_count: 1,
         driver_argument_count: 0,
         step_method: lookup_step,
         call_sites: Vec::new(),
+        edges: vec![],
+        ..probe_spec(2, 1)
     })
     .unwrap()
 }

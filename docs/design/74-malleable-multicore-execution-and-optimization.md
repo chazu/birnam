@@ -41,6 +41,23 @@
 > 74K/74L gains are inconclusive. All compatibility and full-prefix gates pass.
 > This completes the first production same-Frame tier; general inlining,
 > unboxing, 74H read caching and multicore execution remain unimplemented or deferred.
+> [74M](74m-native-tier-performance-isolation.md) subsequently isolates the
+> native tier: seven controlled pairs find no independent speedup beyond
+> variation, while the smaller chain's warmup costs 420 us more. Coverage is
+> limited, and an unrelated new interned symbol permanently withdraws a warmed
+> candidate. [74N](74n-native-tier-dependency-revalidation.md) implements precise
+> dependency revalidation; correctness and coverage checks pass. Its seven-group
+> timing repeat still finds no independent execution or memory benefit beyond
+> variation, with approximately 0.30–0.35 ms extra warmup cost in both chain sizes.
+> Deferring unused candidate preparation is the next proposed bounded experiment.
+> [74O](74o-deoptimization-architectural-fit.md) instead investigates architectural
+> fit at the user's request. Bounded missing-Frame reconstruction, Id-authored
+> recovery policy and continuation storage pass in debug/release and full
+> verification. Counterexamples establish identity/effect/observation limits;
+> [60P](60p-v2-control-completion.md) completes V2 capture/suspend publication
+> and removes Frame layout V1. Production recovery admission remains a gap.
+> The next recommended architectural step is a checked Id-facing recovery
+> contract. Hotness tuning remains a separate performance follow-up.
 
 ## 1. Decision criteria and direction
 

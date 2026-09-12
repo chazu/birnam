@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tempfile
 
+from compatibility_authority import unchanged_authority
+
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "5e242e70"
 SIZES = (16384, 65536)
@@ -106,7 +108,7 @@ def main():
     prefixes = {name: getattr(args, name).resolve() for name in ("baseline", "candidate")}
     authority = {}
     for name in AUTHORITIES:
-        if (ROOT / name).read_bytes() != subprocess.check_output(["git", "show", f"{BASELINE}:{name}"], cwd=ROOT):
+        if not unchanged_authority(name, (ROOT / name).read_bytes(), subprocess.check_output(["git", "show", f"{BASELINE}:{name}"], cwd=ROOT)):
             raise RuntimeError(f"compatibility authority changed: {name}")
         authority[name] = sha(ROOT / name)
     receipt = {"schema": "birnam-internal-guarded-sends-v1", "design": "74J", "status": "pending",

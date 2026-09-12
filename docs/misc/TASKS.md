@@ -82,6 +82,32 @@ above-spread regression; the larger, fallback and control rows and incremental
 74K/74L gains remain inconclusive. The first production same-Frame tier is
 implemented; general inlining, unboxing, read caching and multicore work remain
 outside this slice. The floor gains about 603 KB from the native compiler.
+[Design 74M](../design/74m-native-tier-performance-isolation.md)
+(`birnam-native-tier-performance-onx`) isolates the tier with identical host/module
+binaries. Seven controlled pairs find no independent speedup beyond variation,
+including sustained native execution; the smaller chain's warmup costs 420 us
+more. Ordinary compiler/collection probes never enter the tier. Diagnostics
+confirm that interning a new unrelated symbol permanently withdraws a warmed
+candidate, and cold bodies pay for candidate C generation they never compile.
+[Design 74N](../design/74n-native-tier-dependency-revalidation.md)
+(`birnam-native-tier-revalidation-7qd`) implements precise dependency revalidation.
+Eighteen paired cases, production verification and coverage diagnostics pass.
+Seven controlled timing groups pass after an approved temporary `rk` pause and
+verified resume. No execution or memory difference exceeds variation; both
+chain warmups cost about 0.30–0.35 ms more with the tier enabled. Native-tier
+performance remains unproven. Deferring unused candidate preparation until a
+body becomes hot is the next proposed bounded experiment.
+[Design 74O](../design/74o-deoptimization-architectural-fit.md)
+(`birnam-deopt-architectural-fit-zq0`) completes the subsequent user-requested
+architectural-fit investigation. Five test-only probes pass in debug/release;
+full verification passes with 453 Rust tests and 11 diagnostic tests ignored.
+Missing-callee reconstruction and an Id-authored recovery policy work within
+the tested bounds. Identity/effect counterexamples impose semantic limits;
+[Design 60P](../design/60p-v2-control-completion.md) (`birnam-3jm`) completes the
+subsequently requested V2 suspend/capture/resume implementation and removes Frame
+layout V1. Production reconstruction admission remains an implementation gap.
+A checked Id-facing recovery contract is the next architectural step before
+general inlining; hotness tuning remains a separate follow-up.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

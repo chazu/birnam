@@ -1,0 +1,33 @@
+// 74M diagnostic follow-up: create and exercise the harness before admission.
+[System load: "modules/time.birnam"];
+[System load: "modules/os.birnam"];
+let plain := [:input |
+  let first := [input + 1];
+  let second := [first + 2];
+  [second + 3]];
+let target := [plain asCell];
+let answer := [0 asCell];
+let samples := [#[] asCell];
+let batch := [|
+  [4096 timesRepeat: [| [answer set: [[target value] value: 7]]]]];
+let trial := [|
+  let start := [Time monotonicMicros];
+  [batch value];
+  [samples set: [[samples value] add: [[Time monotonicMicros] - start]]]];
+let run := [| [5 timesRepeat: trial]];
+// Reuse exactly the same closures before and after replacing the target cell.
+[run value];
+let portable := [[plain codeObject] withoutSourceProvenance];
+let start := [Time monotonicMicros];
+let block := [Codegen materializeResumable: portable captures: #[]];
+let materialize := [[Time monotonicMicros] - start];
+[target set: block];
+[run value];
+[samples set: #[]];
+[run value];
+[[[answer value] = 13] ifTrue: [| nil] ifFalse: [| [OS exit: 1]]];
+[System println: ["materialize-us " , [materialize printString]]];
+[[samples value] do: [:sample | [System println: ["sample-us " , [sample printString]]]]];
+[System gc];
+[[[block value: 7] = 13] ifTrue: [| nil] ifFalse: [| [OS exit: 2]]];
+[System println: "focus-ok steady-chain"];

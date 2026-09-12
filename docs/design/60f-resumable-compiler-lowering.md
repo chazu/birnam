@@ -415,9 +415,10 @@ Only a successful driver commit advances the root-state PC and clears the
 pending transition. Generated StepMethod entry is legal only when no transition
 is pending and the two PCs match.
 
-S1 descriptor layout v1 remains valid for hand-written probes and treats every
-declared Oop slot as live for the Frame's lifetime. S2 compiler output uses
-layout v2 and may not claim v1 while depending on PC-specific roots.
+[60P](60p-v2-control-completion.md) removes descriptor layout v1. Compiler
+output and handwritten probes all use layout v2, explicit edges and PC-specific
+root maps. Probes may conservatively mark every Oop slot where precision is
+irrelevant; they use the same transition machinery.
 
 ## 8. Deterministic slot coloring
 

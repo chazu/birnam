@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tempfile
 
+from compatibility_authority import unchanged_authority
+
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "a10d1b55"
 TEST = "runtime::generated_deopt_experiment::read_reuse::frame_read_reuse_experiment"
@@ -137,7 +139,7 @@ def main():
     for name in CONTRACTS:
         current = (ROOT / name).read_bytes()
         baseline = subprocess.check_output(["git", "show", f"{BASELINE}:{name}"], cwd=ROOT)
-        if current != baseline:
+        if not unchanged_authority(name, current, baseline):
             raise RuntimeError(f"compatibility authority changed: {name}")
         contracts[name] = sha(current)
     if run(["git", "diff", BASELINE, "--name-only", "--", "abi/fixtures"]).strip():

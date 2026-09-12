@@ -1185,6 +1185,8 @@ mod tests {
     use super::*;
 
     unsafe extern "C" fn entry(_: Oop, _: *const Oop, _: usize) -> Oop {
+        // Keep the two probe functions distinct under release code folding.
+        std::hint::black_box(60_002usize);
         core::ptr::null_mut()
     }
 

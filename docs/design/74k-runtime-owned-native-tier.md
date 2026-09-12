@@ -136,10 +136,15 @@ The driver allocates the original resume token before selection. Candidate
 entries omit token decoding and the PC switch; all generated body sends, operand
 boxes and allocation order remain unchanged. There is no repeated-read cache.
 The exact descriptor allocation, active Frame and baseline generation stay
-authoritative. Mutation, guard failure or eviction withdraws the candidate and
+authoritative. In the original 74K implementation, any dictionary mutation,
+guard failure or eviction withdraws the candidate and
 the next PC resumes through that Frame's original baseline. Each native entry
 retains its executable owner until return, including during GC, nested entry
 and cache eviction.
+
+[74N](74n-native-tier-dependency-revalidation.md) narrows dictionary invalidation
+to actual Machine/lookup dependency failure. Ordinary method targets remain
+late-bound, and the descriptor, Frame and native-owner rules above are unchanged.
 
 Twelve paired cases pass in debug and release: canonical execution, method
 mutation, custom lookup, private Machine receiver, precise GC, eviction while
@@ -177,3 +182,17 @@ admission and same-Frame recovery under the existing interfaces; its timing
 does not justify a PC-specialization performance claim. 74H read caching remains
 an experiment. Further dispatch optimization is measured separately in
 [74L](74l-guarded-default-lookup.md).
+
+[74M](74m-native-tier-performance-isolation.md) subsequently isolates the native
+tier with byte-identical host/module binaries. Its timing comparisons remain
+inconclusive, including a harness that sustains native execution. It identifies
+a measurable warmup cost, zero tier use in the ordinary compiler/collection
+probes, unused eager preparation for cold bodies, and permanent candidate
+withdrawal when an unrelated new symbol is interned. Follow-up work should
+address those admission/invalidation costs before claiming a native-tier gain.
+
+[74N](74n-native-tier-dependency-revalidation.md) completes dependency revalidation
+and the same isolated timing comparison. Coverage increases without changing
+Id semantics, but no independent execution or memory benefit exceeds variation;
+both chain warmups regress relative to disabled execution. Unused eager candidate
+preparation remains the next proposed cost to address.

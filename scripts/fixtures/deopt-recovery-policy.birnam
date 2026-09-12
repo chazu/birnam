@@ -1,0 +1,11 @@
+// 74O test policy. Inputs are compiler facts: physical slot count, nil spill
+// index, and live (physical slot, native spill index) pairs at one checkpoint.
+// The driver appends a call with actual production-compiler facts. This is
+// ordinary inspectable Id code, not a production recovery admission API.
+let recoveryRecipe := [:slotCount :nilSpill :live |
+  [[0 to: [slotCount - 1]] collect: [:slot |
+    let matches := [live select: [:location | [[location at: 0] = slot]]];
+    let spill := [[[matches size] = 0]
+      ifTrue: [| nilSpill]
+      ifFalse: [| [[matches at: 0] at: 1]]];
+    #[slot spill]]]];

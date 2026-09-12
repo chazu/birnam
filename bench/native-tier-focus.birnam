@@ -1,0 +1,67 @@
+// Design 74M: fixed ordinary/portable workloads; timings are per batch.
+[System load: "modules/time.birnam"];
+[System load: "modules/os.birnam"];
+[Alien wrap: "getenv" signature: "s s" as: #focusGetenv on: String];
+let scenario := ["NATIVE_TIER_FOCUS" focusGetenv];
+let values := [[0 to: 255] asVector];
+let mapper := [:x | [x + 1]];
+let predicate := [:x | [x > 128]];
+let pipeline := [:input :mapBlock :predicateBlock |
+  let mapped := [input collect: mapBlock];
+  let selected := [mapped select: predicateBlock];
+  [selected size]];
+let chain := [:input |
+  let first := [input + 1];
+  let second := [first + 2];
+  [second + 3]];
+let object := [[chain codeObject] withoutSourceProvenance];
+let action := [nil asCell];
+let expected := [0 asCell];
+let iterations := [32 asCell];
+let materialize := [0 asCell];
+
+[[scenario = "eval"] ifTrue: [|
+  [expected set: 3];
+  [action set: [| [Codegen eval: "let values := #[1 2 3 4]; let mapped := [values collect: [:x | [x + 1]]]; let selected := [mapped select: [:x | [x > 2]]]; [selected size]"]]]
+] ifFalse: [| nil]];
+[[scenario = "collections"] ifTrue: [|
+  [expected set: 128];
+  [action set: [| [pipeline value: values value: mapper value: predicate]]]
+] ifFalse: [| nil]];
+[[scenario = "portable-collections"] ifTrue: [|
+  let portable := [[pipeline codeObject] withoutSourceProvenance];
+  let start := [Time monotonicMicros];
+  let block := [Codegen materializeResumable: portable captures: #[]];
+  [materialize set: [[Time monotonicMicros] - start]];
+  [[[block codeObject] == portable] ifTrue: [| nil] ifFalse: [| [OS exit: 3]]];
+  [expected set: 128];
+  [action set: [| [block value: values value: mapper value: predicate]]]
+] ifFalse: [| nil]];
+[[scenario = "materialize-cold"] ifTrue: [|
+  [expected set: 13];
+  [iterations set: 64];
+  [action set: [|
+    [Codegen evictMaterializations];
+    let block := [Codegen materializeResumable: object captures: #[]];
+    [block value: 7]]]
+] ifFalse: [| nil]];
+[[[action value] isNil] ifTrue: [| [OS exit: 4]] ifFalse: [| nil]];
+let warmStart := [Time monotonicMicros];
+[[scenario = "materialize-cold"] ifTrue: [| nil] ifFalse: [|
+  [32 timesRepeat: [| [[action value] value]]]
+]];
+let warmup := [[Time monotonicMicros] - warmStart];
+[System println: ["materialize-us " , [[materialize value] printString]]];
+[System println: ["warmup-us " , [warmup printString]]];
+let answer := [nil asCell];
+[5 timesRepeat: [|
+  let start := [Time monotonicMicros];
+  [[iterations value] timesRepeat: [| [answer set: [[action value] value]]]];
+  let elapsed := [[Time monotonicMicros] - start];
+  [[[answer value] = [expected value]] ifTrue: [| nil] ifFalse: [|
+    [System println: [[answer value] printString]]; [OS exit: 5]]];
+  [System println: ["sample-us " , [elapsed printString]]]
+]];
+[System gc];
+[[[answer value] = [expected value]] ifTrue: [| nil] ifFalse: [| [OS exit: 6]]];
+[System println: ["focus-ok " , scenario]];

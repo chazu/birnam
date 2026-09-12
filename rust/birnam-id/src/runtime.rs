@@ -29,6 +29,8 @@ use crate::symbol::{EmbeddedNul, Symbols};
 use crate::values::Values;
 use crate::vtable::{AddMethod, Vtables};
 
+#[cfg(all(test, target_os = "macos"))]
+mod architectural_fit_experiment;
 #[cfg(test)]
 mod deopt_experiment;
 #[cfg(all(test, target_os = "macos"))]
@@ -36,6 +38,8 @@ mod generated_deopt_experiment;
 mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
+#[cfg(all(test, target_os = "macos"))]
+mod v2_control_tests;
 
 static FRAME_VIEW_LAYOUT: [u8; 1] = [SLOT_OOP];
 
@@ -715,8 +719,11 @@ impl Runtime {
             crate::dispatch::vtable_lookup_method as Method,
         ]
         .iter()
-        .any(|method| state.execution.has_resumable_thunk(MethodAddress::from_method(*method)))
-        {
+        .any(|method| {
+            state
+                .execution
+                .has_resumable_thunk(MethodAddress::from_method(*method))
+        }) {
             return false;
         }
         let epoch = state.vtables.mutation_epoch();
@@ -747,7 +754,10 @@ impl Runtime {
             && state.vtables.direct_lookup(machine_vt, objects.oop_at_put) == Some(canonical_write)
             && Vtables::checked_vtable_of(&state.heap, machine_vt) == globals.vtable_vt
             && Vtables::checked_vtable_of(&state.heap, globals.vtable_vt) == globals.vtable_vt
-            && state.vtables.direct_lookup(globals.vtable_vt, globals.lookup) == Some(floor_lookup)
+            && state
+                .vtables
+                .direct_lookup(globals.vtable_vt, globals.lookup)
+                == Some(floor_lookup)
     }
 
     /// Guarded direct slot read: `None` when ineligible (the caller performs
@@ -812,7 +822,10 @@ impl Runtime {
         let Ok(index) = usize::try_from(index) else {
             return Some(nil);
         };
-        Some(self.stackless_oop_at_put(machine, index, value).unwrap_or(nil))
+        Some(
+            self.stackless_oop_at_put(machine, index, value)
+                .unwrap_or(nil),
+        )
     }
 
     /// The canonical `oopAt:` / `oopAt:put:` selectors: the execution objects'
@@ -1306,9 +1319,6 @@ impl Runtime {
         let oop_slot_kind = self
             .intern(b"oop")
             .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
-        let raw_slot_kind = self
-            .intern(b"raw")
-            .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
         let stale_frame_view_kind = self
             .intern(b"staleFrameView")
             .unwrap_or_else(|_| boundary::fatal_invariant("static symbol contains NUL"));
@@ -1365,6 +1375,16 @@ impl Runtime {
             (
                 new_selector,
                 crate::execution::machine_new as crate::abi::Method,
+            ),
+            (
+                self.intern(b"suspendAt:continueAt:")
+                    .expect("static selector"),
+                crate::execution::machine_suspend as crate::abi::Method,
+            ),
+            (
+                self.intern(b"captureAt:continueAt:")
+                    .expect("static selector"),
+                crate::execution::machine_capture as crate::abi::Method,
             ),
             (
                 clone_selector,
@@ -1638,7 +1658,6 @@ impl Runtime {
                     restore_kind,
                     abort_kind,
                     oop_slot_kind,
-                    raw_slot_kind,
                     stale_frame_view_kind,
                     invalid_frame_slot_kind,
                     oop_at,
@@ -1970,7 +1989,6 @@ impl Runtime {
             .ok_or(FrameViewError::InvalidView)?;
         Ok(match kind {
             SlotKind::Oop => objects.oop_slot_kind,
-            SlotKind::Raw => objects.raw_slot_kind,
         })
     }
 
@@ -2532,7 +2550,9 @@ impl Runtime {
         state.staged_resumable_publications = Some(Vec::new());
         state.staged_resumable_claims = Some(vec![None; staged.entry_count()]);
         state.staged_resumable_unit = Some(staged);
-        self.native_tier.borrow_mut().stage(programs, bindings, selection, manifest, authority);
+        self.native_tier
+            .borrow_mut()
+            .stage(programs, bindings, selection, manifest, authority);
         true
     }
 
@@ -3284,10 +3304,11 @@ impl Runtime {
         self.assert_owner();
         let capability = self.stackless_machine_capability(machine)?;
         let owner = current_thread_token();
+        let nil = self.canonical().nil;
         unsafe {
             (&mut *self.state.get())
                 .execution
-                .resume_suspended_machine(owner, capability, supplied_value)?;
+                .resume_suspended_machine(owner, capability, supplied_value, nil)?;
         }
         self.run_resumed_stackless(machine, capability, owner)
     }
@@ -3301,6 +3322,7 @@ impl Runtime {
         self.assert_owner();
         let capability = self.stackless_machine_capability(machine)?;
         let owner = current_thread_token();
+        let nil = self.canonical().nil;
         unsafe {
             let state = &mut *self.state.get();
             let continuation_capability = state
@@ -3311,6 +3333,7 @@ impl Runtime {
                 capability,
                 continuation_capability,
                 supplied_value,
+                nil,
             )?;
         }
         self.run_resumed_stackless(machine, capability, owner)
@@ -3523,8 +3546,11 @@ impl Runtime {
                 generated_deopt_experiment::select(self, capability, owner, machine, method)?;
             #[cfg(all(test, target_os = "macos"))]
             let method = selected.method;
-            let native_selected = native_tier::select(self, machine, descriptor_key, program_counter);
-            let method = native_selected.as_ref().map_or(method, |selected| selected.method);
+            let native_selected =
+                native_tier::select(self, machine, descriptor_key, program_counter);
+            let method = native_selected
+                .as_ref()
+                .map_or(method, |selected| selected.method);
             let action = {
                 let _scope = self.enter_stackless_scope(capability);
                 self.enter(|| {
@@ -3904,6 +3930,7 @@ impl Runtime {
                             capability,
                             continuation_capability,
                             supplied_value,
+                            nil,
                         )?;
                     }
                 }
@@ -4680,10 +4707,10 @@ mod tests {
     use crate::abi::{Method, Oop, SLOT_OOP};
     use crate::dispatch::build_bootstrap;
     use crate::execution::{
-        CallSiteDescriptor, CallSiteKind, DescriptorIdentity, ExecutionError,
-        FRAME_LAYOUT_VERSION_V1, FrameDescriptor, FrameDescriptorSpec, FrameDescriptorV2Spec,
-        SemanticRegistrationV1, SlotKind, StacklessTarget,
+        CallSiteDescriptor, CallSiteKind, DescriptorIdentity, ExecutionError, FrameDescriptor,
+        FrameDescriptorV2Spec, SemanticRegistrationV1, SlotKind, StacklessTarget,
     };
+    use crate::execution::{probe_call, probe_continue, probe_control, probe_spec};
     use crate::gc::Marker;
     use crate::heap::Permanence;
     use crate::raw::MethodAddress;
@@ -5235,6 +5262,8 @@ mod tests {
         .unwrap_or(core::ptr::null_mut())
     }
 
+    // Address identity is asserted across codegen units by the redefinition probe.
+    #[inline(never)]
     unsafe extern "C" fn synchronous_identity(_: Oop, args: *const Oop, count: usize) -> Oop {
         if count != 1 || args.is_null() {
             return core::ptr::null_mut();
@@ -5245,7 +5274,11 @@ mod tests {
 
     /// Design 74D probe: an `oopAt:put:` replacement that answers its value
     /// argument, so a store miss can be seen to deliver the rooted value.
-    unsafe extern "C" fn synchronous_second_argument(_: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe extern "C" fn synchronous_second_argument(
+        _: Oop,
+        args: *const Oop,
+        count: usize,
+    ) -> Oop {
         if count != 2 || args.is_null() {
             return core::ptr::null_mut();
         }
@@ -5481,16 +5514,23 @@ mod tests {
                     Err(crate::execution::ExecutionError::StaleAction)
                 ));
 
+                let nil = runtime.canonical().nil;
+                unsafe {
+                    (&mut *runtime.state.get())
+                        .execution
+                        .commit_current_continue(current_thread_token(), capability, nil)
+                        .unwrap();
+                }
                 let replacement_value = runtime.make_integer(211);
                 assert_eq!(
                     runtime.send_slice(machine, oop_at_put, &[value_slot, replacement_value]),
                     replacement_value
                 );
-                let raw_slot = runtime.make_integer(5);
+                let missing_slot = runtime.make_integer(5);
                 assert_eq!(
-                    runtime.send_slice(machine, oop_at_put, &[raw_slot, replacement_value]),
+                    runtime.send_slice(machine, oop_at_put, &[missing_slot, replacement_value]),
                     runtime.canonical().nil,
-                    "wrong-slot-kind write is rejected"
+                    "out-of-range write is rejected"
                 );
 
                 let call_action = runtime.send_slice(machine, call_site, &[index]);
@@ -5498,6 +5538,18 @@ mod tests {
                     runtime.send_slice(call_action, action_kind, &[]),
                     runtime.intern(b"call").expect("static symbol")
                 );
+                unsafe {
+                    let state = &mut *runtime.state.get();
+                    let arena = state
+                        .execution
+                        .machine_mut(current_thread_token(), capability)
+                        .unwrap()
+                        .arena_mut();
+                    let frame = arena.current_handle().unwrap();
+                    arena
+                        .commit_call_transition(frame, 2, nil, replacement_value)
+                        .unwrap();
+                }
                 let tail_index = runtime.make_integer(1);
                 let tail_action = runtime.send_slice(machine, tail_call_site, &[tail_index]);
                 assert_eq!(
@@ -5680,18 +5732,18 @@ mod tests {
         let machine = runtime
             .create_stackless_machine()
             .expect("stackless Machine creates");
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 301,
                 generation: 1,
                 source_map: 301,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop],
-            call_sites: Vec::new(),
+            call_sites: vec![probe_control(0, 1)],
             step_method: capture_once_step,
+            edges: vec![probe_call(0, 1, 0, 0, 1)],
+            ..probe_spec(1, 2)
         })
         .expect("capture descriptor validates");
         let initial = runtime.make_integer(7);
@@ -5737,18 +5789,18 @@ mod tests {
         let machine = runtime
             .create_stackless_machine()
             .expect("stackless Machine creates");
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 302,
                 generation: 1,
                 source_map: 302,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop],
-            call_sites: Vec::new(),
+            call_sites: vec![probe_control(0, 1)],
             step_method: suspend_once_step,
+            edges: vec![probe_call(0, 1, 0, 0, 1)],
+            ..probe_spec(1, 2)
         })
         .expect("suspension descriptor validates");
         let initial = runtime.make_integer(5);
@@ -5779,18 +5831,18 @@ mod tests {
         runtime.install_execution_objects();
         let machine = runtime.create_stackless_machine().unwrap();
         let capability = runtime.stackless_machine_capability(machine).unwrap();
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 303,
                 generation: 1,
                 source_map: 303,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: inert_step,
+            edges: vec![],
+            ..probe_spec(1, 1)
         })
         .unwrap();
         let nil = runtime.canonical().nil;
@@ -5849,18 +5901,18 @@ mod tests {
         runtime.install_execution_objects();
         let selector = runtime.intern(b"capturedRegisteredFrame").unwrap();
         let receiver = runtime.canonical().object_prototype;
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 304,
                 generation: 17,
                 source_map: 304,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop],
-            call_sites: Vec::new(),
+            call_sites: vec![probe_control(0, 1)],
             step_method: capture_once_step,
+            edges: vec![probe_call(0, 1, 0, 0, 1)],
+            ..probe_spec(1, 2)
         })
         .unwrap();
         runtime
@@ -5931,18 +5983,18 @@ mod tests {
         runtime.install_execution_objects();
         let selector = runtime.intern(b"finalizedCapturedFrame").unwrap();
         let receiver = runtime.canonical().object_prototype;
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 305,
                 generation: 18,
                 source_map: 305,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop],
-            call_sites: Vec::new(),
+            call_sites: vec![probe_control(0, 1)],
             step_method: capture_once_step,
+            edges: vec![probe_call(0, 1, 0, 0, 1)],
+            ..probe_spec(1, 2)
         })
         .unwrap();
         runtime
@@ -6016,18 +6068,18 @@ mod tests {
         runtime.install_execution_objects();
         let machine = runtime.create_stackless_machine().unwrap();
         let selected = runtime.allocate_instance(runtime.globals().object_vt, 0);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 306,
                 generation: 1,
                 source_map: 306,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop],
-            call_sites: Vec::new(),
+            call_sites: vec![probe_control(0, 1)],
             step_method: capture_once_step,
+            edges: vec![probe_call(0, 1, 0, 0, 1)],
+            ..probe_spec(1, 2)
         })
         .unwrap();
         let continuation = runtime
@@ -6128,18 +6180,18 @@ mod tests {
             .expect("Machine capability validates");
         let rooted = runtime.allocate_instance(globals.object_vt, 0);
         let popped_only = runtime.allocate_instance(globals.object_vt, 0);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 1,
                 generation: 1,
                 source_map: 1,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Raw, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: inert_step,
+            edges: vec![],
+            ..probe_spec(3, 1)
         })
         .expect("integration descriptor validates");
 
@@ -6390,18 +6442,18 @@ mod tests {
             .stackless_machine_capability(machine)
             .expect("Machine capability validates");
         let selected = runtime.allocate_instance(globals.object_vt, 0);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 101,
                 generation: 17,
                 source_map: 29,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Raw],
             call_sites: Vec::new(),
             step_method: inert_step,
+            edges: vec![],
+            ..probe_spec(2, 2)
         })
         .expect("FrameView descriptor validates");
         let nested = unsafe {
@@ -6481,11 +6533,11 @@ mod tests {
             );
             assert_eq!(
                 runtime.send_slice(view, slot_kind_at, &[one]),
-                runtime.intern(b"raw").expect("static symbol")
+                runtime.intern(b"oop").expect("static symbol")
             );
             assert_eq!(runtime.send_slice(view, oop_at, &[zero]), selected);
             assert_eq!(
-                runtime.send_slice(view, oop_at, &[one]),
+                runtime.send_slice(view, oop_at, &[runtime.make_integer(2)]),
                 runtime.intern(b"invalidFrameSlot").expect("static symbol")
             );
         });
@@ -6567,18 +6619,18 @@ mod tests {
         PROBE_STACK_MIN.set(usize::MAX);
         PROBE_STACK_MAX.set(0);
         PROBE_FORCED_GC.set(false);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 2,
                 generation: 1,
                 source_map: 2,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: million_continue_step,
+            edges: vec![probe_continue(0, 0, 1)],
+            ..probe_spec(1, 1)
         })
         .expect("single-entry probe descriptor validates");
         let live_before = runtime.gc_live_count();
@@ -6694,18 +6746,18 @@ mod tests {
         RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").expect("static selector"));
         PROBE_ZERO.set(runtime.make_integer(0));
         let expected = runtime.make_integer(149);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 203,
                 generation: 1,
                 source_map: 203,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: recursive_drive_probe_step,
+            edges: vec![probe_continue(0, 0, 1)],
+            ..probe_spec(1, 1)
         })
         .expect("recursive-drive descriptor validates");
         let machine = runtime
@@ -6752,18 +6804,18 @@ mod tests {
         MEASURE_VALUE_SLOT.set(runtime.make_integer(3));
         MEASURE_LIMIT.set(ITERATIONS);
 
-        let continue_descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let continue_descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 201,
                 generation: 1,
                 source_map: 201,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: measured_continue_step,
+            edges: vec![probe_continue(0, 0, 1)],
+            ..probe_spec(1, 1)
         })
         .expect("measurement Continue descriptor validates");
 
@@ -6775,16 +6827,14 @@ mod tests {
             synchronous_selector,
             synchronous_identity,
         );
-        let synchronous_descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let synchronous_descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 202,
                 generation: 1,
                 source_map: 202,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 4],
             call_sites: vec![CallSiteDescriptor {
                 kind: CallSiteKind::Call,
                 receiver_slot: 0,
@@ -6795,6 +6845,8 @@ mod tests {
                 continuation_pc: Some(1),
             }],
             step_method: measured_synchronous_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4), probe_continue(1, 0, 4)],
+            ..probe_spec(4, 2)
         })
         .expect("measurement synchronous descriptor validates");
         let receiver = runtime.canonical().object_prototype;
@@ -6884,18 +6936,19 @@ mod tests {
             .expect("static selector");
         let receiver = runtime.canonical().object_prototype;
         let argument = runtime.make_integer(41);
-        let child = FrameDescriptor::validate(FrameDescriptorSpec {
+        let child = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 204,
                 generation: 1,
                 source_map: 204,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop; 2],
             call_sites: Vec::new(),
             step_method: measured_registered_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("measurement child descriptor validates");
         runtime
@@ -6913,16 +6966,14 @@ mod tests {
             registered_probe_thunk,
         );
 
-        let parent = FrameDescriptor::validate(FrameDescriptorSpec {
+        let parent = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 205,
                 generation: 1,
                 source_map: 205,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 4],
             call_sites: vec![CallSiteDescriptor {
                 kind: CallSiteKind::Call,
                 receiver_slot: 0,
@@ -6933,6 +6984,8 @@ mod tests {
                 continuation_pc: Some(1),
             }],
             step_method: measured_synchronous_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4), probe_continue(1, 0, 4)],
+            ..probe_spec(4, 2)
         })
         .expect("measurement caller descriptor validates");
 
@@ -7105,16 +7158,14 @@ mod tests {
                         synchronous_selector,
                         depth_synchronous_barrier_method,
                     );
-                    let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+                    let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
                         identity: DescriptorIdentity {
                             implementation: 206,
                             generation: 1,
                             source_map: 206,
                         },
-                        layout_version: FRAME_LAYOUT_VERSION_V1,
                         program_counter_count: 2,
                         driver_argument_count: 1,
-                        slot_kinds: vec![SlotKind::Oop; 4],
                         call_sites: vec![CallSiteDescriptor {
                             kind: CallSiteKind::Call,
                             receiver_slot: 0,
@@ -7125,6 +7176,9 @@ mod tests {
                             continuation_pc: Some(1),
                         }],
                         step_method: depth_migrated_step,
+                        entry_argument_count: 1,
+                        edges: vec![probe_call(0, 1, 0, 3, 4)],
+                        ..probe_spec(4, 2)
                     })
                     .expect("mixed-depth descriptor validates");
                     runtime
@@ -7229,30 +7283,29 @@ mod tests {
         let machine = runtime
             .create_stackless_machine()
             .expect("stackless Machine creates");
-        let child = FrameDescriptor::validate(FrameDescriptorSpec {
+        let child = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 12,
                 generation: 1,
                 source_map: 12,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("child descriptor validates");
-        let parent = FrameDescriptor::validate(FrameDescriptorSpec {
+        let parent = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 11,
                 generation: 1,
                 source_map: 11,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 3,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 6],
             call_sites: vec![
                 CallSiteDescriptor {
                     kind: CallSiteKind::Call,
@@ -7274,6 +7327,8 @@ mod tests {
                 },
             ],
             step_method: call_parent_step,
+            edges: vec![probe_call(0, 1, 0, 3, 6), probe_call(1, 2, 1, 4, 6)],
+            ..probe_spec(6, 3)
         })
         .expect("parent descriptor validates");
 
@@ -7365,30 +7420,29 @@ mod tests {
         let receiver = runtime.canonical().object_prototype;
         let expected = runtime.make_integer(61);
         CALL_PROBE_FORCED_GC.set(false);
-        let nested = FrameDescriptor::validate(FrameDescriptorSpec {
+        let nested = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 32,
                 generation: 1,
                 source_map: 32,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("nested descriptor validates");
-        let outer = FrameDescriptor::validate(FrameDescriptorSpec {
+        let outer = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 31,
                 generation: 1,
                 source_map: 31,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 4],
             call_sites: vec![CallSiteDescriptor {
                 kind: CallSiteKind::Call,
                 receiver_slot: 0,
@@ -7399,6 +7453,8 @@ mod tests {
                 continuation_pc: Some(1),
             }],
             step_method: single_call_parent_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4)],
+            ..probe_spec(4, 2)
         })
         .expect("outer descriptor validates");
         let machine = runtime
@@ -7511,18 +7567,19 @@ mod tests {
         let receiver = runtime.canonical().object_prototype;
         let expected = runtime.make_integer(67);
 
-        let nested = FrameDescriptor::validate(FrameDescriptorSpec {
+        let nested = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 34,
                 generation: 2,
                 source_map: 34,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: suppressed_entry_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("suppressed-entry descriptor validates");
         runtime
@@ -7540,16 +7597,14 @@ mod tests {
             suppressed_entry_thunk,
         );
 
-        let outer = FrameDescriptor::validate(FrameDescriptorSpec {
+        let outer = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 33,
                 generation: 2,
                 source_map: 33,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 4],
             call_sites: vec![CallSiteDescriptor {
                 kind: CallSiteKind::Call,
                 receiver_slot: 0,
@@ -7560,6 +7615,8 @@ mod tests {
                 continuation_pc: Some(1),
             }],
             step_method: single_call_parent_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4)],
+            ..probe_spec(4, 2)
         })
         .expect("suppressed-entry outer descriptor validates");
         let machine = runtime
@@ -7621,18 +7678,19 @@ mod tests {
             .expect("static selector");
         let receiver = runtime.canonical().object_prototype;
         let expected = runtime.make_integer(73);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 41,
                 generation: 9,
                 source_map: 41,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("registered descriptor validates");
 
@@ -7730,16 +7788,14 @@ mod tests {
             "direct raw Method invocation remains a working fallback"
         );
 
-        let parent = FrameDescriptor::validate(FrameDescriptorSpec {
+        let parent = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 42,
                 generation: 9,
                 source_map: 42,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 4],
             call_sites: vec![CallSiteDescriptor {
                 kind: CallSiteKind::Call,
                 receiver_slot: 0,
@@ -7750,6 +7806,8 @@ mod tests {
                 continuation_pc: Some(1),
             }],
             step_method: single_call_parent_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4)],
+            ..probe_spec(4, 2)
         })
         .expect("registered caller descriptor validates");
         let machine = runtime
@@ -8436,18 +8494,19 @@ mod tests {
         let selector = runtime
             .intern(b"enumeratedRegisteredIdentity:")
             .expect("static selector");
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 43,
                 generation: 9,
                 source_map: 43,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("enumeration descriptor validates");
         runtime
@@ -8508,18 +8567,19 @@ mod tests {
         OUTER_ACTION_STALE_DURING_NESTED.set(false);
         OUTER_ACTION_STALE_AFTER_NESTED.set(false);
 
-        let replacement = FrameDescriptor::validate(FrameDescriptorSpec {
+        let replacement = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 45,
                 generation: 10,
                 source_map: 45,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: microcode_replacement_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("replacement descriptor validates");
         runtime
@@ -8544,23 +8604,14 @@ mod tests {
             .expect("static selector");
         let original = runtime.make_integer(17);
         let argument = runtime.make_integer(23);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 44,
                 generation: 10,
                 source_map: 44,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![
-                SlotKind::Oop,
-                SlotKind::Oop,
-                SlotKind::Oop,
-                SlotKind::Oop,
-                SlotKind::Oop,
-                SlotKind::Raw,
-            ],
             call_sites: vec![
                 CallSiteDescriptor {
                     kind: CallSiteKind::Call,
@@ -8582,6 +8633,12 @@ mod tests {
                 },
             ],
             step_method: all_microcode_step,
+            edges: vec![
+                probe_continue(0, 0, 5),
+                probe_call(0, 1, 0, 2, 5),
+                probe_continue(1, 1, 5),
+            ],
+            ..probe_spec(5, 2)
         })
         .expect("all-microcode descriptor validates");
 
@@ -8650,18 +8707,19 @@ mod tests {
         let second_expected = second.make_integer(103);
 
         let descriptor = |implementation, generation| {
-            FrameDescriptor::validate(FrameDescriptorSpec {
+            FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
                 identity: DescriptorIdentity {
                     implementation,
                     generation,
                     source_map: implementation,
                 },
-                layout_version: FRAME_LAYOUT_VERSION_V1,
                 program_counter_count: 1,
                 driver_argument_count: 0,
-                slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
                 call_sites: Vec::new(),
                 step_method: call_child_step,
+                entry_argument_count: 1,
+                edges: vec![],
+                ..probe_spec(2, 1)
             })
             .expect("runtime-local descriptor validates")
         };
@@ -8744,18 +8802,19 @@ mod tests {
             .expect("static selector");
         let receiver = runtime.canonical().object_prototype;
         let argument = runtime.make_integer(107);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 73,
                 generation: 23,
                 source_map: 73,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("push-failure descriptor validates");
         runtime
@@ -9093,12 +9152,10 @@ mod tests {
             generation: 29,
             source_map: 80 + case as u64,
         };
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: descriptor_identity,
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 2,
             driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop; 4],
             call_sites: vec![CallSiteDescriptor {
                 kind: CallSiteKind::Call,
                 receiver_slot: 0,
@@ -9109,6 +9166,8 @@ mod tests {
                 continuation_pc: Some(1),
             }],
             step_method: single_call_parent_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4)],
+            ..probe_spec(4, 2)
         })
         .expect("late-binding descriptor validates");
         let machine = runtime
@@ -9239,18 +9298,18 @@ mod tests {
         REDEFINE_PROBE_SELECTOR.set(selector);
         let receiver = runtime.canonical().object_prototype;
         let expected = runtime.make_integer(89);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 51,
                 generation: 12,
                 source_map: 51,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: redefine_during_registered_step,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("redefinition descriptor validates");
         runtime
@@ -9290,18 +9349,19 @@ mod tests {
         let selector = runtime
             .intern(b"pauseBeforeClassification:")
             .expect("static selector");
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 61,
                 generation: 14,
                 source_map: 61,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("reader-race descriptor validates");
         runtime
@@ -9386,18 +9446,19 @@ mod tests {
             .expect("static selector");
         let receiver = runtime.canonical().object_prototype;
         let expected = runtime.make_integer(113);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 91,
                 generation: 31,
                 source_map: 91,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
         })
         .expect("leased-cache descriptor validates");
 
@@ -9562,16 +9623,14 @@ mod tests {
         let receiver = runtime.canonical().object_prototype;
         let expected = runtime.make_integer(77);
         let descriptor_for = |implementation, step_method| {
-            FrameDescriptor::validate(FrameDescriptorSpec {
+            FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
                 identity: DescriptorIdentity {
                     implementation,
                     generation: 1,
                     source_map: implementation,
                 },
-                layout_version: FRAME_LAYOUT_VERSION_V1,
                 program_counter_count: 1,
                 driver_argument_count: 0,
-                slot_kinds: vec![SlotKind::Oop; 3],
                 call_sites: vec![CallSiteDescriptor {
                     kind: CallSiteKind::TailCall,
                     receiver_slot: 0,
@@ -9582,6 +9641,8 @@ mod tests {
                     continuation_pc: None,
                 }],
                 step_method,
+                edges: vec![],
+                ..probe_spec(3, 1)
             })
             .expect("tail descriptor validates")
         };
@@ -9663,18 +9724,18 @@ mod tests {
             .create_stackless_machine()
             .expect("stackless Machine creates");
         let live_value = runtime.make_integer(9);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 3,
                 generation: 1,
                 source_map: 3,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: malformed_action_step,
+            edges: vec![],
+            ..probe_spec(1, 1)
         })
         .expect("malformed-action probe descriptor validates");
 
@@ -9720,19 +9781,19 @@ mod tests {
         RETAINED_STEP_ACTION.set(core::ptr::null_mut());
         let live_value = runtime.make_integer(127);
 
-        let descriptor = |implementation, slot_kinds, step_method| {
-            FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = |implementation, slot_kinds: Vec<SlotKind>, step_method| {
+            FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
                 identity: DescriptorIdentity {
                     implementation,
                     generation: 37,
                     source_map: implementation,
                 },
-                layout_version: FRAME_LAYOUT_VERSION_V1,
                 program_counter_count: 1,
                 driver_argument_count: 0,
-                slot_kinds,
                 call_sites: Vec::new(),
                 step_method,
+                edges: vec![],
+                ..probe_spec(slot_kinds.len(), 1)
             })
             .expect("failure descriptor validates")
         };
@@ -9790,17 +9851,13 @@ mod tests {
         let wrong_slot_error = runtime
             .drive_stackless(
                 wrong_slot_machine,
-                descriptor(
-                    104,
-                    vec![SlotKind::Oop, SlotKind::Raw],
-                    wrong_slot_return_action_step,
-                ),
+                descriptor(104, vec![SlotKind::Oop], wrong_slot_return_action_step),
                 &[(0, live_value)],
             )
-            .expect_err("raw value slot must fail");
+            .expect_err("out-of-range value slot must fail");
         assert_eq!(
             wrong_slot_error,
-            crate::execution::ExecutionError::Frame(crate::execution::FrameError::WrongSlotKind)
+            crate::execution::ExecutionError::Frame(crate::execution::FrameError::InvalidSlot)
         );
         assert_eq!(wrong_slot_error.failure_kind().symbol(), "invalidFrameSlot");
 
@@ -9846,18 +9903,18 @@ mod tests {
             .create_stackless_machine()
             .expect("stackless Machine creates");
         let value = runtime.make_integer(5);
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 4,
                 generation: 1,
                 source_map: 4,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop],
             call_sites: Vec::new(),
             step_method: inert_step,
+            edges: vec![],
+            ..probe_spec(1, 1)
         })
         .expect("setup-failure descriptor validates");
 
@@ -9940,7 +9997,8 @@ mod tests {
             let value_slot = runtime.make_integer(2);
             let fifty_five = runtime.make_integer(55);
             guard_check(
-                runtime.guarded_frame_oop_at_put(machine, value_slot, fifty_five) == Some(fifty_five),
+                runtime.guarded_frame_oop_at_put(machine, value_slot, fifty_five)
+                    == Some(fifty_five),
                 "guarded write answers the stored value",
             );
             guard_check(
@@ -10006,7 +10064,9 @@ mod tests {
             let _ = runtime.add_method(machine_vt, oop_at_put, synchronous_second_argument);
             let fresh = runtime.make_integer(4242);
             guard_check(
-                runtime.guarded_frame_slot_at_put(machine, 2, fresh).is_none(),
+                runtime
+                    .guarded_frame_slot_at_put(machine, 2, fresh)
+                    .is_none(),
                 "unboxed write misses under a redefined oopAt:put:",
             );
             // Precise collection, so the value's survival is owed to the scoped
@@ -10017,33 +10077,58 @@ mod tests {
             let delivered = runtime.fallback_frame_oop_at_put(machine, 2, fresh);
             runtime.gc_set_precise(was_precise);
             guard_check(
-                delivered == fresh && runtime.is_integer(delivered) && runtime.integer_value(delivered) == 4242,
+                delivered == fresh
+                    && runtime.is_integer(delivered)
+                    && runtime.integer_value(delivered) == 4242,
                 "the store miss delivers the rooted value across a forced collection",
             );
-            let _ = runtime.add_method(machine_vt, oop_at_put, crate::execution::machine_oop_at_put);
-            guard_check(runtime.guarded_slot_access_eligible(machine), "canonical entries restored hit again");
+            let _ =
+                runtime.add_method(machine_vt, oop_at_put, crate::execution::machine_oop_at_put);
+            guard_check(
+                runtime.guarded_slot_access_eligible(machine),
+                "canonical entries restored hit again",
+            );
             let _ = runtime.guarded_frame_slot_at_put(machine, 2, sixty_six);
 
             // Redefining the canonical entry makes the guard miss; restoring it
             // re-verifies at the new epoch.
             let _ = runtime.add_method(machine_vt, oop_at, synchronous_increment);
-            guard_check(!runtime.guarded_slot_access_eligible(machine), "redefined oopAt: misses");
+            guard_check(
+                !runtime.guarded_slot_access_eligible(machine),
+                "redefined oopAt: misses",
+            );
             guard_check(
                 runtime.guarded_frame_oop_at(machine, value_slot).is_none(),
                 "miss answers None for the caller's fallback",
             );
             let _ = runtime.add_method(machine_vt, oop_at, crate::execution::machine_oop_at);
-            guard_check(runtime.guarded_slot_access_eligible(machine), "restored oopAt: hits again");
+            guard_check(
+                runtime.guarded_slot_access_eligible(machine),
+                "restored oopAt: hits again",
+            );
             let _ = runtime.remove_method(machine_vt, oop_at_put);
-            guard_check(!runtime.guarded_slot_access_eligible(machine), "removed oopAt:put: misses");
-            let _ = runtime.add_method(machine_vt, oop_at_put, crate::execution::machine_oop_at_put);
-            guard_check(runtime.guarded_slot_access_eligible(machine), "restored oopAt:put: hits again");
+            guard_check(
+                !runtime.guarded_slot_access_eligible(machine),
+                "removed oopAt:put: misses",
+            );
+            let _ =
+                runtime.add_method(machine_vt, oop_at_put, crate::execution::machine_oop_at_put);
+            guard_check(
+                runtime.guarded_slot_access_eligible(machine),
+                "restored oopAt:put: hits again",
+            );
 
             // A global custom lookup on vtable_vt misses; restoring it hits.
             let _ = runtime.add_method(vtable_vt, lookup, synchronous_increment);
-            guard_check(!runtime.guarded_slot_access_eligible(machine), "custom global lookup misses");
+            guard_check(
+                !runtime.guarded_slot_access_eligible(machine),
+                "custom global lookup misses",
+            );
             let _ = runtime.add_method(vtable_vt, lookup, crate::dispatch::vtable_lookup_method);
-            guard_check(runtime.guarded_slot_access_eligible(machine), "floor lookup restored hits");
+            guard_check(
+                runtime.guarded_slot_access_eligible(machine),
+                "floor lookup restored hits",
+            );
 
             // ensurePrivateVtable on a vtable answers the vtable itself (its
             // dispatch vtable is already vtable_vt), so a different metavtable
@@ -10118,18 +10203,18 @@ mod tests {
             );
         });
 
-        let descriptor = FrameDescriptor::validate(FrameDescriptorSpec {
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 74,
                 generation: 1,
                 source_map: 74,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
             program_counter_count: 1,
             driver_argument_count: 0,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop, SlotKind::Oop, SlotKind::Raw],
             call_sites: Vec::new(),
             step_method: guarded_probe_step,
+            edges: vec![],
+            ..probe_spec(4, 1)
         })
         .expect("guard probe descriptor validates");
         let first = runtime.make_integer(11);
@@ -10139,6 +10224,10 @@ mod tests {
             .expect("guard probe drives to completion");
         assert!(runtime.is_integer(result));
         assert_eq!(runtime.integer_value(result), 66);
-        assert_eq!(GUARD_PROBE_FAILURES.get(), 0, "every guarded slot probe agreed");
+        assert_eq!(
+            GUARD_PROBE_FAILURES.get(),
+            0,
+            "every guarded slot probe agreed"
+        );
     }
 }

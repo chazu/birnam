@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tempfile
 
+from compatibility_authority import unchanged_authority
+
 ROOT = Path(__file__).resolve().parent.parent
 SIZES = (1024, 4096)
 PAIRS = 7
@@ -164,7 +166,7 @@ def main():
     env["CARGO_TARGET_DIR"] = str(ROOT / ".cargo-target")
     authority = {}
     for name in AUTHORITIES:
-        assert (ROOT / name).read_bytes() == subprocess.check_output(["git", "show", f"5e242e70:{name}"], cwd=ROOT)
+        assert unchanged_authority(name, (ROOT / name).read_bytes(), subprocess.check_output(["git", "show", f"5e242e70:{name}"], cwd=ROOT))
         authority[name] = sha(ROOT / name)
     sources = source_manifest(ROOT)
     for name in ("scripts/runtime-native-tier.py", "bench/runtime-native-tier.birnam", "bench/control-throughput-probe.birnam", "scripts/fixtures/internal-guarded-sends.c", "scripts/bench-host-check.sh"):

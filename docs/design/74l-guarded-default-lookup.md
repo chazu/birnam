@@ -125,3 +125,14 @@ ownership mechanism are a real footprint cost. The implemented tier covers
 eligible portable Blocks and same-Frame recovery at existing PC boundaries;
 inlining, unboxing, repeated-read caching and multicore execution remain outside
 this promotion.
+
+The subsequent [74M isolation](74m-native-tier-performance-isolation.md) finds
+no independent native-tier speedup beyond variation, and identifies a 420 us
+warmup cost in the smaller chain. Native entry counts in this original fixture
+are accounted for by warmup before candidate invalidation. The combined result
+above remains valid; it does not demonstrate a steady PC-specialization gain.
+
+[74N](74n-native-tier-dependency-revalidation.md) fixes unrelated dictionary
+invalidation and repeats the isolated comparison. Native execution now spans
+the original fixture's timed batches, but the seven groups still establish no
+independent execution or memory benefit beyond variation.

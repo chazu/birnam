@@ -17,7 +17,17 @@ use crate::abi::{MarkFn, Method, Oop};
 use crate::heap::Heap;
 use crate::raw::{AddressMap, MethodAddress};
 
-pub(crate) const FRAME_LAYOUT_VERSION_V1: usize = 1;
+#[cfg(test)]
+#[path = "execution/inline_recovery_experiment.rs"]
+mod inline_recovery_experiment;
+#[cfg(test)]
+pub(crate) use inline_recovery_experiment::InlineRecovery;
+#[cfg(test)]
+#[path = "execution/probe_descriptor.rs"]
+mod probe_descriptor;
+#[cfg(test)]
+pub(crate) use probe_descriptor::{probe_call, probe_continue, probe_control, probe_spec};
+
 pub(crate) const FRAME_LAYOUT_VERSION_V2: usize = 2;
 pub(crate) const REGISTRATION_SCHEMA_VERSION_V1: usize = 1;
 const MACHINE_CAPABILITY_KIND_V1: usize = 0x4d41_4348_0000_0001;
@@ -56,7 +66,6 @@ pub(crate) struct ExecutionObjects {
     pub(crate) restore_kind: Oop,
     pub(crate) abort_kind: Oop,
     pub(crate) oop_slot_kind: Oop,
-    pub(crate) raw_slot_kind: Oop,
     pub(crate) stale_frame_view_kind: Oop,
     pub(crate) invalid_frame_slot_kind: Oop,
     pub(crate) oop_at: Oop,
@@ -101,7 +110,6 @@ impl ExecutionObjects {
             self.restore_kind,
             self.abort_kind,
             self.oop_slot_kind,
-            self.raw_slot_kind,
             self.stale_frame_view_kind,
             self.invalid_frame_slot_kind,
             self.oop_at,
@@ -117,7 +125,6 @@ impl ExecutionObjects {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SlotKind {
     Oop,
-    Raw,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -142,16 +149,6 @@ pub(crate) struct CallSiteDescriptor {
     pub(crate) argument_count: usize,
     pub(crate) result_slot: Option<usize>,
     pub(crate) continuation_pc: Option<usize>,
-}
-
-pub(crate) struct FrameDescriptorSpec {
-    pub(crate) identity: DescriptorIdentity,
-    pub(crate) layout_version: usize,
-    pub(crate) program_counter_count: usize,
-    pub(crate) driver_argument_count: usize,
-    pub(crate) slot_kinds: Vec<SlotKind>,
-    pub(crate) call_sites: Vec<CallSiteDescriptor>,
-    pub(crate) step_method: Method,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -400,85 +397,6 @@ impl FrameDescriptor {
         })
     }
 
-    pub(crate) fn validate(spec: FrameDescriptorSpec) -> Result<Arc<Self>, DescriptorError> {
-        if spec.layout_version != FRAME_LAYOUT_VERSION_V1 {
-            return Err(DescriptorError::UnsupportedLayoutVersion);
-        }
-        if spec.program_counter_count == 0 {
-            return Err(DescriptorError::EmptyProgramCounterRange);
-        }
-        if spec.driver_argument_count > 1 {
-            return Err(DescriptorError::InvalidDriverArgumentCount);
-        }
-        if spec.driver_argument_count == 0 && spec.program_counter_count != 1 {
-            return Err(DescriptorError::ZeroArgumentDescriptorHasMultipleEntries);
-        }
-
-        for call_site in &spec.call_sites {
-            require_oop_slot(&spec.slot_kinds, call_site.receiver_slot)
-                .map_err(|_| DescriptorError::InvalidReceiverSlot)?;
-            require_oop_slot(&spec.slot_kinds, call_site.selector_slot)
-                .map_err(|_| DescriptorError::InvalidSelectorSlot)?;
-
-            let argument_end = call_site
-                .argument_start
-                .checked_add(call_site.argument_count)
-                .ok_or(DescriptorError::InvalidArgumentRange)?;
-            if argument_end > spec.slot_kinds.len() {
-                return Err(DescriptorError::InvalidArgumentRange);
-            }
-            if spec.slot_kinds[call_site.argument_start..argument_end]
-                .iter()
-                .any(|kind| *kind != SlotKind::Oop)
-            {
-                return Err(DescriptorError::InvalidArgumentSlotKind);
-            }
-
-            match call_site.kind {
-                CallSiteKind::Call => {
-                    let result_slot = call_site
-                        .result_slot
-                        .ok_or(DescriptorError::InvalidResultSlot)?;
-                    require_oop_slot(&spec.slot_kinds, result_slot)
-                        .map_err(|_| DescriptorError::InvalidResultSlot)?;
-                    if (call_site.argument_start..argument_end).contains(&result_slot) {
-                        return Err(DescriptorError::ResultOverlapsArguments);
-                    }
-                    let continuation = call_site
-                        .continuation_pc
-                        .ok_or(DescriptorError::MissingContinuation)?;
-                    if continuation >= spec.program_counter_count {
-                        return Err(DescriptorError::InvalidContinuation);
-                    }
-                }
-                CallSiteKind::TailCall => {
-                    if call_site.result_slot.is_some() {
-                        return Err(DescriptorError::InvalidResultSlot);
-                    }
-                    if call_site.continuation_pc.is_some() {
-                        return Err(DescriptorError::UnexpectedContinuation);
-                    }
-                }
-            }
-        }
-
-        Ok(Arc::new(Self {
-            identity: spec.identity,
-            layout_version: FRAME_LAYOUT_VERSION_V1,
-            program_counter_count: spec.program_counter_count,
-            driver_argument_count: spec.driver_argument_count,
-            slot_kinds: spec.slot_kinds.into_boxed_slice(),
-            call_sites: spec.call_sites.into_boxed_slice(),
-            root_bitmap_words: Box::new([]),
-            root_words_per_pc: 0,
-            edges: Box::new([]),
-            max_edge_copy_count: 0,
-            v2_entry_binding: None,
-            entry_capture_slots: Box::new([]),
-            step_method: spec.step_method,
-        }))
-    }
-
     pub(crate) fn validate_v2(spec: FrameDescriptorV2Spec) -> Result<Arc<Self>, DescriptorError> {
         if spec.program_counter_count == 0 {
             return Err(DescriptorError::EmptyProgramCounterRange);
@@ -683,7 +601,6 @@ impl FrameDescriptor {
 
     fn traces_slot(&self, root_state_pc: usize, index: usize) -> bool {
         match self.layout_version {
-            FRAME_LAYOUT_VERSION_V1 => self.slot_kind(index) == Some(SlotKind::Oop),
             FRAME_LAYOUT_VERSION_V2 => descriptor_bitmap_contains(
                 &self.root_bitmap_words,
                 self.root_words_per_pc,
@@ -779,7 +696,7 @@ impl FrameDescriptor {
 fn require_oop_slot(slot_kinds: &[SlotKind], index: usize) -> Result<(), ()> {
     match slot_kinds.get(index) {
         Some(SlotKind::Oop) => Ok(()),
-        Some(SlotKind::Raw) | None => Err(()),
+        None => Err(()),
     }
 }
 
@@ -875,7 +792,6 @@ impl FrameHandle {
 pub(crate) enum FrameError {
     InvalidProgramCounter,
     InvalidSlot,
-    WrongSlotKind,
     StaleHandle,
     GenerationExhausted,
     ArenaDestroyed,
@@ -1053,7 +969,7 @@ impl FrameArena {
         for (slot, _) in initial_oops {
             match descriptor.slot_kind(*slot) {
                 None => return Err(FrameError::InvalidSlot),
-                Some(SlotKind::Raw) => return Err(FrameError::WrongSlotKind),
+
                 Some(SlotKind::Oop) => {}
             }
         }
@@ -1299,39 +1215,67 @@ impl FrameArena {
         Ok(self.require_live(handle)?.program_counter)
     }
 
-    pub(crate) fn set_program_counter(
-        &mut self,
-        handle: FrameHandle,
-        program_counter: usize,
-    ) -> Result<(), FrameError> {
-        let slot = self.require_live(handle)?;
-        let descriptor = slot
-            .descriptor
-            .as_deref()
-            .expect("a live arena slot always has a descriptor");
-        if descriptor.layout_version != FRAME_LAYOUT_VERSION_V1
-            || !descriptor.accepts_program_counter(program_counter)
-        {
-            return Err(FrameError::InvalidProgramCounter);
-        }
-        let slot = self.require_live_mut(handle)?;
-        slot.program_counter = program_counter;
-        slot.root_state_program_counter = program_counter;
-        Ok(())
-    }
-
     fn begin_continue_transition(
         &mut self,
         handle: FrameHandle,
         target_pc: usize,
     ) -> Result<(), FrameError> {
-        match self.descriptor(handle)?.layout_version {
-            FRAME_LAYOUT_VERSION_V1 => self.set_program_counter(handle, target_pc),
-            FRAME_LAYOUT_VERSION_V2 => {
-                self.begin_v2_transition(handle, EdgeTransitionKind::Continue, target_pc, None)
-            }
-            _ => Err(FrameError::InvalidProgramCounter),
+        self.begin_v2_transition(handle, EdgeTransitionKind::Continue, target_pc, None)
+    }
+
+    /// A suspended/captured invocation is a Call edge whose answer arrives on
+    /// resume. Keep predecessor roots and copies pending until that answer.
+    fn begin_control_transition(
+        &mut self,
+        handle: FrameHandle,
+        result_slot: usize,
+        target_pc: usize,
+    ) -> Result<(), FrameError> {
+        let slot = self.require_live(handle)?;
+        if slot.pending_edge.is_some() {
+            self.validate_pending_call(handle, result_slot)?;
+            return if slot.program_counter == target_pc {
+                Ok(())
+            } else {
+                Err(FrameError::InvalidProgramCounter)
+            };
         }
+        let descriptor = slot.descriptor.as_deref().ok_or(FrameError::StaleHandle)?;
+        let (_, edge) = descriptor
+            .edge(slot.program_counter, target_pc)
+            .ok_or(FrameError::InvalidProgramCounter)?;
+        if edge.kind != EdgeTransitionKind::Call || edge.result_slot != Some(result_slot) {
+            return Err(FrameError::InvalidSlot);
+        }
+        self.begin_v2_transition(
+            handle,
+            EdgeTransitionKind::Call,
+            target_pc,
+            edge.call_site_index,
+        )
+    }
+
+    fn validate_pending_call(
+        &self,
+        handle: FrameHandle,
+        result_slot: usize,
+    ) -> Result<(), FrameError> {
+        let slot = self.require_live(handle)?;
+        let descriptor = slot.descriptor.as_deref().ok_or(FrameError::StaleHandle)?;
+        let edge = slot
+            .pending_edge
+            .and_then(|index| descriptor.edges.get(index))
+            .ok_or(FrameError::InvalidProgramCounter)?;
+        if edge.kind != EdgeTransitionKind::Call || edge.result_slot != Some(result_slot) {
+            return Err(FrameError::InvalidSlot);
+        }
+        if edge.source_pc != slot.root_state_program_counter
+            || edge.target_pc != slot.program_counter
+            || slot.transfer_scratch.len() < edge.copies.len()
+        {
+            return Err(FrameError::InvalidProgramCounter);
+        }
+        Ok(())
     }
 
     fn begin_call_transition(
@@ -1340,16 +1284,12 @@ impl FrameArena {
         target_pc: usize,
         call_site_index: usize,
     ) -> Result<(), FrameError> {
-        match self.descriptor(handle)?.layout_version {
-            FRAME_LAYOUT_VERSION_V1 => self.set_program_counter(handle, target_pc),
-            FRAME_LAYOUT_VERSION_V2 => self.begin_v2_transition(
-                handle,
-                EdgeTransitionKind::Call,
-                target_pc,
-                Some(call_site_index),
-            ),
-            _ => Err(FrameError::InvalidProgramCounter),
-        }
+        self.begin_v2_transition(
+            handle,
+            EdgeTransitionKind::Call,
+            target_pc,
+            Some(call_site_index),
+        )
     }
 
     fn commit_continue_transition(
@@ -1357,11 +1297,7 @@ impl FrameArena {
         handle: FrameHandle,
         nil: Oop,
     ) -> Result<(), FrameError> {
-        match self.descriptor(handle)?.layout_version {
-            FRAME_LAYOUT_VERSION_V1 => Ok(()),
-            FRAME_LAYOUT_VERSION_V2 => self.commit_v2_transition(handle, nil, None),
-            _ => Err(FrameError::InvalidProgramCounter),
-        }
+        self.commit_v2_transition(handle, nil, None)
     }
 
     pub(crate) fn commit_call_transition(
@@ -1371,23 +1307,8 @@ impl FrameArena {
         nil: Oop,
         result: Oop,
     ) -> Result<(), FrameError> {
-        match self.descriptor(handle)?.layout_version {
-            FRAME_LAYOUT_VERSION_V1 => self.write_oop(handle, result_slot, result),
-            FRAME_LAYOUT_VERSION_V2 => {
-                let slot = self.require_live(handle)?;
-                let edge_index = slot.pending_edge.ok_or(FrameError::InvalidProgramCounter)?;
-                let edge = slot
-                    .descriptor
-                    .as_deref()
-                    .and_then(|descriptor| descriptor.edges.get(edge_index))
-                    .ok_or(FrameError::InvalidProgramCounter)?;
-                if edge.kind != EdgeTransitionKind::Call || edge.result_slot != Some(result_slot) {
-                    return Err(FrameError::InvalidSlot);
-                }
-                self.commit_v2_transition(handle, nil, Some(result))
-            }
-            _ => Err(FrameError::InvalidProgramCounter),
-        }
+        self.validate_pending_call(handle, result_slot)?;
+        self.commit_v2_transition(handle, nil, Some(result))
     }
 
     pub(crate) fn begin_v2_transition(
@@ -1468,7 +1389,10 @@ impl FrameArena {
     }
 
     #[cfg(test)]
-    fn root_state_program_counter(&self, handle: FrameHandle) -> Result<usize, FrameError> {
+    pub(crate) fn root_state_program_counter(
+        &self,
+        handle: FrameHandle,
+    ) -> Result<usize, FrameError> {
         Ok(self.require_live(handle)?.root_state_program_counter)
     }
 
@@ -1481,7 +1405,6 @@ impl FrameArena {
             .slot_kind(index)
         {
             None => return Err(FrameError::InvalidSlot),
-            Some(SlotKind::Raw) => return Err(FrameError::WrongSlotKind),
             Some(SlotKind::Oop) => {}
         }
         Ok(core::ptr::with_exposed_provenance_mut(slot.words[index]))
@@ -1501,7 +1424,6 @@ impl FrameArena {
             .slot_kind(index)
         {
             None => return Err(FrameError::InvalidSlot),
-            Some(SlotKind::Raw) => return Err(FrameError::WrongSlotKind),
             Some(SlotKind::Oop) => {}
         }
         self.require_live_mut(handle)?.words[index] = value.addr();
@@ -1857,9 +1779,7 @@ impl ExecutionError {
             }
             Self::Machine(MachineError::ContinuationWrongMachine)
             | Self::ContinuationWrongMachine => DriverFailureKind::ContinuationWrongMachine,
-            Self::Frame(FrameError::InvalidSlot | FrameError::WrongSlotKind) => {
-                DriverFailureKind::InvalidFrameSlot
-            }
+            Self::Frame(FrameError::InvalidSlot) => DriverFailureKind::InvalidFrameSlot,
             Self::Frame(
                 FrameError::StaleHandle
                 | FrameError::ArenaDestroyed
@@ -2282,7 +2202,10 @@ impl MachineState {
             return Err(ExecutionError::ContinuationBarrier);
         }
         let frame = self.arena.current_handle().ok_or(FrameError::StaleHandle)?;
-        let _ = self.arena.read_oop(frame, result_slot)?;
+        self.arena.validate_pending_call(frame, result_slot)?;
+        self.drive_epoch
+            .checked_add(1)
+            .ok_or(MachineError::DriveEpochExhausted)?;
         let segment = self.arena.detach_from(boundary_depth)?;
         if segment.is_empty() {
             return Err(ExecutionError::ContinuationBarrier);
@@ -2306,17 +2229,22 @@ impl MachineState {
         Ok(())
     }
 
-    fn resume_suspended(&mut self, owner: u64, value: Oop) -> Result<(), ExecutionError> {
+    fn resume_suspended(&mut self, owner: u64, value: Oop, nil: Oop) -> Result<(), ExecutionError> {
         self.require_owner(owner)?;
         if self.lifecycle != MachineLifecycle::Suspended || self.drive_depth != 0 {
             return Err(ExecutionError::MachineNotSuspended);
         }
         let result_slot = self
             .suspended_result_slot
-            .take()
             .ok_or(ExecutionError::MachineNotSuspended)?;
         let frame = self.arena.current_handle().ok_or(FrameError::StaleHandle)?;
-        self.arena.write_oop(frame, result_slot, value)?;
+        self.arena.validate_pending_call(frame, result_slot)?;
+        self.drive_epoch
+            .checked_add(1)
+            .ok_or(MachineError::DriveEpochExhausted)?;
+        self.arena
+            .commit_call_transition(frame, result_slot, nil, value)?;
+        self.suspended_result_slot = None;
         self.advance_drive_epoch()?;
         self.drive_depth = 1;
         self.drive_boundaries.push(BoundaryDiagnostics::default());
@@ -2744,7 +2672,8 @@ impl ExecutionState {
     /// Non-effectful guard query. Presence includes unpublished and retiring
     /// entries: their normal classification may fail or require a lease.
     pub(crate) fn has_resumable_thunk(&self, method: MethodAddress) -> bool {
-        self.resumable_by_thunk.contains_key(&method.as_oop().addr())
+        self.resumable_by_thunk
+            .contains_key(&method.as_oop().addr())
     }
 
     pub(crate) fn classify_resumable(
@@ -3739,6 +3668,7 @@ impl ExecutionState {
         machine: MachineCapability,
         continuation: ContinuationCapability,
         supplied_value: Oop,
+        nil: Oop,
     ) -> Result<(), ExecutionError> {
         self.require_owner(owner)?;
         let (continuation_machine, delimiter, boundary_depth, result_slot, entries) = {
@@ -3778,6 +3708,10 @@ impl ExecutionState {
             {
                 return Err(ExecutionError::MachineNotSuspended);
             }
+            machine_state
+                .drive_epoch
+                .checked_add(1)
+                .ok_or(MachineError::DriveEpochExhausted)?;
             let record = machine_state.validate_delimiter(delimiter)?;
             if record.frame_boundary != boundary_depth
                 || machine_state.arena.live_depth() != boundary_depth
@@ -3801,7 +3735,7 @@ impl ExecutionState {
                 .ok_or(FrameError::StaleHandle)?;
             machine_state
                 .arena
-                .write_oop(frame, result_slot, supplied_value)?;
+                .commit_call_transition(frame, result_slot, nil, supplied_value)?;
             machine_state.begin_continuation_restore(owner)?;
         }
         for entry in entries {
@@ -3815,9 +3749,10 @@ impl ExecutionState {
         owner: u64,
         machine: MachineCapability,
         supplied_value: Oop,
+        nil: Oop,
     ) -> Result<(), ExecutionError> {
         self.machine_mut(owner, machine)?
-            .resume_suspended(owner, supplied_value)
+            .resume_suspended(owner, supplied_value, nil)
     }
 
     pub(crate) fn trace_continuation_roots(&self, heap: &Heap, object: Oop, mark: MarkFn) {
@@ -4197,13 +4132,21 @@ impl ExecutionState {
             .ok_or(FrameError::StaleHandle)?;
         let _ = machine.arena.read_oop(frame, result_slot)?;
         let _ = machine.validate_delimiter(delimiter)?;
-        machine.arena.set_program_counter(frame, next_pc)?;
         let generation = usize::try_from(capability.generation)
             .map_err(|_| MachineError::RegistryGenerationExhausted)?;
         let delimiter_generation = usize::try_from(delimiter.generation)
             .map_err(|_| MachineError::RegistryGenerationExhausted)?;
         let drive_epoch =
             usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
+        validate_action_storage(
+            heap,
+            machine.suspend_action,
+            objects.suspend_action_vtable,
+            7,
+        )?;
+        machine
+            .arena
+            .begin_control_transition(frame, result_slot, next_pc)?;
         initialize_action(
             heap,
             machine.suspend_action,
@@ -4239,13 +4182,21 @@ impl ExecutionState {
             .ok_or(FrameError::StaleHandle)?;
         let _ = machine.arena.read_oop(frame, result_slot)?;
         let _ = machine.validate_delimiter(delimiter)?;
-        machine.arena.set_program_counter(frame, next_pc)?;
         let generation = usize::try_from(capability.generation)
             .map_err(|_| MachineError::RegistryGenerationExhausted)?;
         let delimiter_generation = usize::try_from(delimiter.generation)
             .map_err(|_| MachineError::RegistryGenerationExhausted)?;
         let drive_epoch =
             usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
+        validate_action_storage(
+            heap,
+            machine.capture_action,
+            objects.capture_action_vtable,
+            7,
+        )?;
+        machine
+            .arena
+            .begin_control_transition(frame, result_slot, next_pc)?;
         initialize_action(
             heap,
             machine.capture_action,
@@ -4355,8 +4306,13 @@ impl ExecutionState {
         result_slot: usize,
         delimiter: DelimiterHandle,
     ) -> Result<(), ExecutionError> {
-        self.machine_mut(owner, capability)?
-            .suspend(owner, delimiter, result_slot)?;
+        let machine = self.machine_mut(owner, capability)?;
+        let frame = machine
+            .arena
+            .current_handle()
+            .ok_or(FrameError::StaleHandle)?;
+        machine.arena.validate_pending_call(frame, result_slot)?;
+        machine.suspend(owner, delimiter, result_slot)?;
         Ok(())
     }
 
@@ -4515,6 +4471,7 @@ impl ExecutionState {
                 .current_handle()
                 .ok_or(FrameError::StaleHandle)?;
             let _ = machine.arena.read_oop(frame, result_slot)?;
+            machine.arena.validate_pending_call(frame, result_slot)?;
             let _ = machine.validate_delimiter(delimiter)?;
             Ok(DecodedAction::Suspend {
                 result_slot,
@@ -4538,6 +4495,7 @@ impl ExecutionState {
                 .current_handle()
                 .ok_or(FrameError::StaleHandle)?;
             let _ = machine.arena.read_oop(frame, result_slot)?;
+            machine.arena.validate_pending_call(frame, result_slot)?;
             let _ = machine.validate_delimiter(delimiter)?;
             Ok(DecodedAction::Capture {
                 delimiter,
@@ -4763,9 +4721,7 @@ impl ExecutionState {
             .arena
             .read_oop(handle, index)
             .map_err(|error| match error {
-                FrameError::InvalidSlot | FrameError::WrongSlotKind => {
-                    FrameViewError::InvalidFrameSlot
-                }
+                FrameError::InvalidSlot => FrameViewError::InvalidFrameSlot,
                 FrameError::StaleHandle
                 | FrameError::ArenaDestroyed
                 | FrameError::GenerationExhausted
@@ -4821,17 +4777,27 @@ impl ExecutionState {
     }
 }
 
+fn validate_action_storage(
+    heap: &Heap,
+    action: Oop,
+    expected_vtable: Oop,
+    word_count: usize,
+) -> Result<(), ExecutionError> {
+    if heap.vtable_of(action) != Some(expected_vtable)
+        || heap.payload_size(action) != Some(word_count * size_of::<usize>())
+    {
+        return Err(ExecutionError::InvalidAction);
+    }
+    Ok(())
+}
+
 fn initialize_action(
     heap: &mut Heap,
     action: Oop,
     expected_vtable: Oop,
     words: &[usize],
 ) -> Result<(), ExecutionError> {
-    if heap.vtable_of(action) != Some(expected_vtable)
-        || heap.payload_size(action) != Some(size_of_val(words))
-    {
-        return Err(ExecutionError::InvalidAction);
-    }
+    validate_action_storage(heap, action, expected_vtable, words.len())?;
     for (index, word) in words.iter().copied().enumerate() {
         if !heap.write_payload_word(action, index, word) {
             return Err(ExecutionError::InvalidAction);
@@ -4856,6 +4822,43 @@ pub(crate) unsafe extern "C" fn machine_new(_: Oop, _: *const Oop, count: usize)
             .create_stackless_machine()
             .unwrap_or_else(|_| runtime.canonical().nil)
     })
+}
+
+fn machine_control(receiver: Oop, args: *const Oop, count: usize, capture: bool) -> Oop {
+    crate::runtime::with_active(|runtime| {
+        if count != 2 || args.is_null() {
+            return runtime.canonical().nil;
+        }
+        // The Method ABI supplies the checked two-argument buffer.
+        let (Some(result), Some(next)) = (
+            nonnegative_index(runtime, unsafe { args.read() }),
+            nonnegative_index(runtime, unsafe { args.add(1).read() }),
+        ) else {
+            return runtime.canonical().nil;
+        };
+        let action = if capture {
+            runtime.stackless_capture_current(receiver, result, next)
+        } else {
+            runtime.stackless_suspend_current(receiver, result, next)
+        };
+        action.unwrap_or_else(|_| runtime.canonical().nil)
+    })
+}
+
+pub(crate) unsafe extern "C" fn machine_suspend(
+    receiver: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    machine_control(receiver, args, count, false)
+}
+
+pub(crate) unsafe extern "C" fn machine_capture(
+    receiver: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    machine_control(receiver, args, count, true)
 }
 
 pub(crate) unsafe extern "C" fn machine_clone_disabled(_: Oop, _: *const Oop, _: usize) -> Oop {
@@ -5359,6 +5362,8 @@ mod tests {
     }
 
     unsafe extern "C" fn inert_thunk(_: Oop, _: *const Oop, _: usize) -> Oop {
+        // Registration requires distinct entry and step addresses, also in release.
+        std::hint::black_box(60_001usize);
         core::ptr::null_mut()
     }
 
@@ -5367,20 +5372,23 @@ mod tests {
     }
 
     fn descriptor(slot_kinds: Vec<SlotKind>, pc_count: usize) -> Arc<FrameDescriptor> {
-        FrameDescriptor::validate(FrameDescriptorSpec {
+        let slots = slot_kinds.len().max(1);
+        FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 11,
                 generation: 7,
                 source_map: 3,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
-            program_counter_count: pc_count,
-            driver_argument_count: usize::from(pc_count > 1),
-            slot_kinds,
-            call_sites: Vec::new(),
+            entry_argument_count: usize::from(slots > 1),
+            edges: if pc_count > 1 {
+                vec![probe_continue(0, 1, slots)]
+            } else {
+                vec![]
+            },
             step_method: inert_step,
+            ..probe_spec(slots, pc_count)
         })
-        .expect("valid test descriptor")
+        .expect("valid V2 probe descriptor")
     }
 
     fn descriptor_v2(
@@ -5544,24 +5552,20 @@ mod tests {
 
     #[test]
     fn descriptor_rejects_bad_arity_ranges_kinds_and_continuations() {
-        let base = || FrameDescriptorSpec {
+        let base = || FrameDescriptorV2Spec {
             identity: DescriptorIdentity {
                 implementation: 1,
                 generation: 2,
                 source_map: 3,
             },
-            layout_version: FRAME_LAYOUT_VERSION_V1,
-            program_counter_count: 2,
-            driver_argument_count: 1,
-            slot_kinds: vec![SlotKind::Oop, SlotKind::Oop, SlotKind::Raw, SlotKind::Oop],
-            call_sites: Vec::new(),
             step_method: inert_step,
+            ..probe_spec(4, 2)
         };
 
         let mut invalid = base();
         invalid.driver_argument_count = 2;
         assert!(matches!(
-            FrameDescriptor::validate(invalid),
+            FrameDescriptor::validate_v2(invalid),
             Err(DescriptorError::InvalidDriverArgumentCount)
         ));
 
@@ -5571,13 +5575,13 @@ mod tests {
             receiver_slot: 0,
             selector_slot: 1,
             argument_start: 1,
-            argument_count: 2,
+            argument_count: 4,
             result_slot: Some(3),
             continuation_pc: Some(1),
         });
         assert!(matches!(
-            FrameDescriptor::validate(invalid),
-            Err(DescriptorError::InvalidArgumentSlotKind)
+            FrameDescriptor::validate_v2(invalid),
+            Err(DescriptorError::InvalidArgumentRange)
         ));
 
         let mut invalid = base();
@@ -5591,7 +5595,7 @@ mod tests {
             continuation_pc: Some(1),
         });
         assert!(matches!(
-            FrameDescriptor::validate(invalid),
+            FrameDescriptor::validate_v2(invalid),
             Err(DescriptorError::ResultOverlapsArguments)
         ));
 
@@ -5606,7 +5610,7 @@ mod tests {
             continuation_pc: Some(2),
         });
         assert!(matches!(
-            FrameDescriptor::validate(invalid),
+            FrameDescriptor::validate_v2(invalid),
             Err(DescriptorError::InvalidContinuation)
         ));
 
@@ -5614,7 +5618,7 @@ mod tests {
         invalid.program_counter_count = 2;
         invalid.driver_argument_count = 0;
         assert!(matches!(
-            FrameDescriptor::validate(invalid),
+            FrameDescriptor::validate_v2(invalid),
             Err(DescriptorError::ZeroArgumentDescriptorHasMultipleEntries)
         ));
     }
@@ -5624,7 +5628,11 @@ mod tests {
         let nil = oop(0x1000);
         let first_root = oop(0x2000);
         let second_root = oop(0x3000);
-        let descriptor = descriptor(vec![SlotKind::Oop, SlotKind::Raw, SlotKind::Oop], 2);
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+            root_bitmap_words: vec![0b101, 0b101],
+            ..probe_spec(3, 2)
+        })
+        .unwrap();
         let mut arena = FrameArena::new(19);
 
         let first = arena
@@ -5632,7 +5640,7 @@ mod tests {
             .expect("first frame push");
         assert_eq!(arena.read_oop(first, 0), Ok(first_root));
         assert_eq!(arena.read_oop(first, 2), Ok(nil));
-        assert_eq!(arena.read_oop(first, 1), Err(FrameError::WrongSlotKind));
+        assert_eq!(arena.read_oop(first, 3), Err(FrameError::InvalidSlot));
         let mut roots = Vec::new();
         arena.trace_roots(|root| roots.push(root.addr()));
         assert_eq!(roots, vec![first_root.addr(), nil.addr()]);
@@ -5667,25 +5675,26 @@ mod tests {
         let nil = oop(0x1000);
         let original = oop(0x2000);
         let replacement = oop(0x3000);
-        let descriptor = descriptor(vec![SlotKind::Oop, SlotKind::Raw], 2);
+        let descriptor = descriptor(vec![SlotKind::Oop, SlotKind::Oop], 2);
         let mut arena = FrameArena::new(23);
         let frame = arena
             .push(descriptor, 0, nil, &[(0, original)])
             .expect("frame push");
 
         assert_eq!(
-            arena.write_oop(frame, 1, replacement),
-            Err(FrameError::WrongSlotKind)
+            arena.write_oop(frame, 2, replacement),
+            Err(FrameError::InvalidSlot)
         );
         assert_eq!(arena.read_oop(frame, 0), Ok(original));
         assert_eq!(
-            arena.set_program_counter(frame, 2),
+            arena.begin_continue_transition(frame, 2),
             Err(FrameError::InvalidProgramCounter)
         );
         assert_eq!(arena.program_counter(frame), Ok(0));
 
         arena.write_oop(frame, 0, replacement).unwrap();
-        arena.set_program_counter(frame, 1).unwrap();
+        arena.begin_continue_transition(frame, 1).unwrap();
+        arena.commit_continue_transition(frame, nil).unwrap();
         assert_eq!(arena.read_oop(frame, 0), Ok(replacement));
         assert_eq!(arena.program_counter(frame), Ok(1));
     }

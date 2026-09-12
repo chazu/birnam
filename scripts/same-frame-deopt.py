@@ -15,6 +15,8 @@ import subprocess
 import sys
 
 
+from compatibility_authority import unchanged_authority
+
 ROOT = Path(__file__).resolve().parent.parent
 FILTER = "runtime::deopt_experiment::same_frame_deopt_experiment"
 CASES = {
@@ -69,7 +71,7 @@ def main():
         before = subprocess.run(["git", "show", f"HEAD:{name}"], cwd=ROOT,
                                 check=True, capture_output=True).stdout
         current = (ROOT / name).read_bytes()
-        if before != current:
+        if not unchanged_authority(name, current, before):
             raise RuntimeError(f"compatibility authority changed: {name}")
         contracts[name] = digest(current)
     fixture_changes = command(["git", "diff", "HEAD", "--name-only", "--", "abi/fixtures"])

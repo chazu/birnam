@@ -1,9 +1,7 @@
 use super::*;
 use crate::dispatch::build_bootstrap;
-use crate::execution::{
-    DescriptorIdentity, FRAME_LAYOUT_VERSION_V1, FrameDescriptor, FrameDescriptorSpec,
-    SemanticRegistrationV1, SlotKind,
-};
+use crate::execution::{DescriptorIdentity, FrameDescriptor, SemanticRegistrationV1};
+use crate::execution::{FrameDescriptorV2Spec, probe_spec};
 use crate::runtime::{ScopedOopRootGuard, current_thread_token, with_active};
 use core::cell::{Cell, RefCell};
 
@@ -230,22 +228,18 @@ unsafe extern "C" fn probe_step(machine: Oop, _: *const Oop, count: usize) -> Oo
 }
 
 fn descriptor(step: crate::abi::Method, raw: bool) -> std::sync::Arc<FrameDescriptor> {
-    FrameDescriptor::validate(FrameDescriptorSpec {
+    FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
         identity: DescriptorIdentity {
             implementation: 741,
             generation: 741,
             source_map: 741,
         },
-        layout_version: FRAME_LAYOUT_VERSION_V1,
         program_counter_count: 1,
         driver_argument_count: 0,
-        slot_kinds: vec![
-            SlotKind::Oop,
-            SlotKind::Oop,
-            if raw { SlotKind::Raw } else { SlotKind::Oop },
-        ],
         call_sites: Vec::new(),
         step_method: step,
+        edges: vec![],
+        ..probe_spec(if raw { 2 } else { 3 }, 1)
     })
     .unwrap()
 }
