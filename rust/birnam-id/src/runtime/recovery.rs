@@ -1,6 +1,8 @@
 //! Scoped ordinary-Id recovery requests over the production admission engine.
 use super::*;
 use crate::execution::{RecoveryAuthority, ResumableEntryCapability};
+mod graph;
+pub(super) use graph::machine_recover_graph;
 
 pub(super) struct Request {
     authority: RecoveryAuthority,

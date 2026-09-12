@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Added
 
+- Design 74T adds checked identity-graph recovery through ordinary Id recipes,
+  including exact numeric values and shared acyclic aggregates. Construction is
+  rooted across GC and revalidates storage and recovery authority before atomic
+  Frame publication. The four new optimization families remain in progress.
 - Design 74S adds bounded inherited-dispatch caching and guarded native Frame
   regions for local copies and call staging. Dependent native copies additionally
   use copy propagation, dead-store elimination and grouped stores. Ordinary target lookup, exact Id

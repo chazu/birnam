@@ -11,6 +11,10 @@ first bounded Stage 1 batch (single-PC entry values, local aliases and Return).
 and guarded native Frame regions, with separate profitability experiments.
 Selective native copy propagation is implemented in 74S; combined production
 performance acceptance and broader continuation shapes remain pending.
+[74T](74t-representation-and-allocation-optimizations.md) tracks the full
+implementation of numeric, loop, temporary-object and closure/capture
+optimization. Its first dependency is identity-preserving graph recovery;
+none of those four families is complete yet.
 
 ## Direction
 

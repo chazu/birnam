@@ -123,15 +123,11 @@ impl ExecutionState {
         })
     }
 
-    pub(crate) fn recover_acquired_call(
-        &mut self,
+    pub(crate) fn validate_recovery_authority(
+        &self,
         owner: u64,
         authority: &RecoveryAuthority,
-        pc: usize,
-        slots: &[(usize, usize)],
-        spills: &[Oop],
-        nil: Oop,
-    ) -> Result<FrameHandle, ExecutionError> {
+    ) -> Result<(), ExecutionError> {
         self.require_owner(owner)?;
         let current = self.recovery_authority(
             owner,
@@ -147,6 +143,19 @@ impl ExecutionState {
         {
             return Err(FrameError::StaleHandle.into());
         }
+        Ok(())
+    }
+
+    pub(crate) fn recover_acquired_call(
+        &mut self,
+        owner: u64,
+        authority: &RecoveryAuthority,
+        pc: usize,
+        slots: &[(usize, usize)],
+        spills: &[Oop],
+        nil: Oop,
+    ) -> Result<FrameHandle, ExecutionError> {
+        self.validate_recovery_authority(owner, authority)?;
         // Preflight the pin increment before touching either the arena or counts.
         let entry = self.resumable_entries[authority.entry.index]
             .entry

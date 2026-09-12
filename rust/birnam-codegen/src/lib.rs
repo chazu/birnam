@@ -10,6 +10,7 @@ mod c_string;
 pub mod frame_region;
 pub mod portable;
 pub mod portable_c;
+pub mod recovery_graph;
 pub mod resumable;
 pub mod resumable_block;
 pub mod resumable_c;

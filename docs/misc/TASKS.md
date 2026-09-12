@@ -124,6 +124,11 @@ continues with inherited-dispatch specialization and guarded native Frame region
 The third family adds selective native copy propagation and grouped stores.
 Per-family measurements are recorded there; combined production performance
 acceptance remains in progress.
+[Design 74T](../design/74t-representation-and-allocation-optimizations.md)
+(`birnam-sik`) implements the four remaining roadmap families: unboxed arithmetic,
+loop optimization, temporary-object elimination and closure/capture elimination.
+Work is in progress, beginning with checked identity-graph recovery and rooted
+materialization. These prerequisites do not complete any optimizing family.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

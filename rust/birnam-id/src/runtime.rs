@@ -1387,6 +1387,11 @@ impl Runtime {
                 recovery::machine_recover as crate::abi::Method,
             ),
             (
+                self.intern(b"recoverAt:withGraph:")
+                    .expect("static selector"),
+                recovery::machine_recover_graph as crate::abi::Method,
+            ),
+            (
                 self.intern(b"suspendAt:continueAt:")
                     .expect("static selector"),
                 crate::execution::machine_suspend as crate::abi::Method,
