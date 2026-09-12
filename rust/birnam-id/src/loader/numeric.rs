@@ -30,8 +30,17 @@ pub(super) fn resident_declaration(
     method: crate::abi::Method,
     name: &std::ffi::CStr,
 ) -> Option<(ImagePin, *mut c_void)> {
+    resident_address_declaration(method as *const c_void, name)
+}
+
+/// Constructor capabilities have their own signatures; discovery inspects the
+/// address's owner without casting it to or invoking it as an Id Method.
+pub(super) fn resident_address_declaration(
+    address: *const c_void,
+    name: &std::ffi::CStr,
+) -> Option<(ImagePin, *mut c_void)> {
     let mut owner = DlInfo::default();
-    if unsafe { dladdr(method as *const c_void, &mut owner) } == 0
+    if unsafe { dladdr(address, &mut owner) } == 0
         || owner.filename.is_null()
         || owner.base.is_null()
     {

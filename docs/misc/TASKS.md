@@ -134,7 +134,9 @@ measurements recorded in 74T. Live-field admission requires three current declar
 projections and uses untraced scratch plus bounded refusal retries; its enabled
 source passes 517 tests and the production gates. The next closure compiler
 checkpoint adds source capture/argument provenance and literal-aware PC emission,
-with 522 tests and production gates passing; runtime closure elimination is
+with 522 tests and production gates passing. Exact warm constructor declarations
+and floor admission also pass debug/release/installed checks, including changed
+API and ownership and an absent Block family; runtime closure elimination is
 still outstanding. Closure/capture elimination
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.

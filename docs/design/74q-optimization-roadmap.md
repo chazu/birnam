@@ -31,7 +31,9 @@ retries. Enabled-source qualified matrices and their variation are recorded in
 74T; the focused repeat has 3.2–6.3% median field-only fixture gains. Closure
 elimination and broader acceptance remain outstanding. Source closure provenance
 and literal-aware PC emission now have compiler tests and full production gates;
-they are not yet connected to a runtime closure-elimination consumer.
+exact warm constructor declarations and runtime admission also pass real-module
+and installed-prefix checks. These are not yet connected to a runtime
+closure-elimination consumer.
 None of those four full families is complete yet.
 
 ## Direction

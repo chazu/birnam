@@ -47,6 +47,15 @@ grep -Fxq "numeric-specialization: arithmetic, mixed values, errors, identity an
 cat "$prefix_parent/numeric-specialization.out"
 cc -Iabi/fixtures/idapi-v1 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
+cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v1 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
+"$prefix_parent/block-construction" "$prefix/lib/libbirnam_id.dylib" \
+  "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_collection.dylib" \
+  "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_portable_code.dylib" \
+  abi/fixtures/portable-code-v1/program-explicit-captures.bin
+"$prefix_parent/block-construction" "$prefix/lib/libbirnam_id.dylib" \
+  "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_collection.dylib" \
+  "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_portable_code.dylib" \
+  abi/fixtures/portable-code-v1/program-explicit-captures.bin without-prelude
 
 python3 - "$prefix/share/birnam/rust-install.json" <<'PY'
 import json

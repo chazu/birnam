@@ -1020,3 +1020,47 @@ registered callee; preserve cold setup, prove warm constructor admission, and
 charge or recover the exact fresh Block before any observer. Source-created
 closure allocation savings and the remaining full-family acceptance obligations
 are still outstanding. No new performance claim accompanies this checkpoint.
+
+### Exact warm constructor admission
+
+The Portable Code module now exports the optional
+[native Block construction declaration](../../abi/native-block-construction-v1.md).
+It recognizes its actual ordinary or materialized constructor, compares the
+current producer API with the calling floor, and verifies exact program bytes,
+capture count, invocation arity, existing carrier meaning and materialization
+owner. Cold setup and changed or unknown constructors decline. The original
+constructor implementation remains unchanged.
+
+The query makes no Id allocation or send. Reverse export inspection avoids
+interning a missing `BlockVt` name; multiple export aliases can conservatively
+decline. The floor's private `birnam_id_warm_block_construction_v1` entry supplies
+its own API comparison context and obtains the declaration from the actual
+resident constructor image, pinned through the query. It declines outside an
+existing owner-checked runtime entry. Neither this native export nor the producer
+declaration adds an IdApi field, changes a Method, or authorizes allocation
+elimination on its own.
+
+The [constructor receipt](../measurements/74t-closure-construction.json) passes
+53 verification commands. Its C fixture loads the real floor, Prelude,
+Collection, Error and Portable Code modules and exercises both the producer
+declaration and floor admission from an ordinary native Method. It checks cold
+refusal, distinct CodeObjects with equal program bytes, original supplied
+CodeObject identity, shared mutable captures, exact materialization ownership,
+changed allocation API and restored admission, unknown constructors, invalid
+carrier extent, changed parent and all ten context operands. A separate process
+omits Prelude and verifies refusal without allocation when the Block family is
+absent. These checks pass in debug, release and the installed prefix. Full
+production verification again passes 522 tests, 19 ignored, and image,
+cold-archive and relocation gates.
+
+Next, attempt elimination at the original constructor boundary, after the
+literal's existing resolver, CodeObject cache lookup and capture reads. This
+keeps ownership and cold setup in the original generated unit rather than
+recreating its caches in another native candidate. The Codegen wrapper must
+resolve its existing Portable Code capability once, then either enter the
+admitted continuation or call that original constructor; retrying capability
+lookup on refusal could duplicate observable API instrumentation. The success
+path still needs current callee/Frame-control admission, complete post-constructor
+slot writes and original boxes, virtual allocation accounting, and exact Block
+recovery before observation. That allocation-saving continuation is not yet
+implemented. All broader four-family acceptance obligations remain open.

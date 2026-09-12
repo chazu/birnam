@@ -33,6 +33,8 @@ def sources():
         "scripts/fixtures/numeric-specialization.birnam",
         "scripts/fixtures/native-numeric-api-context.c",
         "abi/native-field-projection-v1.md", "scripts/fixtures/field-projection.c",
+        "abi/native-block-construction-v1.md", "scripts/fixtures/native-block-construction.c",
+        "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
     )]
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
@@ -74,7 +76,7 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Source-created closure provenance, canonical capture/argument substitution and literal-aware PC emission; runtime closure elimination not implemented"
+        "scope": ("Source-created closure provenance and literal-aware PC emission, exact warm constructor declarations and runtime admission; closure allocation elimination not implemented"
                   if args.closures else "Bounded production live aggregate field projection and identity recovery; broader acceptance remains open"
                   if args.fields else "Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
                   if args.allocations else "Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"
@@ -111,6 +113,21 @@ def main():
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
         for profile in ("debug", "release"):
+            if args.closures:
+                run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
+                     "-p", "birnam-id", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-error", "-p", "birnam-portable-code"]
+                    + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
+                fixture = work / (profile + "-block-construction")
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v1",
+                     "scripts/fixtures/native-block-construction.c", "-o", fixture], profile + "-closure-native-fixture")
+                libraries = ROOT / ".cargo-target" / profile
+                run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
+                    ("id", "prelude", "collection", "error", "portable_code")]
+                    + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin"], profile + "-closure-native-admission")
+                run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
+                    ("id", "prelude", "collection", "error", "portable_code")]
+                    + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
             output = run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
                           "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")

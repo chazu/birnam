@@ -60,7 +60,7 @@ pub(crate) fn with_active_if_present<T>(body: impl FnOnce(&Runtime) -> T) -> Opt
 }
 
 impl Runtime {
-    fn api(&self) -> &'static IdApi {
+    pub(crate) fn api(&self) -> &'static IdApi {
         unsafe { &*(self.api as *const IdApi) }
     }
 

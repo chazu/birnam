@@ -904,6 +904,110 @@ unsafe extern "C" fn native_new_block(
     }
 }
 
+/// Optional, pure declaration of the exact warm constructor operation.
+/// See abi/native-block-construction-v1.md. This never constructs an object,
+/// installs a carrier, calls an Id Method, or grants invocation authority.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_block_construction_v1(
+    constructor: *const core::ffi::c_void,
+    nil: Oop,
+    context: *const usize,
+    block_vtable: Oop,
+    code_object: Oop,
+    capture_count: usize,
+    materialization_owner: Oop,
+    expected_program: *const u8,
+    expected_length: usize,
+) -> u32 {
+    if context.is_null() || expected_program.is_null() || expected_length > 65_536 {
+        return 0;
+    }
+    let mode = if constructor == native_new_block as *const core::ffi::c_void {
+        if !materialization_owner.is_null() {
+            return 0;
+        }
+        1
+    } else if constructor == native_new_materialized_block as *const core::ffi::c_void {
+        2
+    } else {
+        return 0;
+    };
+    with_active_if_present(|runtime| {
+        let api = runtime.api();
+        // Check the current table before calling any entry. Copied tables work;
+        // instrumentation or a different floor must withdraw this declaration.
+        if nil != api.nilObj
+            || unsafe { core::slice::from_raw_parts(context, 10) }
+                != [
+                    api.alloc as usize,
+                    api.import as usize,
+                    api.objectPayloadSize as usize,
+                    api.vtableOf as usize,
+                    api.vtableParent as usize,
+                    api.vtableSelectorAt as usize,
+                    api.symbolName as usize,
+                    api.vtableOwner as usize,
+                    api.symbol_vt as usize,
+                    api.exportedNameOf as usize,
+                ]
+        {
+            return 0;
+        }
+        let Some((_, program_state, program)) = inspected_code_object(runtime, code_object) else {
+            return 0;
+        };
+        if capture_count != program.capture_count as usize
+            || program_state.bytes.as_ref()
+                != unsafe { core::slice::from_raw_parts(expected_program, expected_length) }
+        {
+            return 0;
+        }
+        // Reverse export inspection never interns a missing name. An object
+        // exported under several names may conservatively decline when the
+        // floor returns another alias first; it must not manufacture authority.
+        let named = |object: Oop, expected: &[u8]| {
+            if object.is_null() {
+                return false;
+            }
+            let name = unsafe { (api.exportedNameOf)(object) };
+            !name.is_null() && unsafe { core::ffi::CStr::from_ptr(name) }.to_bytes() == expected
+        };
+        let mut ancestor = block_vtable;
+        let mut family = false;
+        for _ in 0..4096 {
+            if ancestor.is_null() {
+                break;
+            }
+            if named(ancestor, b"BlockVt") {
+                family = true;
+                break;
+            }
+            ancestor = runtime.vtable_parent(ancestor);
+        }
+        if !family
+            || !vtable_has_value_arity(runtime, block_vtable, program.parameter_count as usize)
+        {
+            return 0;
+        }
+        let owner = runtime.vtable_owner(block_vtable);
+        if owner.is_null()
+            || runtime.payload_size(owner) != Some(2 * size_of::<Oop>())
+            || !named(runtime.vtable_of(owner), BLOCK_CARRIER_VTABLE_NAME)
+            || unsafe { owner.cast::<Oop>().add(1).read() } != materialization_owner
+        {
+            return 0;
+        }
+        let carrier_code = unsafe { owner.cast::<Oop>().read() };
+        if !inspected_code_object(runtime, carrier_code)
+            .is_some_and(|(_, state, _)| state.bytes == program_state.bytes)
+        {
+            return 0;
+        }
+        mode
+    })
+    .unwrap_or(0)
+}
+
 unsafe extern "C" fn native_new_materialized_block(
     block_vtable: Oop,
     code_object: Oop,

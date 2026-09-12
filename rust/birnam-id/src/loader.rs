@@ -1,8 +1,10 @@
 //! Thin pass-through to the platform dynamic loader.
 
 use core::ffi::{c_char, c_int, c_void};
+mod block;
 mod field;
 mod numeric;
+pub(crate) use block::BlockConstructionSummary;
 pub(crate) use field::FieldSummary;
 pub(crate) use numeric::NumericSummary;
 

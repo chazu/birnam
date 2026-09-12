@@ -407,6 +407,22 @@ pub(crate) fn numeric_functions() -> [usize; 6] {
     ]
 }
 
+/// Current floor operands for the optional warm Block constructor declaration.
+pub(crate) fn block_construction_context(symbol_vtable: Oop) -> [usize; 10] {
+    [
+        api_alloc as *const () as usize,
+        api_import as *const () as usize,
+        api_object_payload_size as *const () as usize,
+        api_vtable_of as *const () as usize,
+        api_vtable_parent as *const () as usize,
+        api_vtable_selector_at as *const () as usize,
+        api_symbol_name as *const () as usize,
+        api_vtable_owner as *const () as usize,
+        symbol_vtable as usize,
+        api_exported_name_of as *const () as usize,
+    ]
+}
+
 fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
