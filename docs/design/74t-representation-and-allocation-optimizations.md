@@ -136,31 +136,62 @@ including MIN remainder -1. Differential tests compile 96 real TinyCC kernels
 and compare 49,152 executions with the Prelude's i128 arithmetic rule, checking
 partial results and surrounding canaries.
 
-These raw kernels are not yet connected to production multi-call execution.
-The boxed-call consumer does not establish completion of unboxed arithmetic.
+### Production raw-chain integration and current acceptance
 
-### Next: connect a whole numeric chain
+`numeric_chain::Template` derives straight-line call chains from canonical
+lowering, retaining physical inputs, alias dataflow, separate literal occurrences,
+PCs and allocation accounting. Hot descriptor records can own one compiled raw
+kernel. Unsupported source operations and invalid or excessive metadata refuse
+admission. Future target predictions use already-hot native declarations; merely
+predicting a call does not count toward the declaration discovery threshold.
 
-Derive straight-line call chains from canonical lowering, preserving aliases and
-physical input locations. Resolve each admitted numeric implementation by its
-actual current target, then instantiate and compile the raw plan only for hot
-code. Record every original PC, index-box allocation, numeric-result allocation
-and observation boundary. Literal and alias identities remain explicit.
+The driver integration computes the raw chain once and carries its raw results
+between ordinary calls. Each call still performs its actual dispatch and checks
+both actual canonical Integer operands, current ErrorVt behavior and the actual
+native implementation declaration before using a predicted result. Mismatches
+use the existing boxed specialization or original Method. A prediction is only
+arithmetic data: it cannot authorize a target, skip an effect, or replace an
+object identity. This is sufficient even if an observing lookup, overridden
+Machine publication method, or collector changes execution between operations.
 
-The initial production chain should retain existing Frames and result boxes.
-Within a proven bounded interval without observation or collection, compute the
-raw chain and reuse its intermediate raw results while the ordinary driver
-publishes the original boxed results and transitions in order. This avoids making
-Frame reconstruction or allocation elimination prerequisites for arithmetic
-specialization. Admission must cover all Machine methods used in that interval,
-lookup/implementation dependencies and the complete allocation budget, including
-PC tokens and publication operands. No callback or collection may invalidate a
-precomputed value without discarding the remaining raw results and executing the
-canonical operations. All errors and unsupported paths retain baseline behavior.
+Every baseline Frame, index box, numeric result box and transition remains in
+place. Result allocation still performs its original GC check after reading
+operands. Tickets contain only integers and can survive cache eviction or
+collection without holding unrooted Oops or executable addresses. The compiler
+owner survives the synchronous raw-kernel invocation; no executable lease is
+needed for its completed output data.
 
-Prove forced withdrawal at each operation, exact allocation/identity/effect parity,
-current target replacement and continuation behavior before performance
-acceptance. Do not promote a compiler-only kernel as this production consumer.
+This replaces the initially proposed requirement for an observation-free whole
+chain with independent validation at every actual call. A future faster mode
+may amortize those checks only after proving a bounded interval has no intervening
+observations, accounting for every allocation and guarding all Machine control,
+lookup and implementation dependencies. The fully checked integration supplies
+the differential reference for that work.
+
+The real stackless-driver tests enable the integration and verify positive raw
+hits. They force changed staging operands, operator rebinding, ErrorVt rebinding,
+and collecting cache eviction at each of three operations, comparing ordered
+observations, values, identities and allocation bytes against disabled arithmetic
+specialization. Normal installed builds currently keep raw-chain prediction
+**disabled**: the initial diagnostic pilot showed overhead, not a speedup. The
+previous guarded boxed-call optimization remains enabled. The installed Prelude
+fixture additionally exercises division overflow, zero division/remainder and
+MIN remainder -1 through hot portable bodies; those checks do not by themselves
+prove raw-chain hits in an installed build.
+
+The ignored `production_numeric_chain_timing` test compares raw chains with the
+existing boxed-call optimization (not with all optimization disabled), alternating
+order for three- and sixteen-operation chains. Its initial four-pair pilot used
+2,000 invocations per sample. Allocation bytes matched exactly and raw hits
+covered every call. It is diagnostic evidence only: preflight passed, but no
+interval monitor qualified the measurement. The overhead motivates reducing
+admission/validation cost before promotion, rather than enabling a slower pass.
+
+The [follow-up diagnostic receipt](../measurements/74t-numeric-chain-pilot.json)
+binds the measured release binary to the correctness receipt below. Median paired
+overhead was 9.53% for three operations and 7.14% for sixteen. This remains an
+unqualified warm constant-input pilot, not a whole-application performance result.
+
 
 ## Progress
 
@@ -189,6 +220,14 @@ acceptance. Do not promote a compiler-only kernel as this production consumer.
   Debug/release checks and full production verification passed: 487 workspace
   tests, 15 ignored diagnostics, installed Prelude arithmetic and API-context
   probes, image/lifetime, cold archives and relocation. No timings are claimed.
-- No remaining optimization family is complete yet. Next: connect the raw chain
-  kernels to production execution as above, then implement loop analysis and the
-  two allocation-elimination consumers.
+- Raw-chain dataflow is now connected to the actual stackless driver and has
+  forced-change differential coverage. Its performance experiment remains
+  disabled in normal builds pending profitable admission. The follow-up receipt
+  is `docs/measurements/74t-numeric-chains.json` (`--chains --verify`); historical
+  preparation receipts above describe their own source checkpoints. Debug/release
+  differential checks and full verification passed: 490 workspace tests,
+  16 ignored diagnostics, installed-prefix, image, cold-archive and relocation
+  checks. Normal-build arithmetic remains on the prior boxed consumer.
+- No remaining optimization family is complete yet. Next: reduce chain
+  admission/validation overhead and establish profitable production behavior,
+  then implement loop analysis and both allocation-elimination consumers.

@@ -1,0 +1,176 @@
+{
+  "argv": [
+    "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+    "production_numeric_chain_timing",
+    "--ignored",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "binary": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+    "sha256": "0393008bc90d18efb171bab050ee928740982cf4e15ee5b132e0ed346546e40b"
+  },
+  "correctness_receipt": "docs/measurements/74t-numeric-chains.json",
+  "correctness_receipt_sha256": "9dfa05b3e75bffefc48b861b90053c507e6f0de91b8da30ce02f94a6ca8999e1",
+  "output": "\nrunning 1 test\ntest runtime::native_tier::leaf_tests::numeric_tests::production_numeric_chain_timing ... numeric-chain length=3 pair=0 enabled=false calls=2000 ns=7128583 allocation_bytes=2064000 hits=0\nnumeric-chain length=3 pair=0 enabled=true calls=2000 ns=7701709 allocation_bytes=2064000 hits=6000\nnumeric-chain length=3 pair=1 enabled=true calls=2000 ns=7649500 allocation_bytes=2064000 hits=6000\nnumeric-chain length=3 pair=1 enabled=false calls=2000 ns=6613125 allocation_bytes=2064000 hits=0\nnumeric-chain length=3 pair=2 enabled=false calls=2000 ns=6737459 allocation_bytes=2064000 hits=0\nnumeric-chain length=3 pair=2 enabled=true calls=2000 ns=7073541 allocation_bytes=2064000 hits=6000\nnumeric-chain length=3 pair=3 enabled=true calls=2000 ns=7100042 allocation_bytes=2064000 hits=6000\nnumeric-chain length=3 pair=3 enabled=false calls=2000 ns=6395667 allocation_bytes=2064000 hits=0\nnumeric-chain length=16 pair=0 enabled=false calls=2000 ns=25045750 allocation_bytes=6224000 hits=0\nnumeric-chain length=16 pair=0 enabled=true calls=2000 ns=26134875 allocation_bytes=6224000 hits=32000\nnumeric-chain length=16 pair=1 enabled=true calls=2000 ns=26865750 allocation_bytes=6224000 hits=32000\nnumeric-chain length=16 pair=1 enabled=false calls=2000 ns=24268959 allocation_bytes=6224000 hits=0\nnumeric-chain length=16 pair=2 enabled=false calls=2000 ns=24509875 allocation_bytes=6224000 hits=0\nnumeric-chain length=16 pair=2 enabled=true calls=2000 ns=25988250 allocation_bytes=6224000 hits=32000\nnumeric-chain length=16 pair=3 enabled=true calls=2000 ns=26231500 allocation_bytes=6224000 hits=32000\nnumeric-chain length=16 pair=3 enabled=false calls=2000 ns=24233500 allocation_bytes=6224000 hits=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 174 filtered out; finished in 1.10s\n\n",
+  "qualification_reason": "Diagnostic cost test without an interval monitor; not performance acceptance.",
+  "qualified": false,
+  "rows": [
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 3,
+      "ns": 7128583,
+      "pair": 0
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 6000,
+      "length": 3,
+      "ns": 7701709,
+      "pair": 0
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 6000,
+      "length": 3,
+      "ns": 7649500,
+      "pair": 1
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 3,
+      "ns": 6613125,
+      "pair": 1
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 3,
+      "ns": 6737459,
+      "pair": 2
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 6000,
+      "length": 3,
+      "ns": 7073541,
+      "pair": 2
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 6000,
+      "length": 3,
+      "ns": 7100042,
+      "pair": 3
+    },
+    {
+      "allocation_bytes": 2064000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 3,
+      "ns": 6395667,
+      "pair": 3
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 16,
+      "ns": 25045750,
+      "pair": 0
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 32000,
+      "length": 16,
+      "ns": 26134875,
+      "pair": 0
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 32000,
+      "length": 16,
+      "ns": 26865750,
+      "pair": 1
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 16,
+      "ns": 24268959,
+      "pair": 1
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 16,
+      "ns": 24509875,
+      "pair": 2
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 32000,
+      "length": 16,
+      "ns": 25988250,
+      "pair": 2
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": true,
+      "hits": 32000,
+      "length": 16,
+      "ns": 26231500,
+      "pair": 3
+    },
+    {
+      "allocation_bytes": 6224000,
+      "calls": 2000,
+      "enabled": false,
+      "hits": 0,
+      "length": 16,
+      "ns": 24233500,
+      "pair": 3
+    }
+  ],
+  "scope": "Raw-chain prediction versus the existing boxed numeric consumer, warm constant-input calls.",
+  "status": "passed",
+  "summary": [
+    {
+      "length": 3,
+      "median_overhead_percent": 9.526573185332921
+    },
+    {
+      "length": 16,
+      "median_overhead_percent": 7.13826880971844
+    }
+  ]
+}

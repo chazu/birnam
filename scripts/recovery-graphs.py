@@ -42,10 +42,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--numeric", action="store_true")
+    parser.add_argument("--chains", action="store_true", help="production raw-chain verification")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.chains:
+        args.numeric = True
     if args.output is None:
         args.output = ROOT / "docs/measurements" / (
+            "74t-numeric-chains.json" if args.chains else
             "74t-numeric-preparation.json" if args.numeric else "74t-recovery-graphs.json")
     work = ROOT / ".cargo-target/74t-recovery"
     work.mkdir(parents=True, exist_ok=True)
@@ -53,7 +57,8 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Numeric declarations, guarded boxed calls and raw kernel preparation; raw chain production integration remains pending"
+        "scope": ("Production raw chains with per-call operand and implementation revalidation; profitability and remaining families in progress"
+                  if args.chains else "Numeric declarations, guarded boxed calls and raw kernel preparation"
                   if args.numeric else "Recovery graph infrastructure; four optimizing families remain in progress"),
         "timing_qualification": "not measured", "authorities": {}, "binaries": {},
     }
@@ -103,7 +108,7 @@ def main():
             ]
             if args.numeric:
                 checks += [
-                    ("birnam_codegen", "numeric-plan", "numeric_chain::tests"),
+                    ("birnam_codegen", "numeric-plan", "numeric_chain::"),
                     ("birnam_id", "numeric-kernels", "runtime::numeric::tests"),
                     ("birnam_id", "numeric-driver", "runtime::native_tier::leaf_tests::numeric_tests"),
                     ("birnam_prelude", "numeric-declarations", "numeric_declarations_name_exact_implementations"),

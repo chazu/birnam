@@ -37,11 +37,41 @@ impl Registry {
 }
 
 impl Runtime {
+    fn numeric_summary(&self, method: Method) -> Option<Rc<NumericSummary>> {
+        let (query, mut summary) = self.numeric.borrow_mut().observe(method);
+        if query {
+            // Discovery enters a native declaration. No RuntimeState or
+            // registry borrow survives that call. Native code owns its pure
+            // declaration contract; the returned image pin is retained here.
+            summary = NumericSummary::discover(method, self.canonical().smallint_vt).map(Rc::new);
+            if let Some(record) = self
+                .numeric
+                .borrow_mut()
+                .records
+                .get_mut(&(method as usize))
+            {
+                record.summary = summary.clone();
+            }
+        }
+        summary
+    }
+
+    #[cfg(test)]
     pub(super) fn try_numeric_call(
         &self,
         method: Method,
         receiver: Oop,
         arguments: &[Oop],
+    ) -> Option<Oop> {
+        self.try_numeric_call_with_prediction(method, receiver, arguments, None)
+    }
+
+    pub(super) fn try_numeric_call_with_prediction(
+        &self,
+        method: Method,
+        receiver: Oop,
+        arguments: &[Oop],
+        prediction: Option<chain::Prediction>,
     ) -> Option<Oop> {
         #[cfg(test)]
         if !ENABLED.get() {
@@ -70,29 +100,21 @@ impl Runtime {
                 error_argument,
             )
         };
-        let (query, mut summary) = self.numeric.borrow_mut().observe(method);
-        if query {
-            // Discovery enters a native declaration. No RuntimeState or
-            // registry borrow survives that call. Native code owns its pure
-            // declaration contract; the returned image pin is retained here.
-            summary = NumericSummary::discover(method, self.canonical().smallint_vt).map(Rc::new);
-            if let Some(record) = self
-                .numeric
-                .borrow_mut()
-                .records
-                .get_mut(&(method as usize))
-            {
-                record.summary = summary.clone();
-            }
-        }
-        let summary = summary?;
+        let summary = self.numeric_summary(method)?;
         let operator = summary.operator(self.canonical().smallint_vt)?;
         if error_argument {
             #[cfg(test)]
             HITS.set(HITS.get() + 1);
             return Some(argument);
         }
-        let value = operator.evaluate(left, right)?;
+        let value = match prediction.filter(|p| p.matches(operator, left, right)) {
+            Some(prediction) => {
+                #[cfg(test)]
+                CHAIN_HITS.set(CHAIN_HITS.get() + 1);
+                prediction.result()
+            }
+            None => operator.evaluate(left, right)?,
+        };
         #[cfg(test)]
         HITS.set(HITS.get() + 1);
         // Stay inside the exact ordinary synchronous boundary. The allocation
@@ -107,8 +129,13 @@ impl Runtime {
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: Cell<bool> = const { Cell::new(true) };
+    pub(super) static CHAIN_ENABLED: Cell<bool> = const { Cell::new(true) };
+    pub(super) static CHAIN_HITS: Cell<usize> = const { Cell::new(0) };
     pub(super) static HITS: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
 pub(super) mod tests;
+
+mod chain;
+pub(super) use chain::{CompiledChain, Ticket};

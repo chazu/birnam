@@ -8,7 +8,9 @@ use birnam_artifact::{
     materialization_selection as selection, portable_inventory,
     portable_resumable_manifest as manifest,
 };
-use birnam_codegen::{frame_region, resumable, resumable_c, resumable_descriptor, small_callee};
+use birnam_codegen::{
+    frame_region, numeric_chain, resumable, resumable_c, resumable_descriptor, small_callee,
+};
 mod regions;
 use birnam_native_compiler::Unit;
 use core::ffi::{c_char, c_void};
@@ -35,6 +37,9 @@ struct Record {
     disabled: bool,
     leaf: Option<Rc<small_callee::Plan>>,
     leaf_miss_epoch: Option<u64>,
+    numeric: Option<Rc<numeric_chain::Template>>,
+    numeric_tried: bool,
+    numeric_candidate: Option<Rc<super::numeric::CompiledChain>>,
 }
 
 struct Prepared {
@@ -43,6 +48,7 @@ struct Prepared {
     pcs: usize,
     regions: Vec<Option<Rc<frame_region::Plan>>>,
     leaf: Option<Rc<small_callee::Plan>>,
+    numeric: Option<Rc<numeric_chain::Template>>,
 }
 
 struct Candidate {
@@ -146,6 +152,9 @@ impl Registry {
                 descriptor: Arc::downgrade(descriptor),
                 leaf: prepared.leaf.clone(),
                 leaf_miss_epoch: None,
+                numeric: prepared.numeric.clone(),
+                numeric_tried: false,
+                numeric_candidate: None,
                 pending: Some(prepared),
                 candidate: None,
                 visits: 0,
@@ -157,6 +166,35 @@ impl Registry {
     pub(super) fn prune(&mut self) {
         self.records
             .retain(|_, record| record.descriptor.strong_count() != 0);
+    }
+
+    pub(super) fn numeric_template(&self, key: usize) -> Option<Rc<numeric_chain::Template>> {
+        let record = self.records.get(&key)?;
+        if record.disabled || record.candidate.is_none() || record.descriptor.upgrade().is_none() {
+            return None;
+        }
+        record.numeric.clone()
+    }
+
+    pub(super) fn numeric_chain(
+        &mut self,
+        key: usize,
+        operators: &[numeric_chain::Operator],
+    ) -> Option<Rc<super::numeric::CompiledChain>> {
+        let record = self.records.get_mut(&key)?;
+        if record.disabled || record.candidate.is_none() || record.descriptor.upgrade().is_none() {
+            return None;
+        }
+        if !record.numeric_tried {
+            record.numeric_tried = true;
+            record.numeric_candidate =
+                super::numeric::CompiledChain::new(record.numeric.clone()?, operators).map(Rc::new);
+        }
+        record
+            .numeric_candidate
+            .as_ref()
+            .filter(|candidate| candidate.operators() == operators)
+            .cloned()
     }
 }
 
@@ -194,6 +232,7 @@ impl Prepared {
                 pcs: 1,
                 regions: Vec::new(),
                 leaf: Some(Rc::new(plan)),
+                numeric: None,
             });
         }
         let regions_enabled = true;
@@ -241,6 +280,7 @@ impl Prepared {
             pcs: program.blocks.len(),
             regions,
             leaf: None,
+            numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
         })
     }
 

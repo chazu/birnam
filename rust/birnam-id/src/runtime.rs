@@ -3215,11 +3215,20 @@ impl Runtime {
         method: Method,
         receiver: Oop,
         arguments: &[Oop],
+        numeric: &mut Option<numeric::Ticket>,
+        location: (usize, usize),
     ) -> Result<Oop, ExecutionError> {
         let _boundary = self.enter_stackless_boundary(owner, capability)?;
         let _scope = self.enter_stackless_scope(capability);
         Ok(self.enter(|| {
-            if let Some(result) = self.try_numeric_call(method, receiver, arguments) {
+            let (key, pc) = location;
+            if pc == 0 {
+                *numeric = self.prepare_numeric_chain(capability, owner, key);
+            }
+            let prediction = numeric.as_mut().and_then(|ticket| ticket.take(key, pc));
+            if let Some(result) =
+                self.try_numeric_call_with_prediction(method, receiver, arguments, prediction)
+            {
                 return result;
             }
             let args = if arguments.is_empty() {
@@ -3532,6 +3541,7 @@ impl Runtime {
         nil: Oop,
         resolve: &mut impl FnMut(&Runtime, Oop, Oop, &[Oop]) -> Result<StacklessTarget, ExecutionError>,
     ) -> Result<Oop, ExecutionError> {
+        let mut numeric = None;
         loop {
             // Copy all invocation inputs before crossing into generated code.
             let (method, program_counter, argument_count, descriptor_key) = unsafe {
@@ -3718,6 +3728,8 @@ impl Runtime {
                                 method,
                                 operands.receiver,
                                 &operands.arguments,
+                                &mut numeric,
+                                (descriptor_key, program_counter),
                             )?;
                             unsafe {
                                 (&mut *self.state.get())
@@ -3864,6 +3876,8 @@ impl Runtime {
                                 method,
                                 operands.receiver,
                                 &operands.arguments,
+                                &mut numeric,
+                                (descriptor_key, program_counter),
                             )?;
                             if let Some(answer) =
                                 self.finish_stackless_return(owner, capability, result)?

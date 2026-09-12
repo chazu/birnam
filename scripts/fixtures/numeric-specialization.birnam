@@ -12,4 +12,16 @@ let boxed := 11;
 [Codegen evictMaterializations];
 [System gc];
 [[[numeric value: 11 value: 3] = 31] ifTrue: [| nil] ifFalse: [| [OS exit: 7]]];
+let divisionSource := [:a :b | let quotient := [a / b]; [quotient + 0]];
+let division := [Codegen materializeResumable: [[divisionSource codeObject] withoutSourceProvenance] captures: #[]];
+[256 timesRepeat: [|
+  [[[division value: 12 value: 3] = 4] ifTrue: [| nil] ifFalse: [| [OS exit: 8]]]]];
+[[[division value: 12 value: 0] isError] ifTrue: [| nil] ifFalse: [| [OS exit: 9]]];
+[[[division value: -9223372036854775808 value: -1] isError] ifTrue: [| nil] ifFalse: [| [OS exit: 10]]];
+let remainderSource := [:a :b | let remainder := [a mod: b]; [remainder + 0]];
+let remainder := [Codegen materializeResumable: [[remainderSource codeObject] withoutSourceProvenance] captures: #[]];
+[256 timesRepeat: [|
+  [[[remainder value: 11 value: 3] = 2] ifTrue: [| nil] ifFalse: [| [OS exit: 11]]]]];
+[[[remainder value: -9223372036854775808 value: -1] = 0] ifTrue: [| nil] ifFalse: [| [OS exit: 12]]];
+[[[remainder value: 12 value: 0] isError] ifTrue: [| nil] ifFalse: [| [OS exit: 13]]];
 [System println: "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed"];
