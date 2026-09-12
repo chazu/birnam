@@ -138,7 +138,7 @@ pub(crate) struct Heap {
 }
 
 mod dead_allocations;
-pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation};
+pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation, MAX_DEAD_PAYLOAD_BYTES};
 
 impl Heap {
     pub(crate) fn new() -> Self {

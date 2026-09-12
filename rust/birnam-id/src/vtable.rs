@@ -482,6 +482,19 @@ impl Vtables {
         record.layout_kinds[word]
     }
 
+    /// Inspect the current exact-vtable layout with one registry lookup.
+    /// Explicit prefix kinds and the repeated tail both apply to this extent.
+    pub(crate) fn all_oop_layout(&self, vtable: Oop, words: usize) -> bool {
+        self.by_address.get(&vtable.addr()).is_some_and(|record| {
+            record.layout_set
+                && record.layout_kinds[..words.min(record.layout_kinds.len())]
+                    .iter()
+                    .all(|&kind| kind == crate::abi::SLOT_OOP)
+                && (words <= record.layout_kinds.len()
+                    || record.layout_rest == crate::abi::SLOT_OOP)
+        })
+    }
+
     pub(crate) fn has_layout(&self, vtable: Oop) -> bool {
         self.by_address
             .get(&vtable.addr())
@@ -512,7 +525,11 @@ impl Vtables {
     /// Resolve one dictionary, returning its delegation edge on a miss.
     /// The caller may continue without reading this dictionary a second time.
     #[inline]
-    pub(crate) fn lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<MethodAddress>, Oop> {
+    pub(crate) fn lookup_head(
+        &self,
+        vtable: Oop,
+        selector: Oop,
+    ) -> Result<Option<MethodAddress>, Oop> {
         let record = self.record(vtable);
         if let Some(index) = record.key_index(selector) {
             // SAFETY: same method-dictionary contract as lookup/direct_lookup.
@@ -926,6 +943,26 @@ mod tests {
     }
 
     #[test]
+    fn all_oop_layout_checks_current_prefix_tail_and_exact_vtable() {
+        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
+        assert!(!vtables.all_oop_layout(parent, 1));
+        assert!(!vtables.all_oop_layout(core::ptr::null_mut(), 1));
+        let mixed = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW];
+        vtables.set_layout(parent, mixed.as_ptr(), mixed.len(), crate::abi::SLOT_OOP);
+        assert!(vtables.all_oop_layout(parent, 1));
+        assert!(!vtables.all_oop_layout(parent, 2));
+        assert!(!vtables.all_oop_layout(parent, 128));
+        assert!(!vtables.all_oop_layout(child, 1));
+        vtables.set_layout(parent, mixed.as_ptr(), 1, crate::abi::SLOT_RAW);
+        assert!(vtables.all_oop_layout(parent, 1));
+        assert!(!vtables.all_oop_layout(parent, 2));
+        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+        assert!(vtables.all_oop_layout(parent, 128));
+        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_UNKNOWN);
+        assert!(!vtables.all_oop_layout(parent, 1));
+    }
+
+    #[test]
     fn selector_equality_is_pointer_identity_not_pointed_to_value() {
         let (_heap, mut vtables, _meta, parent, _child) = new_hierarchy();
         let mut first = 7u64;
@@ -1036,12 +1073,18 @@ mod tests {
             .map(|v| core::ptr::from_mut(v).cast())
             .collect();
         let expect_moved = |vtables: &Vtables, last: &mut u64, what: &str| {
-            assert!(vtables.mutation_epoch() > *last, "{what} did not move the epoch");
+            assert!(
+                vtables.mutation_epoch() > *last,
+                "{what} did not move the epoch"
+            );
             *last = vtables.mutation_epoch();
         };
         let mut last = vtables.mutation_epoch();
 
-        assert_eq!(vtables.add_method(parent, keys[0], answer_1), AddMethod::Added);
+        assert_eq!(
+            vtables.add_method(parent, keys[0], answer_1),
+            AddMethod::Added
+        );
         expect_moved(&vtables, &mut last, "add_method (added)");
         assert!(matches!(
             vtables.add_method(parent, keys[0], answer_2),
@@ -1061,7 +1104,11 @@ mod tests {
         heap.clear_marks();
         assert!(heap.mark_collectable_address(weak.addr()));
         assert_eq!(vtables.remove_dead_weak_bindings(&heap), 0);
-        assert_eq!(vtables.mutation_epoch(), last, "a sweep that removed nothing is not a mutation");
+        assert_eq!(
+            vtables.mutation_epoch(),
+            last,
+            "a sweep that removed nothing is not a mutation"
+        );
         heap.clear_marks();
         assert_eq!(vtables.remove_dead_weak_bindings(&heap), 1);
         expect_moved(&vtables, &mut last, "remove_dead_weak_bindings");
@@ -1072,6 +1119,10 @@ mod tests {
         assert_eq!(vtables.remove_dead_collectable(&heap), vec![collectable]);
         expect_moved(&vtables, &mut last, "remove_dead_collectable");
         assert!(vtables.remove_dead_collectable(&heap).is_empty());
-        assert_eq!(vtables.mutation_epoch(), last, "an empty vtable sweep is not a mutation");
+        assert_eq!(
+            vtables.mutation_epoch(),
+            last,
+            "an empty vtable sweep is not a mutation"
+        );
     }
 }

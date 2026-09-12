@@ -148,6 +148,7 @@ def main():
                 checks += [
                     ("birnam_codegen", "virtual-field-plan", "virtual_aggregate::tests"),
                     ("birnam_id", "virtual-field-driver", "runtime::native_tier::leaf_tests::virtual_aggregate_tests"),
+                    ("birnam_id", "virtual-field-layout", "all_oop_layout_checks_current_prefix_tail_and_exact_vtable"),
                     ("birnam_relational", "native-field-declaration", "native_field_projection_declares_only_the_exact_pure_getter"),
                 ]
             for package, label, test_filter in checks:

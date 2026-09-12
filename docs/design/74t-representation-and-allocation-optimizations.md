@@ -757,3 +757,25 @@ these are measured admission/recovery costs, not grounds for promotion. Retain
 this receipt while reducing repeated layout lookup, premature payload snapshots
 and transient admission allocations. The first-128-call numbers remain noisy
 and are not an incremental compiler preparation measurement.
+
+
+Admission now keeps bounded input/result/operation/recovery scratch on the host
+stack. Current selector Methods and pure projection declarations are inspected
+before copying clone payloads; a region with no admitted projection refuses
+without creating snapshots. No speculative value is executed or published until
+all cloned payloads pass the existing storage, finalizer, tracing and size rules.
+The layout proof reads the exact vtable registry once, checks the explicit prefix
+and repeated tail over the required extent, and never inherits a parent's layout.
+Repeated clones of the same prototype within this callback-free admission share
+the saved payload proof while retaining separate allocation capabilities.
+
+New differential controls refuse an explicit raw payload word, a raw repeated
+tail and an oversized aggregate. A layout test covers replacement, unknown kinds,
+missing registration and exact-vtable ownership; both debug and release focused
+verification include it. The existing forced-exit, collecting-observer, automatic
+collection and continuation-capture comparisons remain required after this change.
+
+The [revised admission receipt](../measurements/74t-virtual-fields-admission.json)
+passes focused debug/release comparisons and full production verification:
+515 workspace tests, 19 ignored diagnostics, installed runtime, image, archive
+and relocation gates. The consumer remains disabled pending repeat measurements.

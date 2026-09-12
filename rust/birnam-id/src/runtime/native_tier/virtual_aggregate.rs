@@ -5,7 +5,7 @@ use crate::heap::{DeadAllocation, DeferredAllocation};
 use crate::loader::FieldSummary;
 use crate::raw::MethodAddress;
 use crate::runtime::current_thread_token;
-use birnam_codegen::virtual_aggregate::{Exit, Plan, Value};
+use birnam_codegen::virtual_aggregate::{Exit, MAX_CALLS, MAX_SLOTS, Plan, Value};
 use core::cell::RefCell;
 
 #[cfg(test)]
@@ -85,13 +85,10 @@ enum Computed {
     Real(Oop),
     Virtual(usize),
 }
+#[derive(Clone, Copy)]
 enum Operation {
     Clone(usize),
     Projection(Oop),
-}
-struct Node {
-    prototype: Oop,
-    snapshot: Rc<DeadAllocation>,
 }
 
 unsafe fn invoke(
@@ -131,6 +128,7 @@ pub(super) unsafe fn execute(
     let owner = current_thread_token();
     let capability = runtime.stackless_machine_capability(machine).ok()?;
     let plan = &compiled.plan;
+    let nil = runtime.canonical().nil;
     let (frame, inputs) = {
         let state = unsafe { &*runtime.state.get() };
         let arena = state.execution.machine(owner, capability).ok()?.arena();
@@ -141,19 +139,22 @@ pub(super) unsafe fn execute(
         {
             return None;
         }
-        let inputs = (0..plan.slot_count)
-            .map(|slot| arena.read_oop(frame, slot))
-            .collect::<Result<Vec<_>, _>>()
-            .ok()?;
+        let mut inputs = [nil; MAX_SLOTS];
+        for (slot, value) in inputs.get_mut(..plan.slot_count)?.iter_mut().enumerate() {
+            *value = arena.read_oop(frame, slot).ok()?;
+        }
         (frame, inputs)
     };
-    let nil = runtime.canonical().nil;
-    let mut results = Vec::new();
-    let mut operations = Vec::new();
-    let mut nodes: Vec<Node> = Vec::new();
-    let mut summaries = Vec::new();
+    // Bounded scratch stays on the host stack; it is never an Id root or
+    // observable Frame. Admission cannot collect or call back into Id.
+    let mut results = [Computed::Real(nil); MAX_CALLS];
+    let mut operations = [Operation::Projection(nil); MAX_CALLS];
+    let mut nodes = [nil; MAX_CALLS];
+    let mut node_count = 0;
+    let mut summaries: [Option<Rc<FieldSummary>>; MAX_CALLS] = core::array::from_fn(|_| None);
     let mut projections = 0;
-    for step in &plan.steps {
+    let mut stop = 0;
+    for (pc, step) in plan.steps.iter().enumerate() {
         let Exit::Call {
             receiver,
             selector,
@@ -172,7 +173,7 @@ pub(super) unsafe fn execute(
         };
         let prototype = match receiver {
             Computed::Real(object) => object,
-            Computed::Virtual(index) => nodes[index].prototype,
+            Computed::Virtual(index) => nodes[index],
         };
         let method = {
             let state = unsafe { &*runtime.state.get() };
@@ -188,34 +189,12 @@ pub(super) unsafe fn execute(
             method
         };
         if method == MethodAddress::from_method(crate::dispatch::object_clone) {
-            let snapshot = if let Computed::Virtual(index) = receiver {
-                nodes[index].snapshot.clone()
-            } else {
-                let state = unsafe { &*runtime.state.get() };
-                let vt = state.heap.vtable_of(prototype)?;
-                if state.heap.has_finalizer(prototype) != Some(false)
-                    || !state.vtables.has_layout(vt)
-                    || state.vtables.trace_hook(vt).is_some()
-                    || state.vtables.slot_kind(vt, 0) != crate::abi::SLOT_OOP
-                {
-                    break;
-                }
-                let snapshot = state.heap.prepare_dead_clone(prototype)?;
-                let payload = state.heap.payload_size(prototype)?;
-                if !payload.is_multiple_of(core::mem::size_of::<Oop>())
-                    || (0..payload / core::mem::size_of::<Oop>())
-                        .any(|i| state.vtables.slot_kind(vt, i) != crate::abi::SLOT_OOP)
-                {
-                    break;
-                }
-                snapshot
-            };
-            results.push(Computed::Virtual(nodes.len()));
-            operations.push(Operation::Clone(nodes.len()));
-            nodes.push(Node {
-                prototype,
-                snapshot,
-            });
+            // Defer the storage proof and snapshot until at least one field
+            // declaration admits the region. Rejected declarations need neither.
+            results[pc] = Computed::Virtual(node_count);
+            operations[pc] = Operation::Clone(node_count);
+            nodes[node_count] = prototype;
+            node_count += 1;
         } else {
             let Computed::Virtual(index) = receiver else {
                 break;
@@ -226,33 +205,60 @@ pub(super) unsafe fn execute(
             let value = unsafe {
                 (*runtime.state.get())
                     .heap
-                    .read_payload_word(nodes[index].prototype, field)
+                    .read_payload_word(nodes[index], field)
             }
             .map(core::ptr::with_exposed_provenance_mut)?;
-            summaries.push(summary);
+            summaries[projections] = Some(summary);
             projections += 1;
-            operations.push(Operation::Projection(value));
-            results.push(Computed::Real(value));
+            operations[pc] = Operation::Projection(value);
+            results[pc] = Computed::Real(value);
         }
+        stop += 1;
     }
-    if nodes.is_empty() || projections == 0 {
+    if node_count == 0 || projections == 0 {
         return None;
+    }
+    // Pure preflight reads may have inspected payload bits, but no result is
+    // executed or published until every cloned payload has passed this proof.
+    let mut snapshots: [Option<Rc<DeadAllocation>>; MAX_CALLS] = core::array::from_fn(|_| None);
+    {
+        let state = unsafe { &*runtime.state.get() };
+        for index in 0..node_count {
+            let prototype = nodes[index];
+            if let Some(previous) = nodes[..index].iter().position(|&value| value == prototype) {
+                snapshots[index] = snapshots[previous].clone();
+                continue;
+            }
+            let vt = state.heap.vtable_of(prototype)?;
+            let payload = state.heap.payload_size(prototype)?;
+            if payload > crate::heap::MAX_DEAD_PAYLOAD_BYTES
+                || !payload.is_multiple_of(core::mem::size_of::<Oop>())
+                || state.heap.has_finalizer(prototype) != Some(false)
+                || state.vtables.trace_hook(vt).is_some()
+                || !state
+                    .vtables
+                    .all_oop_layout(vt, (payload / core::mem::size_of::<Oop>()).max(1))
+            {
+                return None;
+            }
+            snapshots[index] = Some(state.heap.prepare_dead_clone(prototype)?);
+        }
     }
     // Test exits use the same admitted region, but recover before an earlier
     // Call. In particular, an exit after the first clone must really recover
     // that identity, rather than simply refusing for lack of a projection.
     #[cfg(test)]
-    if let Some(stop) = FORCE_EXIT.get() {
-        assert!(stop > 0);
-        operations.truncate(stop);
+    if let Some(forced) = FORCE_EXIT.get() {
+        assert!(forced > 0);
+        stop = stop.min(forced);
     }
-    let stop = operations.len();
+    let operations = &operations[..stop];
     let (clone_count, clone_bytes) = operations.iter().try_fold(
         (0usize, 0usize),
         |(count, bytes), operation| match operation {
             Operation::Clone(index) => Some((
                 count + 1,
-                bytes.checked_add(nodes[*index].snapshot.total_size())?,
+                bytes.checked_add(snapshots[*index].as_ref()?.total_size())?,
             )),
             Operation::Projection(_) => Some((count, bytes)),
         },
@@ -286,7 +292,7 @@ pub(super) unsafe fn execute(
     // All declarations are pure, all current binding reads precede this body,
     // and the complete budget excludes observation until physical recovery.
     Some((|| {
-        let mut identities: Vec<Option<DeferredAllocation>> = vec![None; nodes.len()];
+        let mut identities: [Option<DeferredAllocation>; MAX_CALLS] = [None; MAX_CALLS];
         for (pc, operation) in operations.iter().enumerate() {
             let token;
             let args = if pc == 0 {
@@ -311,9 +317,12 @@ pub(super) unsafe fn execute(
                     Operation::Clone(index) => {
                         identities[*index] = Some(
                             unsafe {
-                                (*runtime.state.get())
-                                    .heap
-                                    .record_virtual_clone(nodes[*index].snapshot.clone())
+                                (*runtime.state.get()).heap.record_virtual_clone(
+                                    snapshots[*index]
+                                        .as_ref()
+                                        .ok_or(ExecutionError::InvalidAction)?
+                                        .clone(),
+                                )
                             }
                             .ok_or(ExecutionError::InvalidAction)?,
                         );
@@ -336,7 +345,7 @@ pub(super) unsafe fn execute(
         #[cfg(test)]
         let materialize = materialize || FORCE_EXIT.get().is_some();
         if materialize {
-            let mut physical = vec![None; nodes.len()];
+            let mut physical = [None; MAX_CALLS];
             for (slot, result) in boundary.before.iter().enumerate() {
                 let Some(result) = result else {
                     continue;

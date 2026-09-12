@@ -97,6 +97,9 @@ enum Case {
     Twins,
     Capture,
     Suspend,
+    MixedLayout,
+    RawTail,
+    Oversized,
 }
 fn program(case: Case) -> Vec<u8> {
     let send = |receiver, selector, args| Expr::Send {
@@ -302,6 +305,9 @@ fn compare_recovery(forced_exit: Option<usize>) {
         Case::Twins,
         Case::Capture,
         Case::Suspend,
+        Case::MixedLayout,
+        Case::RawTail,
+        Case::Oversized,
     ] {
         let mut evidence = Vec::new();
         for enabled in [false, true] {
@@ -324,7 +330,27 @@ fn compare_recovery(forced_exit: Option<usize>) {
                 r.intern(b"duplicate").unwrap(),
                 crate::dispatch::object_clone,
             );
-            let prototype = r.allocate_instance(vt, 16);
+            if matches!(case, Case::MixedLayout | Case::RawTail) {
+                let kinds = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW];
+                r.set_layout(
+                    vt,
+                    kinds.as_ptr(),
+                    if matches!(case, Case::RawTail) { 1 } else { 2 },
+                    if matches!(case, Case::RawTail) {
+                        crate::abi::SLOT_RAW
+                    } else {
+                        crate::abi::SLOT_OOP
+                    },
+                );
+            }
+            let prototype = r.allocate_instance(
+                vt,
+                if matches!(case, Case::Oversized) {
+                    1032
+                } else {
+                    16
+                },
+            );
             let _prototype = ScopedOopRootGuard::new(r, prototype);
             let field = r.make_integer(71);
             let _field = ScopedOopRootGuard::new(r, field);
@@ -452,7 +478,15 @@ fn compare_recovery(forced_exit: Option<usize>) {
                     }
                 );
             }
-            let optimized = enabled && !matches!(case, Case::Rebind | Case::Withdraw);
+            let optimized = enabled
+                && !matches!(
+                    case,
+                    Case::Rebind
+                        | Case::Withdraw
+                        | Case::MixedLayout
+                        | Case::RawTail
+                        | Case::Oversized
+                );
             let identities = if matches!(case, Case::Twins) { 2 } else { 1 };
             let identities = identities.min(forced_exit.unwrap_or(usize::MAX));
             assert_eq!(
