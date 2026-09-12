@@ -42,8 +42,8 @@ impl Cache {
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: Cell<bool> = const { Cell::new(true) };
-    static HITS: Cell<usize> = const { Cell::new(0) };
-    static MISSES: Cell<usize> = const { Cell::new(0) };
+    pub(super) static HITS: Cell<usize> = const { Cell::new(0) };
+    pub(super) static MISSES: Cell<usize> = const { Cell::new(0) };
 }
 
 impl Runtime {

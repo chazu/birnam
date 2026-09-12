@@ -250,3 +250,54 @@ are not presented as acceptance of the unrestricted variant.
 passes focused debug/release checks and full production verification. Production
 application prefixes have built successfully and their binary comparison confirms
 that only the floor differs.
+
+
+### Retained-policy timing and current acceptance state
+
+The [selective-policy eight-pair matrix](../measurements/74s-copies-selective-timing.json)
+passed at 30,000 calls per sample. Against plain regions, chained-copy execution
+improved 0.90% at the paired median; the earlier 10,000-call unrestricted pass
+measured 1.90% for that same eligible shape. This is a small incremental signal,
+not a robust whole-program speedup. Combined region/propagation reductions against
+regions off are 54.12% for chains, 53.54% for repeated inputs and 23.72% for arguments.
+Persistent fallback is essentially unchanged in the incremental comparison
+(-0.14% median time reduction). Plain and propagated modes now emit the same plain
+kernel for repeated-input and argument controls; their measured variation remains
+visible rather than being attributed to the propagation transformation.
+
+All three requested families are implemented. Remaining acceptance work is the
+combined production workload matrix and investigation of any repeatable regression
+it exposes. [Both production prefixes pass workload correctness](../measurements/74s-applications-smoke.json).
+The [first production timing attempt](../measurements/74s-applications-rejected-load.json)
+was rejected in pair four: median idle CPU fell to 31.9% with five of eleven
+intervals below 30%. It is not qualified timing evidence. The complete matrix is
+being rerun after waiting for the host to settle. The authorized rk process was
+resumed after rejection. No host thresholds were changed.
+
+
+### Control diagnosis and production fallback coverage
+
+The repeated-input control's variation was investigated rather than silently
+accepted. [Three structural diagnostic repetitions](../measurements/74s-control-diagnostic.json)
+confirm identical emitted C hashes for plain and selected-propagation modes on
+repeated-input and persistent-fallback bodies. Inherited-cache hits and misses are
+both zero for these fixtures; chained copies correctly produce different C.
+The admission scan now uses a bounded stack bitmap rather than allocating a
+heap vector while preparing a candidate. The diagnostic timings are unqualified
+and are not used as performance evidence.
+
+The [second application attempt](../measurements/74s-applications-rejected-load-retry.json)
+also failed its interval gate (49.46% median idle in pair three). The revised
+application runner gates each independent paired workload immediately before it
+runs and monitors that pair. It may wait before another pair; an interval failure
+still rejects the complete matrix, with the same CPU and power thresholds.
+The next matrix also includes the existing ordinary-lookup override fixture,
+which verifies late method replacement, forced fallback, eviction and GC through
+the installed production floor. Both original and current prefixes are rebuilt
+for the final source manifest; no stale build receipt is reused.
+
+[Final correctness](../measurements/74s-final-correctness.json) passes all focused
+debug/release and full production checks after removing admission heap work.
+[The installed fallback fixture](../measurements/74s-final-fallback-smoke.json)
+passes through both floors, including mutation, forced lookup fallback, eviction
+and GC.

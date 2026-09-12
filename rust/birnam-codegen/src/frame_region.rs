@@ -37,7 +37,7 @@ impl Plan {
     /// runtime matrix. Admit propagation when it can remove a dependency on a
     /// prior copy or an overwritten destination, rather than just reuse reads.
     pub fn benefits_from_propagation(&self) -> bool {
-        let mut written = vec![false; self.slot_count as usize];
+        let mut written = [false; MAX_SLOTS];
         for (index, &(destination, source)) in self.copies.iter().enumerate() {
             if let Some((after, slot, _)) = &self.selector_store
                 && *after == index

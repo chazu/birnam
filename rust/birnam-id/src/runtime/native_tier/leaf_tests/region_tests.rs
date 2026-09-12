@@ -350,13 +350,13 @@ fn native_region_timing() {
         .borrow_mut()
         .records
         .retain(|key, _| *key == Arc::as_ptr(&leaf.descriptor) as usize);
-    let (source_bytes, metadata_bytes) = {
+    let (source_bytes, metadata_bytes, source_sha256) = {
         let registry = r.native_tier.borrow();
         let prepared = registry
             .records
             .get(&(Arc::as_ptr(&leaf.descriptor) as usize))
             .and_then(|r| r.pending.as_ref());
-        prepared.map_or((0, 0), |p| {
+        prepared.map_or((0, 0, String::new()), |p| {
             (
                 p.source.as_bytes().len(),
                 p.regions
@@ -370,6 +370,10 @@ fn native_region_timing() {
                             + r.selector_store.as_ref().map_or(0, |s| s.2.capacity())
                     })
                     .sum::<usize>(),
+                {
+                    use sha2::{Digest, Sha256};
+                    format!("{:x}", Sha256::digest(p.source.as_bytes()))
+                },
             )
         })
     };
@@ -391,11 +395,16 @@ fn native_region_timing() {
     regions::MISSES.set(0);
     CALLS.set(0);
     let before = unsafe { (*r.state.get()).heap.bytes_since_collection() };
+    let dispatch_hits_before = super::super::super::dispatch_cache::HITS.get();
+    let dispatch_misses_before = super::super::super::dispatch_cache::MISSES.get();
     let start = std::time::Instant::now();
     for _ in 0..count {
         assert_eq!(drive(), input);
     }
     let elapsed_ns = start.elapsed().as_nanos();
+    let dispatch_hits = super::super::super::dispatch_cache::HITS.get() - dispatch_hits_before;
+    let dispatch_misses =
+        super::super::super::dispatch_cache::MISSES.get() - dispatch_misses_before;
     let allocated = unsafe { (*r.state.get()).heap.bytes_since_collection() } - before;
     let eligible = mode != "off" && ["repeat", "chain", "arguments"].contains(&case.as_str());
     let pcs = if case == "arguments" { 1 } else { 2 };
@@ -415,7 +424,7 @@ fn native_region_timing() {
     assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
     assert_eq!(r.stackless_registration_diagnostics().acquired_entries, 0);
     println!(
-        "REGION_TIMING {{\"mode\":\"{mode}\",\"case\":\"{case}\",\"count\":{count},\"prepare_ns\":{prepare_ns},\"warm_ns\":{warm_ns},\"elapsed_ns\":{elapsed_ns},\"bytes\":{allocated},\"hits\":{},\"loads\":{},\"misses\":{},\"source_bytes\":{source_bytes},\"plan_storage_bytes\":{metadata_bytes},\"compile_ns\":{compile_ns}}}",
+        "REGION_TIMING {{\"mode\":\"{mode}\",\"case\":\"{case}\",\"count\":{count},\"prepare_ns\":{prepare_ns},\"warm_ns\":{warm_ns},\"elapsed_ns\":{elapsed_ns},\"bytes\":{allocated},\"hits\":{},\"loads\":{},\"misses\":{},\"source_bytes\":{source_bytes},\"plan_storage_bytes\":{metadata_bytes},\"compile_ns\":{compile_ns},\"source_sha256\":\"{source_sha256}\",\"dispatch_hits\":{dispatch_hits},\"dispatch_misses\":{dispatch_misses}}}",
         regions::HITS.get(),
         regions::LOADS.get(),
         regions::MISSES.get()

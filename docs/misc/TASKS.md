@@ -121,8 +121,9 @@ qualified timing now supports the alias fixture benefit. Remaining small-cost
 acceptance is tracked by `birnam-bew`; receipts and limits are in that document.
 [Design 74S](../design/74s-three-optimization-families.md) (`birnam-kwr`)
 continues with inherited-dispatch specialization and guarded native Frame regions.
-Per-family measurements and controls are recorded there; conventional native
-optimization remains pending.
+The third family adds selective native copy propagation and grouped stores.
+Per-family measurements are recorded there; combined production performance
+acceptance remains in progress.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

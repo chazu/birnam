@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = 'd06f7558'
-SCENARIOS = ['eval', 'collections', 'portable-collections', 'materialize-cold']
+SCENARIOS = ['eval', 'collections', 'portable-collections', 'materialize-cold', 'chain-1024']
 spec = importlib.util.spec_from_file_location('focus', ROOT / 'scripts/native-tier-focus.py')
 focus = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(focus)
@@ -32,7 +32,8 @@ def sha(path):
 def sources():
     return dict(families.sources(), **{p: sha(ROOT / p) for p in (
         'scripts/optimization-applications.py', 'scripts/native-tier-focus.py',
-        'bench/native-tier-focus.birnam')})
+        'bench/native-tier-focus.birnam', 'bench/runtime-native-tier.birnam',
+        'scripts/fixtures/internal-guarded-sends.c', 'abi/fixtures/idapi-v1/idapi_v1.h')})
 
 
 def closure(prefix):
@@ -43,12 +44,15 @@ def closure(prefix):
 def prepare(work):
     archive = work / 'baseline.tar'
     subprocess.run(['git', 'archive', '--format=tar', f'--output={archive}', BASE], cwd=ROOT, check=True)
+    subprocess.run(['cc','-dynamiclib','-O2','-std=c11','-Wall','-Wextra','-Werror',
+                    '-I',ROOT / 'abi/fixtures/idapi-v1',ROOT / 'scripts/fixtures/internal-guarded-sends.c',
+                    '-o',work / 'lookup.dylib'],check=True)
     baseline = work / 'source-baseline'
     baseline.mkdir()
     subprocess.run(['tar', '-xf', archive, '-C', baseline], check=True)
     for name in focus.EXTRA_INPUTS:
         shutil.copy2(ROOT / name, baseline / name)
-    result = dict(baseline=BASE, sources=sources(), prefixes={})
+    result = dict(baseline=BASE, sources=sources(), helper_sha256=sha(work / "lookup.dylib"), prefixes={})
     for variant, source in [('on', ROOT), ('off', baseline)]:
         prefix = work / ('prefix-' + variant)
         focus.install(source, prefix, work / ('build-' + variant + '.log'))
@@ -118,31 +122,35 @@ def main():
         builds = prepare(args.work_dir) if args.prepare else json.loads((args.work_dir / 'builds.json').read_text())
         receipt['builds'] = builds
         assert builds['sources'] == sources(), 'build provenance is stale'
+        assert builds['helper_sha256'] == sha(args.work_dir / 'lookup.dylib')
         for p in builds['prefixes'].values():
             assert p['binaries'] == closure(Path(p['measurement_path'])), 'measurement closure changed'
         if args.measure:
             for pair in range(args.pairs):
-                for attempt in range(40):
-                    pause()
-                    if gate([f'74S-applications-{pair}']): break
-                    resume()
-                    print(f'Host busy before pair {pair}; rk resumed; waiting 30 seconds', flush=True)
-                    time.sleep(30)
-                else: raise RuntimeError('host did not become quiet')
-                path = args.work_dir / f'cpu-{pair}.log'
-                with path.open('w') as log:
-                    monitor = subprocess.Popen(['top','-l','0','-s','1','-n','0','-stats','pid'], stdout=log, stderr=subprocess.DEVNULL)
-                    try:
-                        cases = SCENARIOS[pair%len(SCENARIOS):]+SCENARIOS[:pair%len(SCENARIOS)]
-                        for case in cases:
+                cases = SCENARIOS[pair%len(SCENARIOS):]+SCENARIOS[:pair%len(SCENARIOS)]
+                for case in cases:
+                    # Admit each independent paired workload immediately before
+                    # running it. Waits never select samples by measured results;
+                    # any rejected interval still rejects the complete matrix.
+                    for attempt in range(40):
+                        pause()
+                        if gate([f'74S-applications-{pair}-{case}']): break
+                        resume()
+                        print(f'Host busy before pair {pair} {case}; rk resumed; waiting 30 seconds', flush=True)
+                        time.sleep(30)
+                    else: raise RuntimeError('host did not become quiet')
+                    path = args.work_dir / f'cpu-{pair}-{case}.log'
+                    with path.open('w') as log:
+                        monitor = subprocess.Popen(['top','-l','0','-s','1','-n','0','-stats','pid'], stdout=log, stderr=subprocess.DEVNULL)
+                        try:
                             for variant in (['off','on'] if pair%2 == 0 else ['on','off']):
                                 print(pair, case, variant, flush=True)
                                 sample = focus.scenario(SimpleNamespace(work_dir=args.work_dir), builds, variant, case)
                                 receipt['samples'].append(dict(pair=pair, variant=variant, **sample))
-                    finally:
-                        monitor.terminate()
-                        monitor.wait()
-                assert gate(['--samples',path,f'74S-applications-{pair}']), 'measurement interval rejected'
+                        finally:
+                            monitor.terminate()
+                            monitor.wait()
+                    assert gate(['--samples',path,f'74S-applications-{pair}-{case}']), 'measurement interval rejected'
             receipt['summary'] = {}
             for case in SCENARIOS:
                 rows = [s for s in receipt['samples'] if s['scenario']==case]

@@ -9,7 +9,8 @@ Implementation progress: [74R](74r-small-callee-recovery-plans.md) delivers the
 first bounded Stage 1 batch (single-PC entry values, local aliases and Return).
 [74S](74s-three-optimization-families.md) implements inherited dispatch caching
 and guarded native Frame regions, with separate profitability experiments.
-Further native optimization and broader continuation shapes remain pending.
+Selective native copy propagation is implemented in 74S; combined production
+performance acceptance and broader continuation shapes remain pending.
 
 ## Direction
 
