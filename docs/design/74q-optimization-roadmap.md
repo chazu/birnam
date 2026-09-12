@@ -17,8 +17,11 @@ optimization. Identity-preserving graph recovery and a bounded production
 numeric-chain consumer are implemented. Qualified warm arithmetic gains are
 6.8–10.8% for three-operation chains and 20.5–22.8% for sixteen-operation chains
 in the enabled production-source matrix (see 74T for both qualified matrices).
-Application/cold/metadata acceptance remains open; loop and allocation-elimination
-consumers are still outstanding. None of those four full families is complete yet.
+A registered tail-loop entry consumer is also enabled, preserving every lookup
+and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
+Application/cold/metadata acceptance and broader loop dataflow remain open.
+Aggregate and closure allocation-elimination consumers are still outstanding.
+None of those four full families is complete yet.
 
 ## Direction
 

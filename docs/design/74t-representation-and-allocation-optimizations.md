@@ -448,8 +448,8 @@ and suspends/captures after three optimized transitions. Restoration after GC
 must preserve the next result and effect sequence. No later loop callback can run
 across that suspension/capture boundary.
 
-The experiment is disabled in normal builds pending correctness and performance
-acceptance. `recovery-graphs.py --tails --verify` adds its compiler, arena and real
+The bounded consumer is now enabled in normal builds after the correctness and
+performance evidence below. `recovery-graphs.py --tails --verify` adds its compiler, arena and real
 loop tests to the existing debug/release and full production gates.
 `tail-entry-timing.py` checks the passed receipt's source and binary hashes,
 uses unchanged host gates, and compares four alternating pairs. Its 1,000-tail
@@ -457,3 +457,32 @@ batches retain all ordinary callback work and collect outside the timed region;
 hit counts, allocation totals, cold duration and plan metadata are recorded.
 Loop optimization beyond this entry-transfer consumer and both Id allocation-
 elimination families remain outstanding.
+
+
+The tail-entry experiment passed debug/release and full verification with
+498 workspace tests and 17 ignored diagnostics. Its first
+[qualified matrix](../measurements/74t-tail-entry-timings.json) measured four
+alternating pairs of 500,000 transitions: +4.62%, +5.97%, +0.17%, +4.78%,
+median **4.70% faster**. Every allocation total matched and every eligible
+transition used the plan. Median initial 128-transition duration was 0.500 ms
+without the plan and 0.511 ms with it; this includes ordinary native-tier warmup,
+not just entry-plan preparation. The retained additional plan data was 104 bytes.
+
+The enabled configuration also passed full verification, recorded in
+`74t-tail-entry-production.json`. Its first exact-source timing repeat was
+not qualified: interval median idle fell to 35.88%, below the unchanged 50%
+requirement. The mixed timings in `74t-tail-entry-production-timings.json` are
+retained but do not establish either a gain or a regression. A quiet follow-up
+is required before completing performance acceptance of the enabled source.
+
+The [quiet enabled-source follow-up](../measurements/74t-tail-entry-production-retiming.json)
+passed both host gates and all allocation/hit checks. Paired improvements were
++2.08%, +2.28%, −0.64%, +2.29%; median **2.18% faster**. This supports a modest
+fixture gain, alongside the earlier 4.70% qualified result. The negative pair
+and the unqualified intervening run remain in the receipts. Production now uses
+the bounded plan for eligible registered tail transitions. No process was paused
+for these measurements, and all measurement processes have completed.
+
+This delivers the first loop-entry consumer; general loop dataflow and broader
+application/cold/memory acceptance are still open. Aggregate and closure object
+elimination are not supplied by removing these private host scratch lists.

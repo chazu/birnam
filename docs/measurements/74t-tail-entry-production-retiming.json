@@ -1,0 +1,135 @@
+{
+  "batches": 500,
+  "binary": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+    "sha256": "71b62cf881327eee1c4ae153b3984312a9fb1fc8d364a6920f231cce24ae83ce"
+  },
+  "command": {
+    "argv": [
+      "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+      "tail_loop_entry_timing",
+      "--ignored",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "exit_code": 0,
+    "output": "\nrunning 1 test\ntest runtime::native_tier::leaf_tests::tail_entry_tests::tail_loop_entry_timing ... tail-entry pair=0 enabled=false transitions=500000 ns=513016946 allocation_bytes=224484000 hits=0 cold_ns=656375 metadata_bytes=0 collection=outside-batch\ntail-entry pair=0 enabled=true transitions=500000 ns=502322838 allocation_bytes=224484000 hits=500000 cold_ns=509667 metadata_bytes=104 collection=outside-batch\ntail-entry pair=1 enabled=true transitions=500000 ns=501046756 allocation_bytes=224484000 hits=500000 cold_ns=502000 metadata_bytes=104 collection=outside-batch\ntail-entry pair=1 enabled=false transitions=500000 ns=512759706 allocation_bytes=224484000 hits=0 cold_ns=557875 metadata_bytes=0 collection=outside-batch\ntail-entry pair=2 enabled=false transitions=500000 ns=517696438 allocation_bytes=224484000 hits=0 cold_ns=504667 metadata_bytes=0 collection=outside-batch\ntail-entry pair=2 enabled=true transitions=500000 ns=520999505 allocation_bytes=224484000 hits=500000 cold_ns=528333 metadata_bytes=104 collection=outside-batch\ntail-entry pair=3 enabled=true transitions=500000 ns=502558493 allocation_bytes=224484000 hits=500000 cold_ns=532417 metadata_bytes=104 collection=outside-batch\ntail-entry pair=3 enabled=false transitions=500000 ns=514331127 allocation_bytes=224484000 hits=0 cold_ns=545917 metadata_bytes=0 collection=outside-batch\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 182 filtered out; finished in 6.02s\n\n"
+  },
+  "correctness_receipt": "/Users/chazu/dev/zig/birnam/docs/measurements/74t-tail-entry-production.json",
+  "correctness_receipt_sha256": "e91e405571437058147c82f639ae3e0574e8e028111d3356b470b018ee59dccd",
+  "driver_sha256": "a5341894bc78ad4f3a578f072ef36d0063cbe416cd8d40e05a378251daab0484",
+  "interval": {
+    "argv": [
+      "bash",
+      "scripts/bench-host-check.sh",
+      "--samples",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/74t-recovery/tail-entry-interval.log",
+      "tail-entry"
+    ],
+    "exit_code": 0,
+    "output": "bench-host-check: tail-entry stayed quiet for 5 intervals; median 59.71%, low intervals 0\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+    "samples": "Processes: 645 total, 4 running, 641 sleeping, 6111 threads \n2026/09/12 16:33:57\nLoad Avg: 8.39, 9.06, 7.33 \nCPU usage: 36.31% user, 17.41% sys, 46.26% idle \nSharedLibs: 558M resident, 118M data, 39M linkedit.\nMemRegions: 323826 total, 3910M resident, 109M private, 1947M shared.\nPhysMem: 23G used (3843M wired, 11G compressor), 61M unused.\nVM: 261T vsize, 4915M framework vsize, 1325774(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49978218/32G in, 45220411/30G out.\nDisks: 135571917/2396G read, 82057887/2116G written.\n\n\nProcesses: 645 total, 6 running, 639 sleeping, 6098 threads \n2026/09/12 16:33:58\nLoad Avg: 8.39, 9.06, 7.33 \nCPU usage: 38.10% user, 10.76% sys, 51.12% idle \nSharedLibs: 558M resident, 118M data, 39M linkedit.\nMemRegions: 323825 total, 3910M resident, 109M private, 1947M shared.\nPhysMem: 23G used (3889M wired, 11G compressor), 61M unused.\nVM: 261T vsize, 4915M framework vsize, 1325774(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49978229/32G in, 45220429/30G out.\nDisks: 135571925/2396G read, 82058043/2116G written.\n\n\nProcesses: 648 total, 7 running, 641 sleeping, 6103 threads \n2026/09/12 16:33:59\nLoad Avg: 8.39, 9.06, 7.33 \nCPU usage: 36.13% user, 9.36% sys, 54.50% idle \nSharedLibs: 558M resident, 118M data, 39M linkedit.\nMemRegions: 324065 total, 3912M resident, 109M private, 1951M shared.\nPhysMem: 23G used (3845M wired, 11G compressor), 52M unused.\nVM: 262T vsize, 4915M framework vsize, 1325774(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49978250/32G in, 45220456/30G out.\nDisks: 135571987/2396G read, 82058200/2116G written.\n\n\nProcesses: 646 total, 5 running, 641 sleeping, 6130 threads \n2026/09/12 16:34:00\nLoad Avg: 8.39, 9.06, 7.33 \nCPU usage: 30.3% user, 10.25% sys, 59.71% idle \nSharedLibs: 558M resident, 118M data, 39M linkedit.\nMemRegions: 323873 total, 3912M resident, 109M private, 1951M shared.\nPhysMem: 23G used (3886M wired, 11G compressor), 65M unused.\nVM: 261T vsize, 4915M framework vsize, 1325774(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49978270/32G in, 45220478/30G out.\nDisks: 135571989/2396G read, 82058200/2116G written.\n\n\nProcesses: 645 total, 4 running, 641 sleeping, 6125 threads \n2026/09/12 16:34:01\nLoad Avg: 8.03, 8.98, 7.31 \nCPU usage: 27.38% user, 10.49% sys, 62.12% idle \nSharedLibs: 558M resident, 118M data, 39M linkedit.\nMemRegions: 323845 total, 3911M resident, 109M private, 1951M shared.\nPhysMem: 23G used (3846M wired, 11G compressor), 86M unused.\nVM: 261T vsize, 4915M framework vsize, 1325774(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49978285/32G in, 45220498/30G out.\nDisks: 135572010/2396G read, 82058356/2116G written.\n\n\nProcesses: 646 total, 6 running, 640 sleeping, 6128 threads \n2026/09/12 16:34:02\nLoad Avg: 8.03, 8.98, 7.31 \nCPU usage: 22.98% user, 6.25% sys, 70.75% idle \nSharedLibs: 558M resident, 118M data, 39M linkedit.\nMemRegions: 323873 total, 3912M resident, 109M private, 1951M shared.\nPhysMem: 23G used (3843M wired, 11G compressor), 78M unused.\nVM: 261T vsize, 4915M framework vsize, 1325774(0) swapins, 1831385(0) swapouts.\nNetworks: packets: 49978305/32G in, 45220517/30G out.\nDisks: 135572043/2396G read, 82058356/2116G written.\n\n\n"
+  },
+  "median_improvement_percent": 2.1844243448543352,
+  "paired_improvement_percent": [
+    2.084552583181143,
+    2.284296106527528,
+    -0.6380316257845298,
+    2.2889211603170145
+  ],
+  "preflight": {
+    "argv": [
+      "bash",
+      "scripts/bench-host-check.sh",
+      "--wait",
+      "tail-entry"
+    ],
+    "exit_code": 0,
+    "output": "bench-host-check: tail-entry stable on AC power; idle 69.80 65.55 64.18%, median 65.55%, spread 5.62 points, hottest 44.4%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+  },
+  "qualified": true,
+  "rows": [
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 656375,
+      "enabled": false,
+      "hits": 0,
+      "metadata_bytes": 0,
+      "ns": 513016946,
+      "pair": 0,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 509667,
+      "enabled": true,
+      "hits": 500000,
+      "metadata_bytes": 104,
+      "ns": 502322838,
+      "pair": 0,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 502000,
+      "enabled": true,
+      "hits": 500000,
+      "metadata_bytes": 104,
+      "ns": 501046756,
+      "pair": 1,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 557875,
+      "enabled": false,
+      "hits": 0,
+      "metadata_bytes": 0,
+      "ns": 512759706,
+      "pair": 1,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 504667,
+      "enabled": false,
+      "hits": 0,
+      "metadata_bytes": 0,
+      "ns": 517696438,
+      "pair": 2,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 528333,
+      "enabled": true,
+      "hits": 500000,
+      "metadata_bytes": 104,
+      "ns": 520999505,
+      "pair": 2,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 532417,
+      "enabled": true,
+      "hits": 500000,
+      "metadata_bytes": 104,
+      "ns": 502558493,
+      "pair": 3,
+      "transitions": 500000
+    },
+    {
+      "allocation_bytes": 224484000,
+      "cold_ns": 545917,
+      "enabled": false,
+      "hits": 0,
+      "metadata_bytes": 0,
+      "ns": 514331127,
+      "pair": 3,
+      "transitions": 500000
+    }
+  ],
+  "scope": "Registered tail-recursive loop, ordinary callback each iteration; collection outside 1000-transition batches.",
+  "status": "passed"
+}

@@ -4,7 +4,7 @@ use super::*;
 
 #[cfg(test)]
 thread_local! {
-    pub(crate) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(crate) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(crate) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
@@ -94,7 +94,7 @@ impl ExecutionState {
         nil: Oop,
     ) -> Result<bool, ExecutionError> {
         #[cfg(not(test))]
-        let enabled = false;
+        let enabled = true;
         #[cfg(test)]
         let enabled = ENABLED.get();
         if !enabled {
