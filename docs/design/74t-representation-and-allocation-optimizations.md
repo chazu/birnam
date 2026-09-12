@@ -746,3 +746,14 @@ so the first-128-call comparison measures activation cost, not the incremental
 cost of adding the pass to a compiler that does not prepare it at all. Native
 fixture compilation, setup and correctness assertions outside the invocation are
 excluded from each timed batch. The existing AC/host-idle gates remain unchanged.
+
+
+The [first qualified live-field matrix](../measurements/74t-virtual-field-timings.json)
+is negative: enabled execution is 3.10%/12.95% slower for field-only returns,
+6.45%/17.11% slower for escaping clones, and 12.35%/24.48% slower after cached
+projection withdrawal (16/1024-byte payloads respectively). All six medians
+including separately timed collection are also negative. The host gate passed;
+these are measured admission/recovery costs, not grounds for promotion. Retain
+this receipt while reducing repeated layout lookup, premature payload snapshots
+and transient admission allocations. The first-128-call numbers remain noisy
+and are not an incremental compiler preparation measurement.
