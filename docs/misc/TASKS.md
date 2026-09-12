@@ -127,11 +127,14 @@ acceptance remains in progress.
 [Design 74T](../design/74t-representation-and-allocation-optimizations.md)
 (`birnam-sik`) implements the four remaining roadmap families: unboxed arithmetic,
 loop optimization, temporary-object elimination and closure/capture elimination.
-Work is in progress, beginning with checked identity-graph recovery and rooted
-materialization. These prerequisites do not complete any optimizing family.
-The recovery foundation and native numeric declarations/guarded boxed calls are
-verified. Raw integer-chain kernels pass differential checks; production chain
-integration remains next, followed by loop and allocation-elimination consumers.
+Identity-graph recovery, bounded numeric-chain fusion, tail-loop entry transfer,
+discarded-clone elimination and live aggregate field replacement are implemented.
+These bounded consumers are enabled, with correctness and qualified fixture
+measurements recorded in 74T. Live-field admission requires three current declared
+projections and uses untraced scratch plus bounded refusal retries; its enabled
+source passes 517 tests and the production gates. Closure/capture elimination
+and broader numeric/loop/aggregate/application acceptance remain open; none of
+the four full families is complete.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.

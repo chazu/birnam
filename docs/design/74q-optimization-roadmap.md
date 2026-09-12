@@ -25,8 +25,11 @@ prototype at least three times, with original allocation accounting and collecto
 observations retained. Its enabled-source matrix shows 3.4–11.4% median fixture
 gains, with zero hits for excluded single-clone controls. Correctness and qualified
 timings are recorded in 74T; broader acceptance remains open. A live aggregate
-field-replacement consumer is implemented experimentally and remains disabled
-pending performance acceptance. Closure elimination is still outstanding.
+field-replacement consumer is enabled for bounded regions with at least three
+current declared projections, with untraced scratch reuse and bounded refusal
+retries. Enabled-source qualified matrices and their variation are recorded in
+74T; the focused repeat has 3.2–6.3% median field-only fixture gains. Closure
+elimination and broader acceptance remain outstanding.
 None of those four full families is complete yet.
 
 ## Direction

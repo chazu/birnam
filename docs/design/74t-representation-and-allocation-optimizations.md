@@ -929,3 +929,53 @@ passes focused debug/release checks and full production verification: 517 tests,
 19 ignored diagnostics, installed runtime, image, archive and relocation gates.
 The enabled-source qualified matrix is the next promotion check; broader aggregate,
 closure, numeric, loop and application acceptance obligations remain open.
+
+
+The [enabled-source matrix](../measurements/74t-virtual-field-production-timings.json)
+and [focused repeat](../measurements/74t-virtual-field-production-retiming.json)
+both pass unchanged host qualification. Each uses four alternating pairs of
+64,000 calls per sample. The first matrix covers all 18 shapes; the repeat covers
+3/16-projection eligible and withdrawal shapes. Short controls have zero metadata,
+attempts, hits and omissions. Every 64,000-call withdrawal sample at an eligible
+size makes 1,000 admission attempts and skips 63,000, preserving ordinary results
+and allocation charges.
+
+The enabled-source field-only medians are 4.14%/4.46% at three projections and
+0.75%/1.39% at sixteen (16/1024-byte payloads). The focused repeat gives
+5.51%/3.61% and 6.25%/3.17%, respectively. The first sixteen-projection small
+payload row regresses 0.91% when collection is included; its repeat improves
+4.16%. Escaping-clone medians are positive but variable, ranging from 0.21–5.71%
+in the first matrix and 0.39–4.30% in the repeat, which includes a -22.82%
+individual execution outlier. All pairs, cold values and negative results remain
+in the receipts. Short and withdrawal controls have mixed timing pairs; they
+support the admission-count evidence, without a control speedup claim. These
+measurements support the bounded consumer while broader workload and resource
+acceptance remain open. They are not a whole-program performance guarantee.
+
+### Next implementation: source closure construction and captured environments
+
+The next consumer must analyze an ordinary source-created, immediately invoked
+private closure and substitute its captured environment into an admitted body.
+`Prepared::new` currently refuses Block literal operations, so this requires
+compiler integration in addition to the existing recovery machinery. Keep
+shared captured Cells as their original Oops, including when a body reads or
+updates them through ordinary messages; effectful uses end the admitted region.
+
+The current Portable Block constructor has an observable cold path: it validates
+the CodeObject and invocation arity, installs a vtable carrier/owner and reflective
+methods when absent, and checks existing carrier meaning and materialization
+ownership otherwise. Its warm allocation stores the original CodeObject followed
+by the ordered captures. Closure elimination must establish current constructor,
+lookup, carrier and code-ownership conditions before omitting that allocation;
+uncached setup continues through the original constructor. A generic aggregate
+or a copied Cell is not a substitute for these conditions.
+
+Derive the nested body and capture bindings from PortableProgram data, initially
+using the existing small-callee entry/alias/Return proof. Add the literal PC
+lowering needed to retain a virtual closure, its allocation charge and all caller
+Frame aliases. Reconstruct the exact Block payload and fresh identity before
+exposure, replacement, native observation or stackless control. Verify direct
+use, multiple-use/escaping fallbacks, shared Cell mutation, current method and
+constructor changes, forced recovery, collecting observers, continuation capture
+and generation retirement before promotion. This is the next part of the full
+four-family objective; broader numeric, loop and aggregate obligations stay open.
