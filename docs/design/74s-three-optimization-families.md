@@ -153,3 +153,51 @@ focused debug/release checks and full production verification, including the
 installed native-region fixture, clean archives and relocation. Family three
 remains pending. `birnam-kwr` owns the complete three-family goal; `birnam-bew` remains open
 for the prior and continuing small-cost acceptance questions.
+
+
+## Committed-source qualified rerun
+
+The user requested a checkpoint followed by waiting for a quiet host and repeating
+qualified timings. Dispatch was committed as `cb425272`; integrated Frame regions
+and full correctness were committed as `40aa896f` before this rerun. Full
+verification passed 469 workspace tests (15 ignored), focused debug/release checks,
+installed-prefix lifecycle checks, the new region fixture, clean archive builds
+and relocation.
+
+All three eight-pair matrices passed on AC power using unchanged host thresholds.
+Five busy preflights were waited out before starting their pairs (two in dispatch,
+three in native controls); no measured interval failed. The authorized `rk` process
+was resumed during waits and after each matrix, with final running-state verification.
+All 280 samples use the same release binary, SHA-256
+`81a94be0ab8c9614a21ab5abef7ad2484896c4907e837ce2856ec4b21ad732dd`.
+Source hashes match the committed implementation and integrated correctness receipt.
+
+| Fixture | Median paired time reduction | Receipt |
+| --- | ---: | --- |
+| Inherited lookup, 12 levels | 79.47% | [Dispatch](../measurements/74s-dispatch-rerun.json) |
+| Direct lookup | 2.65% | Dispatch |
+| Direct rebinding every send | 1.52% | Dispatch |
+| Inherited rebinding every send | 0.31% | Dispatch |
+| Custom lookup | 0.35% | Dispatch |
+| Repeated-source copies | 57.36% | [Regions](../measurements/74s-regions-rerun.json) |
+| Chained copies | 54.82% | Regions |
+| Repeated call arguments | 23.94% | Regions |
+| Region-ineligible control | 0.48% | Regions |
+| Persistent region fallback | -2.50% | Regions |
+
+Dispatch uses one million sends per sample. Regions use 10,000 calls per sample,
+with dispatch fixed on and only region preparation/execution switched off/plain/
+read-reuse. The retained plain-region benefits are positive in every pair for
+all three eligible fixtures. Extra read reuse reduces repeated-copy performance
+by a further 4.64% at the median relative to plain regions; it remains disabled in
+production. Allocation totals and expected execution counters agree in every mode.
+
+[Native workload controls](../measurements/74s-native-controls-rerun.json) use
+100,000 calls per sample with only dispatch caching toggled and the 74R consumer
+fixed on. Median reductions are projection 0.66%, one alias 7.55%, three aliases
+-1.41%, ineligible control 4.45% and persistent fallback -3.20%. Every control has
+mixed-sign pairs. Persistent dispatch fallback's roughly 3% median cost repeats
+the earlier run; this remains a possible regression, not a cleared control.
+The region fallback also varies from -14.06% to +7.44%, with a -2.50% median.
+`birnam-bew` remains open for these small costs. These fixture gains do not establish
+whole-program profitability or complete the pending third optimization family.

@@ -1,0 +1,3190 @@
+{
+  "design": "74S",
+  "family": "dispatch",
+  "baseline": "d06f7558",
+  "status": "passed",
+  "matrix": "focused",
+  "timestamp_utc": "2026-09-12T14:09:12.931017+00:00",
+  "sources": {
+    "Cargo.lock": "e9f7db63973423d9bca6c121b8fb4105829e4c5408d029e201dee2cafae690e5",
+    "Cargo.toml": "218ecb363680b4d00cab289551e60b25e56e8bca291f26030d7085a0a3da689a",
+    "modules/app-config-test.birnam": "61bb9e40c7ca0acd6aa628af3476ce1f63fe41aaab362b3e24d7df9816baa764",
+    "modules/bench.birnam": "e0e882f04249bc7094af197eb0d1765eb3ae6fd21ac3e14b27c1e6fc912c9128",
+    "modules/block-test.birnam": "d7a4d6db864a4645df03b0cd0e7889941b44ad1284a869b955a9d6233bf9935b",
+    "modules/cli-test.birnam": "6d57f4b2741fbe2e3d1ee84589f54af8351880903de8ec03e9e0c0e8c84ac058",
+    "modules/cli.birnam": "2c55dc6a099fafaca0132b8dd38b2ae3739b16bdefdc653a710adbb5efcd5de0",
+    "modules/compiled-unit-docs.birnam": "6d47d265248561857f157a88b6684ced4a3e6b35b26565c9c175615d3a3da36d",
+    "modules/compiled-unit-test.birnam": "f1afbd09d42309fe4ae45ae327300f972916380d548e21e6370a2d0c244e658c",
+    "modules/doc-test.birnam": "7f2a844b84cf00fcc87de240f4ac185cb9382009d1592bbcb67bf223ea5a5f51",
+    "modules/doc.birnam": "d6e71a13b3bba7d9bd26f9d004aa22eebbec302ef481bfdd0b5a7b35d4eadfd9",
+    "modules/file.birnam": "557b750ba90000ba705557dd7fc3bd66d8a51ad8363b6e69a7b30b80dbb1d004",
+    "modules/html-test.birnam": "42f2ae3b026123d124c0f7d18fff2d530d4664b7a97ebd1a24b07c324292e3e6",
+    "modules/html.birnam": "72c94cfa53ce861378c3cedb4ca6b69efc255daa2d32e88d22b49ec9bf49d60e",
+    "modules/http.birnam": "3bcf8809dd2164d28c984915064de7e30f7d24bac378ca269dfa88763fd85dcf",
+    "modules/json.birnam": "47a6a064ecef5cfe6b1454a385ecae97e861458e1419a43d9428c1e0200774ce",
+    "modules/lang-test.birnam": "e2a2c67cc401b985a1bdc7fb9e308d983a51714026b2e4d7b58e11e3934312cd",
+    "modules/log.birnam": "85a89ca7d6c5fa2aa7d5b4898aee9c2fb85ccce91ab31e048049ed83f05afb5c",
+    "modules/lsp.birnam": "a2fa9614646e40098c3b26c31d4d0930288cc9b5ebd56900f23dd12c5f98d4be",
+    "modules/markdown-test.birnam": "9b9d9e6b4e6740ae0ec4abc34ae2e27f7dbf0ae8c47d5dd397b4835cbfb1e781",
+    "modules/markdown.birnam": "8bc70db716d2e65d6868ba52847668cd6b394c8b896dfde869a62d8156dd06f0",
+    "modules/modules-test.birnam": "478d162fb4bb5840c207078449b1fa735954c11a3ff04a648958a63cae082ea4",
+    "modules/nativedoc.birnam": "2830c7d19ff7c4b322f41f5b341e18c94de3a21c5619c1846359cfa7c6dc7a8c",
+    "modules/os.birnam": "eb584ffbe6f1748a29f76071aafc41f78b1b5382cac4d2f8ef1f65646a2fc8cf",
+    "modules/portable-code-test.birnam": "8a44560b56f2de4598949aca3af786a68f00c96151b287f075f6d3f61f76b07d",
+    "modules/process.birnam": "e619903562dffb8958d38b7d536fc81738d2b0f8fcb4f3700940fb3b7873dbd0",
+    "modules/project-policy-test.birnam": "1e0e65686aa74cc477beb6a59deb056b8a4f24f36167cf3ee2e4faf7251fe368",
+    "modules/random-test.birnam": "487ece198f36609ba769e61d8d454f66cab177c353198eb50f2765ec2598a1f5",
+    "modules/random.birnam": "102bd3f512c16a86b160bc963525d41287f06f8c8622e2d8e9df6323b8eae511",
+    "modules/repl.birnam": "ece792973c31dc9d254b35b385ae4645928fd430ca6a84a100bfa99aa323eeb6",
+    "modules/run-tests.birnam": "621babaaafbd50237b82171d5afc642724be3ecde922b42e78ce5f0d1d82b5be",
+    "modules/socket.birnam": "d871ace0d175ee0ed983547bc014f10a0154b1bd9f590d8de50bc010a1b02ad7",
+    "modules/stdlib-test.birnam": "9a48a6f5d8356cf909edd8f9498650085e1f283bda29d459e86c8f756f344a32",
+    "modules/test.birnam": "c493b6a6a232a4c298b79ca7a6bcac89a0e86913dffc340005bdeeca21209116",
+    "modules/time.birnam": "5b014717169048ac0d368845ff14fcf9d4a5e24a676f93e882e4250f9a3bc9e3",
+    "rust/birnam-abi/Cargo.toml": "7b11d1c250613d3181cc6255bdc9ecdd3231a487864d7a0e5878e8d07e864e3b",
+    "rust/birnam-abi/src/foreign_address.rs": "d57b6d0e04a47e915bab097891923bc4852e9ede062c7f56c436b362134df716",
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-abi/src/private.rs": "151cc74cfef9cf25244b040258e840cef7157827b7ac91924d983ea4629c5ffd",
+    "rust/birnam-alien/Cargo.toml": "bcd82739ff00bf014037f3dd5791f7a748d8044f29537722eba28db5767003fa",
+    "rust/birnam-alien/src/abi.rs": "5181da4ef8144b730c86969fad8f4680b306d62579c0e739c2a0abe36e4557f6",
+    "rust/birnam-alien/src/codegen.rs": "cbedb7571bfd58a51e0b8bd459d9ee68bfa75ff9127fb71de52f8eaf182c96a8",
+    "rust/birnam-alien/src/lib.rs": "cacf7fae9fab1a949c2f2252b9de8145b9d83eb7fc5ff1da520567db7ca7366b",
+    "rust/birnam-alien/src/loader.rs": "9604cad12c42f0d0ee1c19c1953e5a54fe461fbc54aa841cb6397a4c1d0e9590",
+    "rust/birnam-alien/src/runtime.rs": "e36cbf21f5baf0323ac3f68f625e51a330e7a7e7585bd07385342381e85013ab",
+    "rust/birnam-artifact/Cargo.toml": "8371c97b9802d33acbae2d6e7d818777823d1991c42c5fd23a3e5abac68b7b93",
+    "rust/birnam-artifact/src/candidate.rs": "8072654bc78f418e5883bfb471a50bf7a32f5174268f123af4540e077fc3332c",
+    "rust/birnam-artifact/src/code_binding_inventory.rs": "48c0b7debbdfde0669409d35a6b389d641b6441c2c5800a4cd636436fc260e13",
+    "rust/birnam-artifact/src/digest.rs": "2635c31eb297bfe1e624d1fb7d2a8bc91e6983f506dd13879ce9ea6d1c685cf9",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb",
+    "rust/birnam-artifact/src/lib.rs": "c9dc8e1ba5bd26f36340b48cc68a9923009a15aed2d1f09f840bbfd25abf390f",
+    "rust/birnam-artifact/src/materialization_selection.rs": "b09137d633714e50611dd93fde98258b09e20ff3285ef10e2fac4cc5f7126d71",
+    "rust/birnam-artifact/src/module.rs": "2aa33ef2a4ac24ee8660f825f38d10707d79c71a465cf79bab96f96144916557",
+    "rust/birnam-artifact/src/portable_inventory.rs": "8f2ec3347ab3b29bd7425929f43d59e26e8107bc54ff1be089d8bd920cc67ad2",
+    "rust/birnam-artifact/src/portable_program.rs": "77fce44ef44b09e230003d74f1a41925d4e3ef807a4c373c570149a781cfba5b",
+    "rust/birnam-artifact/src/portable_resumable_manifest.rs": "e4feb032843a2aa96ed8a1469f0e915d534e7a2f2dfd69cd7ab34c659d9a22f0",
+    "rust/birnam-artifact/src/resumable_manifest.rs": "3d287cb7f51da5611734ac521ca95303e15d3aaaf9ce29b804a375d26dba67b8",
+    "rust/birnam-artifact/src/stackless_selection.rs": "0ececcd4d8b03135523a058dff60399cad1aa3bbcba6a03c2a9945079e914f2e",
+    "rust/birnam-artifact/src/wire.rs": "054e10ed96d5e5ced9f9f29043c2053ab2c482cc7c71b801e0fd20ecbbb9963b",
+    "rust/birnam-artifact-codec/Cargo.toml": "99367c017a4efe61a3438c27db313e68e2472892ba2830b677d9949672a09566",
+    "rust/birnam-artifact-codec/src/lib.rs": "385ed7709dca773b93e2dcae24505e78840e8973235ec1e2e76ede36a26d666d",
+    "rust/birnam-codegen/Cargo.toml": "9e14ca825667a297f3cf480b592ffd5a98c6fe40524eafe9651069d777604ca3",
+    "rust/birnam-codegen/src/c_string.rs": "dad2378e7c0e7dfa3e67063510c11e9587e6725071a8e667b74ba8d99f021d70",
+    "rust/birnam-codegen/src/frame_region.rs": "9e002846c8281f4a8034020798e318fc0a4daf2fe17dfe594cb4092b71f069c4",
+    "rust/birnam-codegen/src/lib.rs": "9f04f6a5dfc8f56118198d06babb951221a5701b29244dc5d627fb86f3419977",
+    "rust/birnam-codegen/src/portable.rs": "9f4ccecfd07865cdf404869a6c1fa5f01c8bc84f741a4802421ecc3ec3a2811f",
+    "rust/birnam-codegen/src/portable_c.rs": "af206692d2a0dc27d7f9ea9cd573efb2c11b59d798add5f5cd5ce9591139416a",
+    "rust/birnam-codegen/src/resumable.rs": "cec8746c64e56f41b57f53ae15dbe3e5a4042077e31ee94ecb3636031abfebf0",
+    "rust/birnam-codegen/src/resumable_block.rs": "9c3153d69c877336ce41ea9f5de3a63ddf42acf03d408054f5617cd1afd2b712",
+    "rust/birnam-codegen/src/resumable_c.rs": "668dfa18d6bc8c1bc2da0b08ece9025de308f50c22bc113bf2ac34734fd517db",
+    "rust/birnam-codegen/src/resumable_descriptor.rs": "333969de26f939843b6061e57dc1682776d957fb60ef692da2e86a5cf6ad9f17",
+    "rust/birnam-codegen/src/resumable_named.rs": "c0b76ac1c0c71bef4b2d2162d55a152b056c3b2188ecb58a8f4a32197e9c9153",
+    "rust/birnam-codegen/src/resumable_registration_c.rs": "c4eb7649a0ecf6bc13f12d4cfd6019f60b0a1566375e3256d1123b15c8ff7409",
+    "rust/birnam-codegen/src/resumable_resolver_c.rs": "f5f50cba47d038d171b8ba9658ea51c50aa46c49ab840aef6b19b468ff8ccf8e",
+    "rust/birnam-codegen/src/small_callee.rs": "8b7e271b31205c636774da7e0283c59ee4c6b3256372985a9d8c62e7dd0a6841",
+    "rust/birnam-codegen-runtime/Cargo.toml": "846d59df86dbd9a493ef6f9744fc6ac8e8e5337fd62d977b8f926cda9d2d58e4",
+    "rust/birnam-codegen-runtime/build.rs": "dad8f197eddb05c162778d69c7176d245e3c5224fd20457aee753333c8eba77c",
+    "rust/birnam-codegen-runtime/src/lib.rs": "d59ce1ad216631278af164dc83f569eee4157f28a7ba2d68b2a49912a7b7b4c9",
+    "rust/birnam-collection/Cargo.toml": "3f66e5893fcb358a7547dc3e180ecf481bb35eacdefacb12b37458b5aa0e54ea",
+    "rust/birnam-collection/src/lib.rs": "5a842d99cea6492f6e06f3bbe438d4555af81f3c47c3598e96c65a68a79b8ea1",
+    "rust/birnam-error/Cargo.toml": "ebd6ef5e9020df0efffac7aba63969b0bb963af869b5b664aa077de10b68f41a",
+    "rust/birnam-error/src/lib.rs": "13056e3075074fe17f9c7a00fcf3181b3b53c4db66093a5d1c717c91f318e033",
+    "rust/birnam-host/Cargo.toml": "a163d163e9b7ecd1afbfca809a05dd82e111b4a058abe6c02981c92306bc47a2",
+    "rust/birnam-host/src/bin/birnam-build.rs": "00be69db4057cdcc6a621ea305cf8b9dcf5f6b6d42fe895cb6b852e47c6ffb51",
+    "rust/birnam-host/src/bin/birnam.rs": "855129e332626f0f5a4c91819e1c51b2494cf3831f51a73baf9b5f9cfc5ec765",
+    "rust/birnam-host/src/bootstrap_receipt.rs": "2537e10c6a5827e16937c4d3fd2658a4dd768f517b836afabea52aaed14dce66",
+    "rust/birnam-host/src/lib.rs": "d78436522c4ce71721552ac88cde473b2cc4671c4c61c7637e9532307904f1a4",
+    "rust/birnam-host/src/publication_receipt.rs": "bfc92506b6be0190464f77105abdc09d63830585727266d573a837da256d52ea",
+    "rust/birnam-host/src/receipt_validation.rs": "59f7f6627f968e0fe72d4c0e3dffc228e1b06766dac11bc94c1595a4c7386e98",
+    "rust/birnam-id/Cargo.toml": "41327174ba6e7ee4ef8bcfa065d1ffc3e60ecc5377873a0559ad61aa4a3f7fb3",
+    "rust/birnam-id/build.rs": "dcf4ab7621a178d5aea01a09e834895f954afdcd43de5aea6074f3f391a235d1",
+    "rust/birnam-id/src/boundary.rs": "72751545ba223655cdf4d93f56329d4bc219c17ba06aa1f673f2bcc4fc4edee2",
+    "rust/birnam-id/src/dev_slot_access.rs": "157a15ca77f9d740315a134f5b379ab38efb3a6f6ab0c45f2b5bfd4436498427",
+    "rust/birnam-id/src/dispatch.rs": "b2a1907303485a18c22e71ec30b764f11fa0d28b37b504e2f2c971fb16ce4d76",
+    "rust/birnam-id/src/env.rs": "cce4ddf7bb50c4bf3effccc2c1974d8bcdfdc720df54eac2a83a29ac66c3e11c",
+    "rust/birnam-id/src/execution/inline_recovery_experiment.rs": "941e4189d4ae834da455a73604592c72a31d43cef65e2331ed42e2d49063c799",
+    "rust/birnam-id/src/execution/probe_descriptor.rs": "fff4bb078c37c89233c49e8a6a8914563643f03c10e5cf1c90acdcf879944823",
+    "rust/birnam-id/src/execution/recovery.rs": "d35b506d600294ff686f28f7cf5502579b176862168c1880f2da463326ae1cf1",
+    "rust/birnam-id/src/execution.rs": "0c670a9d3ea7ba99cf5c34fd89e419d0adf8df63a531b7c7c5289dc4a23606a0",
+    "rust/birnam-id/src/gc.rs": "6d777d58d7112d75fe36051bb8412f8363ebf0130ab3e5159e0c3a644f0e0a97",
+    "rust/birnam-id/src/heap.rs": "8b835839b17508c45778d1758dcd57f691d949cb07bf304356e2078dc03c8e8e",
+    "rust/birnam-id/src/lib.rs": "f6d99630137ab94f268a0de4ddde7d77db700cca60bf380db720f2ccd0f5087a",
+    "rust/birnam-id/src/loader.rs": "fe36b2710c74e7ee603e4af71c935bb1442cc3f0219382ac71faf44385d40c60",
+    "rust/birnam-id/src/membership_bench.rs": "4b91fa5a6de233c48bf35a40bcc206e932a37c2c51a09ed49473248d702cdace",
+    "rust/birnam-id/src/public_api.rs": "cc6dcf287a308e31210f4e9b13fa85313bb0b7b5c8f288821c63c539fa5b6fe4",
+    "rust/birnam-id/src/raw.rs": "f300afefda63ab7800b57c6dc0fbe1f84e94327927aa589c937d47b39ccad092",
+    "rust/birnam-id/src/registration.rs": "0f5ff2b323a8dd743c2aea7ad270ea9cb301974c837e980d73dab2aaa38f525f",
+    "rust/birnam-id/src/runtime/architectural_fit_experiment.rs": "40b59e0d8a8db011034db7fd407535f09efde2857190abc34eb658a4dd229858",
+    "rust/birnam-id/src/runtime/deopt_experiment.rs": "1457bd8cd9e0dc607022c39a561d235fedd9626c77a7bb4533eb25388f7436cb",
+    "rust/birnam-id/src/runtime/dispatch_cache/tests.rs": "23934faf6f416ed72df8c44a44c14ef364b107c6322d93e369331fc44811ca8d",
+    "rust/birnam-id/src/runtime/dispatch_cache.rs": "9ef9def9e05b7240928a5cdf8260933d3815c652cdcc7b94782186d0d38bb974",
+    "rust/birnam-id/src/runtime/generated_deopt_adapter.c": "beffc686a0d16aaebf346fe6ec71ac9d141409b676b49d1294202d311cf25cff",
+    "rust/birnam-id/src/runtime/generated_deopt_baseline.c": "7e79b08acb8182559427600a0b6faa3e827de54c0f51b6fac74a59d3187e9730",
+    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "6aee35e3c587e8cf43e78f634039cb4a96504139355df48c49aa680ff783528d",
+    "rust/birnam-id/src/runtime/generated_deopt_program.rs": "2a0a2c8424ad29cfcc6d6687659befd70a78df876d1be6a05209d8d4bcea0fc9",
+    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs": "017bb8a3d55f7dc694bfc9528d4a538a64ca3d69ab8a2b2f0a225c63114e7394",
+    "rust/birnam-id/src/runtime/guarded_dispatch.rs": "90d63da78baf88a4260b700d26502169b38cf63c712aa0beb2cc1153a01aae6d",
+    "rust/birnam-id/src/runtime/guarded_lookup/tests.rs": "8bb9a7abdfee353ee746179ee39f7bb51cc386127de6b597ff082c91e12e68bd",
+    "rust/birnam-id/src/runtime/guarded_lookup.rs": "0579635d703b9e2e1f7da538ad62c7a699a1aa061d36cd3f7e30584816a1f6d7",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/alias_tests.rs": "8d5d805344175c9057cee3d52128c9e5398b5f78821ba4fd75ed4bb78109bc43",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/region_tests.rs": "5d25bc603de4d31c841977d65d14fda648f069818954468fc8c5540fb1bc084e",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests.rs": "160fb77597c09ccd7858ba001c560c582a605c69d98b1199322173cabff7de08",
+    "rust/birnam-id/src/runtime/native_tier/regions.rs": "95501bb6df3025d53774673ddb89d118003559beb9d47eea08350c7583fca814",
+    "rust/birnam-id/src/runtime/native_tier/shims.c": "306d091702a96093016c662c57012ff139ff9e53768fec9cd8e697413a0c6ca2",
+    "rust/birnam-id/src/runtime/native_tier/tests.rs": "fba5049eee4eb3514312422c87bdba3fc47da85baa371ec7b67cfbd9ac7bdf51",
+    "rust/birnam-id/src/runtime/native_tier.rs": "e558145f71b349b36b09773b2ff334e5ef070193596a0ea103c812a149b47eb6",
+    "rust/birnam-id/src/runtime/read_reuse_experiment.rs": "8050985e2fe61459c40409cab8417399895967c5d79575dc7bfb3fd2f4784a3b",
+    "rust/birnam-id/src/runtime/recovery.rs": "b578c5d3ef7c08079f4df8536a2fa7804f3b0eb4b22dc7f2d705603c13e0b4a1",
+    "rust/birnam-id/src/runtime/v2_control_tests.rs": "12764300c0b721a88e3e89c9f260c98c4fe6f6e3b87269c968409425275ff90c",
+    "rust/birnam-id/src/runtime.rs": "c42abb281e6aed9f4681f0f206cd4d47a2b606917473e28fdb2c05f82685a526",
+    "rust/birnam-id/src/symbol.rs": "405c5dc8b986520449f6f43ade29c50f7296d149920fb508b3487b7089b46ddf",
+    "rust/birnam-id/src/values.rs": "03e582c22c286ea4553e83dae0630c4dd679798c285a3dc49148b01069047df3",
+    "rust/birnam-id/src/vtable.rs": "3ef897908da0e004ca8154058f34fc213b1e71fc905ef77ea33da5bd27a9cd98",
+    "rust/birnam-image/Cargo.toml": "43cbeead3275692eeb4318508a17809c5256e83487209afb2e1630a01bbf63eb",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/retained_facts.rs": "7cf9722e20c861d237407d5a1a9d9c83113c8ec396196e23226c210bae676b8b",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-isolate/Cargo.toml": "4c7bd05dcea7a8a5dacb0d17c2701aac23f2c20316bbece34284d3d4f65ca3f9",
+    "rust/birnam-isolate/src/lib.rs": "4e4aa2df2726071c78c115fd1bab03dd8b86e7b64a04266fd60b27c3e3a2a9eb",
+    "rust/birnam-lang/Cargo.toml": "6475d977cd5e20c7f87618f871c9a8745e5425c69138c33012b0b6b4cde36e6a",
+    "rust/birnam-lang/build.rs": "a2384496ae066f7b7cfc0a5f1df78fa7170e71516b08a39b587ec90e73c28732",
+    "rust/birnam-lang/src/lib.rs": "f2dd9ed943ce863f84fd2d1d150db9e2888e1ca978c1fd659b46d335e9188820",
+    "rust/birnam-native-compiler/Cargo.toml": "f1e6e5fee5d09013598ce4701731813ab48047d06ef072473a9143c6829f0963",
+    "rust/birnam-native-compiler/build.rs": "a9d3a2ef4902fbf5a8c9b6725602ea38913ad6bf21e81469564dcb60f72e68ff",
+    "rust/birnam-native-compiler/src/lib.rs": "e48ab670a2a7017ff75bec459cf8d18e270af2899d48a38122cc5290c18ec53c",
+    "rust/birnam-native-compiler/src/unit.rs": "bfec74d074778d72bffc934c21592c7f0f6c5ab672f402ccd3759c35870a6d2b",
+    "rust/birnam-peg/Cargo.toml": "bde98bd52916d7b0b5edb4372b18f0419227d59a2669ab7b946107073508ae79",
+    "rust/birnam-peg/src/lib.rs": "5a1973a9b2b339f070f0f6bcdac20d890325db5cbcde45f5f8b350a27837a4c8",
+    "rust/birnam-peg/src/matching_tests.rs": "4f3341b5f90de26e17eeda8dc447bf202e81e37f21693c7ac8989370cd12ef41",
+    "rust/birnam-portable-code/Cargo.toml": "cd9e3cf41c04d7590d1c9813228c7034aec5a6d868a3d3ea858bf30a47184458",
+    "rust/birnam-portable-code/src/lib.rs": "1949d75c35c2c053d86c303cd136965d4945e16c4cfb954d765a5a3c4983c29f",
+    "rust/birnam-portable-code/src/portable_code.rs": "ce6a29e8282d7e833f0cf0c633bb51f972c82682649a6e1392d45d88b035e85f",
+    "rust/birnam-portable-code/src/runtime.rs": "00178134a9bce10a7c5b19cba544d853c466b218f6da82c01028868a94f876e5",
+    "rust/birnam-prelude/Cargo.toml": "6ed54adda30d8ccf3488d6782602a87971f4bd6c7057a1458f8c226dd503e4d5",
+    "rust/birnam-prelude/src/lib.rs": "f9f940213bdd6699b88584646f0942a4a5c6c000f58f5ba3b2c41254f36b63db",
+    "rust/birnam-relational/Cargo.toml": "3193cdc1ae62367aab2ad46e8947be0013edc179e6aafb94bb1926c290e73ade",
+    "rust/birnam-relational/src/lib.rs": "40fbbe870e8d7c579b516f0e033f46a688e007a66952b0ebd60878c8ea0d8baa",
+    "rust/birnam-relational/src/oop.rs": "a8130523b6ae1cb82608d2a8d1e4da4df9b3ada2f83bc8b7373d156ea2b40f4d",
+    "rust/birnam-relational/src/query_matching_tests.rs": "e6dc432a7685903e5ad480d61caf1f2489ab8b644f3aa4eda343bb5b5dfd912c",
+    "rust/birnam-store/Cargo.toml": "e7e9c86d27af3a4d37b9e24b80c11ea3ebe75d6a55226926d379afa9e2506f2e",
+    "rust/birnam-store/src/lib.rs": "1fee2cb614f0c7a925227f743d47b80785df57d31c5b97dee5c1810e6bdd3567",
+    "rust/birnam-store/src/snapshot_tests.rs": "4d774acc120fa9aa612adea3488b37431de8b60018066c264a00fe90f3fca80e",
+    "rust/birnam-tcc/Cargo.toml": "43cb39ede860944f96326a782f8c4a8c6513e43948c4e10fcaed79c642739d11",
+    "rust/birnam-tcc/build.rs": "3ce30af214f1292068b8db08d1ce929b1735ea3eeae815e4f24d3268ecf9dd38",
+    "rust/birnam-tcc/src/lib.rs": "58d385312c400450c7ae8bf20efbda233891500da0c883030e079ee901d817ab",
+    "scripts/compatibility_authority.py": "4e92dd068a501212b0027e8dc2987a84fb71bc3daee03a6eb8a2a1e20f957b5a",
+    "scripts/fixtures/projection-recovery.birnam": "cee72bb63797c3254ca3cd573df0bee2153ec35d84473561a24a070ca1d76c7b",
+    "scripts/production-recovery.py": "908f975f0fcd6a3d7c2add300be48382026da783ed865a9e5228d3b861da5275",
+    "scripts/rust-driver-native-smoke.sh": "f846d1561469bfc3914a10cb9d082e89f6da839235aa9568e0f51bb9d3256399",
+    "src/id/app-config.birnam": "916afef2782d59f4accbab0072166f00ea4d8b3c64e081be18ec03d57faa843e",
+    "src/id/artifact-preflight-v1.txt": "2af928bb27b601dc37e851d56e2d048e80596e98de502cee8090f26294cccfe8",
+    "src/id/compiled-unit.birnam": "7f4f0fb9ec363e44902af114627cc0f5e67f6ed877399eecb9a3654d869fb70a",
+    "src/id/config.birnam": "bc8aeae394e6b2036cba4cc716d07c7d1065cbd760df9b9a09f5c073bfa83a59",
+    "src/id/fixtures/codegen-authority-v1.json": "14527032127f931454183308e20c2030d3bbdde7468b113e8cdf49c69ac26f38",
+    "src/id/fixtures/native-rung-v1/generated-c-fragments.txt": "c154920de890dce45179499f0eb46560f248443097e16f85b81e9b10957ff816",
+    "src/id/isolate.birnam": "1357fca8dece60c2605fcd525434e874e82901d01b979599f53e3db5c3907575",
+    "src/id/modules.birnam": "6402b28027d5eeac9faaff38a248108904eb09f72c7df65adce6a66ebaf79396",
+    "src/id/project-policy.birnam": "e30a99eca04d1c9ac64ef738f34f8a994ea110bcc5c9603cc92f9c2aed87552d",
+    "src/id/stackless-control.birnam": "4f06a751ac58de553c489a6653b27787a462927dc1c931b4d662aaf592bee923",
+    "src/id/stdlib.birnam": "3b777575217b8859516a084ac8d44031be85509dcd1668416033764c2289979f",
+    "src/id/toml.birnam": "78ef93b1f1e04812a6932843893435b9abe6123d522c00301b7362aa47add245",
+    "scripts/optimization-families.py": "97d621cf204aa462d2f5556126a26d065faedcf9b86d0e5b0fd8e760ed8ce504",
+    "scripts/bench-host-check.sh": "0b1fe5ca1e2c2a2e2b4c39f1425e8397d2b3dddfe386bc825fdff7e32e5f2480",
+    "scripts/fixtures/native-regions.birnam": "142b4dc8992abbb1bf1d2bf2c75a7a394fc650a44c5d70498c3a2b263d156256"
+  },
+  "commands": [
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "birnam-id",
+        "--locked",
+        "--offline",
+        "dispatch_specialization",
+        "--",
+        "--nocapture"
+      ],
+      "label": "debug",
+      "environment": {},
+      "exit_code": 0,
+      "output": "\nrunning 3 tests\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ignored, 74S paired dispatch timings\ntest runtime::dispatch_cache::tests::dispatch_specialization_reentry_and_registration_are_late_classified ... ok\ntest runtime::dispatch_cache::tests::dispatch_specialization_observes_warm_mutations_gc_and_lookup ... ok\n\ntest result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 158 filtered out; finished in 0.00s\n\n   Compiling birnam-artifact v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact)\n   Compiling birnam-codegen v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-codegen)\n   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.34s\n     Running unittests src/lib.rs (.cargo-target/debug/deps/birnam_id-c7316b89c40cb24d)\n"
+    },
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "birnam-id",
+        "--locked",
+        "--offline",
+        "guarded_lookup",
+        "--",
+        "--nocapture"
+      ],
+      "label": "debug-lookup",
+      "environment": {},
+      "exit_code": 0,
+      "output": "\nrunning 2 tests\ntest runtime::guarded_lookup::tests::native_registration_invalidates_lookup_guard_without_dictionary_change ... ok\ntest runtime::guarded_lookup::tests::guarded_lookup_preserves_dictionary_changes_and_lookup_effects ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 159 filtered out; finished in 0.00s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/debug/deps/birnam_id-c7316b89c40cb24d)\n"
+    },
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "birnam-id",
+        "--locked",
+        "--offline",
+        "--release",
+        "dispatch_specialization",
+        "--",
+        "--nocapture"
+      ],
+      "label": "release",
+      "environment": {},
+      "exit_code": 0,
+      "output": "\nrunning 3 tests\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ignored, 74S paired dispatch timings\ntest runtime::dispatch_cache::tests::dispatch_specialization_observes_warm_mutations_gc_and_lookup ... ok\ntest runtime::dispatch_cache::tests::dispatch_specialization_reentry_and_registration_are_late_classified ... ok\n\ntest result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 158 filtered out; finished in 0.00s\n\n    Finished `release` profile [optimized] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0)\n"
+    },
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "birnam-id",
+        "--locked",
+        "--offline",
+        "--release",
+        "guarded_lookup",
+        "--",
+        "--nocapture"
+      ],
+      "label": "release-lookup",
+      "environment": {},
+      "exit_code": 0,
+      "output": "\nrunning 2 tests\ntest runtime::guarded_lookup::tests::native_registration_invalidates_lookup_guard_without_dictionary_change ... ok\ntest runtime::guarded_lookup::tests::guarded_lookup_preserves_dictionary_changes_and_lookup_effects ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 159 filtered out; finished in 0.00s\n\n    Finished `release` profile [optimized] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0)\n"
+    },
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "birnam-id",
+        "--release",
+        "--locked",
+        "--offline",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "label": "timing-build",
+      "environment": {},
+      "exit_code": 0,
+      "output": "{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#version_check@0.9.5\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"version_check\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs\",\"edition\":\"2015\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libversion_check-45cadd949b11d0a8.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libversion_check-45cadd949b11d0a8.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#generic-array@0.14.7\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/generic-array-0.14.7/Cargo.toml\",\"target\":{\"kind\":[\"custom-build\"],\"crate_types\":[\"bin\"],\"name\":\"build-script-build\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/generic-array-0.14.7/build.rs\",\"edition\":\"2015\",\"doc\":false,\"doctest\":false,\"test\":false},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"more_lengths\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/generic-array-f461eeab97ec3eaf/build-script-build\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#typenum@1.20.1\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/typenum-1.20.1/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"typenum\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/typenum-1.20.1/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libtypenum-f21b6114b314d3eb.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libtypenum-f21b6114b314d3eb.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#libc@0.2.189\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.189/Cargo.toml\",\"target\":{\"kind\":[\"custom-build\"],\"crate_types\":[\"bin\"],\"name\":\"build-script-build\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.189/build.rs\",\"edition\":\"2021\",\"doc\":false,\"doctest\":false,\"test\":false},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/libc-9bb5f65ad20d8dc0/build-script-build\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#find-msvc-tools@0.1.9\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/find-msvc-tools-0.1.9/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"find_msvc_tools\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/find-msvc-tools-0.1.9/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libfind_msvc_tools-129c5d2be878eafd.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libfind_msvc_tools-129c5d2be878eafd.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#shlex@2.0.1\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-2.0.1/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"shlex\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-2.0.1/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"default\",\"std\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libshlex-cb23e5a40efa1609.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libshlex-cb23e5a40efa1609.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#cfg-if@1.0.4\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-if-1.0.4/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"cfg_if\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-if-1.0.4/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcfg_if-22bc9496e4baa657.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcfg_if-22bc9496e4baa657.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-abi#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-abi/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"birnam_abi\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-abi/src/lib.rs\",\"edition\":\"2024\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_abi-c5ae18a9ad1d1efd.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_abi-c5ae18a9ad1d1efd.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-id#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-id/Cargo.toml\",\"target\":{\"kind\":[\"custom-build\"],\"crate_types\":[\"bin\"],\"name\":\"build-script-build\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-id/build.rs\",\"edition\":\"2024\",\"doc\":false,\"doctest\":false,\"test\":false},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/birnam-id-c50c043c3341e886/build-script-build\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"build-script-executed\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#generic-array@0.14.7\",\"linked_libs\":[],\"linked_paths\":[],\"cfgs\":[\"relaxed_coherence\"],\"env\":[],\"out_dir\":\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/generic-array-98d8ce54b18fee56/out\"}\n{\"reason\":\"build-script-executed\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#libc@0.2.189\",\"linked_libs\":[],\"linked_paths\":[],\"cfgs\":[\"freebsd12\"],\"env\":[],\"out_dir\":\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/libc-260bf4e3e65497e0/out\"}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#cc@1.3.0\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cc-1.3.0/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"cc\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cc-1.3.0/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcc-32345199f663fb0a.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcc-32345199f663fb0a.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"build-script-executed\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-id#0.0.0\",\"linked_libs\":[],\"linked_paths\":[],\"cfgs\":[],\"env\":[],\"out_dir\":\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/birnam-id-6514ece00b440b9f/out\"}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#generic-array@0.14.7\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/generic-array-0.14.7/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"generic_array\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/generic-array-0.14.7/src/lib.rs\",\"edition\":\"2015\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"more_lengths\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libgeneric_array-58b073bf5a240141.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libgeneric_array-58b073bf5a240141.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#libc@0.2.189\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.189/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"libc\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.189/src/lib.rs\",\"edition\":\"2021\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/liblibc-7ad957c9347845fc.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/liblibc-7ad957c9347845fc.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-native-compiler#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-native-compiler/Cargo.toml\",\"target\":{\"kind\":[\"custom-build\"],\"crate_types\":[\"bin\"],\"name\":\"build-script-build\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-native-compiler/build.rs\",\"edition\":\"2024\",\"doc\":false,\"doctest\":false,\"test\":false},\"profile\":{\"opt_level\":\"0\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/birnam-native-compiler-794cbde0efc46971/build-script-build\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#crypto-common@0.1.7\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.1.7/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"crypto_common\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crypto-common-0.1.7/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"std\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcrypto_common-d5fcf53f19b74ef1.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcrypto_common-d5fcf53f19b74ef1.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#block-buffer@0.10.4\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"block_buffer\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libblock_buffer-629a0b30ad95a8b3.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libblock_buffer-629a0b30ad95a8b3.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#cpufeatures@0.2.17\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cpufeatures-0.2.17/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"cpufeatures\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cpufeatures-0.2.17/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcpufeatures-b435c936fbd30342.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libcpufeatures-b435c936fbd30342.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"build-script-executed\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-native-compiler#0.0.0\",\"linked_libs\":[\"static=birnam_tcc\"],\"linked_paths\":[\"native=/Users/chazu/dev/zig/birnam/.cargo-target/release/build/birnam-native-compiler-857ae20e2f247a59/out\"],\"cfgs\":[],\"env\":[],\"out_dir\":\"/Users/chazu/dev/zig/birnam/.cargo-target/release/build/birnam-native-compiler-857ae20e2f247a59/out\"}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#digest@0.10.7\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"digest\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/digest-0.10.7/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"alloc\",\"block-buffer\",\"core-api\",\"default\",\"std\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libdigest-7e3a77e154aa1ad5.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libdigest-7e3a77e154aa1ad5.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-native-compiler#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-native-compiler/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"birnam_native_compiler\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-native-compiler/src/lib.rs\",\"edition\":\"2024\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_native_compiler-60cc5d70ae59ac80.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_native_compiler-60cc5d70ae59ac80.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"registry+https://github.com/rust-lang/crates.io-index#sha2@0.10.9\",\"manifest_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sha2-0.10.9/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"sha2\",\"src_path\":\"/Users/chazu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sha2-0.10.9/src/lib.rs\",\"edition\":\"2018\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"default\",\"std\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libsha2-abf1d1b1793fee03.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libsha2-abf1d1b1793fee03.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-artifact#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-artifact/Cargo.toml\",\"target\":{\"kind\":[\"cdylib\",\"rlib\"],\"crate_types\":[\"cdylib\",\"rlib\"],\"name\":\"birnam_artifact\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-artifact/src/lib.rs\",\"edition\":\"2024\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_artifact.dylib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_artifact.rlib\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-codegen#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-codegen/Cargo.toml\",\"target\":{\"kind\":[\"lib\"],\"crate_types\":[\"lib\"],\"name\":\"birnam_codegen\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-codegen/src/lib.rs\",\"edition\":\"2024\",\"doc\":true,\"doctest\":true,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":false},\"features\":[\"dev-frame-read-reuse\",\"dev-pc-specialization\"],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_codegen-687be25518eb41dc.rlib\",\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/libbirnam_codegen-687be25518eb41dc.rmeta\"],\"executable\":null,\"fresh\":true}\n{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///Users/chazu/dev/zig/birnam/rust/birnam-id#0.0.0\",\"manifest_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-id/Cargo.toml\",\"target\":{\"kind\":[\"cdylib\"],\"crate_types\":[\"cdylib\"],\"name\":\"birnam_id\",\"src_path\":\"/Users/chazu/dev/zig/birnam/rust/birnam-id/src/lib.rs\",\"edition\":\"2024\",\"doc\":true,\"doctest\":false,\"test\":true},\"profile\":{\"opt_level\":\"3\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":false,\"test\":true},\"features\":[],\"filenames\":[\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0\"],\"executable\":\"/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0\",\"fresh\":true}\n{\"reason\":\"build-finished\",\"success\":true}\n    Finished `release` profile [optimized] target(s) in 0.01s\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-0"
+      ],
+      "label": "host-0-attempt-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-0 stable on AC power; idle 63.72 65.27 51.45%, median 63.72%, spread 13.82 points, hottest 73.7%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":126235166,\"prepare_ns\":70834,\"warm_ns\":13958,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":25975500,\"prepare_ns\":63500,\"warm_ns\":3750,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":23117916,\"prepare_ns\":52250,\"warm_ns\":3292,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22367583,\"prepare_ns\":60167,\"warm_ns\":2959,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35431125,\"prepare_ns\":59459,\"warm_ns\":5000,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35134542,\"prepare_ns\":57542,\"warm_ns\":5209,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33424041,\"prepare_ns\":59541,\"warm_ns\":3208,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33612125,\"prepare_ns\":60250,\"warm_ns\":3083,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":134227958,\"prepare_ns\":51833,\"warm_ns\":13250,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-0-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":133739208,\"prepare_ns\":61792,\"warm_ns\":3667,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-0.log",
+        "74S-dispatch-0"
+      ],
+      "label": "interval-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-0 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-1"
+      ],
+      "label": "host-1-attempt-0",
+      "environment": {},
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: 74S-dispatch-1 host is not stable enough for tracked timing\n  idle samples: 64.25 51.89 63.29% (minimum 51.89%, median 63.29%, spread 12.36 points)\n  required: median 50% (two of three samples), hottest process <= 80% of one core\n  hottest process: 73806  90.6 /System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysisd (limit 80% of one core)\n73806  91.2 /System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysisd\n  755  17.4 /Applications/Ghostty.app/Contents/MacOS/ghostty\n79425  15.6 /Applications/Firefox.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container\n 5898  15.3 /opt/homebrew/bin/herdr\n  366  14.7 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer\n 1175   8.4 /Applications/Spotify.app/Contents/MacOS/Spotify\n67031   7.5 /System/Library/ExtensionKit/Extensions/WallpaperVideoExtension.appex/Contents/MacOS/WallpaperVideoExtension\n93767   5.1 /Applications/Firefox.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-1"
+      ],
+      "label": "host-1-attempt-1",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-1 stable on AC power; idle 69.48 54.70 44.23%, median 54.70%, spread 25.25 points, hottest 28.8%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":24186833,\"prepare_ns\":1056500,\"warm_ns\":83833,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":24901625,\"prepare_ns\":119958,\"warm_ns\":7542,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":38185458,\"prepare_ns\":61875,\"warm_ns\":13583,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":40334708,\"prepare_ns\":52625,\"warm_ns\":5583,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":35820792,\"prepare_ns\":49792,\"warm_ns\":3166,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":37111334,\"prepare_ns\":111667,\"warm_ns\":6750,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":143394167,\"prepare_ns\":111542,\"warm_ns\":7417,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":138947458,\"prepare_ns\":50042,\"warm_ns\":13791,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":26246083,\"prepare_ns\":50458,\"warm_ns\":3667,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-1-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":129244792,\"prepare_ns\":66375,\"warm_ns\":13875,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-1.log",
+        "74S-dispatch-1"
+      ],
+      "label": "interval-1",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-1 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-2"
+      ],
+      "label": "host-2-attempt-0",
+      "environment": {},
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: 74S-dispatch-2 host is not stable enough for tracked timing\n  idle samples: 45.32 34.48 32.81% (minimum 32.81%, median 34.48%, spread 12.51 points)\n  required: median 50% (two of three samples), hottest process <= 80% of one core\n  hottest process: 93767  26.4 /Applications/Firefox.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container (limit 80% of one core)\n87907  37.5 /Users/chazu/.rat-kingdom/gate-worktrees/rat-kingdom/main/target/debug/deps/rk_daemon-b615aac4cba26d04\n  303  19.0 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/FSEvents.framework/Versions/A/Support/fseventsd\n93767  16.5 /Applications/Firefox.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container\n  755  10.3 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  366   9.4 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer\n  327   9.2 /System/Library/Frameworks/CoreServices.framework/Frameworks/Metadata.framework/Support/mds\n  558   8.5 /System/Library/Frameworks/CoreServices.framework/Frameworks/Metadata.framework/Versions/A/Support/mds_stores\n 5898   8.1 /opt/homebrew/bin/herdr\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-2"
+      ],
+      "label": "host-2-attempt-1",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-2 stable on AC power; idle 61.73 67.67 63.59%, median 63.59%, spread 5.94 points, hottest 33.3%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35799833,\"prepare_ns\":998958,\"warm_ns\":49875,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35533875,\"prepare_ns\":59583,\"warm_ns\":5125,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":34685667,\"prepare_ns\":57542,\"warm_ns\":3250,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":34371625,\"prepare_ns\":61125,\"warm_ns\":3209,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":137980750,\"prepare_ns\":61417,\"warm_ns\":14209,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":136241667,\"prepare_ns\":65458,\"warm_ns\":3750,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":125837708,\"prepare_ns\":89041,\"warm_ns\":13833,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":26240458,\"prepare_ns\":61500,\"warm_ns\":3500,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":23030291,\"prepare_ns\":56792,\"warm_ns\":3084,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-2-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22390791,\"prepare_ns\":55708,\"warm_ns\":2958,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-2.log",
+        "74S-dispatch-2"
+      ],
+      "label": "interval-2",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-2 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-3"
+      ],
+      "label": "host-3-attempt-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-3 stable on AC power; idle 66.74 60.31 70.10%, median 66.74%, spread 9.79 points, hottest 25.4%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":34060958,\"prepare_ns\":66791,\"warm_ns\":3083,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":35324833,\"prepare_ns\":59833,\"warm_ns\":3250,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":136222875,\"prepare_ns\":73375,\"warm_ns\":4250,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":137390750,\"prepare_ns\":62417,\"warm_ns\":13959,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":26774708,\"prepare_ns\":63416,\"warm_ns\":4083,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":129215791,\"prepare_ns\":60375,\"warm_ns\":13791,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22970875,\"prepare_ns\":63500,\"warm_ns\":3209,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":23545208,\"prepare_ns\":61541,\"warm_ns\":3167,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":36688458,\"prepare_ns\":61708,\"warm_ns\":5583,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-3-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":36671333,\"prepare_ns\":58292,\"warm_ns\":5291,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-3.log",
+        "74S-dispatch-3"
+      ],
+      "label": "interval-3",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-3 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-4"
+      ],
+      "label": "host-4-attempt-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-4 stable on AC power; idle 69.64 61.33 67.61%, median 67.61%, spread 8.31 points, hottest 29.5%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":138377583,\"prepare_ns\":60250,\"warm_ns\":14125,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":138714792,\"prepare_ns\":62292,\"warm_ns\":3666,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":125186542,\"prepare_ns\":63166,\"warm_ns\":14041,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":25479583,\"prepare_ns\":61083,\"warm_ns\":3833,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22866792,\"prepare_ns\":52625,\"warm_ns\":2959,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22031208,\"prepare_ns\":58416,\"warm_ns\":3292,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":34979459,\"prepare_ns\":55000,\"warm_ns\":4958,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":34686791,\"prepare_ns\":58708,\"warm_ns\":5000,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33525083,\"prepare_ns\":59042,\"warm_ns\":3041,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-4-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33094542,\"prepare_ns\":55209,\"warm_ns\":2959,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-4.log",
+        "74S-dispatch-4"
+      ],
+      "label": "interval-4",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-4 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-5"
+      ],
+      "label": "host-5-attempt-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-5 stable on AC power; idle 71.41 74.88 57.38%, median 71.41%, spread 17.50 points, hottest 32.5%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":26482417,\"prepare_ns\":62500,\"warm_ns\":3667,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":125424375,\"prepare_ns\":49667,\"warm_ns\":14042,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22331375,\"prepare_ns\":64459,\"warm_ns\":3167,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22878000,\"prepare_ns\":57541,\"warm_ns\":3125,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35918625,\"prepare_ns\":57459,\"warm_ns\":5083,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35744166,\"prepare_ns\":59167,\"warm_ns\":5167,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33058792,\"prepare_ns\":57208,\"warm_ns\":3000,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":34044584,\"prepare_ns\":58583,\"warm_ns\":3000,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":133563875,\"prepare_ns\":57916,\"warm_ns\":3750,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-5-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":136073250,\"prepare_ns\":59916,\"warm_ns\":13833,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-5.log",
+        "74S-dispatch-5"
+      ],
+      "label": "interval-5",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-5 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-6"
+      ],
+      "label": "host-6-attempt-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-6 stable on AC power; idle 70.66 71.36 77.14%, median 71.36%, spread 6.48 points, hottest 20.6%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22848958,\"prepare_ns\":62583,\"warm_ns\":3291,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22336666,\"prepare_ns\":57959,\"warm_ns\":3042,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35072958,\"prepare_ns\":57958,\"warm_ns\":5125,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35108333,\"prepare_ns\":60125,\"warm_ns\":5167,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33918125,\"prepare_ns\":56209,\"warm_ns\":3209,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":33320083,\"prepare_ns\":61584,\"warm_ns\":3125,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":136610917,\"prepare_ns\":54333,\"warm_ns\":13584,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":136267667,\"prepare_ns\":59959,\"warm_ns\":3625,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":127110625,\"prepare_ns\":59917,\"warm_ns\":13542,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-6-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":26023917,\"prepare_ns\":64166,\"warm_ns\":3667,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-6.log",
+        "74S-dispatch-6"
+      ],
+      "label": "interval-6",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-6 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "74S-dispatch-7"
+      ],
+      "label": "host-7-attempt-0",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-7 stable on AC power; idle 79.3 68.51 74.88%, median 74.88%, spread 10.79 points, hottest 37.3%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-lookup-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":36429666,\"prepare_ns\":64500,\"warm_ns\":5583,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-lookup-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "lookup",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"lookup\",\"count\":1000000,\"elapsed_ns\":35751166,\"prepare_ns\":61125,\"warm_ns\":5333,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":34399500,\"prepare_ns\":57459,\"warm_ns\":3125,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"churn\",\"count\":1000000,\"elapsed_ns\":34806292,\"prepare_ns\":57875,\"warm_ns\":3166,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-inherited-churn-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":137923417,\"prepare_ns\":50041,\"warm_ns\":3833,\"bytes\":0,\"hits\":0,\"misses\":1000000,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-inherited-churn-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited-churn",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited-churn\",\"count\":1000000,\"elapsed_ns\":136475959,\"prepare_ns\":62959,\"warm_ns\":13834,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-inherited-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":25470750,\"prepare_ns\":61000,\"warm_ns\":3750,\"bytes\":0,\"hits\":1000000,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.03s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-inherited-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "inherited",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"inherited\",\"count\":1000000,\"elapsed_ns\":124848875,\"prepare_ns\":63792,\"warm_ns\":13209,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-direct-on",
+      "environment": {
+        "BIRNAM_74S_MODE": "on",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"on\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22008625,\"prepare_ns\":57250,\"warm_ns\":2917,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
+        "runtime::dispatch_cache::tests::dispatch_specialization_timing",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "label": "pair-7-direct-off",
+      "environment": {
+        "BIRNAM_74S_MODE": "off",
+        "BIRNAM_74S_CASE": "direct",
+        "BIRNAM_74S_COUNT": "1000000"
+      },
+      "exit_code": 0,
+      "output": "\nrunning 1 test\nDISPATCH_TIMING {\"mode\":\"off\",\"case\":\"direct\",\"count\":1000000,\"elapsed_ns\":22576708,\"prepare_ns\":56459,\"warm_ns\":2958,\"bytes\":0,\"hits\":0,\"misses\":0,\"metadata_bytes\":2048}\ntest runtime::dispatch_cache::tests::dispatch_specialization_timing ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/bench-host-check.sh",
+        "--samples",
+        ".cargo-target/74s/dispatch-focused-rerun/cpu-7.log",
+        "74S-dispatch-7"
+      ],
+      "label": "interval-7",
+      "environment": {},
+      "exit_code": 0,
+      "output": "bench-host-check: 74S-dispatch-7 completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n"
+    }
+  ],
+  "samples": [
+    {
+      "pair": 0,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 126235166,
+      "prepare_ns": 70834,
+      "warm_ns": 13958,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 25975500,
+      "prepare_ns": 63500,
+      "warm_ns": 3750,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 23117916,
+      "prepare_ns": 52250,
+      "warm_ns": 3292,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22367583,
+      "prepare_ns": 60167,
+      "warm_ns": 2959,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35431125,
+      "prepare_ns": 59459,
+      "warm_ns": 5000,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35134542,
+      "prepare_ns": 57542,
+      "warm_ns": 5209,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33424041,
+      "prepare_ns": 59541,
+      "warm_ns": 3208,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33612125,
+      "prepare_ns": 60250,
+      "warm_ns": 3083,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 134227958,
+      "prepare_ns": 51833,
+      "warm_ns": 13250,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 0,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 133739208,
+      "prepare_ns": 61792,
+      "warm_ns": 3667,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 24186833,
+      "prepare_ns": 1056500,
+      "warm_ns": 83833,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 24901625,
+      "prepare_ns": 119958,
+      "warm_ns": 7542,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 38185458,
+      "prepare_ns": 61875,
+      "warm_ns": 13583,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 40334708,
+      "prepare_ns": 52625,
+      "warm_ns": 5583,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 35820792,
+      "prepare_ns": 49792,
+      "warm_ns": 3166,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 37111334,
+      "prepare_ns": 111667,
+      "warm_ns": 6750,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 143394167,
+      "prepare_ns": 111542,
+      "warm_ns": 7417,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 138947458,
+      "prepare_ns": 50042,
+      "warm_ns": 13791,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 26246083,
+      "prepare_ns": 50458,
+      "warm_ns": 3667,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 1,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 129244792,
+      "prepare_ns": 66375,
+      "warm_ns": 13875,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35799833,
+      "prepare_ns": 998958,
+      "warm_ns": 49875,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35533875,
+      "prepare_ns": 59583,
+      "warm_ns": 5125,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 34685667,
+      "prepare_ns": 57542,
+      "warm_ns": 3250,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 34371625,
+      "prepare_ns": 61125,
+      "warm_ns": 3209,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 137980750,
+      "prepare_ns": 61417,
+      "warm_ns": 14209,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 136241667,
+      "prepare_ns": 65458,
+      "warm_ns": 3750,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 125837708,
+      "prepare_ns": 89041,
+      "warm_ns": 13833,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 26240458,
+      "prepare_ns": 61500,
+      "warm_ns": 3500,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 23030291,
+      "prepare_ns": 56792,
+      "warm_ns": 3084,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 2,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22390791,
+      "prepare_ns": 55708,
+      "warm_ns": 2958,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 34060958,
+      "prepare_ns": 66791,
+      "warm_ns": 3083,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 35324833,
+      "prepare_ns": 59833,
+      "warm_ns": 3250,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 136222875,
+      "prepare_ns": 73375,
+      "warm_ns": 4250,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 137390750,
+      "prepare_ns": 62417,
+      "warm_ns": 13959,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 26774708,
+      "prepare_ns": 63416,
+      "warm_ns": 4083,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 129215791,
+      "prepare_ns": 60375,
+      "warm_ns": 13791,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22970875,
+      "prepare_ns": 63500,
+      "warm_ns": 3209,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 23545208,
+      "prepare_ns": 61541,
+      "warm_ns": 3167,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 36688458,
+      "prepare_ns": 61708,
+      "warm_ns": 5583,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 3,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 36671333,
+      "prepare_ns": 58292,
+      "warm_ns": 5291,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 138377583,
+      "prepare_ns": 60250,
+      "warm_ns": 14125,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 138714792,
+      "prepare_ns": 62292,
+      "warm_ns": 3666,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 125186542,
+      "prepare_ns": 63166,
+      "warm_ns": 14041,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 25479583,
+      "prepare_ns": 61083,
+      "warm_ns": 3833,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22866792,
+      "prepare_ns": 52625,
+      "warm_ns": 2959,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22031208,
+      "prepare_ns": 58416,
+      "warm_ns": 3292,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 34979459,
+      "prepare_ns": 55000,
+      "warm_ns": 4958,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 34686791,
+      "prepare_ns": 58708,
+      "warm_ns": 5000,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33525083,
+      "prepare_ns": 59042,
+      "warm_ns": 3041,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 4,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33094542,
+      "prepare_ns": 55209,
+      "warm_ns": 2959,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 26482417,
+      "prepare_ns": 62500,
+      "warm_ns": 3667,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 125424375,
+      "prepare_ns": 49667,
+      "warm_ns": 14042,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22331375,
+      "prepare_ns": 64459,
+      "warm_ns": 3167,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22878000,
+      "prepare_ns": 57541,
+      "warm_ns": 3125,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35918625,
+      "prepare_ns": 57459,
+      "warm_ns": 5083,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35744166,
+      "prepare_ns": 59167,
+      "warm_ns": 5167,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33058792,
+      "prepare_ns": 57208,
+      "warm_ns": 3000,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 34044584,
+      "prepare_ns": 58583,
+      "warm_ns": 3000,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 133563875,
+      "prepare_ns": 57916,
+      "warm_ns": 3750,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 5,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 136073250,
+      "prepare_ns": 59916,
+      "warm_ns": 13833,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22848958,
+      "prepare_ns": 62583,
+      "warm_ns": 3291,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22336666,
+      "prepare_ns": 57959,
+      "warm_ns": 3042,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35072958,
+      "prepare_ns": 57958,
+      "warm_ns": 5125,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35108333,
+      "prepare_ns": 60125,
+      "warm_ns": 5167,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33918125,
+      "prepare_ns": 56209,
+      "warm_ns": 3209,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 33320083,
+      "prepare_ns": 61584,
+      "warm_ns": 3125,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 136610917,
+      "prepare_ns": 54333,
+      "warm_ns": 13584,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 136267667,
+      "prepare_ns": 59959,
+      "warm_ns": 3625,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 127110625,
+      "prepare_ns": 59917,
+      "warm_ns": 13542,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 6,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 26023917,
+      "prepare_ns": 64166,
+      "warm_ns": 3667,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "on",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 36429666,
+      "prepare_ns": 64500,
+      "warm_ns": 5583,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "off",
+      "case": "lookup",
+      "count": 1000000,
+      "elapsed_ns": 35751166,
+      "prepare_ns": 61125,
+      "warm_ns": 5333,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "on",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 34399500,
+      "prepare_ns": 57459,
+      "warm_ns": 3125,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "off",
+      "case": "churn",
+      "count": 1000000,
+      "elapsed_ns": 34806292,
+      "prepare_ns": 57875,
+      "warm_ns": 3166,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "on",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 137923417,
+      "prepare_ns": 50041,
+      "warm_ns": 3833,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 1000000,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "off",
+      "case": "inherited-churn",
+      "count": 1000000,
+      "elapsed_ns": 136475959,
+      "prepare_ns": 62959,
+      "warm_ns": 13834,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "on",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 25470750,
+      "prepare_ns": 61000,
+      "warm_ns": 3750,
+      "bytes": 0,
+      "hits": 1000000,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "off",
+      "case": "inherited",
+      "count": 1000000,
+      "elapsed_ns": 124848875,
+      "prepare_ns": 63792,
+      "warm_ns": 13209,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "on",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22008625,
+      "prepare_ns": 57250,
+      "warm_ns": 2917,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    },
+    {
+      "pair": 7,
+      "mode": "off",
+      "case": "direct",
+      "count": 1000000,
+      "elapsed_ns": 22576708,
+      "prepare_ns": 56459,
+      "warm_ns": 2958,
+      "bytes": 0,
+      "hits": 0,
+      "misses": 0,
+      "metadata_bytes": 2048,
+      "counter_kind": "dispatch"
+    }
+  ],
+  "timing_qualification": "host-gated",
+  "authorities": {
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "abi/idapi-v1.json": "259ed86dad175a31602cae07bf37fb2433e7e419710e224586f1808d4ec2615c",
+    "abi/fixtures/idapi-v1/idapi_v1.h": "2bde843b9ba54dabeec4be229ae374f7062b6ef7e8a734714aa9eab22d23cc12",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb",
+    "rust/birnam-id/src/registration.rs": "0f5ff2b323a8dd743c2aea7ad270ea9cb301974c837e980d73dab2aaa38f525f",
+    "rust/birnam-codegen/src/resumable_c.rs": "668dfa18d6bc8c1bc2da0b08ece9025de308f50c22bc113bf2ac34734fd517db",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1"
+  },
+  "binary_sha256": "81a94be0ab8c9614a21ab5abef7ad2484896c4907e837ce2856ec4b21ad732dd",
+  "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=20447331)\t100%; charged; 0:00 remaining present: true\n",
+  "timing_summary": {
+    "churn": {
+      "comparisons": {
+        "off->on": {
+          "median_time_reduction_percent": 1.5237142157639882,
+          "paired_percent": [
+            -0.5627207075290519,
+            3.4774874974852654,
+            0.9053941502696228,
+            3.5778654636527185,
+            1.284235448425286,
+            2.895591263503172,
+            1.7631929831026905,
+            1.1687312167581676
+          ]
+        }
+      },
+      "modes": {
+        "off": {
+          "elapsed_ns": 34365125.5,
+          "prepare_ns": 58812.5,
+          "warm_ns": 3208.5,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        },
+        "on": {
+          "elapsed_ns": 33836541.5,
+          "prepare_ns": 58854.5,
+          "warm_ns": 3104.0,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        }
+      }
+    },
+    "direct": {
+      "comparisons": {
+        "off->on": {
+          "median_time_reduction_percent": 2.6465063199300976,
+          "paired_percent": [
+            3.245677508301359,
+            2.8704632729791735,
+            2.7767777662904947,
+            2.4392776653321513,
+            3.654137405894098,
+            2.389304134976833,
+            2.2420803609512485,
+            2.5162348735697004
+          ]
+        }
+      },
+      "modes": {
+        "off": {
+          "elapsed_ns": 22954145.5,
+          "prepare_ns": 57166.5,
+          "warm_ns": 3146.0,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        },
+        "on": {
+          "elapsed_ns": 22352124.5,
+          "prepare_ns": 59291.5,
+          "warm_ns": 3104.5,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        }
+      }
+    },
+    "inherited": {
+      "comparisons": {
+        "off->on": {
+          "median_time_reduction_percent": 79.47474460854662,
+          "paired_percent": [
+            79.4229287899063,
+            79.6927345436093,
+            79.14738084708281,
+            79.279074335427,
+            79.64670755104011,
+            78.88574928119037,
+            79.52656042718695,
+            79.59873487045839
+          ]
+        }
+      },
+      "modes": {
+        "off": {
+          "elapsed_ns": 126036437.0,
+          "prepare_ns": 63479.0,
+          "warm_ns": 13854.0,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        },
+        "on": {
+          "elapsed_ns": 26132187.5,
+          "prepare_ns": 62000.0,
+          "warm_ns": 3708.5,
+          "bytes": 0.0,
+          "hits": 1000000.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        }
+      }
+    },
+    "inherited-churn": {
+      "comparisons": {
+        "off->on": {
+          "median_time_reduction_percent": 0.3076902028943729,
+          "paired_percent": [
+            0.3641193737000781,
+            -3.2002809292128287,
+            1.2603808864642296,
+            0.8500390310119177,
+            -0.24368759208635016,
+            1.8441354197096027,
+            0.2512610320886677,
+            -1.060595588121127
+          ]
+        }
+      },
+      "modes": {
+        "off": {
+          "elapsed_ns": 137000833.5,
+          "prepare_ns": 60083.0,
+          "warm_ns": 13833.5,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        },
+        "on": {
+          "elapsed_ns": 136254667.0,
+          "prepare_ns": 62042.0,
+          "warm_ns": 3750.0,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 1000000.0,
+          "metadata_bytes": 2048.0
+        }
+      }
+    },
+    "lookup": {
+      "comparisons": {
+        "off->on": {
+          "median_time_reduction_percent": 0.34810215220849594,
+          "paired_percent": [
+            0.8370691023782073,
+            5.32853739761795,
+            0.7429029068375836,
+            -0.04669860242059176,
+            0.8366853243785166,
+            -0.48807685147835844,
+            -0.10086118199668093,
+            -1.8978401991140759
+          ]
+        }
+      },
+      "modes": {
+        "off": {
+          "elapsed_ns": 35747666.0,
+          "prepare_ns": 58729.5,
+          "warm_ns": 5229.0,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        },
+        "on": {
+          "elapsed_ns": 35726250.0,
+          "prepare_ns": 59854.0,
+          "warm_ns": 5188.0,
+          "bytes": 0.0,
+          "hits": 0.0,
+          "misses": 0.0,
+          "metadata_bytes": 2048.0
+        }
+      }
+    }
+  },
+  "rk_resumed": true,
+  "host_interval_logs": {
+    "cpu-4.log": "Processes: 625 total, 2 running, 1 stuck, 622 sleeping, 6063 threads \n2026/09/12 10:10:43\nLoad Avg: 6.23, 10.57, 8.28 \nCPU usage: 33.33% user, 23.61% sys, 43.5% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 360127 total, 5054M resident, 127M private, 1526M shared.\nPhysMem: 23G used (3330M wired, 9173M compressor), 104M unused.\nVM: 254T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47517332/31G in, 43000300/29G out.\nDisks: 114089535/2052G read, 73216559/1937G written.\n\n\n",
+    "cpu-5.log": "Processes: 628 total, 3 running, 625 sleeping, 6085 threads \n2026/09/12 10:10:47\nLoad Avg: 5.89, 10.43, 8.24 \nCPU usage: 29.18% user, 16.74% sys, 54.6% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 360172 total, 4995M resident, 121M private, 1548M shared.\nPhysMem: 23G used (3478M wired, 9222M compressor), 92M unused.\nVM: 256T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47517479/31G in, 43000446/29G out.\nDisks: 114092762/2052G read, 73218285/1937G written.\n\n\n",
+    "cpu-7.log": "Processes: 624 total, 4 running, 620 sleeping, 6045 threads \n2026/09/12 10:10:55\nLoad Avg: 5.36, 10.17, 8.17 \nCPU usage: 35.15% user, 24.20% sys, 40.63% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 360028 total, 4936M resident, 103M private, 1555M shared.\nPhysMem: 23G used (3481M wired, 9216M compressor), 76M unused.\nVM: 254T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47517705/31G in, 43000654/29G out.\nDisks: 114095981/2052G read, 73221942/1937G written.\n\n\n",
+    "cpu-6.log": "Processes: 622 total, 2 running, 620 sleeping, 6041 threads \n2026/09/12 10:10:51\nLoad Avg: 5.66, 10.30, 8.21 \nCPU usage: 26.23% user, 15.84% sys, 57.92% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 359784 total, 5004M resident, 112M private, 1546M shared.\nPhysMem: 23G used (3334M wired, 9179M compressor), 51M unused.\nVM: 253T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47517572/31G in, 43000562/29G out.\nDisks: 114094317/2052G read, 73219220/1937G written.\n\n\n",
+    "cpu-2.log": "Processes: 623 total, 2 running, 1 stuck, 620 sleeping, 6078 threads \n2026/09/12 10:10:34\nLoad Avg: 6.33, 10.66, 8.29 \nCPU usage: 25.0% user, 22.59% sys, 52.40% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 359936 total, 4863M resident, 138M private, 1551M shared.\nPhysMem: 23G used (3477M wired, 9380M compressor), 68M unused.\nVM: 254T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47516274/31G in, 42999868/29G out.\nDisks: 114042713/2052G read, 73211806/1937G written.\n\n\n",
+    "cpu-3.log": "Processes: 622 total, 2 running, 1 stuck, 619 sleeping, 6060 threads \n2026/09/12 10:10:39\nLoad Avg: 6.33, 10.66, 8.29 \nCPU usage: 25.47% user, 22.16% sys, 52.35% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 359830 total, 5022M resident, 126M private, 1554M shared.\nPhysMem: 23G used (3478M wired, 9201M compressor), 68M unused.\nVM: 253T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47516893/31G in, 43000157/29G out.\nDisks: 114064126/2052G read, 73213820/1937G written.\n\n\n",
+    "cpu-1.log": "Processes: 625 total, 6 running, 619 sleeping, 6204 threads \n2026/09/12 10:09:57\nLoad Avg: 6.87, 11.33, 8.40 \nCPU usage: 43.93% user, 44.35% sys, 11.71% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 360527 total, 4868M resident, 149M private, 1569M shared.\nPhysMem: 23G used (3246M wired, 9366M compressor), 98M unused.\nVM: 254T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47512682/31G in, 42996762/29G out.\nDisks: 113909849/2051G read, 73153938/1936G written.\n\n\n",
+    "cpu-0.log": "Processes: 623 total, 4 running, 619 sleeping, 6099 threads \n2026/09/12 10:09:19\nLoad Avg: 9.83, 12.40, 8.62 \nCPU usage: 35.54% user, 16.58% sys, 47.86% idle \nSharedLibs: 474M resident, 119M data, 42M linkedit.\nMemRegions: 360052 total, 4583M resident, 115M private, 1553M shared.\nPhysMem: 23G used (3245M wired, 9637M compressor), 490M unused.\nVM: 254T vsize, 4915M framework vsize, 1286692(0) swapins, 1804005(0) swapouts.\nNetworks: packets: 47509755/31G in, 42994355/29G out.\nDisks: 113881349/2050G read, 73133391/1936G written.\n\n\n"
+  }
+}
