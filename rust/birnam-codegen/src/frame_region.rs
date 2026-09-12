@@ -33,6 +33,71 @@ pub struct Plan {
 }
 
 impl Plan {
+    /// Copy propagation and dead-store elimination over physical identities.
+    /// Preloading the surviving inputs makes parallel final stores safe even
+    /// when the original sequence reuses slots or contains copy cycles.
+    pub fn emit_propagated(&self) -> (Vec<u8>, usize) {
+        let symbol = self.slot_count;
+        let mut origin: Vec<u32> = (0..self.slot_count).collect();
+        for (index, &(destination, source)) in self.copies.iter().enumerate() {
+            if let Some((after, slot, _)) = self.selector_store.as_ref()
+                && *after == index
+            {
+                origin[*slot as usize] = symbol;
+            }
+            origin[destination as usize] = origin[source as usize];
+        }
+        if let Some((after, slot, _)) = self.selector_store.as_ref()
+            && *after == self.copies.len()
+        {
+            origin[*slot as usize] = symbol;
+        }
+        let mut code = format!(
+            "extern void birnam_region_fill(unsigned long*,unsigned long,unsigned long);\nvoid region_{}(unsigned long *words,unsigned long symbol){{\n",
+            self.pc
+        );
+        let writes: Vec<_> = origin
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|&(slot, value)| slot as u32 != value)
+            .collect();
+        let inputs: std::collections::BTreeSet<_> = writes
+            .iter()
+            .map(|&(_, value)| value)
+            .filter(|&value| value != symbol)
+            .collect();
+        for &input in &inputs {
+            code.push_str(&format!("unsigned long v{input}=words[{input}];\n"));
+        }
+        let mut i = 0;
+        while i < writes.len() {
+            let (slot, value) = writes[i];
+            let mut end = i + 1;
+            while end < writes.len() && writes[end] == (slot + end - i, value) {
+                end += 1;
+            }
+            let name = if value == symbol {
+                "symbol".to_owned()
+            } else {
+                format!("v{value}")
+            };
+            if end - i >= 4 {
+                code.push_str(&format!(
+                    "birnam_region_fill(words+{slot},{},{name});\n",
+                    end - i
+                ));
+            } else {
+                for &(destination, _) in &writes[i..end] {
+                    code.push_str(&format!("words[{destination}]={name};\n"));
+                }
+            }
+            i = end;
+        }
+        code.push_str("}\n");
+        (code.into_bytes(), inputs.len())
+    }
+
     /// Code is process-local and uses no public floor entry or serialized field.
     /// Every write remains; read reuse dies on a write to the same physical slot.
     pub fn emit(&self, reuse_reads: bool) -> (Vec<u8>, usize) {

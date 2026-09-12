@@ -29,7 +29,7 @@ def sources():
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--family", choices=["dispatch", "reads"], default="dispatch")
+    p.add_argument("--family", choices=["dispatch", "reads", "copies"], default="dispatch")
     p.add_argument("--measure", action="store_true")
     p.add_argument("--matrix", choices=["focused", "dispatch", "native-controls"], default="focused")
     p.add_argument("--verify", action="store_true")
@@ -42,6 +42,7 @@ def main():
     if args.matrix == "dispatch": args.matrix = "focused"
     assert args.family == "dispatch" or args.matrix == "focused"
     modes = ["off", "on"] if args.family == "dispatch" else ["off", "plain", "reuse"]
+    if args.family == "copies": modes = ["off", "plain", "propagate"]
     if args.count is None: args.count = 1000000 if args.family == "dispatch" else 10000
     assert args.pairs > 0 and args.count > 0
     args.work_dir.mkdir(parents=True, exist_ok=True)
@@ -70,13 +71,13 @@ def main():
             receipt['authorities'][name] = hashlib.sha256(data).hexdigest()
         for profile in ["debug", "release"]:
             flags = ["--release"] if profile == "release" else []
-            if args.family == "reads":
+            if args.family in ("reads", "copies"):
                 out = run(["cargo", "test", "-p", "birnam-codegen", "--locked", "--offline", *flags,
                            "native_region", "--", "--nocapture"], profile + "-region-compiler")
                 assert "1 passed; 0 failed" in out
                 out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
                            "native_region_", "--", "--nocapture"], profile + "-regions")
-                assert "3 passed; 0 failed" in out
+                assert "4 passed; 0 failed" in out
             out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
                        "dispatch_specialization", "--", "--nocapture"], profile)
             assert "2 passed; 0 failed" in out
@@ -130,12 +131,12 @@ def main():
                         try:
                             cases = (["inherited", "direct", "lookup", "churn", "inherited-churn"]
                                      if args.matrix == "focused" else ["projection", "alias1", "alias", "fallback", "control"])
-                            if args.family == "reads": cases = ["repeat", "chain", "arguments", "fallback", "control"]
+                            if args.family in ("reads", "copies"): cases = ["repeat", "chain", "arguments", "fallback", "control"]
                             cases = cases[pair%len(cases):] + cases[:pair%len(cases)]
                             for case in cases:
                                 order = list(itertools.permutations(modes))[pair % len(list(itertools.permutations(modes)))]
                                 for mode in order:
-                                    if args.family == "reads":
+                                    if args.family in ("reads", "copies"):
                                         name = "runtime::native_tier::leaf_tests::region_tests::native_region_timing"
                                         extra = dict(BIRNAM_74S_MODE=mode, BIRNAM_74S_CASE=case, BIRNAM_74S_COUNT=str(args.count))
                                         prefix = 'REGION_TIMING '
@@ -149,7 +150,7 @@ def main():
                                         prefix = 'SMALL_CALLEE_TIMING '
                                     out = run([binary, name, "--exact", "--ignored", "--nocapture"], f"pair-{pair}-{case}-{mode}", extra)
                                     sample = next(json.loads(line.removeprefix(prefix)) for line in out.splitlines() if line.startswith(prefix))
-                                    sample.update(mode=mode, counter_kind="region" if args.family=="reads" else "dispatch" if args.matrix=="focused" else "small-callee")
+                                    sample.update(mode=mode, counter_kind="region" if args.family in ("reads", "copies") else "dispatch" if args.matrix=="focused" else "small-callee")
                                     receipt['samples'].append(dict(pair=pair, **sample))
                         finally:
                             monitor.terminate()
@@ -160,7 +161,7 @@ def main():
                     rows = [r for r in receipt['samples'] if r['case'] == case]
                     assert len({r['bytes'] for r in rows}) == 1
                     comparisons = {}
-                    for first, last in ([('off','on')] if args.family=='dispatch' else [('off','plain'),('plain','reuse'),('off','reuse')]):
+                    for first, last in ([('off','on')] if args.family=='dispatch' else [(modes[0],modes[1]),(modes[1],modes[2]),(modes[0],modes[2])]):
                         left = sorted((r for r in rows if r['mode']==first), key=lambda r:r['pair'])
                         right = sorted((r for r in rows if r['mode']==last), key=lambda r:r['pair'])
                         assert len(left) == len(right) == args.pairs

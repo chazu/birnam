@@ -224,12 +224,7 @@ impl Prepared {
             }
         }
         for plan in regions.iter().flatten() {
-            // The isolated 74S timings favor guard hoisting without a native
-            // read cache. Keep read reuse available only for paired experiments.
-            let reuse = false;
-            #[cfg(test)]
-            let reuse = reuse || regions::REUSE.get();
-            source.extend(plan.emit(reuse).0);
+            source.extend(regions::emit(plan).0);
             if source.len() > MAX_CANDIDATE_BYTES {
                 return None;
             }
@@ -254,6 +249,7 @@ impl Prepared {
         let compile_start = std::time::Instant::now();
         let bindings = [
             (c"birnam_send", shim_send as *const c_void),
+            (c"birnam_region_fill", regions::fill as *const c_void),
             (c"birnam_intern", shim_intern as *const c_void),
             (c"birnam_mkSmallInt", shim_integer as *const c_void),
             (c"birnam_nil", shim_nil as *const c_void),
@@ -284,7 +280,7 @@ impl Prepared {
                 };
                 let loads = 0;
                 #[cfg(test)]
-                let loads = loads + plan.emit(regions::REUSE.get()).1;
+                let loads = loads + regions::emit(plan).1;
                 Some(regions::Compiled::new(plan.clone(), kernel, loads))
             } else {
                 None

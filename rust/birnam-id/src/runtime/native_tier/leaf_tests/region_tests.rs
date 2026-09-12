@@ -2,6 +2,83 @@ use super::super::regions;
 use super::*;
 use core::cell::RefCell;
 
+#[test]
+fn native_region_propagation_matches_sequential_physical_copies() {
+    // Compile the real emitted kernels, including the production fill helper.
+    // Compare every word and surrounding canaries to a sequential-copy oracle.
+    let mut seed = 0x7468726565u64;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed as u32
+    };
+    let mut plans = Vec::new();
+    for pc in 0..256 {
+        let copies = if pc == 0 {
+            vec![(0, 1), (1, 2), (2, 0), (0, 3), (3, 2)]
+        } else if pc == 1 {
+            (1..16).map(|i| (i, i - 1)).collect()
+        } else {
+            (0..40).map(|_| (next() % 16, next() % 16)).collect()
+        };
+        let selector_store = (pc > 1 && pc % 3 != 0).then(|| {
+            (
+                next() as usize % (copies.len() + 1),
+                next() % 16,
+                b"symbol".to_vec(),
+            )
+        });
+        plans.push(frame_region::Plan {
+            pc,
+            slot_count: 16,
+            copies,
+            boxed_indices: Vec::new(),
+            exit: frame_region::Exit::Return(0),
+            selector_store,
+        });
+    }
+    let source = CString::new(
+        plans
+            .iter()
+            .flat_map(|p| p.emit_propagated().0)
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let unit = unsafe {
+        Unit::compile(
+            &source,
+            &[(c"birnam_region_fill", regions::fill as *const c_void)],
+        )
+    }
+    .unwrap();
+    for plan in &plans {
+        let name = CString::new(format!("region_{}", plan.pc)).unwrap();
+        let kernel: unsafe extern "C" fn(*mut usize, usize) =
+            unsafe { core::mem::transmute(unit.symbol(&name).unwrap().as_ptr()) };
+        let mut actual: Vec<usize> = (0..24).map(|i| 0x1000 + i * 37).collect();
+        let mut expected = actual.clone();
+        let symbol = 0x9876;
+        for (index, &(destination, source)) in plan.copies.iter().enumerate() {
+            if let Some((after, slot, _)) = &plan.selector_store
+                && *after == index
+            {
+                expected[4 + *slot as usize] = symbol;
+            }
+            expected[4 + destination as usize] = expected[4 + source as usize];
+        }
+        if let Some((after, slot, _)) = &plan.selector_store
+            && *after == plan.copies.len()
+        {
+            expected[4 + *slot as usize] = symbol;
+        }
+        unsafe { kernel(actual.as_mut_ptr().add(4), symbol) };
+        assert_eq!(actual, expected, "physical kernel {}", plan.pc);
+    }
+    let code = String::from_utf8(plans[1].emit_propagated().0).unwrap();
+    assert!(code.contains("birnam_region_fill(words+1,15,v0)"));
+}
+
 thread_local! {
     static ARGUMENT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static INPUT: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
@@ -86,9 +163,10 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
     for chained in [false, true] {
         for captured in [false, true] {
             let mut baseline = None;
-            for mode in ["off", "plain", "reuse"] {
+            for mode in ["off", "plain", "reuse", "propagate"] {
                 regions::ENABLED.set(mode != "off");
                 regions::REUSE.set(mode == "reuse");
+                regions::PROPAGATE.set(mode == "propagate");
                 let bootstrap = crate::dispatch::build_bootstrap();
                 let r = &bootstrap.runtime;
                 r.publish_canonical_exports();
@@ -145,7 +223,7 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                     regions::LOADS.get(),
                     if mode == "off" {
                         0
-                    } else if mode == "reuse" && !chained {
+                    } else if mode == "propagate" || (mode == "reuse" && !chained) {
                         16
                     } else {
                         800
@@ -168,7 +246,8 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
         }
     }
     regions::ENABLED.set(true);
-    regions::REUSE.set(true);
+    regions::REUSE.set(false);
+    regions::PROPAGATE.set(true);
 }
 
 unsafe extern "C" fn read_override(machine: Oop, args: *const Oop, n: usize) -> Oop {
@@ -179,7 +258,8 @@ unsafe extern "C" fn read_override(machine: Oop, args: *const Oop, n: usize) -> 
 fn native_region_declines_before_gc_and_keeps_compiled_ownership() {
     for enabled in [false, true] {
         regions::ENABLED.set(enabled);
-        regions::REUSE.set(true);
+        regions::REUSE.set(false);
+        regions::PROPAGATE.set(true);
         let bootstrap = crate::dispatch::build_bootstrap();
         let r = &bootstrap.runtime;
         r.publish_canonical_exports();
@@ -235,9 +315,10 @@ fn native_region_timing() {
     let mode = std::env::var("BIRNAM_74S_MODE").unwrap();
     let case = std::env::var("BIRNAM_74S_CASE").unwrap();
     let count: usize = std::env::var("BIRNAM_74S_COUNT").unwrap().parse().unwrap();
-    assert!(["off", "plain", "reuse"].contains(&mode.as_str()));
+    assert!(["off", "plain", "reuse", "propagate"].contains(&mode.as_str()));
     regions::ENABLED.set(mode != "off");
     regions::REUSE.set(mode == "reuse");
+    regions::PROPAGATE.set(mode == "propagate");
     let program = if case == "control" {
         alias_tests::timing_body("control")
     } else if case == "arguments" {
@@ -324,7 +405,7 @@ fn native_region_timing() {
         regions::LOADS.get(),
         if !eligible {
             0
-        } else if mode == "reuse" && case != "chain" {
+        } else if mode == "propagate" || (mode == "reuse" && case != "chain") {
             pcs * count
         } else {
             plain_loads * count
@@ -402,9 +483,10 @@ unsafe extern "C" fn missing_target(receiver: Oop, args: *const Oop, n: usize) -
 fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
     for tail in [false, true] {
         let mut baseline = None;
-        for mode in ["off", "plain", "reuse"] {
+        for mode in ["off", "plain", "reuse", "propagate"] {
             regions::ENABLED.set(mode != "off");
             regions::REUSE.set(mode == "reuse");
+            regions::PROPAGATE.set(mode == "propagate");
             let b = crate::dispatch::build_bootstrap();
             let r = &b.runtime;
             r.publish_canonical_exports();
@@ -478,7 +560,8 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
     let mut baseline = None;
     for enabled in [false, true] {
         regions::ENABLED.set(enabled);
-        regions::REUSE.set(true);
+        regions::REUSE.set(false);
+        regions::PROPAGATE.set(true);
         let b = crate::dispatch::build_bootstrap();
         let r = &b.runtime;
         r.publish_canonical_exports();
@@ -531,7 +614,8 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
         }
     }
     regions::ENABLED.set(true);
-    regions::REUSE.set(true);
+    regions::REUSE.set(false);
+    regions::PROPAGATE.set(true);
 }
 
 unsafe extern "C" fn timing_argument_target(receiver: Oop, args: *const Oop, n: usize) -> Oop {

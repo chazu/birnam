@@ -201,3 +201,33 @@ the earlier run; this remains a possible regression, not a cleared control.
 The region fallback also varies from -14.06% to +7.44%, with a -2.50% median.
 `birnam-bew` remains open for these small costs. These fixture gains do not establish
 whole-program profitability or complete the pending third optimization family.
+
+## Family three implementation contract
+
+Propagate initial physical-slot identities through the exact ordered copy and
+selector-store sequence. Emit only each destination's final value, dropping
+overwritten stores and identity stores. Preload every distinct surviving input
+before any store, so slot reuse, cycles and selector overwrites cannot clobber an
+input. Coalesce contiguous stores of the same value into a bounded private native
+fill helper. That helper only writes existing words: no allocation, callbacks,
+new floor entry, registration or image field. Retain every canonical index box
+and every final Frame word at the existing observation boundary.
+
+Compare propagated kernels against plain guarded regions independently, then
+compare the combined consumer against regions off. Differential tests must cover
+physical-slot cycles, overwritten temporaries, selector insertion and every word,
+as well as the existing production boundary, mutation, identity and GC probes.
+Keep the pass only where its measurements support profitability. The unresolved
+fallback costs and preparation costs remain acceptance work for the whole batch.
+
+
+The third-family implementation and [correctness receipt](../measurements/74s-copies-correctness.json)
+now pass focused debug/release and full production verification. The native
+kernel differential probe covers 256 ordered physical-copy sequences including
+selector insertion, slot reuse, cycles, dead stores and canaries around storage.
+The existing production boundary probes additionally run the propagated mode.
+Profitability is pending its independent plain-versus-propagated timing matrix.
+The production application runner builds original 74R and current floors, then
+composes two explicitly labelled experimental prefixes with an identical binary
+closure except for `libbirnam_id.dylib`. It measures eval, ordinary collections,
+portable collections and cold materialization separately from kernel fixtures.

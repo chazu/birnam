@@ -2,6 +2,25 @@
 use super::*;
 use birnam_codegen::frame_region;
 
+// Process-lifetime implementation helper. The compiler bounds the range and
+// runtime admission validates its backing Frame; no callback or allocation.
+pub(super) unsafe extern "C" fn fill(words: *mut usize, count: usize, value: usize) {
+    unsafe { core::slice::from_raw_parts_mut(words, count) }.fill(value);
+}
+
+pub(super) fn emit(plan: &frame_region::Plan) -> (Vec<u8>, usize) {
+    let propagate = true;
+    #[cfg(test)]
+    let propagate = propagate && PROPAGATE.get();
+    if propagate {
+        return plan.emit_propagated();
+    }
+    let reuse = false;
+    #[cfg(test)]
+    let reuse = reuse || REUSE.get();
+    plan.emit(reuse)
+}
+
 pub(super) struct Compiled {
     plan: Rc<frame_region::Plan>,
     kernel: unsafe extern "C" fn(*mut usize, usize),
@@ -13,6 +32,7 @@ pub(super) struct Compiled {
 thread_local! {
     pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static REUSE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(super) static PROPAGATE: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static COMPILE_NS: core::cell::Cell<u128> = const { core::cell::Cell::new(0) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static LOADS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
