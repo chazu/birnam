@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCENARIOS = ('eval', 'collections', 'portable-collections', 'materialize-cold')
 SWITCHES = ('BIRNAM_DEV_UNBOXED_NUMERIC', 'BIRNAM_DEV_LOOP_INVARIANTS',
             'BIRNAM_DEV_CLOSURE_ELISION', 'BIRNAM_DEV_LITERAL_CALLEES')
+SWITCH_NAMES = dict(zip(('unboxed', 'loop', 'closure', 'literal'), SWITCHES))
 
 
 def sha(path):
@@ -46,10 +47,15 @@ def main():
     parser.add_argument('--wait-seconds', type=int, default=120)
     parser.add_argument('--check-only', action='store_true', help='one correctness pair per scenario, without timing qualification')
     parser.add_argument('--exploratory', action='store_true', help='skip quiet-host admission and retain unqualified timings')
+    parser.add_argument('--switches', nargs='+', choices=tuple(SWITCH_NAMES), default=list(SWITCH_NAMES),
+                        help='experimental switches to compare against defaults')
+    parser.add_argument('--scenarios', nargs='+', choices=SCENARIOS, default=list(SCENARIOS))
     args = parser.parse_args()
     if not 1 <= args.pairs <= 8 or args.wait_seconds < 0:
         parser.error('invalid pairs or wait interval')
     prefix = args.prefix.resolve()
+    scenarios = tuple(dict.fromkeys(args.scenarios))
+    switches = tuple(SWITCH_NAMES[name] for name in dict.fromkeys(args.switches))
     proof = json.loads(args.receipt.read_text())
     if proof.get('status') != 'passed' or proof.get('production_verification') != 'passed':
         parser.error('full production correctness must pass first')
@@ -81,8 +87,8 @@ def main():
                   pairs=1 if args.check_only else args.pairs, sources=inputs,
                   correctness_receipt=str(args.receipt.resolve()), correctness_sha256=sha(args.receipt),
                   prefix=str(prefix), installed_sha256=installed_hashes,
-                  switches=list(SWITCHES), rows=[], gates=[],
-                  scope='Normal release installation, without a test floor or probe. Default settings versus all listed experimental switches enabled together. Existing aggregate consumers are enabled in both. Four fixed application workloads, each with five batches and a final post-GC answer check. Alternating configuration order and rotating scenario order. Execution samples, startup-inclusive process wall time and Darwin peak RSS are retained. Cold materialization includes eviction, compilation and retirement. This is combined regression and process-resource evidence; it neither attributes gains to individual consumers nor proves their activation or arbitrary application coverage.')
+                  switches=list(switches), scenarios=list(scenarios), rows=[], gates=[],
+                  scope='Normal release installation, without a test floor or probe. Default settings versus all listed experimental switches enabled together. Existing aggregate consumers are enabled in both. Selected fixed application workloads, each with five batches and a final post-GC answer check. Alternating configuration order and rotating scenario order. Execution samples, startup-inclusive process wall time and Darwin peak RSS are retained. Cold materialization includes eviction, compilation and retirement. This is combined regression and process-resource evidence; it neither attributes gains to individual consumers nor proves their activation or arbitrary application coverage.')
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(('BIRNAM_', 'DYLD_', 'BENCH_HOST_', 'NATIVE_TIER_'))}
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS='10')
@@ -112,7 +118,7 @@ def main():
         save()
         with tempfile.TemporaryDirectory(prefix='birnam-recovery-applications-') as work:
             for pair in range(result['pairs']):
-                cases = SCENARIOS[pair % len(SCENARIOS):] + SCENARIOS[:pair % len(SCENARIOS)]
+                cases = scenarios[pair % len(scenarios):] + scenarios[:pair % len(scenarios)]
                 for scenario in cases:
                     check_inputs()
                     context = f'recovery-applications-{pair}-{scenario}'
@@ -129,7 +135,7 @@ def main():
                             pair_rows = []
                             for enabled in ((False, True) if pair % 2 == 0 else (True, False)):
                                 print(f'recovery-applications: pair={pair} scenario={scenario} enabled={enabled}', flush=True)
-                                extra = {key: '1' for key in SWITCHES} if enabled else {}
+                                extra = {key: '1' for key in switches} if enabled else {}
                                 start = time.monotonic_ns()
                                 p = subprocess.run(['/usr/bin/time', '-l', str(prefix / 'bin/birnam'), str(fixture)],
                                                    cwd=ROOT, env=dict(env, NATIVE_TIER_FOCUS=scenario, **extra),
@@ -165,7 +171,7 @@ def main():
                             return 2
         check_inputs()
         result['comparisons'] = []
-        for scenario in SCENARIOS:
+        for scenario in scenarios:
             for metric in ('execution_us', 'materialization_us', 'warmup_us', 'process_wall_ns', 'peak_rss_bytes'):
                 changes = []
                 for pair in range(result['pairs']):

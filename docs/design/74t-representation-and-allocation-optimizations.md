@@ -1754,3 +1754,22 @@ passes eight processes and all source/installation checks, with four diagnostic
 intervals and no admission waits. Successful execution and post-GC answers remain
 mandatory; only host qualification is waived. Larger paired matrices supply
 explicitly unqualified cost evidence while implementation continues.
+
+The [full exploratory application matrix](../measurements/74t-application-exploratory-timing.json)
+completes 32 processes and 160 execution samples using the driver at `810125bd`.
+Every application answer, post-GC check and source/installation hash passes.
+Nine of sixteen diagnostic intervals fail; the receipt remains unqualified.
+Collections show a median execution regression of 12.42% and process-wall
+regression of 16.01%, with all four pairs negative. Eval, portable collections
+and cold materialization vary in both directions. There is no consistent peak-RSS
+gain. This combined comparison cannot attribute the collection cost to a
+particular switch or prove causality under the observed load.
+
+The application runner now accepts `--switches` and `--scenarios` to isolate
+that cost while retaining the same fixture and normal floor. The
+[configurable-driver check](../measurements/74t-application-switch-driver-correctness.json)
+passes the existing eight default/all-switch correctness runs. The next
+comparison selects collections with unboxed, loop, closure and literal switches
+individually, each paired against default settings. This is a diagnostic step
+toward an admission policy, not a claim that any one consumer caused the combined
+regression.

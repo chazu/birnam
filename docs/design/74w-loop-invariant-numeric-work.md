@@ -289,3 +289,17 @@ covers every operation count, shape, representation and reuse setting. It record
 24 diagnostic intervals, performs no host-admission waits and remains explicitly
 unqualified even though those short intervals did not fail. Full exploratory
 cost matrices can now proceed without treating host load as a work blocker.
+
+The [full exploratory normal-floor baseline](../measurements/74w-loop-production-exploratory-timing.json)
+now completes all 192 processes and 96,000 measured 128-iteration batches, with
+matching source/installation hashes and every coordinate present. It remains
+unqualified; 29 of 96 diagnostic intervals fail the retained host criteria.
+For fully invariant boxed chains, execution/including-GC median improvements are
+-1.58%/-2.48%, -0.35%/+1.18% and +1.67%/+1.66% at three, sixteen and 32 operations.
+The corresponding unboxed values are +0.66%/+2.42%, -0.02%/-0.19% and
++0.18%/+1.66%. Controls vary substantially, so these small differences do not
+establish a broad default policy. Boxed independent-call controls regress in
+every pair at three and sixteen operations, which warrants examining unnecessary
+cache work outside established loops. The unchanged-input kernel-call fast path
+has separate correctness verification in progress and is not part of this
+baseline.
