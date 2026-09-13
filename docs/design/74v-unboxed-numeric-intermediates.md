@@ -480,3 +480,11 @@ They cover both tracing modes, final and earlier results, equal distinct values,
 long Continue paths, every supported forced recovery point, and capture/suspend
 with post-recovery collection and supplied result identity. The full production
 gate is running against this committed implementation.
+
+The [full scratch production gate](../measurements/74v-scratch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases, with 272 current source
+hashes matching. It covers both floor profiles, forced source/V2 recovery,
+mutation, allocation observations, GC, native ownership, installed-prefix,
+image and cold-archive checks. The committed scratch implementation is ready
+for integration and its repeated bounded exploratory cost matrix. It remains
+default-off; reduced host allocation does not establish a net speedup.
