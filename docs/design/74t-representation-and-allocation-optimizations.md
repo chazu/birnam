@@ -1745,3 +1745,12 @@ python3 scripts/recovery-applications.py \
 The selected prefix and receipt must match the current production sources.
 Measurements run after the active production gate and loop timing matrix;
 concurrent verification would invalidate the controlled comparison.
+
+With the subsequent quiet-host waiver, use `--exploratory` for continued
+application/resource work. This mode skips preflight admission, keeps interval
+load observations, continues through interval rejection and always records
+`qualified: false`. The [exploratory-mode smoke receipt](../measurements/74t-application-exploratory-mode-smoke.json)
+passes eight processes and all source/installation checks, with four diagnostic
+intervals and no admission waits. Successful execution and post-GC answers remain
+mandatory; only host qualification is waived. Larger paired matrices supply
+explicitly unqualified cost evidence while implementation continues.

@@ -45,6 +45,7 @@ def main():
     parser.add_argument('--pairs', type=int, default=4)
     parser.add_argument('--wait-seconds', type=int, default=120)
     parser.add_argument('--check-only', action='store_true', help='one correctness pair per scenario, without timing qualification')
+    parser.add_argument('--exploratory', action='store_true', help='skip quiet-host admission and retain unqualified timings')
     args = parser.parse_args()
     if not 1 <= args.pairs <= 8 or args.wait_seconds < 0:
         parser.error('invalid pairs or wait interval')
@@ -76,6 +77,7 @@ def main():
         parser.error('installed source differs from this production checkpoint')
     inputs.update(shipped)
     result = dict(status='running', qualified=False, check_only=args.check_only,
+                  exploratory_requested=args.exploratory,
                   pairs=1 if args.check_only else args.pairs, sources=inputs,
                   correctness_receipt=str(args.receipt.resolve()), correctness_sha256=sha(args.receipt),
                   prefix=str(prefix), installed_sha256=installed_hashes,
@@ -114,7 +116,7 @@ def main():
                 for scenario in cases:
                     check_inputs()
                     context = f'recovery-applications-{pair}-{scenario}'
-                    if not args.check_only and not gate(['--wait', context]):
+                    if not args.check_only and not args.exploratory and not gate(['--wait', context]):
                         result['status'] = 'not_qualified'
                         return 2
                     log_path = Path(work) / 'interval.log'
@@ -158,7 +160,7 @@ def main():
                     if not args.check_only:
                         accepted = gate(['--samples', log_path, context])
                         result['gates'][-1]['samples'] = log_path.read_text()
-                        if not accepted:
+                        if not accepted and not args.exploratory:
                             result['status'] = 'not_qualified'
                             return 2
         check_inputs()
@@ -173,7 +175,7 @@ def main():
                 if changes:
                     result['comparisons'].append(dict(scenario=scenario, metric=metric, paired_reduction_percent=changes,
                                                      median_reduction_percent=statistics.median(changes)))
-        result['qualified'] = not args.check_only
+        result['qualified'] = not args.check_only and not args.exploratory
         result['status'] = 'passed'
         return 0
     except BaseException as error:
