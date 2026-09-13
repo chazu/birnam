@@ -19,6 +19,9 @@ for profile in debug release; do
   CARGO_TARGET_DIR="$PWD/.cargo-target/74t-closure-control-target" mise exec -- \
     cargo build --locked --offline -p birnam-id --features ffi-test-hooks "${flags[@]}"
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
+  if [[ -n ${BIRNAM_TEST_UNBOXED_RECEIPTS:-} ]]; then
+    python3 scripts/unboxed-numeric-smoke.py --prefix "$prefix" --floor "$floor" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-$profile.json"
+  fi
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"
   python3 scripts/closure-budget-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/budget-$profile.json"

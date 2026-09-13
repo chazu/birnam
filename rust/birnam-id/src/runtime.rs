@@ -53,6 +53,8 @@ mod guarded_lookup;
 mod native_tier;
 mod numeric;
 mod recovery;
+#[cfg(feature = "ffi-test-hooks")]
+mod unboxed_numeric_probe;
 #[cfg(all(test, target_os = "macos"))]
 mod v2_control_tests;
 

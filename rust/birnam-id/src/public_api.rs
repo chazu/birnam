@@ -346,22 +346,22 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         proto: api_proto,
         method: api_method,
         alloc: api_alloc,
-        import: api_import,
+        import: canonical_numeric_functions().import,
         exportObj: api_export_object,
-        isExported: api_is_exported,
+        isExported: canonical_numeric_functions().is_exported,
         send: api_send,
         smallint_vt: canonical.smallint_vt,
         nilObj: canonical.nil,
         trueObj: canonical.true_object,
         falseObj: canonical.false_object,
-        mkSmallInt: api_make_smallint,
-        smallIntValue: api_smallint_value,
-        isSmallInt: api_is_smallint,
+        mkSmallInt: canonical_numeric_functions().make_smallint,
+        smallIntValue: canonical_numeric_functions().smallint_value,
+        isSmallInt: canonical_numeric_functions().is_smallint,
         string_vt: canonical.string_vt,
         mkString: api_make_string,
         stringBytes: api_string_bytes,
         symbolName: api_symbol_name,
-        vtableOf: api_vtable_of,
+        vtableOf: canonical_numeric_functions().vtable_of,
         gcSetStackBottom: api_gc_set_stack_bottom,
         gcRegisterRootProvider: api_gc_register_root_provider,
         gcCollect: api_gc_collect,
@@ -394,16 +394,41 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
     }
 }
 
+/// Canonical numeric function identities are established once and shared by
+/// publication and declaration checks. Re-taking a private function's address
+/// in another codegen unit can select a different compiled copy in release.
+struct NumericFunctions {
+    is_smallint: unsafe extern "C" fn(Oop) -> c_int,
+    smallint_value: unsafe extern "C" fn(Oop) -> i64,
+    is_exported: unsafe extern "C" fn(*const c_char) -> c_int,
+    import: unsafe extern "C" fn(*const c_char) -> Oop,
+    vtable_of: unsafe extern "C" fn(Oop) -> Oop,
+    make_smallint: unsafe extern "C" fn(i64) -> Oop,
+}
+
+fn canonical_numeric_functions() -> &'static NumericFunctions {
+    static FUNCTIONS: std::sync::OnceLock<NumericFunctions> = std::sync::OnceLock::new();
+    FUNCTIONS.get_or_init(|| NumericFunctions {
+        is_smallint: api_is_smallint,
+        smallint_value: api_smallint_value,
+        is_exported: api_is_exported,
+        import: api_import,
+        vtable_of: api_vtable_of,
+        make_smallint: api_make_smallint,
+    })
+}
+
 /// Process-local comparison operands for an optional native declaration. This
 /// does not publish another IdApi entry or call any of these functions.
 pub(crate) fn numeric_functions() -> [usize; 6] {
+    let functions = canonical_numeric_functions();
     [
-        api_is_smallint as *const () as usize,
-        api_smallint_value as *const () as usize,
-        api_is_exported as *const () as usize,
-        api_import as *const () as usize,
-        api_vtable_of as *const () as usize,
-        api_make_smallint as *const () as usize,
+        functions.is_smallint as usize,
+        functions.smallint_value as usize,
+        functions.is_exported as usize,
+        functions.import as usize,
+        functions.vtable_of as usize,
+        functions.make_smallint as usize,
     ]
 }
 
@@ -411,9 +436,9 @@ pub(crate) fn numeric_functions() -> [usize; 6] {
 pub(crate) fn block_construction_context(symbol_vtable: Oop) -> [usize; 10] {
     [
         api_alloc as *const () as usize,
-        api_import as *const () as usize,
+        canonical_numeric_functions().import as usize,
         api_object_payload_size as *const () as usize,
-        api_vtable_of as *const () as usize,
+        canonical_numeric_functions().vtable_of as usize,
         api_vtable_parent as *const () as usize,
         api_vtable_selector_at as *const () as usize,
         api_symbol_name as *const () as usize,
@@ -426,7 +451,7 @@ pub(crate) fn block_construction_context(symbol_vtable: Oop) -> [usize; 10] {
 pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop) -> bool {
     api.send as usize == api_send as *const () as usize
         && api.intern as usize == api_intern as *const () as usize
-        && api.mkSmallInt as usize == api_make_smallint as *const () as usize
+        && api.mkSmallInt as usize == canonical_numeric_functions().make_smallint as usize
         && api.nilObj == nil
 }
 
@@ -460,6 +485,10 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     #[cfg(feature = "ffi-test-hooks")]
     if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
         bootstrap.runtime.install_closure_control_probe(api_pointer);
+    }
+    #[cfg(feature = "ffi-test-hooks")]
+    if std::env::var_os("BIRNAM_TEST_UNBOXED_NUMERIC").is_some_and(|v| v == "1") {
+        bootstrap.runtime.install_unboxed_numeric_probe();
     }
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME
@@ -544,7 +573,7 @@ mod tests {
         table.intern = api_intern;
         table.mkSmallInt = integer;
         assert!(!closure_codegen_context_matches(&table, nil));
-        table.mkSmallInt = api_make_smallint;
+        table.mkSmallInt = canonical_numeric_functions().make_smallint;
         table.nilObj = other.runtime.canonical().nil;
         assert!(!closure_codegen_context_matches(&table, nil));
         table.nilObj = nil;

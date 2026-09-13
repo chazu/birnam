@@ -121,9 +121,10 @@ Literal, index and PC-token allocations remain unchanged.
 
 Admission includes the current native numeric declaration and constructor
 context, current Machine/lookup controls, all original allocation charges,
-journal capacity and the automatic-collection threshold. Ordinary Integer
-vtables have no declared layout; their existing conservative payload tracing
-is supported without changing the floor layout. The current native constructor
+journal capacity and the automatic-collection threshold. The unit-test bootstrap Integer vtables have no declared layout; their
+existing conservative payload tracing is supported without changing that
+layout. The public floor installs the ordinary raw layout, which is also
+supported. The current native constructor
 establishes the eight-byte representation. An explicitly incompatible layout or
 an inherited trace hook refuses admission.
 
@@ -153,3 +154,58 @@ raw-journal check and all four unboxed runtime tests. The
 [checkpoint receipt](../measurements/74v-unboxed-runtime-correctness.json)
 records commands, counts, log hashes and source hashes. Production gates and
 qualified timings remain pending.
+
+## Installed-source consumer and release-context repair
+
+A feature-gated `UnboxedNumericProbe` measures actual source-created registered
+Blocks through installed Codegen and the real Prelude. It holds explicit roots
+for its native arguments while requesting collections without native stack
+scanning. Its counters check eight measured invocations after warmup, logical
+allocation charges, physical box savings and materialization at each forced PC.
+A final rooted result also survives collection. The production floor does not
+publish this probe, even when its activation environment variable is present.
+
+The first full debug source matrix passed, but release returned ordinary results
+with zero optimization hits. The retained
+[release refusal receipt](../measurements/74v-unboxed-source-release-refusal.json)
+and [preceding debug matrix](../measurements/74v-unboxed-source-debug-before-context-fix.json)
+record the difference. Diagnostics found that the numeric declaration received
+a different address for the private small-integer reader than the address
+published in IdApi. The other five context pointers agreed. Admission correctly
+refused the mismatching context; unit native fixtures did not expose it because
+they do not compare the real Prelude API context.
+
+Canonical numeric function pointers now have one immutable typed owner,
+initialized once and shared by IdApi publication and declaration checks. This
+avoids independently taking a private function address in separate release
+codegen units. The Block-constructor and codegen guards use that same owner for
+shared operations. The IdApi layout and callable signatures are unchanged.
+Declarations still inspect each module's actual API pointers on every use;
+replaced or copied API tables gain no new authority.
+
+The corrected [release source matrix](../measurements/74v-unboxed-source-release.json)
+passes 146 fresh processes across both GC modes and every supported PC for
+three-operation Return/TailCall chains, equal results, a Continue split, and
+16-/32-operation chains. Each case uses the installed compiler and actual
+Prelude implementations. The source, floor and installed-artifact hashes match
+before and after execution. The copied-API native fixture also passes for both
+floor profiles: overriding boxing refuses, restoration readmits, and altering
+each of the six context operands refuses. The existing numeric source fixture
+passes its arithmetic, mixed-value, error, identity and eviction/retirement
+assertions with the consumer enabled.
+
+Full production control/capture/suspension and performance acceptance remain
+pending. Source allocation savings do not imply an execution-time gain.
+
+`python3 scripts/recovery-graphs.py --unboxed --verify` now includes the unboxed
+runtime tests in both profiles and requires both installed-source matrices
+alongside all existing closure/source, native, image, archive and relocation
+gates. Each unboxed matrix must contain 146 rows, prove the probe absent from
+the production floor, and match the floor used by the independent closure
+control checks. The gate hashes the new script and runtime sources. Adding this
+verification path does not itself establish a passing production receipt.
+
+The corrected [debug matrix](../measurements/74v-unboxed-source-debug.json) also
+passes all 146 rows, bringing the installed-source total to 292 fresh processes.
+After the function-identity repair, the complete debug workspace again passes
+538 tests with 19 ignored. Full production verification is the next gate.

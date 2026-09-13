@@ -30,6 +30,7 @@ def sources():
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
         "closure-elision-smoke.sh",
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
+        "unboxed-numeric-smoke.py",
         "closure-sequence-mutation-smoke.py",
         "closure-budget-smoke.py",
         "closure-journal-smoke.py",
@@ -58,6 +59,7 @@ def sources():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--unboxed", action="store_true", help="experimental unboxed source and V2 recovery verification")
     parser.add_argument("--numeric", action="store_true")
     parser.add_argument("--chains", action="store_true", help="production raw-chain verification")
     parser.add_argument("--tails", action="store_true", help="registered tail-loop entry verification")
@@ -66,6 +68,8 @@ def main():
     parser.add_argument("--closures", action="store_true", help="experimental source closure elimination and recovery verification")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.unboxed:
+        args.closures = True
     if args.closures:
         args.fields = True
     if args.fields:
@@ -78,6 +82,7 @@ def main():
         args.numeric = True
     if args.output is None:
         args.output = ROOT / "docs/measurements" / (
+            "74v-unboxed-numeric.json" if args.unboxed else
             "74t-closure-plans.json" if args.closures else
             "74t-virtual-fields.json" if args.fields else
             "74t-discarded-clones.json" if args.allocations else
@@ -90,7 +95,8 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Experimental source closure allocation elimination, guarded capture substitution and identity recovery; disabled by default and broader acceptance pending"
+        "scope": ("Experimental source numeric box elimination and V2 identity recovery; default-off and broader acceptance pending"
+                  if args.unboxed else "Experimental source closure allocation elimination, guarded capture substitution and identity recovery; disabled by default and broader acceptance pending"
                   if args.closures else "Bounded production live aggregate field projection and identity recovery; broader acceptance remains open"
                   if args.fields else "Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
                   if args.allocations else "Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"
@@ -175,6 +181,8 @@ def main():
                     ("birnam_id", "numeric-driver", "runtime::native_tier::leaf_tests::numeric_tests"),
                     ("birnam_prelude", "numeric-declarations", "numeric_declarations_name_exact_implementations"),
                 ]
+            if args.unboxed:
+                checks.append(("birnam_id", "unboxed-numeric", "runtime::native_tier::leaf_tests::unboxed_numeric_tests"))
             if args.chains:
                 checks.append(("birnam_id", "numeric-chain-storage", "runtime::numeric::chain::tests"))
                 checks.append(("birnam_id", "numeric-fusion", "runtime::native_tier::leaf_tests::fused_numeric_tests"))
@@ -206,10 +214,15 @@ def main():
             if args.closures:
                 with tempfile.TemporaryDirectory(prefix="closure-source-", dir=work) as evidence:
                     env["BIRNAM_TEST_CLOSURE_RECEIPTS"] = evidence
+                    if args.unboxed:
+                        unboxed_evidence = Path(evidence) / "unboxed"
+                        unboxed_evidence.mkdir()
+                        env["BIRNAM_TEST_UNBOXED_RECEIPTS"] = str(unboxed_evidence)
                     try:
                         output = run(["mise", "run", "verify"], "production-verification")
                     finally:
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
+                        env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
                     expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure")
                                 for profile in ("debug", "release")}
                     paths = list(Path(evidence).glob("*.json"))
@@ -223,6 +236,20 @@ def main():
                         if len(hashes) != 1 or next(iter(hashes)) not in output:
                             raise RuntimeError("source matrix floor differs from control verification")
                     receipt["closure_source_matrices"] = matrices
+                    if args.unboxed:
+                        expected_unboxed = {f"unboxed-{p}.json" for p in ("debug", "release")}
+                        paths = list(unboxed_evidence.glob("*.json"))
+                        if {p.name for p in paths} != expected_unboxed:
+                            raise RuntimeError("missing source unboxed matrix receipts")
+                        unboxed = {p.name: json.loads(p.read_text()) for p in sorted(paths)}
+                        for profile in ("debug", "release"):
+                            matrix = unboxed[f"unboxed-{profile}.json"]
+                            expected_floor = matrices[f"sequence-{profile}.json"]["floor_sha256"]
+                            if matrix["status"] != "passed" or matrix["floor_sha256"] != expected_floor:
+                                raise RuntimeError("source unboxed matrix failed or floor differs")
+                            if len(matrix["rows"]) != 146 or not matrix["production_probe_absent"]:
+                                raise RuntimeError("incomplete source unboxed matrix")
+                        receipt["unboxed_source_matrices"] = unboxed
             else:
                 run(["mise", "run", "verify"], "production-verification")
         if receipt["sources"] != sources():
