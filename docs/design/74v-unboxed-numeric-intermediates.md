@@ -1,8 +1,9 @@
 # 74V — Virtual numeric intermediates with original Frame recovery
 
-Status: compiler recovery maps and an experimental runtime consumer implemented
-in an isolated development checkout. Targeted runtime checks pass; production
-source/control and performance acceptance remain pending. Disabled by default.
+Status: the default-off runtime consumer is production-verified and integrated
+on main. The subsequent captured-input and recovered-Frame control tests pass
+in both profiles; their extended production gate and all performance/resource
+acceptance remain pending.
 This continues the unboxed-arithmetic requirement in
 [74T](74t-representation-and-allocation-optimizations.md), whose enabled numeric
 fusion still allocates every original result box.
@@ -209,6 +210,23 @@ The corrected [debug matrix](../measurements/74v-unboxed-source-debug.json) also
 passes all 146 rows, bringing the installed-source total to 292 fresh processes.
 After the function-identity repair, the complete debug workspace again passes
 538 tests with 19 ignored. Full production verification is the next gate.
+
+## Production checkpoint at 63becebf
+
+The [production receipt](../measurements/74v-unboxed-production-correctness.json)
+passes all 63 commands, the 538-test workspace (19 ignored), and the production
+native-prefix, image, cold-archive and relocation gates. Its 250 source hashes
+match the tested checkout. Ten existing closure matrices retain 1,248 source
+rows; the two numeric matrices add 292 rows, for 1,540 in total. All twelve
+matrices use the matching per-profile feature floor also verified by the
+independent control checks. Debug and release floor hashes are respectively
+`89c51cf5d535d9b8ba06dbfffc391352bc68193ecc024c3ce38c4f49d593c6a0` and
+`1c38516839896f30729aee1d8f637aabdcfa3a2cf4bb994d63d2294d4f7d2d7a`.
+
+This verifies the default-off runtime consumer and canonical numeric-function
+identity repair for integration. The later control/captured-input extension is
+being verified separately. Arithmetic timing, preparation/metadata/resource and
+application acceptance remain open; no full optimization family is complete.
 
 ## Recovered numeric Frames through V2 control
 
