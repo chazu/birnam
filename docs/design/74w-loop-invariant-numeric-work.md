@@ -321,3 +321,20 @@ passes all 96 current test/normal-floor cases with the new release installation.
 Exact reuse counts, result/identity checks and source/artifact digests match.
 The next matrix measures this checkpoint with diagnostics retained and host
 qualification explicitly waived.
+
+### Exploratory unchanged-input fast-path comparison
+
+The [complete normal-floor comparison](../measurements/74w-unchanged-reuse-exploratory-timing.json)
+passes all 192 processes, 96,000 measured batches and value/identity checks with
+matching source, production-proof, driver-proof and installation hashes. It
+remains unqualified: 92 of 96 observed intervals failed host admission. Timings
+proceeded under the user's quiet-window waiver.
+
+For fully invariant loops with ordinary boxed intermediates, median execution
+reductions for 3/16/32 operations were -1.14%, -1.67% and +6.33%; including
+collection they were -2.43%, -3.24% and +5.38%. Every size has mixed pair signs.
+With unboxed intermediates, execution changes were -6.60%, -0.99% and +0.99%,
+also mixed. Refusal and independent-call controls vary substantially. This
+experiment establishes neither a repeatable net gain nor profitability for
+smaller loops. The verified fast path remains available behind the development
+switch; default promotion and application/resource acceptance stay open.
