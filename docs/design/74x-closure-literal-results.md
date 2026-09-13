@@ -99,3 +99,15 @@ production gate now requires both complete literal-control matrices alongside
 the existing control coverage; that updated gate remains pending. These checks
 complete the focused capture/suspension obligation for this body shape, not
 performance acceptance or the broader closure family.
+
+## Full production verification of literal-result control
+
+The [literal-control production receipt](../measurements/74x-literal-control-production-correctness.json)
+passes all 71 commands, with all 267 source hashes matching the tested checkpoint.
+It retains 2,972 source cases, including all 48 literal-result capture/suspension
+cases. Every source matrix matches its independently verified control floor.
+Installed execution, image, native lifetime, cold-archive and relocation gates
+pass. The literal-specific checks preserve distinct result identities, earlier
+aliases, supplied-result identity and shared captured Cells across paused GC and
+resumption. This completes that production control checkpoint; preparation,
+profitability and wider closure acceptance remain open.
