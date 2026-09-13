@@ -1659,3 +1659,43 @@ materializations, collects, and still obtains the original field identity. This
 supports the supported aggregate consumer and real host lifecycle; it does not
 claim qualified timing, total-memory savings, arbitrary private layouts, or
 completion of the full four-family objective.
+
+## Application profiles with default and experimental settings
+
+The [application diagnostic receipt](../measurements/74t-application-diagnostic-profiles.json)
+retains four completed production runs: the existing portable collection pipeline
+and cold-materialization workload, each with default settings and with unboxed
+numeric, invariant-loop, closure-elision and literal-callee switches enabled
+together. Aggregate consumers remain enabled in both configurations. The same
+fresh installation and exact fixture bytes are used in both configurations;
+all current production inputs still match the completed 74X control gate. Every
+run checks the expected application answer, including its final post-GC check.
+These combined application checks complement the consumer-specific differentials;
+they do not replace their identity/effect/control coverage.
+
+Sampling begins after reported warmup on the verified child PID and executable.
+The collection workload uses 25 repetitions instead of five to provide a sampling
+window; its per-batch work is unchanged. Cold materialization keeps the original
+five batches and finishes before the requested three-second sampling window.
+Both processes exit normally in both configurations. The receipt retains the
+full drivers, source fixtures, outputs, sampled call graphs, binary hashes and
+point RSS observations. It is diagnostic evidence under competing verification
+load, with no paired timing or memory-improvement claim.
+
+For the default collection run, GC appears in 540 of 2,212 main-thread samples
+and symbol interning in 570. With the experimental switches, those inclusive
+counts are 598 and 513 out of 2,280 samples. Cold materialization samples include
+compilation, relocation, retirement and collection; the default run has 380
+materialization and 275 retirement samples out of 785. These groups overlap and
+must not be added together. The shorter experimental cold sample has 320 samples
+and cannot be compared by absolute count. Missing candidate-preparation or
+consumer symbols do not prove zero hits: sampling and inlining can hide short
+work and generated code can lack symbols.
+
+These profiles make collection and cold materialization useful regression
+controls for the combined optimizer. They do not establish application speedups
+from the four families. The immediate performance work remains the source-matched
+loop and unboxed matrices and closure profitability threshold, followed by paired
+application/cold/resource acceptance. Shared symbol and dispatch work is recorded
+as context, without broadening this four-family implementation into an unrelated
+optimization pass.
