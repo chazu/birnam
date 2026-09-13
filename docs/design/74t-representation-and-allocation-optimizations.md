@@ -1910,3 +1910,45 @@ this vendored libtcc allocates relocated units through `tcc_malloc` on this host
 an arbitrary `VM_ALLOCATE` row cannot be labelled optimizer code. Exact private
 unit size requires independent compiler-owned accounting. No ABI extension or
 changed execution semantics is authorized merely to obtain a memory number.
+
+The `recovery-memory.py` sampler now uses the existing numeric, loop, aggregate
+and closure source factories with admitted and refused controls. Its new Id
+wrapper retains fixture references in explicit Cells, verifies returned values
+or required aliases on every call, and checks continued use after eviction.
+It awaits both a phase marker and the following host REPL prompt before each
+sample. Dropping sampler references is not a claim that every other runtime root
+has gone away. Physical footprint, allocator and region reports remain separate
+from exact compiler-owned metadata or code-byte accounting.
+
+The [focused fixture check](../measurements/74t-memory-fixture-correctness.json)
+passes 20 normal-floor processes and 140 host-return checkpoints across all five
+consumer configurations (numeric, loop, clones, fields and closures), each with
+admitted/refused and disabled/enabled variants. The real vmmap report parses and
+an incomplete report is rejected. Factory/sampler and installed-manifest hashes
+are retained. No memory matrix has run yet: the sampler requires the full
+production proof, binds current sources and every installed artifact, and records
+all memory comparisons as unqualified. A one-pair matrix is queued after the
+existing production and aggregate source checks.
+
+The [first idle-memory matrix](../measurements/74t-memory-checkpoint-matrix.json)
+passes all 20 normal-floor processes and 140 snapshots, with source, fixture and
+installation hashes audited. It verifies results and use after eviction before
+dropping sampler-held materializations. The retained source factories and other
+runtime/compiler roots may still own code; this endpoint does not assert complete
+teardown. Post-GC footprint varies even in refused controls and some disabled
+runs jump between repeated checkpoints. A single pair cannot attribute a memory
+saving or prove a leak. Repeated resource and churn comparisons remain open.
+
+This matrix is bound to the original fixture generator on the verified hot
+floor. Integration with the corrected aggregate generator must preserve its
+actual capture list when materializing the sampler's clone factory; hardcoding
+an empty capture list would invalidate that new fixture. Validate the integrated
+sampler separately before drawing current-source memory conclusions.
+
+The [integrated fixture check](../measurements/74t-memory-integrated-fixture-correctness.json)
+passes all 20 processes and 140 host-return checkpoints after retaining the
+aggregate producer's actual constructor and capture list. Results, required
+aliases, continued invocation after eviction and normal process exit pass on the
+unchanged normal release installation. This is driver correctness only. The
+previous memory matrix remains bound to its original producer; a new current-
+source memory comparison requires a consolidated production proof.
