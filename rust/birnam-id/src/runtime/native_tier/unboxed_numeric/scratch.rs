@@ -1,13 +1,11 @@
 //! Bounded, untraced scratch; leases clear all values before returning storage.
 use super::*;
-use crate::heap::DeadAllocation;
 use std::cell::RefCell;
 
 const MAX_FREE: usize = 4;
 
 #[derive(Default)]
 pub(super) struct Storage {
-    pub snapshots: Vec<Rc<DeadAllocation>>,
     pub values: Values,
 }
 
@@ -25,10 +23,8 @@ impl Pool {
     pub(super) fn take(&self, results: usize) -> Lease {
         assert!(results <= birnam_codegen::numeric_chain::MAX_OPERATIONS);
         let mut storage = self.free.borrow_mut().pop().unwrap_or_default();
-        debug_assert!(storage.snapshots.is_empty());
         debug_assert!(storage.values.identities.is_empty());
         debug_assert!(storage.values.materialized.is_empty());
-        storage.snapshots.reserve_exact(results);
         storage.values.identities.reserve_exact(results);
         storage.values.materialized.reserve_exact(results);
         storage.values.materialized.resize(results, None);
@@ -48,9 +44,7 @@ impl Pool {
             + free
                 .iter()
                 .map(|s| {
-                    s.snapshots.capacity() * core::mem::size_of::<Rc<DeadAllocation>>()
-                        + s.values.identities.capacity()
-                            * core::mem::size_of::<DeferredAllocation>()
+                    s.values.identities.capacity() * core::mem::size_of::<DeferredAllocation>()
                         + s.values.materialized.capacity() * core::mem::size_of::<Option<Oop>>()
                 })
                 .sum::<usize>();
@@ -67,7 +61,6 @@ impl Drop for Lease {
     fn drop(&mut self) {
         // These are host allocations and raw carriers. Clearing invokes no Id
         // callback or collection and leaves journal-owned snapshots intact.
-        self.storage.snapshots.clear();
         self.storage.values.identities.clear();
         self.storage.values.materialized.clear();
         let mut free = self.free.borrow_mut();
@@ -93,24 +86,11 @@ mod tests {
         }
         r.enter(|| r.gc_collect_from_native_range(0, 0));
         assert!(unsafe { (*r.state.get()).heap.vtable_of(object) }.is_none());
-        let snapshot = unsafe {
-            (*r.state.get())
-                .heap
-                .prepare_virtual_bytes(r.canonical().smallint_vt, &7i64.to_ne_bytes())
-        }
-        .unwrap();
-        let weak = Rc::downgrade(&snapshot);
-        leases[0].storage.snapshots.push(snapshot);
         drop(leases);
-        assert!(
-            weak.upgrade().is_none(),
-            "cached scratch retains no snapshots"
-        );
         let (cached, bytes) = pool.resources();
         assert_eq!(cached, MAX_FREE);
         assert!(bytes < 8192);
         let lease = pool.take(3);
-        assert!(lease.storage.snapshots.is_empty());
         assert!(lease.storage.values.identities.is_empty());
         assert_eq!(lease.storage.values.materialized, vec![None; 3]);
         drop(pool);
@@ -119,7 +99,6 @@ mod tests {
         let pool = Pool::new();
         for results in [3, 20, 32, 2] {
             let lease = pool.take(results);
-            assert!(lease.storage.snapshots.capacity() <= 32);
             assert!(lease.storage.values.identities.capacity() <= 32);
             assert!(lease.storage.values.materialized.capacity() <= 32);
         }

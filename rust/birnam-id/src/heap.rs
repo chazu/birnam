@@ -134,6 +134,7 @@ pub(crate) struct Heap {
     bytes_since_collection: usize,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
     deferred_allocations: Vec<(DeferredAllocation, usize)>,
+    numeric_allocations: Vec<dead_allocations::numeric::Entry>,
     next_deferred_id: u64,
 }
 
@@ -148,6 +149,7 @@ impl Heap {
             blocks: AddressMap::default(),
             bytes_since_collection: 0,
             dead_allocations: Vec::new(),
+            numeric_allocations: Vec::new(),
             deferred_allocations: Vec::new(),
             next_deferred_id: 0,
         }
@@ -201,18 +203,17 @@ impl Heap {
     }
 
     pub(crate) fn allocation_count(&self) -> usize {
-        self.blocks.len() + self.dead_allocations.len()
+        self.blocks.len() + self.dead_allocation_count()
     }
 
     pub(crate) fn allocated_bytes(&self) -> usize {
         let physical = self.blocks.values().fold(0usize, |total, block| {
             total.saturating_add(block.total_size)
         });
-        self.dead_allocations
-            .iter()
-            .fold(physical, |total, allocation| {
-                total.saturating_add(allocation.total_size())
-            })
+        self.dead_allocations.iter().fold(
+            self.numeric_allocated_bytes().saturating_add(physical),
+            |total, allocation| total.saturating_add(allocation.total_size()),
+        )
     }
 
     pub(crate) fn bytes_since_collection(&self) -> usize {

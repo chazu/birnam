@@ -691,3 +691,65 @@ fn discarded_clone_timing() {
         }
     }
 }
+
+#[test]
+fn numeric_batches_are_untraced_and_settle_with_clone_entries_before_finalizers() {
+    for observing in [false, true] {
+        let mut evidence = Vec::new();
+        for elide in [false, true] {
+            let bootstrap = crate::dispatch::build_bootstrap();
+            let r = &bootstrap.runtime;
+            r.publish_canonical_exports();
+            r.install_execution_objects();
+            r.enter(|| r.gc_collect_from_native_range(0, 0));
+            let child = r.make_integer(902);
+            let raw = child.addr() as i64;
+            if elide {
+                let heap = unsafe { &mut (*r.state.get()).heap };
+                let batch = heap
+                    .prepare_numeric_batch(r.canonical().smallint_vt, vec![raw, raw, -5, 999])
+                    .unwrap();
+                // Unexecuted final element must neither charge nor materialize.
+                for index in 0..3 {
+                    heap.record_numeric_result(batch.clone(), index).unwrap();
+                }
+                let clone = heap.prepare_dead_clone(r.canonical().nil).unwrap();
+                assert!(heap.record_dead_allocation(clone));
+            } else {
+                r.make_integer(raw);
+                r.make_integer(raw);
+                r.make_integer(-5);
+                r.clone_object(r.canonical().nil);
+            }
+            if observing {
+                let garbage = r.make_integer(0);
+                assert!(unsafe {
+                    (*r.state.get())
+                        .heap
+                        .set_finalizer(garbage, finalizer_observer)
+                });
+            }
+            FINALIZED.set(0);
+            r.gc_register_root_provider(mark_observer);
+            let before = (r.gc_live_count(), r.gc_live_bytes());
+            let charged = unsafe { (*r.state.get()).heap.bytes_since_collection() };
+            assert_eq!(
+                before.0 - unsafe { (*r.state.get()).heap.physical_allocation_count() },
+                if elide { 4 } else { 0 }
+            );
+            let reclaimed = r.enter(|| r.gc_collect_from_native_range(0, 0));
+            assert_eq!(MARK_COUNTS.get(), before);
+            assert_eq!(FINALIZED.get(), usize::from(observing));
+            assert_eq!(unsafe { (*r.state.get()).heap.payload_size(child) }, None);
+            assert!(!unsafe { (*r.state.get()).heap.has_dead_allocations() });
+            evidence.push((
+                before,
+                charged,
+                reclaimed,
+                r.gc_live_count(),
+                r.gc_live_bytes(),
+            ));
+        }
+        assert_eq!(evidence[0], evidence[1], "observing finalizer={observing}");
+    }
+}

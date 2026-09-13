@@ -170,17 +170,19 @@ pub(super) unsafe fn execute(
         .unboxed_scratch
         .get_or_insert_with(scratch::Pool::new)
         .take(maps.result_count());
-    {
-        let state = unsafe { &*r.state.get() };
+    let batch = if virtual_results == 0 {
+        None
+    } else {
+        let mut raw_values = Vec::with_capacity(virtual_results);
         for (index, send) in template.sends().iter().take(virtual_results).enumerate() {
-            let raw = ticket.fusion_result(index, send.pc as usize)?;
-            lease.storage.snapshots.push(
-                state
-                    .heap
-                    .prepare_virtual_bytes(r.canonical().smallint_vt, &raw.to_ne_bytes())?,
-            );
+            raw_values.push(ticket.fusion_result(index, send.pc as usize)?);
         }
-    }
+        Some(unsafe {
+            (*r.state.get())
+                .heap
+                .prepare_numeric_batch(r.canonical().smallint_vt, raw_values)
+        }?)
+    };
     #[cfg(test)]
     let force_at = FORCE_AT.get();
     #[cfg(not(test))]
@@ -191,7 +193,7 @@ pub(super) unsafe fn execute(
     // entries only move/stage the supported values; no virtual Oop escapes.
     Some((|| {
         let nil = r.canonical().nil;
-        let scratch::Storage { snapshots, values } = &mut lease.storage;
+        let scratch::Storage { values } = &mut lease.storage;
         let mut operation = 0;
         for (pc, method) in candidate.entries.iter().enumerate() {
             let token;
@@ -234,9 +236,10 @@ pub(super) unsafe fn execute(
                         .fusion_result(operation, pc)
                         .ok_or(ExecutionError::InvalidAction)?;
                     let id = unsafe {
-                        (*r.state.get())
-                            .heap
-                            .record_virtual_clone(snapshots[operation].clone())
+                        (*r.state.get()).heap.record_numeric_result(
+                            batch.as_ref().ok_or(ExecutionError::InvalidAction)?.clone(),
+                            operation,
+                        )
                     }
                     .ok_or(ExecutionError::InvalidAction)?;
                     values.identities.push(id);
