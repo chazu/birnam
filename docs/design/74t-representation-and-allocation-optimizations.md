@@ -2058,3 +2058,21 @@ across configurations. These samples establish successful execution and resource
 observability, not an attributable memory saving or a proof excluding leaks.
 Sampler reference release still excludes roots retained elsewhere in the runtime.
 Exact baseline-TCC storage and general metadata accounting remain open.
+
+### Consolidated source acceptance stopped on an independent identity failure
+
+After the 73-command production gate and 60-process repeated memory matrix
+passed, the additional aggregate source queue stopped. Default, clones-disabled
+and fields-disabled debug matrices each passed 30 cases. The both-disabled
+matrix passed 17 cases, then its 18th process aborted in the native test probe:
+three LogicVar name projections, escaping observer, precise GC, replaced getter
+phase. The numeric result read was `105553460409048`, expected `42`.
+The native phase had completed with zero physical allocations omitted.
+
+`74t-consolidated-aggregate-no-aggregates-debug.json` retains exact source,
+output, selected floor and installation hashes. The queue receipt is failed;
+release matrices did not run. This is not a completed 240-case acceptance.
+Unlike the earlier Error experiment, this failure uses the unchanged LogicVar
+module. Both aggregate consumers were disabled in both failures. Their cause
+is unresolved, so neither aggregate attribution nor a repair is established.
+Separate passing replays and prior gates do not resolve these counterexamples.
