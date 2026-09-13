@@ -169,7 +169,8 @@ containing all 192 measurement cases. It builds a fresh release installation and
 uses the unchanged preflight and interval host gates. Four alternating pairs and
 500 loops per process are the defaults. It reports execution, execution plus GC,
 first-loop cost, process wall time and peak RSS separately. The test floor's
-counter overhead is present in both sides of each pair. These source-fixture
+build is the same on both sides, but reuse counting runs only on the enabled
+path; its overhead is not symmetric. These source-fixture
 measurements cannot establish application performance or promotion by themselves.
 
 The combined production checkpoint includes the compact snapshot representation
@@ -207,3 +208,45 @@ compact-numeric matrices are serialized behind it, then combined application
 and process-resource acceptance. A rejected measurement stops that timing queue
 and retains its evidence for reassessment. No profitability or promotion follows
 from this correctness checkpoint alone.
+
+## Completed diagnostic loop matrix and normal-floor follow-up
+
+The [retained loop timing matrix](../measurements/74w-loop-exploratory-timing.json)
+contains all 192 processes and passes all 96 counter differentials. Preflight
+eventually passed, but the measured interval failed: median idle was 28.90%,
+with 368 of 731 samples below 30%. The receipt is `not_qualified`. All negative
+observations are retained, and the dependent closure/numeric timing queue stopped.
+The new compact installation also passes all eight normal application checks in
+the [updated application receipt](../measurements/74t-compact-application-comparison-correctness.json).
+
+For fully invariant inputs, diagnostic execution/including-GC improvements are:
+
+| Operations | Boxed execution / including GC | Unboxed execution / including GC |
+| --- | --- | --- |
+| 3 | +0.55% / -0.06% | +2.29% / +3.86% |
+| 16 | +2.24% / +2.29% | -4.86% / -7.81% |
+| 32 | -7.89% / -9.95% | +0.70% / +1.52% |
+
+These noisy results do not determine an admission threshold. There is also an
+instrumentation limitation: the test floor scans its dependency-mask vector to
+count skipped predictions only on the enabled path. Production builds omit that
+scan and vector. Thus even a host-qualified test-floor comparison would still
+need a normal-floor comparison before small differences could guide promotion.
+
+`scripts/loop-production-timing.py` supplies that comparison. It keeps the
+previously verified numeric, self-tail-loop and independent-call factories
+byte-identical, replacing only the native probe driver with ordinary Id calls,
+`Time monotonicMicros` and `System gc`. Each result is checked before and after
+collection. Verification runs both the release test floor and the unchanged
+normal release installation. The test variant checks exact reuse counts around
+the Id-driven phase and then uses the established native probe to independently
+check numeric-consumer admission. The normal variant contains no probe calls.
+
+The runner requires its own complete 96-process verification receipt before
+timing, along with matching full-production sources, test-floor identity,
+fixture bytes and the complete normal installation manifest. Timing retains
+all operation counts, input/control shapes and boxed/unboxed settings, with
+alternating pairs and unchanged per-pair preflight/interval gates. Cold execution,
+steady execution, collection, process wall time and peak RSS remain separate.
+The ordinary Id driver and collection boundary differ from the native probe;
+absolute durations between the two harnesses are not directly comparable.
