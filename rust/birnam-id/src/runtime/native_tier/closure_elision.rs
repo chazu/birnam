@@ -412,6 +412,14 @@ impl Runtime {
         if !fused_numeric::controls(self, machine) {
             return None;
         }
+        // No observing callback or collection can run inside this admitted
+        // region. Read developer recovery controls once here; the next region
+        // still observes fresh controls, including after an ordinary fallback.
+        let force_recovery =
+            std::env::var_os("BIRNAM_DEV_CLOSURE_FORCE_RECOVERY").is_some_and(|v| v == "1");
+        let force_at = std::env::var("BIRNAM_DEV_CLOSURE_FORCE_AT")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok());
         Some((|| {
             let identity = unsafe { (*self.state.get()).heap.record_virtual_clone(snapshot) }
                 .ok_or(ExecutionError::InvalidAction)?;
@@ -463,12 +471,7 @@ impl Runtime {
                 let DecodedAction::Call { result_slot, .. } = decoded else {
                     return Err(ExecutionError::InvalidAction);
                 };
-                if std::env::var_os("BIRNAM_DEV_CLOSURE_FORCE_RECOVERY").is_some_and(|v| v == "1")
-                    || std::env::var("BIRNAM_DEV_CLOSURE_FORCE_AT")
-                        .ok()
-                        .and_then(|v| v.parse::<usize>().ok())
-                        == Some(call_index)
-                {
+                if force_recovery || force_at == Some(call_index) {
                     let block = unsafe {
                         (*self.state.get())
                             .heap

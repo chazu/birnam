@@ -1,0 +1,3876 @@
+{
+  "batches": 500,
+  "correctness_receipt": "/Users/chazu/dev/zig/birnam/docs/measurements/74u-control-hoist-correctness.json",
+  "correctness_sha256": "bc4de3e477b1e8d65269eb316e5d4977bb0a3c19441c7ae2e71d9e7a545f8adb",
+  "exploratory_requested": false,
+  "fixture_sha256": {
+    "1": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458",
+    "3": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5",
+    "32": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+  },
+  "floor": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/74t-closure-control-target/release/libbirnam_id.dylib",
+    "sha256": "1bc650734204a08a9d91f1d910ef8fe2fc435ca610069e7bf0cc29be66c479a6"
+  },
+  "install": {
+    "argv": [
+      "mise",
+      "exec",
+      "--",
+      "bash",
+      "scripts/rust-install.sh",
+      "install",
+      "--root",
+      "/Users/chazu/dev/zig/birnam",
+      "--prefix",
+      "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix",
+      "--profile",
+      "release"
+    ],
+    "exit_code": 0,
+    "output": "[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/modules.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_modules.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/stdlib.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_stdlib.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/compiled-unit.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_compiledUnit.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/toml.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_toml.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/config.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_config.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/app-config.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_appConfig.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/project-policy.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_projectPolicy.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/isolate.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_isolate.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/stackless-control.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_stacklessControl.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/html.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_html.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/file.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_file.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/json.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_json.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/socket.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_socket.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/time.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_time.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/doc.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_doc.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/nativedoc.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_nativedoc.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/lsp.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_lsp.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/repl.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_repl.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/cli.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_cli.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/http.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_http.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/log.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_log.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/markdown.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_markdown.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/os.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_os.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/process.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_process.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/random.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_random.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/test.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_test.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/compiled-unit-docs.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/.birnam-rust-install-75347/lib/libbirnam_compiledUnitDocs.dylib\nrust-install: published /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix (15 native libraries, 27 stage1 modules)\n/opt/homebrew/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n   Compiling version_check v0.9.5\n   Compiling proc-macro2 v1.0.107\n   Compiling typenum v1.20.1\n   Compiling unicode-ident v1.0.24\n   Compiling libc v0.2.189\n   Compiling quote v1.0.47\n   Compiling serde_core v1.0.229\n   Compiling zmij v1.0.23\n   Compiling cfg-if v1.0.4\n   Compiling serde_json v1.0.151\n   Compiling serde v1.0.229\n   Compiling itoa v1.0.18\n   Compiling generic-array v0.14.7\n   Compiling birnam-abi v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-abi)\n   Compiling memchr v2.8.3\n   Compiling hex v0.4.3\n   Compiling cpufeatures v0.2.17\n   Compiling syn v3.0.3\n   Compiling block-buffer v0.10.4\n   Compiling crypto-common v0.1.7\n   Compiling digest v0.10.7\n   Compiling sha2 v0.10.9\n   Compiling birnam-artifact v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact)\n   Compiling serde_derive v1.0.229\n   Compiling birnam-host v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.12s\n     Running `/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-rust-driver.KSGcgh/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix --profile release`\n   Compiling birnam-abi v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-abi)\n   Compiling version_check v0.9.5\n   Compiling typenum v1.20.1\n   Compiling libc v0.2.189\n   Compiling cfg-if v1.0.4\n   Compiling proc-macro2 v1.0.107\n   Compiling quote v1.0.47\n   Compiling unicode-ident v1.0.24\n   Compiling serde_core v1.0.229\n   Compiling zmij v1.0.23\n   Compiling generic-array v0.14.7\n   Compiling find-msvc-tools v0.1.9\n   Compiling shlex v2.0.1\n   Compiling serde v1.0.229\n   Compiling cc v1.3.0\n   Compiling serde_json v1.0.151\n   Compiling memchr v2.8.3\n   Compiling cpufeatures v0.2.17\n   Compiling syn v3.0.3\n   Compiling itoa v1.0.18\n   Compiling hex v0.4.3\n   Compiling birnam-tcc v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-tcc)\n   Compiling birnam-codegen-runtime v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-codegen-runtime)\n   Compiling birnam-lang v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-lang)\n   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n   Compiling block-buffer v0.10.4\n   Compiling crypto-common v0.1.7\n   Compiling digest v0.10.7\n   Compiling birnam-prelude v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-prelude)\n   Compiling birnam-peg v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-peg)\n   Compiling birnam-relational v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-relational)\n   Compiling sha2 v0.10.9\n   Compiling birnam-native-compiler v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-native-compiler)\n   Compiling birnam-artifact-codec v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact-codec)\n   Compiling birnam-collection v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-collection)\n   Compiling birnam-isolate v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-isolate)\n   Compiling birnam-artifact v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact)\n   Compiling serde_derive v1.0.229\n   Compiling birnam-alien v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-alien)\n   Compiling birnam-store v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-store)\n   Compiling birnam-error v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-error)\n   Compiling birnam-codegen v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-codegen)\n   Compiling birnam-host v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host)\n   Compiling birnam-image v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-image)\n   Compiling birnam-portable-code v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-portable-code)\n    Finished `release` profile [optimized] target(s) in 12.53s\n",
+    "wall_ns": 20719540250
+  },
+  "installed_sha256": {
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/bin/birnam": "b05e60072cfb34e262aeb02e52d4f8994a02550d7a80969773863002bea49af2",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_appConfig.dylib": "5ea202bf08630deda6dabfe0a24b124ce8058c9b460eb556e5ca21379b6e8906",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_cli.dylib": "c539f607d5f580103f258dffccf00e9e2b16d828eac5d67f65017aad87eb286e",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_compiledUnit.dylib": "b190e572ee2b853b35b742a281511e62105f37d508629713c113bc78478408d0",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_compiledUnitDocs.dylib": "679be4e84730d4719929c3273c49b9d5ca7a5fb4495339b28077c79ab9092537",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_config.dylib": "94d8e5940c41a3fbb906f88669c19557a2cd0e781ff69a782473909112a6976f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_doc.dylib": "e375eda7be535dbf20b4b7e5adbf6f49432d8114fd5d94695d6668a46ddd8156",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_file.dylib": "d46d9910c76eb13adf963cfee2057b876465115e7127b6f2417cd2dc64bf43d8",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_html.dylib": "40daeef5900d0cacd02b577536831648de058b8c66de03aaaf02cbee2ae55291",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_http.dylib": "671cea81189d5be1fe10ed780b7d1d4fa91574801cf8f97471e1d1af6204ab38",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id.dylib": "323e1224d5968dba3a6217d4e0091221ef7fe1ca22a33cdc832d7ff0fe3a10b3",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_alien.dylib": "dffc25b568fb3884d4489033897eaef401a3737edb77514e710ffb5bc4c6d8e2",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_artifact.dylib": "babf8a82cde09e61f686e70e340c974d216b9f73455a4771c2fcf62eee3f3d2f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_codegen.dylib": "cea9af3311cd81f3779748a844182928178c522edede4b3a23faab97546ad51f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_collection.dylib": "2295d32a195e8244ada9ccab4182f4a15829171d1bbb1d63f0b88170d548b22a",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_error.dylib": "6f402216f998de79dc2cbb497fd6095765f4674d724f3ac4321fb1762b2f7d76",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_image.dylib": "46b8dba5c2612c4ea732e60ee70c6b432e36e48959000834ed0ea9fde45b2efe",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_isolate.dylib": "c57b297f057041913eaef6d97dd1da4fda06a3a29c418ef49a3de3d2939155f1",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_lang.dylib": "b3ce4da01cfddab89c3eb92974d5b2785d51f827165a8464fd8a23f302952705",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_peg.dylib": "4e163bd9cb09aa6cee10fc1c8bb1769cd561e08c3592ed98ce27ab6d77336654",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_prelude.dylib": "8114e2c344a37ffa92d7664ba62847cdaff32d07b456f730b6d6ff4ae245e343",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_relational.dylib": "dc3d464e826120bc8a3b305aab00905163d36e6135bf7df985f2aa3ec75ae5c4",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_id_tcc.dylib": "3c29163fc98ce2025578c47081f6a58794ece696c7f485dd0df877e227cc88d6",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_isolate.dylib": "fb927adf665d22d6ec0e7e9ef107a24ad46dcc700c6c2167c6ea627d7ddd163c",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_json.dylib": "99a57a3960b9395c6109c60107dc3540b9a5a69eaa2ab47bbb569122d9ab33f1",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_log.dylib": "cfad1f84293b603f6a45a7507a7bfa60570bf562714794b28b5c752af1f9bc2b",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_lsp.dylib": "6faee9f9ceaec9216610389425fb932b115ddb52f5b61180bf2086451c1c13ec",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_markdown.dylib": "4bc4ef713598e1ac0bc354abf162a7ac1f7bce488efa643ca2153f61656a1a7a",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_modules.dylib": "0a732bcaabde35352326ab51e00dafa7f8c9dbd6aeb6c3a1762ad7ac004e3d74",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_nativedoc.dylib": "59feef247baf3a11e8b01e781fbd2cdfd1b3d71c10a2b086fd8075da5540febe",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_os.dylib": "76847ccb9e540fe064f2749d17e97fbd74c6eb12298ece546f3114b7d9c1c371",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_portable_code.dylib": "06bcb82cf6fdfac57cc1bc1a45652c4b5d6634c53e8022e1624b62ec8658c38c",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_process.dylib": "fb31a536c77831f0357938d0282aacba66ef125556bd9bd058a6bdd406875290",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_projectPolicy.dylib": "2559ca1351808735a53b97e5a33637b306f25e59dfb3bb572f46530f4e32d19f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_random.dylib": "c8ec3e7b95e9346aa83867a24b1afb49ebce54a53963d5abcaa6c9b42746010a",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_repl.dylib": "288a9637e68d8b1aefd93d01aa1f7638aaf52858c859af698cee9a9fa0ac59ec",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_socket.dylib": "1f4b7bb966ee4540e9274539b67145a1fa0892c8c912294ea267a00154173bd6",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_stacklessControl.dylib": "4a82a78ba5febc036185c282ea4de16f233b717389c9054e7f75b84bb5f35064",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_stdlib.dylib": "01d926ce50c7cb7e8a4996779781249309113f891a109f70382e5cab42ed67f5",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_store.dylib": "7d652580619f31a17a295b1eba758202bf447bb8ba5da128e8fa47fe348e3b43",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_test.dylib": "d7f4198cc82967bf8e72441bd598c576baaafe49936ca67893ae6ca5de8ade5b",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_time.dylib": "1c74ad57775832fa9c6863f8723f2937efe3c5e109106294c58e071ad6475886",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libbirnam_toml.dylib": "a5cdda193e192b4d49b84f55b399c07499a396a9343f7edc17c0ffb7dbec80aa",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix/share/birnam/rust-install.json": "0cf3c4767826e544b5a1e21254376e8c87ff05a523ab2fe0595d12bc430467fd"
+  },
+  "interval": {
+    "argv": [
+      "bash",
+      "scripts/bench-host-check.sh",
+      "--samples",
+      "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/interval.log",
+      "closure-timing"
+    ],
+    "exit_code": 0,
+    "output": "bench-host-check: closure-timing stayed quiet for 111 intervals; median 59.78%, low intervals 11\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+    "samples": "Processes: 631 total, 3 running, 2 stuck, 626 sleeping, 6188 threads \n2026/09/13 01:43:48\nLoad Avg: 7.37, 8.22, 11.25 \nCPU usage: 25.35% user, 15.78% sys, 58.85% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342097 total, 5034M resident, 121M private, 1744M shared.\nPhysMem: 23G used (3802M wired, 7959M compressor), 208M unused.\nVM: 256T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192052/34G in, 47860831/31G out.\nDisks: 158985757/2790G read, 92172368/2366G written.\n\n\nProcesses: 634 total, 4 running, 630 sleeping, 6207 threads \n2026/09/13 01:43:49\nLoad Avg: 7.37, 8.22, 11.25 \nCPU usage: 29.81% user, 11.26% sys, 58.92% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342250 total, 5044M resident, 121M private, 1768M shared.\nPhysMem: 23G used (3612M wired, 7911M compressor), 95M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192119/34G in, 47860898/31G out.\nDisks: 158986349/2790G read, 92172896/2366G written.\n\n\nProcesses: 635 total, 3 running, 632 sleeping, 6200 threads \n2026/09/13 01:43:50\nLoad Avg: 7.37, 8.22, 11.25 \nCPU usage: 29.34% user, 9.34% sys, 61.30% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342397 total, 5036M resident, 121M private, 1773M shared.\nPhysMem: 23G used (3755M wired, 7872M compressor), 101M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192174/34G in, 47860979/31G out.\nDisks: 158986735/2790G read, 92173073/2366G written.\n\n\nProcesses: 631 total, 4 running, 627 sleeping, 6188 threads \n2026/09/13 01:43:51\nLoad Avg: 7.37, 8.22, 11.25 \nCPU usage: 25.74% user, 5.12% sys, 69.12% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342092 total, 5034M resident, 121M private, 1773M shared.\nPhysMem: 23G used (3611M wired, 7871M compressor), 108M unused.\nVM: 256T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192185/34G in, 47860994/31G out.\nDisks: 158986809/2790G read, 92173075/2366G written.\n\n\nProcesses: 631 total, 4 running, 627 sleeping, 6186 threads \n2026/09/13 01:43:53\nLoad Avg: 7.18, 8.16, 11.22 \nCPU usage: 32.58% user, 10.82% sys, 56.59% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342092 total, 5034M resident, 121M private, 1773M shared.\nPhysMem: 23G used (3612M wired, 7748M compressor), 74M unused.\nVM: 256T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192205/34G in, 47861017/31G out.\nDisks: 158987456/2790G read, 92173255/2366G written.\n\n\nProcesses: 634 total, 5 running, 629 sleeping, 6185 threads \n2026/09/13 01:43:54\nLoad Avg: 7.18, 8.16, 11.22 \nCPU usage: 27.97% user, 8.4% sys, 63.98% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342333 total, 5036M resident, 121M private, 1773M shared.\nPhysMem: 23G used (3756M wired, 7761M compressor), 85M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192238/34G in, 47861058/31G out.\nDisks: 158987637/2790G read, 92173422/2366G written.\n\n\nProcesses: 637 total, 9 running, 628 sleeping, 6205 threads \n2026/09/13 01:43:55\nLoad Avg: 7.18, 8.16, 11.22 \nCPU usage: 54.88% user, 15.78% sys, 29.32% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 344106 total, 5277M resident, 121M private, 1980M shared.\nPhysMem: 23G used (3611M wired, 8074M compressor), 146M unused.\nVM: 259T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192267/34G in, 47861093/31G out.\nDisks: 158996141/2790G read, 92173474/2366G written.\n\n\nProcesses: 635 total, 5 running, 630 sleeping, 6185 threads \n2026/09/13 01:43:56\nLoad Avg: 7.18, 8.16, 11.22 \nCPU usage: 61.8% user, 11.55% sys, 27.35% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343550 total, 5279M resident, 121M private, 1981M shared.\nPhysMem: 23G used (3756M wired, 8127M compressor), 216M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192297/34G in, 47861123/31G out.\nDisks: 158996582/2790G read, 92173754/2366G written.\n\n\nProcesses: 634 total, 4 running, 630 sleeping, 6191 threads \n2026/09/13 01:43:57\nLoad Avg: 7.08, 8.13, 11.19 \nCPU usage: 38.65% user, 7.80% sys, 53.54% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343483 total, 5277M resident, 121M private, 1981M shared.\nPhysMem: 23G used (3610M wired, 8147M compressor), 116M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192424/34G in, 47861256/31G out.\nDisks: 158997200/2790G read, 92173757/2366G written.\n\n\nProcesses: 634 total, 7 running, 627 sleeping, 6182 threads \n2026/09/13 01:43:58\nLoad Avg: 7.08, 8.13, 11.19 \nCPU usage: 40.95% user, 9.76% sys, 49.28% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343078 total, 5176M resident, 121M private, 1981M shared.\nPhysMem: 23G used (3612M wired, 8175M compressor), 151M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192455/34G in, 47861290/31G out.\nDisks: 158997860/2790G read, 92174205/2366G written.\n\n\nProcesses: 637 total, 6 running, 1 stuck, 630 sleeping, 6194 threads \n2026/09/13 01:43:59\nLoad Avg: 7.08, 8.13, 11.19 \nCPU usage: 57.61% user, 13.9% sys, 29.28% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343347 total, 5244M resident, 124M private, 1982M shared.\nPhysMem: 23G used (3757M wired, 8246M compressor), 124M unused.\nVM: 259T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192568/34G in, 47861332/31G out.\nDisks: 159000483/2790G read, 92175086/2366G written.\n\n\nProcesses: 635 total, 8 running, 627 sleeping, 6187 threads \n2026/09/13 01:44:00\nLoad Avg: 7.08, 8.13, 11.19 \nCPU usage: 63.6% user, 15.56% sys, 21.37% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343249 total, 5279M resident, 124M private, 1982M shared.\nPhysMem: 23G used (3610M wired, 8450M compressor), 187M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192601/34G in, 47861366/31G out.\nDisks: 159005877/2790G read, 92175099/2366G written.\n\n\nProcesses: 638 total, 6 running, 1 stuck, 631 sleeping, 6191 threads \n2026/09/13 01:44:01\nLoad Avg: 7.08, 8.13, 11.19 \nCPU usage: 50.5% user, 17.0% sys, 32.93% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343493 total, 5281M resident, 124M private, 1982M shared.\nPhysMem: 23G used (3615M wired, 8632M compressor), 303M unused.\nVM: 259T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192662/34G in, 47861421/31G out.\nDisks: 159014055/2790G read, 92175290/2366G written.\n\n\nProcesses: 635 total, 7 running, 628 sleeping, 6184 threads \n2026/09/13 01:44:02\nLoad Avg: 7.00, 8.09, 11.15 \nCPU usage: 71.37% user, 11.91% sys, 16.70% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343265 total, 5282M resident, 124M private, 1982M shared.\nPhysMem: 23G used (3754M wired, 8790M compressor), 462M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192693/34G in, 47861507/31G out.\nDisks: 159017150/2790G read, 92175364/2366G written.\n\n\nProcesses: 638 total, 5 running, 633 sleeping, 6191 threads \n2026/09/13 01:44:03\nLoad Avg: 7.00, 8.09, 11.15 \nCPU usage: 79.72% user, 11.65% sys, 8.62% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343507 total, 5282M resident, 124M private, 1982M shared.\nPhysMem: 23G used (3612M wired, 8774M compressor), 442M unused.\nVM: 259T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192724/34G in, 47861547/31G out.\nDisks: 159017483/2790G read, 92175601/2366G written.\n\n\nProcesses: 635 total, 4 running, 1 stuck, 630 sleeping, 6148 threads \n2026/09/13 01:44:04\nLoad Avg: 7.00, 8.09, 11.15 \nCPU usage: 54.46% user, 11.20% sys, 34.32% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342973 total, 5153M resident, 124M private, 2008M shared.\nPhysMem: 22G used (3756M wired, 8677M compressor), 1167M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192744/34G in, 47861565/31G out.\nDisks: 159019106/2790G read, 92175960/2367G written.\n\n\nProcesses: 638 total, 7 running, 631 sleeping, 6153 threads \n2026/09/13 01:44:05\nLoad Avg: 7.00, 8.09, 11.15 \nCPU usage: 49.5% user, 10.42% sys, 40.52% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343216 total, 5155M resident, 124M private, 2008M shared.\nPhysMem: 22G used (3613M wired, 8631M compressor), 827M unused.\nVM: 259T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192783/34G in, 47861603/31G out.\nDisks: 159020023/2790G read, 92176127/2367G written.\n\n\nProcesses: 634 total, 7 running, 627 sleeping, 6133 threads \n2026/09/13 01:44:06\nLoad Avg: 7.00, 8.09, 11.15 \nCPU usage: 50.0% user, 8.3% sys, 41.96% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342745 total, 5148M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3755M wired, 8597M compressor), 647M unused.\nVM: 258T vsize, 4915M framework vsize, 1451178(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192810/34G in, 47861636/31G out.\nDisks: 159020570/2790G read, 92176138/2367G written.\n\n\nProcesses: 634 total, 5 running, 629 sleeping, 6146 threads \n2026/09/13 01:44:07\nLoad Avg: 6.92, 8.06, 11.12 \nCPU usage: 51.71% user, 10.3% sys, 38.25% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342745 total, 5148M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3611M wired, 8591M compressor), 562M unused.\nVM: 258T vsize, 4915M framework vsize, 1451182(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192841/34G in, 47861677/31G out.\nDisks: 159020979/2790G read, 92176319/2367G written.\n\n\nProcesses: 637 total, 6 running, 631 sleeping, 6144 threads \n2026/09/13 01:44:09\nLoad Avg: 6.92, 8.06, 11.12 \nCPU usage: 49.22% user, 7.27% sys, 43.50% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342988 total, 5150M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3610M wired, 8586M compressor), 466M unused.\nVM: 259T vsize, 4915M framework vsize, 1451182(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192858/34G in, 47861697/31G out.\nDisks: 159021251/2790G read, 92176485/2367G written.\n\n\nProcesses: 634 total, 6 running, 628 sleeping, 6143 threads \n2026/09/13 01:44:10\nLoad Avg: 6.92, 8.06, 11.12 \nCPU usage: 54.63% user, 9.73% sys, 35.62% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342734 total, 5133M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3749M wired, 8530M compressor), 313M unused.\nVM: 258T vsize, 4915M framework vsize, 1451182(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192971/34G in, 47861738/31G out.\nDisks: 159021683/2790G read, 92176495/2367G written.\n\n\nProcesses: 638 total, 7 running, 631 sleeping, 6146 threads \n2026/09/13 01:44:11\nLoad Avg: 6.92, 8.06, 11.12 \nCPU usage: 53.8% user, 9.77% sys, 37.13% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343052 total, 5150M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3607M wired, 8517M compressor), 160M unused.\nVM: 259T vsize, 4915M framework vsize, 1451186(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192978/34G in, 47861744/31G out.\nDisks: 159022122/2790G read, 92176668/2367G written.\n\n\nProcesses: 634 total, 6 running, 628 sleeping, 6114 threads \n2026/09/13 01:44:12\nLoad Avg: 6.76, 8.01, 11.09 \nCPU usage: 47.57% user, 7.81% sys, 44.61% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342749 total, 5149M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3594M wired, 8507M compressor), 69M unused.\nVM: 258T vsize, 4915M framework vsize, 1451186(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53192996/34G in, 47861765/31G out.\nDisks: 159022761/2790G read, 92176671/2367G written.\n\n\nProcesses: 634 total, 4 running, 1 stuck, 629 sleeping, 6110 threads \n2026/09/13 01:44:13\nLoad Avg: 6.76, 8.01, 11.09 \nCPU usage: 47.69% user, 12.54% sys, 39.76% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342754 total, 5149M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3749M wired, 8670M compressor), 113M unused.\nVM: 258T vsize, 4915M framework vsize, 1451186(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53193414/34G in, 47861840/31G out.\nDisks: 159024354/2790G read, 92176844/2367G written.\n\n\nProcesses: 638 total, 8 running, 630 sleeping, 6110 threads \n2026/09/13 01:44:14\nLoad Avg: 6.76, 8.01, 11.09 \nCPU usage: 45.39% user, 10.99% sys, 43.61% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343045 total, 5136M resident, 124M private, 2008M shared.\nPhysMem: 23G used (3606M wired, 8805M compressor), 152M unused.\nVM: 259T vsize, 4915M framework vsize, 1451194(8) swapins, 2165961(0) swapouts.\nNetworks: packets: 53194383/34G in, 47862810/31G out.\nDisks: 159025993/2790G read, 92176916/2367G written.\n\n\nProcesses: 635 total, 7 running, 628 sleeping, 6116 threads \n2026/09/13 01:44:15\nLoad Avg: 6.76, 8.01, 11.09 \nCPU usage: 71.92% user, 13.33% sys, 14.73% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342941 total, 5166M resident, 124M private, 2011M shared.\nPhysMem: 23G used (3749M wired, 9023M compressor), 110M unused.\nVM: 258T vsize, 4915M framework vsize, 1451194(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53194410/34G in, 47862839/31G out.\nDisks: 159026424/2790G read, 92177015/2367G written.\n\n\nProcesses: 638 total, 8 running, 630 sleeping, 6117 threads \n2026/09/13 01:44:16\nLoad Avg: 6.76, 8.01, 11.09 \nCPU usage: 77.90% user, 9.63% sys, 12.45% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343073 total, 5158M resident, 124M private, 2011M shared.\nPhysMem: 23G used (3607M wired, 9091M compressor), 211M unused.\nVM: 259T vsize, 4915M framework vsize, 1451194(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53194832/34G in, 47862928/31G out.\nDisks: 159026815/2791G read, 92177263/2367G written.\n\n\nProcesses: 638 total, 11 running, 627 sleeping, 6128 threads \n2026/09/13 01:44:17\nLoad Avg: 6.86, 8.01, 11.07 \nCPU usage: 81.67% user, 12.41% sys, 5.91% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 343067 total, 5160M resident, 124M private, 2011M shared.\nPhysMem: 23G used (3607M wired, 9109M compressor), 171M unused.\nVM: 259T vsize, 4915M framework vsize, 1451198(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53194874/34G in, 47862976/31G out.\nDisks: 159027291/2791G read, 92177357/2367G written.\n\n\nProcesses: 634 total, 8 running, 626 sleeping, 6133 threads \n2026/09/13 01:44:18\nLoad Avg: 6.86, 8.01, 11.07 \nCPU usage: 78.87% user, 11.20% sys, 9.91% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342767 total, 5153M resident, 124M private, 2013M shared.\nPhysMem: 23G used (3749M wired, 9213M compressor), 145M unused.\nVM: 258T vsize, 4915M framework vsize, 1451198(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53194982/34G in, 47863075/31G out.\nDisks: 159028173/2791G read, 92177389/2367G written.\n\n\nProcesses: 636 total, 5 running, 631 sleeping, 6122 threads \n2026/09/13 01:44:19\nLoad Avg: 6.86, 8.01, 11.07 \nCPU usage: 75.60% user, 13.52% sys, 10.86% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342868 total, 5141M resident, 124M private, 2013M shared.\nPhysMem: 23G used (3607M wired, 9252M compressor), 409M unused.\nVM: 258T vsize, 4915M framework vsize, 1451198(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195020/34G in, 47863109/31G out.\nDisks: 159032086/2791G read, 92178818/2367G written.\n\n\nProcesses: 633 total, 7 running, 1 stuck, 625 sleeping, 6114 threads \n2026/09/13 01:44:20\nLoad Avg: 6.86, 8.01, 11.07 \nCPU usage: 56.82% user, 11.38% sys, 31.79% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342626 total, 5137M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3755M wired, 9149M compressor), 1705M unused.\nVM: 257T vsize, 4915M framework vsize, 1451198(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195038/34G in, 47863148/31G out.\nDisks: 159033631/2791G read, 92179026/2367G written.\n\n\nProcesses: 632 total, 3 running, 629 sleeping, 6116 threads \n2026/09/13 01:44:21\nLoad Avg: 6.86, 8.01, 11.07 \nCPU usage: 35.58% user, 10.11% sys, 54.30% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341693 total, 5026M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3595M wired, 9118M compressor), 1682M unused.\nVM: 257T vsize, 4915M framework vsize, 1451202(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195113/34G in, 47863214/31G out.\nDisks: 159033838/2791G read, 92179195/2367G written.\n\n\nProcesses: 629 total, 5 running, 624 sleeping, 6114 threads \n2026/09/13 01:44:22\nLoad Avg: 6.39, 7.89, 11.01 \nCPU usage: 27.8% user, 6.44% sys, 66.46% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341477 total, 5016M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3749M wired, 9067M compressor), 1581M unused.\nVM: 256T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195288/34G in, 47863447/31G out.\nDisks: 159034321/2791G read, 92179208/2367G written.\n\n\nProcesses: 629 total, 4 running, 625 sleeping, 6110 threads \n2026/09/13 01:44:23\nLoad Avg: 6.39, 7.89, 11.01 \nCPU usage: 29.67% user, 8.46% sys, 61.85% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341463 total, 5015M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3749M wired, 9041M compressor), 1545M unused.\nVM: 256T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195308/34G in, 47863467/31G out.\nDisks: 159034634/2791G read, 92179380/2367G written.\n\n\nProcesses: 632 total, 4 running, 628 sleeping, 6109 threads \n2026/09/13 01:44:25\nLoad Avg: 6.39, 7.89, 11.01 \nCPU usage: 26.89% user, 6.99% sys, 66.11% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341715 total, 5017M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3606M wired, 8979M compressor), 1406M unused.\nVM: 257T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195442/34G in, 47863565/31G out.\nDisks: 159035390/2791G read, 92179548/2367G written.\n\n\nProcesses: 629 total, 6 running, 623 sleeping, 6115 threads \n2026/09/13 01:44:26\nLoad Avg: 6.39, 7.89, 11.01 \nCPU usage: 30.85% user, 8.16% sys, 60.98% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341466 total, 5015M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3750M wired, 8938M compressor), 1341M unused.\nVM: 256T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195500/34G in, 47863611/31G out.\nDisks: 159035492/2791G read, 92179573/2367G written.\n\n\nProcesses: 632 total, 5 running, 627 sleeping, 6118 threads \n2026/09/13 01:44:27\nLoad Avg: 6.28, 7.84, 10.98 \nCPU usage: 30.76% user, 8.55% sys, 60.68% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341706 total, 5017M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3750M wired, 8897M compressor), 1259M unused.\nVM: 257T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195707/34G in, 47863661/31G out.\nDisks: 159035613/2791G read, 92179744/2367G written.\n\n\nProcesses: 627 total, 3 running, 624 sleeping, 6121 threads \n2026/09/13 01:44:28\nLoad Avg: 6.28, 7.84, 10.98 \nCPU usage: 24.88% user, 5.23% sys, 69.88% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341392 total, 5014M resident, 123M private, 2013M shared.\nPhysMem: 22G used (3606M wired, 8867M compressor), 1221M unused.\nVM: 255T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195751/34G in, 47863697/31G out.\nDisks: 159035713/2791G read, 92179746/2367G written.\n\n\nProcesses: 630 total, 4 running, 626 sleeping, 6140 threads \n2026/09/13 01:44:29\nLoad Avg: 6.28, 7.84, 10.98 \nCPU usage: 32.89% user, 10.25% sys, 56.85% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341609 total, 5031M resident, 123M private, 2015M shared.\nPhysMem: 22G used (3750M wired, 8836M compressor), 1147M unused.\nVM: 256T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195858/34G in, 47863842/31G out.\nDisks: 159036749/2791G read, 92179931/2367G written.\n\n\nProcesses: 633 total, 3 running, 630 sleeping, 6156 threads \n2026/09/13 01:44:30\nLoad Avg: 6.28, 7.84, 10.98 \nCPU usage: 28.28% user, 8.4% sys, 63.66% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341849 total, 5032M resident, 123M private, 2015M shared.\nPhysMem: 22G used (3607M wired, 8821M compressor), 1093M unused.\nVM: 257T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195924/34G in, 47863902/31G out.\nDisks: 159036840/2791G read, 92180095/2367G written.\n\n\nProcesses: 631 total, 3 running, 628 sleeping, 6166 threads \n2026/09/13 01:44:31\nLoad Avg: 6.28, 7.84, 10.98 \nCPU usage: 27.81% user, 6.50% sys, 65.68% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341657 total, 5032M resident, 125M private, 2015M shared.\nPhysMem: 22G used (3750M wired, 8793M compressor), 1059M unused.\nVM: 256T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53195980/34G in, 47863949/31G out.\nDisks: 159036968/2791G read, 92180096/2367G written.\n\n\nProcesses: 632 total, 6 running, 626 sleeping, 6165 threads \n2026/09/13 01:44:32\nLoad Avg: 6.34, 7.83, 10.95 \nCPU usage: 30.77% user, 9.43% sys, 59.78% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341705 total, 5033M resident, 125M private, 2015M shared.\nPhysMem: 22G used (3607M wired, 8746M compressor), 981M unused.\nVM: 257T vsize, 4915M framework vsize, 1451202(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196047/34G in, 47864015/31G out.\nDisks: 159037606/2791G read, 92180268/2367G written.\n\n\nProcesses: 632 total, 5 running, 627 sleeping, 6215 threads \n2026/09/13 01:44:33\nLoad Avg: 6.34, 7.83, 10.95 \nCPU usage: 29.2% user, 9.0% sys, 61.96% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341757 total, 5034M resident, 125M private, 2015M shared.\nPhysMem: 23G used (3607M wired, 8610M compressor), 725M unused.\nVM: 257T vsize, 4915M framework vsize, 1451223(21) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196259/34G in, 47864174/31G out.\nDisks: 159037810/2791G read, 92180281/2367G written.\n\n\nProcesses: 634 total, 5 running, 629 sleeping, 6277 threads \n2026/09/13 01:44:34\nLoad Avg: 6.34, 7.83, 10.95 \nCPU usage: 35.12% user, 9.91% sys, 54.95% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341970 total, 5045M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3750M wired, 8552M compressor), 592M unused.\nVM: 258T vsize, 4915M framework vsize, 1451223(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196297/34G in, 47864248/31G out.\nDisks: 159037914/2791G read, 92180448/2367G written.\n\n\nProcesses: 637 total, 4 running, 633 sleeping, 6278 threads \n2026/09/13 01:44:35\nLoad Avg: 6.34, 7.83, 10.95 \nCPU usage: 29.15% user, 7.64% sys, 63.20% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342203 total, 5046M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3607M wired, 8511M compressor), 523M unused.\nVM: 259T vsize, 4915M framework vsize, 1451223(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196327/34G in, 47864275/31G out.\nDisks: 159037999/2791G read, 92180617/2367G written.\n\n\nProcesses: 634 total, 5 running, 629 sleeping, 6271 threads \n2026/09/13 01:44:36\nLoad Avg: 6.34, 7.83, 10.95 \nCPU usage: 30.28% user, 7.12% sys, 62.58% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341963 total, 5045M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3750M wired, 8378M compressor), 440M unused.\nVM: 258T vsize, 4915M framework vsize, 1451223(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196503/34G in, 47864381/31G out.\nDisks: 159038062/2791G read, 92180623/2367G written.\n\n\nProcesses: 635 total, 5 running, 630 sleeping, 6270 threads \n2026/09/13 01:44:37\nLoad Avg: 6.15, 7.76, 10.91 \nCPU usage: 30.51% user, 8.93% sys, 60.54% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342011 total, 5046M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3607M wired, 8337M compressor), 395M unused.\nVM: 258T vsize, 4915M framework vsize, 1451223(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196563/34G in, 47864460/31G out.\nDisks: 159038171/2791G read, 92180815/2367G written.\n\n\nProcesses: 638 total, 6 running, 632 sleeping, 6267 threads \n2026/09/13 01:44:38\nLoad Avg: 6.15, 7.76, 10.91 \nCPU usage: 27.27% user, 6.49% sys, 66.23% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342251 total, 5048M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3607M wired, 8327M compressor), 363M unused.\nVM: 259T vsize, 4915M framework vsize, 1451223(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196588/34G in, 47864489/31G out.\nDisks: 159038224/2791G read, 92180979/2367G written.\n\n\nProcesses: 635 total, 4 running, 631 sleeping, 6215 threads \n2026/09/13 01:44:39\nLoad Avg: 6.15, 7.76, 10.91 \nCPU usage: 30.40% user, 7.48% sys, 62.11% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342008 total, 5046M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3740M wired, 8321M compressor), 376M unused.\nVM: 258T vsize, 4915M framework vsize, 1451227(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196631/34G in, 47864536/31G out.\nDisks: 159038281/2791G read, 92181009/2367G written.\n\n\nProcesses: 638 total, 3 running, 635 sleeping, 6223 threads \n2026/09/13 01:44:40\nLoad Avg: 6.15, 7.76, 10.91 \nCPU usage: 29.35% user, 8.59% sys, 62.5% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342245 total, 5046M resident, 125M private, 2016M shared.\nPhysMem: 23G used (3607M wired, 8299M compressor), 340M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196657/34G in, 47864563/31G out.\nDisks: 159038370/2791G read, 92181175/2367G written.\n\n\nProcesses: 636 total, 6 running, 630 sleeping, 6226 threads \n2026/09/13 01:44:41\nLoad Avg: 6.15, 7.76, 10.91 \nCPU usage: 27.87% user, 6.52% sys, 65.59% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342055 total, 5046M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3607M wired, 8277M compressor), 280M unused.\nVM: 258T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196689/34G in, 47864621/31G out.\nDisks: 159038526/2791G read, 92182219/2367G written.\n\n\nProcesses: 636 total, 3 running, 633 sleeping, 6218 threads \n2026/09/13 01:44:42\nLoad Avg: 6.06, 7.72, 10.88 \nCPU usage: 29.37% user, 8.34% sys, 62.27% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342055 total, 5046M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3751M wired, 8270M compressor), 280M unused.\nVM: 258T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53196711/34G in, 47864647/31G out.\nDisks: 159038584/2791G read, 92182385/2367G written.\n\n\nProcesses: 641 total, 3 running, 638 sleeping, 6229 threads \n2026/09/13 01:44:44\nLoad Avg: 6.06, 7.72, 10.88 \nCPU usage: 31.35% user, 9.73% sys, 58.90% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342399 total, 5051M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3597M wired, 8101M compressor), 258M unused.\nVM: 260T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53197671/34G in, 47865604/31G out.\nDisks: 159038753/2791G read, 92182561/2367G written.\n\n\nProcesses: 638 total, 5 running, 633 sleeping, 6221 threads \n2026/09/13 01:44:45\nLoad Avg: 6.06, 7.72, 10.88 \nCPU usage: 28.58% user, 6.16% sys, 65.24% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342159 total, 5049M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3751M wired, 8098M compressor), 261M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53197741/34G in, 47865669/31G out.\nDisks: 159038813/2791G read, 92182567/2367G written.\n\n\nProcesses: 638 total, 4 running, 634 sleeping, 6215 threads \n2026/09/13 01:44:46\nLoad Avg: 6.06, 7.72, 10.88 \nCPU usage: 29.58% user, 8.50% sys, 61.91% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342155 total, 5049M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3607M wired, 8066M compressor), 226M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53197802/34G in, 47865721/31G out.\nDisks: 159038868/2791G read, 92182738/2367G written.\n\n\nProcesses: 638 total, 6 running, 632 sleeping, 6224 threads \n2026/09/13 01:44:47\nLoad Avg: 5.65, 7.61, 10.82 \nCPU usage: 29.60% user, 8.32% sys, 62.6% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342155 total, 5049M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3751M wired, 8046M compressor), 195M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198104/34G in, 47865899/31G out.\nDisks: 159038999/2791G read, 92182850/2367G written.\n\n\nProcesses: 639 total, 4 running, 635 sleeping, 6224 threads \n2026/09/13 01:44:48\nLoad Avg: 5.65, 7.61, 10.82 \nCPU usage: 33.61% user, 9.44% sys, 56.93% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342205 total, 5050M resident, 139M private, 2016M shared.\nPhysMem: 23G used (3608M wired, 8025M compressor), 164M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198161/34G in, 47865964/31G out.\nDisks: 159039101/2791G read, 92183021/2367G written.\n\n\nProcesses: 642 total, 4 running, 638 sleeping, 6221 threads \n2026/09/13 01:44:49\nLoad Avg: 5.65, 7.61, 10.82 \nCPU usage: 32.30% user, 7.48% sys, 60.21% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342439 total, 5050M resident, 139M private, 2017M shared.\nPhysMem: 23G used (3608M wired, 8020M compressor), 162M unused.\nVM: 261T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198189/34G in, 47866004/31G out.\nDisks: 159039159/2791G read, 92183651/2367G written.\n\n\nProcesses: 639 total, 8 running, 631 sleeping, 6223 threads \n2026/09/13 01:44:50\nLoad Avg: 5.65, 7.61, 10.82 \nCPU usage: 32.61% user, 9.47% sys, 57.91% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342199 total, 5049M resident, 139M private, 2017M shared.\nPhysMem: 23G used (3750M wired, 7960M compressor), 83M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198247/34G in, 47866048/31G out.\nDisks: 159039232/2791G read, 92183861/2367G written.\n\n\nProcesses: 638 total, 3 running, 635 sleeping, 6219 threads \n2026/09/13 01:44:51\nLoad Avg: 5.65, 7.61, 10.82 \nCPU usage: 30.71% user, 9.76% sys, 59.52% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342141 total, 5058M resident, 139M private, 2017M shared.\nPhysMem: 23G used (3606M wired, 7930M compressor), 73M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198312/34G in, 47866143/31G out.\nDisks: 159039371/2791G read, 92184046/2367G written.\n\n\nProcesses: 641 total, 6 running, 635 sleeping, 6214 threads \n2026/09/13 01:44:52\nLoad Avg: 5.52, 7.55, 10.78 \nCPU usage: 28.19% user, 8.76% sys, 63.3% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342381 total, 5059M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3660M wired, 7842M compressor), 78M unused.\nVM: 260T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198401/34G in, 47866268/31G out.\nDisks: 159039978/2791G read, 92184227/2367G written.\n\n\nProcesses: 638 total, 5 running, 633 sleeping, 6209 threads \n2026/09/13 01:44:53\nLoad Avg: 5.52, 7.55, 10.78 \nCPU usage: 38.80% user, 7.97% sys, 53.22% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342141 total, 5058M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3741M wired, 7833M compressor), 71M unused.\nVM: 259T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198417/34G in, 47866289/31G out.\nDisks: 159040049/2791G read, 92184227/2367G written.\n\n\nProcesses: 641 total, 4 running, 637 sleeping, 6210 threads \n2026/09/13 01:44:54\nLoad Avg: 5.52, 7.55, 10.78 \nCPU usage: 29.82% user, 8.40% sys, 61.77% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342391 total, 5049M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3607M wired, 7831M compressor), 73M unused.\nVM: 260T vsize, 4915M framework vsize, 1451227(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198433/34G in, 47866310/31G out.\nDisks: 159040163/2791G read, 92184392/2367G written.\n\n\nProcesses: 638 total, 4 running, 634 sleeping, 6204 threads \n2026/09/13 01:44:55\nLoad Avg: 5.52, 7.55, 10.78 \nCPU usage: 25.47% user, 4.88% sys, 69.64% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342151 total, 5048M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3751M wired, 7829M compressor), 72M unused.\nVM: 259T vsize, 4915M framework vsize, 1451231(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198458/34G in, 47866364/31G out.\nDisks: 159040220/2791G read, 92184393/2367G written.\n\n\nProcesses: 638 total, 4 running, 634 sleeping, 6196 threads \n2026/09/13 01:44:56\nLoad Avg: 5.52, 7.55, 10.78 \nCPU usage: 29.71% user, 8.59% sys, 61.69% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342151 total, 5048M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3607M wired, 7816M compressor), 94M unused.\nVM: 259T vsize, 4915M framework vsize, 1451231(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198481/34G in, 47866391/31G out.\nDisks: 159040273/2791G read, 92184567/2367G written.\n\n\nProcesses: 641 total, 6 running, 635 sleeping, 6190 threads \n2026/09/13 01:44:57\nLoad Avg: 5.40, 7.49, 10.74 \nCPU usage: 29.11% user, 6.39% sys, 64.49% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342397 total, 5050M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3597M wired, 7814M compressor), 91M unused.\nVM: 260T vsize, 4915M framework vsize, 1451231(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198518/34G in, 47866431/31G out.\nDisks: 159040366/2791G read, 92184733/2367G written.\n\n\nProcesses: 638 total, 4 running, 634 sleeping, 6186 threads \n2026/09/13 01:44:58\nLoad Avg: 5.40, 7.49, 10.74 \nCPU usage: 35.56% user, 6.92% sys, 57.51% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342157 total, 5049M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3751M wired, 7795M compressor), 65M unused.\nVM: 259T vsize, 4915M framework vsize, 1451231(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198628/34G in, 47866467/31G out.\nDisks: 159040435/2791G read, 92184736/2367G written.\n\n\nProcesses: 637 total, 3 running, 634 sleeping, 6184 threads \n2026/09/13 01:44:59\nLoad Avg: 5.40, 7.49, 10.74 \nCPU usage: 33.1% user, 10.96% sys, 56.1% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342129 total, 5049M resident, 141M private, 2017M shared.\nPhysMem: 23G used (3607M wired, 7715M compressor), 82M unused.\nVM: 259T vsize, 4915M framework vsize, 1451235(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198678/34G in, 47866526/31G out.\nDisks: 159040531/2791G read, 92184937/2367G written.\n\n\nProcesses: 638 total, 4 running, 634 sleeping, 6189 threads \n2026/09/13 01:45:00\nLoad Avg: 5.40, 7.49, 10.74 \nCPU usage: 35.30% user, 8.29% sys, 56.39% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342161 total, 5049M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3748M wired, 7643M compressor), 51M unused.\nVM: 259T vsize, 4915M framework vsize, 1451235(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198750/34G in, 47866603/31G out.\nDisks: 159040642/2791G read, 92184941/2367G written.\n\n\nProcesses: 638 total, 5 running, 633 sleeping, 6184 threads \n2026/09/13 01:45:02\nLoad Avg: 5.40, 7.49, 10.74 \nCPU usage: 39.83% user, 12.8% sys, 48.8% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342155 total, 5047M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3609M wired, 7663M compressor), 123M unused.\nVM: 259T vsize, 4915M framework vsize, 1451235(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198824/34G in, 47866734/31G out.\nDisks: 159040702/2791G read, 92185119/2367G written.\n\n\nProcesses: 641 total, 4 running, 637 sleeping, 6185 threads \n2026/09/13 01:45:03\nLoad Avg: 5.13, 7.40, 10.69 \nCPU usage: 27.70% user, 6.65% sys, 65.63% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342395 total, 5049M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3607M wired, 7652M compressor), 98M unused.\nVM: 260T vsize, 4915M framework vsize, 1451235(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198860/34G in, 47866763/31G out.\nDisks: 159041213/2791G read, 92185289/2367G written.\n\n\nProcesses: 638 total, 5 running, 633 sleeping, 6167 threads \n2026/09/13 01:45:04\nLoad Avg: 5.13, 7.40, 10.69 \nCPU usage: 29.57% user, 7.15% sys, 63.26% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342155 total, 5047M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3751M wired, 7621M compressor), 62M unused.\nVM: 259T vsize, 4915M framework vsize, 1451235(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198888/34G in, 47866819/31G out.\nDisks: 159041586/2791G read, 92185303/2367G written.\n\n\nProcesses: 640 total, 5 running, 635 sleeping, 6169 threads \n2026/09/13 01:45:05\nLoad Avg: 5.13, 7.40, 10.69 \nCPU usage: 34.0% user, 11.17% sys, 54.81% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342347 total, 5048M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3607M wired, 7583M compressor), 80M unused.\nVM: 260T vsize, 4915M framework vsize, 1451235(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53198961/34G in, 47866904/31G out.\nDisks: 159041685/2791G read, 92185471/2367G written.\n\n\nProcesses: 637 total, 4 running, 633 sleeping, 6166 threads \n2026/09/13 01:45:06\nLoad Avg: 5.13, 7.40, 10.69 \nCPU usage: 35.56% user, 7.75% sys, 56.68% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342107 total, 5046M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3604M wired, 7599M compressor), 148M unused.\nVM: 259T vsize, 4915M framework vsize, 1451243(8) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199051/34G in, 47866960/31G out.\nDisks: 159041718/2791G read, 92185475/2367G written.\n\n\nProcesses: 636 total, 4 running, 632 sleeping, 6169 threads \n2026/09/13 01:45:07\nLoad Avg: 4.88, 7.31, 10.64 \nCPU usage: 30.51% user, 9.53% sys, 59.95% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342061 total, 5045M resident, 141M private, 2018M shared.\nPhysMem: 23G used (3749M wired, 7576M compressor), 114M unused.\nVM: 258T vsize, 4915M framework vsize, 1451243(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199109/34G in, 47867017/31G out.\nDisks: 159041967/2791G read, 92185695/2367G written.\n\n\nProcesses: 638 total, 3 running, 635 sleeping, 6151 threads \n2026/09/13 01:45:08\nLoad Avg: 4.88, 7.31, 10.64 \nCPU usage: 28.29% user, 7.7% sys, 64.62% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342092 total, 5046M resident, 141M private, 2019M shared.\nPhysMem: 23G used (3606M wired, 7565M compressor), 105M unused.\nVM: 259T vsize, 4915M framework vsize, 1451243(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199144/34G in, 47867060/31G out.\nDisks: 159042029/2791G read, 92185877/2367G written.\n\n\nProcesses: 635 total, 4 running, 631 sleeping, 6143 threads \n2026/09/13 01:45:09\nLoad Avg: 4.88, 7.31, 10.64 \nCPU usage: 29.59% user, 6.92% sys, 63.48% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341852 total, 5045M resident, 141M private, 2019M shared.\nPhysMem: 23G used (3749M wired, 7531M compressor), 82M unused.\nVM: 258T vsize, 4915M framework vsize, 1451243(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199263/34G in, 47867100/31G out.\nDisks: 159042092/2791G read, 92185887/2367G written.\n\n\nProcesses: 633 total, 5 running, 628 sleeping, 6142 threads \n2026/09/13 01:45:10\nLoad Avg: 4.88, 7.31, 10.64 \nCPU usage: 30.28% user, 8.78% sys, 60.92% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341754 total, 5042M resident, 141M private, 2019M shared.\nPhysMem: 23G used (3595M wired, 7518M compressor), 71M unused.\nVM: 257T vsize, 4915M framework vsize, 1451243(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199278/34G in, 47867115/31G out.\nDisks: 159042155/2791G read, 92186052/2367G written.\n\n\nProcesses: 632 total, 6 running, 626 sleeping, 6132 threads \n2026/09/13 01:45:11\nLoad Avg: 4.88, 7.31, 10.64 \nCPU usage: 28.94% user, 6.40% sys, 64.65% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341726 total, 5042M resident, 141M private, 2019M shared.\nPhysMem: 23G used (3746M wired, 7482M compressor), 57M unused.\nVM: 257T vsize, 4915M framework vsize, 1451247(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199304/34G in, 47867143/31G out.\nDisks: 159042296/2791G read, 92186067/2367G written.\n\n\nProcesses: 632 total, 5 running, 627 sleeping, 6125 threads \n2026/09/13 01:45:12\nLoad Avg: 4.56, 7.20, 10.58 \nCPU usage: 37.50% user, 9.16% sys, 53.33% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341706 total, 5051M resident, 141M private, 2019M shared.\nPhysMem: 23G used (3748M wired, 7499M compressor), 82M unused.\nVM: 257T vsize, 4915M framework vsize, 1451247(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53199347/34G in, 47867187/31G out.\nDisks: 159042893/2791G read, 92186245/2367G written.\n\n\nProcesses: 635 total, 4 running, 631 sleeping, 6117 threads \n2026/09/13 01:45:13\nLoad Avg: 4.56, 7.20, 10.58 \nCPU usage: 30.57% user, 9.32% sys, 60.9% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341946 total, 5052M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3602M wired, 7478M compressor), 63M unused.\nVM: 258T vsize, 4915M framework vsize, 1451247(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200350/34G in, 47868182/31G out.\nDisks: 159043230/2791G read, 92186423/2367G written.\n\n\nProcesses: 631 total, 7 running, 624 sleeping, 6166 threads \n2026/09/13 01:45:14\nLoad Avg: 4.56, 7.20, 10.58 \nCPU usage: 28.63% user, 7.33% sys, 64.2% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341669 total, 5056M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3743M wired, 7494M compressor), 72M unused.\nVM: 256T vsize, 4915M framework vsize, 1451247(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200426/34G in, 47868250/31G out.\nDisks: 159043365/2791G read, 92186428/2367G written.\n\n\nProcesses: 632 total, 10 running, 622 sleeping, 6187 threads \n2026/09/13 01:45:15\nLoad Avg: 4.56, 7.20, 10.58 \nCPU usage: 32.54% user, 10.49% sys, 56.95% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341868 total, 5066M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3601M wired, 7527M compressor), 68M unused.\nVM: 257T vsize, 4915M framework vsize, 1451247(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200504/34G in, 47868334/31G out.\nDisks: 159043487/2791G read, 92186610/2367G written.\n\n\nProcesses: 631 total, 3 running, 628 sleeping, 6190 threads \n2026/09/13 01:45:16\nLoad Avg: 4.56, 7.20, 10.58 \nCPU usage: 24.49% user, 4.75% sys, 70.74% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341838 total, 5055M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3745M wired, 7525M compressor), 75M unused.\nVM: 256T vsize, 4915M framework vsize, 1451247(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200544/34G in, 47868383/31G out.\nDisks: 159043869/2791G read, 92186616/2367G written.\n\n\nProcesses: 631 total, 5 running, 626 sleeping, 6197 threads \n2026/09/13 01:45:17\nLoad Avg: 4.52, 7.15, 10.54 \nCPU usage: 36.86% user, 9.15% sys, 53.98% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341800 total, 5055M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3745M wired, 7542M compressor), 87M unused.\nVM: 256T vsize, 4915M framework vsize, 1451247(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200599/34G in, 47868452/31G out.\nDisks: 159043991/2791G read, 92187417/2367G written.\n\n\nProcesses: 633 total, 3 running, 630 sleeping, 6198 threads \n2026/09/13 01:45:18\nLoad Avg: 4.52, 7.15, 10.54 \nCPU usage: 29.79% user, 7.38% sys, 62.81% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341991 total, 5055M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3601M wired, 7536M compressor), 72M unused.\nVM: 257T vsize, 4915M framework vsize, 1451251(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200643/34G in, 47868495/31G out.\nDisks: 159044301/2791G read, 92187583/2367G written.\n\n\nProcesses: 632 total, 4 running, 628 sleeping, 6207 threads \n2026/09/13 01:45:20\nLoad Avg: 4.52, 7.15, 10.54 \nCPU usage: 31.27% user, 8.53% sys, 60.18% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341847 total, 5056M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3743M wired, 7535M compressor), 71M unused.\nVM: 257T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200684/34G in, 47868536/31G out.\nDisks: 159044446/2791G read, 92187851/2367G written.\n\n\nProcesses: 632 total, 4 running, 628 sleeping, 6200 threads \n2026/09/13 01:45:21\nLoad Avg: 4.52, 7.15, 10.54 \nCPU usage: 30.11% user, 8.69% sys, 61.19% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341860 total, 5051M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3601M wired, 7533M compressor), 71M unused.\nVM: 257T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200742/34G in, 47868593/31G out.\nDisks: 159044556/2791G read, 92188022/2367G written.\n\n\nProcesses: 636 total, 4 running, 632 sleeping, 6162 threads \n2026/09/13 01:45:22\nLoad Avg: 4.52, 7.15, 10.54 \nCPU usage: 25.38% user, 6.7% sys, 68.53% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342168 total, 5054M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3601M wired, 7531M compressor), 56M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200874/34G in, 47868660/31G out.\nDisks: 159044629/2791G read, 92188186/2367G written.\n\n\nProcesses: 632 total, 3 running, 629 sleeping, 6163 threads \n2026/09/13 01:45:23\nLoad Avg: 4.48, 7.09, 10.50 \nCPU usage: 29.77% user, 8.28% sys, 61.94% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341860 total, 5051M resident, 136M private, 2019M shared.\nPhysMem: 23G used (3744M wired, 7545M compressor), 67M unused.\nVM: 257T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200942/34G in, 47868830/31G out.\nDisks: 159045920/2791G read, 92188216/2367G written.\n\n\nProcesses: 634 total, 6 running, 628 sleeping, 6154 threads \n2026/09/13 01:45:24\nLoad Avg: 4.48, 7.09, 10.50 \nCPU usage: 28.36% user, 8.27% sys, 63.35% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342050 total, 5051M resident, 143M private, 2019M shared.\nPhysMem: 23G used (3589M wired, 7552M compressor), 76M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53200969/34G in, 47868844/31G out.\nDisks: 159045992/2791G read, 92188381/2367G written.\n\n\nProcesses: 631 total, 3 running, 628 sleeping, 6147 threads \n2026/09/13 01:45:25\nLoad Avg: 4.48, 7.09, 10.50 \nCPU usage: 26.48% user, 5.95% sys, 67.56% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341810 total, 5050M resident, 143M private, 2019M shared.\nPhysMem: 23G used (3743M wired, 7549M compressor), 78M unused.\nVM: 256T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201014/34G in, 47868884/31G out.\nDisks: 159046121/2791G read, 92188414/2367G written.\n\n\nProcesses: 631 total, 3 running, 628 sleeping, 6149 threads \n2026/09/13 01:45:26\nLoad Avg: 4.48, 7.09, 10.50 \nCPU usage: 28.50% user, 8.26% sys, 63.23% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341810 total, 5050M resident, 143M private, 2019M shared.\nPhysMem: 23G used (3599M wired, 7553M compressor), 90M unused.\nVM: 256T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201034/34G in, 47868897/31G out.\nDisks: 159046196/2791G read, 92188584/2367G written.\n\n\nProcesses: 637 total, 6 running, 631 sleeping, 6162 threads \n2026/09/13 01:45:27\nLoad Avg: 4.28, 7.01, 10.45 \nCPU usage: 29.9% user, 6.76% sys, 64.13% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342206 total, 5056M resident, 143M private, 2020M shared.\nPhysMem: 23G used (3599M wired, 7550M compressor), 89M unused.\nVM: 259T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201049/34G in, 47868910/31G out.\nDisks: 159046318/2791G read, 92188774/2367G written.\n\n\nProcesses: 634 total, 5 running, 629 sleeping, 6169 threads \n2026/09/13 01:45:28\nLoad Avg: 4.28, 7.01, 10.45 \nCPU usage: 35.11% user, 7.71% sys, 57.17% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 341963 total, 5053M resident, 143M private, 2020M shared.\nPhysMem: 23G used (3733M wired, 7535M compressor), 72M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201075/34G in, 47868950/31G out.\nDisks: 159046402/2791G read, 92188777/2367G written.\n\n\nProcesses: 634 total, 5 running, 1 stuck, 628 sleeping, 6209 threads \n2026/09/13 01:45:29\nLoad Avg: 4.28, 7.01, 10.45 \nCPU usage: 33.80% user, 12.21% sys, 53.97% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342023 total, 5057M resident, 143M private, 2020M shared.\nPhysMem: 23G used (3602M wired, 7562M compressor), 71M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201090/34G in, 47868970/31G out.\nDisks: 159049190/2791G read, 92188952/2367G written.\n\n\nProcesses: 635 total, 7 running, 1 stuck, 627 sleeping, 6232 threads \n2026/09/13 01:45:30\nLoad Avg: 4.28, 7.01, 10.45 \nCPU usage: 30.1% user, 6.48% sys, 63.50% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342051 total, 5057M resident, 143M private, 2020M shared.\nPhysMem: 23G used (3602M wired, 7559M compressor), 55M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201113/34G in, 47869017/31G out.\nDisks: 159049439/2791G read, 92188965/2367G written.\n\n\nProcesses: 635 total, 6 running, 629 sleeping, 6252 threads \n2026/09/13 01:45:31\nLoad Avg: 4.28, 7.01, 10.45 \nCPU usage: 35.46% user, 11.46% sys, 53.7% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342052 total, 5057M resident, 143M private, 2020M shared.\nPhysMem: 23G used (3749M wired, 7574M compressor), 59M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201190/34G in, 47869115/31G out.\nDisks: 159049750/2791G read, 92189691/2367G written.\n\n\nProcesses: 640 total, 5 running, 635 sleeping, 6267 threads \n2026/09/13 01:45:32\nLoad Avg: 4.42, 6.99, 10.42 \nCPU usage: 30.95% user, 11.78% sys, 57.26% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342434 total, 5079M resident, 143M private, 2021M shared.\nPhysMem: 23G used (3604M wired, 7660M compressor), 107M unused.\nVM: 260T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201317/34G in, 47869210/31G out.\nDisks: 159050505/2791G read, 92189876/2367G written.\n\n\nProcesses: 637 total, 6 running, 631 sleeping, 6263 threads \n2026/09/13 01:45:33\nLoad Avg: 4.42, 6.99, 10.42 \nCPU usage: 34.95% user, 7.84% sys, 57.19% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342194 total, 5078M resident, 143M private, 2021M shared.\nPhysMem: 23G used (3737M wired, 7653M compressor), 98M unused.\nVM: 259T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201365/34G in, 47869260/31G out.\nDisks: 159050631/2791G read, 92189910/2367G written.\n\n\nProcesses: 634 total, 3 running, 631 sleeping, 6265 threads \n2026/09/13 01:45:34\nLoad Avg: 4.42, 6.99, 10.42 \nCPU usage: 30.68% user, 9.0% sys, 60.30% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342032 total, 5061M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3604M wired, 7644M compressor), 101M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201428/34G in, 47869332/31G out.\nDisks: 159050823/2791G read, 92190099/2367G written.\n\n\nProcesses: 636 total, 3 running, 633 sleeping, 6264 threads \n2026/09/13 01:45:35\nLoad Avg: 4.42, 6.99, 10.42 \nCPU usage: 27.95% user, 5.14% sys, 66.90% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342107 total, 5060M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3748M wired, 7643M compressor), 102M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201458/34G in, 47869360/31G out.\nDisks: 159050962/2791G read, 92190101/2367G written.\n\n\nProcesses: 636 total, 6 running, 630 sleeping, 6249 threads \n2026/09/13 01:45:36\nLoad Avg: 4.42, 6.99, 10.42 \nCPU usage: 32.58% user, 8.91% sys, 58.50% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342107 total, 5060M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3604M wired, 7587M compressor), 89M unused.\nVM: 258T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201471/34G in, 47869373/31G out.\nDisks: 159051148/2791G read, 92190279/2367G written.\n\n\nProcesses: 643 total, 5 running, 638 sleeping, 6260 threads \n2026/09/13 01:45:37\nLoad Avg: 4.46, 6.96, 10.39 \nCPU usage: 28.7% user, 7.88% sys, 64.3% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342530 total, 5067M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3604M wired, 7585M compressor), 71M unused.\nVM: 261T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201503/34G in, 47869406/31G out.\nDisks: 159051520/2791G read, 92190454/2367G written.\n\n\nProcesses: 640 total, 8 running, 1 stuck, 631 sleeping, 6262 threads \n2026/09/13 01:45:39\nLoad Avg: 4.46, 6.96, 10.39 \nCPU usage: 29.8% user, 7.27% sys, 63.64% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342290 total, 5065M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3748M wired, 7582M compressor), 73M unused.\nVM: 260T vsize, 4915M framework vsize, 1451251(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201524/34G in, 47869434/31G out.\nDisks: 159051700/2791G read, 92190459/2367G written.\n\n\nProcesses: 644 total, 13 running, 1 stuck, 630 sleeping, 6378 threads \n2026/09/13 01:45:40\nLoad Avg: 4.46, 6.96, 10.39 \nCPU usage: 39.88% user, 14.4% sys, 46.7% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342595 total, 5069M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3607M wired, 7656M compressor), 55M unused.\nVM: 261T vsize, 4915M framework vsize, 1451279(28) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201595/34G in, 47869513/31G out.\nDisks: 159052273/2791G read, 92190638/2367G written.\n\n\nProcesses: 641 total, 6 running, 635 sleeping, 6371 threads \n2026/09/13 01:45:41\nLoad Avg: 4.46, 6.96, 10.39 \nCPU usage: 34.75% user, 6.4% sys, 59.19% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342355 total, 5067M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3751M wired, 7651M compressor), 54M unused.\nVM: 260T vsize, 4915M framework vsize, 1451279(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201617/34G in, 47869537/31G out.\nDisks: 159052387/2791G read, 92190642/2367G written.\n\n\nProcesses: 641 total, 5 running, 636 sleeping, 6372 threads \n2026/09/13 01:45:42\nLoad Avg: 4.51, 6.93, 10.36 \nCPU usage: 30.54% user, 8.94% sys, 60.50% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342355 total, 5067M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3750M wired, 7654M compressor), 49M unused.\nVM: 260T vsize, 4915M framework vsize, 1451279(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201650/34G in, 47869573/31G out.\nDisks: 159052498/2791G read, 92190814/2367G written.\n\n\nProcesses: 645 total, 4 running, 641 sleeping, 6376 threads \n2026/09/13 01:45:43\nLoad Avg: 4.51, 6.93, 10.36 \nCPU usage: 27.10% user, 11.56% sys, 61.33% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342674 total, 5073M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3605M wired, 7735M compressor), 146M unused.\nVM: 262T vsize, 4915M framework vsize, 1451279(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53201799/34G in, 47869628/31G out.\nDisks: 159053585/2791G read, 92190988/2367G written.\n\n\nProcesses: 642 total, 4 running, 638 sleeping, 6353 threads \n2026/09/13 01:45:44\nLoad Avg: 4.51, 6.93, 10.36 \nCPU usage: 37.54% user, 8.46% sys, 53.99% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342434 total, 5071M resident, 145M private, 2021M shared.\nPhysMem: 23G used (3749M wired, 7691M compressor), 84M unused.\nVM: 261T vsize, 4915M framework vsize, 1451283(4) swapins, 2165961(0) swapouts.\nNetworks: packets: 53203165/34G in, 47870703/31G out.\nDisks: 159053795/2791G read, 92191015/2367G written.\n\n\nProcesses: 641 total, 5 running, 636 sleeping, 6324 threads \n2026/09/13 01:45:45\nLoad Avg: 4.51, 6.93, 10.36 \nCPU usage: 31.66% user, 9.8% sys, 59.25% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342232 total, 5071M resident, 150M private, 2021M shared.\nPhysMem: 23G used (3595M wired, 7675M compressor), 78M unused.\nVM: 260T vsize, 4915M framework vsize, 1451283(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53203254/34G in, 47870772/31G out.\nDisks: 159054017/2791G read, 92191185/2367G written.\n\n\nProcesses: 640 total, 3 running, 637 sleeping, 6315 threads \n2026/09/13 01:45:46\nLoad Avg: 4.51, 6.93, 10.36 \nCPU usage: 35.34% user, 9.30% sys, 55.34% idle \nSharedLibs: 548M resident, 125M data, 39M linkedit.\nMemRegions: 342197 total, 5068M resident, 150M private, 2021M shared.\nPhysMem: 23G used (3606M wired, 7669M compressor), 102M unused.\nVM: 260T vsize, 4915M framework vsize, 1451283(0) swapins, 2165961(0) swapouts.\nNetworks: packets: 53203402/34G in, 47870918/31G out.\nDisks: 159055082/2791G read, 92191223/2367G written.\n\n\n",
+    "wall_ns": 135002667
+  },
+  "pairs": 4,
+  "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zv3pbupr/prefix",
+  "preflight": {
+    "argv": [
+      "bash",
+      "scripts/bench-host-check.sh",
+      "--wait",
+      "closure-timing"
+    ],
+    "exit_code": 0,
+    "output": "bench-host-check: closure-timing stable on AC power; idle 69.86 61.83 66.86%, median 66.86%, spread 8.03 points, hottest 49.7%\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+    "wall_ns": 3565754334
+  },
+  "qualified": true,
+  "rows": [
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 428209,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 205458339,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 140472614,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 809334
+      },
+      "process_wall_ns": 479552292,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 571542,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 229255200,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 183069245,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 29874,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2287,
+        "metadata_payload_before": 0,
+        "ns": 782250
+      },
+      "process_wall_ns": 532442000,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 463250,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 230875616,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 187939967,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 26292,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2287,
+        "metadata_payload_before": 0,
+        "ns": 739708
+      },
+      "process_wall_ns": 525965209,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 372792,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 196149407,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 131379685,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 712916
+      },
+      "process_wall_ns": 432557000,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 394667,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 198740188,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 137644671,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 756459
+      },
+      "process_wall_ns": 446753625,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 446875,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 222871370,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 183246325,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 26708,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2287,
+        "metadata_payload_before": 0,
+        "ns": 733958
+      },
+      "process_wall_ns": 516422875,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 453792,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 236550124,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 202354077,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 26167,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2287,
+        "metadata_payload_before": 0,
+        "ns": 742167
+      },
+      "process_wall_ns": 545835708,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 397709,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 211288964,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 137448450,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 783375
+      },
+      "process_wall_ns": 458400250,
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 415750,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 200690421,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 132950002,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 771875
+      },
+      "process_wall_ns": 452365042,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 496542,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 190185501,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 188833217,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 29376,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 787416
+      },
+      "process_wall_ns": 490416417,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 507208,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 198073540,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 190434782,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 28000,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 753250
+      },
+      "process_wall_ns": 491823542,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 383792,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 216841885,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 140849508,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 758958
+      },
+      "process_wall_ns": 475952167,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 449292,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 238733582,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 143886871,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 885917
+      },
+      "process_wall_ns": 506288708,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 566084,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 243826243,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 208333808,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 31001,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 811875
+      },
+      "process_wall_ns": 592413958,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 611583,
+        "completed_calls": 64000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 216749299,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 205538032,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 33875,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 882750
+      },
+      "process_wall_ns": 560494875,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 389625,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 205032338,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 135163168,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 751125
+      },
+      "process_wall_ns": 459623084,
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 360500,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 217967506,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 134864787,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 738500
+      },
+      "process_wall_ns": 467748458,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 469500,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 210604043,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 152868397,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 28542,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 761959
+      },
+      "process_wall_ns": 478236542,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 1011583,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 211791899,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 155562195,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 29917,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 1278333
+      },
+      "process_wall_ns": 493303750,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 371250,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 205042469,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 132185663,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 798167
+      },
+      "process_wall_ns": 451040500,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 425375,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 209765158,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 126390000,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 751375
+      },
+      "process_wall_ns": 455214959,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 525042,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 212944115,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 157161702,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 31792,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 888208
+      },
+      "process_wall_ns": 489025708,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 581000,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 217592303,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 159400582,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 33000,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2303,
+        "metadata_payload_before": 0,
+        "ns": 905041
+      },
+      "process_wall_ns": 510640250,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 1436708,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 64000,
+        "gc_ns": 213447591,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 132216536,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 1062625
+      },
+      "process_wall_ns": 466422458,
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 518042,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 217886051,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 171792903,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 797541
+      },
+      "process_wall_ns": 517271792,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 462084,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 233065585,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 178513965,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 15000,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 860542
+      },
+      "process_wall_ns": 541382459,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 704125,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 245692596,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 189128752,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 14793,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 3180375
+      },
+      "process_wall_ns": 574974583,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 543541,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 301666379,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 216240409,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 844417
+      },
+      "process_wall_ns": 665246208,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 530000,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 274983656,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 216095946,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 845958
+      },
+      "process_wall_ns": 626345000,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 677334,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 309737292,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 232706503,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 17417,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 1130250
+      },
+      "process_wall_ns": 698141250,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 536292,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 230018177,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 192048664,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 16249,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 960625
+      },
+      "process_wall_ns": 568116750,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 449417,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 211443782,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 182305842,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 775916
+      },
+      "process_wall_ns": 504649916,
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 628958,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 247862638,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 253034804,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 844250
+      },
+      "process_wall_ns": 618288708,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 688583,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 277936921,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 252402109,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 28042,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3523,
+        "metadata_payload_before": 0,
+        "ns": 960167
+      },
+      "process_wall_ns": 656821042,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 674458,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 262231711,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 226234970,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 27042,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3523,
+        "metadata_payload_before": 0,
+        "ns": 897625
+      },
+      "process_wall_ns": 607455917,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 641583,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 241236794,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 254855377,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 869250
+      },
+      "process_wall_ns": 612289500,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 744750,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 238393546,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 244170060,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 931375
+      },
+      "process_wall_ns": 609066834,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 650958,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 272277539,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 245288884,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 27584,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3523,
+        "metadata_payload_before": 0,
+        "ns": 911167
+      },
+      "process_wall_ns": 634319750,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 678167,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 269841876,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 240354844,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 27333,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3523,
+        "metadata_payload_before": 0,
+        "ns": 930292
+      },
+      "process_wall_ns": 630946000,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 641875,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 226057034,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 238988540,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 909958
+      },
+      "process_wall_ns": 587732083,
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 679333,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 232109536,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 249313346,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 856167
+      },
+      "process_wall_ns": 603795958,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 729250,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 229523368,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 256743957,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 36000,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 914375
+      },
+      "process_wall_ns": 608336125,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 680875,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 228228072,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 239397535,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 36958,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 897541
+      },
+      "process_wall_ns": 586111458,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 611417,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 240701460,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 242249590,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 844916
+      },
+      "process_wall_ns": 596613625,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 729250,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 254896953,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 251870988,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 900333
+      },
+      "process_wall_ns": 633296792,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 815750,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 254755706,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 248661453,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 37083,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 928667
+      },
+      "process_wall_ns": 622103459,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 709583,
+        "completed_calls": 192000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 239904333,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 249901627,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 35542,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 931959
+      },
+      "process_wall_ns": 612954042,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 65536000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 743500,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 257779208,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 254975876,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 927125
+      },
+      "process_wall_ns": 639699041,
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 1006583,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 347066672,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 296713909,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 1146375
+      },
+      "process_wall_ns": 784686958,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 851667,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 318281116,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 313467215,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 43667,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 1206958
+      },
+      "process_wall_ns": 794629209,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 837667,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 356262457,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 334729875,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 45375,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 1086917
+      },
+      "process_wall_ns": 844665583,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 806625,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 314425295,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 283542424,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 970042
+      },
+      "process_wall_ns": 779272750,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 934166,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 337089644,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 291202219,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 1410583
+      },
+      "process_wall_ns": 799177041,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 1077583,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 322181545,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 324975256,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 123001,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 2526375
+      },
+      "process_wall_ns": 822260708,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 982375,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 259591689,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 275467799,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 45583,
+        "floor_preparations": 2,
+        "metadata_payload_after": 3539,
+        "metadata_payload_before": 0,
+        "ns": 1128958
+      },
+      "process_wall_ns": 681447083,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 62464000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 891167,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 192000,
+        "gc_ns": 236268639,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 230619010,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 1093458
+      },
+      "process_wall_ns": 609438583,
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 786500,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 254113165,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 353893009,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 864584
+      },
+      "process_wall_ns": 719049958,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 876250,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 234664712,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 330031672,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 19541,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 897834
+      },
+      "process_wall_ns": 682447000,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 776417,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 258235587,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 327664107,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 18583,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 880541
+      },
+      "process_wall_ns": 692218208,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 873375,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 240110213,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 352310234,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 882334
+      },
+      "process_wall_ns": 702661375,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 853000,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 231597597,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 326792284,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 920458
+      },
+      "process_wall_ns": 669807375,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 778083,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 245090372,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 338769125,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 19292,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 921834
+      },
+      "process_wall_ns": 688907541,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 778209,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 229083965,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 331640210,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 19166,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 913958
+      },
+      "process_wall_ns": 672844167,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 74752000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 750958,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 234657082,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 332965507,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 851125
+      },
+      "process_wall_ns": 671907041,
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4541875,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 610929414,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1754473397,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2504667
+      },
+      "process_wall_ns": 2489896208,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3381291,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 636765124,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 942465623,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 102375,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21445,
+        "metadata_payload_before": 0,
+        "ns": 2535625
+      },
+      "process_wall_ns": 1701840250,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3315084,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 628788493,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 937882547,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 102957,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21445,
+        "metadata_payload_before": 0,
+        "ns": 2557875
+      },
+      "process_wall_ns": 1685361375,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4375833,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 615954075,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1734157622,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2372000
+      },
+      "process_wall_ns": 2468113459,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4405750,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 596508777,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1717982840,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2448458
+      },
+      "process_wall_ns": 2432576417,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3613666,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 625649369,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 916180074,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 109625,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21445,
+        "metadata_payload_before": 0,
+        "ns": 2612333
+      },
+      "process_wall_ns": 1673012041,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3440042,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 647344772,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 958497971,
+        "physical_saved": 64000,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 110916,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21445,
+        "metadata_payload_before": 0,
+        "ns": 2596834
+      },
+      "process_wall_ns": 1731627250,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4219125,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 598426930,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1705657425,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 0,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2468083
+      },
+      "process_wall_ns": 2432806792,
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4314084,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 604354650,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1726488008,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2377583
+      },
+      "process_wall_ns": 2449393042,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3652250,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 604110296,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 976299329,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 109167,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2658750
+      },
+      "process_wall_ns": 1709364083,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3556084,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 583183539,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 905242958,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 111375,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2715333
+      },
+      "process_wall_ns": 1619039292,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4796708,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 610441764,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1669349963,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2502375
+      },
+      "process_wall_ns": 2401510875,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4789708,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 614951672,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1710022747,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2386167
+      },
+      "process_wall_ns": 2449870208,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3417792,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 568971095,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 907582411,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 107208,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2559792
+      },
+      "process_wall_ns": 1592947541,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3497542,
+        "completed_calls": 2048000,
+        "constructor_discoveries": 0,
+        "constructor_queries": 64000,
+        "effects": 0,
+        "gc_ns": 563397466,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 943960709,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 102458,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2549584
+      },
+      "process_wall_ns": 1624334000,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 303104000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4029833,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 601848367,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1702177611,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 1,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2353583
+      },
+      "process_wall_ns": 2418535125,
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4386000,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 549893585,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1510448335,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2475291
+      },
+      "process_wall_ns": 2187259375,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3141958,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 529986967,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 1520855377,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 101667,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2531125
+      },
+      "process_wall_ns": 2170661875,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3486792,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 560892574,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 1541364385,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 102875,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2517750
+      },
+      "process_wall_ns": 2220339208,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4128000,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 523210490,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1456998719,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2356917
+      },
+      "process_wall_ns": 2098396417,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4647542,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 524711119,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1486930331,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2504500
+      },
+      "process_wall_ns": 2138010083,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3525167,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 548298924,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 1531241713,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 107958,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2639792
+      },
+      "process_wall_ns": 2204827250,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 3498292,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 533543790,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 1496431821,
+        "physical_saved": 0,
+        "restored_hits": 1,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 110875,
+        "floor_preparations": 2,
+        "metadata_payload_after": 21461,
+        "metadata_payload_before": 0,
+        "ns": 2630459
+      },
+      "process_wall_ns": 2154832417,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 270336000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 4344958,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 2048000,
+        "gc_ns": 533327203,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 1508651663,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 2,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2500083
+      },
+      "process_wall_ns": 2164979458,
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6516500,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 868009883,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2763417617,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2615625
+      },
+      "process_wall_ns": 3760787875,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6797792,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 821649559,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2801533502,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 77917,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2561916
+      },
+      "process_wall_ns": 3754229500,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6603750,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 811417583,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2764289127,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 81041,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2690291
+      },
+      "process_wall_ns": 3700919750,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6723958,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 841857088,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2790492788,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2404250
+      },
+      "process_wall_ns": 3752178083,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 5963750,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 867933624,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2750700265,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2479583
+      },
+      "process_wall_ns": 3740475125,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6044333,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 826083368,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2737651430,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 75750,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2534875
+      },
+      "process_wall_ns": 3680757792,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6031875,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 854977979,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2766768908,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 74209,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2472417
+      },
+      "process_wall_ns": 3740980709,
+      "shape": 3,
+      "uses": 32
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 401408000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 6235584,
+        "completed_calls": 0,
+        "constructor_discoveries": 0,
+        "constructor_queries": 0,
+        "effects": 0,
+        "gc_ns": 888592510,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 2776744660,
+        "physical_saved": 0,
+        "restored_hits": 0,
+        "shape": 3,
+        "uses": 32
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 2389250
+      },
+      "process_wall_ns": 3796540125,
+      "shape": 3,
+      "uses": 32
+    }
+  ],
+  "scope": "Instrumented test floor with real release installed Codegen and source factories. Each factory invokes one closure uses times (1, 3 or 32); completed_calls counts optimized invocations. Shapes: 0 captured Cell return with eliminated closure, 1 escaping closure, 2 warmed then replaced callee, 3 observing callee refused by compiler. Precise GC; 128 factory calls then separately timed collection per batch. Id allocation charges must match; physical_saved counts deferred Block allocations before collection. Materialization timing excludes source parsing and CodeObject creation; cold_ns covers first 128 factory calls. Floor preparation time is a subset of materialization. Metadata is process-wide inline record/plan plus used element payload, excluding Vec spare capacity, BTree nodes, Rc and allocator/loader costs. Journal bytes include retained capacity and shared snapshots. No RSS or application-wide claim. Probe counters and per-factory result checks are inside measured execution; process wall time is separately retained.",
+  "shapes": [
+    {
+      "cold_ns": {
+        "median_improvement_percent": -19.183261061100488,
+        "paired_improvement_percent": [
+          -33.47267339079749,
+          -24.26500568681731,
+          -13.22836720577094,
+          -14.101516435383665
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -23.292642326805346,
+        "paired_improvement_percent": [
+          -19.192700573400256,
+          -27.871261890836863,
+          -20.730075725554585,
+          -25.855208928056108
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": 3.160486014129904,
+        "paired_improvement_percent": [
+          3.3464552335624065,
+          -3.75808650668521,
+          2.9745167946974016,
+          5.260315940641458
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -38.09049599218997,
+        "paired_improvement_percent": [
+          -30.323797491231996,
+          -43.05101051201332,
+          -33.12998147236663,
+          -47.22179624433742
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -17.334299840378208,
+        "paired_improvement_percent": [
+          -11.02897616846339,
+          -21.594427786395777,
+          -15.594557290945321,
+          -19.074042389811098
+        ]
+      },
+      "shape": 0,
+      "uses": 1
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -29.075838888692076,
+        "paired_improvement_percent": [
+          -19.43283223090799,
+          -32.15700170925919,
+          -25.994676068124956,
+          -56.96708373435997
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -15.887761034611458,
+        "paired_improvement_percent": [
+          -13.600958358693838,
+          -8.615507558494695,
+          -18.17456371052908,
+          -24.130778788124264
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -0.6306625644303121,
+        "paired_improvement_percent": [
+          -2.0134089068825967,
+          0.7520837780219725,
+          8.357667817639802,
+          -17.523714428357472
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -43.41163071453438,
+        "paired_improvement_percent": [
+          -42.03325623116576,
+          -35.20443536089597,
+          -44.790005197903014,
+          -52.066598498194416
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -12.711373404335202,
+        "paired_improvement_percent": [
+          -8.41165241941928,
+          -3.334657577050182,
+          -17.011094389251124,
+          -21.946632906714502
+        ]
+      },
+      "shape": 1,
+      "uses": 1
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -26.833084294146925,
+        "paired_improvement_percent": [
+          -30.235783633841894,
+          -172.48026936026935,
+          -23.430384954451956,
+          59.56032819473407
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -8.998379773887454,
+        "paired_improvement_percent": [
+          -3.015638650739949,
+          -8.933407133423854,
+          -10.099698961037507,
+          -9.063352414351055
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -10.693793639667827,
+        "paired_improvement_percent": [
+          -3.17657413676371,
+          -60.15858836559267,
+          -18.211013142571943,
+          14.829690624632397
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -19.122433283491414,
+        "paired_improvement_percent": [
+          -13.349377847606725,
+          -17.684619851700557,
+          -24.346627106574893,
+          -20.560246715282272
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -8.398796138567343,
+        "paired_improvement_percent": [
+          -2.242248760123111,
+          -9.370167423989638,
+          -7.427424853145048,
+          -9.48020217328387
+        ]
+      },
+      "shape": 2,
+      "uses": 1
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -23.564733672777994,
+        "paired_improvement_percent": [
+          10.80182687890171,
+          -29.544045435394928,
+          -27.798867924528302,
+          -19.330599421027685
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -6.405922476117376,
+        "paired_improvement_percent": [
+          -5.620163926019983,
+          16.042547022959663,
+          -10.459443395899793,
+          -7.191681026214769
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -28.70560337222128,
+        "paired_improvement_percent": [
+          -7.899405798573356,
+          -276.6355959200253,
+          -33.60592369833964,
+          -23.80528304610292
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -4.628261506211673,
+        "paired_improvement_percent": [
+          -3.9123048057462473,
+          12.53773849456602,
+          -7.686658314265649,
+          -5.344218206677098
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -8.061926878150583,
+        "paired_improvement_percent": [
+          -4.661121555996228,
+          13.56965645417102,
+          -11.462732200304938,
+          -12.57640831550242
+        ]
+      },
+      "shape": 3,
+      "uses": 1
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -5.389052557792173,
+        "paired_improvement_percent": [
+          -9.479965275900781,
+          -5.1240447455746185,
+          12.593756294058412,
+          -5.654060370009728
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -6.565640666183059,
+        "paired_improvement_percent": [
+          -5.877767688819624,
+          1.537111538089564,
+          -7.253513643546494,
+          -9.7089723081635
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -2.749458471025723,
+        "paired_improvement_percent": [
+          -13.730174711282196,
+          -3.264308311763009,
+          2.1696953429069965,
+          -2.234608630288437
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -0.10408619371446437,
+        "paired_improvement_percent": [
+          0.2500426779234677,
+          11.230058136069854,
+          -0.4582150653523964,
+          -0.5717027268336894
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -5.189129550921523,
+        "paired_improvement_percent": [
+          -6.23209408508234,
+          0.7894277135244043,
+          -4.146165016760706,
+          -7.352655784829776
+        ]
+      },
+      "shape": 0,
+      "uses": 3
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -9.354055513184766,
+        "paired_improvement_percent": [
+          -7.347942761502835,
+          -11.360168264866699,
+          -11.861501542680841,
+          4.561802286482852
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": 1.917248776579089,
+        "paired_improvement_percent": [
+          -1.0062760166019702,
+          3.1732911648085227,
+          0.6612063883496555,
+          4.475650211202975
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -4.6877438096196045,
+        "paired_improvement_percent": [
+          -6.798673623253415,
+          -6.228429808406988,
+          -3.147057810832221,
+          -0.5213967911554596
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": 1.2257991236791166,
+        "paired_improvement_percent": [
+          -2.9804304980929563,
+          1.1773208780250122,
+          1.274277369333221,
+          1.9900898389304866
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": 1.763883275490552,
+        "paired_improvement_percent": [
+          -0.7519372960095305,
+          1.760296205102585,
+          1.767470345878519,
+          4.180872142342329
+        ]
+      },
+      "shape": 1,
+      "uses": 3
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -7.041525209377475,
+        "paired_improvement_percent": [
+          15.39028574891489,
+          -3.848380598171386,
+          -15.352410599400956,
+          -10.234669820583564
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -8.801956281571933,
+        "paired_improvement_percent": [
+          1.8689985928606268,
+          -15.5567951319459,
+          -3.0025755721111436,
+          -14.60133699103272
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -8.666596389950543,
+        "paired_improvement_percent": [
+          -5.284745393086898,
+          -12.048447386814187,
+          -79.10147789956352,
+          -3.2465810300898568
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -14.825315992672705,
+        "paired_improvement_percent": [
+          -5.64628266213163,
+          -18.052836777610402,
+          -11.597795207735007,
+          -19.447134475167505
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -5.639975127282237,
+        "paired_improvement_percent": [
+          -1.2670340571660166,
+          -8.391520555543618,
+          -2.888429699020856,
+          -11.815546637289298
+        ]
+      },
+      "shape": 2,
+      "uses": 3
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": 2.576967633218119,
+        "paired_improvement_percent": [
+          -11.411315956770496,
+          11.1015314154859,
+          8.782766705744427,
+          -3.628831439308189
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": 1.1580069240735902,
+        "paired_improvement_percent": [
+          7.123248389908621,
+          1.1006968164284148,
+          -4.561260306935977,
+          1.2153170317187656
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -1.997635482041038,
+        "paired_improvement_percent": [
+          -3.8457801671092584,
+          0.2032110289300837,
+          -0.14949079697281764,
+          -7.3823468938170045
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": 3.5702784091685755,
+        "paired_improvement_percent": [
+          6.742528502449163,
+          6.995575098735285,
+          -3.6649705597088023,
+          0.39802831588798826
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": 0.6733789188862194,
+        "paired_improvement_percent": [
+          5.090461044154592,
+          1.4862304050795472,
+          -2.8515908771532983,
+          -0.13947256730710844
+        ]
+      },
+      "shape": 3,
+      "uses": 3
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": 21.353293570766414,
+        "paired_improvement_percent": [
+          25.552970964634646,
+          24.241075927714796,
+          17.97841457186631,
+          18.465511213818033
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": 33.28630133797131,
+        "paired_improvement_percent": [
+          33.236286874438825,
+          33.336315801503794,
+          33.383666992992175,
+          30.304515999371905
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -5.95481389592647,
+        "paired_improvement_percent": [
+          -1.2360126116565562,
+          -7.83621416526139,
+          -6.692987994893107,
+          -5.216639796959832
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": 46.099623643830036,
+        "paired_improvement_percent": [
+          46.282136588019185,
+          45.91711069964089,
+          46.6711743174338,
+          43.80477832469788
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": 31.437420049625352,
+        "paired_improvement_percent": [
+          31.650152944849175,
+          31.71459079993616,
+          31.224687154401533,
+          28.82183428235019
+        ]
+      },
+      "shape": 0,
+      "uses": 32
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": 20.602656116945273,
+        "paired_improvement_percent": [
+          15.341240457997573,
+          25.86407177589297,
+          28.642998696371468,
+          13.208760760061278
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": 34.64468897445903,
+        "paired_improvement_percent": [
+          32.195782517723245,
+          34.71217219659645,
+          36.49162356654729,
+          34.5772057523216
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -8.419003084391097,
+        "paired_improvement_percent": [
+          -11.825749090568017,
+          -8.510235276487332,
+          -7.2763138539758465,
+          -8.327770892294861
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": 45.158331505440316,
+        "paired_improvement_percent": [
+          43.45171675238186,
+          45.77272722532177,
+          46.92571121686956,
+          44.543935785558865
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": 32.71028840875799,
+        "paired_improvement_percent": [
+          30.212748477302153,
+          32.58247094134021,
+          34.97828840898334,
+          32.838105876175774
+        ]
+      },
+      "shape": 1,
+      "uses": 32
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": 21.81801734590085,
+        "paired_improvement_percent": [
+          28.363930688554497,
+          15.533139534883722,
+          24.149862443416325,
+          19.48617224838537
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -1.4571223229834618,
+        "paired_improvement_percent": [
+          0.461067937694537,
+          -6.163376548563471,
+          -3.3753125836614606,
+          0.5878246440186197
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -5.30841167237951,
+        "paired_improvement_percent": [
+          -2.255653981693473,
+          -6.823872032829326,
+          -5.401956478338987,
+          -5.2148668664200315
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -1.8345306094794012,
+        "paired_improvement_percent": [
+          -0.6890035070282519,
+          -5.790373381927449,
+          -2.9800577119305505,
+          0.8099843257190598
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -1.3282568029046316,
+        "paired_improvement_percent": [
+          0.7588263280389418,
+          -5.811237095721755,
+          -3.125203549379152,
+          0.4686899435698888
+        ]
+      },
+      "shape": 2,
+      "uses": 32
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": 0.21827148721114686,
+        "paired_improvement_percent": [
+          -4.316611678048021,
+          1.7877565564805686,
+          -1.351213582058275,
+          3.2668792530098245
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": 1.3531895587244658,
+        "paired_improvement_percent": [
+          0.22703025187753578,
+          1.5594083151036164,
+          1.5171220047124234,
+          1.1892571127365081
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -2.855387098372675,
+        "paired_improvement_percent": [
+          2.0533906810035862,
+          -11.897306852448786,
+          -2.2298910744266376,
+          -3.480883122318712
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": 0.4168214912185608,
+        "paired_improvement_percent": [
+          -1.3793023814250294,
+          0.9390334607809803,
+          0.47438229333940374,
+          0.3592606890977179
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": 1.414758876342248,
+        "paired_improvement_percent": [
+          0.17438832547820304,
+          1.3660954215429233,
+          1.5965173140938926,
+          1.4634223311415728
+        ]
+      },
+      "shape": 3,
+      "uses": 32
+    }
+  ],
+  "status": "passed",
+  "uses": [
+    1,
+    3,
+    32
+  ]
+}

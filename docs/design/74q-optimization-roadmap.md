@@ -85,8 +85,13 @@ and matches all 244 source hashes. The first 96-process repeated-use timing
 matrix is unqualified because of competing CPU load and still shows roughly
 11-12% successful-path execution overhead at 32 uses. Profiles identify
 repeated developer recovery-control environment reads as the largest sampled
-optimizer cost. Hoisting those reads to region admission is the next measured
-change; no promotion is justified by the current results.
+optimizer cost. Those reads now occur once per admitted region, with fresh
+controls on the next region. Full correctness passes all 61 commands, 528 tests
+and 1,248 source rows with matching source/floor hashes. A qualified 96-process
+repeat now shows 45-46% less execution time at 32 uses, and 33-35% less time
+including collection. The authorized `rk` pause was resumed afterward. One-use
+regions still regress and three-use regions are near break-even; a measured
+profitability threshold and broader acceptance remain required before promotion.
 Broader preparation/metadata/resource
 acceptance, closure bodies and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.

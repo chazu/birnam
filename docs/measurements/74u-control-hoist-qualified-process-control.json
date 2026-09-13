@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "authorization": "User authorized pausing rk during timing and resuming it afterward.",
+  "pid": 84695,
+  "identity": {
+    "comm": "/Users/chazu/.local/bin/rk",
+    "started": "Sun Sep 13 01:30:48 2026"
+  },
+  "original_state": "S",
+  "command": [
+    "python3",
+    "scripts/closure-timing.py",
+    "--receipt",
+    "docs/measurements/74u-control-hoist-correctness.json",
+    "--output",
+    "docs/measurements/74u-control-hoist-qualified-timing.json",
+    "--uses",
+    "1",
+    "3",
+    "32",
+    "--batches",
+    "500",
+    "--pairs",
+    "4",
+    "--wait-seconds",
+    "120"
+  ],
+  "started_at": "2026-09-13T05:43:24.104414+00:00",
+  "paused_at": "2026-09-13T05:43:24.111250+00:00",
+  "paused_state": "T",
+  "timing_exit_code": 0,
+  "resumed_at": "2026-09-13T05:45:46.942548+00:00",
+  "resumed_state": "R",
+  "finished_at": "2026-09-13T05:45:46.945035+00:00"
+}

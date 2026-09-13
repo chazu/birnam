@@ -182,8 +182,12 @@ matrices and 1,248 process rows, passes all 61 commands and 528 workspace tests,
 and matches all 244 source hashes. The first 96-process repeated-use timing
 matrix remains unqualified and shows about 11-12% successful-path overhead at
 32 uses. Profiles identify per-call developer recovery-control environment
-reads as the largest sampled optimizer cost; reading them once per admitted
-region is next, followed by forced-position verification and retiming.
+reads as the largest sampled optimizer cost. Reading them once per admitted
+region now passes full verification: 61 commands, 528 workspace tests and
+1,248 source rows, including every supported forced position. A qualified repeat
+now shows 45-46% less execution time at 32 uses (33-35% including collection).
+The authorized `rk` pause was resumed. One-use regions still regress and three
+uses are near break-even; a measured profitability threshold remains required.
 Broader preparation/metadata/resource acceptance and repeated-use
 profitability remain open; the
 consumer stays disabled by default. See 74T for the full remaining scope.
