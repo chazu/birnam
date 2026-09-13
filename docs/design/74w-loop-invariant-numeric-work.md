@@ -307,3 +307,11 @@ mutation and GC differentials, capture/suspension/retirement, actual-loop stamps
 and earliest arithmetic failures. The diagnostic timing test remains ignored.
 Full production integration and before/after cost evidence follow this checkpoint;
 no speedup is inferred merely from removing the C call.
+
+The [full production receipt](../measurements/74w-unchanged-reuse-production-correctness.json)
+now passes all 71 commands and retains 3,164 source-process cases, with all 271
+production source hashes matching. This includes both floor profiles, mutation,
+forced recovery, GC, capture/suspension, native retirement, installed-prefix,
+image and cold-archive checks. A separate normal release installation has been
+built from this checkpoint. Its driver verification and exploratory comparison
+against loop reuse disabled remain required before a performance conclusion.
