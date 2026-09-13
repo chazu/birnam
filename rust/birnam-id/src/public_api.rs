@@ -455,6 +455,10 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
 pub(crate) fn initialize_once() -> *mut IdApi {
     let bootstrap = Box::new(build_bootstrap());
     install_bootstrap_metadata(&bootstrap);
+    #[cfg(feature = "ffi-test-hooks")]
+    if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
+        bootstrap.runtime.install_closure_control_probe();
+    }
     let api = Box::new(table_for(&bootstrap));
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME

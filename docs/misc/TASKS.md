@@ -142,7 +142,11 @@ escaping/forced recovery, method replacement and shared Cell checks. It remains
 disabled by default. Collecting successor and nested-entry tests now require
 actual optimization hits under precise and conservative GC, preserving closure
 aliases, capture/argument identities and eviction survival. Its source passes
-525 tests and all production gates; capture/suspend recovery remains next.
+525 tests and all production gates. An explicit host-owned Machine probe also
+passes 24 baseline/optimized/forced capture and suspension executions across
+debug/release and both GC modes, including paused collection, supplied results,
+closure identity, exact effects and generation pins. The bridge is test-only;
+instrumentation/refusal coverage and candidate/resource costs remain next.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.

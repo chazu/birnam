@@ -1169,3 +1169,53 @@ The installed source fixture alone cannot prove that host control lifecycle.
 Further forced boundaries, API instrumentation, broader bodies and qualified
 cold/metadata/refusal/application measurements remain required, alongside the
 other three families' full acceptance obligations.
+
+### Recovered closures through capture and suspension
+
+`closure-control-smoke.sh` adds the explicit host-owned Machine lifecycle to
+the installed compiler test. The test floor enables the existing
+`ffi-test-hooks` feature and requires `BIRNAM_TEST_CLOSURE_CONTROL=1` before
+installing its small host bridge. The ordinary installed floor must expose no
+such bridge, even with that environment variable set. The script selects the
+separate debug/release test floor through the existing `BIRNAM_ID_DYLIB` host
+override; it does not replace the installed library or alter its manifest.
+
+The source factory constructs and invokes its private closure through the real
+Codegen runtime. After a verified optimization hit, a native observer checks
+the recovered closure's physical Frame aliases and collects. Only then does it
+replace the next ordinary Call publication with capture or suspension. While
+paused, the host bridge verifies the active/continuation generation pin transfer,
+evicts materializations and collects again. Its remembered closure identity is
+deliberately untraced, so precise collection requires actual Frame/Continuation
+roots to preserve the object.
+
+Restoration supplies the checkpoint Call's result. The successor observer checks
+that exact input, the same recovered closure and its aliases, and the original
+captured Cell. The caller returns that same closure, which remains invocable
+after Machine destruction and sees later changes to the shared Cell. Exactly
+two observations occur, with no checkpoint execution or replay. Wrong-Machine
+restoration must refuse without consuming the continuation; repeated restoration
+or resumption must refuse after completion. Active and continuation generation
+pins must return to their pre-test counts.
+
+The comparison covers ordinary, optimized and forced-constructor-recovery paths,
+debug/release floors, precise/conservative collection, and capture/suspension:
+24 executions in eight differential groups. Optimization/recovery diagnostics
+must occur inside the controlled invocation, not just during warmup. Both
+observers' physical alias positions are compared across all three paths.
+Capture and suspension use separate processes: eviction queues retirement until
+the enclosing host call returns, and that pending retirement correctly prevents
+later optimizations within the same call. A second case in the same source
+invocation would otherwise pass by falling back.
+
+The [control receipt](../measurements/74t-closure-control.json) records the
+passing 55-command verification, 525 workspace tests (19 ignored), installed
+prefix/image/cold-archive/relocation gates and all eight control groups. Source
+hashes match the tested files, and selected test-floor hashes are retained.
+This proves the
+bounded closure consumer can use the existing V2 continuation machinery; it
+adds no production recovery protocol or public ABI field. Closure promotion
+still requires broader refusal/instrumentation and forced-boundary coverage,
+allocation/resource acceptance and qualified cold/warm/application measurements.
+Broader closure bodies and the remaining numeric, loop and aggregate obligations
+remain in progress.

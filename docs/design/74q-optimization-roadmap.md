@@ -34,12 +34,17 @@ and literal-aware PC emission now have compiler tests and full production gates;
 exact warm constructor declarations and runtime admission also pass real-module
 and installed-prefix checks. An experimental source-created closure consumer
 now eliminates allocation and substitutes captures, with escaping and forced
-recovery exercised end to end. It is disabled by default; continuation-control
-coverage, broader shapes and performance acceptance remain open.
+recovery exercised end to end. It is disabled by default; broader shapes,
+instrumentation/refusal coverage and performance acceptance remain open.
 Collecting successor observation now passes with actual outer and nested
 optimization hits under both precise and conservative GC, preserving recovered
 closure aliases, multiple captures, argument identity and eviction survival.
 The corresponding full production gate passes 525 tests, 19 ignored.
+Explicit host-owned Machine tests also pass capture/suspension, collection while
+paused, supplied-result restoration, shared closure identity and generation-pin
+transfer across ordinary, optimized and forced-recovery execution. They use a
+separate test-only floor bridge with the real installed Codegen, and require
+actual optimization hits within each tested control invocation.
 None of those four full families is complete yet.
 
 ## Direction

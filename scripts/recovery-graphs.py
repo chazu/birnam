@@ -28,6 +28,7 @@ def sources():
         "compatibility_authority.py", "rust-cutover-verify.sh",
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
         "closure-elision-smoke.sh",
+        "closure-control-smoke.sh",
     )]
     paths += [ROOT / path for path in (
         "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",
@@ -38,6 +39,7 @@ def sources():
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
         "scripts/fixtures/closure-elision.birnam",
         "scripts/fixtures/closure-observation.birnam",
+        "scripts/fixtures/closure-control.birnam",
     )]
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
