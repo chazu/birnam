@@ -750,3 +750,12 @@ and stable pending storage after collection. Compiler-refused factories retain
 3,823 to 18,273 bytes of cold input payloads in this matrix, until retirement.
 Full combined production and cost verification remain pending; these checks do
 not promote the closure consumer.
+
+The [combined production proof](../measurements/74u-hot-aggregate-scratch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases, with 277 current source
+hashes matching. It includes deferred closure preparation, aggregate preparation
+controls and verified numeric scratch reuse. The [90 normal-driver checks](../measurements/74u-hot-normal-driver-correctness.json)
+also pass with matching production source, fixture and published-prefix hashes.
+The independent aggregate control matrix is still running. Closure timing may
+now compare this exact normal floor and verified driver; no default promotion
+or profitability claim follows from the passing correctness gate.
