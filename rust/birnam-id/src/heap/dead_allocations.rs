@@ -1,6 +1,7 @@
 //! Accounting for allocations whose unexposed identity is proven dead.
 //! No Oop is published for a journal entry; payload bits are intentionally not roots.
 use super::*;
+pub(super) mod numeric;
 
 /// A process-local, single-use identity for an already charged allocation.
 /// Never an Oop; collection or materialization makes the capability stale.
@@ -69,6 +70,7 @@ impl Heap {
     /// Exact raw payload bits, held outside the traced heap until realization.
     /// The caller proves current constructor/storage authority and excludes
     /// observation while any live identity remains virtual.
+    #[cfg(test)]
     pub(crate) fn prepare_virtual_bytes(
         &self,
         vtable: Oop,
@@ -95,7 +97,7 @@ impl Heap {
         vtable: Oop,
         words: &[Oop],
     ) -> Option<std::rc::Rc<DeadAllocation>> {
-        if self.dead_allocations.len() >= MAX_DEAD_ALLOCATIONS {
+        if !self.admits_dead_allocations(1) {
             return None;
         }
         let bytes = words.len().checked_mul(core::mem::size_of::<Oop>())?;
@@ -121,7 +123,7 @@ impl Heap {
     /// Preparation has no logical allocation effect. The caller must prove
     /// non-escape and absence of observation/collection through Frame retirement.
     pub(crate) fn prepare_dead_clone(&self, prototype: Oop) -> Option<std::rc::Rc<DeadAllocation>> {
-        if self.dead_allocations.len() >= MAX_DEAD_ALLOCATIONS {
+        if !self.admits_dead_allocations(1) {
             return None;
         }
         let block = self.blocks.get(&prototype.addr())?;
@@ -188,10 +190,13 @@ impl Heap {
         &mut self,
         identity: DeferredAllocation,
     ) -> Option<Oop> {
-        let position = self
+        let Some(position) = self
             .deferred_allocations
             .iter()
-            .position(|(key, _)| *key == identity)?;
+            .position(|(key, _)| *key == identity)
+        else {
+            return self.materialize_numeric(identity);
+        };
         let (_, index) = self.deferred_allocations.swap_remove(position);
         let displaced = self.dead_allocations.len() - 1;
         let snapshot = self.dead_allocations.swap_remove(index);
@@ -204,35 +209,32 @@ impl Heap {
     }
 
     fn materialize_snapshot(&mut self, allocation: &DeadAllocation) -> Oop {
+        self.materialize_raw(allocation.vtable, allocation.payload())
+    }
+
+    fn materialize_raw(&mut self, vtable: usize, payload: &[u8]) -> Oop {
         let allocation_bytes = self.bytes_since_collection;
         // Construction realizes a previously charged allocation; it must not
         // overflow by charging that allocation for a second time.
         self.bytes_since_collection = 0;
-        let object = self.allocate(allocation.payload().len(), Permanence::Collectable);
+        let object = self.allocate(payload.len(), Permanence::Collectable);
         boundary::require_invariant(
-            self.set_vtable(
-                object,
-                core::ptr::with_exposed_provenance_mut(allocation.vtable),
-            ),
+            self.set_vtable(object, core::ptr::with_exposed_provenance_mut(vtable)),
             "materialized allocation missing from heap",
         );
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                allocation.payload().as_ptr(),
-                object.cast::<u8>(),
-                allocation.payload().len(),
-            )
+            core::ptr::copy_nonoverlapping(payload.as_ptr(), object.cast::<u8>(), payload.len())
         };
         self.bytes_since_collection = allocation_bytes;
         object
     }
 
     pub(crate) fn has_dead_allocations(&self) -> bool {
-        !self.dead_allocations.is_empty()
+        self.dead_allocation_count() != 0
     }
 
     pub(crate) fn admits_dead_allocations(&self, count: usize) -> bool {
-        count <= MAX_DEAD_ALLOCATIONS.saturating_sub(self.dead_allocations.len())
+        count <= MAX_DEAD_ALLOCATIONS.saturating_sub(self.dead_allocation_count())
     }
 
     pub(crate) fn admits_virtual_allocations(&self, count: usize) -> bool {
@@ -249,13 +251,17 @@ impl Heap {
         for snapshot in allocations {
             self.materialize_snapshot(&snapshot);
         }
+        for entry in core::mem::take(&mut self.numeric_allocations) {
+            self.materialize_numeric_entry(&entry);
+        }
     }
 
     /// Use only after proving that the sweep cannot observe these missing
     /// physical blocks. The returned count contributes to ordinary GC results.
     pub(crate) fn reclaim_dead_allocations(&mut self) -> usize {
-        let count = self.dead_allocations.len();
+        let count = self.dead_allocation_count();
         self.dead_allocations.clear();
+        self.numeric_allocations.clear();
         self.deferred_allocations.clear();
         count
     }
@@ -282,7 +288,9 @@ impl Heap {
     #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn dead_allocation_storage_bytes(&self) -> usize {
         let mut seen = std::collections::HashSet::new();
-        self.deferred_allocations.capacity() * core::mem::size_of::<(DeferredAllocation, usize)>()
+        self.numeric_allocation_storage_bytes()
+            + self.deferred_allocations.capacity()
+                * core::mem::size_of::<(DeferredAllocation, usize)>()
             + self.dead_allocations.capacity() * core::mem::size_of::<std::rc::Rc<DeadAllocation>>()
             + self
                 .dead_allocations

@@ -585,3 +585,19 @@ values, partial and out-of-order materialization, stale capabilities after GC,
 combined journal exhaustion and release, untraced pointer-shaped words, and
 allocation/finalizer observations. Retain the full numeric source, recovery,
 mutation and V2 matrix; then compare actual costs and total retained storage.
+
+The batched-storage experiment is implemented on `codex/74v-numeric-batches`.
+Each numeric entry stores its fresh capability, shared batch owner and element
+index. The existing clone journal retains its representation; the numeric vector
+has zero initial capacity (its empty header adds three words to `Heap`). Both
+journals share admission, logical counts/bytes and the deferred-ID namespace.
+Materialization borrows the raw bytes directly from the host vector and uses the
+existing callback-free realization path. GC settles both journals before an
+observing sweep, or reclaims both without publishing physical garbage.
+
+The runtime prepares one host values vector and one Rc header per admitted
+invocation with virtual results, replacing one Rc snapshot per result. Scratch
+leases now retain only identity and materialization vectors. Batch storage,
+including unused future elements retained by charged entries, is included once
+in journal resource reports; retained capacities of both journals are included.
+The consumer remains default-off. The [focused proof](../measurements/74v-batch-focused-correctness.json) passes 556 workspace tests (19 ignored) and 212 release runtime tests (15 ignored), including mixed journal identity/admission, partial ownership, stale IDs, exact bytes, and pointer-shaped payload/finalizer differential checks. Installed source and full production verification remain pending; the cost hypothesis has not yet been measured.

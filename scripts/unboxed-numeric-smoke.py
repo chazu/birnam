@@ -72,10 +72,11 @@ def main():
     sources = [Path(__file__).resolve(), ROOT / "rust/birnam-id/src/public_api.rs",
                ROOT / "rust/birnam-id/src/runtime.rs", ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe.rs",
                ROOT / "rust/birnam-id/src/runtime/native_tier.rs",
-               ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs",
-               ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
+               ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs"]
     sources += sorted((ROOT / "rust/birnam-codegen/src/numeric_chain").rglob("*.rs"))
     sources += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
+    sources += [ROOT / "rust/birnam-id/src/heap.rs", ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
+    sources += sorted((ROOT / "rust/birnam-id/src/heap/dead_allocations").rglob("*.rs"))
     receipt = dict(status="running", captured_inputs=args.captured_inputs, scope="Installed Prelude and Codegen with a test-only floor; no timing claim",
                    floor_sha256=sha(floor), installed_sha256={str(p): sha(p) for p in installed},
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in sources}, rows=[])
