@@ -1,5 +1,5 @@
 //! Measurements use the actual source compiler/consumer and explicit GC batches.
-use super::native_tier::closure_elision::{constructor_discoveries, counters};
+use super::native_tier::closure_elision::{constructor_discoveries, constructor_queries, counters};
 use super::*;
 use std::time::Instant;
 
@@ -69,13 +69,19 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             answer = invoke();
         }
         let cold_ns = cold_start.elapsed().as_nanos();
-        if shape == 2 {
+        let replaced = if shape == 2 {
             let vt = unsafe { (*r.state.get()).heap.vtable_of(answer).unwrap() };
-            r.add_method(vt, r.intern(b"value").unwrap(), replacement);
-        }
+            let value = r.intern(b"value").unwrap();
+            let method = unsafe { (*r.state.get()).vtables.lookup(vt, value).unwrap() };
+            r.add_method(vt, value, replacement);
+            Some((vt, value, method))
+        } else {
+            None
+        };
         r.gc_collect_from_native_range(0, 0);
         let before = counters();
         let discoveries_before = constructor_discoveries();
+        let queries_before = constructor_queries();
         EFFECTS.set(0);
         let mut ns = 0;
         let mut gc_ns = 0;
@@ -100,14 +106,31 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         }
         let after = counters();
         let discoveries = constructor_discoveries() - discoveries_before;
+        let queries = constructor_queries() - queries_before;
         let calls = batches * 128;
         let attempts = after.0 - before.0;
         let hits = after.1 - before.1;
         let materialized = after.2 - before.2;
         let effects = EFFECTS.get();
         assert_eq!(effects, if shape == 2 { calls } else { 0 });
+        // Restore after the measurement snapshots. The first subsequent call
+        // must regain admission, with no cooldown or stale native target.
+        let mut restored_hits = 0;
+        if let Some((vt, value, method)) = replaced {
+            r.add_method(vt, value, method.to_method());
+            let previous = counters();
+            let queries_before_restore = constructor_queries();
+            invoke();
+            let restored = counters();
+            restored_hits = restored.1 - previous.1;
+            let expected = usize::from(attempts != 0);
+            assert_eq!(restored_hits, expected);
+            assert_eq!(restored.2 - previous.2, expected);
+            assert_eq!(constructor_queries() - queries_before_restore, expected);
+            assert_eq!(EFFECTS.get(), effects);
+        }
         println!(
-            "closure-measure shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries}"
+            "closure-measure shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits}"
         );
         r.canonical().nil
     })

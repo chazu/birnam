@@ -77,6 +77,7 @@ thread_local! {
 #[cfg(feature = "ffi-test-hooks")]
 thread_local! {
     static ATTEMPTS: Cell<usize> = const { Cell::new(0) };
+    static CONSTRUCTOR_QUERIES: Cell<usize> = const { Cell::new(0) };
     static CONSTRUCTOR_DISCOVERIES: Cell<usize> = const { Cell::new(0) };
     static PREPARATIONS: Cell<usize> = const { Cell::new(0) };
     static PREPARATION_NS: Cell<u128> = const { Cell::new(0) };
@@ -110,6 +111,11 @@ pub(in crate::runtime) fn counters() -> (usize, usize, usize, usize, u128) {
 #[cfg(feature = "ffi-test-hooks")]
 pub(in crate::runtime) fn constructor_discoveries() -> usize {
     CONSTRUCTOR_DISCOVERIES.get()
+}
+
+#[cfg(feature = "ffi-test-hooks")]
+pub(in crate::runtime) fn constructor_queries() -> usize {
+    CONSTRUCTOR_QUERIES.get()
 }
 
 #[cfg(feature = "ffi-test-hooks")]
@@ -256,6 +262,22 @@ impl Runtime {
         if plan.node_index != node_index || captures.len() != plan.capture_sources.len() {
             return None;
         }
+        // An ordinary native callee cannot use this consumer. This read-only
+        // rejection precedes constructor inspection and host payload work. It
+        // neither acquires an entry nor caches a refusal: registration and
+        // lookup changes are visible on the next call. Successful admission
+        // still performs its original lookup and generation acquisition below.
+        {
+            let state = unsafe { &*self.state.get() };
+            if state.heap.vtable_of(block_vtable) != Some(state.globals.vtable_vt) {
+                return None;
+            }
+            let selector = state.symbols.existing(&plan.selector)?;
+            let method = state.vtables.lookup(block_vtable, selector)?;
+            if !state.execution.has_resumable_thunk(method) {
+                return None;
+            }
+        }
         // Cache only the resident declaration and its native-image pin, never
         // its answer. The bounded, weak-descriptor record owns one entry; the
         // selected Rc keeps the image live if that record is replaced/pruned.
@@ -282,6 +304,8 @@ impl Runtime {
             drop(previous);
             summary
         };
+        #[cfg(feature = "ffi-test-hooks")]
+        CONSTRUCTOR_QUERIES.set(CONSTRUCTOR_QUERIES.get() + 1);
         if !unsafe {
             summary.warm(
                 nil,

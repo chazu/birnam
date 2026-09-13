@@ -21,6 +21,10 @@ def check_pair(off, on, batches):
     assert a["allocation_bytes"] == b["allocation_bytes"] > 0
     assert a["attempts"] == a["hits"] == a["materialized"] == a["physical_saved"] == 0
     assert b["attempts"] == (calls if shape < 3 else 0)
+    assert a["restored_hits"] == 0
+    assert b["restored_hits"] == (1 if shape == 2 else 0)
+    assert a["constructor_queries"] == 0
+    assert b["constructor_queries"] == (calls if shape < 2 else 0)
     assert b["hits"] == (calls if shape < 2 else 0)
     assert b["materialized"] == (calls if shape == 1 else 0)
     assert b["physical_saved"] == (calls if shape == 0 else 0)

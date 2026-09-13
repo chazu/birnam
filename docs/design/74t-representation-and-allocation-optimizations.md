@@ -1407,3 +1407,36 @@ the closure consumer until the remaining costs and resource obligations pass.
 Broader numeric chains, loop invariant-work removal, aggregate graphs and
 closure shapes, plus application/cold/resource acceptance, still belong to the
 full four-family objective.
+
+### Early refusal for ordinary native closure callees
+
+The [post-cache diagnostic profiles](../measurements/74t-closure-refusal-profile.json)
+repeat the real source factory twelve times and begin sampling after preparation.
+They show no repeated loader discovery. Constructor queries still account for
+55 of 174 samples inside repeated-refusal admission, with additional temporary
+payload work performed before callee classification. The regression counter
+records 256 constructor queries for 256 calls to a replaced ordinary native
+callee, despite zero successful optimization hits. These are diagnostic
+samples, not qualified timing measurements.
+
+A read-only rejection now checks the current invocation lookup for registered
+resumable presence before constructor discovery/query and host payload work.
+Absent or ordinary native targets execute the original constructor and call.
+This check acquires no entry and retains no negative cache. Successful
+admission still performs the original subsequent lookup and generation
+acquisition; constructor API, ownership, layout, code/capture and control/GC
+checks remain in place. The earlier lookup result grants no execution authority.
+
+The source measurement regression requires one current constructor query per
+successful invocation and zero queries for replaced native callees or compiler
+refusal. After each replacement measurement, the probe restores the original
+method and requires the very first invocation to optimize again, query the
+constructor, recover the escaping closure and preserve the shared capture,
+without replaying the replacement effect. This restoration check runs outside
+the execution/counter snapshots and is included in process wall time.
+The [early-refusal receipt](../measurements/74t-closure-early-refusal.json)
+passes all 61 commands, 526 workspace tests (19 ignored), eight measurement
+comparison groups, eight continuation groups, 32 live-API groups and installed,
+image, cold-archive and relocation verification. Source hashes match. Paired
+timing follows this correctness checkpoint; the consumer remains off by default
+and no full family is declared complete.
