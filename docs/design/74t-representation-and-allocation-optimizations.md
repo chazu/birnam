@@ -1816,3 +1816,31 @@ work and host variation are not excluded. No closure policy change follows from
 these noisy application timings; profitability decisions must use workloads that
 actually exercise the consumer. The diagnostic method remains isolated from the
 production floor, and no runtime fix is claimed.
+
+
+### Retained process memory at explicit host checkpoints
+
+The [idle-memory feasibility check](../measurements/74t-idle-memory-feasibility.json)
+confirms that `vmmap -summary` can inspect an owned normal-release REPL after an
+Id completion marker, while it waits for further input. The process then exits
+normally on EOF. This is a tool feasibility result, not an optimization or
+memory-saving claim.
+
+Use the same verified source factories for paired disabled/enabled runs. Send
+one complete REPL phase at a time and await its answer/identity check and marker
+before sampling: setup; materialized but cold; warmed and collected; repeated
+execution and collection; eviction while a live Block still owns code; then
+release of fixture-owned Blocks and collection. Keep sampling outside timing.
+Compare repeated post-GC checkpoints for growth and include refused factories
+and repeated materialization/eviction. Prefix, floor, sources, fixture and sampler
+hashes must be retained, and existing consumer counters remain separate evidence
+that the intended pass actually executes.
+
+Retain the full memory report plus current physical footprint, peak footprint,
+resident/dirty/swapped totals and allocator allocated/retained values. Those are
+whole-process observations with platform rounding and allocator retention. They
+do not establish exact compiler metadata or relocated code bytes. In particular,
+this vendored libtcc allocates relocated units through `tcc_malloc` on this host;
+an arbitrary `VM_ALLOCATE` row cannot be labelled optimizer code. Exact private
+unit size requires independent compiler-owned accounting. No ABI extension or
+changed execution semantics is authorized merely to obtain a memory number.
