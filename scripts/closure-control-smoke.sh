@@ -23,6 +23,7 @@ for profile in debug release; do
     python3 scripts/unboxed-numeric-smoke.py --prefix "$prefix" --floor "$floor" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-$profile.json"
     python3 scripts/unboxed-numeric-smoke.py --prefix "$prefix" --floor "$floor" --captured-inputs --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-captured-$profile.json"
     python3 scripts/unboxed-numeric-control-smoke.py --prefix "$prefix" --floor "$floor" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-control-$profile.json"
+    python3 scripts/unboxed-numeric-measurement-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-measure-$profile.json"
   fi
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"

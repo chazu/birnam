@@ -181,6 +181,42 @@ thread_local! {
 }
 
 impl Registry {
+    /// Recovery-map payload and existing native owners. Does not claim libtcc
+    /// executable size or total process memory; the compiler owns those bytes.
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(super) fn unboxed_resources(&self) -> (usize, usize, usize, usize) {
+        let mut maps = std::collections::BTreeMap::new();
+        for record in self.records.values() {
+            for map in [
+                record
+                    .pending
+                    .as_ref()
+                    .and_then(|p| p.unboxed_numeric.as_ref()),
+                record
+                    .candidate
+                    .as_ref()
+                    .and_then(|c| c.unboxed_numeric.as_ref()),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                maps.entry(Rc::as_ptr(map) as usize)
+                    .or_insert_with(|| map.storage_bytes() + 2 * core::mem::size_of::<usize>());
+            }
+        }
+        (
+            maps.len(),
+            maps.values().sum(),
+            self.records
+                .values()
+                .filter(|r| r.candidate.is_some())
+                .count(),
+            self.records
+                .values()
+                .filter(|r| r.numeric_candidate.is_some())
+                .count(),
+        )
+    }
     pub(super) fn stage(
         &mut self,
         programs: &[u8],
@@ -437,10 +473,7 @@ impl Prepared {
             regions,
             leaf: None,
             numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
-            unboxed_numeric: unboxed_numeric::enabled()
-                .then(|| numeric_chain::RecoveryMaps::derive(&program, &layout))
-                .flatten()
-                .map(Rc::new),
+            unboxed_numeric: unboxed_numeric::prepare_maps(&program, &layout),
             discarded_clone: birnam_codegen::discarded_clone::Plan::derive(&program, &layout)
                 .map(Rc::new),
             virtual_aggregate: virtual_aggregate::prepare(&program, &layout).map(Rc::new),

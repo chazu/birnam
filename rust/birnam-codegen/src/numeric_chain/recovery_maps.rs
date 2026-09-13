@@ -25,6 +25,20 @@ pub struct RecoveryMaps {
 }
 
 impl RecoveryMaps {
+    /// Owned metadata storage, excluding allocator bookkeeping and an Rc header.
+    pub fn storage_bytes(&self) -> usize {
+        core::mem::size_of::<Self>()
+            + self.steps.capacity() * core::mem::size_of::<RecoveryStep>()
+            + self
+                .steps
+                .iter()
+                .map(|step| {
+                    (step.at_action.capacity()
+                        + step.after_transition.as_ref().map_or(0, Vec::capacity))
+                        * core::mem::size_of::<Option<u32>>()
+                })
+                .sum::<usize>()
+    }
     /// Derive separately from Template, so the existing boxed consumer need
     /// not pay preparation or retention costs for a virtual representation.
     pub fn derive(program: &LogicalProgram<'_>, layout: &PhysicalLayout) -> Option<Self> {

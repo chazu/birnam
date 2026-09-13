@@ -18,6 +18,9 @@ thread_local! {
 }
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 thread_local! {
+    pub(in crate::runtime) static PREP_ATTEMPTS: Cell<usize> = const { Cell::new(0) };
+    pub(in crate::runtime) static PREPARATIONS: Cell<usize> = const { Cell::new(0) };
+    pub(in crate::runtime) static PREP_NS: Cell<u128> = const { Cell::new(0) };
     pub(in crate::runtime) static COMPLETED: Cell<usize> = const { Cell::new(0) };
     pub(in crate::runtime) static MATERIALIZED: Cell<usize> = const { Cell::new(0) };
 }
@@ -31,6 +34,25 @@ pub(super) fn enabled() -> bool {
     {
         std::env::var_os("BIRNAM_DEV_UNBOXED_NUMERIC").is_some_and(|v| v == "1")
     }
+}
+
+pub(super) fn prepare_maps(
+    program: &resumable::LogicalProgram<'_>,
+    layout: &resumable::PhysicalLayout,
+) -> Option<Rc<numeric_chain::RecoveryMaps>> {
+    if !enabled() {
+        return None;
+    }
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
+    let start = std::time::Instant::now();
+    let maps = numeric_chain::RecoveryMaps::derive(program, layout).map(Rc::new);
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
+    {
+        PREP_ATTEMPTS.set(PREP_ATTEMPTS.get() + 1);
+        PREPARATIONS.set(PREPARATIONS.get() + usize::from(maps.is_some()));
+        PREP_NS.set(PREP_NS.get() + start.elapsed().as_nanos());
+    }
+    maps
 }
 
 struct Values {

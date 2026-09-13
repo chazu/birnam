@@ -285,3 +285,83 @@ V2 capture/suspension contributes 448 per profile. All matrices for each profile
 match the independently tested control floor. Native-prefix, image, cold-archive
 and relocation verification also pass. This completes the extended recovery
 checkpoint, not numeric cost acceptance or the full four-family objective.
+
+### Cost measurement protocol
+
+The numeric cost probe now measures real source Blocks with three, sixteen and
+32 arithmetic operations. Each size has five paired baseline/enabled cases:
+a tail result, a warmed operator replaced with subtraction, a mixed Float input,
+a compiler-refused Cell result, and an early intermediate returned after the
+remaining arithmetic. The mutation case restores the original method and requires
+immediate readmission. Every invocation checks the expected answer; the paired
+checks require equal logical allocation charges and exact completed-operation,
+materialization and saved-box counts.
+
+Preparation is timed separately from the first 128 calls and from steady batches
+of 128 calls. Each batch ends with separately timed collection. This keeps the
+cost of preserving original collector observations visible alongside execution.
+The probe checks that steady execution adds no recovery maps or native owners.
+Map storage includes owned vector capacity and the Rc header, excluding allocator
+bookkeeping and other native-tier structures. Journal storage includes retained
+capacity. Native-unit counts measure owners, not executable bytes. Darwin
+`time -l` additionally records whole-process peak RSS in bytes, including startup
+and collection, without attributing that entire footprint to recovery metadata.
+
+`scripts/unboxed-numeric-measurement-smoke.py` verifies all 30 source processes
+per profile before timing. Full `recovery-graphs.py --unboxed --verify` retains
+both matrices beside the ordinary, captured-input and V2 control matrices and
+requires their runtime hashes to match. The timing runner,
+`scripts/unboxed-numeric-timing.py`, requires that complete production receipt,
+matching source and floor hashes, and the requested fixture's counter evidence.
+It then builds a fresh release installation and runs four alternating pairs by
+default, with 500 batches per process. Preparation, cold execution, steady
+execution, execution including collection, process wall time and peak RSS are
+reported separately. Existing AC/load admission and interval gates remain intact;
+`--exploratory` retains explicitly unqualified results when those gates fail.
+
+These measurements cover bounded source fixtures. A passed counter matrix does
+not establish profitability, application acceptance, or promotion of the
+experimental consumer. Full arithmetic, loop, aggregate and closure acceptance
+remain open.
+
+The initial [debug](../measurements/74v-unboxed-measurement-debug.json) and
+[release](../measurements/74v-unboxed-measurement-release.json) matrices each pass
+all 30 processes with matching source/floor hashes and positive RSS readings.
+For the two measured 32-operation successful cases, the release probe retains
+5,112/5,792 bytes of recovery maps and 98,304 bytes of journal capacity after
+collection. Native-unit counts equal the baseline. These short counter checks
+supply no qualified timing claim; the extended production gate and paired cost
+measurements follow this checkpoint.
+
+### Production cost-harness verification
+
+The [cost-harness production receipt](../measurements/74v-unboxed-cost-production-correctness.json)
+passes all 63 commands with all 256 source hashes matching. It retains 1,248
+closure cases and 1,540 numeric cases, including all 60 new measurement checks.
+Every matrix matches the independently verified floor for its profile; the
+retained release floor also matches the timing runner's selected binary. Native,
+image, cold-archive and relocation checks pass. Paired cost measurements can now
+use this checkpoint. This establishes measurement correctness, not profitability
+or promotion of the default-off arithmetic consumer.
+
+### Retained exploratory numeric timings
+
+The [complete exploratory matrix](../measurements/74v-unboxed-exploratory-timing.json)
+retains 120 processes: three operation counts, five shapes, four alternating
+pairs and both modes, each with 64,000 steady invocations. All 60 counter pairs,
+coordinates and correctness/source/install/fixture hashes pass the audit.
+Both host gates fail, so the receipt is explicitly `not_qualified`.
+
+For the ordinary final-result shape, median execution improvement is -32.89%,
++3.97% and -16.57% at 3, 16 and 32 operations; including GC it is -24.53%,
+-4.77% and -18.33%. For an earlier result returned through recovery, execution
+improvement is -35.91%, -29.28% and +2.68%; including GC it is -21.92%,
+-33.81% and +9.01%. Positive numbers mean less time. Refusal controls also
+vary substantially, so these noisy differences do not establish causality or
+justify promotion. The full receipt retains preparation, cold execution, RSS,
+allocation savings and every individual pair, including negative observations.
+
+The next performance step is a separate profile of the admitted numeric path
+and its refusal controls, followed by focused fixes supported by that profile
+and a quiet comparison. The unboxed consumer remains disabled by default;
+physical allocation savings alone have not demonstrated a net speed benefit.
