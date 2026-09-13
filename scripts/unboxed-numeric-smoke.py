@@ -75,6 +75,7 @@ def main():
                ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs",
                ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
     sources += sorted((ROOT / "rust/birnam-codegen/src/numeric_chain").rglob("*.rs"))
+    sources += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
     receipt = dict(status="running", captured_inputs=args.captured_inputs, scope="Installed Prelude and Codegen with a test-only floor; no timing claim",
                    floor_sha256=sha(floor), installed_sha256={str(p): sha(p) for p in installed},
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in sources}, rows=[])

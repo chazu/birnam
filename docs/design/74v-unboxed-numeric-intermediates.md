@@ -474,3 +474,60 @@ hashes. Compact snapshots are integrated on main at `9eed9f0a`, together with
 the verified loop cost harness. The 271 production source hashes still match
 after integration. Paired numeric performance acceptance is queued behind loop
 and closure-threshold timing; application and process-resource acceptance follow.
+
+### Reuse bounded invocation scratch and omit an unused tail snapshot
+
+The compact-snapshot exploratory comparison still shows overhead for admitted
+unboxed chains. Execution currently allocates three host vectors per invocation:
+snapshots, deferred identities and materialized-result slots. It also prepares
+a snapshot for a final numeric tail send, although that path directly creates
+its ordinary Integer result and never records the snapshot.
+
+The next change keeps at most four cleared scratch buffers in a lazily created
+runtime-local pool. A lease owns the pool through early refusal, forced recovery
+and return; release clears all identities, materialized Oops and snapshot owners
+before reuse. Populated words remain in untraced host vectors, never native-stack
+arrays. The pool owns no Frame, descriptor or native-code lifetime authority.
+It is unused when unboxed execution is disabled, and every vector is bounded by
+the compiler's existing 32-result limit. Report retained pool capacity separately
+from recovery metadata and the already charged allocation journal.
+
+Only snapshots for numeric Calls are prepared. A final send whose recovery step
+has no continuation is a TailCall; its result has no caller slot and is still
+boxed at the original tail boundary. Keep the existing conservative journal
+admission count and original byte/GC budget unchanged. Earlier-result Return
+paths still prepare every required snapshot, and forced exits still reconstruct
+all prior live identities. Use explicit vector capacity rather than fallible
+iterator collection growth.
+
+Verification must cover pool cleanup, capacity bounds and untraced payloads,
+then existing source matrices for final and earlier results, mutation, errors,
+forced exits, allocation charges, precise/conservative GC and V2 control. Source
+measurement must assert stable scratch ownership/capacity after each collection.
+Full production verification and a repeated bounded cost matrix remain required;
+no promotion or speedup follows merely from reducing host allocations.
+
+The initial [focused proof](../measurements/74v-scratch-focused-correctness.json)
+passes 547 workspace tests (19 ignored), 203 release runtime tests (15 ignored)
+and all 30 release measurement cases. Retained scratch storage is stable after
+each measured collection: 416, 832 and 1,344 bytes for 3, 16 and 32 results,
+excluding Rc/allocator bookkeeping. Disabled and refused paths allocate no pool.
+These are resource and correctness observations, not speedup measurements.
+Full production and forced source/V2 verification remain pending.
+
+The release [ordinary-input](../measurements/74v-scratch-source-release.json),
+[captured-input](../measurements/74v-scratch-captured-release.json) and
+[V2 control](../measurements/74v-scratch-control-release.json) source matrices
+also pass with matching current source, installed-module and test-floor hashes.
+They cover both tracing modes, final and earlier results, equal distinct values,
+long Continue paths, every supported forced recovery point, and capture/suspend
+with post-recovery collection and supplied result identity. The full production
+gate is running against this committed implementation.
+
+The [full scratch production gate](../measurements/74v-scratch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases, with 272 current source
+hashes matching. It covers both floor profiles, forced source/V2 recovery,
+mutation, allocation observations, GC, native ownership, installed-prefix,
+image and cold-archive checks. The committed scratch implementation is ready
+for integration and its repeated bounded exploratory cost matrix. It remains
+default-off; reduced host allocation does not establish a net speedup.

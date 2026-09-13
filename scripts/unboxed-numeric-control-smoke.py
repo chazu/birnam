@@ -51,6 +51,7 @@ def main():
              ROOT / "rust/birnam-id/src/execution.rs",
              ROOT / "rust/birnam-id/src/public_api.rs"]
     paths += sorted((ROOT / "rust/birnam-codegen/src/numeric_chain").rglob("*.rs"))
+    paths += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
     installed = [prefix / "bin/birnam", prefix / "share/birnam/rust-install.json"] + sorted((prefix / "lib").glob("*.dylib"))
     receipt = dict(status="running", scope="Forced source recovery followed by test-floor V2 control; no timing claim",
                    floor_sha256=sha(floor), source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},

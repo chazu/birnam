@@ -55,6 +55,7 @@ pub(super) struct Registry {
     closure_pending_budget: Option<closure_elision::pending::Budget>,
     closures: BTreeMap<usize, closure_elision::Record>,
     closure_resume: Option<closure_elision::Resume>,
+    unboxed_scratch: Option<unboxed_numeric::scratch::Pool>,
 }
 
 /// Detached owners drop after the registry borrow has ended. Active selections
@@ -208,6 +209,13 @@ thread_local! {
 }
 
 impl Registry {
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(super) fn unboxed_scratch_resources(&self) -> (usize, usize) {
+        self.unboxed_scratch
+            .as_ref()
+            .map_or((0, 0), unboxed_numeric::scratch::Pool::resources)
+    }
+
     #[cfg(feature = "ffi-test-hooks")]
     pub(super) fn loop_resources(&self) -> (usize, usize, usize) {
         self.records
