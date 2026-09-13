@@ -1874,3 +1874,18 @@ are retained. No memory matrix has run yet: the sampler requires the full
 production proof, binds current sources and every installed artifact, and records
 all memory comparisons as unqualified. A one-pair matrix is queued after the
 existing production and aggregate source checks.
+
+The [first idle-memory matrix](../measurements/74t-memory-checkpoint-matrix.json)
+passes all 20 normal-floor processes and 140 snapshots, with source, fixture and
+installation hashes audited. It verifies results and use after eviction before
+dropping sampler-held materializations. The retained source factories and other
+runtime/compiler roots may still own code; this endpoint does not assert complete
+teardown. Post-GC footprint varies even in refused controls and some disabled
+runs jump between repeated checkpoints. A single pair cannot attribute a memory
+saving or prove a leak. Repeated resource and churn comparisons remain open.
+
+This matrix is bound to the original fixture generator on the verified hot
+floor. Integration with the corrected aggregate generator must preserve its
+actual capture list when materializing the sampler's clone factory; hardcoding
+an empty capture list would invalidate that new fixture. Validate the integrated
+sampler separately before drawing current-source memory conclusions.
