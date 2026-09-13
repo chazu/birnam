@@ -18,6 +18,9 @@ SCENARIOS = ('eval', 'collections', 'portable-collections', 'materialize-cold')
 SWITCHES = ('BIRNAM_DEV_UNBOXED_NUMERIC', 'BIRNAM_DEV_LOOP_INVARIANTS',
             'BIRNAM_DEV_CLOSURE_ELISION', 'BIRNAM_DEV_LITERAL_CALLEES')
 SWITCH_NAMES = dict(zip(('unboxed', 'loop', 'closure', 'literal'), SWITCHES))
+DEFAULT_SWITCH_NAMES = tuple(SWITCH_NAMES)
+SWITCH_NAMES.update({'discarded-clones': 'BIRNAM_DEV_DISCARDED_CLONES',
+                     'virtual-fields': 'BIRNAM_DEV_VIRTUAL_FIELDS'})
 
 
 def sha(path):
@@ -47,8 +50,8 @@ def main():
     parser.add_argument('--wait-seconds', type=int, default=120)
     parser.add_argument('--check-only', action='store_true', help='one correctness pair per scenario, without timing qualification')
     parser.add_argument('--exploratory', action='store_true', help='skip quiet-host admission and retain unqualified timings')
-    parser.add_argument('--switches', nargs='+', choices=tuple(SWITCH_NAMES), default=list(SWITCH_NAMES),
-                        help='experimental switches to compare against defaults')
+    parser.add_argument('--switches', nargs='+', choices=tuple(SWITCH_NAMES), default=list(DEFAULT_SWITCH_NAMES),
+                        help='selected consumers disabled versus enabled; unrelated consumers keep defaults')
     parser.add_argument('--scenarios', nargs='+', choices=SCENARIOS, default=list(SCENARIOS))
     args = parser.parse_args()
     if not 1 <= args.pairs <= 8 or args.wait_seconds < 0:
@@ -88,7 +91,7 @@ def main():
                   correctness_receipt=str(args.receipt.resolve()), correctness_sha256=sha(args.receipt),
                   prefix=str(prefix), installed_sha256=installed_hashes,
                   switches=list(switches), scenarios=list(scenarios), rows=[], gates=[],
-                  scope='Normal release installation, without a test floor or probe. Default settings versus all listed experimental switches enabled together. Existing aggregate consumers are enabled in both. Selected fixed application workloads, each with five batches and a final post-GC answer check. Alternating configuration order and rotating scenario order. Execution samples, startup-inclusive process wall time and Darwin peak RSS are retained. Cold materialization includes eviction, compilation and retirement. This is combined regression and process-resource evidence; it neither attributes gains to individual consumers nor proves their activation or arbitrary application coverage.')
+                  scope='Normal release installation, without a test floor or probe. Selected consumers disabled versus enabled. Default-off switches remain absent in the baseline; selected default-on aggregate switches are explicitly zero. Unselected consumers retain their defaults; the default selection remains the four experimental consumers, with aggregate consumers enabled on both sides. Selected fixed application workloads, each with five batches and a final post-GC answer check. Alternating configuration order and rotating scenario order. Execution samples, startup-inclusive process wall time and Darwin peak RSS are retained. Cold materialization includes eviction, compilation and retirement. This is combined regression and process-resource evidence; it neither attributes gains to individual consumers nor proves their activation or arbitrary application coverage.')
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(('BIRNAM_', 'DYLD_', 'BENCH_HOST_', 'NATIVE_TIER_'))}
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS='10')
@@ -135,12 +138,16 @@ def main():
                             pair_rows = []
                             for enabled in ((False, True) if pair % 2 == 0 else (True, False)):
                                 print(f'recovery-applications: pair={pair} scenario={scenario} enabled={enabled}', flush=True)
-                                extra = {key: '1' for key in switches} if enabled else {}
+                                # Preserve the original absent-variable baseline
+                                # for default-off experiments. Only default-on
+                                # aggregate passes need an explicit zero.
+                                extra = ({key: '1' for key in switches} if enabled else
+                                         {key: '0' for key in switches if key not in SWITCHES})
                                 start = time.monotonic_ns()
                                 p = subprocess.run(['/usr/bin/time', '-l', str(prefix / 'bin/birnam'), str(fixture)],
                                                    cwd=ROOT, env=dict(env, NATIVE_TIER_FOCUS=scenario, **extra),
                                                    capture_output=True, text=True, timeout=1800)
-                                row = dict(pair=pair, scenario=scenario, enabled=enabled, exit_code=p.returncode,
+                                row = dict(pair=pair, scenario=scenario, enabled=enabled, switch_values=extra, exit_code=p.returncode,
                                            process_wall_ns=time.monotonic_ns() - start, stdout=p.stdout, stderr=p.stderr)
                                 result['rows'].append(row)
                                 save()

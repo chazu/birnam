@@ -1816,3 +1816,42 @@ work and host variation are not excluded. No closure policy change follows from
 these noisy application timings; profitability decisions must use workloads that
 actually exercise the consumer. The diagnostic method remains isolated from the
 production floor, and no runtime fix is claimed.
+
+### Aggregate controls for normal-floor application acceptance
+
+Existing application comparisons keep both aggregate consumers enabled on both
+sides. Add explicit preparation-time development controls for discarded clones
+and virtual fields so the same source and normal floor can be compared with each
+pass disabled/enabled. `BIRNAM_DEV_DISCARDED_CLONES=0` and
+`BIRNAM_DEV_VIRTUAL_FIELDS=0` disable their respective preparation; absent or
+nonzero values retain the enabled default. Snapshot them once for
+each registration staging operation and skip disabled plan derivation entirely;
+keep ordinary generated entries and all unrelated consumers available. No flag
+lookup belongs in invocation, recovery, GC or native-entry admission.
+
+These controls select future candidate preparation. They neither invalidate an
+already acquired candidate nor promise immediate toggling of already staged code.
+They carry no semantic authority: every enabled candidate still obeys the same
+mutable lookup, layout, allocation, identity and lifetime guards. They add no
+IdApi field, descriptor or image representation.
+
+Verification must compare source allocation savings and recovery with both
+controls enabled/disabled, including separate discarded-clone and field bodies.
+The normal application runner must explicitly record selected switch values,
+retain unchanged defaults for unrelated passes and preserve its old default
+four-experimental-switch comparison. Continue exploratory runs without a quiet
+wait, retain exact source/floor hashes, and measure preparation, execution and
+whole-process resources before interpreting application differences.
+
+The policy test covers all four combinations for discarded-clone and field
+bodies. Selected plan ownership changes while emitted entries, descriptor bytes
+and PC counts remain identical. The source runner adds a discarded-clone body
+and can disable either or both consumers; its expanded installed-source matrix
+and the full production gate remain required. The application runner preserves
+absent-variable baseline settings for the original four default-off experiments,
+so the new aggregate control does not alter their baseline lookup costs.
+
+The [focused receipt](../measurements/74t-aggregate-controls-focused-correctness.json)
+passes the policy test, 546 workspace tests (19 ignored) and 202 release runtime
+tests (15 ignored). Full production, expanded installed-source and application
+comparison verification remain pending; no timing conclusion follows yet.
