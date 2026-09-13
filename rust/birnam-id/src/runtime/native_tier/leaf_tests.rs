@@ -14,6 +14,7 @@ mod fused_numeric_tests;
 mod graph_tests;
 mod numeric_tests;
 mod tail_entry_tests;
+mod unboxed_numeric_tests;
 mod virtual_aggregate_tests;
 
 thread_local! {

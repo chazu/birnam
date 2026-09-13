@@ -22,6 +22,31 @@ impl DeadAllocation {
 }
 
 impl Heap {
+    /// Exact raw payload bits, held outside the traced heap until realization.
+    /// The caller proves current constructor/storage authority and excludes
+    /// observation while any live identity remains virtual.
+    pub(crate) fn prepare_virtual_bytes(
+        &self,
+        vtable: Oop,
+        bytes: &[u8],
+    ) -> Option<std::rc::Rc<DeadAllocation>> {
+        if !self.admits_virtual_allocations(1) {
+            return None;
+        }
+        let total_size = Self::allocation_total_size(bytes.len())?;
+        let padded = total_size.checked_sub(VTABLE_HEADER_SIZE)?;
+        if padded > MAX_DEAD_PAYLOAD_BYTES {
+            return None;
+        }
+        let mut payload = vec![0; padded];
+        payload[..bytes.len()].copy_from_slice(bytes);
+        Some(std::rc::Rc::new(DeadAllocation {
+            vtable: vtable.addr(),
+            payload,
+            total_size,
+        }))
+    }
+
     /// Prepare an exact fresh all-Oop payload in untraced host storage. The
     /// caller supplies constructor authority and proves layout/GC eligibility.
     pub(crate) fn prepare_virtual_payload(
@@ -227,6 +252,39 @@ impl Heap {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn raw_payloads_keep_exact_bits_fresh_identities_and_original_charges() {
+        let mut heap = super::Heap::new();
+        let vt = heap.allocate(0, super::Permanence::Permanent);
+        heap.set_vtable(vt, vt);
+        for raw in [i64::MIN, -1, 0, 1, i64::MAX] {
+            let bytes = raw.to_ne_bytes();
+            let before = heap.bytes_since_collection();
+            let snapshot = heap.prepare_virtual_bytes(vt, &bytes).unwrap();
+            assert_eq!(heap.bytes_since_collection(), before);
+            let size = snapshot.total_size();
+            let a = heap.record_virtual_clone(snapshot.clone()).unwrap();
+            let b = heap.record_virtual_clone(snapshot).unwrap();
+            let charged = heap.bytes_since_collection();
+            assert_eq!(charged, before + 2 * size);
+            let first = heap.materialize_recorded_clone(a).unwrap();
+            let second = heap.materialize_recorded_clone(b).unwrap();
+            assert_ne!(first, second);
+            for object in [first, second] {
+                assert_eq!(heap.vtable_of(object), Some(vt));
+                assert_eq!(heap.read_payload_word(object, 0), Some(raw as usize));
+            }
+            assert_eq!(heap.bytes_since_collection(), charged);
+            assert!(heap.materialize_recorded_clone(a).is_none());
+        }
+        let before = heap.bytes_since_collection();
+        assert!(
+            heap.prepare_virtual_bytes(vt, &vec![0; super::MAX_DEAD_PAYLOAD_BYTES + 1])
+                .is_none()
+        );
+        assert_eq!(heap.bytes_since_collection(), before);
+    }
+
     #[test]
     fn fresh_payload_recovery_matches_allocation_padding_and_accounting() {
         let mut heap = super::Heap::new();

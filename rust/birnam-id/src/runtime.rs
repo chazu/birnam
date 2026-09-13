@@ -3602,7 +3602,24 @@ impl Runtime {
                     // the optional one-Oop argument buffer lives through the call.
                     unsafe {
                         if let Some(selected) = &native_selected {
-                            if let Some(result) = selected
+                            if let Some(result) = selected.try_unboxed_numeric(
+                                self,
+                                machine,
+                                descriptor_key,
+                                program_counter,
+                                arguments,
+                                count,
+                            ) {
+                                match result {
+                                    Ok(native_tier::unboxed_numeric::Outcome::Action(action)) => {
+                                        (action, None)
+                                    }
+                                    Ok(native_tier::unboxed_numeric::Outcome::Return(value)) => {
+                                        (core::ptr::null_mut(), Some(Ok(value)))
+                                    }
+                                    Err(error) => (core::ptr::null_mut(), Some(Err(error))),
+                                }
+                            } else if let Some(result) = selected
                                 .try_numeric(
                                     self,
                                     machine,

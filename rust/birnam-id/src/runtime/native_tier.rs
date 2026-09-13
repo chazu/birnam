@@ -15,6 +15,7 @@ pub(in crate::runtime) mod closure_elision;
 mod discarded_clone;
 mod fused_numeric;
 mod regions;
+pub(in crate::runtime) mod unboxed_numeric;
 mod virtual_aggregate;
 use birnam_native_compiler::Unit;
 use core::ffi::{c_char, c_void};
@@ -57,12 +58,14 @@ struct Prepared {
     regions: Vec<Option<Rc<frame_region::Plan>>>,
     leaf: Option<Rc<small_callee::Plan>>,
     numeric: Option<Rc<numeric_chain::Template>>,
+    unboxed_numeric: Option<Rc<numeric_chain::RecoveryMaps>>,
     discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
     virtual_aggregate: Option<Rc<birnam_codegen::virtual_aggregate::Plan>>,
 }
 
 struct Candidate {
     numeric: bool,
+    unboxed_numeric: Option<Rc<numeric_chain::RecoveryMaps>>,
     discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
     virtual_aggregate: Option<virtual_aggregate::Compiled>,
     entries: Vec<Method>,
@@ -78,6 +81,24 @@ enum SelectedKind {
     Region(Rc<Candidate>, usize, Method, usize),
 }
 impl Selected {
+    pub(super) unsafe fn try_unboxed_numeric(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        key: usize,
+        pc: usize,
+        args: *const Oop,
+        count: usize,
+    ) -> Option<Result<unboxed_numeric::Outcome, super::ExecutionError>> {
+        if pc != 0 || count != 1 {
+            return None;
+        }
+        let candidate = match &self.kind {
+            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
+        };
+        unsafe { unboxed_numeric::execute(runtime, machine, key, candidate, args) }
+    }
+
     pub(super) unsafe fn try_virtual_aggregate(
         &self,
         runtime: &Runtime,
@@ -360,6 +381,7 @@ impl Prepared {
                 regions: Vec::new(),
                 leaf: Some(Rc::new(plan)),
                 numeric: None,
+                unboxed_numeric: None,
                 discarded_clone: None,
                 virtual_aggregate: None,
             });
@@ -415,6 +437,10 @@ impl Prepared {
             regions,
             leaf: None,
             numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
+            unboxed_numeric: unboxed_numeric::enabled()
+                .then(|| numeric_chain::RecoveryMaps::derive(&program, &layout))
+                .flatten()
+                .map(Rc::new),
             discarded_clone: birnam_codegen::discarded_clone::Plan::derive(&program, &layout)
                 .map(Rc::new),
             virtual_aggregate: virtual_aggregate::prepare(&program, &layout).map(Rc::new),
@@ -467,6 +493,7 @@ impl Prepared {
         regions::COMPILE_NS.set(regions::COMPILE_NS.get() + compile_start.elapsed().as_nanos());
         Some(Candidate {
             numeric: self.numeric.is_some(),
+            unboxed_numeric: self.unboxed_numeric.clone(),
             discarded_clone: self.discarded_clone.clone(),
             virtual_aggregate: self
                 .virtual_aggregate

@@ -19,7 +19,7 @@ impl Drop for Mode {
     }
 }
 
-fn program(tail: bool) -> Vec<u8> {
+pub(super) fn program(tail: bool) -> Vec<u8> {
     let send = |left, right| Expr::Send {
         receiver: Box::new(Expr::Global(left)),
         selector: Cow::Borrowed(b"blend:"),
@@ -72,7 +72,12 @@ enum Case {
     Operator,
     Error,
     Declaration,
+    OopLayout,
+    Trace,
+    JournalFull,
 }
+unsafe extern "C" fn inert_trace(_: Oop, _: crate::abi::MarkFn) {}
+
 thread_local! { static OBSERVATIONS: Cell<usize> = const { Cell::new(0) }; }
 unsafe extern "C" fn call_observer(machine: Oop, args: *const Oop, count: usize) -> Oop {
     OBSERVATIONS.set(OBSERVATIONS.get() + 1);
@@ -97,6 +102,10 @@ unsafe extern "C" fn lookup_observer(receiver: Oop, args: *const Oop, count: usi
 
 #[test]
 fn fused_numeric_driver_preserves_allocations_boundaries_and_late_binding() {
+    numeric_driver_preserves_allocations_boundaries_and_late_binding(false);
+}
+
+pub(super) fn numeric_driver_preserves_allocations_boundaries_and_late_binding(unboxed: bool) {
     for tail in [false, true] {
         let bytes = program(tail);
         for case in [
@@ -110,10 +119,18 @@ fn fused_numeric_driver_preserves_allocations_boundaries_and_late_binding() {
             Case::Operator,
             Case::Error,
             Case::Declaration,
-        ] {
+        ]
+        .into_iter()
+        .chain(
+            unboxed
+                .then_some([Case::OopLayout, Case::Trace, Case::JournalFull])
+                .into_iter()
+                .flatten(),
+        ) {
             let mut evidence = Vec::new();
             for enabled in [false, true] {
-                let _mode = Mode::set(enabled);
+                let _mode = Mode::set(enabled && !unboxed);
+                let _raw_mode = super::unboxed_numeric_tests::Mode::set(enabled && unboxed, None);
                 let bootstrap = crate::dispatch::build_bootstrap();
                 let r = &bootstrap.runtime;
                 r.publish_canonical_exports();
@@ -207,7 +224,26 @@ fn fused_numeric_driver_preserves_allocations_boundaries_and_late_binding() {
                         r.export(b"ErrorVt", r.canonical().smallint_vt).unwrap();
                     }
                     Case::Declaration => unsafe { native.declaration_toggle()(0) },
+                    Case::OopLayout => r.set_layout(
+                        r.canonical().smallint_vt,
+                        core::ptr::null(),
+                        0,
+                        crate::abi::SLOT_OOP,
+                    ),
+                    Case::Trace => r.set_trace_hook(r.canonical().smallint_vt, inert_trace),
+                    Case::JournalFull => {
+                        r.enter(|| r.gc_collect_from_native_range(0, 0));
+                        let heap = unsafe { &mut (*r.state.get()).heap };
+                        let snapshot = heap
+                            .prepare_virtual_bytes(r.canonical().smallint_vt, &1i64.to_ne_bytes())
+                            .unwrap();
+                        for _ in 0..crate::heap::MAX_DEAD_ALLOCATIONS {
+                            assert!(heap.record_virtual_clone(snapshot.clone()).is_some());
+                        }
+                        assert!(!heap.admits_virtual_allocations(1));
+                    }
                 }
+                super::super::unboxed_numeric::COMPLETED.set(0);
                 fused_numeric::HITS.set(0);
                 OBSERVATIONS.set(0);
                 let before = r.gc_live_bytes();
@@ -224,7 +260,11 @@ fn fused_numeric_driver_preserves_allocations_boundaries_and_late_binding() {
                     outcomes.push((r.integer_value(answer), depth, high_water));
                 }
                 assert_eq!(
-                    fused_numeric::HITS.get(),
+                    if unboxed {
+                        super::super::unboxed_numeric::COMPLETED.get()
+                    } else {
+                        fused_numeric::HITS.get()
+                    },
                     if enabled && matches!(case, Case::Canonical) {
                         96
                     } else {
@@ -269,6 +309,10 @@ unsafe extern "C" fn collecting_mutation(mark: crate::abi::MarkFn) {
 
 #[test]
 fn fused_numeric_budget_preserves_actual_collection_and_input_mutation() {
+    numeric_budget_preserves_actual_collection_and_input_mutation(false);
+}
+
+pub(super) fn numeric_budget_preserves_actual_collection_and_input_mutation(unboxed: bool) {
     let bytes = program(false);
     let logical = resumable::lower_portable_block(&bytes).unwrap();
     let layout = resumable::color_slots(&logical).unwrap();
@@ -279,7 +323,8 @@ fn fused_numeric_budget_preserves_actual_collection_and_input_mutation() {
     for gap in [boxes + 2, boxes + 1, boxes, boxes / 2, 1] {
         let mut evidence = Vec::new();
         for enabled in [false, true] {
-            let _mode = Mode::set(enabled);
+            let _mode = Mode::set(enabled && !unboxed);
+            let _raw_mode = super::unboxed_numeric_tests::Mode::set(enabled && unboxed, None);
             let bootstrap = crate::dispatch::build_bootstrap();
             let r = &bootstrap.runtime;
             r.publish_canonical_exports();
@@ -322,6 +367,7 @@ fn fused_numeric_budget_preserves_actual_collection_and_input_mutation() {
                 target
             );
             fused_numeric::HITS.set(0);
+            super::super::unboxed_numeric::COMPLETED.set(0);
             let anchor = [0usize; 32];
             r.gc_set_stack_bottom(anchor.as_ptr().addr() + core::mem::size_of_val(&anchor));
             let result = r
@@ -335,7 +381,11 @@ fn fused_numeric_budget_preserves_actual_collection_and_input_mutation() {
                 .unwrap();
             r.gc_set_stack_bottom(0);
             assert_eq!(
-                fused_numeric::HITS.get(),
+                if unboxed {
+                    super::super::unboxed_numeric::COMPLETED.get()
+                } else {
+                    fused_numeric::HITS.get()
+                },
                 if enabled && gap > boxes + 1 { 3 } else { 0 }
             );
             assert_eq!(COLLECTIONS.get(), usize::from(gap <= boxes));
@@ -357,6 +407,10 @@ unsafe extern "C" fn propagate_error(receiver: Oop, _: *const Oop, _: usize) -> 
 
 #[test]
 fn fused_numeric_faults_leave_error_effects_at_their_original_calls() {
+    numeric_faults_leave_error_effects_at_their_original_calls(false);
+}
+
+pub(super) fn numeric_faults_leave_error_effects_at_their_original_calls(unboxed: bool) {
     for (operator, left, right) in [
         (1, i64::MAX, 3),
         (2, i64::MIN, 3),
@@ -367,7 +421,8 @@ fn fused_numeric_faults_leave_error_effects_at_their_original_calls() {
     ] {
         let mut evidence = Vec::new();
         for enabled in [false, true] {
-            let _mode = Mode::set(enabled);
+            let _mode = Mode::set(enabled && !unboxed);
+            let _raw_mode = super::unboxed_numeric_tests::Mode::set(enabled && unboxed, None);
             let bootstrap = crate::dispatch::build_bootstrap();
             let r = &bootstrap.runtime;
             r.publish_canonical_exports();
@@ -401,10 +456,18 @@ fn fused_numeric_faults_leave_error_effects_at_their_original_calls() {
                     .write_payload_word(b, 0, right as usize)
             });
             fused_numeric::HITS.set(0);
+            super::super::unboxed_numeric::COMPLETED.set(0);
             OBSERVATIONS.set(0);
             let before = r.gc_live_bytes();
             assert_eq!(invoke(), r.canonical().nil);
-            assert_eq!(fused_numeric::HITS.get(), 0);
+            assert_eq!(
+                if unboxed {
+                    super::super::unboxed_numeric::COMPLETED.get()
+                } else {
+                    fused_numeric::HITS.get()
+                },
+                0
+            );
             assert_eq!(OBSERVATIONS.get(), 2);
             evidence.push(r.gc_live_bytes() - before);
         }

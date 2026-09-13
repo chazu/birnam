@@ -1,7 +1,8 @@
 # 74V — Virtual numeric intermediates with original Frame recovery
 
-Status: compiler recovery maps implemented in an isolated development checkout;
-runtime integration and all production/performance acceptance remain pending.
+Status: compiler recovery maps and an experimental runtime consumer implemented
+in an isolated development checkout. Targeted runtime checks pass; production
+source/control and performance acceptance remain pending. Disabled by default.
 This continues the unboxed-arithmetic requirement in
 [74T](74t-representation-and-allocation-optimizations.md), whose enabled numeric
 fusion still allocates every original result box.
@@ -51,10 +52,10 @@ cargo test --locked --offline -p birnam-codegen
 cargo test --locked --offline --release -p birnam-codegen numeric_chain::recovery_maps
 ```
 
-This checkpoint has not been integrated into the main checkout or through its
-runtime consumer; the full source/production gates below remain required.
+The compiler and runtime changes have not been integrated into the main
+checkout; the full source/production gates below remain required.
 
-## Runtime integration still required
+## Runtime integration contract
 
 1. Extend private allocation-journal preparation to exact raw numeric payloads.
    Establish current representation and native constructor authority explicitly;
@@ -93,3 +94,62 @@ timings. Record preparation, metadata, native code and retained resources, plus
 refusal and cold/application costs. Keep qualification gates unchanged. This
 work does not complete the loop, aggregate or closure families, nor establish
 the full arithmetic family until runtime behavior and its acceptance are proved.
+
+## Experimental runtime checkpoint
+
+The isolated consumer is selected by `BIRNAM_DEV_UNBOXED_NUMERIC=1` before native
+candidate preparation. Its optional recovery maps belong to the candidate and
+are absent when disabled. `BIRNAM_DEV_UNBOXED_NUMERIC_FORCE_AT` selects an
+original source PC for recovery; this includes Continue and Return boundaries.
+There are no public ABI or image-format additions.
+
+Exact signed-integer payload snapshots live in the existing untraced host
+journal. Preparing a snapshot has no logical allocation effect. Executing a
+numeric Call charges its original allocation and assigns a fresh deferred
+identity. Original PC code and V2 transitions use private placeholders until an
+observation boundary. Recovery materializes each required identity once and
+patches all mapped local and send-window aliases before ordinary dispatch.
+Equal intermediate bits still denote separate allocations.
+
+Normal completion materializes only the returned identity. The driver's
+existing `finish_stackless_return` pops the private Frame and commits the caller
+transition without allocation or foreign/generated calls. This retirement
+boundary makes the other private results dead before an observer can run. They
+retain original journal accounting and collector handling. Final TailCall
+results use the ordinary numeric constructor at the original allocation point.
+Literal, index and PC-token allocations remain unchanged.
+
+Admission includes the current native numeric declaration and constructor
+context, current Machine/lookup controls, all original allocation charges,
+journal capacity and the automatic-collection threshold. Ordinary Integer
+vtables have no declared layout; their existing conservative payload tracing
+is supported without changing the floor layout. The current native constructor
+establishes the eight-byte representation. An explicitly incompatible layout or
+an inherited trace hook refuses admission.
+
+Focused tests now exercise 73 fresh runtime cases across three-operation
+Return/TailCall chains, equal intermediate results, a Continue split with 110
+aliases, and 16-/32-operation chains, with forced recovery at every source PC.
+They check numeric results, original logical byte charges, actual physical box
+savings, materialization counts, Frame retirement and released registration
+pins. Normal 3-/16-/32-operation chains save 2/15/31 intermediate result boxes.
+These are allocation observations, not timing claims.
+
+A shared differential harness additionally exercises 52 fresh runtime cases
+covering changed Machine controls, lookup, mutation epoch, operators, ErrorVt,
+native declarations, incompatible layouts, trace hooks and a full 4,096-entry
+journal. Ten collection-budget cases include an actual root-provider mutation
+of an input at collection. Twelve arithmetic-fault cases preserve overflow and
+zero-divisor effects at the original ordinary calls. The raw-journal unit test
+checks signed extremal bits, distinct identities and exact once-only charges.
+
+Installed-source observation, capture/suspension, native retirement, mixed-type
+and resource/performance acceptance remain required; these targeted checks do
+not complete the full arithmetic family or any of the other three families.
+
+The runtime checkpoint passes all 538 debug workspace tests (19 ignored), and
+all 281 runtime/codegen release tests (15 ignored). Both profiles execute the
+raw-journal check and all four unboxed runtime tests. The
+[checkpoint receipt](../measurements/74v-unboxed-runtime-correctness.json)
+records commands, counts, log hashes and source hashes. Production gates and
+qualified timings remain pending.
