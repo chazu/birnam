@@ -1410,6 +1410,25 @@ pub unsafe extern "C" fn birnam_portable_block_new_v1(
 
 /// Resolve the original capability once. Refusal must not duplicate imports or
 /// other producer-API instrumentation before calling the original constructor.
+type ClosureAttempt = unsafe extern "C" fn(
+    Oop,
+    *const c_void,
+    u32,
+    *const c_void,
+    Oop,
+    Oop,
+    *const Oop,
+    usize,
+    Oop,
+    u32,
+    *const IdApi,
+) -> Oop;
+
+// Resolve this optional process-local hook while binding the generated unit.
+// Looking it up in a constructor's execution would add observable IdApi loader
+// callbacks even when optimization refuses. floor_symbol retains its image.
+static CLOSURE_ATTEMPT: OnceLock<ClosureAttempt> = OnceLock::new();
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_portable_block_or_inline_v1(
     machine: Oop,
@@ -1447,21 +1466,7 @@ pub unsafe extern "C" fn birnam_portable_block_or_inline_v1(
         owned = Some(capability.new_materialized_block);
         capability.new_materialized_block as *const c_void
     };
-    type Attempt = unsafe extern "C" fn(
-        Oop,
-        *const c_void,
-        u32,
-        *const c_void,
-        Oop,
-        Oop,
-        *const Oop,
-        usize,
-        Oop,
-        u32,
-        *const IdApi,
-    ) -> Oop;
-    if let Some(address) = unsafe { floor_symbol(api, b"birnam_id_try_closure_elision_v1\0") } {
-        let attempt: Attempt = unsafe { core::mem::transmute(address) };
+    if let Some(attempt) = CLOSURE_ATTEMPT.get() {
         let result = unsafe {
             attempt(
                 machine,
@@ -1602,6 +1607,13 @@ pub unsafe extern "C" fn birnam_candidate_validate_binding(
 
 unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1") {
+        if CLOSURE_ATTEMPT.get().is_none()
+            && let Some(address) =
+                unsafe { floor_symbol(api, b"birnam_id_try_closure_elision_v1\0") }
+        {
+            let _ = CLOSURE_ATTEMPT
+                .set(unsafe { core::mem::transmute::<usize, ClosureAttempt>(address) });
+        }
         let symbol = b"birnam_portable_block_or_inline_v1";
         let name = unsafe { (api.mkString)(symbol.as_ptr(), symbol.len()) };
         let Some(address) = (unsafe {

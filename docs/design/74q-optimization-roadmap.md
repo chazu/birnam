@@ -45,6 +45,11 @@ paused, supplied-result restoration, shared closure identity and generation-pin
 transfer across ordinary, optimized and forced-recovery execution. They use a
 separate test-only floor bridge with the real installed Codegen, and require
 actual optimization hits within each tested control invocation.
+Instrumented constructor-refusal testing found and removed extra execution-time
+loader callbacks; the private hook is now resolved at unit binding. Default
+disabled staging also skips closure-plan preparation. The resulting source
+passes 526 workspace tests and full production verification; enabled-mode
+preparation, live API overrides and performance acceptance remain open.
 None of those four full families is complete yet.
 
 ## Direction

@@ -40,6 +40,7 @@ def sources():
         "scripts/fixtures/closure-elision.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
+        "scripts/fixtures/closure-api-context.c",
     )]
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
@@ -121,7 +122,8 @@ def main():
             if args.closures:
                 run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
                      "-p", "birnam-id", "-p", "birnam-prelude", "-p", "birnam-collection",
-                     "-p", "birnam-error", "-p", "birnam-portable-code"]
+                     "-p", "birnam-error", "-p", "birnam-portable-code",
+                     "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
                 fixture = work / (profile + "-block-construction")
                 run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v1",
@@ -133,6 +135,11 @@ def main():
                 run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "prelude", "collection", "error", "portable_code")]
                     + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
+                api_fixture = work / (profile + "-closure-api-context")
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v1",
+                     "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
+                run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
+                    ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")
             output = run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
                           "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")
@@ -152,6 +159,7 @@ def main():
             if args.closures:
                 checks.append(("birnam_codegen", "closure-plan", "closure_elision::tests"))
                 checks.append(("birnam_id", "closure-context", "closure_context_requires_active_nil"))
+                checks.append(("birnam_id", "closure-staging", "disabled_closure_mode_skips_preparation"))
             if args.numeric:
                 checks += [
                     ("birnam_codegen", "numeric-plan", "numeric_chain::"),

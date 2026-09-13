@@ -147,6 +147,10 @@ passes 24 baseline/optimized/forced capture and suspension executions across
 debug/release and both GC modes, including paused collection, supplied results,
 closure identity, exact effects and generation pins. The bridge is test-only;
 instrumentation/refusal coverage and candidate/resource costs remain next.
+Constructor refusal now preserves exact capability callback order, including
+instrumented loader operations, and disabled mode skips closure-plan preparation.
+This checkpoint passes 526 workspace tests and full production gates. Enabled
+preparation costs, live API override coverage and performance acceptance remain.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.

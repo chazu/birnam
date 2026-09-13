@@ -1219,3 +1219,48 @@ still requires broader refusal/instrumentation and forced-boundary coverage,
 allocation/resource acceptance and qualified cold/warm/application measurements.
 Broader closure bodies and the remaining numeric, loop and aggregate obligations
 remain in progress.
+
+### Constructor refusal callbacks and disabled preparation
+
+An instrumented copied Codegen API exposed an execution-time discrepancy in
+the experimental wrapper. Ordinary construction called the capability imports,
+vtable/extent checks and selected constructor. The refusal path additionally
+called `IdApi.dlopen` and `IdApi.dlsym` to locate the private floor hook. Those
+callbacks are observable even when the attempted optimization makes no Frame
+changes, so returning the same Block was insufficient.
+
+The private hook is now resolved while binding a generated unit and retained as
+a process-local function pointer in the already-pinned floor image. Constructor
+execution reads that pointer without loader callbacks. If no hook was bound,
+the wrapper uses its original resolved constructor. Failed hook resolution is
+not permanently cached; later unit binding can retry. Capability lookup remains
+at the original constructor boundary, and current floor admission still decides
+whether substitution is valid. This changes neither IdApi nor serialized code.
+
+The real-module C fixture `closure-api-context.c` compares the baseline wrappers
+with experimental refusal across 20 paired cases: ordinary and materialized
+constructors, present/missing/malformed capabilities, changed vtable/extent
+queries, and nil or non-nil constructor answers. It requires the exact ordered
+callback sequence and original vtable, CodeObject, captures and owner operands.
+Before the fix the first valid case recorded extra loader callbacks and failed.
+This fixture covers refusal without an active Machine; the installed elision,
+collecting-observation and control fixtures separately require successful use
+of the hook bound by real Codegen.
+
+Default-disabled staging also stops deriving closure plans. Previously it
+lowered and analyzed every staged Block again even though generated code could
+not select the closure consumer. A staging regression uses an actual nested
+portable inventory and manifest, requires no closure staging allocation in a
+fresh disabled registry, and checks that ordinary native plans and descriptors
+match across disabled/enabled/disabled staging. Enabled entries retain their
+exact manifest alignment and canonical descriptor match.
+
+The [API-context receipt](../measurements/74t-closure-api-context.json) retains
+debug/release and installed callback comparisons, staging checks and the full
+production gate: all 61 commands pass, with 526 workspace tests, 19 ignored,
+all eight continuation comparison groups and installed-prefix, image,
+cold-archive and relocation checks. Source hashes match the tested files.
+No timing claim follows from eliminating this unnecessary
+work. Enabled preparation, repeated refusals and live API overrides still need
+cost and differential coverage before closure promotion; broader closure shapes
+and the other three families' acceptance obligations remain open.

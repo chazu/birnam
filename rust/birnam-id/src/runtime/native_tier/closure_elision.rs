@@ -67,6 +67,17 @@ thread_local! {
     pub(super) static MATERIALIZED: Cell<usize> = const { Cell::new(0) };
 }
 
+pub(super) fn enabled() -> bool {
+    #[cfg(not(test))]
+    {
+        std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1")
+    }
+    #[cfg(test)]
+    {
+        ENABLED.get()
+    }
+}
+
 impl Runtime {
     pub(in crate::runtime) fn finish_closure_inline(
         &self,
@@ -107,11 +118,7 @@ impl Runtime {
         materialized: bool,
         codegen_api: &birnam_abi::IdApi,
     ) -> Option<Result<Oop, ExecutionError>> {
-        #[cfg(not(test))]
-        let enabled = std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1");
-        #[cfg(test)]
-        let enabled = ENABLED.get();
-        if !enabled
+        if !enabled()
             || !crate::public_api::closure_codegen_context_matches(
                 codegen_api,
                 self.canonical().nil,

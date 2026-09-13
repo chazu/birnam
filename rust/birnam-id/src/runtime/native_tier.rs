@@ -181,18 +181,24 @@ impl Registry {
         };
         // Optimization is optional and bounded, even for a much larger valid
         // unit. Registration still accepts every ordinary manifest row.
+        let closures_enabled = closure_elision::enabled();
         for index in 0..manifest.entry_count().min(MAX_RECORDS) {
-            let closure = (|| {
-                let entry = manifest.entry(index)?;
-                let row = selected.row(entry.selection_row_index as usize)?;
-                if entry.lowering_version != resumable_descriptor::LOWERING_VERSION_V1
-                    || row.kind != selection::SubjectKind::BlockBody
-                {
-                    return None;
-                }
-                closure_elision::Prepared::new(inventory.program(row.subject_index as usize)?, row)
-            })();
-            self.staged_closures.push(closure.map(Rc::new));
+            if closures_enabled {
+                let closure = (|| {
+                    let entry = manifest.entry(index)?;
+                    let row = selected.row(entry.selection_row_index as usize)?;
+                    if entry.lowering_version != resumable_descriptor::LOWERING_VERSION_V1
+                        || row.kind != selection::SubjectKind::BlockBody
+                    {
+                        return None;
+                    }
+                    closure_elision::Prepared::new(
+                        inventory.program(row.subject_index as usize)?,
+                        row,
+                    )
+                })();
+                self.staged_closures.push(closure.map(Rc::new));
+            }
             let prepared = (|| {
                 let entry = manifest.entry(index)?;
                 if entry.lowering_version != resumable_descriptor::LOWERING_VERSION_V1 {

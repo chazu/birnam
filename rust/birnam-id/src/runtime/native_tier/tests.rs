@@ -9,6 +9,110 @@ use core::cell::{Cell, RefCell};
 use std::borrow::Cow;
 
 #[test]
+fn disabled_closure_mode_skips_preparation_without_changing_ordinary_staging() {
+    struct Mode(bool);
+    impl Drop for Mode {
+        fn drop(&mut self) {
+            closure_elision::ENABLED.set(self.0);
+        }
+    }
+    let _mode = Mode(closure_elision::ENABLED.replace(false));
+    let bytes = portable::encode_block(
+        &Block {
+            params: vec![b"input"],
+            body: vec![
+                Statement::Let {
+                    name: b"closure",
+                    value: Expr::Block(Box::new(Block {
+                        params: vec![],
+                        body: vec![Statement::Expr(Expr::Global(b"input"))],
+                    })),
+                },
+                Statement::Let {
+                    name: b"result",
+                    value: Expr::Send {
+                        receiver: Box::new(Expr::Global(b"closure")),
+                        selector: Cow::Borrowed(b"value"),
+                        args: vec![],
+                        source: b"",
+                    },
+                },
+                Statement::Expr(Expr::Global(b"closure")),
+            ],
+        },
+        &[],
+    )
+    .unwrap();
+    let programs = portable_inventory::encode_closure(&[&bytes]).unwrap();
+    let inventory = portable_inventory::inspect(&programs).unwrap();
+    assert_eq!(inventory.program_count, 2);
+    let bindings = code_binding_inventory::encode(&[]).unwrap();
+    let selected = selection::encode(
+        &programs,
+        &bindings,
+        &[],
+        &vec![selection::Disposition::Resumable; inventory.program_count as usize],
+    )
+    .unwrap();
+    let view = selection::inspect(&selected, &programs, &bindings).unwrap();
+    let descriptors: Vec<_> = (0..view.row_count as usize)
+        .map(|index| {
+            let row = view.row(index).unwrap();
+            let logical = resumable::lower_portable_block(
+                inventory.program(row.subject_index as usize).unwrap(),
+            )
+            .unwrap();
+            let layout = resumable::color_slots(&logical).unwrap();
+            resumable_descriptor::compile_portable_descriptor_v2(&logical, &layout, row, 1).unwrap()
+        })
+        .collect();
+    let authority = selection::authority(&programs, &bindings, &selected).unwrap();
+    let specs: Vec<_> = descriptors
+        .iter()
+        .enumerate()
+        .map(|(index, descriptor)| manifest::EntrySpec {
+            selection_row_index: index as u32,
+            driver_argument_count: 1,
+            lowering_version: resumable_descriptor::LOWERING_VERSION_V1,
+            descriptor,
+        })
+        .collect();
+    let manifest = manifest::materialize(authority, &view, &specs).unwrap();
+    let mut registry = Registry::default();
+    registry.stage(&programs, &bindings, &selected, &manifest, authority);
+    assert_eq!(registry.staged_closures.capacity(), 0);
+    let ordinary: Vec<_> = registry
+        .staged
+        .iter()
+        .map(|p| p.as_ref().map(|p| p.descriptor.clone()))
+        .collect();
+    assert!(ordinary.iter().any(Option::is_some));
+    for enabled in [true, false, true] {
+        closure_elision::ENABLED.set(enabled);
+        registry.stage(&programs, &bindings, &selected, &manifest, authority);
+        assert_eq!(
+            registry
+                .staged
+                .iter()
+                .map(|p| p.as_ref().map(|p| p.descriptor.clone()))
+                .collect::<Vec<_>>(),
+            ordinary
+        );
+        if enabled {
+            assert_eq!(registry.staged_closures.len(), 2);
+            assert_eq!(registry.staged_closures.iter().flatten().count(), 1);
+            for (index, prepared) in registry.staged_closures.iter().enumerate() {
+                if let Some(prepared) = prepared {
+                    assert_eq!(prepared.descriptor, descriptors[index]);
+                }
+            }
+        } else {
+            assert!(registry.staged_closures.is_empty());
+        }
+    }
+}
+
+#[test]
 fn real_one_pc_leaf_preparation_uses_the_registered_driver_arity() {
     let bytes = portable::encode_block(
         &Block {
