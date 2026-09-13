@@ -1,8 +1,8 @@
 # 74V — Virtual numeric intermediates with original Frame recovery
 
-Status: compiler recovery maps and an experimental runtime consumer implemented
-in an isolated development checkout. Targeted runtime checks pass; production
-source/control and performance acceptance remain pending. Disabled by default.
+Status: the default-off runtime consumer is implemented, production-verified
+and integrated on main. Further recovered-Frame control/captured-input
+verification and performance/resource acceptance remain pending.
 This continues the unboxed-arithmetic requirement in
 [74T](74t-representation-and-allocation-optimizations.md), whose enabled numeric
 fusion still allocates every original result box.

@@ -191,6 +191,14 @@ uses are near break-even; a measured profitability threshold remains required.
 Broader preparation/metadata/resource acceptance and repeated-use
 profitability remain open; the
 consumer stays disabled by default. See 74T for the full remaining scope.
+[74V](../design/74v-unboxed-numeric-intermediates.md) now adds actual unboxed
+numeric intermediates, disabled by default, with original allocation charges
+and V2 identity recovery. Its full production checkpoint is integrated on main:
+63 commands, 538 workspace tests and 1,540 source rows pass with matching hashes.
+The subsequent control/captured-input branch passes 1,188 additional source
+cases; its extended production gate is pending. Numeric timing and resource/
+application acceptance, loop invariant-work removal, broader aggregate
+acceptance and closure promotion remain open.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.
