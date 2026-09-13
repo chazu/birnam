@@ -1370,3 +1370,40 @@ comparison groups, eight continuation groups, 32 live-API groups, and the
 installed, image, cold-archive and relocation gates. Source hashes match.
 The consumer stays experimental and default-off pending a repeated cost matrix
 and the remaining closure/resource acceptance work.
+
+### Closure costs after retaining constructor declarations
+
+The [repeated matrix](../measurements/74t-closure-pinned-constructor-timing.json)
+uses verified commit `ef014b5e`, a fresh release installation, four alternating
+pairs per shape and 64,000 measured calls per process. Every measured process
+performs zero constructor discoveries after warmup. Hit, recovery, refusal,
+replacement-effect and allocation counts still match exactly. Source and binary
+hashes remain unchanged. AC admission again fails on battery; interval admission
+passes with 64.19% median idle and no low-idle intervals. All results remain
+unqualified.
+
+| Source shape | Execution overhead vs baseline | Execution plus GC overhead |
+| --- | ---: | ---: |
+| Captured Cell return; closure eliminated | 19.91% | 15.85% |
+| Escaping closure; allocation recovered | 21.57% | 8.26% |
+| Warmed callee replaced; repeated refusal | 35.22% | 14.82% |
+| Observing callee; compiler refusal | 1.84% | -0.79% |
+
+These are paired medians, with all individual pairs retained. Materialization
+overhead medians for the three admitted source shapes are 2.73%, 5.01% and 3.17%;
+first-128-call overhead remains 21.81%, 29.44% and 29.60%. Preparation-only samples
+are short and variable. The table demonstrates that removing repeated discovery
+addresses the dominant regression, while the remaining admission and recovery
+work still costs more than it saves on these fixtures. It does not establish
+profitable closure optimization or application performance.
+
+Next, profile the remaining successful-admission and refusal paths. In
+particular, establish whether earlier current-target refusal can avoid
+constructor inspection and temporary payload preparation, and whether untraced
+host scratch reuse pays for successful calls. Preserve immediate admission
+after restoring API/method state, all semantic queries needed for success,
+original allocation accounting and collecting-observer behavior. Do not promote
+the closure consumer until the remaining costs and resource obligations pass.
+Broader numeric chains, loop invariant-work removal, aggregate graphs and
+closure shapes, plus application/cold/resource acceptance, still belong to the
+full four-family objective.

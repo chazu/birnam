@@ -55,7 +55,9 @@ preparation and performance acceptance remain open. The first retained closure
 cost matrix confirms a large unqualified regression despite correct allocation
 savings. Profiles identify repeated loader discovery; a bounded cache now
 retains the exact constructor declaration with its image pin while rechecking
-its semantic answer on every use. Verification and retiming are tracked in 74T.
+its semantic answer on every use. Full verification passes. The repeated
+unqualified matrix reduces closure execution to about 20–22% overhead and
+repeated refusal to 35% overhead; profitability remains unproven (see 74T).
 None of those four full families is complete yet.
 
 ## Direction

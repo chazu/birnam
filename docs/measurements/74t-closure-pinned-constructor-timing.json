@@ -1,0 +1,1198 @@
+{
+  "batches": 500,
+  "correctness_receipt": "/Users/chazu/dev/zig/birnam/docs/measurements/74t-closure-pinned-constructor.json",
+  "correctness_sha256": "d9beed8e71193b5542e29fa218db0979e81d04bbe051d61d52dcb88f16cc6126",
+  "exploratory_requested": true,
+  "floor": {
+    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/74t-closure-control-target/release/libbirnam_id.dylib",
+    "sha256": "15ce06517c37ca78ace017393ecc20278e0ac85abb625cc421cea38d6570eaab"
+  },
+  "install": {
+    "argv": [
+      "mise",
+      "exec",
+      "--",
+      "bash",
+      "scripts/rust-install.sh",
+      "install",
+      "--root",
+      "/Users/chazu/dev/zig/birnam",
+      "--prefix",
+      "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix",
+      "--profile",
+      "release"
+    ],
+    "exit_code": 0,
+    "output": "[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/modules.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_modules.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/stdlib.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_stdlib.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/compiled-unit.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_compiledUnit.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/toml.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_toml.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/config.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_config.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/app-config.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_appConfig.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/project-policy.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_projectPolicy.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/isolate.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_isolate.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/src/id/stackless-control.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_stacklessControl.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/html.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_html.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/file.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_file.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/json.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_json.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/socket.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_socket.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/time.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_time.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/doc.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_doc.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/nativedoc.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_nativedoc.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/lsp.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_lsp.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/repl.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_repl.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/cli.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_cli.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/http.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_http.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/log.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_log.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/markdown.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_markdown.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/os.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_os.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/process.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_process.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/random.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_random.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/test.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_test.dylib\n[stage1] compiled /Users/chazu/dev/zig/birnam/modules/compiled-unit-docs.birnam -> /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/.birnam-rust-install-1162/lib/libbirnam_compiledUnitDocs.dylib\nrust-install: published /private/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix (15 native libraries, 27 stage1 modules)\n/opt/homebrew/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n   Compiling version_check v0.9.5\n   Compiling typenum v1.20.1\n   Compiling proc-macro2 v1.0.107\n   Compiling quote v1.0.47\n   Compiling unicode-ident v1.0.24\n   Compiling libc v0.2.189\n   Compiling serde_core v1.0.229\n   Compiling zmij v1.0.23\n   Compiling cfg-if v1.0.4\n   Compiling serde v1.0.229\n   Compiling generic-array v0.14.7\n   Compiling serde_json v1.0.151\n   Compiling birnam-abi v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-abi)\n   Compiling memchr v2.8.3\n   Compiling itoa v1.0.18\n   Compiling hex v0.4.3\n   Compiling cpufeatures v0.2.17\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling syn v3.0.3\n   Compiling digest v0.10.7\n   Compiling sha2 v0.10.9\n   Compiling birnam-artifact v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact)\n   Compiling serde_derive v1.0.229\n   Compiling birnam-host v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.22s\n     Running `/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-rust-driver.fGDD24/debug/birnam-build install --root /Users/chazu/dev/zig/birnam --prefix /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix --profile release`\n   Compiling birnam-abi v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-abi)\n   Compiling version_check v0.9.5\n   Compiling typenum v1.20.1\n   Compiling libc v0.2.189\n   Compiling cfg-if v1.0.4\n   Compiling proc-macro2 v1.0.107\n   Compiling unicode-ident v1.0.24\n   Compiling quote v1.0.47\n   Compiling serde_core v1.0.229\n   Compiling shlex v2.0.1\n   Compiling generic-array v0.14.7\n   Compiling zmij v1.0.23\n   Compiling find-msvc-tools v0.1.9\n   Compiling serde v1.0.229\n   Compiling cc v1.3.0\n   Compiling serde_json v1.0.151\n   Compiling memchr v2.8.3\n   Compiling itoa v1.0.18\n   Compiling cpufeatures v0.2.17\n   Compiling hex v0.4.3\n   Compiling birnam-tcc v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-tcc)\n   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-id)\n   Compiling syn v3.0.3\n   Compiling birnam-codegen-runtime v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-codegen-runtime)\n   Compiling birnam-lang v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-lang)\n   Compiling birnam-relational v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-relational)\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling birnam-store v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-store)\n   Compiling digest v0.10.7\n   Compiling birnam-collection v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-collection)\n   Compiling sha2 v0.10.9\n   Compiling birnam-native-compiler v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-native-compiler)\n   Compiling birnam-artifact-codec v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact-codec)\n   Compiling birnam-prelude v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-prelude)\n   Compiling birnam-isolate v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-isolate)\n   Compiling birnam-artifact v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-artifact)\n   Compiling serde_derive v1.0.229\n   Compiling birnam-error v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-error)\n   Compiling birnam-alien v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-alien)\n   Compiling birnam-peg v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-peg)\n   Compiling birnam-host v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-host)\n   Compiling birnam-codegen v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-codegen)\n   Compiling birnam-portable-code v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-portable-code)\n   Compiling birnam-image v0.0.0 (/Users/chazu/dev/zig/birnam/rust/birnam-image)\n    Finished `release` profile [optimized] target(s) in 14.53s\n",
+    "wall_ns": 22956896875
+  },
+  "installed_sha256": {
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/bin/birnam": "b05e60072cfb34e262aeb02e52d4f8994a02550d7a80969773863002bea49af2",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_appConfig.dylib": "82b0e4d346bdc45c9bcf7b5d71e04211600e55d76c5245930b5d10be8ea8353f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_cli.dylib": "c6ca10a07df49351160c59d0e1513295685e309763710d9833a872b66f6ddc94",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_compiledUnit.dylib": "768ff434dc98cfab97f1fd0b71bf34f99814628b94e08e6526adf58a24632b3f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_compiledUnitDocs.dylib": "ebe6ef175b45cd19cdb5f305fafe52ebba285f9b13dbb2c37c67a774bd532f9c",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_config.dylib": "6de6c24f1a9c4fba1338906d7ef5c22d41bc2a887b5eb2cd5a31628e00d9879f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_doc.dylib": "a018491196a3a2bafd2177b016c58b8a401e3b85ea031bd05f332782627778f2",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_file.dylib": "3695a940affafb353fcaa761ff1115f9ebd4e4b7933b57637be20ccc0b0c0ab2",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_html.dylib": "e8ada206d1cee94fb76e28a9fa04270f6be57cd9c8ef4c9d00b10887b40bdfac",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_http.dylib": "d9fce0a96c41f0f90fd10f3dfc968b6a65dd0f3c96318be94b424b5fdaa8f1b4",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id.dylib": "253f408f959d33c72b2e48cff92a7564ea226731e7121db4eb3bd06e9edee203",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_alien.dylib": "63043cd47bc88a53fca610f3f1c2faeb51b355745382e2509faf2f2725d501c2",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_artifact.dylib": "9101dc2df95ac544781538ba9af171301e5b77610ed66b4bbb69d8f3a748562e",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_codegen.dylib": "05788ff5444adbf8017e29b4ed41f170ef98d246ab9c68d7d074d60e9dc32cb9",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_collection.dylib": "da25b6c505726804ebac3b9011c9c5d1a6969ba221fd71106f8b3e34d51045c9",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_error.dylib": "b5f54faef548b6e4675dc5a7b37f26900da608f28b039f5dd6776d31fc3274b1",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_image.dylib": "23511cc9b58903ad3cf711339a69a5b51e0e5446bec7f9a5802ca11baa72b203",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_isolate.dylib": "1136853405089891781334b766f6b409c9a3c1078b08c089f2651582390b1801",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_lang.dylib": "b3ce4da01cfddab89c3eb92974d5b2785d51f827165a8464fd8a23f302952705",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_peg.dylib": "07dff45bc0a7d34f5e9aa0ca730ab155353b3108ae9858acaa27d5987e53653e",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_prelude.dylib": "d83295dd209bae8323fb2463792871f639cb3da7442188883ca053ee07269d28",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_relational.dylib": "1cd43277bb3f9502d196d82e467425af065c9774b8bb7f47ee7dd097da7df6e8",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_id_tcc.dylib": "3c29163fc98ce2025578c47081f6a58794ece696c7f485dd0df877e227cc88d6",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_isolate.dylib": "8fea1d6adf9523fc2cd58d11baef6c8a74d6a09c3f7323d979777e636125b33d",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_json.dylib": "a6d75b94910f3624d561ccf5054a9a5a7404fdcbf67c48c2a92ad294480ffb00",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_log.dylib": "d65c3d9596ba52bc38832339b7b440bd1f7a5203542f5fdfae98a72a377e281f",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_lsp.dylib": "0b2dd35dae5f4dea0e60addec28b0ba16aafc4e0a9385aaa5ee1df6119961060",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_markdown.dylib": "cf9ca3ceac4d41d21c825199dbe4c9ed8636a2a5e41f925bb8600d738acbaf6a",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_modules.dylib": "eb27d4581b9f22d0a272d835cca83fc6508b5c6e7724bae929e1e9905678b208",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_nativedoc.dylib": "e2dcd1080547002791c4906e279ab06bedb9a684bd85e9e4be6669e6650cc4a0",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_os.dylib": "de2b12646010564fcdfbb8e8977bf8d0376a3ffc30ac76ac9eb3e0d14306388d",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_portable_code.dylib": "b4d38e48134143b9b72c0fb0a78f073b45fcb0a57578be1a1b85885fd1c19472",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_process.dylib": "521bc06a60dd2cc45f694a3824c80b87202907f22f9a2a7e019aa1a76a89a871",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_projectPolicy.dylib": "b17eb99158007d7d00be8c4027d7fc09cd0f99067009f7246ab728b2a6161e21",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_random.dylib": "1a6c38cfbeb19428b65b0d3e0a49e506c99eeae2c9cd585d399759dd07cb72b8",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_repl.dylib": "49f86bad13763c92bb34b60d567e0f387f5ede0ef0e74bebabee50781c8280b1",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_socket.dylib": "83b90edc333d4cd0f6bb5d479c64e9d41394f2b7c2629e5ddf2ed160d913479a",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_stacklessControl.dylib": "e60701dc36be1574aa2986cb093a3665d63d4671e16850144c2befc3f1f337a1",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_stdlib.dylib": "64afbaccbfe25543bc7d3453e87b38eadcc431e8530a04b3b04bb94aa479b7a9",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_store.dylib": "de785d6c52c0a7cac7e3d6c0ab6698f79a53b5fa840eeaf5db721f10a6fd80b0",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_test.dylib": "6d1330e6ca9f6ef6bc9aaa744bcbe0a63e2b9643dfa17506632ee8f268c95a9d",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_time.dylib": "a0468da6e1536f8ed48dba3aa29eab79a759906e5f6e0cc51fa9034b4470d786",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libbirnam_toml.dylib": "ab37ba63194c9ba95e43ec0fa55c644442ae9174fdc84fe3f1b2ec57802fdac1",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69",
+    "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix/share/birnam/rust-install.json": "434cb5711631a5b8f1819c4f697c07375cd334e4f1c72cc1ae23046a081272d9"
+  },
+  "interval": {
+    "argv": [
+      "bash",
+      "scripts/bench-host-check.sh",
+      "--samples",
+      "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/interval.log",
+      "closure-timing"
+    ],
+    "exit_code": 0,
+    "output": "bench-host-check: closure-timing stayed quiet for 14 intervals; median 64.19%, low intervals 0\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+    "samples": "Processes: 656 total, 3 running, 653 sleeping, 6319 threads \n2026/09/12 21:47:29\nLoad Avg: 39.67, 37.83, 23.73 \nCPU usage: 31.81% user, 33.18% sys, 35.0% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329594 total, 4019M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3553M wired, 10G compressor), 142M unused.\nVM: 265T vsize, 4915M framework vsize, 1375665(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651175/33G in, 46569878/30G out.\nDisks: 146854993/2588G read, 86164563/2188G written.\n\n\nProcesses: 653 total, 3 running, 650 sleeping, 6319 threads \n2026/09/12 21:47:30\nLoad Avg: 39.67, 37.83, 23.73 \nCPU usage: 25.32% user, 9.77% sys, 64.89% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329340 total, 4015M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3552M wired, 10G compressor), 174M unused.\nVM: 264T vsize, 4915M framework vsize, 1375665(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651188/33G in, 46569886/30G out.\nDisks: 146855066/2588G read, 86164568/2188G written.\n\n\nProcesses: 653 total, 3 running, 650 sleeping, 6289 threads \n2026/09/12 21:47:31\nLoad Avg: 39.67, 37.83, 23.73 \nCPU usage: 25.62% user, 9.46% sys, 64.91% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329342 total, 4016M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3536M wired, 10G compressor), 172M unused.\nVM: 264T vsize, 4915M framework vsize, 1375669(4) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651242/33G in, 46569939/30G out.\nDisks: 146855120/2588G read, 86164734/2188G written.\n\n\nProcesses: 656 total, 4 running, 652 sleeping, 6284 threads \n2026/09/12 21:47:32\nLoad Avg: 39.67, 37.83, 23.73 \nCPU usage: 24.79% user, 11.1% sys, 64.19% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329582 total, 4017M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3695M wired, 10G compressor), 162M unused.\nVM: 265T vsize, 4915M framework vsize, 1375685(16) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651280/33G in, 46569977/30G out.\nDisks: 146855160/2588G read, 86164912/2188G written.\n\n\nProcesses: 653 total, 4 running, 649 sleeping, 6282 threads \n2026/09/12 21:47:33\nLoad Avg: 39.67, 37.83, 23.73 \nCPU usage: 25.65% user, 9.30% sys, 65.3% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329341 total, 4026M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3552M wired, 10G compressor), 127M unused.\nVM: 264T vsize, 4915M framework vsize, 1375693(8) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651316/33G in, 46570022/30G out.\nDisks: 146855392/2588G read, 86164918/2188G written.\n\n\nProcesses: 656 total, 7 running, 649 sleeping, 6299 threads \n2026/09/12 21:47:34\nLoad Avg: 36.74, 37.25, 23.61 \nCPU usage: 25.23% user, 7.53% sys, 67.22% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329578 total, 4017M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3552M wired, 10G compressor), 127M unused.\nVM: 265T vsize, 4915M framework vsize, 1375697(4) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651327/33G in, 46570033/30G out.\nDisks: 146855433/2588G read, 86165097/2188G written.\n\n\nProcesses: 653 total, 7 running, 646 sleeping, 6298 threads \n2026/09/12 21:47:35\nLoad Avg: 36.74, 37.25, 23.61 \nCPU usage: 30.82% user, 10.87% sys, 58.30% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329340 total, 4015M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3696M wired, 10G compressor), 64M unused.\nVM: 264T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651344/33G in, 46570054/30G out.\nDisks: 146855507/2588G read, 86165358/2188G written.\n\n\nProcesses: 653 total, 12 running, 641 sleeping, 6323 threads \n2026/09/12 21:47:36\nLoad Avg: 36.74, 37.25, 23.61 \nCPU usage: 33.56% user, 13.89% sys, 52.53% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329353 total, 4017M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3706M wired, 10G compressor), 80M unused.\nVM: 264T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51651822/33G in, 46570504/30G out.\nDisks: 146855573/2588G read, 86165534/2188G written.\n\n\nProcesses: 657 total, 3 running, 654 sleeping, 6327 threads \n2026/09/12 21:47:37\nLoad Avg: 36.74, 37.25, 23.61 \nCPU usage: 29.85% user, 8.39% sys, 61.75% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329691 total, 4021M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3552M wired, 10G compressor), 78M unused.\nVM: 265T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652451/33G in, 46571100/30G out.\nDisks: 146855600/2588G read, 86165693/2188G written.\n\n\nProcesses: 654 total, 6 running, 648 sleeping, 6324 threads \n2026/09/12 21:47:38\nLoad Avg: 36.74, 37.25, 23.61 \nCPU usage: 24.48% user, 6.84% sys, 68.66% idle \nSharedLibs: 516M resident, 102M data, 36M linkedit.\nMemRegions: 329454 total, 4020M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3550M wired, 10G compressor), 72M unused.\nVM: 264T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652483/33G in, 46571141/30G out.\nDisks: 146855608/2588G read, 86165697/2188G written.\n\n\nProcesses: 654 total, 7 running, 647 sleeping, 6315 threads \n2026/09/12 21:47:39\nLoad Avg: 34.04, 36.68, 23.49 \nCPU usage: 36.9% user, 17.38% sys, 46.52% idle \nSharedLibs: 516M resident, 101M data, 36M linkedit.\nMemRegions: 329458 total, 4020M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3719M wired, 10G compressor), 73M unused.\nVM: 264T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652820/33G in, 46571212/30G out.\nDisks: 146855649/2588G read, 86165858/2188G written.\n\n\nProcesses: 653 total, 5 running, 648 sleeping, 6304 threads \n2026/09/12 21:47:40\nLoad Avg: 34.04, 36.68, 23.49 \nCPU usage: 33.33% user, 8.12% sys, 58.53% idle \nSharedLibs: 516M resident, 101M data, 36M linkedit.\nMemRegions: 329247 total, 4018M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3567M wired, 10G compressor), 44M unused.\nVM: 264T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652831/33G in, 46571221/30G out.\nDisks: 146855714/2588G read, 86165870/2188G written.\n\n\nProcesses: 652 total, 2 running, 650 sleeping, 6302 threads \n2026/09/12 21:47:41\nLoad Avg: 34.04, 36.68, 23.49 \nCPU usage: 24.52% user, 8.25% sys, 67.22% idle \nSharedLibs: 516M resident, 101M data, 36M linkedit.\nMemRegions: 329068 total, 3983M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3549M wired, 10G compressor), 97M unused.\nVM: 263T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652843/33G in, 46571232/30G out.\nDisks: 146855770/2588G read, 86166027/2188G written.\n\n\nProcesses: 656 total, 4 running, 652 sleeping, 6303 threads \n2026/09/12 21:47:42\nLoad Avg: 34.04, 36.68, 23.49 \nCPU usage: 27.55% user, 12.23% sys, 60.21% idle \nSharedLibs: 516M resident, 101M data, 36M linkedit.\nMemRegions: 329447 total, 4032M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3697M wired, 10G compressor), 99M unused.\nVM: 265T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652874/33G in, 46571281/30G out.\nDisks: 146856778/2588G read, 86166212/2188G written.\n\n\nProcesses: 653 total, 6 running, 647 sleeping, 6303 threads \n2026/09/12 21:47:43\nLoad Avg: 34.04, 36.68, 23.49 \nCPU usage: 37.30% user, 13.69% sys, 48.99% idle \nSharedLibs: 516M resident, 101M data, 36M linkedit.\nMemRegions: 329217 total, 4030M resident, 123M private, 1522M shared.\nPhysMem: 23G used (3550M wired, 10G compressor), 56M unused.\nVM: 264T vsize, 4915M framework vsize, 1375697(0) swapins, 1943977(0) swapouts.\nNetworks: packets: 51652920/33G in, 46571335/30G out.\nDisks: 146856811/2588G read, 86166216/2188G written.\n\n\n",
+    "wall_ns": 44072709
+  },
+  "pairs": 4,
+  "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-closure-timing-zr3neixi/prefix",
+  "preflight": {
+    "argv": [
+      "bash",
+      "scripts/bench-host-check.sh",
+      "--wait",
+      "closure-timing"
+    ],
+    "exit_code": 1,
+    "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: closure-timing requires AC power; got: Now drawing from 'Battery Power'\nbench-host-check: closure-timing did not become quiet within 0s\n",
+    "wall_ns": 27843917
+  },
+  "qualified": false,
+  "rows": [
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 421083,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 237500534,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 147888455,
+        "physical_saved": 0,
+        "shape": 0
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 812458
+      },
+      "process_wall_ns": 520876291,
+      "shape": 0
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 514875,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 244804042,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 168536163,
+        "physical_saved": 64000,
+        "shape": 0
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 28791,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2263,
+        "metadata_payload_before": 0,
+        "ns": 822583
+      },
+      "process_wall_ns": 546768042,
+      "shape": 0
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 424833,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 223792935,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 160918911,
+        "physical_saved": 64000,
+        "shape": 0
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 24875,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2263,
+        "metadata_payload_before": 0,
+        "ns": 736708
+      },
+      "process_wall_ns": 490096000,
+      "shape": 0
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 350125,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 199719466,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 136108295,
+        "physical_saved": 0,
+        "shape": 0
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 706875
+      },
+      "process_wall_ns": 447403375,
+      "shape": 0
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 376459,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 196651914,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 133295000,
+        "physical_saved": 0,
+        "shape": 0
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 728584
+      },
+      "process_wall_ns": 442977208,
+      "shape": 0
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 603167,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 237738760,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 165617116,
+        "physical_saved": 64000,
+        "shape": 0
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 33250,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2263,
+        "metadata_payload_before": 0,
+        "ns": 976500
+      },
+      "process_wall_ns": 518537917,
+      "shape": 0
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 418334,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 234921721,
+        "hits": 64000,
+        "journal_peak_bytes": 12288,
+        "materialized": 0,
+        "ns": 165178203,
+        "physical_saved": 64000,
+        "shape": 0
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 25167,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2263,
+        "metadata_payload_before": 0,
+        "ns": 732125
+      },
+      "process_wall_ns": 507053916,
+      "shape": 0
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 431708,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 205672131,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 135849802,
+        "physical_saved": 0,
+        "shape": 0
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 784083
+      },
+      "process_wall_ns": 467849250,
+      "shape": 0
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 382042,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 194555285,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 137658464,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 741500
+      },
+      "process_wall_ns": 440092958,
+      "shape": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 501083,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 199271212,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 162330045,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 29542,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 842000
+      },
+      "process_wall_ns": 478472042,
+      "shape": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 419708,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 200899039,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 166459935,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 27583,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 752458
+      },
+      "process_wall_ns": 472593500,
+      "shape": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 385041,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 204411953,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 136768705,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 766542
+      },
+      "process_wall_ns": 454991833,
+      "shape": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 361042,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 206350497,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 137302871,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 703250
+      },
+      "process_wall_ns": 454301583,
+      "shape": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 547458,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 199304369,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 166741867,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 26374,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 744333
+      },
+      "process_wall_ns": 469831750,
+      "shape": 1
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 452375,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 208260990,
+        "hits": 64000,
+        "journal_peak_bytes": 96,
+        "materialized": 64000,
+        "ns": 174640917,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 27000,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 780417
+      },
+      "process_wall_ns": 496647084,
+      "shape": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 49152000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 354209,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 209949170,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 136824334,
+        "physical_saved": 0,
+        "shape": 1
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 749083
+      },
+      "process_wall_ns": 460490417,
+      "shape": 1
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 384667,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 192225204,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 127936415,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 736416
+      },
+      "process_wall_ns": 438576542,
+      "shape": 2
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 417875,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 199094088,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 172059331,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 27500,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 761125
+      },
+      "process_wall_ns": 475856042,
+      "shape": 2
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 515208,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 197558292,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 171984282,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 30875,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 799750
+      },
+      "process_wall_ns": 489785209,
+      "shape": 2
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 340250,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 198454463,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 126497538,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 732208
+      },
+      "process_wall_ns": 433735541,
+      "shape": 2
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 349750,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 192203595,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 128055541,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 765625
+      },
+      "process_wall_ns": 428902250,
+      "shape": 2
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 432584,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 210874493,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 175855876,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 26916,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 767542
+      },
+      "process_wall_ns": 506546292,
+      "shape": 2
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 64000,
+        "calls": 64000,
+        "cold_ns": 454625,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 201702791,
+        "hits": 0,
+        "journal_peak_bytes": 96,
+        "materialized": 0,
+        "ns": 170058212,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 28832,
+        "floor_preparations": 2,
+        "metadata_payload_after": 2279,
+        "metadata_payload_before": 0,
+        "ns": 786708
+      },
+      "process_wall_ns": 500427000,
+      "shape": 2
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 48128000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 335500,
+        "constructor_discoveries": 0,
+        "effects": 64000,
+        "gc_ns": 217731905,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 129423516,
+        "physical_saved": 0,
+        "shape": 2
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 763958
+      },
+      "process_wall_ns": 460998958,
+      "shape": 2
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 465208,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 198397410,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 172320454,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 778333
+      },
+      "process_wall_ns": 479957416,
+      "shape": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 499833,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 214019994,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 175934038,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 0,
+      "prepare": {
+        "floor_preparation_ns": 14250,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 806291
+      },
+      "process_wall_ns": 507402542,
+      "shape": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 419333,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 199799794,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 170771130,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 13625,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 762375
+      },
+      "process_wall_ns": 474226250,
+      "shape": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 429000,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 202131773,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 168121876,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 1,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 759875
+      },
+      "process_wall_ns": 482263792,
+      "shape": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 400416,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 237896161,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 176728841,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 755417
+      },
+      "process_wall_ns": 522305792,
+      "shape": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 473000,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 224602502,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 183142794,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 2,
+      "prepare": {
+        "floor_preparation_ns": 16166,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 848417
+      },
+      "process_wall_ns": 532977291,
+      "shape": 3
+    },
+    {
+      "enabled": true,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 425625,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 219101585,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 178667126,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 14417,
+        "floor_preparations": 2,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 774291
+      },
+      "process_wall_ns": 511528750,
+      "shape": 3
+    },
+    {
+      "enabled": false,
+      "measure": {
+        "allocation_bytes": 52224000,
+        "attempts": 0,
+        "calls": 64000,
+        "cold_ns": 550791,
+        "constructor_discoveries": 0,
+        "effects": 0,
+        "gc_ns": 228659184,
+        "hits": 0,
+        "journal_peak_bytes": 0,
+        "materialized": 0,
+        "ns": 181403325,
+        "physical_saved": 0,
+        "shape": 3
+      },
+      "pair": 3,
+      "prepare": {
+        "floor_preparation_ns": 0,
+        "floor_preparations": 0,
+        "metadata_payload_after": 0,
+        "metadata_payload_before": 0,
+        "ns": 819375
+      },
+      "process_wall_ns": 542726792,
+      "shape": 3
+    }
+  ],
+  "scope": "Instrumented test floor with real release installed Codegen and source factories. Shapes: 0 captured Cell return with eliminated closure, 1 escaping closure, 2 warmed then replaced callee, 3 observing callee refused by compiler. Precise GC; 128 calls then separately timed collection per batch. Id allocation charges must match; physical_saved counts deferred Block allocations before collection. Materialization timing excludes source parsing and CodeObject creation; cold_ns covers first 128 calls. Floor preparation time is a subset of materialization. Metadata is process-wide inline record/plan plus used element payload, excluding Vec spare capacity, BTree nodes, Rc and allocator/loader costs. Journal bytes include retained capacity and shared snapshots. No RSS or application-wide claim. Probe counters and per-call result checks are inside measured execution; process wall time is separately retained.",
+  "shapes": [
+    {
+      "cold_ns": {
+        "median_improvement_percent": -21.805757900839573,
+        "paired_improvement_percent": [
+          -22.273993488219656,
+          -21.337522313459488,
+          -60.221166182771555,
+          3.0979273027138765
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -15.85417012821474,
+        "paired_improvement_percent": [
+          -7.2527282298664675,
+          -14.556296613012876,
+          -22.24871907727557,
+          -17.152043643416604
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -2.7333124928844876,
+        "paired_improvement_percent": [
+          -1.2462182660519128,
+          -4.2204067197170625,
+          -34.02709914025013,
+          6.626594378401263
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -19.908714104803547,
+        "paired_improvement_percent": [
+          -13.961676724528637,
+          -18.22858481916918,
+          -24.2485584605574,
+          -21.588843390437916
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -8.961038212696282,
+        "paired_improvement_percent": [
+          -4.970806206266731,
+          -9.542311789668556,
+          -17.057471047133422,
+          -8.379764635724008
+        ]
+      },
+      "shape": 0
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -29.43664286949116,
+        "paired_improvement_percent": [
+          -31.159139571041926,
+          -9.003456774733088,
+          -51.63277402629056,
+          -27.71414616794039
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -8.259412162337364,
+        "paired_improvement_percent": [
+          -8.845963807476242,
+          -7.672860517198488,
+          -6.516120627690158,
+          -10.418443907409959
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -5.012429028909149,
+        "paired_improvement_percent": [
+          -13.553607552258939,
+          1.8373422460869704,
+          -5.841876999644513,
+          -4.182981058173785
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -21.574999889736844,
+        "paired_improvement_percent": [
+          -17.922313153225367,
+          -21.70908176691444,
+          -21.44091801255925,
+          -27.63878463314866
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -5.86017085818149,
+        "paired_improvement_percent": [
+          -8.720676689400687,
+          -3.868567680422519,
+          -3.4184708090704508,
+          -7.851774035940462
+        ]
+      },
+      "shape": 1
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -29.595240266360143,
+        "paired_improvement_percent": [
+          -8.632921461939812,
+          -51.42042615723732,
+          -23.683774124374544,
+          -35.50670640834574
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": -14.824548201212075,
+        "paired_improvement_percent": [
+          -15.926893473136762,
+          -13.722202929287386,
+          -20.75545254702742,
+          -7.087771214726324
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -3.166608504381574,
+        "paired_improvement_percent": [
+          -3.3553046104375817,
+          -9.224428031379063,
+          -0.25038367346938983,
+          -2.977912398325566
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -35.22338031292449,
+        "paired_improvement_percent": [
+          -34.48816038811155,
+          -35.95860023773743,
+          -37.327814655048776,
+          -31.396686827763197
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -10.737642185225027,
+        "paired_improvement_percent": [
+          -8.500112621162481,
+          -12.922544431285154,
+          -18.10296914973051,
+          -8.5527399391649
+        ]
+      },
+      "shape": 2
+    },
+    {
+      "cold_ns": {
+        "median_improvement_percent": -2.5947636526543194,
+        "paired_improvement_percent": [
+          -7.442907258688591,
+          2.2533799533799526,
+          -18.127147766323027,
+          22.72477219126674
+        ]
+      },
+      "including_gc_ns": {
+        "median_improvement_percent": 0.7867842748391973,
+        "paired_improvement_percent": [
+          -5.188896966670042,
+          -0.08569125540205391,
+          1.6592598050804486,
+          2.998030234458715
+        ]
+      },
+      "materialization_ns": {
+        "median_improvement_percent": -1.96051864004686,
+        "paired_improvement_percent": [
+          -3.5920357995870678,
+          -0.3290014805066521,
+          -12.31108116444295,
+          5.5022425629290606
+        ]
+      },
+      "ns": {
+        "median_improvement_percent": -1.8364038575923947,
+        "paired_improvement_percent": [
+          -2.0970139737445104,
+          -1.575793741440279,
+          -3.6292621870360087,
+          1.5083510734987926
+        ]
+      },
+      "process_wall_ns": {
+        "median_improvement_percent": -0.188261930260325,
+        "paired_improvement_percent": [
+          -5.718241886692721,
+          1.6666277114994354,
+          -2.0431515720200855,
+          5.748388039778218
+        ]
+      },
+      "shape": 3
+    }
+  ],
+  "status": "not_qualified"
+}
