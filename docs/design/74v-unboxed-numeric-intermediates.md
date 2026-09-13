@@ -471,3 +471,12 @@ each measured collection: 416, 832 and 1,344 bytes for 3, 16 and 32 results,
 excluding Rc/allocator bookkeeping. Disabled and refused paths allocate no pool.
 These are resource and correctness observations, not speedup measurements.
 Full production and forced source/V2 verification remain pending.
+
+The release [ordinary-input](../measurements/74v-scratch-source-release.json),
+[captured-input](../measurements/74v-scratch-captured-release.json) and
+[V2 control](../measurements/74v-scratch-control-release.json) source matrices
+also pass with matching current source, installed-module and test-floor hashes.
+They cover both tracing modes, final and earlier results, equal distinct values,
+long Continue paths, every supported forced recovery point, and capture/suspend
+with post-recovery collection and supplied result identity. The full production
+gate is running against this committed implementation.
