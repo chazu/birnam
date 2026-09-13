@@ -98,6 +98,8 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         let before = (COMPLETED.get(), MATERIALIZED.get(), PREPARATIONS.get());
         let resources = r.native_tier.borrow().unboxed_resources();
         let scratch = r.native_tier.borrow().unboxed_scratch_resources();
+        let native_storage = birnam_native_compiler::Unit::resource_totals();
+        let (private_native_units, private_relocated_bytes) = native_storage;
         let mut ns = 0;
         let mut gc_ns = 0;
         let mut allocation_bytes = 0;
@@ -118,6 +120,11 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             let start = Instant::now();
             r.gc_collect_from_native_range(0, 0);
             gc_ns += start.elapsed().as_nanos();
+            assert_eq!(
+                birnam_native_compiler::Unit::resource_totals(),
+                native_storage,
+                "private native ownership and relocated storage stay stable after collection"
+            );
             assert_eq!(
                 r.native_tier.borrow().unboxed_scratch_resources(),
                 scratch,
@@ -147,7 +154,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         }
         let calls = batches * 128;
         println!(
-            "unboxed-measure operations={operations} shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} completed={completed} materialized={materialized} restored_completed={restored_completed} maps={} metadata_bytes={} native_units={} numeric_units={} journal_peak_bytes={journal_peak_bytes} journal_retained_bytes={journal_retained_bytes} scratch_cached={} scratch_bytes={}",
+            "unboxed-measure operations={operations} shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} completed={completed} materialized={materialized} restored_completed={restored_completed} maps={} metadata_bytes={} native_units={} numeric_units={} journal_peak_bytes={journal_peak_bytes} journal_retained_bytes={journal_retained_bytes} scratch_cached={} scratch_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
             resources.0, resources.1, resources.2, resources.3, scratch.0, scratch.1
         );
         r.canonical().nil

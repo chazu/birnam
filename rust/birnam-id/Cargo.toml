@@ -16,7 +16,7 @@ sha2.workspace = true
 birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]
-ffi-test-hooks = []
+ffi-test-hooks = ["birnam-native-compiler/resource-metrics"]
 # Design 74 E1: development-only guarded Machine slot access exports. Never
 # enabled by ordinary builds; a dev artifact that binds them cannot load on an
 # ordinary runtime.

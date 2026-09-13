@@ -8,6 +8,40 @@ use std::sync::Mutex;
 // libtcc has compiler-global scratch state. No lock survives a native entry.
 static COMPILER: Mutex<()> = Mutex::new(());
 
+#[cfg(feature = "resource-metrics")]
+mod metrics {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    pub(super) static UNITS: AtomicUsize = AtomicUsize::new(0);
+    pub(super) static BYTES: AtomicUsize = AtomicUsize::new(0);
+    unsafe extern "C" {
+        pub(super) fn birnam_tcc_relocated_allocation_bytes(state: *const TccState) -> usize;
+    }
+    pub(super) fn add(bytes: usize) {
+        BYTES
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+                old.checked_add(bytes)
+            })
+            .expect("native resource byte counter overflow");
+        UNITS.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(super) fn remove(bytes: usize) {
+        BYTES
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+                old.checked_sub(bytes)
+            })
+            .expect("native resource byte counter underflow");
+        UNITS
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+                old.checked_sub(1)
+            })
+            .expect("native resource owner counter underflow");
+    }
+    pub(super) fn read() -> (usize, usize) {
+        (UNITS.load(Ordering::Relaxed), BYTES.load(Ordering::Relaxed))
+    }
+}
+
 pub struct Unit {
     state: NonNull<TccState>,
 }
@@ -40,7 +74,25 @@ impl Unit {
             unsafe { tcc_delete(raw) };
             return None;
         }
+        #[cfg(feature = "resource-metrics")]
+        metrics::add(unsafe { metrics::birnam_tcc_relocated_allocation_bytes(raw) });
         Some(Self { state })
+    }
+
+    /// Live private Units in this compiler instance, including selected owners
+    /// retained after cache removal. Bytes include code, data and alignment;
+    /// they exclude compiler metadata and unrelated module/compiler instances.
+    #[cfg(feature = "resource-metrics")]
+    pub fn resource_totals() -> (usize, usize) {
+        let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
+        metrics::read()
+    }
+
+    #[cfg(feature = "resource-metrics")]
+    pub fn relocated_allocation_bytes(&self) -> usize {
+        let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
+        // The C helper reads the live state using the compiler's own layout.
+        unsafe { metrics::birnam_tcc_relocated_allocation_bytes(self.state.as_ptr()) }
     }
 
     /// The address is usable only while its Unit remains alive. Returning a
@@ -57,6 +109,10 @@ impl Drop for Unit {
         let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
         // SAFETY: Unit owns this compiler. Callers must retain that owner for
         // every invocation of an address borrowed from symbol().
+        #[cfg(feature = "resource-metrics")]
+        metrics::remove(unsafe {
+            metrics::birnam_tcc_relocated_allocation_bytes(self.state.as_ptr())
+        });
         unsafe { tcc_delete(self.state.as_ptr()) };
     }
 }
@@ -66,12 +122,15 @@ mod tests {
     use super::*;
     use std::rc::Rc;
 
+    static TEST_COMPILER: Mutex<()> = Mutex::new(());
+
     unsafe extern "C" fn twice(value: i64) -> i64 {
         value * 2
     }
 
     #[test]
     fn relocated_code_retains_its_owner_across_cache_eviction() {
+        let _test = TEST_COMPILER.lock().unwrap();
         let owner = Rc::new(unsafe {
             Unit::compile(
                 c"extern long twice(long); long answer(long n) { return twice(n) + 1; }",
@@ -89,5 +148,45 @@ mod tests {
         drop(selected_owner);
         assert!(weak.upgrade().is_none());
         assert!(unsafe { Unit::compile(c"not valid C", &[]) }.is_none());
+    }
+    #[test]
+    #[cfg(feature = "resource-metrics")]
+    fn relocated_allocations_follow_actual_unit_owners_and_include_data() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        let before = Unit::resource_totals();
+        let small = Rc::new(
+            unsafe { Unit::compile(c"long answer(long n) { return n + 1; }", &[]) }.unwrap(),
+        );
+        let size = small.relocated_allocation_bytes();
+        assert!(size > 0);
+        assert_eq!(Unit::resource_totals(), (before.0 + 1, before.1 + size));
+        let entry: unsafe extern "C" fn(i64) -> i64 =
+            unsafe { core::mem::transmute(small.symbol(c"answer").unwrap().as_ptr()) };
+        let selected = small.clone();
+        let weak = Rc::downgrade(&small);
+        drop(small);
+        assert_eq!(unsafe { entry(40) }, 41);
+        assert_eq!(selected.relocated_allocation_bytes(), size);
+        assert_eq!(Unit::resource_totals(), (before.0 + 1, before.1 + size));
+        let big = unsafe { Unit::compile(c"static volatile unsigned char data[65536]; long answer(long n) { data[n & 65535] = 7; return data[n & 65535]; }", &[]) }.unwrap();
+        let big_size = big.relocated_allocation_bytes();
+        assert!(big_size > size);
+        let big_entry: unsafe extern "C" fn(i64) -> i64 =
+            unsafe { core::mem::transmute(big.symbol(c"answer").unwrap().as_ptr()) };
+        assert_eq!(unsafe { big_entry(123) }, 7);
+        assert_eq!(
+            Unit::resource_totals(),
+            (before.0 + 2, before.1 + size + big_size)
+        );
+        assert!(unsafe { Unit::compile(c"invalid C", &[]) }.is_none());
+        assert_eq!(
+            Unit::resource_totals(),
+            (before.0 + 2, before.1 + size + big_size)
+        );
+        drop(selected);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(Unit::resource_totals(), (before.0 + 1, before.1 + big_size));
+        drop(big);
+        assert_eq!(Unit::resource_totals(), before);
     }
 }

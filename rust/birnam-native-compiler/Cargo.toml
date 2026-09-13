@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+resource-metrics = []
+
 [build-dependencies]
 cc.workspace = true
 

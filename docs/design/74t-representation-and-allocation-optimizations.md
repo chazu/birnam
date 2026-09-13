@@ -1855,3 +1855,37 @@ The [focused receipt](../measurements/74t-aggregate-controls-focused-correctness
 passes the policy test, 546 workspace tests (19 ignored) and 202 release runtime
 tests (15 ignored). Full production, expanded installed-source and application
 comparison verification remain pending; no timing conclusion follows yet.
+
+### Private relocated allocation accounting
+
+Add a read-only, test-feature compiler query for `TCCState.run_size`, using the
+same vendored C header and configuration as libtcc. This reports the compiler's
+relocated allocation, including code, data and alignment storage; it is not
+instruction bytes or all compiler metadata. Keep ordinary builds unchanged and
+make no IdApi, Method, descriptor or image extension.
+
+Count live `Unit` owners and their relocated allocations in that compiler
+instance, including owners retained after cache removal. Update counts only
+when a successful Unit is created and immediately before its owned state is
+deleted. Query under the existing compiler mutex and never retain that lock
+through native execution. Test executable correctness, stable per-unit size,
+large data storage, failed compilation and ownership across Rc cache eviction.
+Measurement probes sample these totals outside execution/GC timing and check
+steady ownership after collection. Whole-process sampling remains complementary
+and includes allocations outside this private compiler instance.
+
+The [focused native-storage proof](../measurements/74t-native-storage-focused-correctness.json)
+passes two compiler ownership/storage tests, 556 default workspace tests
+(19 ignored), 212 release runtime tests (15 ignored), and 174 installed-source
+measurement cases: 30 numeric, 96 loop and 48 closure. Every sampled steady GC
+preserves the private compiler's owner count and relocated allocation total.
+Numeric fixtures retain 1–2 private units/49,152–98,304 bytes; loop fixtures
+retain 2–3 units/81,920–147,456 bytes. The closure fixtures report zero units in
+this private compiler instance; their baseline code resides elsewhere. Zero is
+not a claim of zero native code or zero compiler memory.
+
+These hooks are compiled only through the resource-metrics test feature (enabled
+by the test floor). Ordinary compiler builds omit the helper, counters and probe
+queries. The separately owned baseline TCC module, other compiler metadata and
+whole-process memory remain outside these exact totals. Full combined production
+verification is still required before integration of this instrumentation.
