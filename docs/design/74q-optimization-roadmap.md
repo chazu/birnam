@@ -5,124 +5,34 @@ implement or promote another optimization. It follows the user's request for a
 plan covering the opportunities beyond 74P, including transformations for which
 deoptimization cannot undo an observable change.
 
-Implementation progress: [74R](74r-small-callee-recovery-plans.md) delivers the
-first bounded Stage 1 batch (single-PC entry values, local aliases and Return).
-[74S](74s-three-optimization-families.md) implements inherited dispatch caching
-and guarded native Frame regions, with separate profitability experiments.
-Selective native copy propagation is implemented in 74S; combined production
-performance acceptance and broader continuation shapes remain pending.
-[74T](74t-representation-and-allocation-optimizations.md) tracks the full
-implementation of numeric, loop, temporary-object and closure/capture
-optimization. Identity-preserving graph recovery and a bounded production
-numeric-chain consumer are implemented. Qualified warm arithmetic gains are
-6.8–10.8% for three-operation chains and 20.5–22.8% for sixteen-operation chains
-in the enabled production-source matrix (see 74T for both qualified matrices).
-The enabled fusion retains the original numeric boxes. [74V](74v-unboxed-numeric-intermediates.md)
-now adds a default-off unboxed consumer: original allocation charges and V2
-boundaries remain, and required identities materialize before observation.
-Its complete production gate passes 538 workspace tests and 1,540 source-process
-rows, including 292 numeric baseline/enabled/forced cases. Tested three-/16-/32-
-operation chains save 2/15/31 intermediate boxes. Timing, resource/application
-acceptance and promotion remain required for the full arithmetic family.
-A registered tail-loop entry consumer is also enabled, preserving every lookup
-and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
-[74W](74w-loop-invariant-numeric-work.md) now also implements reuse of invariant
-arithmetic across proven successive self-tail iterations, disabled by default.
-Its corrected full production gate passes 69 commands and 2,852 source cases,
-including control/retirement proofs. Loop profitability and application/resource
-acceptance remain open. The completed 74V unboxed timing matrix failed both
-host gates and supplies no promotion evidence; its negative and mixed results
-are retained for profiling and comparison.
-Compact numeric snapshots and the loop cost harness are now integrated after
-their combined gate passes 71 commands and 3,164 source cases, with 271 matching
-production source hashes. The user has waived quiet-host admission for ongoing
-work: exploratory measurements continue with host diagnostics and explicit
-`qualified: false`, while correctness requirements remain mandatory. The full
-192-process normal-floor loop baseline and 32-process application comparison
-are retained in 74W and 74T. Small loop differences remain inconclusive; the
-combined collections regression is being isolated by experimental switch.
-An unchanged-input loop fast path is in full production verification, followed
-by closure-threshold and compact-numeric exploratory matrices. These cost
-decisions remain open; passing correctness gates does not establish speedups.
-Discarded-clone elimination is enabled for bounded bodies cloning the same
-prototype at least three times, with original allocation accounting and collector
-observations retained. Its enabled-source matrix shows 3.4–11.4% median fixture
-gains, with zero hits for excluded single-clone controls. Correctness and qualified
-timings are recorded in 74T; broader acceptance remains open. A live aggregate
-field-replacement consumer is enabled for bounded regions with at least three
-current declared projections, with untraced scratch reuse and bounded refusal
-retries. Enabled-source qualified matrices and their variation are recorded in
-74T; the focused repeat has 3.2–6.3% median field-only fixture gains. Production
-closure promotion and broader acceptance remain outstanding. Source closure provenance
-and literal-aware PC emission now have compiler tests and full production gates;
-exact warm constructor declarations and runtime admission also pass real-module
-and installed-prefix checks. An experimental source-created closure consumer
-now eliminates allocation and substitutes captures, with escaping and forced
-recovery exercised end to end. It is disabled by default; broader shapes,
-instrumentation/refusal coverage and performance acceptance remain open.
-Collecting successor observation now passes with actual outer and nested
-optimization hits under both precise and conservative GC, preserving recovered
-closure aliases, multiple captures, argument identity and eviction survival.
-The corresponding full production gate passes 525 tests, 19 ignored.
-Explicit host-owned Machine tests also pass capture/suspension, collection while
-paused, supplied-result restoration, shared closure identity and generation-pin
-transfer across ordinary, optimized and forced-recovery execution. They use a
-separate test-only floor bridge with the real installed Codegen, and require
-actual optimization hits within each tested control invocation.
-Instrumented constructor-refusal testing found and removed extra execution-time
-loader callbacks; the private hook is now resolved at unit binding. Default
-disabled staging also skips closure-plan preparation. The resulting source
-passes 526 workspace tests and full production verification. Live API overrides
-also pass 32 baseline/optimized comparisons with exact callback traces and
-restored admission across debug/release and both GC modes. Enabled-mode
-preparation and performance acceptance remain open. The first retained closure
-cost matrix confirms a large unqualified regression despite correct allocation
-savings. Profiles identify repeated loader discovery; a bounded cache now
-retains the exact constructor declaration with its image pin while rechecking
-its semantic answer on every use. Full verification passes. The repeated
-unqualified matrix after early native-callee refusal shows about 19–25%
-closure execution overhead and 20% repeated-refusal overhead. Profitability
-remains unproven. [74U](74u-repeated-closure-invocation-regions.md) now implements
-up to 32 immediate invocations sharing one virtual closure, with recovery at
-every admitted call boundary. Full verification passes 528 workspace tests
-and the expanded source/control matrices. Later-target mutation now passes
-32 baseline/enabled process executions across debug/release and both GC modes:
-the changed second or third target shortens the region, collecting callbacks
-observe the recovered identity, and restoring the target immediately readmits
-all three calls. Automatic-collection budget testing now also passes 384 source
-processes across both profiles and GC modes, preserving callback effects,
-current Frame PCs and allocation counters through refused, partial and full
-admission. The full gate retains all sequence/mutation/budget rows and their
-floor hashes. Source finalizer and journal-lifetime testing also passes 144
-processes: live native roots prevent early finalization, expired captures are
-reclaimed, and the 4,096-entry journal limit refuses without growing and regains
-admission after collection. Incidental native-root variation is retained beside
-the exact runtime-root comparisons. The full gate retains 1,200 source-process
-rows with matching source/floor hashes. The repeated-use measurement harness
-now also verifies one, three and 32 uses across eliminated, escaping,
-replaced-callee and compiler-refused cases. Full verification retains ten
-matrices with 1,248 process rows, passes all 61 commands and 528 workspace tests,
-and matches all 244 source hashes. The first 96-process repeated-use timing
-matrix is unqualified because of competing CPU load and still shows roughly
-11-12% successful-path execution overhead at 32 uses. Profiles identify
-repeated developer recovery-control environment reads as the largest sampled
-optimizer cost. Those reads now occur once per admitted region, with fresh
-controls on the next region. Full correctness passes all 61 commands, 528 tests
-and 1,248 source rows with matching source/floor hashes. A qualified 96-process
-repeat now shows 45-46% less execution time at 32 uses, and 33-35% less time
-including collection. The authorized `rk` pause was resumed afterward. One-use
-regions still regress and three-use regions are near break-even; a measured
-profitability threshold and broader acceptance remain required before promotion.
-Broader preparation/metadata/resource
-acceptance, closure bodies and profitability remain open; the consumer stays default-off.
-[74X](74x-closure-literal-results.md) adds fresh Integer literal results to the
-bounded closure consumer, preserving distinct result identities and earlier
-aliases. Its initial implementation is integrated on main after all 71 production
-commands and 2,924 source cases pass with matching hashes. Literal-result V2
-capture/suspension is also integrated after its 71-command, 2,972-case production
-gate passes with matching hashes. Both literal-callee
-staging and closure elimination remain disabled by default.
-None of those four full families is complete yet.
+Implementation status, 2026-09-13: [74R](74r-small-callee-recovery-plans.md)
+delivers the first bounded inlining batch. [74S](74s-three-optimization-families.md)
+implements inherited dispatch caching, guarded native Frame regions and selective
+native copy propagation, with its separate performance acceptance. The current
+four-family work is tracked by [74T](74t-representation-and-allocation-optimizations.md)
+and `birnam-sik`.
+
+| Family | Implemented behavior | Evidence and remaining acceptance |
+| --- | --- | --- |
+| Numeric representation | Production numeric fusion is enabled and retains original boxes. [74V](74v-unboxed-numeric-intermediates.md) additionally carries raw intermediates and reconstructs identities at original boundaries; unboxed execution is default-off. | Fusion has qualified fixture gains. The complete 120-process compact-unboxed exploratory matrix still regresses for admitted chains. Scratch reuse and omission of an unused tail snapshot are committed in `codex/74v-scratch`; 547 workspace tests, 203 release runtime tests, 30 measurement cases and 740 source/V2 cases pass. Its full production gate and repeated cost comparison remain pending. |
+| Loop optimization | Tail-entry transfer is enabled. [74W](74w-loop-invariant-numeric-work.md) reuses arithmetic across proven successive self-tail iterations; the verified unchanged-input path now skips the native kernel call. Invariant reuse remains default-off. | The unchanged-input implementation is on main with 71 production commands, 3,164 source cases and 96 normal-driver checks. Its complete 192-process exploratory comparison has mixed gains/regressions and does not establish repeatable profitability. Application/resource acceptance remains open. |
+| Temporary objects | Repeated discarded clones and private field projection regions are enabled under their measured minimum lengths, with exact allocation observations and bounded refusal retries. | Qualified fixture gains and real installed-source/REPL identity, mutation, private-layout and retirement checks are retained in 74T. Existing combined application comparisons enable aggregate consumers on both sides; they do not measure aggregate on/off cost. Broader application, cold/refusal and total-resource acceptance remains open. |
+| Closures and captures | [74U](74u-repeated-closure-invocation-regions.md) eliminates private closure allocation across up to 32 immediate calls while retaining shared Cells. [74X](74x-closure-literal-results.md) adds fresh Integer literal results and V2 recovery. Both remain default-off. | Qualified 32-use fixture gains are retained. A complete 144-process normal-floor exploratory comparison improves all four 32-use pairs for successful and escaping cases, but noisy controls prevent a smaller threshold or default promotion. Descriptor-only admission is committed in `codex/74u-descriptor-admission`; its combined production gate is running before a new normal-floor cost comparison. Preparation, bodies and application/resource acceptance remain open. |
+
+The user has waived quiet-host admission for ongoing work. Continue exploratory
+measurements with host diagnostics and explicit `qualified: false`; retain every
+correctness, identity, GC/finalizer, V2, native-lifetime and compatibility gate.
+The collection-workload ablation and diagnostic counters are retained in 74T:
+that workload recorded no closure-consumer activity, so its noisy regression
+cannot justify changing closure admission policy.
+
+Next, finish the running production gates and compare their exact new floors.
+Use those results to select profitable admission or further cost reductions.
+Then close the application/cold/resource gaps with individual and combined
+configurations. Native-unit counts, journal capacity and scratch bytes are
+partial resource observations; they do not establish executable byte size or
+total retained process memory. Supported cases must pass the acceptance contract
+below before promotion. None of the four full families is complete yet.
 
 ## Direction
 
