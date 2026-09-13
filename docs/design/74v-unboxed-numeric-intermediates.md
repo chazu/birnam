@@ -488,3 +488,57 @@ mutation, allocation observations, GC, native ownership, installed-prefix,
 image and cold-archive checks. The committed scratch implementation is ready
 for integration and its repeated bounded exploratory cost matrix. It remains
 default-off; reduced host allocation does not establish a net speedup.
+
+### Complete bounded comparison after scratch reuse
+
+The [scratch comparison](../measurements/74v-scratch-bounded-exploratory-timing.json)
+completes all 120 processes and 60 paired counter/result checks, with matching
+production-proof, source, floor, installation and fixture hashes. Preflight
+passes and interval qualification fails; the receipt stays explicitly
+unqualified under the user's waiver.
+
+| Operations | Final result: execution / including GC | Earlier result: execution / including GC |
+| --- | --- | --- |
+| 3 | -19.08% / -14.78% | -29.13% / -22.33% |
+| 16 | -8.76% / -8.03% | -12.72% / -8.60% |
+| 32 | -6.72% / -11.89% | -51.97% / -35.68% |
+
+All four final-result pairs regress including collection at each size. Earlier-
+result pairs also regress consistently at 3/16 operations; 32 operations have
+one positive pair and large variation. Controls vary, particularly mixed Float
+inputs at 32 operations. Scratch reuse does not establish profitable unboxed
+execution, and the consumer remains default-off.
+
+### Next cost reduction: batch private numeric snapshot storage
+
+Each admitted invocation still prepares a separate `Rc<DeadAllocation>` for
+every virtual result. Thus removing physical Integer boxes substitutes many
+host allocations rather than eliminating that cost. Share one immutable raw
+snapshot buffer across the invocation's results, while assigning a fresh
+`DeferredAllocation` identity and original byte charge at every original Call.
+Equal raw values must still have distinct identities; aliases to one result must
+still materialize once. This applies to changing inputs as well as repeated ones.
+
+Use a separate lazy numeric journal so ordinary aggregate/closure snapshot
+entries retain their current representation and allocation path. Numeric entries
+refer to one batch plus an element index, and use the existing monotonically
+allocated deferred-ID namespace. Count both journals against the existing
+4,096-live-entry admission limit. Preserve logical allocation totals, bytes,
+stale-ID rejection, callback-free materialization, observing-sweep settlement and
+non-observing reclamation across both journals. Retained capacities and unique
+batch payloads must be reported, including mixed-consumer workloads.
+
+Populate raw words only in untraced host vectors, never native-stack arrays.
+Prepare a batch before executing its first affected Call; unused future elements
+carry no logical allocation charge. Early recovery materializes only charged
+live identities, while the journal keeps batch ownership for any other charged
+entries. Omit the directly boxed final TailCall element as in the current path.
+Keep all existing constructor, vtable, layout, method, Frame, native-ownership and
+original GC-budget checks. No IdApi, Method ABI, descriptor or image change is
+needed for this private storage representation.
+
+Before timing, test interleaved numeric/aggregate identities, equal distinct
+values, partial and out-of-order materialization, stale capabilities after GC,
+combined journal exhaustion and release, untraced pointer-shaped words, and
+allocation/finalizer observations. Retain the full numeric source, recovery,
+mutation and V2 matrix; then compare actual costs and total retained storage.
