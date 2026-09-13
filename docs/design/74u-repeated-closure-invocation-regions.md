@@ -663,3 +663,36 @@ libraries and 27 compiled modules. All 90 [normal-driver verification cases](../
 pass with matching production-proof, source and installed-artifact hashes.
 The reduced admission allocation is ready for integration; its repeat cost
 comparison remains exploratory and the closure consumer stays default-off.
+
+### Complete normal-floor comparison after descriptor-only admission
+
+The [repeat exploratory matrix](../measurements/74u-descriptor-normal-exploratory-timing.json)
+passes all 144 processes, 14,400 measured batches and source/installation/proof
+hash checks. All 72 observed intervals fail host admission; qualification remains
+false under the user's waiver. Median reductions are:
+
+| Uses | Eliminated closure: execution / including GC | Escaping closure: execution / including GC |
+| --- | --- | --- |
+| 1 | -17.07% / -19.43% | +3.18% / +8.20% |
+| 3 | +5.85% / +12.69% | -2.57% / -2.98% |
+| 4 | +5.36% / +6.99% | -1.44% / -0.22% |
+| 8 | +11.19% / +10.08% | +7.75% / +9.59% |
+| 16 | +21.68% / +21.29% | -1.73% / -13.15% |
+| 32 | +23.48% / +12.98% | +26.27% / +25.19% |
+
+All four 16-use eliminated-closure pairs improve including GC; all four 32-use
+escaping pairs improve. Three of four 32-use eliminated pairs improve, with one
+large negative outlier. Compiler-refusal controls also vary substantially; their
+eight-use cases regress in all four pairs without admitted closure work. These
+are within-run disabled/enabled comparisons, not a controlled before/after claim
+about the descriptor-query change itself.
+
+Materialization remains an acceptance concern: at 16 uses its medians regress
+40.12% for eliminated closures and 24.62% for escaping closures. Peak RSS does
+not consistently improve. Current staging derives closure plans before the
+existing 64-visit execution threshold. The next implementation should defer that
+work until the threshold, retain bounded owned source/selection inputs, compare
+the derived descriptor against the still-live registered descriptor, and release
+pending inputs on success, refusal or retirement. Keep current default-off policy
+while verifying cold/refusal cost, resource bounds and source recovery. This is
+preparation deferral, not permission to weaken admission or native ownership.
