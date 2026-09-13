@@ -1952,3 +1952,40 @@ aliases, continued invocation after eviction and normal process exit pass on the
 unchanged normal release installation. This is driver correctness only. The
 previous memory matrix remains bound to its original producer; a new current-
 source memory comparison requires a consolidated production proof.
+
+### Isolated aggregate application activity diagnosis
+
+Before attributing the mixed aggregate application comparisons, count floor plan
+preparation calls, accepted plans, preparation nanoseconds, selected consumer
+entries, admitted executions and successful returns. Selected entries include
+refusal and retry skips; they are not successful optimizations. These counters
+exclude compiler-side analysis and other runtime work. Use thread-local host
+integers only under the test-floor feature, with no retained Oops or new runtime
+object fields. Report them through an isolated test probe, outside measurements.
+
+Run the same application fixture and answer/GC checks with each aggregate flag
+disabled/enabled, plus real source positive controls that prove both consumers
+can record activity. This is diagnosis, not normal-floor timing or a policy
+change. Keep it separate from the ongoing consolidated production gate.
+
+The [isolated activity matrix](../measurements/74t-aggregate-application-activity.json)
+passes all 32 processes: eight positive controls and the 24 individual/combined
+application configurations. The [focused proof](../measurements/74t-aggregate-activity-focused-correctness.json)
+retains 556 workspace tests and 212 release runtime tests. Both actual source
+consumers record successful substitutions when enabled (112–124 clone regions
+and 115–124 field regions); disabled controls record no selected-family work.
+
+Every application configuration records zero accepted aggregate plans, selections,
+admitted executions and successful substitutions. Eval and ordinary collections
+also record zero aggregate preparation calls. Portable collections derives and
+refuses one plan per enabled family. The cold-materialization workload derives
+and refuses 320 plans per enabled family; these diagnostic preparation totals
+are tens of microseconds, not the whole materialization cost. Compiler-side work
+and host variation remain outside the counters. The earlier application timing
+differences therefore do not measure successful aggregate optimization.
+
+Do not change aggregate policy from those noisy comparisons. Their role is
+application refusal/control coverage. Application workloads that actually admit
+aggregate regions are still required for benefit attribution. The instrumentation
+remains on its isolated diagnostic branch, with receipts and conclusions retained
+separately from the normal-floor implementation.
