@@ -332,3 +332,36 @@ For the two measured 32-operation successful cases, the release probe retains
 collection. Native-unit counts equal the baseline. These short counter checks
 supply no qualified timing claim; the extended production gate and paired cost
 measurements follow this checkpoint.
+
+### Production cost-harness verification
+
+The [cost-harness production receipt](../measurements/74v-unboxed-cost-production-correctness.json)
+passes all 63 commands with all 256 source hashes matching. It retains 1,248
+closure cases and 1,540 numeric cases, including all 60 new measurement checks.
+Every matrix matches the independently verified floor for its profile; the
+retained release floor also matches the timing runner's selected binary. Native,
+image, cold-archive and relocation checks pass. Paired cost measurements can now
+use this checkpoint. This establishes measurement correctness, not profitability
+or promotion of the default-off arithmetic consumer.
+
+### Retained exploratory numeric timings
+
+The [complete exploratory matrix](../measurements/74v-unboxed-exploratory-timing.json)
+retains 120 processes: three operation counts, five shapes, four alternating
+pairs and both modes, each with 64,000 steady invocations. All 60 counter pairs,
+coordinates and correctness/source/install/fixture hashes pass the audit.
+Both host gates fail, so the receipt is explicitly `not_qualified`.
+
+For the ordinary final-result shape, median execution improvement is -32.89%,
++3.97% and -16.57% at 3, 16 and 32 operations; including GC it is -24.53%,
+-4.77% and -18.33%. For an earlier result returned through recovery, execution
+improvement is -35.91%, -29.28% and +2.68%; including GC it is -21.92%,
+-33.81% and +9.01%. Positive numbers mean less time. Refusal controls also
+vary substantially, so these noisy differences do not establish causality or
+justify promotion. The full receipt retains preparation, cold execution, RSS,
+allocation savings and every individual pair, including negative observations.
+
+The next performance step is a separate profile of the admitted numeric path
+and its refusal controls, followed by focused fixes supported by that profile
+and a quiet comparison. The unboxed consumer remains disabled by default;
+physical allocation savings alone have not demonstrated a net speed benefit.
