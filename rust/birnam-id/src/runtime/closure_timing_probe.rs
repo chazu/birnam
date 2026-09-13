@@ -107,6 +107,10 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let shape = r.integer_value(shape);
         let batches = r.integer_value(batches) as usize;
         assert!((0..=3).contains(&shape) && (1..=500).contains(&batches));
+        let uses = std::env::var("BIRNAM_CLOSURE_USES")
+            .map(|v| v.parse::<usize>().expect("closure uses"))
+            .unwrap_or(1);
+        assert!(matches!(uses, 1 | 3 | 32));
         let selector = r.intern(b"value:").unwrap();
         let mut answer = r.canonical().nil;
         let invoke = || {
@@ -143,6 +147,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let before = counters();
         let discoveries_before = constructor_discoveries();
         let queries_before = constructor_queries();
+        let completed_before = super::native_tier::closure_elision::completed_calls();
         EFFECTS.set(0);
         let mut ns = 0;
         let mut gc_ns = 0;
@@ -172,8 +177,10 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let attempts = after.0 - before.0;
         let hits = after.1 - before.1;
         let materialized = after.2 - before.2;
+        let completed_calls =
+            super::native_tier::closure_elision::completed_calls() - completed_before;
         let effects = EFFECTS.get();
-        assert_eq!(effects, if shape == 2 { calls } else { 0 });
+        assert_eq!(effects, if shape == 2 { calls * uses } else { 0 });
         // Restore after the measurement snapshots. The first subsequent call
         // must regain admission, with no cooldown or stale native target.
         let mut restored_hits = 0;
@@ -181,6 +188,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             r.add_method(vt, value, method.to_method());
             let previous = counters();
             let queries_before_restore = constructor_queries();
+            let completed_before_restore = super::native_tier::closure_elision::completed_calls();
             invoke();
             let restored = counters();
             restored_hits = restored.1 - previous.1;
@@ -188,10 +196,14 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             assert_eq!(restored_hits, expected);
             assert_eq!(restored.2 - previous.2, expected);
             assert_eq!(constructor_queries() - queries_before_restore, expected);
+            assert_eq!(
+                super::native_tier::closure_elision::completed_calls() - completed_before_restore,
+                expected * uses
+            );
             assert_eq!(EFFECTS.get(), effects);
         }
         println!(
-            "closure-measure shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits}"
+            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits}"
         );
         r.canonical().nil
     })

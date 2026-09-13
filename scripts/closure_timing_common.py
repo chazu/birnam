@@ -2,6 +2,26 @@
 import re
 
 
+def source(uses):
+    """Static source bodies keep each repeated call visible to canonical lowering."""
+    assert uses in (1, 3, 32)
+    bodies = []
+    for shape in range(4):
+        callee = "[| [input value]]" if shape == 3 else "[| input]"
+        statements = [f"let closure := {callee};"]
+        statements += ["let answer := [closure value];"] * uses
+        statements.append("closure" if shape in (1, 2) else "answer")
+        bodies.append("[:input | " + " ".join(statements) + "]")
+    return ('[System load: "modules/os.birnam"];\n[System preciseGc: true];\n'
+            'let shape := [[System getEnv: "BIRNAM_CLOSURE_SHAPE"] asInteger];\n'
+            'let batches := [[System getEnv: "BIRNAM_CLOSURE_BATCHES"] asInteger];\n'
+            'let sources := #[\n' + '\n'.join(bodies) + '\n];\n'
+            'let source := [sources at: shape];\n'
+            'let block := [ClosureControlProbe prepare: [[source codeObject] withoutSourceProvenance] captures: #[]];\n'
+            'let input := [73 asCell];\n'
+            '[ClosureControlProbe measure: block input: input shape: shape batches: batches];\n')
+
+
 def parse_output(output):
     result = {}
     for prefix, key in (("closure-prepare ", "prepare"), ("closure-measure ", "measure")):
@@ -16,6 +36,8 @@ def check_pair(off, on, batches):
     a, b = off["measure"], on["measure"]
     assert a["shape"] == b["shape"]
     shape = a["shape"]
+    uses = a["uses"]
+    assert b["uses"] == uses and uses in (1, 3, 32)
     assert a["calls"] == b["calls"] == calls
     assert a["constructor_discoveries"] == b["constructor_discoveries"] == 0
     assert a["allocation_bytes"] == b["allocation_bytes"] > 0
@@ -28,7 +50,9 @@ def check_pair(off, on, batches):
     assert b["hits"] == (calls if shape < 2 else 0)
     assert b["materialized"] == (calls if shape == 1 else 0)
     assert b["physical_saved"] == (calls if shape == 0 else 0)
-    assert a["effects"] == b["effects"] == (calls if shape == 2 else 0)
+    assert a["completed_calls"] == 0
+    assert b["completed_calls"] == (calls * uses if shape < 2 else 0)
+    assert a["effects"] == b["effects"] == (calls * uses if shape == 2 else 0)
     assert off["prepare"]["floor_preparations"] == off["prepare"]["floor_preparation_ns"] == 0
     assert off["prepare"]["metadata_payload_before"] == off["prepare"]["metadata_payload_after"] == 0
     assert on["prepare"]["floor_preparations"] > 0

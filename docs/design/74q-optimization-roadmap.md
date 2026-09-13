@@ -77,7 +77,12 @@ processes: live native roots prevent early finalization, expired captures are
 reclaimed, and the 4,096-entry journal limit refuses without growing and regains
 admission after collection. Incidental native-root variation is retained beside
 the exact runtime-root comparisons. The full gate retains 1,200 source-process
-rows with matching source/floor hashes. Broader preparation/metadata/resource
+rows with matching source/floor hashes. The repeated-use measurement harness
+now also verifies one, three and 32 uses across eliminated, escaping,
+replaced-callee and compiler-refused cases. Full verification retains ten
+matrices with 1,248 process rows, passes all 61 commands and 528 workspace tests,
+and matches all 244 source hashes. Paired repeated-use timing is next.
+Broader preparation/metadata/resource
 acceptance, closure bodies and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.
 

@@ -1557,3 +1557,21 @@ It retains all 1,200 sequence/mutation/budget/journal rows in eight matrices;
 their per-profile floor hashes agree with the independent control output and
 all 243 source hashes match. The next closure step is repeated-use profitability
 measurement and broader preparation/metadata/resource acceptance.
+
+### Repeated-use measurement verification
+
+[74U](74u-repeated-closure-invocation-regions.md) extends the timing harness to
+one, three and 32 calls through each private closure, with eliminated, escaping,
+native-replacement and compiler-refusal controls. The probe verifies allocation
+charges, completed substitutions, replacement effects and immediate restored
+admission for each use count. The timing runner requires retained source/floor
+evidence for the exact requested factories.
+
+The [full correctness receipt](../measurements/74u-measurement-correctness.json)
+passes all 61 commands, 528 workspace tests (19 ignored) and the production
+gates. Ten matrices retain 1,248 process executions, including 48 new measurement
+executions; all 244 source hashes and the per-profile control/matrix floor
+hashes match. Paired timings follow this checkpoint. The closure consumer stays
+disabled by default; raw numeric intermediate deferral, loop invariant-work
+removal, broader aggregate/closure coverage and application/resource acceptance
+remain required for the full objective.

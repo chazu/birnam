@@ -176,7 +176,11 @@ floor hashes. Source finalizer/journal-lifetime checks now pass another 144
 processes, including live native roots, exact reclamation, the 4,096-entry
 journal limit and immediate admission after collection. Full verification
 retains all 1,200 source-process rows and passes all 61 commands at 528 workspace
-tests. Broader preparation/metadata/resource acceptance and repeated-use
+tests. Repeated-use measurement checks now add 48 executions covering one,
+three and 32 calls across all four shapes. The new full receipt retains ten
+matrices and 1,248 process rows, passes all 61 commands and 528 workspace tests,
+and matches all 244 source hashes. Paired repeated-use timing is next.
+Broader preparation/metadata/resource acceptance and repeated-use
 profitability remain open; the
 consumer stays disabled by default. See 74T for the full remaining scope.
 Broader closure/capture coverage and performance acceptance

@@ -332,3 +332,55 @@ capacity, exactly-once observing finalization and immediate restored admission.
 The next step is paired measurement of repeated-use profitability together
 with broader preparation/metadata/resource acceptance. This does not complete
 the full numeric, loop, aggregate or closure family.
+
+### Repeated-use measurement coverage
+
+The measurement harness now generates static source factories with one, three
+or 32 immediate calls through one private closure. Each use count has the same
+four controls: return the captured Cell, return the escaping closure, replace
+the warmed callee with an ordinary native method, and use an observing body
+which the compiler refuses. The probe separately reports factory calls and
+completed optimized invocations. Successful regions must complete every use;
+replacement effects must occur once per use, and restoring the original method
+must admit every use on the very next factory invocation. Allocation charges
+must match baseline execution at every use count.
+
+The [development receipt](../measurements/74u-measurement-development.json)
+passes all 24 process executions with the newly built debug feature floor and
+the older verified Codegen prefix. These are accounting and result checks,
+not qualified timings. Full verification now retains the measurement matrix
+for each profile alongside sequence, mutation, budget and journal matrices.
+The timing runner requires a matching release measurement matrix, source
+hashes and floor hash for every requested use count. Generated fixture hashes
+are retained and checked again after measurement.
+
+The paired matrix is selected with `--uses 1 3 32`. Each batch still contains
+128 factory invocations followed by separately timed collection; a 32-use
+batch therefore executes 4,096 closure calls. Reports retain cold execution,
+materialization/preparation, metadata and journal storage alongside warm
+execution and collection. All source factories return checked results, and
+allocation/counter validation runs for every pair. The existing AC/host-load
+qualification gates are unchanged. This prepares the profitability experiment;
+it does not establish a speedup or promote the consumer.
+
+The development captured-Cell-return cases retain 2,287 / 3,523 / 21,445 bytes
+of reported plan/record payload for one / three / 32 uses. Each saves one
+physical Block per factory, regardless of use count; the 128-factory journal
+peak stays at 12,288 bytes. Repeated use therefore tests whether substituting
+more calls repays the larger plan and per-call admission work, rather than
+increasing the number of closure allocations removed. These metadata figures
+exclude vector spare capacity, map nodes, reference counts and allocator/loader
+storage, as specified by the probe; they do not establish whole-process memory
+acceptance.
+
+The [full measurement correctness receipt](../measurements/74u-measurement-correctness.json)
+passes all 61 commands and production verification: 528 workspace tests
+(19 ignored), all control/API/installed-prefix/image/cold-archive/relocation
+checks, and ten retained source matrices containing 1,248 process executions.
+The new measurement matrices contribute 48 executions in 24 comparison groups.
+Each profile's five matrix floor hashes match its independently reported
+control-test floor, and all 244 source hashes match. Both profiles confirm
+the metadata and journal figures above, exact allocation parity, all repeated
+substitutions and immediate admission after method restoration. Paired timing
+is now admitted for all three use counts; profitability and the full four-family
+acceptance obligations remain open.
