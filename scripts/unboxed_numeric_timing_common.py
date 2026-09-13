@@ -56,6 +56,11 @@ def check_pair(off, on, batches):
     assert a["native_units"] == b["native_units"]
     assert a["numeric_units"] == b["numeric_units"]
     assert a["maps"] == a["metadata_bytes"] == 0
+    assert a["scratch_cached"] == a["scratch_bytes"] == 0
+    if shape in (0, 1, 4):
+        assert b["scratch_cached"] == 1 and 0 < b["scratch_bytes"] < 8192
+    else:
+        assert b["scratch_cached"] == b["scratch_bytes"] == 0
     assert (b["maps"] > 0 and b["metadata_bytes"] > 0) if shape != 3 else b["maps"] == b["metadata_bytes"] == 0
     x, y = off["prepare"], on["prepare"]
     assert x["attempts"] == x["preparations"] == x["preparation_ns"] == 0

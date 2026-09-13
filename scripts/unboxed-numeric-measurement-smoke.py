@@ -33,6 +33,7 @@ def main():
              ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe.rs",
              ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe/measure.rs",
              ROOT / "rust/birnam-codegen/src/numeric_chain/recovery_maps.rs"]
+    paths += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
     installed = [prefix / "bin/birnam", prefix / "share/birnam/rust-install.json"] + sorted((prefix / "lib").glob("*.dylib"))
     receipt = dict(status="running", profile=args.profile, scope="Measurement correctness only; no qualified timing claim",
                    floor_sha256=sha(floor), source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},
