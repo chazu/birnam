@@ -544,3 +544,34 @@ results, cold preparation, refusal controls and resource costs will determine
 an admission threshold. No threshold is selected or consumer enabled by this
 harness change; broader closure bodies and application/resource acceptance
 remain required.
+
+## Normal-floor repeated-use measurement
+
+`scripts/closure-production-timing.py` complements the native counter harness
+with ordinary Id calls and collection on the normal published release floor.
+It retains the exact six-count factory bodies from `closure_timing_common.py`,
+materializing them through ordinary `Codegen materializeResumable:captures:`.
+Each batch invokes the factory 128 times, checking the captured Cell identity,
+fresh escaping closure identity or refused body's value, then checks the retained
+answer after ordinary collection. It records materialization, cold execution,
+warm execution, collection-inclusive execution, process wall time and peak RSS.
+These durations include the Id driver and checks; absolute values must not be
+compared directly with native-probe timings.
+
+The [normal-floor verification](../measurements/74u-closure-production-driver-correctness.json)
+passes 90 processes: six use counts, three shapes, baseline/enabled/forced
+constructor-recovery reports, plus silent baseline/enabled runs. Reported hits,
+materialization and completed calls must match every one of the 256 measured
+factory invocations per verification process; the observing-body control must
+have no hits. Silent runs require no reports. Every result, identity and post-GC
+check passes. The full production receipt's allocation/invocation matrix remains
+a prerequisite, including native-replacement controls not reproduced by this
+normal-floor driver. No test floor or probe is loaded by this driver.
+
+Timing requires the complete matching 90-case proof, fixture digests and every
+installed artifact digest. Paired order alternates. Default timing retains host
+admission; `--exploratory` skips admission waits, retains interval diagnostics
+and always records `qualified: false`. The user-waived exploratory threshold
+and numeric sweeps now run independently of the unchanged-input loop correctness
+gate, using their already verified checkout. No admission threshold or default
+policy is selected merely by adding this harness.
