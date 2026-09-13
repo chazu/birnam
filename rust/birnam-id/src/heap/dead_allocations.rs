@@ -10,14 +10,58 @@ pub(crate) struct DeferredAllocation(u64);
 pub(crate) const MAX_DEAD_ALLOCATIONS: usize = 4096;
 pub(crate) const MAX_DEAD_PAYLOAD_BYTES: usize = 1024;
 
+// The enum uses Vec's niche without increasing the snapshot header. Small
+// bytes live inside the untraced Rc allocation; larger payloads keep their Vec.
+const INLINE_PAYLOAD_BYTES: usize = core::mem::size_of::<i64>();
+enum Payload {
+    Inline([u8; INLINE_PAYLOAD_BYTES]),
+    Heap(Vec<u8>),
+}
+
 pub(crate) struct DeadAllocation {
     vtable: usize,
-    payload: Vec<u8>,
+    payload: Payload,
     total_size: usize,
 }
 impl DeadAllocation {
     pub(crate) fn total_size(&self) -> usize {
         self.total_size
+    }
+
+    fn zeroed(vtable: usize, total_size: usize) -> std::rc::Rc<Self> {
+        let padded = total_size - VTABLE_HEADER_SIZE;
+        std::rc::Rc::new(Self {
+            vtable,
+            payload: if padded <= INLINE_PAYLOAD_BYTES {
+                // Allocate before copying potentially pointer-shaped bytes.
+                Payload::Inline([0; INLINE_PAYLOAD_BYTES])
+            } else {
+                Payload::Heap(vec![0; padded])
+            },
+            total_size,
+        })
+    }
+
+    fn payload(&self) -> &[u8] {
+        match &self.payload {
+            Payload::Inline(bytes) => &bytes[..self.total_size - VTABLE_HEADER_SIZE],
+            Payload::Heap(bytes) => bytes,
+        }
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        match &mut self.payload {
+            Payload::Inline(bytes) => &mut bytes[..self.total_size - VTABLE_HEADER_SIZE],
+            Payload::Heap(bytes) => bytes,
+        }
+    }
+
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
+    fn separate_payload_capacity(&self) -> usize {
+        match &self.payload {
+            Payload::Inline(_) => 0,
+            Payload::Heap(bytes) => bytes.capacity(),
+        }
     }
 }
 
@@ -38,13 +82,10 @@ impl Heap {
         if padded > MAX_DEAD_PAYLOAD_BYTES {
             return None;
         }
-        let mut payload = vec![0; padded];
-        payload[..bytes.len()].copy_from_slice(bytes);
-        Some(std::rc::Rc::new(DeadAllocation {
-            vtable: vtable.addr(),
-            payload,
-            total_size,
-        }))
+        let mut allocation = DeadAllocation::zeroed(vtable.addr(), total_size);
+        std::rc::Rc::get_mut(&mut allocation).unwrap().payload_mut()[..bytes.len()]
+            .copy_from_slice(bytes);
+        Some(allocation)
     }
 
     /// Prepare an exact fresh all-Oop payload in untraced host storage. The
@@ -65,18 +106,16 @@ impl Heap {
         }
         // Ordinary allocation zero-initializes padding before the constructor
         // stores its words. Equal payloads still receive distinct journal IDs.
-        let mut payload = vec![0; padded];
-        for (destination, word) in payload
+        let mut allocation = DeadAllocation::zeroed(vtable.addr(), total_size);
+        for (destination, word) in std::rc::Rc::get_mut(&mut allocation)
+            .unwrap()
+            .payload_mut()
             .chunks_exact_mut(core::mem::size_of::<Oop>())
             .zip(words)
         {
             destination.copy_from_slice(&(*word as usize).to_ne_bytes());
         }
-        Some(std::rc::Rc::new(DeadAllocation {
-            vtable: vtable as usize,
-            payload,
-            total_size,
-        }))
+        Some(allocation)
     }
 
     /// Preparation has no logical allocation effect. The caller must prove
@@ -92,13 +131,21 @@ impl Heap {
         }
         let vtable = self.vtable_of(prototype)?.addr();
         // Same padded bytes as clone_collectable, held in untraced host storage.
-        let payload =
-            unsafe { core::slice::from_raw_parts(prototype.cast::<u8>(), payload_size) }.to_vec();
-        Some(std::rc::Rc::new(DeadAllocation {
-            vtable,
-            payload,
-            total_size: block.total_size,
-        }))
+        let bytes = unsafe { core::slice::from_raw_parts(prototype.cast::<u8>(), payload_size) };
+        if payload_size <= INLINE_PAYLOAD_BYTES {
+            let mut allocation = DeadAllocation::zeroed(vtable, block.total_size);
+            std::rc::Rc::get_mut(&mut allocation)
+                .unwrap()
+                .payload_mut()
+                .copy_from_slice(bytes);
+            Some(allocation)
+        } else {
+            Some(std::rc::Rc::new(DeadAllocation {
+                vtable,
+                payload: Payload::Heap(bytes.to_vec()),
+                total_size: block.total_size,
+            }))
+        }
     }
 
     /// Charge the original allocation exactly once at its original position.
@@ -161,7 +208,7 @@ impl Heap {
         // Construction realizes a previously charged allocation; it must not
         // overflow by charging that allocation for a second time.
         self.bytes_since_collection = 0;
-        let object = self.allocate(allocation.payload.len(), Permanence::Collectable);
+        let object = self.allocate(allocation.payload().len(), Permanence::Collectable);
         boundary::require_invariant(
             self.set_vtable(
                 object,
@@ -171,9 +218,9 @@ impl Heap {
         );
         unsafe {
             core::ptr::copy_nonoverlapping(
-                allocation.payload.as_ptr(),
+                allocation.payload().as_ptr(),
                 object.cast::<u8>(),
-                allocation.payload.len(),
+                allocation.payload().len(),
             )
         };
         self.bytes_since_collection = allocation_bytes;
@@ -244,7 +291,7 @@ impl Heap {
                 .map(|allocation| {
                     core::mem::size_of::<DeadAllocation>()
                         + 2 * core::mem::size_of::<usize>()
-                        + allocation.payload.capacity()
+                        + allocation.separate_payload_capacity()
                 })
                 .sum::<usize>()
     }
@@ -252,6 +299,67 @@ impl Heap {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compact_snapshots_preserve_padding_and_do_not_expand_the_shared_header() {
+        // Larger clone/capture snapshots must not pay a larger header for this
+        // numeric optimization. Small payload storage must share the Rc block.
+        let previous_header = 2 * core::mem::size_of::<usize>() + core::mem::size_of::<Vec<u8>>();
+        assert!(core::mem::size_of::<DeadAllocation>() <= previous_header);
+        let mut heap = Heap::new();
+        let vt = heap.allocate(0, Permanence::Permanent);
+        heap.set_vtable(vt, vt);
+        for length in (0..=17).chain([31, 32, 33, 127, 128, MAX_DEAD_PAYLOAD_BYTES]) {
+            let bytes: Vec<_> = (0..length)
+                .map(|i| ((i * 37 + length) & 255) as u8)
+                .collect();
+            let before = (
+                heap.physical_allocation_count(),
+                heap.allocation_count(),
+                heap.bytes_since_collection(),
+            );
+            let snapshot = heap.prepare_virtual_bytes(vt, &bytes).unwrap();
+            assert_eq!(
+                (
+                    heap.physical_allocation_count(),
+                    heap.allocation_count(),
+                    heap.bytes_since_collection()
+                ),
+                before
+            );
+            assert_eq!(&snapshot.payload()[..length], bytes.as_slice());
+            assert!(snapshot.payload()[length..].iter().all(|b| *b == 0));
+            if length <= INLINE_PAYLOAD_BYTES {
+                let start = std::rc::Rc::as_ptr(&snapshot).addr();
+                let payload = snapshot.payload().as_ptr().addr();
+                assert!(
+                    payload >= start
+                        && payload + snapshot.payload().len()
+                            <= start + core::mem::size_of::<DeadAllocation>()
+                );
+                assert_eq!(snapshot.separate_payload_capacity(), 0);
+            }
+            let expected = snapshot.payload().to_vec();
+            let total = snapshot.total_size();
+            let first = heap.record_virtual_clone(snapshot.clone()).unwrap();
+            let second = heap.record_virtual_clone(snapshot).unwrap();
+            assert_eq!(heap.bytes_since_collection(), before.2 + 2 * total);
+            let a = heap.materialize_recorded_clone(second).unwrap();
+            let b = heap.materialize_recorded_clone(first).unwrap();
+            assert_ne!(a, b);
+            for object in [a, b] {
+                let payload = unsafe {
+                    core::slice::from_raw_parts(
+                        object.cast::<u8>(),
+                        heap.payload_size(object).unwrap(),
+                    )
+                };
+                assert_eq!(payload, expected.as_slice());
+                assert_eq!(heap.vtable_of(object), Some(vt));
+            }
+            assert_eq!(heap.bytes_since_collection(), before.2 + 2 * total);
+        }
+    }
+
     #[test]
     fn raw_payloads_keep_exact_bits_fresh_identities_and_original_charges() {
         let mut heap = super::Heap::new();

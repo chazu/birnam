@@ -390,3 +390,38 @@ work. Any later attempt to eliminate those physical allocations must preserve
 original charges, collector/finalizer observations and late-bound publication;
 it needs its own admission and differential evidence. Arithmetic kernel work
 alone is not the dominant cost shown here.
+
+### Compact recovery snapshot storage
+
+The snapshot representation now keeps payloads up to eight bytes inside the
+existing untraced Rc allocation. Larger payloads retain their Vec. The snapshot
+header does not grow on the tested target. Potentially pointer-shaped bytes are
+copied into the allocated Rc after its zeroed inline storage exists; no populated
+native-stack array carries the new payload. This removes the separate payload
+allocation for numeric intermediates and small clone/closure snapshots.
+
+The original payload padding, vtable, logical allocation charge, identity token,
+materialization order and collector settlement/reclamation protocol remain the
+same. Boundary tests compare exact bytes from zero through 1,024-byte payloads,
+including the inline boundary, and verify distinct materializations and stable
+charges. The observing-finalizer/untraced-journal test now covers both one-word
+inline and two-word vector payloads; dead references retain no former child in
+either representation, and observing sweeps still settle allocations first.
+
+The [focused correctness and resource receipt](../measurements/74v-compact-snapshots-correctness.json)
+retains 545 passing workspace tests, 201 passing release runtime tests, the
+expanded GC test in both profiles, and 84 installed source cases: 60 numeric
+counter/resource cases and 24 literal-closure identity/recovery cases. Their
+source/floor/install hashes match. All logical counters and post-collection
+journal capacity match the prior numeric matrices. For each 128-call batch:
+
+| Operations | Prior peak journal bytes (final result) | Compact peak | Bytes saved |
+| --- | --- | --- | --- |
+| 3 | 22,528 | 20,480 | 2,048 |
+| 16 | 172,032 | 156,672 | 15,360 |
+| 32 | 352,256 | 320,512 | 31,744 |
+
+The early-result recovery cases have the same absolute savings. Each difference
+is exactly eight bytes per still-private numeric snapshot. These measurements
+establish lower owned journal storage, not a net speedup or promotion. Full
+production verification and paired performance acceptance remain pending.

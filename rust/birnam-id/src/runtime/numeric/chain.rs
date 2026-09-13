@@ -68,6 +68,14 @@ pub(in crate::runtime) struct Binding {
 }
 
 impl CompiledChain {
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(in crate::runtime) fn loop_resources(&self) -> (usize, usize, usize) {
+        self.loop_reuse.as_ref().map_or((0, 0, 0), |reuse| {
+            let (cached, bytes) = reuse.resources();
+            (1, cached, bytes)
+        })
+    }
+
     pub(in crate::runtime) fn new(template: Rc<Template>, bindings: Vec<Binding>) -> Option<Self> {
         let operators = bindings
             .iter()

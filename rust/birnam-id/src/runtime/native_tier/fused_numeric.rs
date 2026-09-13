@@ -4,8 +4,9 @@ use crate::execution::{DecodedAction, ExecutionError};
 use crate::raw::MethodAddress;
 use crate::runtime::current_thread_token;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 thread_local! {
+    #[cfg(test)]
     pub(in crate::runtime) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(in crate::runtime) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
@@ -159,13 +160,13 @@ pub(super) unsafe fn execute(
                     let raw = ticket
                         .fusion_result(operation, pc)
                         .ok_or(ExecutionError::InvalidAction)?;
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "ffi-test-hooks"))]
                     HITS.set(HITS.get() + operation + 1);
                     let _boundary = runtime.enter_stackless_boundary(owner, capability)?;
                     return Ok(runtime.make_integer(raw));
                 }
                 DecodedAction::Return { value_slot } => {
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "ffi-test-hooks"))]
                     HITS.set(HITS.get() + operation);
                     return unsafe {
                         (*runtime.state.get())

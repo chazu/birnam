@@ -282,75 +282,77 @@ fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
 
 #[test]
 fn discarded_clone_journal_is_untraced_and_settles_before_foreign_finalizers() {
-    for observing in [false, true] {
-        let mut evidence = Vec::new();
-        for elide in [false, true] {
-            let bootstrap = crate::dispatch::build_bootstrap();
-            let r = &bootstrap.runtime;
-            r.publish_canonical_exports();
-            r.install_execution_objects();
-            r.enter(|| r.gc_collect_from_native_range(0, 0));
-            let vt = r.create_vtable(r.globals().object_vt);
-            r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
-            let prototype = r.allocate_instance(vt, 16);
-            let _prototype = ScopedOopRootGuard::new(r, prototype);
-            let child = r.make_integer(902);
-            unsafe {
-                (*r.state.get())
-                    .heap
-                    .write_payload_word(prototype, 0, child.addr());
-                (*r.state.get())
-                    .heap
-                    .write_payload_word(prototype, 1, child.addr());
-            }
-            for _ in 0..3 {
-                if elide {
-                    let heap = unsafe { &mut (*r.state.get()).heap };
-                    let snapshot = heap.prepare_dead_clone(prototype).unwrap();
-                    assert!(heap.record_dead_allocation(snapshot));
-                } else {
-                    r.clone_object(prototype);
+    for words in [1usize, 2] {
+        for observing in [false, true] {
+            let mut evidence = Vec::new();
+            for elide in [false, true] {
+                let bootstrap = crate::dispatch::build_bootstrap();
+                let r = &bootstrap.runtime;
+                r.publish_canonical_exports();
+                r.install_execution_objects();
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                let vt = r.create_vtable(r.globals().object_vt);
+                r.set_layout(vt, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+                let prototype = r.allocate_instance(vt, words * core::mem::size_of::<Oop>());
+                let _prototype = ScopedOopRootGuard::new(r, prototype);
+                let child = r.make_integer(902);
+                unsafe {
+                    for slot in 0..words {
+                        (*r.state.get())
+                            .heap
+                            .write_payload_word(prototype, slot, child.addr());
+                    }
                 }
+                for _ in 0..3 {
+                    if elide {
+                        let heap = unsafe { &mut (*r.state.get()).heap };
+                        let snapshot = heap.prepare_dead_clone(prototype).unwrap();
+                        assert!(heap.record_dead_allocation(snapshot));
+                    } else {
+                        r.clone_object(prototype);
+                    }
+                }
+                // The original reference disappears after the optimized body. Saved
+                // bytes in unreachable clones must not keep their former child alive.
+                unsafe {
+                    for slot in 0..words {
+                        (*r.state.get()).heap.write_payload_word(
+                            prototype,
+                            slot,
+                            r.canonical().nil.addr(),
+                        );
+                    }
+                }
+                if observing {
+                    let garbage = r.allocate_instance(vt, 0);
+                    assert!(unsafe {
+                        (*r.state.get())
+                            .heap
+                            .set_finalizer(garbage, finalizer_observer)
+                    });
+                }
+                FINALIZED.set(0);
+                r.gc_register_root_provider(mark_observer);
+                let before = (r.gc_live_count(), r.gc_live_bytes());
+                assert_eq!(
+                    before.0 - unsafe { (*r.state.get()).heap.physical_allocation_count() },
+                    if elide { 3 } else { 0 }
+                );
+                let reclaimed = r.enter(|| r.gc_collect_from_native_range(0, 0));
+                assert_eq!(MARK_COUNTS.get(), before);
+                assert_eq!(FINALIZED.get(), usize::from(observing));
+                assert_eq!(unsafe { (*r.state.get()).heap.payload_size(child) }, None);
+                assert!(!unsafe { (*r.state.get()).heap.has_dead_allocations() });
+                evidence.push((
+                    before,
+                    reclaimed,
+                    r.gc_live_count(),
+                    r.gc_live_bytes(),
+                    unsafe { (*r.state.get()).heap.bytes_since_collection() },
+                ));
             }
-            // The original reference disappears after the optimized body. Saved
-            // bytes in unreachable clones must not keep their former child alive.
-            unsafe {
-                (*r.state.get())
-                    .heap
-                    .write_payload_word(prototype, 0, r.canonical().nil.addr());
-                (*r.state.get())
-                    .heap
-                    .write_payload_word(prototype, 1, r.canonical().nil.addr());
-            }
-            if observing {
-                let garbage = r.allocate_instance(vt, 0);
-                assert!(unsafe {
-                    (*r.state.get())
-                        .heap
-                        .set_finalizer(garbage, finalizer_observer)
-                });
-            }
-            FINALIZED.set(0);
-            r.gc_register_root_provider(mark_observer);
-            let before = (r.gc_live_count(), r.gc_live_bytes());
-            assert_eq!(
-                before.0 - unsafe { (*r.state.get()).heap.physical_allocation_count() },
-                if elide { 3 } else { 0 }
-            );
-            let reclaimed = r.enter(|| r.gc_collect_from_native_range(0, 0));
-            assert_eq!(MARK_COUNTS.get(), before);
-            assert_eq!(FINALIZED.get(), usize::from(observing));
-            assert_eq!(unsafe { (*r.state.get()).heap.payload_size(child) }, None);
-            assert!(!unsafe { (*r.state.get()).heap.has_dead_allocations() });
-            evidence.push((
-                before,
-                reclaimed,
-                r.gc_live_count(),
-                r.gc_live_bytes(),
-                unsafe { (*r.state.get()).heap.bytes_since_collection() },
-            ));
+            assert_eq!(evidence[0], evidence[1], "observing finalizer={observing}");
         }
-        assert_eq!(evidence[0], evidence[1], "observing finalizer={observing}");
     }
 }
 

@@ -33,6 +33,7 @@ def sources():
         "unboxed-numeric-smoke.py", "unboxed-numeric-control-smoke.py",
         "unboxed-numeric-measurement-smoke.py", "unboxed_numeric_timing_common.py",
         "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
+        "loop-measurement-smoke.py", "loop_timing_common.py", "loop-timing.py",
         "closure-sequence-mutation-smoke.py",
         "closure-budget-smoke.py",
         "closure-journal-smoke.py",
@@ -262,7 +263,7 @@ def main():
                             raise RuntimeError("incomplete literal result capture/suspension matrix")
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
-                        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant") for p in ("debug", "release")}
+                        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant", "loop-measure") for p in ("debug", "release")}
                         paths = list(unboxed_evidence.glob("*.json"))
                         if {p.name for p in paths} != expected_unboxed:
                             raise RuntimeError("missing source unboxed matrix receipts")
@@ -290,6 +291,12 @@ def main():
                             expected_rows = {(n, s, e) for n in (3, 16, 32) for s in range(5) for e in (0, 1)}
                             if len(measure["rows"]) != 30 or {(r["operations"], r["shape"], r["enabled"]) for r in measure["rows"]} != expected_rows:
                                 raise RuntimeError("incomplete source unboxed measurement matrix")
+                            costs = unboxed[f"loop-measure-{profile}.json"]
+                            if costs["status"] != "passed" or costs["floor_sha256"] != expected_floor:
+                                raise RuntimeError("source loop measurement matrix failed or floor differs")
+                            expected_costs = {(n, s, p, u, e) for n in (3, 16, 32) for s in range(4) for p in (0, 1) for u in (0, 1) for e in (0, 1)}
+                            if len(costs["rows"]) != 96 or {(r["operations"], r["shape"], r["precise"], r["unboxed"], r["enabled"]) for r in costs["rows"]} != expected_costs:
+                                raise RuntimeError("incomplete source loop measurement matrix")
                             loop = unboxed[f"loop-invariant-{profile}.json"]
                             if loop["status"] != "passed" or loop["floor_sha256"] != expected_floor:
                                 raise RuntimeError("source loop invariant matrix failed or floor differs")

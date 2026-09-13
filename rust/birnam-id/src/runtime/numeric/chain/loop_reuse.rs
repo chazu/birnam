@@ -46,6 +46,22 @@ impl Reuse {
         }
     }
 
+    /// Owned reuse storage only: excludes shared descriptors, allocator overhead
+    /// and executable pages. Include spare vector capacity, including test masks.
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(super) fn resources(&self) -> (usize, usize) {
+        let previous = self.previous.borrow();
+        let payload = previous.as_ref().map_or(0, |p| {
+            (p.inputs.capacity() + p.outputs.capacity()) * core::mem::size_of::<i64>()
+        });
+        (
+            usize::from(previous.is_some()),
+            core::mem::size_of::<Self>()
+                + payload
+                + self.masks.capacity() * core::mem::size_of::<u64>(),
+        )
+    }
+
     pub(super) fn predict(
         &self,
         ordinary: unsafe extern "C" fn(*const i64, *mut i64) -> usize,
