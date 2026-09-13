@@ -423,5 +423,11 @@ journal capacity match the prior numeric matrices. For each 128-call batch:
 
 The early-result recovery cases have the same absolute savings. Each difference
 is exactly eight bytes per still-private numeric snapshot. These measurements
-establish lower owned journal storage, not a net speedup or promotion. Full
-production verification and paired performance acceptance remain pending.
+establish lower owned journal storage, not a net speedup or promotion.
+
+The [combined production receipt](../measurements/74w-loop-cost-production-correctness.json)
+now passes all 71 commands and 3,164 source cases with matching source and floor
+hashes. Compact snapshots are integrated on main at `9eed9f0a`, together with
+the verified loop cost harness. The 271 production source hashes still match
+after integration. Paired numeric performance acceptance is queued behind loop
+and closure-threshold timing; application and process-resource acceptance follow.

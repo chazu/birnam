@@ -187,3 +187,23 @@ The [debug matrix](../measurements/74w-loop-measure-debug.json) also passes all
 96 cases with matching hashes. The [focused receipt](../measurements/74w-loop-cost-focused-correctness.json)
 retains both matrices and the 545-test workspace/201-test release runtime results.
 The combined full gate remains queued behind literal-control verification.
+
+## Combined production gate passed
+
+The [combined production receipt](../measurements/74w-loop-cost-production-correctness.json)
+passes all 71 commands, with all 271 source hashes matching. It retains 3,164
+source cases and matching independently verified debug/release floors. Both
+96-case loop measurement matrices contain every operation count, input shape,
+GC mode, numeric representation and reuse setting. The closure measurement
+matrices also cover every one-, three-, four-, eight-, sixteen- and 32-use
+configuration. Installed execution, native lifetime, image, cold archive and
+relocation checks pass. The receipt is committed as `370be3d9`; the verified
+compact snapshots and loop measurement support are integrated on main at
+`9eed9f0a`, whose production sources match the receipt exactly.
+
+The loop timing matrix has started after passing the unchanged host preflight.
+Its interval gate and paired results remain pending. Closure-threshold and
+compact-numeric matrices are serialized behind it, then combined application
+and process-resource acceptance. A rejected measurement stops that timing queue
+and retains its evidence for reassessment. No profitability or promotion follows
+from this correctness checkpoint alone.
