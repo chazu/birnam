@@ -5,6 +5,7 @@ use crate::heap::DeferredAllocation;
 use crate::runtime::current_thread_token;
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 use core::cell::Cell;
+pub(super) mod scratch;
 
 pub(in crate::runtime) enum Outcome {
     Action(Oop),
@@ -55,6 +56,7 @@ pub(super) fn prepare_maps(
     maps
 }
 
+#[derive(Default)]
 struct Values {
     identities: Vec<DeferredAllocation>,
     // Untraced host storage. Materialization cannot collect and publishes all
@@ -141,7 +143,7 @@ pub(super) unsafe fn execute(
     {
         return None;
     }
-    let snapshots = {
+    {
         let state = unsafe { &*r.state.get() };
         let bytes =
             crate::heap::Heap::allocation_total_size(8)?.checked_mul(template.body_boxes())?;
@@ -152,18 +154,33 @@ pub(super) unsafe fn execute(
         {
             return None;
         }
-        template
-            .sends()
-            .iter()
-            .enumerate()
-            .map(|(index, send)| {
-                let raw = ticket.fusion_result(index, send.pc as usize)?;
+    }
+    // Only Call results acquire virtual identities. A final numeric TailCall
+    // has no local continuation and boxes its result directly below.
+    let last_send = template.sends().last()?;
+    let tail_result = maps
+        .steps()
+        .get(last_send.pc as usize)?
+        .after_transition
+        .is_none();
+    let virtual_results = maps.result_count() - usize::from(tail_result);
+    let mut lease = r
+        .native_tier
+        .borrow_mut()
+        .unboxed_scratch
+        .get_or_insert_with(scratch::Pool::new)
+        .take(maps.result_count());
+    {
+        let state = unsafe { &*r.state.get() };
+        for (index, send) in template.sends().iter().take(virtual_results).enumerate() {
+            let raw = ticket.fusion_result(index, send.pc as usize)?;
+            lease.storage.snapshots.push(
                 state
                     .heap
-                    .prepare_virtual_bytes(r.canonical().smallint_vt, &raw.to_ne_bytes())
-            })
-            .collect::<Option<Vec<_>>>()?
-    };
+                    .prepare_virtual_bytes(r.canonical().smallint_vt, &raw.to_ne_bytes())?,
+            );
+        }
+    }
     #[cfg(test)]
     let force_at = FORCE_AT.get();
     #[cfg(not(test))]
@@ -174,10 +191,7 @@ pub(super) unsafe fn execute(
     // entries only move/stage the supported values; no virtual Oop escapes.
     Some((|| {
         let nil = r.canonical().nil;
-        let mut values = Values {
-            identities: Vec::with_capacity(snapshots.len()),
-            materialized: vec![None; snapshots.len()],
-        };
+        let scratch::Storage { snapshots, values } = &mut lease.storage;
         let mut operation = 0;
         for (pc, method) in candidate.entries.iter().enumerate() {
             let token;
