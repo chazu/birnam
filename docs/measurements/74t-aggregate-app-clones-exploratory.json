@@ -1,0 +1,1890 @@
+{
+  "check_only": false,
+  "comparisons": [
+    {
+      "median_reduction_percent": -0.08271404550283634,
+      "metric": "execution_us",
+      "paired_reduction_percent": [
+        29.390377194352123,
+        -16.594276561007916,
+        16.428848470002244,
+        -20.706384630312446
+      ],
+      "scenario": "eval"
+    },
+    {
+      "median_reduction_percent": -5.253083006969345,
+      "metric": "warmup_us",
+      "paired_reduction_percent": [
+        0.23805163889397685,
+        -10.744217652832667,
+        14.167237713703374,
+        -15.224043384736575
+      ],
+      "scenario": "eval"
+    },
+    {
+      "median_reduction_percent": 2.099061914741834,
+      "metric": "process_wall_ns",
+      "paired_reduction_percent": [
+        10.70061694626424,
+        -6.502493116780572,
+        15.218142202175567,
+        -14.802568560015494
+      ],
+      "scenario": "eval"
+    },
+    {
+      "median_reduction_percent": -0.6273779623907072,
+      "metric": "peak_rss_bytes",
+      "paired_reduction_percent": [
+        -0.5057724024189136,
+        0.28117227208824813,
+        -0.7489835223625008,
+        -8.094056481153245
+      ],
+      "scenario": "eval"
+    },
+    {
+      "median_reduction_percent": 12.454608646829184,
+      "metric": "execution_us",
+      "paired_reduction_percent": [
+        19.675524763430275,
+        -9.158170899403872,
+        19.59693107468533,
+        5.312286218973039
+      ],
+      "scenario": "collections"
+    },
+    {
+      "median_reduction_percent": 16.065103869110192,
+      "metric": "warmup_us",
+      "paired_reduction_percent": [
+        22.874768248874354,
+        -12.569840038546577,
+        11.365448339437423,
+        20.76475939878296
+      ],
+      "scenario": "collections"
+    },
+    {
+      "median_reduction_percent": 2.932692104243179,
+      "metric": "process_wall_ns",
+      "paired_reduction_percent": [
+        0.14764982364322554,
+        -7.454684765196307,
+        18.397750657580115,
+        5.717734384843132
+      ],
+      "scenario": "collections"
+    },
+    {
+      "median_reduction_percent": 2.8305045920946514,
+      "metric": "peak_rss_bytes",
+      "paired_reduction_percent": [
+        3.365739601279838,
+        0.7758568024925139,
+        4.975244535684098,
+        2.295269582909465
+      ],
+      "scenario": "collections"
+    },
+    {
+      "median_reduction_percent": -7.752557018954654,
+      "metric": "execution_us",
+      "paired_reduction_percent": [
+        -19.14399392483992,
+        -9.88407731564267,
+        0.5688948843689312,
+        -5.621036722266637
+      ],
+      "scenario": "portable-collections"
+    },
+    {
+      "median_reduction_percent": 17.77117062171952,
+      "metric": "materialization_us",
+      "paired_reduction_percent": [
+        59.64757709251101,
+        2.594810379241519,
+        32.947530864197525,
+        -21.73295454545454
+      ],
+      "scenario": "portable-collections"
+    },
+    {
+      "median_reduction_percent": 7.2749315782000945,
+      "metric": "warmup_us",
+      "paired_reduction_percent": [
+        52.626930418561216,
+        -4.39370282899223,
+        18.943565985392418,
+        -13.55494373265449
+      ],
+      "scenario": "portable-collections"
+    },
+    {
+      "median_reduction_percent": -4.343863790885738,
+      "metric": "process_wall_ns",
+      "paired_reduction_percent": [
+        4.6224494729434245,
+        -11.429253605763744,
+        2.741526023992269,
+        -12.0525824966357
+      ],
+      "scenario": "portable-collections"
+    },
+    {
+      "median_reduction_percent": -2.040319040079086,
+      "metric": "peak_rss_bytes",
+      "paired_reduction_percent": [
+        0.09021708486044444,
+        -5.803571428571419,
+        -0.36119068377133967,
+        -3.7194473963868324
+      ],
+      "scenario": "portable-collections"
+    },
+    {
+      "median_reduction_percent": -2.425665814675792,
+      "metric": "execution_us",
+      "paired_reduction_percent": [
+        14.452337335424437,
+        -14.917236061046246,
+        10.065904431694662,
+        -20.93287299858655
+      ],
+      "scenario": "materialize-cold"
+    },
+    {
+      "median_reduction_percent": -12.777777777777777,
+      "metric": "warmup_us",
+      "paired_reduction_percent": [
+        0.0,
+        -5.555555555555558,
+        -19.999999999999996,
+        -28.57142857142858
+      ],
+      "scenario": "materialize-cold"
+    },
+    {
+      "median_reduction_percent": -0.31280244259578893,
+      "metric": "process_wall_ns",
+      "paired_reduction_percent": [
+        15.920837226487293,
+        -19.684098348083488,
+        10.894825200132773,
+        -11.520430085324351
+      ],
+      "scenario": "materialize-cold"
+    },
+    {
+      "median_reduction_percent": -2.7624305006104244,
+      "metric": "peak_rss_bytes",
+      "paired_reduction_percent": [
+        -3.4154419374870626,
+        -0.9699321047526688,
+        -4.391721352852085,
+        -2.109419063733786
+      ],
+      "scenario": "materialize-cold"
+    }
+  ],
+  "correctness_receipt": "/private/tmp/birnam-74u-hot-preparation/docs/measurements/74u-hot-aggregate-scratch-production-correctness.json",
+  "correctness_sha256": "f608bd9c0e5dc07ee5f6992623d82bf64a6648750b346e88d14ed43ef63425ce",
+  "exploratory_requested": true,
+  "gates": [
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-0-eval"
+      ],
+      "exit_code": 0,
+      "output": "bench-host-check: recovery-applications-0-eval completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+      "samples": "Processes: 620 total, 3 running, 2 stuck, 615 sleeping, 6087 threads \n2026/09/13 12:37:33\nLoad Avg: 28.11, 41.89, 34.56 \nCPU usage: 49.65% user, 32.75% sys, 17.58% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 342849 total, 4850M resident, 187M private, 1698M shared.\nPhysMem: 23G used (3697M wired, 8390M compressor), 158M unused.\nVM: 254T vsize, 4915M framework vsize, 1737136(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57466983/35G in, 51311711/32G out.\nDisks: 205194390/3461G read, 117889861/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-0-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-0-collections observed load during measurement\n  interval samples: 8, median 4.84%, below 30%: 8\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 618 total, 6 running, 1 stuck, 611 sleeping, 6102 threads \n2026/09/13 12:37:34\nLoad Avg: 28.11, 41.89, 34.56 \nCPU usage: 50.93% user, 30.31% sys, 18.75% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 342807 total, 4880M resident, 188M private, 1697M shared.\nPhysMem: 23G used (3545M wired, 8415M compressor), 248M unused.\nVM: 253T vsize, 4915M framework vsize, 1737136(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467058/35G in, 51311769/32G out.\nDisks: 205202431/3461G read, 117889902/3076G written.\n\n\nProcesses: 625 total, 10 running, 615 sleeping, 6110 threads \n2026/09/13 12:37:35\nLoad Avg: 28.11, 41.89, 34.56 \nCPU usage: 71.31% user, 25.78% sys, 2.90% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 343412 total, 5019M resident, 188M private, 1704M shared.\nPhysMem: 23G used (3689M wired, 8513M compressor), 348M unused.\nVM: 256T vsize, 4915M framework vsize, 1737136(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467089/35G in, 51311804/32G out.\nDisks: 205206650/3461G read, 117890196/3076G written.\n\n\nProcesses: 626 total, 22 running, 604 sleeping, 6132 threads \n2026/09/13 12:37:36\nLoad Avg: 28.11, 41.89, 34.56 \nCPU usage: 72.94% user, 24.42% sys, 2.62% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 343731 total, 5012M resident, 188M private, 1849M shared.\nPhysMem: 23G used (3546M wired, 8502M compressor), 302M unused.\nVM: 256T vsize, 4915M framework vsize, 1737140(4) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467272/35G in, 51311972/32G out.\nDisks: 205207057/3461G read, 117890241/3076G written.\n\n\nProcesses: 621 total, 49 running, 572 sleeping, 6170 threads \n2026/09/13 12:37:37\nLoad Avg: 26.58, 41.34, 34.41 \nCPU usage: 73.19% user, 21.95% sys, 4.84% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 343250 total, 4945M resident, 188M private, 1849M shared.\nPhysMem: 23G used (3533M wired, 8477M compressor), 351M unused.\nVM: 254T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467333/35G in, 51312017/32G out.\nDisks: 205207593/3461G read, 117890282/3076G written.\n\n\nProcesses: 597 total, 9 running, 1 stuck, 587 sleeping, 6017 threads \n2026/09/13 12:37:38\nLoad Avg: 26.58, 41.34, 34.41 \nCPU usage: 84.75% user, 14.66% sys, 0.57% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341885 total, 4949M resident, 188M private, 1854M shared.\nPhysMem: 23G used (3678M wired, 8385M compressor), 288M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467667/35G in, 51312090/32G out.\nDisks: 205208414/3461G read, 117890489/3076G written.\n\n\nProcesses: 597 total, 6 running, 2 stuck, 589 sleeping, 6036 threads \n2026/09/13 12:37:39\nLoad Avg: 26.58, 41.34, 34.41 \nCPU usage: 69.85% user, 22.32% sys, 7.82% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341559 total, 4905M resident, 188M private, 1855M shared.\nPhysMem: 23G used (3537M wired, 8276M compressor), 201M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467718/35G in, 51312138/32G out.\nDisks: 205211877/3461G read, 117891772/3076G written.\n\n\nProcesses: 601 total, 44 running, 557 sleeping, 6039 threads \n2026/09/13 12:37:40\nLoad Avg: 26.58, 41.34, 34.41 \nCPU usage: 88.91% user, 10.74% sys, 0.34% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341798 total, 4902M resident, 188M private, 1855M shared.\nPhysMem: 23G used (3527M wired, 8252M compressor), 140M unused.\nVM: 247T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467746/35G in, 51312167/32G out.\nDisks: 205212613/3461G read, 117891795/3076G written.\n\n\nProcesses: 593 total, 12 running, 581 sleeping, 6000 threads \n2026/09/13 12:37:41\nLoad Avg: 26.58, 41.34, 34.41 \nCPU usage: 73.98% user, 17.45% sys, 8.55% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341450 total, 4982M resident, 188M private, 1857M shared.\nPhysMem: 23G used (3532M wired, 8242M compressor), 294M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467765/35G in, 51312186/32G out.\nDisks: 205222242/3462G read, 117891828/3076G written.\n\n\nProcesses: 598 total, 10 running, 1 stuck, 587 sleeping, 5939 threads \n2026/09/13 12:37:43\nLoad Avg: 25.01, 40.77, 34.25 \nCPU usage: 65.17% user, 26.11% sys, 8.70% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341812 total, 4985M resident, 188M private, 1858M shared.\nPhysMem: 23G used (3678M wired, 8397M compressor), 449M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57467796/35G in, 51312224/32G out.\nDisks: 205231239/3462G read, 117892008/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-0-portable-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-0-portable-collections observed load during measurement\n  interval samples: 8, median 4.6%, below 30%: 8\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 595 total, 14 running, 581 sleeping, 5955 threads \n2026/09/13 12:37:44\nLoad Avg: 25.01, 40.77, 34.25 \nCPU usage: 70.75% user, 29.24% sys, 0.0% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 342563 total, 5066M resident, 165M private, 1675M shared.\nPhysMem: 23G used (3670M wired, 8461M compressor), 414M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468218/35G in, 51312306/32G out.\nDisks: 205233912/3462G read, 117892161/3076G written.\n\n\nProcesses: 600 total, 13 running, 587 sleeping, 5958 threads \n2026/09/13 12:37:45\nLoad Avg: 25.01, 40.77, 34.25 \nCPU usage: 87.59% user, 12.40% sys, 0.0% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 342812 total, 5167M resident, 165M private, 1701M shared.\nPhysMem: 23G used (3524M wired, 8436M compressor), 381M unused.\nVM: 246T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468222/35G in, 51312310/32G out.\nDisks: 205234079/3462G read, 117892252/3076G written.\n\n\nProcesses: 591 total, 14 running, 577 sleeping, 5926 threads \n2026/09/13 12:37:46\nLoad Avg: 25.01, 40.77, 34.25 \nCPU usage: 73.64% user, 20.69% sys, 5.66% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 342099 total, 5147M resident, 165M private, 1705M shared.\nPhysMem: 23G used (3533M wired, 8416M compressor), 417M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468317/35G in, 51312399/32G out.\nDisks: 205240297/3462G read, 117892389/3076G written.\n\n\nProcesses: 593 total, 12 running, 581 sleeping, 5921 threads \n2026/09/13 12:37:48\nLoad Avg: 23.89, 40.28, 34.11 \nCPU usage: 67.63% user, 28.30% sys, 4.6% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340819 total, 4874M resident, 165M private, 1724M shared.\nPhysMem: 23G used (3677M wired, 8319M compressor), 346M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468347/35G in, 51312434/32G out.\nDisks: 205245590/3462G read, 117892947/3076G written.\n\n\nProcesses: 586 total, 8 running, 578 sleeping, 5906 threads \n2026/09/13 12:37:49\nLoad Avg: 23.89, 40.28, 34.11 \nCPU usage: 69.45% user, 28.10% sys, 2.43% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340186 total, 4784M resident, 165M private, 1724M shared.\nPhysMem: 23G used (3533M wired, 8281M compressor), 525M unused.\nVM: 241T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468358/35G in, 51312455/32G out.\nDisks: 205249043/3462G read, 117893035/3076G written.\n\n\nProcesses: 588 total, 15 running, 573 sleeping, 5914 threads \n2026/09/13 12:37:50\nLoad Avg: 23.89, 40.28, 34.11 \nCPU usage: 67.91% user, 26.73% sys, 5.34% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340496 total, 4888M resident, 165M private, 1724M shared.\nPhysMem: 23G used (3675M wired, 8349M compressor), 336M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468408/35G in, 51312491/32G out.\nDisks: 205253482/3462G read, 117894034/3076G written.\n\n\nProcesses: 591 total, 8 running, 1 stuck, 582 sleeping, 5893 threads \n2026/09/13 12:37:51\nLoad Avg: 23.89, 40.28, 34.11 \nCPU usage: 71.82% user, 27.83% sys, 0.34% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340655 total, 4860M resident, 165M private, 1740M shared.\nPhysMem: 23G used (3535M wired, 8390M compressor), 314M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468435/35G in, 51312518/32G out.\nDisks: 205254846/3462G read, 117894257/3076G written.\n\n\nProcesses: 589 total, 10 running, 579 sleeping, 5900 threads \n2026/09/13 12:37:52\nLoad Avg: 22.70, 39.76, 33.97 \nCPU usage: 66.82% user, 31.21% sys, 1.96% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340508 total, 4864M resident, 165M private, 1740M shared.\nPhysMem: 23G used (3522M wired, 8329M compressor), 309M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468445/35G in, 51312530/32G out.\nDisks: 205260235/3462G read, 117894356/3076G written.\n\n\nProcesses: 592 total, 9 running, 1 stuck, 582 sleeping, 5897 threads \n2026/09/13 12:37:53\nLoad Avg: 22.70, 39.76, 33.97 \nCPU usage: 66.1% user, 28.83% sys, 5.14% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340788 total, 4894M resident, 165M private, 1757M shared.\nPhysMem: 23G used (3534M wired, 8300M compressor), 354M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57468478/35G in, 51312577/32G out.\nDisks: 205267025/3462G read, 117895106/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-0-materialize-cold"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-0-materialize-cold observed load during measurement\n  interval samples: 1, median 6.30%, below 30%: 1\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 586 total, 12 running, 1 stuck, 573 sleeping, 5869 threads \n2026/09/13 12:37:54\nLoad Avg: 22.70, 39.76, 33.97 \nCPU usage: 57.81% user, 41.88% sys, 0.29% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340156 total, 4884M resident, 160M private, 1629M shared.\nPhysMem: 23G used (3679M wired, 8254M compressor), 383M unused.\nVM: 241T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469421/35G in, 51313519/32G out.\nDisks: 205268939/3462G read, 117897684/3076G written.\n\n\nProcesses: 590 total, 10 running, 580 sleeping, 5890 threads \n2026/09/13 12:37:55\nLoad Avg: 22.70, 39.76, 33.97 \nCPU usage: 67.45% user, 26.23% sys, 6.30% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341272 total, 5012M resident, 160M private, 1681M shared.\nPhysMem: 23G used (3536M wired, 8260M compressor), 334M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469513/35G in, 51313539/32G out.\nDisks: 205271063/3462G read, 117897928/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-1-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-1-collections observed load during measurement\n  interval samples: 6, median 12.67%, below 30%: 6\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 588 total, 9 running, 1 stuck, 578 sleeping, 5891 threads \n2026/09/13 12:37:56\nLoad Avg: 22.70, 39.76, 33.97 \nCPU usage: 58.90% user, 33.62% sys, 7.47% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340324 total, 4969M resident, 159M private, 1661M shared.\nPhysMem: 23G used (3678M wired, 8224M compressor), 341M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469551/35G in, 51313584/32G out.\nDisks: 205272929/3462G read, 117898021/3076G written.\n\n\nProcesses: 595 total, 7 running, 588 sleeping, 5907 threads \n2026/09/13 12:37:57\nLoad Avg: 22.70, 39.76, 33.97 \nCPU usage: 68.34% user, 28.18% sys, 3.46% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341074 total, 5067M resident, 159M private, 1689M shared.\nPhysMem: 23G used (3536M wired, 8322M compressor), 358M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469629/35G in, 51313658/32G out.\nDisks: 205274423/3462G read, 117898285/3076G written.\n\n\nProcesses: 591 total, 10 running, 581 sleeping, 5895 threads \n2026/09/13 12:37:58\nLoad Avg: 21.84, 39.30, 33.84 \nCPU usage: 70.88% user, 25.17% sys, 3.94% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340677 total, 5035M resident, 159M private, 1691M shared.\nPhysMem: 23G used (3535M wired, 8306M compressor), 435M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469651/35G in, 51313685/32G out.\nDisks: 205274687/3462G read, 117898462/3076G written.\n\n\nProcesses: 592 total, 8 running, 1 stuck, 583 sleeping, 5901 threads \n2026/09/13 12:37:59\nLoad Avg: 21.84, 39.30, 33.84 \nCPU usage: 66.70% user, 20.62% sys, 12.67% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340846 total, 5039M resident, 159M private, 1725M shared.\nPhysMem: 23G used (3680M wired, 8294M compressor), 266M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469679/35G in, 51313713/32G out.\nDisks: 205276026/3462G read, 117899171/3076G written.\n\n\nProcesses: 592 total, 9 running, 583 sleeping, 5926 threads \n2026/09/13 12:38:00\nLoad Avg: 21.84, 39.30, 33.84 \nCPU usage: 71.29% user, 25.43% sys, 3.26% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340810 total, 5082M resident, 159M private, 1744M shared.\nPhysMem: 23G used (3536M wired, 8263M compressor), 209M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469730/35G in, 51313764/32G out.\nDisks: 205277442/3463G read, 117899640/3076G written.\n\n\nProcesses: 589 total, 8 running, 581 sleeping, 5920 threads \n2026/09/13 12:38:01\nLoad Avg: 21.84, 39.30, 33.84 \nCPU usage: 60.48% user, 22.82% sys, 16.68% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340624 total, 5087M resident, 159M private, 1751M shared.\nPhysMem: 23G used (3536M wired, 8244M compressor), 239M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469804/35G in, 51313836/32G out.\nDisks: 205285274/3463G read, 117899889/3076G written.\n\n\nProcesses: 591 total, 10 running, 581 sleeping, 5905 threads \n2026/09/13 12:38:02\nLoad Avg: 21.29, 38.89, 33.73 \nCPU usage: 58.28% user, 24.79% sys, 16.91% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340712 total, 5064M resident, 159M private, 1751M shared.\nPhysMem: 23G used (3679M wired, 8340M compressor), 333M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469860/35G in, 51313887/32G out.\nDisks: 205292762/3463G read, 117900271/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-1-portable-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-1-portable-collections observed load during measurement\n  interval samples: 6, median 15.89%, below 30%: 6\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 583 total, 7 running, 576 sleeping, 5892 threads \n2026/09/13 12:38:03\nLoad Avg: 21.29, 38.89, 33.73 \nCPU usage: 68.30% user, 28.43% sys, 3.26% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339994 total, 4683M resident, 161M private, 1645M shared.\nPhysMem: 23G used (3536M wired, 8359M compressor), 489M unused.\nVM: 240T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469907/35G in, 51313915/32G out.\nDisks: 205293396/3463G read, 117900383/3076G written.\n\n\nProcesses: 595 total, 11 running, 584 sleeping, 5912 threads \n2026/09/13 12:38:04\nLoad Avg: 21.29, 38.89, 33.73 \nCPU usage: 65.53% user, 21.80% sys, 12.65% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340974 total, 4822M resident, 161M private, 1678M shared.\nPhysMem: 23G used (3680M wired, 8357M compressor), 360M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469944/35G in, 51313955/32G out.\nDisks: 205294512/3463G read, 117900563/3076G written.\n\n\nProcesses: 592 total, 11 running, 581 sleeping, 5910 threads \n2026/09/13 12:38:05\nLoad Avg: 21.29, 38.89, 33.73 \nCPU usage: 71.16% user, 27.80% sys, 1.2% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340868 total, 4819M resident, 161M private, 1701M shared.\nPhysMem: 23G used (3536M wired, 8350M compressor), 343M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57469998/35G in, 51314009/32G out.\nDisks: 205294983/3463G read, 117900847/3076G written.\n\n\nProcesses: 589 total, 9 running, 580 sleeping, 5904 threads \n2026/09/13 12:38:06\nLoad Avg: 21.29, 38.89, 33.73 \nCPU usage: 72.3% user, 23.93% sys, 4.2% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340576 total, 4862M resident, 161M private, 1702M shared.\nPhysMem: 23G used (3534M wired, 8346M compressor), 342M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470151/35G in, 51314307/32G out.\nDisks: 205295547/3463G read, 117901024/3076G written.\n\n\nProcesses: 590 total, 4 running, 2 stuck, 584 sleeping, 5900 threads \n2026/09/13 12:38:08\nLoad Avg: 20.47, 38.43, 33.59 \nCPU usage: 60.59% user, 23.50% sys, 15.89% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340657 total, 4852M resident, 161M private, 1728M shared.\nPhysMem: 23G used (3671M wired, 8340M compressor), 276M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470230/35G in, 51314392/32G out.\nDisks: 205301218/3463G read, 117901309/3076G written.\n\n\nProcesses: 589 total, 8 running, 581 sleeping, 5908 threads \n2026/09/13 12:38:09\nLoad Avg: 20.47, 38.43, 33.59 \nCPU usage: 58.45% user, 22.17% sys, 19.36% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340620 total, 4852M resident, 161M private, 1743M shared.\nPhysMem: 23G used (3538M wired, 8338M compressor), 328M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470305/35G in, 51314475/32G out.\nDisks: 205308056/3463G read, 117901466/3076G written.\n\n\nProcesses: 593 total, 7 running, 1 stuck, 585 sleeping, 5919 threads \n2026/09/13 12:38:10\nLoad Avg: 20.47, 38.43, 33.59 \nCPU usage: 64.94% user, 18.90% sys, 16.15% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340950 total, 4871M resident, 161M private, 1760M shared.\nPhysMem: 23G used (3682M wired, 8333M compressor), 250M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470320/35G in, 51314495/32G out.\nDisks: 205309486/3463G read, 117901652/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-1-materialize-cold"
+      ],
+      "exit_code": 0,
+      "output": "bench-host-check: recovery-applications-1-materialize-cold completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+      "samples": "Processes: 590 total, 4 running, 1 stuck, 585 sleeping, 5915 threads \n2026/09/13 12:38:11\nLoad Avg: 20.47, 38.43, 33.59 \nCPU usage: 59.29% user, 32.69% sys, 8.1% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340609 total, 4723M resident, 166M private, 1673M shared.\nPhysMem: 23G used (3672M wired, 8351M compressor), 423M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470407/35G in, 51314580/32G out.\nDisks: 205312115/3463G read, 117901914/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-1-eval"
+      ],
+      "exit_code": 0,
+      "output": "bench-host-check: recovery-applications-1-eval completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+      "samples": "Processes: 584 total, 6 running, 578 sleeping, 5869 threads \n2026/09/13 12:38:12\nLoad Avg: 19.31, 37.89, 33.43 \nCPU usage: 65.64% user, 25.51% sys, 8.84% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339845 total, 4636M resident, 164M private, 1661M shared.\nPhysMem: 23G used (3680M wired, 8337M compressor), 404M unused.\nVM: 240T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470474/35G in, 51314646/32G out.\nDisks: 205317357/3463G read, 117903021/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-2-portable-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-2-portable-collections observed load during measurement\n  interval samples: 6, median 16.58%, below 30%: 6\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 587 total, 5 running, 582 sleeping, 5871 threads \n2026/09/13 12:38:13\nLoad Avg: 19.31, 37.89, 33.43 \nCPU usage: 64.63% user, 33.76% sys, 1.60% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340342 total, 4734M resident, 165M private, 1665M shared.\nPhysMem: 23G used (3538M wired, 8309M compressor), 354M unused.\nVM: 241T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470522/35G in, 51314690/32G out.\nDisks: 205317905/3463G read, 117903337/3076G written.\n\n\nProcesses: 592 total, 11 running, 581 sleeping, 5923 threads \n2026/09/13 12:38:14\nLoad Avg: 19.31, 37.89, 33.43 \nCPU usage: 68.17% user, 18.91% sys, 12.91% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340835 total, 4871M resident, 165M private, 1694M shared.\nPhysMem: 23G used (3528M wired, 8307M compressor), 318M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470582/35G in, 51314758/32G out.\nDisks: 205318303/3463G read, 117904177/3076G written.\n\n\nProcesses: 594 total, 7 running, 1 stuck, 586 sleeping, 5914 threads \n2026/09/13 12:38:15\nLoad Avg: 19.31, 37.89, 33.43 \nCPU usage: 60.98% user, 22.42% sys, 16.58% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341068 total, 4875M resident, 165M private, 1718M shared.\nPhysMem: 23G used (3682M wired, 8339M compressor), 273M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470651/35G in, 51314816/32G out.\nDisks: 205325096/3463G read, 117904568/3076G written.\n\n\nProcesses: 590 total, 7 running, 583 sleeping, 5909 threads \n2026/09/13 12:38:16\nLoad Avg: 19.31, 37.89, 33.43 \nCPU usage: 63.32% user, 21.30% sys, 15.36% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340629 total, 4808M resident, 165M private, 1718M shared.\nPhysMem: 23G used (3536M wired, 8337M compressor), 535M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470716/35G in, 51314891/32G out.\nDisks: 205330040/3463G read, 117905230/3076G written.\n\n\nProcesses: 597 total, 7 running, 590 sleeping, 5899 threads \n2026/09/13 12:38:17\nLoad Avg: 18.48, 37.41, 33.29 \nCPU usage: 64.21% user, 15.96% sys, 19.81% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341114 total, 4826M resident, 165M private, 1719M shared.\nPhysMem: 23G used (3538M wired, 8330M compressor), 396M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470841/35G in, 51314938/32G out.\nDisks: 205331778/3463G read, 117905398/3076G written.\n\n\nProcesses: 593 total, 7 running, 1 stuck, 585 sleeping, 5895 threads \n2026/09/13 12:38:18\nLoad Avg: 18.48, 37.41, 33.29 \nCPU usage: 62.25% user, 20.98% sys, 16.76% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340800 total, 4820M resident, 165M private, 1719M shared.\nPhysMem: 23G used (3682M wired, 8138M compressor), 340M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470931/35G in, 51315014/32G out.\nDisks: 205335944/3463G read, 117905565/3076G written.\n\n\nProcesses: 599 total, 13 running, 586 sleeping, 5914 threads \n2026/09/13 12:38:20\nLoad Avg: 18.48, 37.41, 33.29 \nCPU usage: 64.38% user, 23.5% sys, 12.55% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341281 total, 4828M resident, 165M private, 1726M shared.\nPhysMem: 23G used (3540M wired, 8145M compressor), 358M unused.\nVM: 246T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470986/35G in, 51315067/32G out.\nDisks: 205339504/3464G read, 117905940/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-2-materialize-cold"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-2-materialize-cold observed load during measurement\n  interval samples: 1, median 3.46%, below 30%: 1\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 593 total, 7 running, 586 sleeping, 5902 threads \n2026/09/13 12:38:20\nLoad Avg: 18.48, 37.41, 33.29 \nCPU usage: 64.28% user, 33.92% sys, 1.78% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340666 total, 5040M resident, 148M private, 1692M shared.\nPhysMem: 23G used (3672M wired, 8143M compressor), 343M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57470987/35G in, 51315068/32G out.\nDisks: 205340768/3464G read, 117906038/3076G written.\n\n\nProcesses: 596 total, 10 running, 586 sleeping, 5896 threads \n2026/09/13 12:38:21\nLoad Avg: 18.48, 37.41, 33.29 \nCPU usage: 70.2% user, 26.51% sys, 3.46% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 341586 total, 5135M resident, 148M private, 1695M shared.\nPhysMem: 23G used (3539M wired, 8140M compressor), 326M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57471006/35G in, 51315090/32G out.\nDisks: 205342317/3464G read, 117906272/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-2-eval"
+      ],
+      "exit_code": 0,
+      "output": "bench-host-check: recovery-applications-2-eval completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+      "samples": "Processes: 589 total, 6 running, 1 stuck, 582 sleeping, 5877 threads \n2026/09/13 12:38:22\nLoad Avg: 17.80, 36.96, 33.15 \nCPU usage: 69.62% user, 28.65% sys, 1.71% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340285 total, 5086M resident, 149M private, 1607M shared.\nPhysMem: 23G used (3539M wired, 8132M compressor), 454M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57471010/35G in, 51315094/32G out.\nDisks: 205343553/3464G read, 117906280/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-2-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-2-collections observed load during measurement\n  interval samples: 6, median 8.54%, below 30%: 6\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 590 total, 9 running, 581 sleeping, 5885 threads \n2026/09/13 12:38:23\nLoad Avg: 17.80, 36.96, 33.15 \nCPU usage: 66.66% user, 32.19% sys, 1.13% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340354 total, 4974M resident, 151M private, 1622M shared.\nPhysMem: 23G used (3672M wired, 8123M compressor), 347M unused.\nVM: 242T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57471028/35G in, 51315108/32G out.\nDisks: 205343935/3464G read, 117906517/3076G written.\n\n\nProcesses: 597 total, 10 running, 587 sleeping, 5891 threads \n2026/09/13 12:38:24\nLoad Avg: 17.80, 36.96, 33.15 \nCPU usage: 72.44% user, 24.97% sys, 2.58% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340914 total, 5109M resident, 151M private, 1624M shared.\nPhysMem: 23G used (3538M wired, 8042M compressor), 205M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472015/35G in, 51316087/32G out.\nDisks: 205344323/3464G read, 117906529/3076G written.\n\n\nProcesses: 593 total, 9 running, 584 sleeping, 5886 threads \n2026/09/13 12:38:25\nLoad Avg: 17.80, 36.96, 33.15 \nCPU usage: 73.16% user, 21.78% sys, 5.4% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340573 total, 5087M resident, 151M private, 1625M shared.\nPhysMem: 23G used (3538M wired, 8037M compressor), 235M unused.\nVM: 244T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472038/35G in, 51316111/32G out.\nDisks: 205346689/3464G read, 117906532/3076G written.\n\n\nProcesses: 596 total, 10 running, 586 sleeping, 5879 threads \n2026/09/13 12:38:26\nLoad Avg: 17.80, 36.96, 33.15 \nCPU usage: 68.77% user, 26.15% sys, 5.6% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340812 total, 5079M resident, 151M private, 1625M shared.\nPhysMem: 23G used (3682M wired, 8023M compressor), 217M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472084/35G in, 51316227/32G out.\nDisks: 205349136/3464G read, 117906697/3076G written.\n\n\nProcesses: 596 total, 9 running, 1 stuck, 586 sleeping, 5870 threads \n2026/09/13 12:38:27\nLoad Avg: 17.02, 36.47, 33.00 \nCPU usage: 64.8% user, 27.36% sys, 8.54% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340799 total, 5051M resident, 151M private, 1649M shared.\nPhysMem: 23G used (3539M wired, 8026M compressor), 326M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472094/35G in, 51316235/32G out.\nDisks: 205357281/3464G read, 117906710/3076G written.\n\n\nProcesses: 591 total, 6 running, 585 sleeping, 5855 threads \n2026/09/13 12:38:29\nLoad Avg: 17.02, 36.47, 33.00 \nCPU usage: 64.3% user, 12.99% sys, 22.96% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340346 total, 5034M resident, 151M private, 1649M shared.\nPhysMem: 23G used (3680M wired, 8031M compressor), 377M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472199/35G in, 51316265/32G out.\nDisks: 205359221/3464G read, 117906717/3076G written.\n\n\nProcesses: 596 total, 9 running, 587 sleeping, 5833 threads \n2026/09/13 12:38:30\nLoad Avg: 17.02, 36.47, 33.00 \nCPU usage: 70.38% user, 18.0% sys, 11.61% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340882 total, 5089M resident, 151M private, 1649M shared.\nPhysMem: 23G used (3538M wired, 8032M compressor), 293M unused.\nVM: 245T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472221/35G in, 51316292/32G out.\nDisks: 205359536/3464G read, 117906893/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-3-materialize-cold"
+      ],
+      "exit_code": 0,
+      "output": "bench-host-check: recovery-applications-3-materialize-cold completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+      "samples": "Processes: 592 total, 8 running, 584 sleeping, 5833 threads \n2026/09/13 12:38:30\nLoad Avg: 17.02, 36.47, 33.00 \nCPU usage: 65.51% user, 25.28% sys, 9.19% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 340339 total, 5103M resident, 151M private, 1717M shared.\nPhysMem: 23G used (3528M wired, 8026M compressor), 380M unused.\nVM: 243T vsize, 4915M framework vsize, 1737140(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472535/35G in, 51316337/32G out.\nDisks: 205359749/3464G read, 117906902/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-3-eval"
+      ],
+      "exit_code": 0,
+      "output": "bench-host-check: recovery-applications-3-eval completed before one interval sample; preflight applies\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\n",
+      "samples": "Processes: 585 total, 8 running, 577 sleeping, 5843 threads \n2026/09/13 12:38:32\nLoad Avg: 17.02, 36.47, 33.00 \nCPU usage: 64.90% user, 22.64% sys, 12.45% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339595 total, 5029M resident, 149M private, 1684M shared.\nPhysMem: 23G used (3682M wired, 8003M compressor), 577M unused.\nVM: 240T vsize, 4915M framework vsize, 1737152(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472591/35G in, 51316396/32G out.\nDisks: 205360117/3464G read, 117907083/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-3-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-3-collections observed load during measurement\n  interval samples: 5, median 24.91%, below 30%: 4\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 586 total, 6 running, 580 sleeping, 5852 threads \n2026/09/13 12:38:32\nLoad Avg: 16.06, 35.95, 32.84 \nCPU usage: 59.22% user, 17.16% sys, 23.60% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339634 total, 5064M resident, 149M private, 1681M shared.\nPhysMem: 23G used (3538M wired, 7985M compressor), 591M unused.\nVM: 241T vsize, 4915M framework vsize, 1737152(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472634/35G in, 51316424/32G out.\nDisks: 205360998/3464G read, 117907093/3076G written.\n\n\nProcesses: 589 total, 7 running, 582 sleeping, 5872 threads \n2026/09/13 12:38:33\nLoad Avg: 16.06, 35.95, 32.84 \nCPU usage: 63.49% user, 10.90% sys, 25.60% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339923 total, 5159M resident, 149M private, 1694M shared.\nPhysMem: 23G used (3538M wired, 7962M compressor), 423M unused.\nVM: 242T vsize, 4915M framework vsize, 1737152(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472667/35G in, 51316463/32G out.\nDisks: 205361117/3464G read, 117907257/3076G written.\n\n\nProcesses: 586 total, 7 running, 579 sleeping, 5868 threads \n2026/09/13 12:38:35\nLoad Avg: 16.06, 35.95, 32.84 \nCPU usage: 63.62% user, 11.46% sys, 24.91% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339683 total, 5160M resident, 149M private, 1694M shared.\nPhysMem: 23G used (3682M wired, 7956M compressor), 417M unused.\nVM: 241T vsize, 4915M framework vsize, 1737156(4) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472738/35G in, 51316533/32G out.\nDisks: 205361338/3464G read, 117907261/3076G written.\n\n\nProcesses: 585 total, 7 running, 578 sleeping, 5867 threads \n2026/09/13 12:38:36\nLoad Avg: 16.06, 35.95, 32.84 \nCPU usage: 71.94% user, 20.37% sys, 7.68% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339658 total, 5168M resident, 149M private, 1694M shared.\nPhysMem: 23G used (3538M wired, 7935M compressor), 407M unused.\nVM: 240T vsize, 4915M framework vsize, 1737156(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472791/35G in, 51316572/32G out.\nDisks: 205361580/3464G read, 117907442/3076G written.\n\n\nProcesses: 585 total, 9 running, 576 sleeping, 5863 threads \n2026/09/13 12:38:37\nLoad Avg: 16.06, 35.95, 32.84 \nCPU usage: 58.52% user, 8.87% sys, 32.59% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339564 total, 5160M resident, 149M private, 1694M shared.\nPhysMem: 23G used (3682M wired, 7845M compressor), 303M unused.\nVM: 240T vsize, 4915M framework vsize, 1737156(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57472845/35G in, 51316611/32G out.\nDisks: 205361798/3464G read, 117907447/3076G written.\n\n\nProcesses: 585 total, 7 running, 2 stuck, 576 sleeping, 5884 threads \n2026/09/13 12:38:38\nLoad Avg: 15.89, 35.59, 32.73 \nCPU usage: 69.29% user, 15.52% sys, 15.17% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339575 total, 5160M resident, 149M private, 1694M shared.\nPhysMem: 23G used (3534M wired, 7786M compressor), 194M unused.\nVM: 240T vsize, 4915M framework vsize, 1737160(4) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473052/35G in, 51316754/32G out.\nDisks: 205364625/3464G read, 117907653/3076G written.\n\n\n"
+    },
+    {
+      "arguments": [
+        "--samples",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-recovery-applications-17cwndyx/interval.log",
+        "recovery-applications-3-portable-collections"
+      ],
+      "exit_code": 1,
+      "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: recovery-applications-3-portable-collections observed load during measurement\n  interval samples: 5, median 29.59%, below 30%: 4\n  required: median 50%, at most 20% low intervals\n",
+      "samples": "Processes: 584 total, 8 running, 576 sleeping, 5883 threads \n2026/09/13 12:38:39\nLoad Avg: 15.89, 35.59, 32.73 \nCPU usage: 54.62% user, 19.74% sys, 25.63% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339486 total, 5338M resident, 166M private, 1682M shared.\nPhysMem: 23G used (3533M wired, 7780M compressor), 325M unused.\nVM: 240T vsize, 4915M framework vsize, 1737160(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473118/35G in, 51316781/32G out.\nDisks: 205367521/3464G read, 117907665/3076G written.\n\n\nProcesses: 585 total, 6 running, 1 stuck, 578 sleeping, 5892 threads \n2026/09/13 12:38:40\nLoad Avg: 15.89, 35.59, 32.73 \nCPU usage: 53.45% user, 15.32% sys, 31.22% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339656 total, 5448M resident, 166M private, 1691M shared.\nPhysMem: 23G used (3676M wired, 7794M compressor), 273M unused.\nVM: 240T vsize, 4915M framework vsize, 1737160(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473233/35G in, 51316814/32G out.\nDisks: 205375900/3464G read, 117907832/3076G written.\n\n\nProcesses: 589 total, 12 running, 577 sleeping, 5891 threads \n2026/09/13 12:38:41\nLoad Avg: 15.89, 35.59, 32.73 \nCPU usage: 59.74% user, 10.32% sys, 29.93% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339968 total, 5454M resident, 166M private, 1695M shared.\nPhysMem: 23G used (3534M wired, 7844M compressor), 332M unused.\nVM: 242T vsize, 4915M framework vsize, 1737160(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473429/35G in, 51316887/32G out.\nDisks: 205379073/3464G read, 117907864/3076G written.\n\n\nProcesses: 585 total, 7 running, 578 sleeping, 5892 threads \n2026/09/13 12:38:42\nLoad Avg: 15.89, 35.59, 32.73 \nCPU usage: 63.16% user, 13.34% sys, 23.49% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339647 total, 5398M resident, 166M private, 1695M shared.\nPhysMem: 23G used (3523M wired, 7842M compressor), 477M unused.\nVM: 240T vsize, 4915M framework vsize, 1737160(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473446/35G in, 51316903/32G out.\nDisks: 205379185/3464G read, 117908007/3076G written.\n\n\nProcesses: 587 total, 6 running, 1 stuck, 580 sleeping, 5887 threads \n2026/09/13 12:38:43\nLoad Avg: 15.10, 35.10, 32.57 \nCPU usage: 58.33% user, 12.50% sys, 29.16% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339727 total, 5356M resident, 166M private, 1695M shared.\nPhysMem: 23G used (3677M wired, 7810M compressor), 377M unused.\nVM: 241T vsize, 4915M framework vsize, 1737160(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473501/35G in, 51316961/32G out.\nDisks: 205381022/3464G read, 117908191/3076G written.\n\n\nProcesses: 585 total, 7 running, 578 sleeping, 5874 threads \n2026/09/13 12:38:44\nLoad Avg: 15.10, 35.10, 32.57 \nCPU usage: 60.46% user, 9.94% sys, 29.59% idle \nSharedLibs: 553M resident, 124M data, 39M linkedit.\nMemRegions: 339620 total, 5396M resident, 166M private, 1695M shared.\nPhysMem: 23G used (3534M wired, 7803M compressor), 326M unused.\nVM: 240T vsize, 4915M framework vsize, 1737160(0) swapins, 2355151(0) swapouts.\nNetworks: packets: 57473636/35G in, 51317009/32G out.\nDisks: 205381530/3464G read, 117908192/3076G written.\n\n\n"
+    }
+  ],
+  "installed_sha256": {
+    "bin/birnam": "b05e60072cfb34e262aeb02e52d4f8994a02550d7a80969773863002bea49af2",
+    "lib/libbirnam_appConfig.dylib": "2fbe364ba88705066a861b3498aeb0895dc9c36bcebe2161da3afd7f2582d262",
+    "lib/libbirnam_cli.dylib": "a43ad6757c8f49f9f984887e3e5e632dfba0381f6b047ad97ff1cbd4e5354074",
+    "lib/libbirnam_compiledUnit.dylib": "2a56737d0243456070340d741594d507f0ac146fdbd252275fda3dce2883e0a6",
+    "lib/libbirnam_compiledUnitDocs.dylib": "5c04d7c1efc5599563d7a36d02fbdaacd2b751d80ec742cee1ca705f3d014859",
+    "lib/libbirnam_config.dylib": "6709af8bb08c38b8ba20e96c824994b0384a04b1f48919ae5cd037a0ed09481a",
+    "lib/libbirnam_doc.dylib": "621cab36af6665e85650c17829215c34373f339285a8b9a7dcd2bba44cd4ae36",
+    "lib/libbirnam_file.dylib": "acf8ccadde531da42e5a9b0069aaf635b37d16eb477288a30e38c0bd4f178651",
+    "lib/libbirnam_html.dylib": "930a620009ea6988efe9846adcafae13325c8f92e9ec5796e4724c956545c2f9",
+    "lib/libbirnam_http.dylib": "1c11c0f5da5e4d0540404ac561f6be2b3f237fa4c4d0df3f6855d8f7c5edf110",
+    "lib/libbirnam_id.dylib": "bc2a2b6a8ded0917b1b50a6ee413b8ac034e8b14145eb8cac774d2cba00ea8ad",
+    "lib/libbirnam_id_alien.dylib": "ff5f8a55239088d04b4676f6e90c1230920e6fb382b2d97ac47590a4d11b7111",
+    "lib/libbirnam_id_artifact.dylib": "8bfafd4e18cad83b3f761112db5869d79dbe4cdda6c81f5122143967eb68442b",
+    "lib/libbirnam_id_codegen.dylib": "4e56ba7167eb4c1744c398e183fd10e0301a543ed20df375ca952c3e9045e6c6",
+    "lib/libbirnam_id_collection.dylib": "2abe2325646a618619fffb0cf289b190b08cf063524cb4a0792ec7ef297f07a9",
+    "lib/libbirnam_id_error.dylib": "73ced7f293d563d2d311545bdfb01bd874c853a4c355247276a71091ac37e0ea",
+    "lib/libbirnam_id_image.dylib": "9c0e1ae4d709a4ba10d0b841add73c9fd8f4419f5b67c9a00f517650ed03227f",
+    "lib/libbirnam_id_isolate.dylib": "6a192584882b31b3ed868d44251de3cb57f00b86a28d20b6457bd47630fef3c4",
+    "lib/libbirnam_id_lang.dylib": "b3ce4da01cfddab89c3eb92974d5b2785d51f827165a8464fd8a23f302952705",
+    "lib/libbirnam_id_peg.dylib": "836f767b58a46923159f33b8d205b36094b16993bab3aac25536ee9f110f3580",
+    "lib/libbirnam_id_prelude.dylib": "7a4e25e31c0e700b222bf61b8eabdb8a19b14abe8bd6aa14efa0806a6151a26b",
+    "lib/libbirnam_id_relational.dylib": "a2205d2a50417913ff8e424a967007279e1d09fa9aa6f53d983287dc9bf29908",
+    "lib/libbirnam_id_tcc.dylib": "3c29163fc98ce2025578c47081f6a58794ece696c7f485dd0df877e227cc88d6",
+    "lib/libbirnam_isolate.dylib": "5b81ce2436e3a0cfaa1ad7c8ea37798bd3d36e492ba7981e564cdf0afc50862f",
+    "lib/libbirnam_json.dylib": "6719320e21df15a22408da987906d4a217b3e2d29dcedc1c06113629528a07e8",
+    "lib/libbirnam_log.dylib": "2d5ed9ce4c3a86b707939e1c6067d9e1cc8c1e78a75a987875689883a1638986",
+    "lib/libbirnam_lsp.dylib": "9e178050fb08308cc2385a757e8982c37a583afcd7c995b6d941a0e7105f8f3e",
+    "lib/libbirnam_markdown.dylib": "a01c3582bef3d6309c3daf10145fd31202bf9ad15d00ea381cd4ced267b3f3ad",
+    "lib/libbirnam_modules.dylib": "62a655e833468551453f9599b507bcd7720691bfc1ad5f928a2e3a8603a603fa",
+    "lib/libbirnam_nativedoc.dylib": "9f030dded1ea368dc3a1f7cd017a224e84e072acf97846df82c8427fb7820563",
+    "lib/libbirnam_os.dylib": "2aed942071c1a85dc655f9d71dacfb82e598783c9b4a4269d18732712f7f755b",
+    "lib/libbirnam_portable_code.dylib": "1c08bb0aed8157d197876abf96d0af06ecfc6b2aca2e3a33ebadfe4ee0b95ee6",
+    "lib/libbirnam_process.dylib": "92d5b9e852bf65de3f261398701645772a4c0948147e25623e20aa31d41ba9f5",
+    "lib/libbirnam_projectPolicy.dylib": "733cfa259f4373bfc408b3ec8851d4a858a94396e641b018fe01e11c04b912b0",
+    "lib/libbirnam_random.dylib": "63675cdcb814c7853c760f0c08499af68ff458c7c3355180e26a07b2a118fcaf",
+    "lib/libbirnam_repl.dylib": "b53b50d5fd9ca8ebabf4e710aa2ea332a01be40ae0406b74364f63072fbb1550",
+    "lib/libbirnam_socket.dylib": "d9af79340a4f454c81c42e0e9e0b5514f3be60cbbc86b246f3897e1ee929f52e",
+    "lib/libbirnam_stacklessControl.dylib": "c7dd3aa9beb86c00f042f8acd340aa128ce9fd52a9198a817de76e48c1df96bf",
+    "lib/libbirnam_stdlib.dylib": "dfd0c85e65c10cf201865dfc1c5995473c481470ea88f05fb046891bc684bf2f",
+    "lib/libbirnam_store.dylib": "b6f2c34b185933c515f448aedde1bafd017af332681e758b311cf28b4b491d3c",
+    "lib/libbirnam_test.dylib": "987341e6ff7d9cadebaac3ab351700e30dd7d617cef87aa2399029d8832d31cd",
+    "lib/libbirnam_time.dylib": "529a0d387fd59087202b71b15eac05f56c4a554d492f969b27c481deb2f49c85",
+    "lib/libbirnam_toml.dylib": "79b8af535078461a224d75ad69501bd9aa040f19caa1bbe22df84c16a48f327d",
+    "lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69",
+    "share/birnam/docs/guide/01-language.md": "70a04849680c4484d590e7962f81dc34578fcd525c01a9c10a2dc5e74cb06b89",
+    "share/birnam/docs/guide/02-idioms.md": "3dd162b4ec53b3cbf9df41d60c529c482ce7b64d6d5ff20971295b7c0d73b39d",
+    "share/birnam/docs/guide/03-fact-store.md": "c6a68650f39f113df93b8b8269497ddbf1f820b9a7e3d586d52a8bd7af3c8abd",
+    "share/birnam/docs/guide/04-images.md": "bc36ebe68fcde88808a1524cbb757b598255eb486f2e959e77a9a61575ae57e6",
+    "share/birnam/docs/guide/05-compiled-units.md": "9b897162e9ebc695e61c823277a6223b1e9497117d635868e9ebf5cbb094320c",
+    "share/birnam/docs/guide/06-isolates.md": "32d6630ca0bc2ca6b4b02c2f7c86b8f825e8b31f54e882ba5f0447c312a8e3a3",
+    "share/birnam/docs/guide/08-exploring-the-image.md": "575c4ed5a8468d38319ad81047f6ce29f365f372b2431695984e35217aad99b7",
+    "share/birnam/docs/guide/09-shipping-artifacts.md": "4c3ecaebcf3de640641c97759c90127af23390a39e23f672700ec8e4e5a9ecfe",
+    "share/birnam/docs/guide/style-guide-DRAFT.md": "9b9f085539432f7f3c081c1c733c0830e20c20995027c0158d72c29f9bb180e9",
+    "share/birnam/docs/guide/style-guide-review.md": "fff61cd805dd3674991b5e3c209772ad4e58f2b595d9174219652e10a41903eb",
+    "share/birnam/rust-install.json": "77d61caef677ede27a0ff53208cfa364db9e4b48a8b204506d1312bd1d462822",
+    "share/birnam/src/Cargo.lock": "e9f7db63973423d9bca6c121b8fb4105829e4c5408d029e201dee2cafae690e5",
+    "share/birnam/src/Cargo.toml": "218ecb363680b4d00cab289551e60b25e56e8bca291f26030d7085a0a3da689a",
+    "share/birnam/src/rust/birnam-abi/Cargo.toml": "7b11d1c250613d3181cc6255bdc9ecdd3231a487864d7a0e5878e8d07e864e3b",
+    "share/birnam/src/rust/birnam-abi/src/foreign_address.rs": "d57b6d0e04a47e915bab097891923bc4852e9ede062c7f56c436b362134df716",
+    "share/birnam/src/rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "share/birnam/src/rust/birnam-abi/src/private.rs": "151cc74cfef9cf25244b040258e840cef7157827b7ac91924d983ea4629c5ffd",
+    "share/birnam/src/rust/birnam-alien/Cargo.toml": "bcd82739ff00bf014037f3dd5791f7a748d8044f29537722eba28db5767003fa",
+    "share/birnam/src/rust/birnam-alien/src/abi.rs": "5181da4ef8144b730c86969fad8f4680b306d62579c0e739c2a0abe36e4557f6",
+    "share/birnam/src/rust/birnam-alien/src/codegen.rs": "cbedb7571bfd58a51e0b8bd459d9ee68bfa75ff9127fb71de52f8eaf182c96a8",
+    "share/birnam/src/rust/birnam-alien/src/lib.rs": "cacf7fae9fab1a949c2f2252b9de8145b9d83eb7fc5ff1da520567db7ca7366b",
+    "share/birnam/src/rust/birnam-alien/src/loader.rs": "9604cad12c42f0d0ee1c19c1953e5a54fe461fbc54aa841cb6397a4c1d0e9590",
+    "share/birnam/src/rust/birnam-alien/src/runtime.rs": "e36cbf21f5baf0323ac3f68f625e51a330e7a7e7585bd07385342381e85013ab",
+    "share/birnam/src/rust/birnam-artifact-codec/Cargo.toml": "99367c017a4efe61a3438c27db313e68e2472892ba2830b677d9949672a09566",
+    "share/birnam/src/rust/birnam-artifact-codec/src/lib.rs": "385ed7709dca773b93e2dcae24505e78840e8973235ec1e2e76ede36a26d666d",
+    "share/birnam/src/rust/birnam-artifact/Cargo.toml": "8371c97b9802d33acbae2d6e7d818777823d1991c42c5fd23a3e5abac68b7b93",
+    "share/birnam/src/rust/birnam-artifact/src/candidate.rs": "8072654bc78f418e5883bfb471a50bf7a32f5174268f123af4540e077fc3332c",
+    "share/birnam/src/rust/birnam-artifact/src/code_binding_inventory.rs": "48c0b7debbdfde0669409d35a6b389d641b6441c2c5800a4cd636436fc260e13",
+    "share/birnam/src/rust/birnam-artifact/src/digest.rs": "2635c31eb297bfe1e624d1fb7d2a8bc91e6983f506dd13879ce9ea6d1c685cf9",
+    "share/birnam/src/rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb",
+    "share/birnam/src/rust/birnam-artifact/src/lib.rs": "c9dc8e1ba5bd26f36340b48cc68a9923009a15aed2d1f09f840bbfd25abf390f",
+    "share/birnam/src/rust/birnam-artifact/src/materialization_selection.rs": "b09137d633714e50611dd93fde98258b09e20ff3285ef10e2fac4cc5f7126d71",
+    "share/birnam/src/rust/birnam-artifact/src/module.rs": "2aa33ef2a4ac24ee8660f825f38d10707d79c71a465cf79bab96f96144916557",
+    "share/birnam/src/rust/birnam-artifact/src/portable_inventory.rs": "8f2ec3347ab3b29bd7425929f43d59e26e8107bc54ff1be089d8bd920cc67ad2",
+    "share/birnam/src/rust/birnam-artifact/src/portable_program.rs": "77fce44ef44b09e230003d74f1a41925d4e3ef807a4c373c570149a781cfba5b",
+    "share/birnam/src/rust/birnam-artifact/src/portable_resumable_manifest.rs": "e4feb032843a2aa96ed8a1469f0e915d534e7a2f2dfd69cd7ab34c659d9a22f0",
+    "share/birnam/src/rust/birnam-artifact/src/resumable_manifest.rs": "3d287cb7f51da5611734ac521ca95303e15d3aaaf9ce29b804a375d26dba67b8",
+    "share/birnam/src/rust/birnam-artifact/src/stackless_selection.rs": "0ececcd4d8b03135523a058dff60399cad1aa3bbcba6a03c2a9945079e914f2e",
+    "share/birnam/src/rust/birnam-artifact/src/wire.rs": "054e10ed96d5e5ced9f9f29043c2053ab2c482cc7c71b801e0fd20ecbbb9963b",
+    "share/birnam/src/rust/birnam-codegen-runtime/Cargo.toml": "846d59df86dbd9a493ef6f9744fc6ac8e8e5337fd62d977b8f926cda9d2d58e4",
+    "share/birnam/src/rust/birnam-codegen-runtime/build.rs": "dad8f197eddb05c162778d69c7176d245e3c5224fd20457aee753333c8eba77c",
+    "share/birnam/src/rust/birnam-codegen-runtime/src/lib.rs": "6d0ce4c0f4c2b07bbf557cb7433807744c8d1d862be0c99ebafada3241ca1c2c",
+    "share/birnam/src/rust/birnam-codegen/Cargo.toml": "9e14ca825667a297f3cf480b592ffd5a98c6fe40524eafe9651069d777604ca3",
+    "share/birnam/src/rust/birnam-codegen/src/c_string.rs": "dad2378e7c0e7dfa3e67063510c11e9587e6725071a8e667b74ba8d99f021d70",
+    "share/birnam/src/rust/birnam-codegen/src/closure_elision.rs": "84e6f55bb002a05d1df27ea414fbc09c27c5f39327db8a9a9c477aed94be6caf",
+    "share/birnam/src/rust/birnam-codegen/src/closure_elision/sequence.rs": "e6a70ac6e5697c1c0f8320be80e8f0865832e7e877deeddefab3b051f367bc3b",
+    "share/birnam/src/rust/birnam-codegen/src/closure_elision/sequence/tests.rs": "18bfc8451043d03f6cb40ee585adc7812f1dfccf9c881dd4380fa3386b2299f1",
+    "share/birnam/src/rust/birnam-codegen/src/closure_elision_c.rs": "0d2ea67e7dcee37d74508dc23a9d0f196b703cf1a96dc31576064fd1d349cf6f",
+    "share/birnam/src/rust/birnam-codegen/src/discarded_clone.rs": "3e98b33530f2e48476b2e6c285ba1f4abbb3e42c26d5fa744eee74860087e3e0",
+    "share/birnam/src/rust/birnam-codegen/src/frame_region.rs": "357cc2f7ffac8a6e93cb3d6e4d70fde9599c65dc405300cf81aa57cd1560dd48",
+    "share/birnam/src/rust/birnam-codegen/src/lib.rs": "940a52b6a67506feb3be79809f516f246d6fa6c0e47c3e8e793ed3b3ed7e8eb4",
+    "share/birnam/src/rust/birnam-codegen/src/numeric_chain.rs": "ddacd7cb8963c66ef3d0e1d5cab2cb868497afce7d702ff140c2b82ff9b6ab18",
+    "share/birnam/src/rust/birnam-codegen/src/numeric_chain/recovery_maps.rs": "f906e9d1fecbf1d9c8ee25d93a67f6e26b353ccf8cf322b384943e94e4046fe4",
+    "share/birnam/src/rust/birnam-codegen/src/numeric_chain/recovery_maps/tests.rs": "741afdb8c1af48b18f490ac897a7e788cd3f78adbcfb3c11672c67529d573243",
+    "share/birnam/src/rust/birnam-codegen/src/numeric_chain/template.rs": "9150303b0b0e5e4398c0c31157c2d2392d6fb7f46fe862aff4891398949e93bb",
+    "share/birnam/src/rust/birnam-codegen/src/numeric_chain/template/tests.rs": "dcc35094eebdba5c656054ab19b6ec19ab203635f34e5803281911e7dd7aebb1",
+    "share/birnam/src/rust/birnam-codegen/src/portable.rs": "9f4ccecfd07865cdf404869a6c1fa5f01c8bc84f741a4802421ecc3ec3a2811f",
+    "share/birnam/src/rust/birnam-codegen/src/portable_c.rs": "af206692d2a0dc27d7f9ea9cd573efb2c11b59d798add5f5cd5ce9591139416a",
+    "share/birnam/src/rust/birnam-codegen/src/recovery_graph.rs": "37ba1f4e32b957c14418cbb2e864aeb2678b01160ef17e7c4a3f6a90ee33c5e6",
+    "share/birnam/src/rust/birnam-codegen/src/resumable.rs": "cec8746c64e56f41b57f53ae15dbe3e5a4042077e31ee94ecb3636031abfebf0",
+    "share/birnam/src/rust/birnam-codegen/src/resumable_block.rs": "1a75b0a71004e2203d1765c4152947925ea57e5d7174c2157ca613d6d396d74c",
+    "share/birnam/src/rust/birnam-codegen/src/resumable_c.rs": "85ac42b859fb4e155058f6fcfcb89b9af5f051cf47a65e49d41e0fcbba3afca9",
+    "share/birnam/src/rust/birnam-codegen/src/resumable_descriptor.rs": "333969de26f939843b6061e57dc1682776d957fb60ef692da2e86a5cf6ad9f17",
+    "share/birnam/src/rust/birnam-codegen/src/resumable_named.rs": "c0b76ac1c0c71bef4b2d2162d55a152b056c3b2188ecb58a8f4a32197e9c9153",
+    "share/birnam/src/rust/birnam-codegen/src/resumable_registration_c.rs": "c4eb7649a0ecf6bc13f12d4cfd6019f60b0a1566375e3256d1123b15c8ff7409",
+    "share/birnam/src/rust/birnam-codegen/src/resumable_resolver_c.rs": "f5f50cba47d038d171b8ba9658ea51c50aa46c49ab840aef6b19b468ff8ccf8e",
+    "share/birnam/src/rust/birnam-codegen/src/small_callee.rs": "d961fcf7bcb8a76fcdbd6a877588225faf6f89ebb7109614a32f48c3361ec48d",
+    "share/birnam/src/rust/birnam-codegen/src/tail_entry.rs": "bb62f2038a4dbc1ef7edc58ed9bf0472ba219c4b91efb1aca1ba88167933cb24",
+    "share/birnam/src/rust/birnam-codegen/src/virtual_aggregate.rs": "34f1af11e282a0ec2e5a79997b5fb6cc4e716e1dc084ec034bdbc29c4238913e",
+    "share/birnam/src/rust/birnam-collection/Cargo.toml": "3f66e5893fcb358a7547dc3e180ecf481bb35eacdefacb12b37458b5aa0e54ea",
+    "share/birnam/src/rust/birnam-collection/src/lib.rs": "5a842d99cea6492f6e06f3bbe438d4555af81f3c47c3598e96c65a68a79b8ea1",
+    "share/birnam/src/rust/birnam-error/Cargo.toml": "ebd6ef5e9020df0efffac7aba63969b0bb963af869b5b664aa077de10b68f41a",
+    "share/birnam/src/rust/birnam-error/src/lib.rs": "13056e3075074fe17f9c7a00fcf3181b3b53c4db66093a5d1c717c91f318e033",
+    "share/birnam/src/rust/birnam-host/Cargo.toml": "a163d163e9b7ecd1afbfca809a05dd82e111b4a058abe6c02981c92306bc47a2",
+    "share/birnam/src/rust/birnam-host/src/bin/birnam-build.rs": "00be69db4057cdcc6a621ea305cf8b9dcf5f6b6d42fe895cb6b852e47c6ffb51",
+    "share/birnam/src/rust/birnam-host/src/bin/birnam.rs": "855129e332626f0f5a4c91819e1c51b2494cf3831f51a73baf9b5f9cfc5ec765",
+    "share/birnam/src/rust/birnam-host/src/bootstrap_receipt.rs": "2537e10c6a5827e16937c4d3fd2658a4dd768f517b836afabea52aaed14dce66",
+    "share/birnam/src/rust/birnam-host/src/lib.rs": "d78436522c4ce71721552ac88cde473b2cc4671c4c61c7637e9532307904f1a4",
+    "share/birnam/src/rust/birnam-host/src/publication_receipt.rs": "bfc92506b6be0190464f77105abdc09d63830585727266d573a837da256d52ea",
+    "share/birnam/src/rust/birnam-host/src/receipt_validation.rs": "59f7f6627f968e0fe72d4c0e3dffc228e1b06766dac11bc94c1595a4c7386e98",
+    "share/birnam/src/rust/birnam-id/Cargo.toml": "41327174ba6e7ee4ef8bcfa065d1ffc3e60ecc5377873a0559ad61aa4a3f7fb3",
+    "share/birnam/src/rust/birnam-id/build.rs": "dcf4ab7621a178d5aea01a09e834895f954afdcd43de5aea6074f3f391a235d1",
+    "share/birnam/src/rust/birnam-id/src/boundary.rs": "72751545ba223655cdf4d93f56329d4bc219c17ba06aa1f673f2bcc4fc4edee2",
+    "share/birnam/src/rust/birnam-id/src/dev_slot_access.rs": "157a15ca77f9d740315a134f5b379ab38efb3a6f6ab0c45f2b5bfd4436498427",
+    "share/birnam/src/rust/birnam-id/src/dispatch.rs": "4bbad05dca162bb442893b1f6ed83d87d412ef7c9768cba34e81a67970da809e",
+    "share/birnam/src/rust/birnam-id/src/env.rs": "cce4ddf7bb50c4bf3effccc2c1974d8bcdfdc720df54eac2a83a29ac66c3e11c",
+    "share/birnam/src/rust/birnam-id/src/execution.rs": "1cc2de018b0cc407b28e9247c13a3cf0c2d9468a6cc4e31fc1f015a4e5729c73",
+    "share/birnam/src/rust/birnam-id/src/execution/inline_recovery_experiment.rs": "941e4189d4ae834da455a73604592c72a31d43cef65e2331ed42e2d49063c799",
+    "share/birnam/src/rust/birnam-id/src/execution/loop_iteration.rs": "f0db351ab2d5020fe9b2ed7899882ada7a381777cf2918a8208b83dc518dc350",
+    "share/birnam/src/rust/birnam-id/src/execution/probe_descriptor.rs": "fff4bb078c37c89233c49e8a6a8914563643f03c10e5cf1c90acdcf879944823",
+    "share/birnam/src/rust/birnam-id/src/execution/recovery.rs": "b369d407e8d6b7219843abf82c9c88edba3bd72f21d8afc967b259ff9831376b",
+    "share/birnam/src/rust/birnam-id/src/execution/tail_entry.rs": "ca4273a78a0159adb32202ebc70884b1cb26955b25c62b391fb6dc1fc7d0cada",
+    "share/birnam/src/rust/birnam-id/src/gc.rs": "6d777d58d7112d75fe36051bb8412f8363ebf0130ab3e5159e0c3a644f0e0a97",
+    "share/birnam/src/rust/birnam-id/src/heap.rs": "9b51c8c695a04918ed442a8808f8b0ee95787b005c10f3d5e1acd2b5bcf21cb2",
+    "share/birnam/src/rust/birnam-id/src/heap/dead_allocations.rs": "899ec3528a6d84cfd6386b63d813073b1a5e3491e4c350dd1d6687b476659345",
+    "share/birnam/src/rust/birnam-id/src/lib.rs": "6bdb5bdd4ffadf1ecd7f6eb59b55e536aba1af0fe7a4830e812eb9c79fb66fa5",
+    "share/birnam/src/rust/birnam-id/src/loader.rs": "9c76a3c9f46206a3d6ec9ac4537455c39325cbd4868370a3e3ff5c8199c61cad",
+    "share/birnam/src/rust/birnam-id/src/loader/block.rs": "4c074dc4f109d431f25c90f4906c234c3e4b9c201bf8bdb1cb0cd4f47e95302a",
+    "share/birnam/src/rust/birnam-id/src/loader/field.rs": "fde852fcb457730be2716165cf000f5bf45cb9467d986995f70dd2e4ecc4640c",
+    "share/birnam/src/rust/birnam-id/src/loader/numeric.rs": "38fba88b99a881f6125960f132f930c8e21ddb6a44d5c3c53be631cd3e35a2c1",
+    "share/birnam/src/rust/birnam-id/src/membership_bench.rs": "4b91fa5a6de233c48bf35a40bcc206e932a37c2c51a09ed49473248d702cdace",
+    "share/birnam/src/rust/birnam-id/src/public_api.rs": "9377318961eaababfe75e39ad48f07b2738be2fcd6dcfc7d7b8e302616cdc088",
+    "share/birnam/src/rust/birnam-id/src/raw.rs": "f300afefda63ab7800b57c6dc0fbe1f84e94327927aa589c937d47b39ccad092",
+    "share/birnam/src/rust/birnam-id/src/registration.rs": "0f5ff2b323a8dd743c2aea7ad270ea9cb301974c837e980d73dab2aaa38f525f",
+    "share/birnam/src/rust/birnam-id/src/runtime.rs": "e7b4377be4ba0fcb698a80334a864d92e1a5f02c82dc6f05625e8a3c859a2879",
+    "share/birnam/src/rust/birnam-id/src/runtime/architectural_fit_experiment.rs": "40b59e0d8a8db011034db7fd407535f09efde2857190abc34eb658a4dd229858",
+    "share/birnam/src/rust/birnam-id/src/runtime/closure_api_probe.rs": "e6664149f64e761c48ea088ab02849888306f235b1a71efe5b72d32cf01a9952",
+    "share/birnam/src/rust/birnam-id/src/runtime/closure_budget_probe.rs": "0d1f8f2d84ca2228899db41abdcc8be4a5d0d7af363ae577ac48ad12f19e6a5f",
+    "share/birnam/src/rust/birnam-id/src/runtime/closure_control_probe.rs": "17ed1bc1292f37bb9917d848fd81168f021ae2b9ef91e297c8e7004cd4eee304",
+    "share/birnam/src/rust/birnam-id/src/runtime/closure_journal_probe.rs": "621dff37a4ab1ae0b86302ef91e41f2f5c49bc178f9b1c6d951076df22cdd778",
+    "share/birnam/src/rust/birnam-id/src/runtime/closure_sequence_probe.rs": "48506ba726c53696445372db48d8bcccede9f1cfc7c731f4d87217addafa15a2",
+    "share/birnam/src/rust/birnam-id/src/runtime/closure_timing_probe.rs": "a8955f280b8ef6df1258d3078b15065e43980fcba0c5fdffc5e1c8619e768c9f",
+    "share/birnam/src/rust/birnam-id/src/runtime/deopt_experiment.rs": "1457bd8cd9e0dc607022c39a561d235fedd9626c77a7bb4533eb25388f7436cb",
+    "share/birnam/src/rust/birnam-id/src/runtime/dispatch_cache.rs": "9a273e43dd15a06b7efe9ba614dbb23a86aa1e83d1d4e0de0138d25a98e1abcf",
+    "share/birnam/src/rust/birnam-id/src/runtime/dispatch_cache/tests.rs": "23934faf6f416ed72df8c44a44c14ef364b107c6322d93e369331fc44811ca8d",
+    "share/birnam/src/rust/birnam-id/src/runtime/generated_deopt_adapter.c": "beffc686a0d16aaebf346fe6ec71ac9d141409b676b49d1294202d311cf25cff",
+    "share/birnam/src/rust/birnam-id/src/runtime/generated_deopt_baseline.c": "7e79b08acb8182559427600a0b6faa3e827de54c0f51b6fac74a59d3187e9730",
+    "share/birnam/src/rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "6aee35e3c587e8cf43e78f634039cb4a96504139355df48c49aa680ff783528d",
+    "share/birnam/src/rust/birnam-id/src/runtime/generated_deopt_program.rs": "2a0a2c8424ad29cfcc6d6687659befd70a78df876d1be6a05209d8d4bcea0fc9",
+    "share/birnam/src/rust/birnam-id/src/runtime/guarded_dispatch.rs": "90d63da78baf88a4260b700d26502169b38cf63c712aa0beb2cc1153a01aae6d",
+    "share/birnam/src/rust/birnam-id/src/runtime/guarded_dispatch/tests.rs": "017bb8a3d55f7dc694bfc9528d4a538a64ca3d69ab8a2b2f0a225c63114e7394",
+    "share/birnam/src/rust/birnam-id/src/runtime/guarded_lookup.rs": "0579635d703b9e2e1f7da538ad62c7a699a1aa061d36cd3f7e30584816a1f6d7",
+    "share/birnam/src/rust/birnam-id/src/runtime/guarded_lookup/tests.rs": "8bb9a7abdfee353ee746179ee39f7bb51cc386127de6b597ff082c91e12e68bd",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier.rs": "0f18067ea747081c9ea5d2c7827f5eb886df40650ec247e31c5a7d779e2e6fd3",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/closure_elision.rs": "97e34a0e17fe61d3866ba5c417a4c8fca444ee6669ab6b6d1e68dac2224a91e7",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/closure_elision/pending.rs": "3d92bffc964af07c84be986e2123f45fe72c63524e888612cb433ef2ed7fde7f",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/closure_elision/region.rs": "e5553ad9c50e64a9ed6007a2f5c5fa24e3198475baf749d38478ca0ece38fbf2",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/discarded_clone.rs": "0ecc6f70d7fe91cce6c199fafde031e1dc4991bab08109d17874fdd4d2142696",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/fused_numeric.rs": "2e21b9408a2b9af3dd349025c2eef67355d2262831fc53c466729933bdcb5baa",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests.rs": "a05da88c4d5437acefa6170eb6bbea2dfcd561fc69b36c05e618580b5a0c27ca",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/alias_tests.rs": "8d5d805344175c9057cee3d52128c9e5398b5f78821ba4fd75ed4bb78109bc43",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/discarded_clone_tests.rs": "3a84bba413901391ef58da745c3c2e8d9d285dc6ade117925f77a415d896457e",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/fused_numeric_tests.rs": "5fd355490174ddd3bfb16dc3f2ee67e068491284d402f172661c6aa28bc5c8f3",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/graph_tests.rs": "b6b96e0409aaac9db17988f8898f16d7e24259bdb5f583da89fed3a01f4e7421",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/literal_tests.rs": "a426cd21d3a8360afba7480a3fbae756ab3ac8a8d06f274f4639e34023070820",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/loop_invariant_tests.rs": "e0392fb640e3e72112b60b57a7f63c2393355db5ed3404e2679dbccc3a78cd1a",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/loop_invariant_tests/control.rs": "00f8574f446070f9f8239f4f5f559bacf48497d5be78c975053cb2dd3df3b1c3",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/numeric_tests.rs": "f4f92b2171e5070cfa009880e734e326d849dbd80f1e98bf58e406daa39b8a7c",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/region_tests.rs": "a0f9a6e06de0f23965273580e68324de91314fa39bd99a6e6c0e65f07c0a574e",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/tail_entry_tests.rs": "4ae2044d50a8383fd25925fba1056b7b695b163e9dd5a549208cc993c3782b05",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/unboxed_numeric_tests.rs": "20a853a7434f6aeb9aa2734467fc932d5008fb4503cfbb1fe87d66e53dcb70af",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/leaf_tests/virtual_aggregate_tests.rs": "64d9b7d0f3dd1f3e159c1b23375f29cee69ff9a6131e93b8ef63dd0d9155a303",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/regions.rs": "75dd107ac4536dde32cc086bc152341e590458857bac84ca7741a366fca32094",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/shims.c": "306d091702a96093016c662c57012ff139ff9e53768fec9cd8e697413a0c6ca2",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/tests.rs": "26b4d57742545f9df7bd903c7ed3fddd44d1bfe6c6255c053bfde2a6be07927d",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs": "3215af9c18fe6830461b6711284af93b3283e05541216de4570df8ac8b73f609",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/unboxed_numeric/scratch.rs": "095aab4833de0eb28a5fb43e6d490c7ded42577e3937b5f86f290f4dd509bda3",
+    "share/birnam/src/rust/birnam-id/src/runtime/native_tier/virtual_aggregate.rs": "51eba722b30b8d5bd6ada1b09d4a4c1fc2d10cb44040d8ac6e45dc1dfba3f579",
+    "share/birnam/src/rust/birnam-id/src/runtime/numeric.rs": "83ad7597cc7d5071528395da56ab590bfde044864a008947720ed963df866291",
+    "share/birnam/src/rust/birnam-id/src/runtime/numeric/chain.rs": "17986b3ed3b7ba6024aef9e8deaecff203ac065f01abe90f8295a1d871b013fb",
+    "share/birnam/src/rust/birnam-id/src/runtime/numeric/chain/loop_reuse.rs": "f0da4f0dc9f151ee06b6dbaf8243c4588e265668039c926cdf11a7a9f4f1abf4",
+    "share/birnam/src/rust/birnam-id/src/runtime/numeric/chain/loop_reuse/tests.rs": "66baf19e6d837a2d7f0ace2172be84c5e366fc12ee3dba4c4571677f3940276c",
+    "share/birnam/src/rust/birnam-id/src/runtime/numeric/tests.rs": "1b96555bd86e99348cef878e75da268094c213a90ad1e208783af585ac798ab9",
+    "share/birnam/src/rust/birnam-id/src/runtime/read_reuse_experiment.rs": "8050985e2fe61459c40409cab8417399895967c5d79575dc7bfb3fd2f4784a3b",
+    "share/birnam/src/rust/birnam-id/src/runtime/recovery.rs": "f90caf311bd2d1df6ffede3c5821f474b64f5e52127be31202473d1d246546d9",
+    "share/birnam/src/rust/birnam-id/src/runtime/recovery/graph.rs": "f3034d8ce91ee241d7bdf6c3c68ebf1b71c6b5d0fbd14bcfcc03ba9c42415241",
+    "share/birnam/src/rust/birnam-id/src/runtime/recovery/graph/tests.rs": "e6bd5dc401d9fe1fcf0c5d4c90fe2fd3355d198d804da59da66163bc5c6c71ed",
+    "share/birnam/src/rust/birnam-id/src/runtime/unboxed_numeric_probe.rs": "50201d0490e27f8b6d4d2418afdf9583e79af1a27830895c1a013ab8e88084ee",
+    "share/birnam/src/rust/birnam-id/src/runtime/unboxed_numeric_probe/control.rs": "9334cb0710467fa85aa3a3a005a0f14669fa7aec6e4d4042b5bb43b363a4ccef",
+    "share/birnam/src/rust/birnam-id/src/runtime/unboxed_numeric_probe/loop_measure.rs": "0e03860a6efa8fa6a623377d56da3ff23ee6a77ee51659b19f1f55eeb5e8cb90",
+    "share/birnam/src/rust/birnam-id/src/runtime/unboxed_numeric_probe/measure.rs": "721c44488ad92610da5beb6265d4e5f538853cd3cedd2e10b3c9196c6195e27f",
+    "share/birnam/src/rust/birnam-id/src/runtime/v2_control_tests.rs": "12764300c0b721a88e3e89c9f260c98c4fe6f6e3b87269c968409425275ff90c",
+    "share/birnam/src/rust/birnam-id/src/symbol.rs": "405c5dc8b986520449f6f43ade29c50f7296d149920fb508b3487b7089b46ddf",
+    "share/birnam/src/rust/birnam-id/src/values.rs": "03e582c22c286ea4553e83dae0630c4dd679798c285a3dc49148b01069047df3",
+    "share/birnam/src/rust/birnam-id/src/vtable.rs": "4dbf5eb3184f8c6d512e8d215b224bfee63c0119522a751e1b60e6390192ad7b",
+    "share/birnam/src/rust/birnam-image/Cargo.toml": "43cbeead3275692eeb4318508a17809c5256e83487209afb2e1630a01bbf63eb",
+    "share/birnam/src/rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "share/birnam/src/rust/birnam-image/src/retained_facts.rs": "7cf9722e20c861d237407d5a1a9d9c83113c8ec396196e23226c210bae676b8b",
+    "share/birnam/src/rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "share/birnam/src/rust/birnam-isolate/Cargo.toml": "4c7bd05dcea7a8a5dacb0d17c2701aac23f2c20316bbece34284d3d4f65ca3f9",
+    "share/birnam/src/rust/birnam-isolate/src/lib.rs": "4e4aa2df2726071c78c115fd1bab03dd8b86e7b64a04266fd60b27c3e3a2a9eb",
+    "share/birnam/src/rust/birnam-lang/Cargo.toml": "6475d977cd5e20c7f87618f871c9a8745e5425c69138c33012b0b6b4cde36e6a",
+    "share/birnam/src/rust/birnam-lang/build.rs": "a2384496ae066f7b7cfc0a5f1df78fa7170e71516b08a39b587ec90e73c28732",
+    "share/birnam/src/rust/birnam-lang/src/lib.rs": "f2dd9ed943ce863f84fd2d1d150db9e2888e1ca978c1fd659b46d335e9188820",
+    "share/birnam/src/rust/birnam-native-compiler/Cargo.toml": "f1e6e5fee5d09013598ce4701731813ab48047d06ef072473a9143c6829f0963",
+    "share/birnam/src/rust/birnam-native-compiler/build.rs": "a9d3a2ef4902fbf5a8c9b6725602ea38913ad6bf21e81469564dcb60f72e68ff",
+    "share/birnam/src/rust/birnam-native-compiler/src/lib.rs": "e48ab670a2a7017ff75bec459cf8d18e270af2899d48a38122cc5290c18ec53c",
+    "share/birnam/src/rust/birnam-native-compiler/src/unit.rs": "bfec74d074778d72bffc934c21592c7f0f6c5ab672f402ccd3759c35870a6d2b",
+    "share/birnam/src/rust/birnam-peg/Cargo.toml": "bde98bd52916d7b0b5edb4372b18f0419227d59a2669ab7b946107073508ae79",
+    "share/birnam/src/rust/birnam-peg/src/lib.rs": "5a1973a9b2b339f070f0f6bcdac20d890325db5cbcde45f5f8b350a27837a4c8",
+    "share/birnam/src/rust/birnam-peg/src/matching_tests.rs": "4f3341b5f90de26e17eeda8dc447bf202e81e37f21693c7ac8989370cd12ef41",
+    "share/birnam/src/rust/birnam-portable-code/Cargo.toml": "cd9e3cf41c04d7590d1c9813228c7034aec5a6d868a3d3ea858bf30a47184458",
+    "share/birnam/src/rust/birnam-portable-code/src/lib.rs": "1949d75c35c2c053d86c303cd136965d4945e16c4cfb954d765a5a3c4983c29f",
+    "share/birnam/src/rust/birnam-portable-code/src/portable_code.rs": "f17aa71d3d1c1ff201ea0be36e990ad2b7e120c6889a263541e6de3ae9251979",
+    "share/birnam/src/rust/birnam-portable-code/src/runtime.rs": "a79af84b6d2e8291adc7d95fc609cb8b6caffd0b087704866564b8e48647b394",
+    "share/birnam/src/rust/birnam-prelude/Cargo.toml": "6ed54adda30d8ccf3488d6782602a87971f4bd6c7057a1458f8c226dd503e4d5",
+    "share/birnam/src/rust/birnam-prelude/src/lib.rs": "f4025cc7467e19b92838403b959346e7b00447a4ab377c443958153a9ee9125c",
+    "share/birnam/src/rust/birnam-relational/Cargo.toml": "3193cdc1ae62367aab2ad46e8947be0013edc179e6aafb94bb1926c290e73ade",
+    "share/birnam/src/rust/birnam-relational/src/lib.rs": "1c0da53870f03d4dac96deebd9f48cfad51817bb16afe299986bbca0e59b47db",
+    "share/birnam/src/rust/birnam-relational/src/oop.rs": "a8130523b6ae1cb82608d2a8d1e4da4df9b3ada2f83bc8b7373d156ea2b40f4d",
+    "share/birnam/src/rust/birnam-relational/src/query_matching_tests.rs": "e6dc432a7685903e5ad480d61caf1f2489ab8b644f3aa4eda343bb5b5dfd912c",
+    "share/birnam/src/rust/birnam-store/Cargo.toml": "e7e9c86d27af3a4d37b9e24b80c11ea3ebe75d6a55226926d379afa9e2506f2e",
+    "share/birnam/src/rust/birnam-store/src/lib.rs": "1fee2cb614f0c7a925227f743d47b80785df57d31c5b97dee5c1810e6bdd3567",
+    "share/birnam/src/rust/birnam-store/src/snapshot_tests.rs": "4d774acc120fa9aa612adea3488b37431de8b60018066c264a00fe90f3fca80e",
+    "share/birnam/src/rust/birnam-tcc/Cargo.toml": "43cb39ede860944f96326a782f8c4a8c6513e43948c4e10fcaed79c642739d11",
+    "share/birnam/src/rust/birnam-tcc/build.rs": "3ce30af214f1292068b8db08d1ce929b1735ea3eeae815e4f24d3268ecf9dd38",
+    "share/birnam/src/rust/birnam-tcc/src/lib.rs": "58d385312c400450c7ae8bf20efbda233891500da0c883030e079ee901d817ab"
+  },
+  "pairs": 4,
+  "prefix": "/private/tmp/birnam-74u-hot-prefix",
+  "qualified": false,
+  "rows": [
+    {
+      "enabled": false,
+      "execution_us": 44831,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 0,
+      "peak_rss_bytes": 149012480,
+      "process_wall_ns": 477130209,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          44831,
+          51566,
+          31066,
+          30050,
+          109832
+        ],
+        "warmup-us": [
+          38227
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.47 real         0.39 user         0.05 sys\n           149012480  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9751  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   2  voluntary context switches\n                1538  involuntary context switches\n          3695329332  instructions retired\n          1299831464  cycles elapsed\n            96798656  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 38227\nsample-us 44831\nsample-us 51566\nsample-us 31066\nsample-us 30050\nsample-us 109832\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 38227
+    },
+    {
+      "enabled": true,
+      "execution_us": 31655,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 0,
+      "peak_rss_bytes": 149766144,
+      "process_wall_ns": 426074333,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          31655,
+          30005,
+          32275,
+          30562,
+          98759
+        ],
+        "warmup-us": [
+          38136
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.41 real         0.35 user         0.04 sys\n           149766144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9797  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 217  involuntary context switches\n          3685233764  instructions retired\n          1180781696  cycles elapsed\n            95880768  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 38136\nsample-us 31655\nsample-us 30005\nsample-us 32275\nsample-us 30562\nsample-us 98759\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 38136
+    },
+    {
+      "enabled": false,
+      "execution_us": 777255,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 0,
+      "peak_rss_bytes": 266272768,
+      "process_wall_ns": 5052974542,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          777255,
+          658210,
+          680912,
+          833243,
+          1134451
+        ],
+        "warmup-us": [
+          777774
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        5.04 real         4.28 user         0.10 sys\n           266272768  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16872  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                8531  involuntary context switches\n         31700839804  instructions retired\n         11713068417  cycles elapsed\n           162007552  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 777774\nsample-us 777255\nsample-us 658210\nsample-us 680912\nsample-us 833243\nsample-us 1134451\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 777774
+    },
+    {
+      "enabled": true,
+      "execution_us": 624326,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 0,
+      "peak_rss_bytes": 257310720,
+      "process_wall_ns": 5045513834,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          1437268,
+          575175,
+          575750,
+          624326,
+          1031987
+        ],
+        "warmup-us": [
+          599860
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        5.04 real         4.01 user         0.10 sys\n           257310720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               15978  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                8639  involuntary context switches\n         31664270720  instructions retired\n         11155214118  cycles elapsed\n           157321472  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 599860\nsample-us 1437268\nsample-us 575175\nsample-us 575750\nsample-us 624326\nsample-us 1031987\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 599860
+    },
+    {
+      "enabled": false,
+      "execution_us": 649201,
+      "exit_code": 0,
+      "materialization_us": 2270,
+      "pair": 0,
+      "peak_rss_bytes": 290570240,
+      "process_wall_ns": 4964977667,
+      "samples": {
+        "materialize-us": [
+          2270
+        ],
+        "sample-us": [
+          749437,
+          667150,
+          649201,
+          631371,
+          619651
+        ],
+        "warmup-us": [
+          1383573
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        4.94 real         4.12 user         0.11 sys\n           290570240  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18268  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                6865  involuntary context switches\n         31689192300  instructions retired\n         11438891195  cycles elapsed\n           163121664  peak memory footprint\n",
+      "stdout": "materialize-us 2270\nwarmup-us 1383573\nsample-us 749437\nsample-us 667150\nsample-us 649201\nsample-us 631371\nsample-us 619651\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 1383573
+    },
+    {
+      "enabled": true,
+      "execution_us": 773484,
+      "exit_code": 0,
+      "materialization_us": 916,
+      "pair": 0,
+      "peak_rss_bytes": 290308096,
+      "process_wall_ns": 4735474083,
+      "samples": {
+        "materialize-us": [
+          916
+        ],
+        "sample-us": [
+          773484,
+          742139,
+          787049,
+          738533,
+          854528
+        ],
+        "warmup-us": [
+          655441
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        4.72 real         4.39 user         0.10 sys\n           290308096  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               17997  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n               10484  involuntary context switches\n         31726083557  instructions retired\n         12117758664  cycles elapsed\n           155011328  peak memory footprint\n",
+      "stdout": "materialize-us 916\nwarmup-us 655441\nsample-us 773484\nsample-us 742139\nsample-us 787049\nsample-us 738533\nsample-us 854528\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 655441
+    },
+    {
+      "enabled": false,
+      "execution_us": 75877,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 0,
+      "peak_rss_bytes": 158302208,
+      "process_wall_ns": 908760833,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          72407,
+          75877,
+          95798,
+          91838,
+          71620
+        ],
+        "warmup-us": [
+          26
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.90 real         0.75 user         0.10 sys\n           158302208  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10577  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1157  involuntary context switches\n          6775519608  instructions retired\n          2271649637  cycles elapsed\n           110397312  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 26\nsample-us 72407\nsample-us 75877\nsample-us 95798\nsample-us 91838\nsample-us 71620\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 26
+    },
+    {
+      "enabled": true,
+      "execution_us": 64911,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 0,
+      "peak_rss_bytes": 163708928,
+      "process_wall_ns": 764078500,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          65317,
+          59412,
+          64911,
+          70063,
+          59534
+        ],
+        "warmup-us": [
+          26
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.75 real         0.66 user         0.07 sys\n           163708928  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10904  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 360  involuntary context switches\n          6763387565  instructions retired\n          1955595386  cycles elapsed\n           115967936  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 26\nsample-us 65317\nsample-us 59412\nsample-us 64911\nsample-us 70063\nsample-us 59534\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 26
+    },
+    {
+      "enabled": true,
+      "execution_us": 594566,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 1,
+      "peak_rss_bytes": 266108928,
+      "process_wall_ns": 3875589875,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          677879,
+          594566,
+          566166,
+          492132,
+          684640
+        ],
+        "warmup-us": [
+          658833
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        3.87 real         3.68 user         0.08 sys\n           266108928  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16651  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   3  voluntary context switches\n                4476  involuntary context switches\n         31633806513  instructions retired\n         10267818866  cycles elapsed\n           155027584  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 658833\nsample-us 677879\nsample-us 594566\nsample-us 566166\nsample-us 492132\nsample-us 684640\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 658833
+    },
+    {
+      "enabled": false,
+      "execution_us": 544683,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 1,
+      "peak_rss_bytes": 268189696,
+      "process_wall_ns": 3606720250,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          627935,
+          519221,
+          515379,
+          544683,
+          628457
+        ],
+        "warmup-us": [
+          585266
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        3.60 real         3.47 user         0.08 sys\n           268189696  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               17154  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                3408  involuntary context switches\n         31481719272  instructions retired\n          9967021894  cycles elapsed\n           156223680  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 585266\nsample-us 627935\nsample-us 519221\nsample-us 515379\nsample-us 544683\nsample-us 628457\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 585266
+    },
+    {
+      "enabled": true,
+      "execution_us": 605903,
+      "exit_code": 0,
+      "materialization_us": 976,
+      "pair": 1,
+      "peak_rss_bytes": 267927552,
+      "process_wall_ns": 3837990375,
+      "samples": {
+        "materialize-us": [
+          976
+        ],
+        "sample-us": [
+          604843,
+          592733,
+          605903,
+          661969,
+          623357
+        ],
+        "warmup-us": [
+          555624
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        3.83 real         3.68 user         0.07 sys\n           267927552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16827  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                2389  involuntary context switches\n         31725564210  instructions retired\n         10252634183  cycles elapsed\n           156944512  peak memory footprint\n",
+      "stdout": "materialize-us 976\nwarmup-us 555624\nsample-us 604843\nsample-us 592733\nsample-us 605903\nsample-us 661969\nsample-us 623357\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 555624
+    },
+    {
+      "enabled": false,
+      "execution_us": 551402,
+      "exit_code": 0,
+      "materialization_us": 1002,
+      "pair": 1,
+      "peak_rss_bytes": 253231104,
+      "process_wall_ns": 3444329250,
+      "samples": {
+        "materialize-us": [
+          1002
+        ],
+        "sample-us": [
+          603155,
+          551402,
+          507976,
+          490136,
+          595693
+        ],
+        "warmup-us": [
+          532239
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        3.44 real         3.34 user         0.06 sys\n           253231104  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               15732  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                2845  involuntary context switches\n         31633536836  instructions retired\n          9728310287  cycles elapsed\n           157665088  peak memory footprint\n",
+      "stdout": "materialize-us 1002\nwarmup-us 532239\nsample-us 603155\nsample-us 551402\nsample-us 507976\nsample-us 490136\nsample-us 595693\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 532239
+    },
+    {
+      "enabled": true,
+      "execution_us": 64079,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 1,
+      "peak_rss_bytes": 153501696,
+      "process_wall_ns": 780304416,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          64079,
+          60976,
+          71884,
+          72243,
+          60806
+        ],
+        "warmup-us": [
+          19
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.77 real         0.67 user         0.08 sys\n           153501696  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10281  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1762  involuntary context switches\n          6766335260  instructions retired\n          2074556755  cycles elapsed\n           119703680  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 19\nsample-us 64079\nsample-us 60976\nsample-us 71884\nsample-us 72243\nsample-us 60806\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 19
+    },
+    {
+      "enabled": false,
+      "execution_us": 55761,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 1,
+      "peak_rss_bytes": 152027136,
+      "process_wall_ns": 651970000,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          56789,
+          55761,
+          49333,
+          63290,
+          50721
+        ],
+        "warmup-us": [
+          18
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.64 real         0.57 user         0.06 sys\n           152027136  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10192  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 246  involuntary context switches\n          6754552366  instructions retired\n          1842786619  cycles elapsed\n           107071360  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 18\nsample-us 56789\nsample-us 55761\nsample-us 49333\nsample-us 63290\nsample-us 50721\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 18
+    },
+    {
+      "enabled": true,
+      "execution_us": 37850,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 1,
+      "peak_rss_bytes": 151076864,
+      "process_wall_ns": 470759125,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          40776,
+          37850,
+          34046,
+          32709,
+          116684
+        ],
+        "warmup-us": [
+          44002
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.46 real         0.40 user         0.05 sys\n           151076864  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9877  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 579  involuntary context switches\n          3687893402  instructions retired\n          1298244111  cycles elapsed\n           101811904  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 44002\nsample-us 40776\nsample-us 37850\nsample-us 34046\nsample-us 32709\nsample-us 116684\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 44002
+    },
+    {
+      "enabled": false,
+      "execution_us": 32463,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 1,
+      "peak_rss_bytes": 151502848,
+      "process_wall_ns": 442017000,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          31715,
+          32388,
+          38134,
+          32463,
+          105664
+        ],
+        "warmup-us": [
+          39733
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.43 real         0.38 user         0.04 sys\n           151502848  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9904  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 216  involuntary context switches\n          3682415351  instructions retired\n          1181246936  cycles elapsed\n            99665536  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 39733\nsample-us 31715\nsample-us 32388\nsample-us 38134\nsample-us 32463\nsample-us 105664\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 39733
+    },
+    {
+      "enabled": false,
+      "execution_us": 542631,
+      "exit_code": 0,
+      "materialization_us": 1296,
+      "pair": 2,
+      "peak_rss_bytes": 263094272,
+      "process_wall_ns": 3532333166,
+      "samples": {
+        "materialize-us": [
+          1296
+        ],
+        "sample-us": [
+          601967,
+          490942,
+          542631,
+          530275,
+          602027
+        ],
+        "warmup-us": [
+          581068
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        3.52 real         3.42 user         0.08 sys\n           263094272  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16530  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1860  involuntary context switches\n         31681138262  instructions retired\n         10020403207  cycles elapsed\n           159205504  peak memory footprint\n",
+      "stdout": "materialize-us 1296\nwarmup-us 581068\nsample-us 601967\nsample-us 490942\nsample-us 542631\nsample-us 530275\nsample-us 602027\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 581068
+    },
+    {
+      "enabled": true,
+      "execution_us": 539544,
+      "exit_code": 0,
+      "materialization_us": 869,
+      "pair": 2,
+      "peak_rss_bytes": 264044544,
+      "process_wall_ns": 3435493333,
+      "samples": {
+        "materialize-us": [
+          869
+        ],
+        "sample-us": [
+          539544,
+          541947,
+          522989,
+          513890,
+          686440
+        ],
+        "warmup-us": [
+          470993
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        3.43 real         3.32 user         0.07 sys\n           264044544  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16393  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1587  involuntary context switches\n         31694711993  instructions retired\n         10039503177  cycles elapsed\n           154568576  peak memory footprint\n",
+      "stdout": "materialize-us 869\nwarmup-us 470993\nsample-us 539544\nsample-us 541947\nsample-us 522989\nsample-us 513890\nsample-us 686440\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 470993
+    },
+    {
+      "enabled": false,
+      "execution_us": 72681,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 2,
+      "peak_rss_bytes": 162283520,
+      "process_wall_ns": 885419208,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          72681,
+          69691,
+          79534,
+          87390,
+          63310
+        ],
+        "warmup-us": [
+          20
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.87 real         0.75 user         0.09 sys\n           162283520  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10818  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 824  involuntary context switches\n          6767490282  instructions retired\n          2250415402  cycles elapsed\n           118343616  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 20\nsample-us 72681\nsample-us 69691\nsample-us 79534\nsample-us 87390\nsample-us 63310\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 20
+    },
+    {
+      "enabled": true,
+      "execution_us": 65365,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 2,
+      "peak_rss_bytes": 169410560,
+      "process_wall_ns": 788954333,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          65365,
+          59596,
+          65532,
+          78931,
+          60414
+        ],
+        "warmup-us": [
+          24
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.78 real         0.69 user         0.07 sys\n           169410560  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               11253  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 357  involuntary context switches\n          6754414300  instructions retired\n          1966415287  cycles elapsed\n           121735296  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 24\nsample-us 65365\nsample-us 59596\nsample-us 65532\nsample-us 78931\nsample-us 60414\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 24
+    },
+    {
+      "enabled": false,
+      "execution_us": 48987,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 2,
+      "peak_rss_bytes": 153124864,
+      "process_wall_ns": 594902333,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          48987,
+          42060,
+          40681,
+          54370,
+          137493
+        ],
+        "warmup-us": [
+          56913
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.58 real         0.48 user         0.07 sys\n           153124864  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10002  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 988  involuntary context switches\n          3686446631  instructions retired\n          1488484337  cycles elapsed\n           102926208  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 56913\nsample-us 48987\nsample-us 42060\nsample-us 40681\nsample-us 54370\nsample-us 137493\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 56913
+    },
+    {
+      "enabled": true,
+      "execution_us": 40939,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 2,
+      "peak_rss_bytes": 154271744,
+      "process_wall_ns": 504369250,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          41373,
+          40939,
+          31335,
+          31351,
+          123535
+        ],
+        "warmup-us": [
+          48850
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.49 real         0.42 user         0.05 sys\n           154271744  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10073  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 136  involuntary context switches\n          3673941931  instructions retired\n          1259765413  cycles elapsed\n           104793920  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 48850\nsample-us 41373\nsample-us 40939\nsample-us 31335\nsample-us 31351\nsample-us 123535\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 48850
+    },
+    {
+      "enabled": false,
+      "execution_us": 605554,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 2,
+      "peak_rss_bytes": 271351808,
+      "process_wall_ns": 4035745167,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          726626,
+          605554,
+          577910,
+          590398,
+          672000
+        ],
+        "warmup-us": [
+          642192
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        4.02 real         3.86 user         0.08 sys\n           271351808  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               17339  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                2314  involuntary context switches\n         31356100625  instructions retired\n         10509493511  cycles elapsed\n           162859328  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 642192\nsample-us 726626\nsample-us 605554\nsample-us 577910\nsample-us 590398\nsample-us 672000\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 642192
+    },
+    {
+      "enabled": true,
+      "execution_us": 486884,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 2,
+      "peak_rss_bytes": 257851392,
+      "process_wall_ns": 3293258834,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          556783,
+          459033,
+          455250,
+          486884,
+          577885
+        ],
+        "warmup-us": [
+          569204
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        3.28 real         3.19 user         0.07 sys\n           257851392  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16092  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                1042  involuntary context switches\n         31313968977  instructions retired\n          9630347039  cycles elapsed\n           157141312  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 569204\nsample-us 556783\nsample-us 459033\nsample-us 455250\nsample-us 486884\nsample-us 577885\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 569204
+    },
+    {
+      "enabled": true,
+      "execution_us": 52191,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 3,
+      "peak_rss_bytes": 148307968,
+      "process_wall_ns": 621755625,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          52191,
+          51513,
+          52201,
+          63265,
+          51895
+        ],
+        "warmup-us": [
+          18
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.61 real         0.55 user         0.05 sys\n           148307968  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9967  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   1  voluntary context switches\n                  71  involuntary context switches\n          6757145677  instructions retired\n          1824105332  cycles elapsed\n           121439936  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 18\nsample-us 52191\nsample-us 51513\nsample-us 52201\nsample-us 63265\nsample-us 51895\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 18
+    },
+    {
+      "enabled": false,
+      "execution_us": 43157,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 3,
+      "peak_rss_bytes": 145244160,
+      "process_wall_ns": 557526208,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          42047,
+          42759,
+          43157,
+          51482,
+          45388
+        ],
+        "warmup-us": [
+          14
+        ]
+      },
+      "scenario": "materialize-cold",
+      "stderr": "        0.55 real         0.50 user         0.04 sys\n           145244160  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9778  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n          6737389051  instructions retired\n          1815181234  cycles elapsed\n           107742528  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 14\nsample-us 42047\nsample-us 42759\nsample-us 43157\nsample-us 51482\nsample-us 45388\nfocus-ok materialize-cold\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 14
+    },
+    {
+      "enabled": true,
+      "execution_us": 31100,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 3,
+      "peak_rss_bytes": 149880832,
+      "process_wall_ns": 396894292,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          31100,
+          28918,
+          31285,
+          29939,
+          94744
+        ],
+        "warmup-us": [
+          38032
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.39 real         0.35 user         0.04 sys\n           149880832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9805  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  19  involuntary context switches\n          3673599769  instructions retired\n          1150474739  cycles elapsed\n            99796608  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 38032\nsample-us 31100\nsample-us 28918\nsample-us 31285\nsample-us 29939\nsample-us 94744\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 38032
+    },
+    {
+      "enabled": false,
+      "execution_us": 25765,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 3,
+      "peak_rss_bytes": 138657792,
+      "process_wall_ns": 345719000,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          25748,
+          24933,
+          28328,
+          25765,
+          78681
+        ],
+        "warmup-us": [
+          33007
+        ]
+      },
+      "scenario": "eval",
+      "stderr": "        0.34 real         0.30 user         0.03 sys\n           138657792  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9120  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  57  involuntary context switches\n          3690992768  instructions retired\n          1131713909  cycles elapsed\n            97781184  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 33007\nsample-us 25748\nsample-us 24933\nsample-us 28328\nsample-us 25765\nsample-us 78681\nfocus-ok eval\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 33007
+    },
+    {
+      "enabled": true,
+      "execution_us": 463681,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 3,
+      "peak_rss_bytes": 251772928,
+      "process_wall_ns": 2969577917,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          468400,
+          444833,
+          437510,
+          463681,
+          579493
+        ],
+        "warmup-us": [
+          436335
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        2.96 real         2.90 user         0.05 sys\n           251772928  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               15694  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 113  involuntary context switches\n         31556453277  instructions retired\n          9616569168  cycles elapsed\n           150849216  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 436335\nsample-us 468400\nsample-us 444833\nsample-us 437510\nsample-us 463681\nsample-us 579493\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 436335
+    },
+    {
+      "enabled": false,
+      "execution_us": 489695,
+      "exit_code": 0,
+      "materialization_us": 0,
+      "pair": 3,
+      "peak_rss_bytes": 257687552,
+      "process_wall_ns": 3149667541,
+      "samples": {
+        "materialize-us": [
+          0
+        ],
+        "sample-us": [
+          489695,
+          422137,
+          458301,
+          541062,
+          516054
+        ],
+        "warmup-us": [
+          550683
+        ]
+      },
+      "scenario": "collections",
+      "stderr": "        3.14 real         3.07 user         0.06 sys\n           257687552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               16001  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 327  involuntary context switches\n         31548751692  instructions retired\n          9946643694  cycles elapsed\n           156600064  peak memory footprint\n",
+      "stdout": "materialize-us 0\nwarmup-us 550683\nsample-us 489695\nsample-us 422137\nsample-us 458301\nsample-us 541062\nsample-us 516054\nfocus-ok collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 550683
+    },
+    {
+      "enabled": true,
+      "execution_us": 482197,
+      "exit_code": 0,
+      "materialization_us": 857,
+      "pair": 3,
+      "peak_rss_bytes": 255852544,
+      "process_wall_ns": 3194468042,
+      "samples": {
+        "materialize-us": [
+          857
+        ],
+        "sample-us": [
+          584159,
+          461606,
+          415519,
+          482197,
+          591623
+        ],
+        "warmup-us": [
+          514321
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        3.19 real         3.12 user         0.05 sys\n           255852544  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               15893  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  80  involuntary context switches\n         31481801534  instructions retired\n         10830824847  cycles elapsed\n           154978112  peak memory footprint\n",
+      "stdout": "materialize-us 857\nwarmup-us 514321\nsample-us 584159\nsample-us 461606\nsample-us 415519\nsample-us 482197\nsample-us 591623\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "1"
+      },
+      "warmup_us": 514321
+    },
+    {
+      "enabled": false,
+      "execution_us": 456535,
+      "exit_code": 0,
+      "materialization_us": 704,
+      "pair": 3,
+      "peak_rss_bytes": 246677504,
+      "process_wall_ns": 2850865166,
+      "samples": {
+        "materialize-us": [
+          704
+        ],
+        "sample-us": [
+          456535,
+          452777,
+          465087,
+          422759,
+          467462
+        ],
+        "warmup-us": [
+          452927
+        ]
+      },
+      "scenario": "portable-collections",
+      "stderr": "        2.84 real         2.78 user         0.05 sys\n           246677504  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               15517  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  91  involuntary context switches\n         31629266097  instructions retired\n          9703898938  cycles elapsed\n           150374208  peak memory footprint\n",
+      "stdout": "materialize-us 704\nwarmup-us 452927\nsample-us 456535\nsample-us 452777\nsample-us 465087\nsample-us 422759\nsample-us 467462\nfocus-ok portable-collections\n",
+      "switch_values": {
+        "BIRNAM_DEV_DISCARDED_CLONES": "0"
+      },
+      "warmup_us": 452927
+    }
+  ],
+  "scenarios": [
+    "eval",
+    "collections",
+    "portable-collections",
+    "materialize-cold"
+  ],
+  "scope": "Normal release installation, without a test floor or probe. Selected consumers disabled versus enabled. Default-off switches remain absent in the baseline; selected default-on aggregate switches are explicitly zero. Unselected consumers retain their defaults; the default selection remains the four experimental consumers, with aggregate consumers enabled on both sides. Selected fixed application workloads, each with five batches and a final post-GC answer check. Alternating configuration order and rotating scenario order. Execution samples, startup-inclusive process wall time and Darwin peak RSS are retained. Cold materialization includes eviction, compilation and retirement. This is combined regression and process-resource evidence; it neither attributes gains to individual consumers nor proves their activation or arbitrary application coverage.",
+  "sources": {
+    "Cargo.lock": "e9f7db63973423d9bca6c121b8fb4105829e4c5408d029e201dee2cafae690e5",
+    "Cargo.toml": "218ecb363680b4d00cab289551e60b25e56e8bca291f26030d7085a0a3da689a",
+    "abi/fixtures/portable-code-v1/program-explicit-captures.bin": "d6f1eb0018b9e3e74ff5f68193cb333ee7a291708bac6bd0fd8a52eb6d0af970",
+    "abi/native-block-construction-v1.md": "cf967977c8d8e9cab6c5e7b064ca48a3ba797b556390836e7bf65bd2aef39fc6",
+    "abi/native-field-projection-v1.md": "8ff3e5a6bc321d14f6f04a2b0621e91a4641fb550bf8feaf5212bd08bb9a6630",
+    "abi/native-numeric-semantics-v1.md": "04b6ab06c12a022f6c9b1b7f7b2e42913d6d5e96235ae53644807306280ecd45",
+    "bench/native-tier-focus.birnam": "7c1b2488aaf275d83dd15163c2e8d01e22c21596a25ae737b5973fa16008dd93",
+    "modules/app-config-test.birnam": "61bb9e40c7ca0acd6aa628af3476ce1f63fe41aaab362b3e24d7df9816baa764",
+    "modules/bench.birnam": "e0e882f04249bc7094af197eb0d1765eb3ae6fd21ac3e14b27c1e6fc912c9128",
+    "modules/block-test.birnam": "d7a4d6db864a4645df03b0cd0e7889941b44ad1284a869b955a9d6233bf9935b",
+    "modules/cli-test.birnam": "6d57f4b2741fbe2e3d1ee84589f54af8351880903de8ec03e9e0c0e8c84ac058",
+    "modules/cli.birnam": "2c55dc6a099fafaca0132b8dd38b2ae3739b16bdefdc653a710adbb5efcd5de0",
+    "modules/compiled-unit-docs.birnam": "6d47d265248561857f157a88b6684ced4a3e6b35b26565c9c175615d3a3da36d",
+    "modules/compiled-unit-test.birnam": "f1afbd09d42309fe4ae45ae327300f972916380d548e21e6370a2d0c244e658c",
+    "modules/doc-test.birnam": "7f2a844b84cf00fcc87de240f4ac185cb9382009d1592bbcb67bf223ea5a5f51",
+    "modules/doc.birnam": "d6e71a13b3bba7d9bd26f9d004aa22eebbec302ef481bfdd0b5a7b35d4eadfd9",
+    "modules/file.birnam": "557b750ba90000ba705557dd7fc3bd66d8a51ad8363b6e69a7b30b80dbb1d004",
+    "modules/html-test.birnam": "42f2ae3b026123d124c0f7d18fff2d530d4664b7a97ebd1a24b07c324292e3e6",
+    "modules/html.birnam": "72c94cfa53ce861378c3cedb4ca6b69efc255daa2d32e88d22b49ec9bf49d60e",
+    "modules/http.birnam": "3bcf8809dd2164d28c984915064de7e30f7d24bac378ca269dfa88763fd85dcf",
+    "modules/json.birnam": "47a6a064ecef5cfe6b1454a385ecae97e861458e1419a43d9428c1e0200774ce",
+    "modules/lang-test.birnam": "e2a2c67cc401b985a1bdc7fb9e308d983a51714026b2e4d7b58e11e3934312cd",
+    "modules/log.birnam": "85a89ca7d6c5fa2aa7d5b4898aee9c2fb85ccce91ab31e048049ed83f05afb5c",
+    "modules/lsp.birnam": "a2fa9614646e40098c3b26c31d4d0930288cc9b5ebd56900f23dd12c5f98d4be",
+    "modules/markdown-test.birnam": "9b9d9e6b4e6740ae0ec4abc34ae2e27f7dbf0ae8c47d5dd397b4835cbfb1e781",
+    "modules/markdown.birnam": "8bc70db716d2e65d6868ba52847668cd6b394c8b896dfde869a62d8156dd06f0",
+    "modules/modules-test.birnam": "478d162fb4bb5840c207078449b1fa735954c11a3ff04a648958a63cae082ea4",
+    "modules/nativedoc.birnam": "2830c7d19ff7c4b322f41f5b341e18c94de3a21c5619c1846359cfa7c6dc7a8c",
+    "modules/os.birnam": "eb584ffbe6f1748a29f76071aafc41f78b1b5382cac4d2f8ef1f65646a2fc8cf",
+    "modules/portable-code-test.birnam": "8a44560b56f2de4598949aca3af786a68f00c96151b287f075f6d3f61f76b07d",
+    "modules/process.birnam": "e619903562dffb8958d38b7d536fc81738d2b0f8fcb4f3700940fb3b7873dbd0",
+    "modules/project-policy-test.birnam": "1e0e65686aa74cc477beb6a59deb056b8a4f24f36167cf3ee2e4faf7251fe368",
+    "modules/random-test.birnam": "487ece198f36609ba769e61d8d454f66cab177c353198eb50f2765ec2598a1f5",
+    "modules/random.birnam": "102bd3f512c16a86b160bc963525d41287f06f8c8622e2d8e9df6323b8eae511",
+    "modules/repl.birnam": "ece792973c31dc9d254b35b385ae4645928fd430ca6a84a100bfa99aa323eeb6",
+    "modules/run-tests.birnam": "621babaaafbd50237b82171d5afc642724be3ecde922b42e78ce5f0d1d82b5be",
+    "modules/socket.birnam": "d871ace0d175ee0ed983547bc014f10a0154b1bd9f590d8de50bc010a1b02ad7",
+    "modules/stdlib-test.birnam": "9a48a6f5d8356cf909edd8f9498650085e1f283bda29d459e86c8f756f344a32",
+    "modules/test.birnam": "c493b6a6a232a4c298b79ca7a6bcac89a0e86913dffc340005bdeeca21209116",
+    "modules/time.birnam": "5b014717169048ac0d368845ff14fcf9d4a5e24a676f93e882e4250f9a3bc9e3",
+    "rust/birnam-abi/Cargo.toml": "7b11d1c250613d3181cc6255bdc9ecdd3231a487864d7a0e5878e8d07e864e3b",
+    "rust/birnam-abi/src/foreign_address.rs": "d57b6d0e04a47e915bab097891923bc4852e9ede062c7f56c436b362134df716",
+    "rust/birnam-abi/src/lib.rs": "76db6fafc1d5aa161e4a460adda86f0e3bfbbb3f7816d1f5c432b5e9896d4964",
+    "rust/birnam-abi/src/private.rs": "151cc74cfef9cf25244b040258e840cef7157827b7ac91924d983ea4629c5ffd",
+    "rust/birnam-alien/Cargo.toml": "bcd82739ff00bf014037f3dd5791f7a748d8044f29537722eba28db5767003fa",
+    "rust/birnam-alien/src/abi.rs": "5181da4ef8144b730c86969fad8f4680b306d62579c0e739c2a0abe36e4557f6",
+    "rust/birnam-alien/src/codegen.rs": "cbedb7571bfd58a51e0b8bd459d9ee68bfa75ff9127fb71de52f8eaf182c96a8",
+    "rust/birnam-alien/src/lib.rs": "cacf7fae9fab1a949c2f2252b9de8145b9d83eb7fc5ff1da520567db7ca7366b",
+    "rust/birnam-alien/src/loader.rs": "9604cad12c42f0d0ee1c19c1953e5a54fe461fbc54aa841cb6397a4c1d0e9590",
+    "rust/birnam-alien/src/runtime.rs": "e36cbf21f5baf0323ac3f68f625e51a330e7a7e7585bd07385342381e85013ab",
+    "rust/birnam-artifact-codec/Cargo.toml": "99367c017a4efe61a3438c27db313e68e2472892ba2830b677d9949672a09566",
+    "rust/birnam-artifact-codec/src/lib.rs": "385ed7709dca773b93e2dcae24505e78840e8973235ec1e2e76ede36a26d666d",
+    "rust/birnam-artifact/Cargo.toml": "8371c97b9802d33acbae2d6e7d818777823d1991c42c5fd23a3e5abac68b7b93",
+    "rust/birnam-artifact/src/candidate.rs": "8072654bc78f418e5883bfb471a50bf7a32f5174268f123af4540e077fc3332c",
+    "rust/birnam-artifact/src/code_binding_inventory.rs": "48c0b7debbdfde0669409d35a6b389d641b6441c2c5800a4cd636436fc260e13",
+    "rust/birnam-artifact/src/digest.rs": "2635c31eb297bfe1e624d1fb7d2a8bc91e6983f506dd13879ce9ea6d1c685cf9",
+    "rust/birnam-artifact/src/frame_descriptor.rs": "2578d75da79e33e6015e38edd76d2a6cfd2862804b85f7cbb31131bfcb6953bb",
+    "rust/birnam-artifact/src/lib.rs": "c9dc8e1ba5bd26f36340b48cc68a9923009a15aed2d1f09f840bbfd25abf390f",
+    "rust/birnam-artifact/src/materialization_selection.rs": "b09137d633714e50611dd93fde98258b09e20ff3285ef10e2fac4cc5f7126d71",
+    "rust/birnam-artifact/src/module.rs": "2aa33ef2a4ac24ee8660f825f38d10707d79c71a465cf79bab96f96144916557",
+    "rust/birnam-artifact/src/portable_inventory.rs": "8f2ec3347ab3b29bd7425929f43d59e26e8107bc54ff1be089d8bd920cc67ad2",
+    "rust/birnam-artifact/src/portable_program.rs": "77fce44ef44b09e230003d74f1a41925d4e3ef807a4c373c570149a781cfba5b",
+    "rust/birnam-artifact/src/portable_resumable_manifest.rs": "e4feb032843a2aa96ed8a1469f0e915d534e7a2f2dfd69cd7ab34c659d9a22f0",
+    "rust/birnam-artifact/src/resumable_manifest.rs": "3d287cb7f51da5611734ac521ca95303e15d3aaaf9ce29b804a375d26dba67b8",
+    "rust/birnam-artifact/src/stackless_selection.rs": "0ececcd4d8b03135523a058dff60399cad1aa3bbcba6a03c2a9945079e914f2e",
+    "rust/birnam-artifact/src/wire.rs": "054e10ed96d5e5ced9f9f29043c2053ab2c482cc7c71b801e0fd20ecbbb9963b",
+    "rust/birnam-codegen-runtime/Cargo.toml": "846d59df86dbd9a493ef6f9744fc6ac8e8e5337fd62d977b8f926cda9d2d58e4",
+    "rust/birnam-codegen-runtime/build.rs": "dad8f197eddb05c162778d69c7176d245e3c5224fd20457aee753333c8eba77c",
+    "rust/birnam-codegen-runtime/src/lib.rs": "6d0ce4c0f4c2b07bbf557cb7433807744c8d1d862be0c99ebafada3241ca1c2c",
+    "rust/birnam-codegen/Cargo.toml": "9e14ca825667a297f3cf480b592ffd5a98c6fe40524eafe9651069d777604ca3",
+    "rust/birnam-codegen/src/c_string.rs": "dad2378e7c0e7dfa3e67063510c11e9587e6725071a8e667b74ba8d99f021d70",
+    "rust/birnam-codegen/src/closure_elision.rs": "84e6f55bb002a05d1df27ea414fbc09c27c5f39327db8a9a9c477aed94be6caf",
+    "rust/birnam-codegen/src/closure_elision/sequence.rs": "e6a70ac6e5697c1c0f8320be80e8f0865832e7e877deeddefab3b051f367bc3b",
+    "rust/birnam-codegen/src/closure_elision/sequence/tests.rs": "18bfc8451043d03f6cb40ee585adc7812f1dfccf9c881dd4380fa3386b2299f1",
+    "rust/birnam-codegen/src/closure_elision_c.rs": "0d2ea67e7dcee37d74508dc23a9d0f196b703cf1a96dc31576064fd1d349cf6f",
+    "rust/birnam-codegen/src/discarded_clone.rs": "3e98b33530f2e48476b2e6c285ba1f4abbb3e42c26d5fa744eee74860087e3e0",
+    "rust/birnam-codegen/src/frame_region.rs": "357cc2f7ffac8a6e93cb3d6e4d70fde9599c65dc405300cf81aa57cd1560dd48",
+    "rust/birnam-codegen/src/lib.rs": "940a52b6a67506feb3be79809f516f246d6fa6c0e47c3e8e793ed3b3ed7e8eb4",
+    "rust/birnam-codegen/src/numeric_chain.rs": "ddacd7cb8963c66ef3d0e1d5cab2cb868497afce7d702ff140c2b82ff9b6ab18",
+    "rust/birnam-codegen/src/numeric_chain/recovery_maps.rs": "f906e9d1fecbf1d9c8ee25d93a67f6e26b353ccf8cf322b384943e94e4046fe4",
+    "rust/birnam-codegen/src/numeric_chain/recovery_maps/tests.rs": "741afdb8c1af48b18f490ac897a7e788cd3f78adbcfb3c11672c67529d573243",
+    "rust/birnam-codegen/src/numeric_chain/template.rs": "9150303b0b0e5e4398c0c31157c2d2392d6fb7f46fe862aff4891398949e93bb",
+    "rust/birnam-codegen/src/numeric_chain/template/tests.rs": "dcc35094eebdba5c656054ab19b6ec19ab203635f34e5803281911e7dd7aebb1",
+    "rust/birnam-codegen/src/portable.rs": "9f4ccecfd07865cdf404869a6c1fa5f01c8bc84f741a4802421ecc3ec3a2811f",
+    "rust/birnam-codegen/src/portable_c.rs": "af206692d2a0dc27d7f9ea9cd573efb2c11b59d798add5f5cd5ce9591139416a",
+    "rust/birnam-codegen/src/recovery_graph.rs": "37ba1f4e32b957c14418cbb2e864aeb2678b01160ef17e7c4a3f6a90ee33c5e6",
+    "rust/birnam-codegen/src/resumable.rs": "cec8746c64e56f41b57f53ae15dbe3e5a4042077e31ee94ecb3636031abfebf0",
+    "rust/birnam-codegen/src/resumable_block.rs": "1a75b0a71004e2203d1765c4152947925ea57e5d7174c2157ca613d6d396d74c",
+    "rust/birnam-codegen/src/resumable_c.rs": "85ac42b859fb4e155058f6fcfcb89b9af5f051cf47a65e49d41e0fcbba3afca9",
+    "rust/birnam-codegen/src/resumable_descriptor.rs": "333969de26f939843b6061e57dc1682776d957fb60ef692da2e86a5cf6ad9f17",
+    "rust/birnam-codegen/src/resumable_named.rs": "c0b76ac1c0c71bef4b2d2162d55a152b056c3b2188ecb58a8f4a32197e9c9153",
+    "rust/birnam-codegen/src/resumable_registration_c.rs": "c4eb7649a0ecf6bc13f12d4cfd6019f60b0a1566375e3256d1123b15c8ff7409",
+    "rust/birnam-codegen/src/resumable_resolver_c.rs": "f5f50cba47d038d171b8ba9658ea51c50aa46c49ab840aef6b19b468ff8ccf8e",
+    "rust/birnam-codegen/src/small_callee.rs": "d961fcf7bcb8a76fcdbd6a877588225faf6f89ebb7109614a32f48c3361ec48d",
+    "rust/birnam-codegen/src/tail_entry.rs": "bb62f2038a4dbc1ef7edc58ed9bf0472ba219c4b91efb1aca1ba88167933cb24",
+    "rust/birnam-codegen/src/virtual_aggregate.rs": "34f1af11e282a0ec2e5a79997b5fb6cc4e716e1dc084ec034bdbc29c4238913e",
+    "rust/birnam-collection/Cargo.toml": "3f66e5893fcb358a7547dc3e180ecf481bb35eacdefacb12b37458b5aa0e54ea",
+    "rust/birnam-collection/src/lib.rs": "5a842d99cea6492f6e06f3bbe438d4555af81f3c47c3598e96c65a68a79b8ea1",
+    "rust/birnam-error/Cargo.toml": "ebd6ef5e9020df0efffac7aba63969b0bb963af869b5b664aa077de10b68f41a",
+    "rust/birnam-error/src/lib.rs": "13056e3075074fe17f9c7a00fcf3181b3b53c4db66093a5d1c717c91f318e033",
+    "rust/birnam-host/Cargo.toml": "a163d163e9b7ecd1afbfca809a05dd82e111b4a058abe6c02981c92306bc47a2",
+    "rust/birnam-host/src/bin/birnam-build.rs": "00be69db4057cdcc6a621ea305cf8b9dcf5f6b6d42fe895cb6b852e47c6ffb51",
+    "rust/birnam-host/src/bin/birnam.rs": "855129e332626f0f5a4c91819e1c51b2494cf3831f51a73baf9b5f9cfc5ec765",
+    "rust/birnam-host/src/bootstrap_receipt.rs": "2537e10c6a5827e16937c4d3fd2658a4dd768f517b836afabea52aaed14dce66",
+    "rust/birnam-host/src/lib.rs": "d78436522c4ce71721552ac88cde473b2cc4671c4c61c7637e9532307904f1a4",
+    "rust/birnam-host/src/publication_receipt.rs": "bfc92506b6be0190464f77105abdc09d63830585727266d573a837da256d52ea",
+    "rust/birnam-host/src/receipt_validation.rs": "59f7f6627f968e0fe72d4c0e3dffc228e1b06766dac11bc94c1595a4c7386e98",
+    "rust/birnam-id/Cargo.toml": "41327174ba6e7ee4ef8bcfa065d1ffc3e60ecc5377873a0559ad61aa4a3f7fb3",
+    "rust/birnam-id/build.rs": "dcf4ab7621a178d5aea01a09e834895f954afdcd43de5aea6074f3f391a235d1",
+    "rust/birnam-id/src/boundary.rs": "72751545ba223655cdf4d93f56329d4bc219c17ba06aa1f673f2bcc4fc4edee2",
+    "rust/birnam-id/src/dev_slot_access.rs": "157a15ca77f9d740315a134f5b379ab38efb3a6f6ab0c45f2b5bfd4436498427",
+    "rust/birnam-id/src/dispatch.rs": "4bbad05dca162bb442893b1f6ed83d87d412ef7c9768cba34e81a67970da809e",
+    "rust/birnam-id/src/env.rs": "cce4ddf7bb50c4bf3effccc2c1974d8bcdfdc720df54eac2a83a29ac66c3e11c",
+    "rust/birnam-id/src/execution.rs": "1cc2de018b0cc407b28e9247c13a3cf0c2d9468a6cc4e31fc1f015a4e5729c73",
+    "rust/birnam-id/src/execution/inline_recovery_experiment.rs": "941e4189d4ae834da455a73604592c72a31d43cef65e2331ed42e2d49063c799",
+    "rust/birnam-id/src/execution/loop_iteration.rs": "f0db351ab2d5020fe9b2ed7899882ada7a381777cf2918a8208b83dc518dc350",
+    "rust/birnam-id/src/execution/probe_descriptor.rs": "fff4bb078c37c89233c49e8a6a8914563643f03c10e5cf1c90acdcf879944823",
+    "rust/birnam-id/src/execution/recovery.rs": "b369d407e8d6b7219843abf82c9c88edba3bd72f21d8afc967b259ff9831376b",
+    "rust/birnam-id/src/execution/tail_entry.rs": "ca4273a78a0159adb32202ebc70884b1cb26955b25c62b391fb6dc1fc7d0cada",
+    "rust/birnam-id/src/gc.rs": "6d777d58d7112d75fe36051bb8412f8363ebf0130ab3e5159e0c3a644f0e0a97",
+    "rust/birnam-id/src/heap.rs": "9b51c8c695a04918ed442a8808f8b0ee95787b005c10f3d5e1acd2b5bcf21cb2",
+    "rust/birnam-id/src/heap/dead_allocations.rs": "899ec3528a6d84cfd6386b63d813073b1a5e3491e4c350dd1d6687b476659345",
+    "rust/birnam-id/src/lib.rs": "6bdb5bdd4ffadf1ecd7f6eb59b55e536aba1af0fe7a4830e812eb9c79fb66fa5",
+    "rust/birnam-id/src/loader.rs": "9c76a3c9f46206a3d6ec9ac4537455c39325cbd4868370a3e3ff5c8199c61cad",
+    "rust/birnam-id/src/loader/block.rs": "4c074dc4f109d431f25c90f4906c234c3e4b9c201bf8bdb1cb0cd4f47e95302a",
+    "rust/birnam-id/src/loader/field.rs": "fde852fcb457730be2716165cf000f5bf45cb9467d986995f70dd2e4ecc4640c",
+    "rust/birnam-id/src/loader/numeric.rs": "38fba88b99a881f6125960f132f930c8e21ddb6a44d5c3c53be631cd3e35a2c1",
+    "rust/birnam-id/src/membership_bench.rs": "4b91fa5a6de233c48bf35a40bcc206e932a37c2c51a09ed49473248d702cdace",
+    "rust/birnam-id/src/public_api.rs": "9377318961eaababfe75e39ad48f07b2738be2fcd6dcfc7d7b8e302616cdc088",
+    "rust/birnam-id/src/raw.rs": "f300afefda63ab7800b57c6dc0fbe1f84e94327927aa589c937d47b39ccad092",
+    "rust/birnam-id/src/registration.rs": "0f5ff2b323a8dd743c2aea7ad270ea9cb301974c837e980d73dab2aaa38f525f",
+    "rust/birnam-id/src/runtime.rs": "e7b4377be4ba0fcb698a80334a864d92e1a5f02c82dc6f05625e8a3c859a2879",
+    "rust/birnam-id/src/runtime/architectural_fit_experiment.rs": "40b59e0d8a8db011034db7fd407535f09efde2857190abc34eb658a4dd229858",
+    "rust/birnam-id/src/runtime/closure_api_probe.rs": "e6664149f64e761c48ea088ab02849888306f235b1a71efe5b72d32cf01a9952",
+    "rust/birnam-id/src/runtime/closure_budget_probe.rs": "0d1f8f2d84ca2228899db41abdcc8be4a5d0d7af363ae577ac48ad12f19e6a5f",
+    "rust/birnam-id/src/runtime/closure_control_probe.rs": "17ed1bc1292f37bb9917d848fd81168f021ae2b9ef91e297c8e7004cd4eee304",
+    "rust/birnam-id/src/runtime/closure_journal_probe.rs": "621dff37a4ab1ae0b86302ef91e41f2f5c49bc178f9b1c6d951076df22cdd778",
+    "rust/birnam-id/src/runtime/closure_sequence_probe.rs": "48506ba726c53696445372db48d8bcccede9f1cfc7c731f4d87217addafa15a2",
+    "rust/birnam-id/src/runtime/closure_timing_probe.rs": "a8955f280b8ef6df1258d3078b15065e43980fcba0c5fdffc5e1c8619e768c9f",
+    "rust/birnam-id/src/runtime/deopt_experiment.rs": "1457bd8cd9e0dc607022c39a561d235fedd9626c77a7bb4533eb25388f7436cb",
+    "rust/birnam-id/src/runtime/dispatch_cache.rs": "9a273e43dd15a06b7efe9ba614dbb23a86aa1e83d1d4e0de0138d25a98e1abcf",
+    "rust/birnam-id/src/runtime/dispatch_cache/tests.rs": "23934faf6f416ed72df8c44a44c14ef364b107c6322d93e369331fc44811ca8d",
+    "rust/birnam-id/src/runtime/generated_deopt_adapter.c": "beffc686a0d16aaebf346fe6ec71ac9d141409b676b49d1294202d311cf25cff",
+    "rust/birnam-id/src/runtime/generated_deopt_baseline.c": "7e79b08acb8182559427600a0b6faa3e827de54c0f51b6fac74a59d3187e9730",
+    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs": "6aee35e3c587e8cf43e78f634039cb4a96504139355df48c49aa680ff783528d",
+    "rust/birnam-id/src/runtime/generated_deopt_program.rs": "2a0a2c8424ad29cfcc6d6687659befd70a78df876d1be6a05209d8d4bcea0fc9",
+    "rust/birnam-id/src/runtime/guarded_dispatch.rs": "90d63da78baf88a4260b700d26502169b38cf63c712aa0beb2cc1153a01aae6d",
+    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs": "017bb8a3d55f7dc694bfc9528d4a538a64ca3d69ab8a2b2f0a225c63114e7394",
+    "rust/birnam-id/src/runtime/guarded_lookup.rs": "0579635d703b9e2e1f7da538ad62c7a699a1aa061d36cd3f7e30584816a1f6d7",
+    "rust/birnam-id/src/runtime/guarded_lookup/tests.rs": "8bb9a7abdfee353ee746179ee39f7bb51cc386127de6b597ff082c91e12e68bd",
+    "rust/birnam-id/src/runtime/native_tier.rs": "0f18067ea747081c9ea5d2c7827f5eb886df40650ec247e31c5a7d779e2e6fd3",
+    "rust/birnam-id/src/runtime/native_tier/closure_elision.rs": "97e34a0e17fe61d3866ba5c417a4c8fca444ee6669ab6b6d1e68dac2224a91e7",
+    "rust/birnam-id/src/runtime/native_tier/closure_elision/pending.rs": "3d92bffc964af07c84be986e2123f45fe72c63524e888612cb433ef2ed7fde7f",
+    "rust/birnam-id/src/runtime/native_tier/closure_elision/region.rs": "e5553ad9c50e64a9ed6007a2f5c5fa24e3198475baf749d38478ca0ece38fbf2",
+    "rust/birnam-id/src/runtime/native_tier/discarded_clone.rs": "0ecc6f70d7fe91cce6c199fafde031e1dc4991bab08109d17874fdd4d2142696",
+    "rust/birnam-id/src/runtime/native_tier/fused_numeric.rs": "2e21b9408a2b9af3dd349025c2eef67355d2262831fc53c466729933bdcb5baa",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests.rs": "a05da88c4d5437acefa6170eb6bbea2dfcd561fc69b36c05e618580b5a0c27ca",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/alias_tests.rs": "8d5d805344175c9057cee3d52128c9e5398b5f78821ba4fd75ed4bb78109bc43",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/discarded_clone_tests.rs": "3a84bba413901391ef58da745c3c2e8d9d285dc6ade117925f77a415d896457e",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/fused_numeric_tests.rs": "5fd355490174ddd3bfb16dc3f2ee67e068491284d402f172661c6aa28bc5c8f3",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/graph_tests.rs": "b6b96e0409aaac9db17988f8898f16d7e24259bdb5f583da89fed3a01f4e7421",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/literal_tests.rs": "a426cd21d3a8360afba7480a3fbae756ab3ac8a8d06f274f4639e34023070820",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/loop_invariant_tests.rs": "e0392fb640e3e72112b60b57a7f63c2393355db5ed3404e2679dbccc3a78cd1a",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/loop_invariant_tests/control.rs": "00f8574f446070f9f8239f4f5f559bacf48497d5be78c975053cb2dd3df3b1c3",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/numeric_tests.rs": "f4f92b2171e5070cfa009880e734e326d849dbd80f1e98bf58e406daa39b8a7c",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/region_tests.rs": "a0f9a6e06de0f23965273580e68324de91314fa39bd99a6e6c0e65f07c0a574e",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/tail_entry_tests.rs": "4ae2044d50a8383fd25925fba1056b7b695b163e9dd5a549208cc993c3782b05",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/unboxed_numeric_tests.rs": "20a853a7434f6aeb9aa2734467fc932d5008fb4503cfbb1fe87d66e53dcb70af",
+    "rust/birnam-id/src/runtime/native_tier/leaf_tests/virtual_aggregate_tests.rs": "64d9b7d0f3dd1f3e159c1b23375f29cee69ff9a6131e93b8ef63dd0d9155a303",
+    "rust/birnam-id/src/runtime/native_tier/regions.rs": "75dd107ac4536dde32cc086bc152341e590458857bac84ca7741a366fca32094",
+    "rust/birnam-id/src/runtime/native_tier/shims.c": "306d091702a96093016c662c57012ff139ff9e53768fec9cd8e697413a0c6ca2",
+    "rust/birnam-id/src/runtime/native_tier/tests.rs": "26b4d57742545f9df7bd903c7ed3fddd44d1bfe6c6255c053bfde2a6be07927d",
+    "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs": "3215af9c18fe6830461b6711284af93b3283e05541216de4570df8ac8b73f609",
+    "rust/birnam-id/src/runtime/native_tier/unboxed_numeric/scratch.rs": "095aab4833de0eb28a5fb43e6d490c7ded42577e3937b5f86f290f4dd509bda3",
+    "rust/birnam-id/src/runtime/native_tier/virtual_aggregate.rs": "51eba722b30b8d5bd6ada1b09d4a4c1fc2d10cb44040d8ac6e45dc1dfba3f579",
+    "rust/birnam-id/src/runtime/numeric.rs": "83ad7597cc7d5071528395da56ab590bfde044864a008947720ed963df866291",
+    "rust/birnam-id/src/runtime/numeric/chain.rs": "17986b3ed3b7ba6024aef9e8deaecff203ac065f01abe90f8295a1d871b013fb",
+    "rust/birnam-id/src/runtime/numeric/chain/loop_reuse.rs": "f0da4f0dc9f151ee06b6dbaf8243c4588e265668039c926cdf11a7a9f4f1abf4",
+    "rust/birnam-id/src/runtime/numeric/chain/loop_reuse/tests.rs": "66baf19e6d837a2d7f0ace2172be84c5e366fc12ee3dba4c4571677f3940276c",
+    "rust/birnam-id/src/runtime/numeric/tests.rs": "1b96555bd86e99348cef878e75da268094c213a90ad1e208783af585ac798ab9",
+    "rust/birnam-id/src/runtime/read_reuse_experiment.rs": "8050985e2fe61459c40409cab8417399895967c5d79575dc7bfb3fd2f4784a3b",
+    "rust/birnam-id/src/runtime/recovery.rs": "f90caf311bd2d1df6ffede3c5821f474b64f5e52127be31202473d1d246546d9",
+    "rust/birnam-id/src/runtime/recovery/graph.rs": "f3034d8ce91ee241d7bdf6c3c68ebf1b71c6b5d0fbd14bcfcc03ba9c42415241",
+    "rust/birnam-id/src/runtime/recovery/graph/tests.rs": "e6bd5dc401d9fe1fcf0c5d4c90fe2fd3355d198d804da59da66163bc5c6c71ed",
+    "rust/birnam-id/src/runtime/unboxed_numeric_probe.rs": "50201d0490e27f8b6d4d2418afdf9583e79af1a27830895c1a013ab8e88084ee",
+    "rust/birnam-id/src/runtime/unboxed_numeric_probe/control.rs": "9334cb0710467fa85aa3a3a005a0f14669fa7aec6e4d4042b5bb43b363a4ccef",
+    "rust/birnam-id/src/runtime/unboxed_numeric_probe/loop_measure.rs": "0e03860a6efa8fa6a623377d56da3ff23ee6a77ee51659b19f1f55eeb5e8cb90",
+    "rust/birnam-id/src/runtime/unboxed_numeric_probe/measure.rs": "721c44488ad92610da5beb6265d4e5f538853cd3cedd2e10b3c9196c6195e27f",
+    "rust/birnam-id/src/runtime/v2_control_tests.rs": "12764300c0b721a88e3e89c9f260c98c4fe6f6e3b87269c968409425275ff90c",
+    "rust/birnam-id/src/symbol.rs": "405c5dc8b986520449f6f43ade29c50f7296d149920fb508b3487b7089b46ddf",
+    "rust/birnam-id/src/values.rs": "03e582c22c286ea4553e83dae0630c4dd679798c285a3dc49148b01069047df3",
+    "rust/birnam-id/src/vtable.rs": "4dbf5eb3184f8c6d512e8d215b224bfee63c0119522a751e1b60e6390192ad7b",
+    "rust/birnam-image/Cargo.toml": "43cbeead3275692eeb4318508a17809c5256e83487209afb2e1630a01bbf63eb",
+    "rust/birnam-image/src/lib.rs": "d33b4ee12ffdd20e62ef8520bb0e6e5fd7c5b1c627e2041138f4738f97e0e72c",
+    "rust/birnam-image/src/retained_facts.rs": "7cf9722e20c861d237407d5a1a9d9c83113c8ec396196e23226c210bae676b8b",
+    "rust/birnam-image/src/v8.rs": "103bb6ecc20b8777b51a4298a8b23ac3badc21b30ebe11a0fc46898695d3dbd1",
+    "rust/birnam-isolate/Cargo.toml": "4c7bd05dcea7a8a5dacb0d17c2701aac23f2c20316bbece34284d3d4f65ca3f9",
+    "rust/birnam-isolate/src/lib.rs": "4e4aa2df2726071c78c115fd1bab03dd8b86e7b64a04266fd60b27c3e3a2a9eb",
+    "rust/birnam-lang/Cargo.toml": "6475d977cd5e20c7f87618f871c9a8745e5425c69138c33012b0b6b4cde36e6a",
+    "rust/birnam-lang/build.rs": "a2384496ae066f7b7cfc0a5f1df78fa7170e71516b08a39b587ec90e73c28732",
+    "rust/birnam-lang/src/lib.rs": "f2dd9ed943ce863f84fd2d1d150db9e2888e1ca978c1fd659b46d335e9188820",
+    "rust/birnam-native-compiler/Cargo.toml": "f1e6e5fee5d09013598ce4701731813ab48047d06ef072473a9143c6829f0963",
+    "rust/birnam-native-compiler/build.rs": "a9d3a2ef4902fbf5a8c9b6725602ea38913ad6bf21e81469564dcb60f72e68ff",
+    "rust/birnam-native-compiler/src/lib.rs": "e48ab670a2a7017ff75bec459cf8d18e270af2899d48a38122cc5290c18ec53c",
+    "rust/birnam-native-compiler/src/unit.rs": "bfec74d074778d72bffc934c21592c7f0f6c5ab672f402ccd3759c35870a6d2b",
+    "rust/birnam-peg/Cargo.toml": "bde98bd52916d7b0b5edb4372b18f0419227d59a2669ab7b946107073508ae79",
+    "rust/birnam-peg/src/lib.rs": "5a1973a9b2b339f070f0f6bcdac20d890325db5cbcde45f5f8b350a27837a4c8",
+    "rust/birnam-peg/src/matching_tests.rs": "4f3341b5f90de26e17eeda8dc447bf202e81e37f21693c7ac8989370cd12ef41",
+    "rust/birnam-portable-code/Cargo.toml": "cd9e3cf41c04d7590d1c9813228c7034aec5a6d868a3d3ea858bf30a47184458",
+    "rust/birnam-portable-code/src/lib.rs": "1949d75c35c2c053d86c303cd136965d4945e16c4cfb954d765a5a3c4983c29f",
+    "rust/birnam-portable-code/src/portable_code.rs": "f17aa71d3d1c1ff201ea0be36e990ad2b7e120c6889a263541e6de3ae9251979",
+    "rust/birnam-portable-code/src/runtime.rs": "a79af84b6d2e8291adc7d95fc609cb8b6caffd0b087704866564b8e48647b394",
+    "rust/birnam-prelude/Cargo.toml": "6ed54adda30d8ccf3488d6782602a87971f4bd6c7057a1458f8c226dd503e4d5",
+    "rust/birnam-prelude/src/lib.rs": "f4025cc7467e19b92838403b959346e7b00447a4ab377c443958153a9ee9125c",
+    "rust/birnam-relational/Cargo.toml": "3193cdc1ae62367aab2ad46e8947be0013edc179e6aafb94bb1926c290e73ade",
+    "rust/birnam-relational/src/lib.rs": "1c0da53870f03d4dac96deebd9f48cfad51817bb16afe299986bbca0e59b47db",
+    "rust/birnam-relational/src/oop.rs": "a8130523b6ae1cb82608d2a8d1e4da4df9b3ada2f83bc8b7373d156ea2b40f4d",
+    "rust/birnam-relational/src/query_matching_tests.rs": "e6dc432a7685903e5ad480d61caf1f2489ab8b644f3aa4eda343bb5b5dfd912c",
+    "rust/birnam-store/Cargo.toml": "e7e9c86d27af3a4d37b9e24b80c11ea3ebe75d6a55226926d379afa9e2506f2e",
+    "rust/birnam-store/src/lib.rs": "1fee2cb614f0c7a925227f743d47b80785df57d31c5b97dee5c1810e6bdd3567",
+    "rust/birnam-store/src/snapshot_tests.rs": "4d774acc120fa9aa612adea3488b37431de8b60018066c264a00fe90f3fca80e",
+    "rust/birnam-tcc/Cargo.toml": "43cb39ede860944f96326a782f8c4a8c6513e43948c4e10fcaed79c642739d11",
+    "rust/birnam-tcc/build.rs": "3ce30af214f1292068b8db08d1ce929b1735ea3eeae815e4f24d3268ecf9dd38",
+    "rust/birnam-tcc/src/lib.rs": "58d385312c400450c7ae8bf20efbda233891500da0c883030e079ee901d817ab",
+    "scripts/aggregate-source-smoke.py": "ed9d0d1a1143c853d485a8e1c917b96d0ea54a25c1db59fa03c1a2b88079824a",
+    "scripts/bench-host-check.sh": "0b1fe5ca1e2c2a2e2b4c39f1425e8397d2b3dddfe386bc825fdff7e32e5f2480",
+    "scripts/closure-budget-smoke.py": "2fc40c74ca23bad52017c70a97d103248de5ea7bd26c822b34fe38dbbb8ab839",
+    "scripts/closure-control-smoke.sh": "8a7301218decd530bfa571246801431c4a5dcb8a23ca80162baf40f041e04fa9",
+    "scripts/closure-elision-smoke.sh": "fcf531c56f93aa95760a3ff32806876640bbc92393c6b083cf7bfb9856c4b832",
+    "scripts/closure-journal-smoke.py": "978a1c9fc6626f6b67b343dcaffd96d86fd42ba6cb97086d3812b32c0368cff0",
+    "scripts/closure-literal-control-smoke.py": "5773d98aeaff9211b8a97c2f335182a60f1eb8089f1de07d56ec22581052fa9f",
+    "scripts/closure-literals-smoke.py": "e82af066ab63886c8e172504b22cab976c99085a883fc5c36a1a4bf756bce8dc",
+    "scripts/closure-measurement-smoke.py": "30aef27322a9713ac5413457960cd837daad8bbbcaae37db39936ce92362c5a0",
+    "scripts/closure-production-timing.py": "f026d4556f13298326b629ec6a0f2ce22dcc9d7e76d3ca561af0f504806499f4",
+    "scripts/closure-sequence-mutation-smoke.py": "4edd02e17035dbbc07e63331a51d5477b96d1edf3c02edf351178e4eaa6b98d5",
+    "scripts/closure-sequence-smoke.py": "658708dc0b08274db66e3b21b4ed40a1fc1c767b062186198b47d9f32b5c4de9",
+    "scripts/closure-timing.py": "3ddc586fe3bae74da5806a970e6e737015bb82e4d0499641b4b6466b7f0cdcb7",
+    "scripts/closure_timing_common.py": "2de447f0117243a7c4fe991bcd78583b1640e27aaf966e4a18a76b863ac14503",
+    "scripts/compatibility_authority.py": "65f88a7ecb44d4f372db2deaed99976be39418225620ccf5dd1789d679a6f465",
+    "scripts/fixtures/closure-api-context.c": "bdc00f9f3c698908a04e0918a8e417de13ea151f2100a9b3951eabf9b0c1f761",
+    "scripts/fixtures/closure-control.birnam": "ace536a98c580828b404d66c642e34a5d1ddd3d6a21120ae692901521ad058d9",
+    "scripts/fixtures/closure-elision.birnam": "a9f83eab82551c6c78683adf8bb2a5de8e685c1eed0bb325b1d91c7586e060d9",
+    "scripts/fixtures/closure-literal-control.birnam": "b6ab8662d91ee77827b189cb469ad21ceb5d103d1e57612e59b087147fc7e662",
+    "scripts/fixtures/closure-literals.birnam": "6884a0a3f97259f54f847550baed1dcdf928bf8f4cefa8875fc0f2c56ab33522",
+    "scripts/fixtures/closure-live-api.birnam": "5454280ded660cac91da7074b4970f44f42c329d97154c5139fbeb1c553b3e1e",
+    "scripts/fixtures/closure-observation.birnam": "4908373851f18c35826677c7a15fd41b6664accbc34a0cb19bda282f882b1f30",
+    "scripts/fixtures/closure-timing.birnam": "377eb2388a8370f6f15ec8bb54062c914decd58018f1e135eb750d3e2e5662ae",
+    "scripts/fixtures/field-projection.c": "9f8ac55c9300f4d0de76c5af449ec2d6d5e7fbef48bc83262f6eab984bafdd33",
+    "scripts/fixtures/native-block-construction.c": "1a7cd84bb11186b05c9cdc81ea95660673c196e48fd2ca72111a48fb57842ddf",
+    "scripts/fixtures/native-numeric-api-context.c": "779a772450f624e2baf0ba18d250a9c824ef3cadee9afa291bba2e473e1273af",
+    "scripts/fixtures/numeric-semantics.c": "881db556a65d59780556f3658f9106ecb0cf9f8e78a3114a0ef01e8cefc6cfa8",
+    "scripts/fixtures/numeric-specialization.birnam": "fe8075e5b8ea5f639f6e87f892ae962a0c7fb41ecc4535019a7594c2ffa417ac",
+    "scripts/loop-invariant-numeric-smoke.py": "b7678cb57168359ee5d3a2fd8ab80ce0a1bf31772512a7c9b98a9e11d671ccf5",
+    "scripts/loop-measurement-smoke.py": "126fa58672b844ca9d935a12b7d8549947232ac9d87955017ce60c6cc97bf2b0",
+    "scripts/loop-timing.py": "219cbdd803f045147003d3da0e59d671c9825e12c60907edc74160af8d7ac0cd",
+    "scripts/loop_timing_common.py": "5f39bc07ba09f2ba0d41ac871753133c9c1a9cdeb24ccd91ce70fa3a79b56434",
+    "scripts/recovery-applications.py": "97a265692f6b990c87c945cf8ad1a9803a736e42ea0737e588b1064eb26f293b",
+    "scripts/recovery-graphs.py": "2e9f587fc11de76b43734c8f6cd9041af93d084acdb701afa202871975f9ae07",
+    "scripts/rust-cutover-verify.sh": "c35943364f1812067424878977913c6d43fbd3c03035a1568aae1f329b3187dc",
+    "scripts/rust-driver-cold-archive-smoke.sh": "48fcb353f7d21d0a78bdd977135faf691067b74e3143f70428eed955cb6bf4f7",
+    "scripts/rust-driver-native-smoke.sh": "7dd5fa24bc382f39dfb25f4cf452426c27271bd0077ee1ef4d72dae43dd9a169",
+    "scripts/unboxed-bounded-timing.py": "856cfb266a4281d2a2c17aa6d2bd4139f32e3d58120fc2d991ed07b14847a878",
+    "scripts/unboxed-numeric-control-smoke.py": "0b00485c908454a08f64a9959247cf525befd2ea1d9ec65b38d74b3d99dc7360",
+    "scripts/unboxed-numeric-measurement-smoke.py": "51dc2626b6060f4667aa6b80a77d77578222a0b6536e3fe69e40859fc80e60b7",
+    "scripts/unboxed-numeric-smoke.py": "18bebc7b01cce5b011dc2fab32b311e0e47d274e8fc234acf8a07822ab8da793",
+    "scripts/unboxed-numeric-timing.py": "28f54f573071cacf31f6cdf6fbd9091f9259c5782b64fa37d0824ad972bad30a",
+    "scripts/unboxed_numeric_timing_common.py": "bf960e273ac2a432802c33ceba48b124b8064561a71799b2b4f24a7868a3b390",
+    "src/id/app-config.birnam": "916afef2782d59f4accbab0072166f00ea4d8b3c64e081be18ec03d57faa843e",
+    "src/id/artifact-preflight-v1.txt": "2af928bb27b601dc37e851d56e2d048e80596e98de502cee8090f26294cccfe8",
+    "src/id/compiled-unit.birnam": "7f4f0fb9ec363e44902af114627cc0f5e67f6ed877399eecb9a3654d869fb70a",
+    "src/id/config.birnam": "bc8aeae394e6b2036cba4cc716d07c7d1065cbd760df9b9a09f5c073bfa83a59",
+    "src/id/fixtures/codegen-authority-v1.json": "14527032127f931454183308e20c2030d3bbdde7468b113e8cdf49c69ac26f38",
+    "src/id/fixtures/native-rung-v1/generated-c-fragments.txt": "c154920de890dce45179499f0eb46560f248443097e16f85b81e9b10957ff816",
+    "src/id/isolate.birnam": "1357fca8dece60c2605fcd525434e874e82901d01b979599f53e3db5c3907575",
+    "src/id/modules.birnam": "6402b28027d5eeac9faaff38a248108904eb09f72c7df65adce6a66ebaf79396",
+    "src/id/project-policy.birnam": "e30a99eca04d1c9ac64ef738f34f8a994ea110bcc5c9603cc92f9c2aed87552d",
+    "src/id/stackless-control.birnam": "4f06a751ac58de553c489a6653b27787a462927dc1c931b4d662aaf592bee923",
+    "src/id/stdlib.birnam": "3b777575217b8859516a084ac8d44031be85509dcd1668416033764c2289979f",
+    "src/id/toml.birnam": "78ef93b1f1e04812a6932843893435b9abe6123d522c00301b7362aa47add245"
+  },
+  "status": "passed",
+  "switches": [
+    "BIRNAM_DEV_DISCARDED_CLONES"
+  ]
+}
