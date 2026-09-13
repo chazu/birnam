@@ -205,9 +205,13 @@ native-tier retirement cleanup. Its corrected full gate passes 69 commands,
 disabled pending profitability and application/resource acceptance.
 [74X](../design/74x-closure-literal-results.md) literal callees are integrated on
 main after full verification: 71 commands, 265 matching source hashes and 2,924
-source cases. The separate literal-result V2 control gate remains live.
-The separate literal-control branch adds actual capture/suspension of distinct
-results and their aliases, with both GC modes and forced recovery at each call.
+source cases. Literal-result V2 control is now integrated too: its full gate
+passes 71 commands, 267 matching source hashes and 2,972 source cases, including
+capture/suspension of distinct results and aliases under both GC modes and forced
+recovery at each call. Installed aggregate source checks also pass 48 real REPL
+processes, covering exact allocation savings, private-layout refusal, current
+method effects and readmission after returning to the host. The combined compact
+snapshot/loop-cost checkpoint remains under full production verification.
 Broader aggregate acceptance, closure promotion and performance/resource/
 application acceptance remain open; all four full families remain in progress.
 The prior implementation

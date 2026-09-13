@@ -1617,3 +1617,45 @@ Frame control and captured-input checks; its extended production gate and
 numeric performance/resource/application acceptance remain open. Loop invariant
 work removal, broader aggregate acceptance and closure profitability/body
 coverage remain part of the unchanged four-family objective.
+
+## Installed aggregate admission, private layouts and host retirement
+
+The [debug](../measurements/74t-installed-aggregate-debug.json) and
+[release](../measurements/74t-installed-aggregate-release.json) matrices now exercise
+actual Id source through the installed compiler and real host REPL. Each profile
+passes 24 fresh processes, covering one/three/sixteen projections, field-only
+Return, a final tail getter, two successive clones and an escaping observer under
+both GC modes. Four phases per process provide 192 counter measurements overall.
+The exact floors come from the completed 74X literal-control production gate;
+all 267 production source hashes still match. A fresh release installation supplies
+the compiler and Relational's real native name projection. No runtime change or
+new test ABI was needed: the existing numeric bridge reports allocation bytes
+and physical omissions, while its numeric completion/recovery counters stay zero.
+
+Three- and sixteen-projection field-only bodies omit exactly one clone per call,
+or two for the successive-clone body. The one-projection controls omit none.
+The observer checks distinct clone identity and repeated aliases, retains the
+escaped identity across collection and verifies its projected field afterward.
+Escaping and final-tail-getter shapes omit no physical clones. The latter is a
+precise source boundary: a three-getter body ending in a tail send has only two
+ordinary projection Calls, below the admission minimum; a longer admitted prefix
+must recover its still-live receiver before that tail send.
+
+Each process replaces the getter through ordinary `Reflect defineMethod:` and
+checks every replacement effect, original field identity and canonical result.
+An object-level override creates a private vtable without an explicit payload
+layout. Removing the override restores inherited behavior but does not establish
+an all-Oop storage proof for that new vtable; allocation elimination correctly
+remains refused. The same compiled body readmits an unchanged, explicitly laid-out
+prototype, with the original logical allocation bytes and exact physical savings.
+This preserves the distinction between mutable dispatch and storage authority.
+
+The phases return through the real host REPL. An initial single-script experiment
+kept optimization disabled even for the unchanged prototype after removing the
+Id method. Native admission excludes pending code retirements, and an active
+outer Machine cannot drain retirement work held by dispatch readers. Returning to
+the host between phases permits readmission. The final check evicts Codegen
+materializations, collects, and still obtains the original field identity. This
+supports the supported aggregate consumer and real host lifecycle; it does not
+claim qualified timing, total-memory savings, arbitrary private layouts, or
+completion of the full four-family objective.

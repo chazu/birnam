@@ -108,7 +108,8 @@ acceptance, closure bodies and profitability remain open; the consumer stays def
 bounded closure consumer, preserving distinct result identities and earlier
 aliases. Its initial implementation is integrated on main after all 71 production
 commands and 2,924 source cases pass with matching hashes. Literal-result V2
-capture/suspension has a separate verification checkpoint. Both literal-callee
+capture/suspension is also integrated after its 71-command, 2,972-case production
+gate passes with matching hashes. Both literal-callee
 staging and closure elimination remain disabled by default.
 None of those four full families is complete yet.
 
