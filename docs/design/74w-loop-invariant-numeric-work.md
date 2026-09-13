@@ -183,4 +183,7 @@ Every enabled case retains one owner and one cached input/result set. Owned reus
 storage is 192, 400 and 656 bytes for three, sixteen and 32 operations respectively,
 including the test masks. Capacity stays constant across measured loops and GC.
 The independent-call controls retain the last stamp but reuse zero operations.
-The corresponding debug matrix and combined full gate remain pending.
+The [debug matrix](../measurements/74w-loop-measure-debug.json) also passes all
+96 cases with matching hashes. The [focused receipt](../measurements/74w-loop-cost-focused-correctness.json)
+retains both matrices and the 545-test workspace/201-test release runtime results.
+The combined full gate remains queued behind literal-control verification.
