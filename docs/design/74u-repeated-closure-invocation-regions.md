@@ -545,6 +545,30 @@ an admission threshold. No threshold is selected or consumer enabled by this
 harness change; broader closure bodies and application/resource acceptance
 remain required.
 
+The [complete exploratory threshold matrix](../measurements/74u-closure-threshold-exploratory-timing.json)
+now retains all 192 processes, with matching source, floor, fixture and installed
+artifact hashes. All allocation, invocation and recovery checks pass. Both host
+gates fail; the run remains unqualified. It uses the compact-snapshot production
+checkpoint, before the later descriptor-only admission change.
+
+| Uses | Eliminated closure: execution / including GC | Escaping closure: execution / including GC |
+| --- | --- | --- |
+| 1 | -21.23% / -10.64% | -30.50% / -7.57% |
+| 3 | +25.41% / +19.03% | -4.47% / -8.79% |
+| 4 | +16.40% / +6.00% | +20.85% / +19.68% |
+| 8 | +14.98% / -5.07% | +30.35% / +18.60% |
+| 16 | +38.03% / +22.20% | +34.46% / +21.77% |
+| 32 | +30.66% / +7.47% | +41.71% / +24.95% |
+
+Values are paired median reductions; negative values mean overhead. The
+sixteen-use eliminated case improves including GC in all four pairs, as do
+eight- and 32-use escaping cases. Other successful cases vary, including two
+negative collection-inclusive pairs at 32 eliminated uses. Replacement and
+compiler-refusal controls also vary substantially; the 32-use replacement
+control has a -32.06% collection-inclusive median. These results motivate
+the separate normal-floor comparison and removal of unused admission work;
+they do not establish a stable minimum-use policy or a new qualified gain.
+
 ## Normal-floor repeated-use measurement
 
 `scripts/closure-production-timing.py` complements the native counter harness
