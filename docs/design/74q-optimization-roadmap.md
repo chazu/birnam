@@ -26,7 +26,13 @@ operation chains save 2/15/31 intermediate boxes. Timing, resource/application
 acceptance and promotion remain required for the full arithmetic family.
 A registered tail-loop entry consumer is also enabled, preserving every lookup
 and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
-Application/cold/metadata acceptance and broader loop dataflow remain open.
+[74W](74w-loop-invariant-numeric-work.md) now also implements reuse of invariant
+arithmetic across proven successive self-tail iterations, disabled by default.
+Its corrected full production gate passes 69 commands and 2,852 source cases,
+including control/retirement proofs. Loop profitability and application/resource
+acceptance remain open. The completed 74V unboxed timing matrix failed both
+host gates and supplies no promotion evidence; its negative and mixed results
+are retained for profiling and a quiet comparison.
 Discarded-clone elimination is enabled for bounded bodies cloning the same
 prototype at least three times, with original allocation accounting and collector
 observations retained. Its enabled-source matrix shows 3.4–11.4% median fixture

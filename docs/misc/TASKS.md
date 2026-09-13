@@ -195,17 +195,20 @@ consumer stays disabled by default. See 74T for the full remaining scope.
 numeric intermediates, disabled by default, with original allocation charges
 and V2 identity recovery. Its full production checkpoint is integrated on main:
 63 commands, 538 workspace tests and 1,540 source rows pass with matching hashes.
-The subsequent control/captured-input branch passes 1,188 additional source
-cases; its extended production gate is pending. Numeric timing and resource/
-application acceptance, loop invariant-work removal, broader aggregate
-acceptance and closure promotion remain open.
-Broader closure/capture coverage and performance acceptance
-and broader numeric/loop/aggregate/application acceptance remain open; none of
-the four full families is complete.
-The extended 74V recovery checkpoint is now integrated: all 63 production
-commands pass with 252 matching source hashes and 2,728 retained source cases,
-including captured numeric inputs and V2 capture/suspension. Numeric cost
-measurement and the remaining family acceptance work continue.
+The extended recovery gate and cost-harness production gate now pass. The full
+120-process numeric timing matrix is retained as unqualified: both host gates
+failed and the mixed/negative results do not justify enabling unboxing.
+[74W](../design/74w-loop-invariant-numeric-work.md) is integrated on main with
+actual invariant arithmetic reuse across successive self-tail iterations and
+native-tier retirement cleanup. Its corrected full gate passes 69 commands,
+262 matching source hashes and 2,852 source cases. The loop consumer remains
+disabled pending profitability and application/resource acceptance.
+Closure literal-result support is committed on `codex/74x-closure-literals`:
+544 workspace tests and 24 installed cases pass; its full gate is running.
+The separate literal-control branch adds actual capture/suspension of distinct
+results and their aliases, with both GC modes and forced recovery at each call.
+Broader aggregate acceptance, closure promotion and performance/resource/
+application acceptance remain open; all four full families remain in progress.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
