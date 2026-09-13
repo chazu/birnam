@@ -321,3 +321,14 @@ For the two measured 32-operation successful cases, the release probe retains
 collection. Native-unit counts equal the baseline. These short counter checks
 supply no qualified timing claim; the extended production gate and paired cost
 measurements follow this checkpoint.
+
+### Production cost-harness verification
+
+The [cost-harness production receipt](../measurements/74v-unboxed-cost-production-correctness.json)
+passes all 63 commands with all 256 source hashes matching. It retains 1,248
+closure cases and 1,540 numeric cases, including all 60 new measurement checks.
+Every matrix matches the independently verified floor for its profile; the
+retained release floor also matches the timing runner's selected binary. Native,
+image, cold-archive and relocation checks pass. Paired cost measurements can now
+use this checkpoint. This establishes measurement correctness, not profitability
+or promotion of the default-off arithmetic consumer.
