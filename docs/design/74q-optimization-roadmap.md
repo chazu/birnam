@@ -32,12 +32,18 @@ Its corrected full production gate passes 69 commands and 2,852 source cases,
 including control/retirement proofs. Loop profitability and application/resource
 acceptance remain open. The completed 74V unboxed timing matrix failed both
 host gates and supplies no promotion evidence; its negative and mixed results
-are retained for profiling and a quiet comparison.
+are retained for profiling and comparison.
 Compact numeric snapshots and the loop cost harness are now integrated after
 their combined gate passes 71 commands and 3,164 source cases, with 271 matching
-production source hashes. Qualified loop, closure-threshold and compact-numeric
-timings are serialized before combined application/resource acceptance. These
-cost decisions remain open; the passing gate establishes correctness.
+production source hashes. The user has waived quiet-host admission for ongoing
+work: exploratory measurements continue with host diagnostics and explicit
+`qualified: false`, while correctness requirements remain mandatory. The full
+192-process normal-floor loop baseline and 32-process application comparison
+are retained in 74W and 74T. Small loop differences remain inconclusive; the
+combined collections regression is being isolated by experimental switch.
+An unchanged-input loop fast path is in full production verification, followed
+by closure-threshold and compact-numeric exploratory matrices. These cost
+decisions remain open; passing correctness gates does not establish speedups.
 Discarded-clone elimination is enabled for bounded bodies cloning the same
 prototype at least three times, with original allocation accounting and collector
 observations retained. Its enabled-source matrix shows 3.4–11.4% median fixture

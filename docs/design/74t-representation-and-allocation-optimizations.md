@@ -1773,3 +1773,24 @@ comparison selects collections with unboxed, loop, closure and literal switches
 individually, each paired against default settings. This is a diagnostic step
 toward an admission policy, not a claim that any one consumer caused the combined
 regression.
+
+The individual-switch collections comparisons now pass all 32 processes and
+160 measured batches, with unchanged production, driver and installation hashes.
+All four receipts are exploratory and unqualified. Twelve of sixteen diagnostic
+intervals fail the retained host criteria. Positive percentages below mean a
+reduction; negative percentages mean overhead.
+
+| Switch | Execution median reduction | Process-wall median reduction | Execution pair directions |
+| --- | --- | --- | --- |
+| [Unboxed](../measurements/74t-collections-unboxed-exploratory.json) | +2.42% | +5.16% | Two positive, two negative |
+| [Loop](../measurements/74t-collections-loop-exploratory.json) | -4.07% | -8.40% | Two positive, two negative |
+| [Closure](../measurements/74t-collections-closure-exploratory.json) | -31.77% | -20.08% | All four negative |
+| [Literal callees](../measurements/74t-collections-literal-exploratory.json) | -15.82% | -8.79% | Two positive, two negative |
+
+The closure-only execution pairs regress by 17.25–64.31%; their process-wall
+times also all regress. This warrants profiling the warmed ordinary collections
+workload with only closure elimination enabled. It does not prove that closure
+elimination caused the earlier combined regression, establish the magnitude
+under controlled load, or justify attributing mixed literal/loop results to their
+consumers. The diagnostic hypotheses are repeated refused-candidate checks,
+unprofitable short successful regions, preparation work and unrelated host load.
